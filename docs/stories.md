@@ -7,9 +7,14 @@
 
 **Ordre.** Les stories sont classées par dépendance. Le champ `Dependencies` liste les dépendances **réelles**, pas l'ordre de lecture : deux stories sans dépendance commune peuvent être menées en parallèle.
 
-**Sémantique des tables d'un module désactivé (tranchée avant s02, voir F3 de `docs/reviews/stories.md`).** Un module **jamais activé** n'a jamais joué ses migrations : ses tables n'existent pas. Un module **activé puis désactivé** conserve ses tables et ses données : les supprimer serait une migration destructive, c'est-à-dire `eject`, explicitement au cimetière du PRD. Le toggle est réversible sans perte de données. Aucune commande de nettoyage n'existe et aucune story ne doit en introduire.
+**Sémantique des tables d'un module désactivé.** Un module **jamais activé** n'a jamais joué ses migrations : ses tables n'existent pas. Un module **activé puis désactivé** conserve ses tables et ses données : les supprimer serait une migration destructive, c'est-à-dire `eject`, explicitement au cimetière du PRD. Le toggle est réversible sans perte de données. Aucune commande de nettoyage n'existe et aucune story ne doit en introduire.
 
-**Vérification des intégrations tierces.** Tout critère portant sur un appel réel à un service tiers (Resend, Stripe, Inngest, PostHog, Sentry) se vérifie par un test contre le mode bac à sable ou la clé de test du service, exécuté hors CI par défaut et activé par variable d'environnement. Les tests de CI utilisent une implémentation d'enregistrement (requêtes capturées et assertées). Un critère explicitement marqué « recette manuelle » se vérifie à la main, avec une trace consignée dans la revue de la story.
+**Règle transverse : tout module désactivable porte son critère « module non activé ».** Une story qui livre un module optionnel décrit ce que devient l'application sans lui — routes, navigation, tables sur base vierge, et comportement de repli des fonctionnalités qui l'interrogeaient. Aucune story ultérieure ne peut s'appuyer sur une sémantique de désactivation qu'une story antérieure n'a pas définie.
+
+**Vérification des intégrations tierces.** Deux régimes, jamais mélangés :
+- **En CI** : implémentation d'enregistrement (requêtes capturées et assertées) pour les envois sortants, et **rejeu d'événements webhook enregistrés** pour les entrants (Stripe, Inngest). Ces tests sont bloquants.
+- **Hors CI**, sur commande explicite et clés de test du service (Resend, Stripe, Inngest, PostHog) : les tests d'intégration réelle, activés par variable d'environnement. Non bloquants en CI, exécutés avant chaque ship.
+Un critère explicitement marqué « recette manuelle » se vérifie à la main, avec une trace consignée dans la revue de la story.
 
 ---
 
@@ -24,25 +29,46 @@
 - [ ] Une variable d'environnement manquante ou malformée fait échouer le démarrage avec un message nommant la variable fautive (validation Zod)
 - [ ] `.env.example` liste toutes les variables lues par le schéma de validation ; un test échoue si une variable du schéma en est absente
 - [ ] `pnpm db:migrate` applique les migrations Drizzle sur une base Postgres vide et est idempotent au second lancement
-- [ ] `pnpm db:seed` peuple la base de données de développement avec un jeu de données minimal et est rejouable sans erreur
+- [ ] `pnpm db:seed` peuple la base de développement avec un jeu de données minimal et est rejouable sans erreur
 - [ ] `docker compose up` fournit une base Postgres locale utilisable par l'application, sans installation Postgres sur la machine
 - [ ] Une route `/api/health` répond 200 avec l'état de la connexion base de données
-- [ ] `pnpm typecheck`, `pnpm lint`, `pnpm test` et `pnpm test:e2e` s'exécutent et passent sur le dépôt vide
-- [ ] Un fichier de conventions pour agents de code (`AGENTS.md` racine du template généré) décrit l'architecture en couches, les règles de module et les commandes ; un test vérifie sa présence et ses sections obligatoires
-- [ ] Le workflow GitHub Actions exécute typecheck, lint, tests unitaires et E2E sur chaque push et échoue si l'un d'eux échoue
 
 ### Dependencies
 Aucune — première story.
 
 ### Agentic notes
-Squelette du projet : Next.js App Router, TypeScript strict, Drizzle ORM, PostgreSQL, Vitest, Playwright, Docker Compose. Pas encore de module métier ni d'authentification.
+Squelette du projet : Next.js App Router, TypeScript strict, Drizzle ORM, PostgreSQL, Docker Compose. Le harnais de qualité et la CI sont livrés séparément en s02 (découpage recommandé par la revue, finding F26).
 Contrainte PRD : aucune donnée ni convention personnelle en dur, toute configuration par `.env` ou `config/`.
-Référence : ShipSaaS revendique une architecture en trois couches (présentation / services / persistance) et « 50+ conventions » pour cadrer les agents de code — poser cette séparation dès maintenant, elle conditionne la modularité de s02.
+Référence : ShipSaaS revendique une architecture en trois couches (présentation / services / persistance) — poser cette séparation dès maintenant, elle conditionne la modularité de s03.
 Piège : les migrations Drizzle doivent être versionnées en fichiers SQL (`drizzle-kit generate`), jamais appliquées par `push` en production.
 
 ---
 
-## Story s02-module-registry — Activer et désactiver un module par configuration
+## Story s02-quality-harness — Vérifier la qualité du code en une commande
+**As a** Dev **I want** un harnais de qualité et une CI qui tourne dès le premier commit **so that** aucune régression ne passe et mes agents de code connaissent les règles du dépôt.
+
+### Complexity
+2
+
+### Acceptance criteria
+- [ ] `pnpm typecheck`, `pnpm lint`, `pnpm test` et `pnpm test:e2e` s'exécutent et passent sur le dépôt vide
+- [ ] `pnpm lint` échoue sur une violation introduite volontairement et la commande de correction automatique la répare
+- [ ] Un test unitaire et un test end-to-end de démonstration existent et échouent si l'application ne démarre pas
+- [ ] Un fichier de conventions pour agents de code (`AGENTS.md` du template généré) décrit l'architecture en couches, les règles de module et les commandes ; un test vérifie sa présence et ses sections obligatoires
+- [ ] Le workflow GitHub Actions exécute typecheck, lint, tests unitaires et end-to-end sur chaque push, et échoue si l'un d'eux échoue
+- [ ] Le workflow démarre une base Postgres de test et joue les migrations avant les tests
+
+### Dependencies
+s01-boot-blank-app
+
+### Agentic notes
+Découpée de s01 sur recommandation de la revue (F26) : dix critères dans une seule story dépassaient la taille tenable.
+Référence : ShipSaaS met en avant ses « 50+ conventions » pour cadrer les agents de code, MakerKit ses « règles LLM pré-configurées pour Cursor, Claude Code et Windsurf ». C'est de la parité, pas un angle.
+Cette story conditionne s03 : la preuve de modularité s'exprime par « la suite de tests passe module activé, puis non activé ».
+
+---
+
+## Story s03-module-registry — Activer et désactiver un module par configuration
 **As a** Dev **I want** déclarer les modules de mon projet dans une configuration typée **so that** un module non activé ne laisse ni route, ni navigation, ni table dans mon application.
 
 ### Complexity
@@ -55,22 +81,22 @@ Piège : les migrations Drizzle doivent être versionnées en fichiers SQL (`dri
 - [ ] Un module non activé n'apparaît dans aucune entrée de navigation
 - [ ] Les migrations d'un module non activé ne sont pas appliquées : ses tables sont absentes de la base après `pnpm db:migrate` sur une base vierge
 - [ ] Les fonctions de purge et d'export d'un module non activé ne sont pas appelées et leur absence ne provoque aucune erreur
-- [ ] Deux modules de démonstration (l'un activé, l'autre non) prouvent les cinq critères précédents dans les tests
+- [ ] Deux modules de démonstration, l'un activé et l'autre non, prouvent chacun des comportements ci-dessus dans les tests
 - [ ] La suite de tests passe intégralement avec le module de démonstration activé, puis non activé
 
 ### Dependencies
-s01-boot-blank-app
+s02-quality-harness
 
 ### Agentic notes
 **Story la plus structurante du projet — risque maximal.** C'est l'angle n°1 du PRD. Si le contrat de module est mal posé ici, chaque story suivante devra être reprise.
-Le contrat inclut `purge` et `export` **dès maintenant**, avec une implémentation vide pour les modules qui n'ont pas de données : les ajouter en s29 et s30 obligerait à rouvrir la vingtaine de modules écrits entre-temps.
+Le contrat inclut `purge` et `export` **dès maintenant**, avec une implémentation vide pour les modules sans données : les ajouter en s31 et s32 obligerait à rouvrir la vingtaine de modules écrits entre-temps.
 Référence : MakerKit se contente de 13 booléens d'environnement (`NEXT_PUBLIC_ENABLE_TEAM_ACCOUNTS`, `NEXT_PUBLIC_ENABLE_TEAM_ACCOUNTS_BILLING`…) qui masquent l'UI mais laissent les tables `organizations`, `members` et `invitations` en base. Supastarter utilise des fichiers `config.ts` par application. **Aucun des deux ne retire quoi que ce soit** — c'est précisément ce que cette story doit faire.
-Le critère 5 porte sur une base vierge : un module activé puis désactivé conserve ses tables (voir la sémantique en tête de fichier).
+Le critère sur les tables porte sur une base vierge : un module activé puis désactivé conserve ses tables (voir la sémantique en tête de fichier).
 Piège : la composition du schéma Drizzle. Les migrations doivent être générées par module et assemblées selon la configuration, pas dans un schéma monolithique.
 
 ---
 
-## Story s03-cli-toggle-module — Activer un module en une commande
+## Story s04-cli-toggle-module — Activer un module en une commande
 **As a** Dev **I want** activer ou désactiver un module par une commande **so that** je n'aie ni à éditer la configuration à la main ni à me souvenir des migrations à jouer.
 
 ### Complexity
@@ -87,7 +113,7 @@ Piège : la composition du schéma Drizzle. Les migrations doivent être génér
 - [ ] Les commandes sont couvertes par des tests exécutés sur un dépôt temporaire
 
 ### Dependencies
-s02-module-registry
+s03-module-registry
 
 ### Agentic notes
 Angle n°2 du PRD : la réversibilité à tout moment, contrairement aux générateurs de scaffolding à la create-t3-app qui décident une fois pour toutes.
@@ -96,7 +122,7 @@ Piège : éditer `config/features.ts` sans casser le formatage ni les commentair
 
 ---
 
-## Story s04-transactional-emails — Envoyer un email transactionnel
+## Story s05-transactional-emails — Envoyer un email transactionnel
 **As a** Dev **I want** envoyer un email transactionnel depuis une interface unique **so that** je puisse brancher n'importe quel provider sans toucher au code métier.
 
 ### Complexity
@@ -104,25 +130,25 @@ Piège : éditer `config/features.ts` sans casser le formatage ni les commentair
 
 ### Acceptance criteria
 - [ ] Une interface `Mailer` typée expose l'envoi d'un email (destinataire, sujet, template, données) et est la seule surface appelée par le code métier
-- [ ] L'implémentation Resend envoie l'email : vérifié par un test contre la clé de test Resend, exécuté hors CI et activé par variable d'environnement
-- [ ] En CI, une implémentation d'enregistrement capture les envois et le test asserte destinataire, template et données
+- [ ] En CI, une doublure d'enregistrement capture les envois et le test asserte destinataire, template et données
+- [ ] Hors CI, sur commande explicite, un test contre la clé de test Resend vérifie l'envoi réel
 - [ ] En développement, sans clé d'API, l'email est capturé et consultable localement au lieu d'être envoyé
 - [ ] Un template React Email de démonstration est rendu avec ses données et couvert par un test de rendu
 - [ ] Un échec du provider est journalisé et remonté à l'appelant sans faire tomber la requête
 - [ ] La documentation décrit la configuration DNS de délivrabilité (SPF, DKIM, DMARC)
 
 ### Dependencies
-s02-module-registry
+s03-module-registry
 
 ### Agentic notes
-Placée avant l'authentification : la vérification d'email, le magic link et la réinitialisation de mot de passe en dépendent tous.
+Placée avant l'authentification : la vérification d'email, le magic link et la réinitialisation de mot de passe en dépendent tous. Elle ne livre pas d'email reçu par un utilisateur réel — le premier arrive en s06. C'est la story la plus proche d'une couche technique du lot, assumée pour éviter que s06 porte à la fois l'authentification et l'adapter mail.
+**Une seule implémentation de provider est livrée : Resend.** La doublure d'enregistrement et la capture locale sont des outils de test, pas des providers : elles ne rendent pas légitime l'ajout d'un adapter SMTP ou SendGrid, qui reste au cimetière (finding F24 de la revue).
 Référence : MakerKit expose une abstraction `@kit/mailers` (Resend, Nodemailer, SendGrid) ; Supastarter documente Resend, Postmark et Nodemailer ; ShipFast appelle Resend directement.
-Contrainte PRD : **une seule implémentation livrée et testée** (Resend). L'interface existe pour qu'ajouter un provider soit l'écriture d'une classe, pas une refonte.
 Piège : le mailer de test doit être injecté, jamais conditionné par `NODE_ENV`.
 
 ---
 
-## Story s05-signup-signin — Créer un compte et se connecter
+## Story s06-signup-signin — Créer un compte et se connecter
 **As a** User **I want** créer un compte et me connecter **so that** j'accède à la partie protégée de l'application.
 
 ### Complexity
@@ -139,17 +165,17 @@ Piège : le mailer de test doit être injecté, jamais conditionné par `NODE_EN
 - [ ] Une route protégée accédée sans session redirige vers la connexion, puis revient à l'URL demandée après authentification
 
 ### Dependencies
-s04-transactional-emails
+s05-transactional-emails
 
 ### Agentic notes
 Better Auth est la solution pressentie par le PRD (à confirmer en phase Research) : password, magic link, vérification, réinitialisation et sessions nativement.
-Le module `auth` est le premier module réel : il doit respecter le contrat de s02 (schéma, routes, nav, traductions, emails, purge, export).
+Le module `auth` est le premier module réel : il doit respecter le contrat de s03 (schéma, routes, nav, traductions, emails, purge, export). Il n'est pas désactivable — c'est le seul module obligatoire du socle, à écrire explicitement dans `config/features.ts`.
 Piège : longueur minimale de mot de passe et durées de validité des liens sont de la configuration, pas des constantes en dur.
 Piège de sécurité : ne jamais différencier les messages d'erreur entre « email inconnu » et « mot de passe faux » (énumération de comptes).
 
 ---
 
-## Story s06-app-shell — Naviguer dans l'application connectée
+## Story s07-app-shell — Naviguer dans l'application connectée
 **As a** User **I want** un tableau de bord avec navigation, thème et paramètres de compte **so that** je circule dans l'application et gère mon profil.
 
 ### Complexity
@@ -165,41 +191,45 @@ Piège de sécurité : ne jamais différencier les messages d'erreur entre « em
 - [ ] L'interface est utilisable en dessous de 400 px de large sans débordement horizontal
 
 ### Dependencies
-s05-signup-signin
+s06-signup-signin
 
 ### Agentic notes
-**Écart assumé avec l'ordre du PRD** (« auth → multi-tenant → billing → app shell ») : le shell est livré avant le multi-tenant parce que c'est lui qui prouve que la navigation se construit depuis le registre de modules (s02). Livrer les organisations avant le shell reviendrait à écrire une navigation en dur puis à la réécrire.
+**Écart assumé avec l'ordre du PRD** (« auth → multi-tenant → billing → app shell ») : le shell est livré avant le multi-tenant parce que c'est lui qui prouve que la navigation se construit depuis le registre de modules (s03). Livrer les organisations avant le shell reviendrait à écrire une navigation en dur puis à la réécrire.
+La page de paramètres du compte livrée ici est le point d'accroche de s09 (fournisseurs OAuth liés), s10 (double authentification) et s11 (passkeys).
 Référence : layout de tableau de bord de MakerKit et de Supastarter — shadcn/ui, Tailwind, thème commutable.
-L'avatar est traité en s14 (il dépend du module storage) : ici, initiales ou placeholder.
+L'avatar est traité en s15 (il dépend du module storage) : ici, initiales ou placeholder.
 
 ---
 
-## Story s07-i18n — Utiliser l'application dans sa langue
+## Story s08-i18n — Utiliser l'application dans sa langue
 **As a** User **I want** afficher l'application et recevoir mes emails dans ma langue **so that** je l'utilise sans barrière linguistique.
 
 ### Complexity
 4
 
 ### Acceptance criteria
-- [ ] Deux locales sont livrées (français, anglais) ; les routes sont préfixées par la locale
+- [ ] Deux locales sont livrées (français, anglais) ; module activé, les routes sont préfixées par la locale
 - [ ] Un sélecteur de langue change la locale et persiste le choix entre deux sessions
 - [ ] Aucune chaîne visible n'est écrite en dur : un test échoue si un texte affiché ne provient pas des fichiers de traduction
 - [ ] Chaque module apporte ses propres traductions ; désactiver un module retire ses clés sans casser le chargement des autres
 - [ ] Les emails transactionnels existants sont envoyés dans la langue de l'utilisateur destinataire
 - [ ] Une clé manquante dans une locale est détectée par un test, et non silencieusement remplacée en production
 - [ ] Les écrans déjà livrés (authentification, tableau de bord, paramètres) sont entièrement traduits
+- [ ] **Module non activé** : les routes sont servies sans préfixe de locale, l'application et les emails utilisent la langue par défaut configurée, aucun sélecteur de langue n'apparaît, et aucune redirection de locale n'a lieu
+- [ ] La résolution des chaînes reste la même fonction dans les deux cas : un module écrit après s08 n'a pas à savoir si l'i18n est activée
 
 ### Dependencies
-s06-app-shell, s04-transactional-emails
+s07-app-shell, s05-transactional-emails
 
 ### Agentic notes
 **Risque de complexité 4 : dette permanente.** Le PRD impose de poser l'i18n tôt, précisément pour éviter une reprise intégrale plus tard. À partir d'ici, toute story ajoute ses traductions — c'est une règle du contrat de module, à faire respecter en revue.
+**Les deux derniers critères sont la partie critique** (finding F17 de la revue) : le critère de succès n°4 du PRD nomme l'i18n parmi les trois modules désactivés de la preuve de modularité (recette en s23). Décider après coup si les routes sont préfixées réécrirait chaque route livrée entre ici et s41. La forme d'URL et la fonction de traduction doivent être tranchées maintenant.
 Référence : Supastarter découpe ses messages en `marketing`, `saas`, `mail` et `shared` avec quatre locales ; MakerKit expose un `NEXT_PUBLIC_LANGUAGE_PRIORITY`.
 Piège : le rattrapage sur les écrans déjà livrés est borné aujourd'hui (authentification et shell) et ne le sera plus dans dix stories.
 
 ---
 
-## Story s08-oauth-signin — Se connecter avec Google ou GitHub
+## Story s09-oauth-signin — Se connecter avec Google ou GitHub
 **As a** User **I want** me connecter avec mon compte Google ou GitHub **so that** je n'aie pas de mot de passe supplémentaire à gérer.
 
 ### Complexity
@@ -213,7 +243,7 @@ Piège : le rattrapage sur les écrans déjà livrés est borné aujourd'hui (au
 - [ ] Les fournisseurs liés sont visibles dans les paramètres du compte et peuvent être déliés, sauf s'il s'agit du dernier moyen de connexion
 
 ### Dependencies
-s05-signup-signin
+s06-signup-signin, s07-app-shell (page de paramètres du compte)
 
 ### Agentic notes
 Parité 4/4 : les quatre cibles proposent au minimum Google.
@@ -222,7 +252,7 @@ Piège : ne jamais laisser un compte sans moyen de connexion après un déliemen
 
 ---
 
-## Story s09-two-factor — Protéger son compte par double authentification
+## Story s10-two-factor — Protéger son compte par double authentification
 **As a** User **I want** activer une double authentification **so that** mon compte reste protégé si mon mot de passe fuite.
 
 ### Complexity
@@ -234,19 +264,20 @@ Piège : ne jamais laisser un compte sans moyen de connexion après un déliemen
 - [ ] Dix codes de secours à usage unique sont générés à l'activation, affichés une seule fois, et chacun n'est utilisable qu'une fois
 - [ ] Un code TOTP erroné ou rejoué est refusé
 - [ ] La désactivation exige un code valide ou le mot de passe courant
-- [ ] Les tentatives de vérification échouées sont limitées en nombre par compte
+- [ ] Les tentatives de vérification échouées sont limitées par un compteur par compte, verrouillant temporairement la vérification au-delà du seuil
 
 ### Dependencies
-s06-app-shell
+s07-app-shell
 
 ### Agentic notes
 Better Auth fournit le plugin `two-factor`. Le coût est dans l'interface : activation, QR code, codes de secours, écran de vérification à la connexion.
 Parité Supastarter et MakerKit.
+**Articulation avec s25-rate-limiting** (finding F28 de la revue) : le compteur posé ici est un verrouillage par compte, local à la vérification 2FA. s25 énumère explicitement l'endpoint de vérification 2FA parmi ses points d'entrée limités et absorbe ce compteur dans le mécanisme commun. Ne pas dupliquer la logique : l'implémenteur de s25 remplace, il n'ajoute pas une seconde limite.
 Piège : les codes de secours doivent être stockés hachés, jamais en clair.
 
 ---
 
-## Story s10-passkeys — Se connecter sans mot de passe
+## Story s11-passkeys — Se connecter sans mot de passe
 **As a** User **I want** enregistrer une passkey **so that** je me connecte sans mot de passe depuis mes appareils.
 
 ### Complexity
@@ -260,16 +291,17 @@ Piège : les codes de secours doivent être stockés hachés, jamais en clair.
 - [ ] Un échec ou une annulation de l'enregistrement affiche un message clair sans créer d'entrée orpheline
 
 ### Dependencies
-s09-two-factor
+s07-app-shell (page de paramètres du compte)
 
 ### Agentic notes
+Dépend du shell, pas de la double authentification : WebAuthn n'a aucun lien avec TOTP, les deux stories peuvent être menées en parallèle (finding F22 de la revue).
 Better Auth fournit le plugin officiel `@better-auth/passkey` (SimpleWebAuthn) : `plugins: [passkey()]` côté serveur, `passkeyClient()` côté client, plus une migration ajoutant une table `passkey`. Le travail réel est l'interface de gestion et le repli.
 Parité Supastarter et MakerKit.
 Piège documenté par Better Auth : les erreurs d'enregistrement renvoient toujours un objet de données, l'option `throw: true` est sans effet. L'UI conditionnelle exige `autocomplete="webauthn"` sur le champ.
 
 ---
 
-## Story s11-organizations — Travailler dans une organisation
+## Story s12-organizations — Travailler dans une organisation
 **As a** User **I want** créer une organisation et basculer entre mes organisations **so that** mes données soient séparées par contexte de travail.
 
 ### Complexity
@@ -281,21 +313,22 @@ Piège documenté par Better Auth : les erreurs d'enregistrement renvoient toujo
 - [ ] Toute donnée rattachée à une organisation n'est lisible que par ses membres : un accès depuis une autre organisation renvoie 404, pas 403
 - [ ] Le créateur d'une organisation en est propriétaire
 - [ ] Les paramètres d'organisation permettent d'en modifier le nom et le slug
-- [ ] Module non activé : l'application fonctionne en mode mono-utilisateur, aucune route ni entrée de navigation d'organisation n'existe, et les tables correspondantes sont absentes d'une base vierge
+- [ ] **Module non activé** : l'application fonctionne en mode mono-utilisateur, aucune route ni entrée de navigation d'organisation n'existe, les tables correspondantes sont absentes d'une base vierge, et toute donnée est rattachée directement à l'utilisateur
 - [ ] La suite de tests passe avec le module activé, puis non activé
 
 ### Dependencies
-s06-app-shell
+s07-app-shell
 
 ### Agentic notes
 **Risque de complexité 4 : le scoping traverse chaque requête et chaque écran.** C'est aussi la story qui prouve l'angle du PRD — un projet solo ne doit garder aucune trace du multi-tenant.
 Better Auth fournit le plugin `organization`.
 Référence : MakerKit conserve `organizations`, `members` et `invitations` en base même avec `NEXT_PUBLIC_ENABLE_TEAM_ACCOUNTS=false`. C'est exactement le comportement à ne pas reproduire pour un projet généré sans le module.
 Piège : renvoyer 404 et non 403 sur une ressource d'une autre organisation, pour ne pas divulguer son existence.
+Piège : le rattachement des données (utilisateur ou organisation) doit passer par une seule fonction de résolution du propriétaire, sinon le mode mono-utilisateur duplique chaque requête.
 
 ---
 
-## Story s12-invite-members — Inviter quelqu'un dans son organisation
+## Story s13-invite-members — Inviter quelqu'un dans son organisation
 **As a** User **I want** inviter une personne par email dans mon organisation **so that** nous travaillions sur les mêmes données.
 
 ### Complexity
@@ -311,7 +344,7 @@ Piège : renvoyer 404 et non 403 sur une ressource d'une autre organisation, pou
 - [ ] Le dernier propriétaire d'une organisation ne peut pas être retiré ni se retirer lui-même
 
 ### Dependencies
-s11-organizations, s04-transactional-emails
+s12-organizations, s05-transactional-emails
 
 ### Agentic notes
 Parité Supastarter et MakerKit.
@@ -320,7 +353,7 @@ Piège : le retrait d'un membre doit invalider ses sessions actives sur cette or
 
 ---
 
-## Story s13-roles-permissions — Limiter les actions selon le rôle
+## Story s14-roles-permissions — Limiter les actions selon le rôle
 **As a** User **I want** que les rôles owner, admin et member déterminent ce que chacun peut faire **so that** mon organisation reste sous contrôle.
 
 ### Complexity
@@ -333,10 +366,11 @@ Piège : le retrait d'un membre doit invalider ses sessions actives sur cette or
 - [ ] Un owner peut transférer la propriété ; l'ancien owner devient admin
 - [ ] Une organisation conserve toujours au moins un owner
 - [ ] Toute vérification de permission est effectuée côté serveur : un appel direct à l'API avec un rôle insuffisant renvoie 403
+- [ ] Module organisations non activé : la vérification de permission accorde toujours l'accès au propriétaire des données, sans branche conditionnelle dans le code appelant
 - [ ] Chaque combinaison rôle × action sensible est couverte par un test
 
 ### Dependencies
-s12-invite-members
+s13-invite-members
 
 ### Agentic notes
 Parité MakerKit (RBAC) et ShipSaaS (CASL). Better Auth fournit un contrôle d'accès dans le plugin `organization`.
@@ -344,7 +378,7 @@ Piège : masquer un bouton n'est pas une permission. Chaque critère doit être 
 
 ---
 
-## Story s14-file-storage-avatar — Envoyer un fichier et changer son avatar
+## Story s15-file-storage-avatar — Envoyer un fichier et changer son avatar
 **As a** User **I want** téléverser une image de profil **so that** mon compte soit identifiable.
 
 ### Complexity
@@ -357,20 +391,20 @@ Piège : masquer un bouton n'est pas une permission. Chaque critère doit être 
 - [ ] L'avatar téléversé s'affiche dans le menu de compte et dans les paramètres ; le remplacement supprime le fichier précédent
 - [ ] Un fichier rattaché à une organisation n'est lisible que par ses membres
 - [ ] La fonction de purge du module supprime les fichiers d'un utilisateur ou d'une organisation ; sa fonction d'export les liste
-- [ ] Module non activé : aucune route de téléversement, et l'avatar retombe sur les initiales sans erreur
+- [ ] **Module non activé** : aucune route de téléversement, aucune table de fichiers sur base vierge, et l'avatar retombe sur les initiales sans erreur
 
 ### Dependencies
-s06-app-shell, s13-roles-permissions (contrôle d'accès par organisation)
+s07-app-shell, s14-roles-permissions (contrôle d'accès par organisation)
 
 ### Agentic notes
-**Écart assumé avec l'ordre du PRD** : le storage est livré avant la facturation parce que l'avatar complète le shell et les paramètres de compte déjà livrés, et parce qu'il est la première story à implémenter réellement `purge` et `export` du contrat de s02 — une répétition utile avant que le pack RGPD (s29, s30) en dépende.
+**Écart assumé avec l'ordre du PRD** : le storage est livré avant la facturation parce que l'avatar complète le shell et les paramètres de compte déjà livrés, et parce qu'il est la première story à implémenter réellement `purge` et `export` du contrat de s03 — une répétition utile avant que le pack RGPD (s31, s32) en dépende.
 Contrainte PRD : une seule implémentation livrée (S3 / Cloudflare R2, API compatible S3).
 Référence : Supastarter documente S3, R2, DigitalOcean Spaces, MinIO et Supabase Storage ; MakerKit se limite à Supabase Storage.
 Piège : valider le type MIME côté serveur, jamais sur la seule extension fournie par le client.
 
 ---
 
-## Story s15-subscribe-stripe — Souscrire un abonnement
+## Story s16-subscribe-stripe — Souscrire un abonnement
 **As a** User **I want** souscrire un plan par abonnement et le gérer **so that** j'accède aux fonctionnalités payantes de façon récurrente.
 
 ### Complexity
@@ -384,20 +418,22 @@ Piège : valider le type MIME côté serveur, jamais sur la seule extension four
 - [ ] Un webhook à la signature invalide est rejeté en 400 sans modifier l'état
 - [ ] Le portail client Stripe est accessible depuis la facturation et permet de changer de plan, de mettre à jour le moyen de paiement et d'annuler
 - [ ] Un abonnement annulé conserve l'accès jusqu'à la fin de la période payée, puis le perd
-- [ ] Les parcours de paiement sont vérifiés en clé de test Stripe, hors CI ; la CI utilise des événements webhook enregistrés et rejoués
+- [ ] **Module non activé** : aucune route de facturation ni de webhook, aucune entrée de navigation, aucune table de facturation sur base vierge, et l'application reste pleinement utilisable
+- [ ] En CI, les parcours sont vérifiés par rejeu d'événements webhook enregistrés ; hors CI, sur commande explicite, par un test contre les clés de test Stripe
 
 ### Dependencies
-s06-app-shell, s13-roles-permissions (si le module organisations est activé, pour rattacher l'abonnement)
+s07-app-shell, s14-roles-permissions (si le module organisations est activé, pour rattacher l'abonnement)
 
 ### Agentic notes
 **Risque de complexité 4 : l'idempotence des webhooks est le point de rupture classique.** Journaliser chaque événement reçu avec son identifiant Stripe et refuser les doublons.
-Cette story porte la **configuration des offres**, pas la page de tarifs : la dérivation de la page publique appartient à s19. Les deux stories ne doivent pas revendiquer le même critère.
+Le critère « module non activé » est requis par s35 (page de revenus absente) et s37 (étape de choix d'offre absente), qui s'y appuient sans le définir (finding F17 de la revue).
+Cette story porte la **configuration des offres**, pas la page de tarifs : la dérivation de la page publique appartient à s20. Les deux stories ne doivent pas revendiquer le même critère.
 Contrainte PRD : couche d'abstraction provider avec **Stripe comme seule implémentation**. LemonSqueezy, Polar, Creem et Dodo sont au cimetière.
 Piège : l'abonnement se rattache soit à l'utilisateur, soit à l'organisation, selon les modules actifs. Prévoir ce basculement dès maintenant (Supastarter le nomme `billingAttachedTo`).
 
 ---
 
-## Story s16-one-time-purchase — Acheter une fois pour toutes
+## Story s17-one-time-purchase — Acheter une fois pour toutes
 **As a** User **I want** acheter un accès à vie en un paiement unique **so that** je ne sois pas obligé de m'abonner.
 
 ### Complexity
@@ -413,17 +449,17 @@ Piège : l'abonnement se rattache soit à l'utilisateur, soit à l'organisation,
 - [ ] Les webhooks de paiement unique sont idempotents : un événement rejoué n'accorde pas un second droit
 
 ### Dependencies
-s15-subscribe-stripe
+s16-subscribe-stripe
 
 ### Agentic notes
-Nommé dans la ligne Billing du périmètre PRD (« one-time ») et absent de la première version des stories — c'est le finding critique F1 de `docs/reviews/stories.md`.
+Nommé dans la ligne Billing du périmètre PRD (« one-time »).
 Différences réelles avec l'abonnement, à ne pas sous-estimer : `mode: payment` au checkout, événements webhook distincts (`checkout.session.completed` sans `subscription`, `charge.refunded`), et surtout un modèle de droit d'accès qui ne peut pas s'appuyer sur l'état d'un abonnement.
 Référence : ShipFast vend lui-même en licence unique ; les quatre cibles supportent le paiement unique en plus de l'abonnement.
-Piège : un droit permanent stocké comme « abonnement toujours actif » casse dès le premier calcul de revenu récurrent (s33). Le modéliser comme un droit distinct.
+Piège : un droit permanent stocké comme « abonnement toujours actif » casse dès le premier calcul de revenu récurrent (s35). Le modéliser comme un droit distinct.
 
 ---
 
-## Story s17-trials-and-gating — Réserver des fonctionnalités aux offres payantes
+## Story s18-trials-and-gating — Réserver des fonctionnalités aux offres payantes
 **As a** Dev **I want** conditionner une fonctionnalité à une offre et proposer un essai **so that** je monétise mon produit sans écrire de logique d'accès à chaque écran.
 
 ### Complexity
@@ -432,23 +468,25 @@ Piège : un droit permanent stocké comme « abonnement toujours actif » casse 
 ### Acceptance criteria
 - [ ] Une fonctionnalité est déclarée comme requérant une offre ou un niveau donné ; la vérification est une fonction unique appelée côté serveur
 - [ ] Un accès à une fonctionnalité réservée sans droit suffisant renvoie 403 côté API et affiche une invitation à souscrire côté interface
-- [ ] Le droit est accordé aussi bien par un abonnement actif que par un achat unique (s16)
+- [ ] Le droit est accordé aussi bien par un abonnement actif que par un achat unique (s17)
 - [ ] Une période d'essai configurée sur une offre donne accès aux fonctionnalités payantes jusqu'à son terme, puis les retire
 - [ ] Un essai expiré, un abonnement en retard de paiement et un abonnement annulé après période payée retirent tous l'accès
 - [ ] Une limite quantitative configurée (nombre d'objets, de membres, de fichiers) est vérifiée côté serveur et refuse le dépassement avec un message nommant la limite atteinte
+- [ ] **Module de facturation non activé** : la fonction de vérification accorde l'accès à toutes les fonctionnalités et aucune invitation à souscrire n'apparaît
 - [ ] Chaque combinaison état de facturation × fonctionnalité réservée est couverte par un test
 
 ### Dependencies
-s16-one-time-purchase
+s17-one-time-purchase
 
 ### Agentic notes
-Découpée de s15 sur recommandation de la revue (F11) : le gating et les essais sont une tranche à part entière, avec leur propre matrice de tests.
-Le gating doit interroger un **droit d'accès** consolidé (abonnement OU achat unique OU essai), jamais directement l'état d'un abonnement — sinon s16 est inutilisable.
+Découpée de s16 sur recommandation de la revue : le gating et les essais sont une tranche à part entière, avec leur propre matrice de tests.
+Le gating doit interroger un **droit d'accès** consolidé (abonnement OU achat unique OU essai), jamais directement l'état d'un abonnement — sinon s17 est inutilisable.
+**Frontière avec le cimetière** (finding F23 de la revue) : le compteur de limite quantitative sert exclusivement à **refuser une action** au-delà d'un quota de plan. Il ne doit jamais alimenter une assiette de facturation ni un relevé de consommation : la facturation à l'usage est explicitement au cimetière du PRD.
 Piège : une vérification côté client seule est une faille. Le critère porte sur l'API.
 
 ---
 
-## Story s18-seat-billing — Facturer au nombre de membres
+## Story s19-seat-billing — Facturer au nombre de membres
 **As a** User **I want** que ma facture suive le nombre de membres de mon organisation **so that** je paie ce que j'utilise réellement.
 
 ### Complexity
@@ -462,10 +500,10 @@ Piège : une vérification côté client seule est une faille. Le critère porte
 - [ ] L'ajout d'un membre au-delà d'une limite de sièges configurée est refusé avec un message explicite
 - [ ] Un échec de synchronisation Stripe n'ajoute pas le membre : l'opération est atomique et rejouable
 - [ ] Une commande de réconciliation compare la quantité Stripe au nombre réel de membres et corrige l'écart
-- [ ] Module non activé : la facturation reste au forfait et aucune synchronisation de quantité n'a lieu
+- [ ] **Module non activé** : la facturation reste au forfait, aucune synchronisation de quantité n'a lieu, et aucune limite de sièges n'est appliquée
 
 ### Dependencies
-s17-trials-and-gating, s13-roles-permissions
+s18-trials-and-gating, s14-roles-permissions
 
 ### Agentic notes
 **Risque de complexité 4 : la cohérence entre le nombre de membres et la quantité Stripe.** C'est un état distribué entre deux systèmes ; toute opération doit être rejouable et réconciliable.
@@ -474,7 +512,7 @@ Piège : sans commande de réconciliation, la dérive est silencieuse et ne se d
 
 ---
 
-## Story s19-marketing-pages — Découvrir le produit et ses tarifs
+## Story s20-marketing-pages — Découvrir le produit et ses tarifs
 **As a** Visiteur **I want** consulter la page d'accueil, les tarifs et les mentions légales **so that** je comprenne le produit et puisse le contacter.
 
 ### Complexity
@@ -482,8 +520,9 @@ Piège : sans commande de réconciliation, la dérive est silencieuse et ne se d
 
 ### Acceptance criteria
 - [ ] La page d'accueil est composée de sections réutilisables (héros, fonctionnalités, témoignages, appel à l'action, FAQ) dont le contenu et l'ordre proviennent d'un fichier de configuration typé (`config/marketing.ts`) ; réordonner ou retirer une section ne demande aucune modification de composant
-- [ ] La page de tarifs est dérivée de `config/billing.ts` (s15) : ajouter une offre la fait apparaître sans modifier la page, et les prix affichés sont ceux envoyés au checkout
-- [ ] Les offres en mode `subscription` et `one_time` sont toutes deux présentables sur la page de tarifs, avec la mention de périodicité adéquate
+- [ ] La page de tarifs est dérivée de `config/billing.ts` (s16) : ajouter une offre la fait apparaître sans modifier la page, et les prix affichés sont ceux envoyés au checkout
+- [ ] Les offres en mode `subscription` et `one_time` sont toutes deux présentables, avec la mention de périodicité adéquate
+- [ ] Module de facturation non activé : la page de tarifs n'existe pas et son lien disparaît de la navigation publique
 - [ ] Le formulaire de contact envoie un email et affiche une confirmation ; un champ invalide affiche une erreur sans envoyer
 - [ ] L'inscription à la newsletter enregistre l'email et refuse les doublons sans erreur visible
 - [ ] Les pages légales (confidentialité, conditions d'utilisation) existent et sont accessibles depuis le pied de page
@@ -491,17 +530,17 @@ Piège : sans commande de réconciliation, la dérive est silencieuse et ne se d
 - [ ] Les pages marketing s'affichent sans session et n'émettent aucune requête base de données au rendu
 
 ### Dependencies
-s07-i18n, s15-subscribe-stripe (configuration des offres), s16-one-time-purchase
+s08-i18n, s16-subscribe-stripe (configuration des offres), s17-one-time-purchase
 
 ### Agentic notes
-Complexité relevée de 2 à 3 sur recommandation de la revue (F10) : la story empile sections configurables, tarifs dérivés, contact, newsletter, légales et SEO.
-La dérivation de la page de tarifs appartient **à cette story seule** — s15 ne porte que la configuration des offres (F2).
+La dérivation de la page de tarifs appartient **à cette story seule** — s16 ne porte que la configuration des offres.
+Le stockage des inscriptions newsletter livré ici est réutilisé par s39-waitlist : une seule table d'inscriptions publiques, avec une colonne de source, jamais deux modèles concurrents (finding F27 de la revue).
 Parité 4/4. ShipFast en fait son argument principal ; Supastarter livre héros, fonctionnalités, tarifs, newsletter et contact.
 Piège : les pages marketing doivent rester statiques et rapides.
 
 ---
 
-## Story s20-guest-checkout — Payer sans créer de compte d'abord
+## Story s21-guest-checkout — Payer sans créer de compte d'abord
 **As a** Visiteur **I want** payer directement depuis la page de tarifs **so that** je n'aie pas à créer un compte avant de savoir si j'achète.
 
 ### Complexity
@@ -517,7 +556,7 @@ Piège : les pages marketing doivent rester statiques et rapides.
 - [ ] Aucune session n'est ouverte depuis la page de retour de paiement
 
 ### Dependencies
-s19-marketing-pages, s17-trials-and-gating
+s20-marketing-pages, s18-trials-and-gating
 
 ### Agentic notes
 Exclusivité ShipSaaS parmi les quatre cibles : « guest checkout qui crée automatiquement le compte ».
@@ -526,31 +565,60 @@ Piège de sécurité : ne jamais ouvrir de session automatiquement depuis la pag
 
 ---
 
-## Story s21-golden-path-e2e — Vérifier le parcours clone → premier paiement
+## Story s22-golden-path-e2e — Vérifier le parcours clone → premier paiement
 **As a** Dev **I want** un test de bout en bout qui rejoue le parcours complet **so that** le critère de succès n°1 du PRD soit vérifié à chaque story et non une seule fois.
 
 ### Complexity
 3
 
 ### Acceptance criteria
-- [ ] Un scénario Playwright unique enchaîne : inscription, vérification d'email, création d'organisation, souscription d'une offre en clé de test Stripe, et accès à une fonctionnalité réservée
+- [ ] Un scénario Playwright unique enchaîne : inscription, vérification d'email, création d'organisation, souscription d'une offre, et accès à une fonctionnalité réservée
 - [ ] Le scénario part d'une base vierge et d'un jeu de données de seed, sans état résiduel d'une exécution précédente
 - [ ] Une variante du scénario couvre l'achat unique, une autre le guest checkout
+- [ ] **En CI**, le scénario s'exécute avec rejeu d'événements webhook Stripe enregistrés, sans appel réseau sortant, et son échec bloque la CI
+- [ ] **Hors CI**, sur commande explicite, le même scénario s'exécute contre les clés de test Stripe et un tunnel de webhooks ; il est exécuté avant chaque ship et sa trace consignée dans la revue de la story
 - [ ] Le scénario s'exécute sur une commande unique (`pnpm test:golden-path`) et échoue explicitement si une étape dépasse un temps configuré
 - [ ] La durée totale du parcours est mesurée et journalisée à chaque exécution
-- [ ] Le scénario s'exécute en CI sur les clés de test, et son échec bloque la CI
 
 ### Dependencies
-s20-guest-checkout, s18-seat-billing
+s21-guest-checkout
 
 ### Agentic notes
-Répond au finding F16 de la revue : le critère de succès n°1 du PRD (« clone → premier paiement en moins de 30 minutes, rejoué à chaque story ») n'était porté par aucune story, donc personne ne l'aurait rejoué.
-Le harnais mesure et journalise sans imposer de seuil bloquant : le seuil de 30 minutes est une recette humaine, la mesure automatisée en est la trace.
-Piège : les webhooks Stripe en CI exigent un tunnel ou un rejeu d'événements enregistrés. Documenter le mécanisme retenu, il servira à toutes les stories suivantes.
+Porte le critère de succès n°1 du PRD (« clone → premier paiement en moins de 30 minutes, rejoué à chaque story »), qu'aucune story de fonctionnalité ne vérifiait.
+**Les deux régimes CI / hors CI sont explicites** (finding F20 de la revue) : la CI est déterministe et bloquante par rejeu d'événements enregistrés ; l'intégration réelle est une commande manuelle avant ship. Ne pas mélanger les deux, c'est la source d'échecs intermittents la plus classique sur ce type de harnais.
+Ne dépend pas du seat billing : aucun de ses scénarios n'implique de siège.
+Le harnais mesure et journalise la durée sans imposer de seuil bloquant : le seuil de 30 minutes est une recette humaine, la mesure automatisée en est la trace.
 
 ---
 
-## Story s22-deployment — Déployer l'application en production
+## Story s23-minimal-profile-check — Prouver qu'un projet minimal ne traîne rien
+**As a** Dev **I want** une recette automatisée sur un projet aux modules optionnels coupés **so that** la promesse de modularité soit vérifiée en continu et non affirmée.
+
+### Complexity
+3
+
+### Acceptance criteria
+- [ ] Un profil de configuration « minimal » désactive simultanément multi-tenant, seat billing et i18n, et sert de base à la recette
+- [ ] Sous ce profil, l'application démarre et la suite de tests complète passe
+- [ ] Aucune route des modules désactivés n'est joignable : chaque URL connue de ces modules renvoie 404
+- [ ] Aucune entrée de navigation orpheline n'est rendue : la navigation est comparée à la liste des modules activés
+- [ ] Après `pnpm db:migrate` sur une base vierge, aucune table appartenant à un module désactivé n'existe ; la comparaison est faite sur le schéma réel de la base, pas sur les fichiers de migration
+- [ ] Le parcours d'inscription et de connexion fonctionne de bout en bout sous ce profil
+- [ ] La recette s'exécute sur une commande unique et en CI, et son échec bloque la CI
+- [ ] Ajouter un module désactivé au profil ne demande aucune modification du harnais
+
+### Dependencies
+s19-seat-billing, s08-i18n, s12-organizations, s02-quality-harness
+
+### Agentic notes
+Porte le **critère de succès n°4 du PRD** — « aucune route morte, aucune entrée de nav orpheline, aucune table inutilisée » —, qui n'avait aucun propriétaire (finding F18 de la revue). Chaque story de module teste son propre off ; personne ne testait les trois coupés simultanément, c'est-à-dire précisément l'angle n°1 face à MakerKit.
+Symétrique de s22 : s22 prouve que le socle complet mène à un paiement, s23 prouve que le socle réduit ne traîne rien.
+Piège : lire le schéma réel de la base (`information_schema`) et non les fichiers de migration — c'est la seule vérification qui attrape une table créée par un import transitif.
+Piège : ce harnais doit rester générique. Un profil codé en dur avec trois noms de modules deviendrait faux dès le module suivant.
+
+---
+
+## Story s24-deployment — Déployer l'application en production
 **As a** Dev **I want** déployer l'application sur Vercel ou sur mon serveur Coolify **so that** je mette mon SaaS en ligne sans réinventer la chaîne de déploiement.
 
 ### Complexity
@@ -566,17 +634,17 @@ Piège : les webhooks Stripe en CI exigent un tunnel ou un rejeu d'événements 
 - [ ] Le pipeline CI construit l'image et échoue si le build de production échoue
 
 ### Dependencies
-s19-marketing-pages
+s20-marketing-pages
 
 ### Agentic notes
 Parité 4/4. Supastarter documente Vercel, Render, Fly.io, Netlify, Docker, Coolify et Railway.
 Contrainte PRD : Vercel est la cible de référence, Docker et Coolify sont documentés (l'utilisateur opère déjà un Coolify).
-Deux critères sont marqués recette manuelle sur recommandation de la revue (F12) : un déploiement réel n'est pas automatisable dans ce cadre, mais il doit laisser une trace vérifiable.
+Deux critères sont marqués recette manuelle : un déploiement réel n'est pas automatisable dans ce cadre, mais il doit laisser une trace vérifiable.
 Piège : les migrations doivent être rétrocompatibles avec la version encore en ligne pendant le basculement.
 
 ---
 
-## Story s23-rate-limiting — Résister au spam et aux attaques par force brute
+## Story s25-rate-limiting — Résister au spam et aux attaques par force brute
 **As a** Dev **I want** que les points d'entrée publics soient limités en débit **so that** mon application ne soit pas spammée ni forcée dès sa mise en ligne.
 
 ### Complexity
@@ -584,7 +652,8 @@ Piège : les migrations doivent être rétrocompatibles avec la version encore e
 
 ### Acceptance criteria
 - [ ] Les tentatives de connexion sont limitées par IP et par compte ; au-delà du seuil, la réponse est 429 avec un en-tête `Retry-After`
-- [ ] L'inscription, la réinitialisation de mot de passe, le magic link, l'invitation, le formulaire de contact et le téléversement sont limités avec des seuils configurables
+- [ ] L'inscription, la réinitialisation de mot de passe, le magic link, **la vérification de double authentification**, l'invitation, le formulaire de contact et le téléversement sont limités avec des seuils configurables
+- [ ] Le verrouillage par compte posé en s10 pour la double authentification est remplacé par ce mécanisme : une seule logique de limitation subsiste dans le code
 - [ ] Les seuils sont définis dans la configuration, jamais en dur dans le code
 - [ ] Un captcha optionnel peut être activé sur les formulaires publics ; désactivé, les formulaires restent pleinement fonctionnels
 - [ ] Le dépassement de seuil est journalisé avec l'IP et la route concernées
@@ -592,16 +661,17 @@ Piège : les migrations doivent être rétrocompatibles avec la version encore e
 - [ ] Les limites sont neutralisables dans les tests par injection, sans variable d'environnement exploitable en production
 
 ### Dependencies
-s19-marketing-pages, s05-signup-signin
+s20-marketing-pages, s06-signup-signin, s10-two-factor, s13-invite-members, s15-file-storage-avatar
 
 ### Agentic notes
 **Aucune des quatre cibles ne le fournit** — angle n°4 du PRD (conformité et robustesse par défaut).
+Les dépendances listent tous les points d'entrée à protéger : chacun doit exister avant d'être limité (finding F21 de la revue).
 Piège : un compteur en mémoire est contournable en scalant horizontalement. Documenter la dégradation en mono-instance.
 Piège : limiter par IP seule est insuffisant contre le bourrage d'identifiants ; limiter aussi par compte visé.
 
 ---
 
-## Story s24-blog-mdx — Publier un article de blog
+## Story s26-blog-mdx — Publier un article de blog
 **As a** Dev **I want** publier des articles en MDX **so that** mon SaaS ait un canal d'acquisition organique.
 
 ### Complexity
@@ -613,20 +683,21 @@ Piège : limiter par IP seule est insuffisant contre le bourrage d'identifiants 
 - [ ] La liste est paginée et filtrable par tag
 - [ ] Chaque article génère ses balises méta et Open Graph, et une image Open Graph par défaut si aucune n'est fournie
 - [ ] Un flux RSS est généré et valide
-- [ ] Les articles sont traduisibles : un article sans traduction dans la locale courante n'apparaît pas dans cette locale
+- [ ] Les articles sont traduisibles : module i18n activé, un article sans traduction dans la locale courante n'apparaît pas dans cette locale ; module non activé, tous les articles sont servis dans la langue par défaut
 - [ ] Les articles sont référencés dans `sitemap.xml`
+- [ ] Module non activé : aucune route de blog, et le lien disparaît de la navigation publique
 
 ### Dependencies
-s19-marketing-pages, s07-i18n
+s20-marketing-pages, s08-i18n
 
 ### Agentic notes
 Parité Supastarter (MDX multilingue), MakerKit (Markdoc) et ShipFast.
-Cette story pose le pipeline MDX réutilisé par s25 et s26.
+Cette story pose le pipeline MDX réutilisé par s27 et s28.
 Piège : le rendu MDX ne doit pas exécuter de composant applicatif nécessitant une session.
 
 ---
 
-## Story s25-docs-site — Consulter la documentation du produit
+## Story s27-docs-site — Consulter la documentation du produit
 **As a** Visiteur **I want** parcourir et rechercher la documentation **so that** je trouve comment utiliser le produit.
 
 ### Complexity
@@ -639,9 +710,10 @@ Piège : le rendu MDX ne doit pas exécuter de composant applicatif nécessitant
 - [ ] Un lien interne pointant vers une page inexistante fait échouer le build
 - [ ] La documentation est traduisible ; une page non traduite retombe sur la locale par défaut avec une mention explicite
 - [ ] Les pages de documentation sont référencées dans `sitemap.xml`
+- [ ] Module non activé : aucune route de documentation, et le lien disparaît de la navigation publique
 
 ### Dependencies
-s24-blog-mdx (pipeline MDX)
+s26-blog-mdx (pipeline MDX)
 
 ### Agentic notes
 Parité Supastarter (Fumadocs avec recherche plein texte) et MakerKit.
@@ -649,7 +721,7 @@ Distinction du PRD : il s'agit de la documentation **du SaaS généré**, pas de
 
 ---
 
-## Story s26-changelog — Annoncer les nouveautés
+## Story s28-changelog — Annoncer les nouveautés
 **As a** Visiteur **I want** consulter les nouveautés du produit **so that** je voie qu'il évolue.
 
 ### Complexity
@@ -663,15 +735,15 @@ Distinction du PRD : il s'agit de la documentation **du SaaS généré**, pas de
 - [ ] Module non activé : la page n'existe pas et le lien disparaît du pied de page
 
 ### Dependencies
-s24-blog-mdx (pipeline MDX)
+s26-blog-mdx (pipeline MDX)
 
 ### Agentic notes
 Parité MakerKit.
-Réutiliser le pipeline MDX de s24 plutôt que d'en créer un troisième.
+Réutiliser le pipeline MDX de s26 plutôt que d'en créer un troisième.
 
 ---
 
-## Story s27-notifications-inapp — Être notifié dans l'application
+## Story s29-notifications-inapp — Être notifié dans l'application
 **As a** User **I want** voir mes notifications dans l'application et choisir comment être prévenu **so that** je ne rate rien sans être submergé d'emails.
 
 ### Complexity
@@ -683,19 +755,20 @@ Réutiliser le pipeline MDX de s24 plutôt que d'en créer un troisième.
 - [ ] Une notification peut être marquée comme lue individuellement ou toutes à la fois
 - [ ] Les préférences permettent d'activer ou désactiver chaque type de notification par canal (in-app, email) et sont respectées à l'émission
 - [ ] Une notification émise pour un événement d'organisation n'est visible que par les membres concernés
-- [ ] L'émission passe par une fonction unique consultant les préférences ; un test vérifie qu'aucun appel direct au mailer n'existe hors de cette fonction
+- [ ] Tout email correspondant à un **type de notification déclaré dans le registre de préférences** passe par la fonction d'émission unique ; un test vérifie qu'aucun de ces types n'appelle le mailer directement
 - [ ] Module non activé : aucune route ni entrée de navigation de notifications, et les émetteurs existants ne provoquent aucune erreur
 
 ### Dependencies
-s13-roles-permissions, s04-transactional-emails
+s14-roles-permissions, s05-transactional-emails
 
 ### Agentic notes
 Le temps réel (websockets, `NEXT_PUBLIC_REALTIME_NOTIFICATIONS` chez MakerKit) est au **cimetière** du PRD : lecture au chargement et à la navigation uniquement.
+**Portée du critère sur le mailer** (finding F19 de la revue) : la règle vise les emails **de notification**, pas tout appel au mailer. Les emails transactionnels d'authentification (vérification, magic link, réinitialisation), l'invitation de s13, le lien de définition de mot de passe de s21, la confirmation de suppression de s31 et le lien d'export de s32 restent des appels directs légitimes et ne doivent pas être refactorés ici.
 Parité Supastarter (centre de notifications et préférences email) et MakerKit.
 
 ---
 
-## Story s28-background-jobs — Exécuter des traitements en arrière-plan
+## Story s30-background-jobs — Exécuter des traitements en arrière-plan
 **As a** Dev **I want** déclencher des jobs asynchrones et des tâches planifiées **so that** les traitements longs ou différés ne bloquent pas les requêtes.
 
 ### Complexity
@@ -703,8 +776,8 @@ Parité Supastarter (centre de notifications et préférences email) et MakerKit
 
 ### Acceptance criteria
 - [ ] Une interface typée expose l'émission d'un événement et la déclaration d'un job, et est la seule surface appelée par le code métier
-- [ ] L'implémentation Inngest exécute un job de démonstration déclenché par un événement : vérifié par un test contre l'environnement de développement Inngest, hors CI
-- [ ] En CI, une implémentation d'enregistrement capture les événements émis et le test asserte leur nom et leur charge utile
+- [ ] En CI, une doublure d'enregistrement capture les événements émis et le test asserte leur nom et leur charge utile
+- [ ] Hors CI, sur commande explicite, un test contre l'environnement de développement Inngest exécute réellement un job de démonstration
 - [ ] Une tâche planifiée s'exécute selon son expression cron et son exécution est journalisée
 - [ ] Un job en échec est réessayé selon une politique configurable, puis marqué en échec définitif et journalisé
 - [ ] Un job est idempotent : la même exécution rejouée ne produit pas d'effet en double
@@ -712,15 +785,15 @@ Parité Supastarter (centre de notifications et préférences email) et MakerKit
 - [ ] Les jobs s'exécutent en local sans service externe (mode développement documenté)
 
 ### Dependencies
-s17-trials-and-gating, s27-notifications-inapp
+s18-trials-and-gating, s29-notifications-inapp
 
 ### Agentic notes
 **Risque de complexité 4 : dépendance à une infrastructure externe, difficile à tester.** Le mode développement local doit être documenté et fonctionnel, sinon chaque projet dérivé sera bloqué.
-Contrainte PRD : adapter avec **Inngest comme seule implémentation**. trigger.dev, QStash et BullMQ (documentés par Supastarter) restent hors périmètre.
+Contrainte PRD : adapter avec **Inngest comme seule implémentation**. trigger.dev, QStash et BullMQ (documentés par Supastarter) restent hors périmètre. La doublure d'enregistrement de CI est un outil de test, pas un second provider.
 
 ---
 
-## Story s29-account-deletion — Supprimer son compte ou son organisation
+## Story s31-account-deletion — Supprimer son compte ou son organisation
 **As a** User **I want** supprimer définitivement mon compte ou mon organisation **so that** je puisse exercer mon droit à l'effacement.
 
 ### Complexity
@@ -737,23 +810,24 @@ Contrainte PRD : adapter avec **Inngest comme seule implémentation**. trigger.d
 - [ ] Un module non activé n'est pas appelé et ne laisse pas de données orphelines
 
 ### Dependencies
-s28-background-jobs, s14-file-storage-avatar, s15-subscribe-stripe (annulation de l'abonnement), s13-roles-permissions (règle du dernier propriétaire)
+s30-background-jobs, s15-file-storage-avatar, s16-subscribe-stripe (annulation de l'abonnement), s14-roles-permissions (règle du dernier propriétaire)
 
 ### Agentic notes
 Parité partielle MakerKit (`NEXT_PUBLIC_ENABLE_PERSONAL_ACCOUNT_DELETION`, `..._TEAM_ACCOUNTS_DELETION`, désactivés par défaut).
-Le contrat de module de s02 porte déjà `purge` : cette story l'orchestre, elle ne le crée pas. Si un module livré entre s02 et ici ne l'a pas implémentée, c'est un manquement à corriger dans ce module, pas ici.
-La suppression effective passe par un job de fond (s28) pour rester fiable sur de gros volumes.
+Le contrat de module de s03 porte déjà `purge` : cette story l'orchestre, elle ne le crée pas. Si un module livré entre s03 et ici ne l'a pas implémentée, c'est un manquement à corriger dans ce module, pas ici.
+La suppression effective passe par un job de fond (s30) pour rester fiable sur de gros volumes.
 
 ---
 
-## Story s30-data-export — Exporter ses données
+## Story s32-data-export — Exporter ses données
 **As a** User **I want** télécharger l'ensemble de mes données **so that** j'exerce mon droit à la portabilité.
 
 ### Complexity
-2
+3
 
 ### Acceptance criteria
 - [ ] Une demande d'export appelle la fonction d'export de chaque module activé et produit une archive
+- [ ] L'archive est construite par un job de fond ; l'utilisateur est notifié à sa disponibilité
 - [ ] L'archive est fournie via un lien de téléchargement à durée de validité limitée, envoyé par email
 - [ ] Le lien expiré ne permet plus le téléchargement
 - [ ] Une demande d'export d'organisation n'est accessible qu'à un owner
@@ -761,15 +835,16 @@ La suppression effective passe par un job de fond (s28) pour rester fiable sur d
 - [ ] Une demande d'export déjà en cours n'en déclenche pas une seconde
 
 ### Dependencies
-s28-background-jobs, s14-file-storage-avatar
+s30-background-jobs, s15-file-storage-avatar
 
 ### Agentic notes
 **Aucune des quatre cibles ne le fournit** — angle du PRD.
-Symétrique de s29 : même contrat de module (`export` posé en s02), même orchestration par job de fond.
+Complexité relevée de 2 à 3 (finding F26 de la revue) : export inter-modules, orchestration par job de fond, lien signé expirant, permission owner et garde anti-doublon.
+Symétrique de s31 : même contrat de module (`export` posé en s03), même orchestration par job de fond.
 
 ---
 
-## Story s31-cookie-consent — Choisir ses cookies
+## Story s33-cookie-consent — Choisir ses cookies
 **As a** Visiteur **I want** accepter ou refuser les cookies non essentiels **so that** ma navigation respecte mon choix.
 
 ### Complexity
@@ -784,16 +859,16 @@ Symétrique de s29 : même contrat de module (`export` posé en s02), même orch
 - [ ] La bannière est traduite dans toutes les locales livrées
 
 ### Dependencies
-s19-marketing-pages
+s20-marketing-pages
 
 ### Agentic notes
 **Aucune des quatre cibles ne le fournit** — angle du PRD. Obligatoire en Europe dès qu'un outil d'analyse est présent.
-Les critères portent sur un **registre de scripts non essentiels** et un script factice, pas sur PostHog : l'outil d'analyse arrive en s34, qui dépend de cette story (F5 de la revue).
+Les critères portent sur un **registre de scripts non essentiels** et un script factice, pas sur PostHog : l'outil d'analyse arrive en s36, qui dépend de cette story.
 Piège : le consentement doit conditionner le **chargement** du script, pas seulement l'envoi des événements.
 
 ---
 
-## Story s32-admin-users — Administrer les utilisateurs et les organisations
+## Story s34-admin-users — Administrer les utilisateurs et les organisations
 **As a** Admin **I want** rechercher un utilisateur, agir sur son compte et me connecter à sa place **so that** je puisse assister mes clients et modérer la plateforme.
 
 ### Complexity
@@ -810,16 +885,16 @@ Piège : le consentement doit conditionner le **chargement** du script, pas seul
 - [ ] La liste des organisations est consultable avec ses membres et son abonnement
 
 ### Dependencies
-s13-roles-permissions, s17-trials-and-gating
+s14-roles-permissions, s18-trials-and-gating
 
 ### Agentic notes
 Le plugin `admin` de Better Auth fournit déjà liste, recherche, pagination, bannissement, réinitialisation, sessions et impersonation avec garde-fou sur les autres administrateurs. Le travail réel est l'interface et la vue organisations.
 Parité Supastarter (superadmin et impersonation), MakerKit (super admin dashboard) et ShipSaaS (back-office).
-**Précision par rapport au cimetière (F13 de la revue)** : la traçabilité de l'impersonation est une écriture dans les **logs applicatifs**, pas une table d'audit alimentée par chaque module. Le « journal d'audit » reste au cimetière du PRD.
+**Précision par rapport au cimetière** : la traçabilité de l'impersonation est une écriture dans les **logs applicatifs**, pas une table d'audit alimentée par chaque module. Le « journal d'audit » reste au cimetière du PRD.
 
 ---
 
-## Story s33-admin-revenue — Suivre le revenu de la plateforme
+## Story s35-admin-revenue — Suivre le revenu de la plateforme
 **As a** Admin **I want** voir mes indicateurs de revenu et d'abonnements **so that** je pilote mon activité sans ouvrir Stripe.
 
 ### Complexity
@@ -834,16 +909,17 @@ Parité Supastarter (superadmin et impersonation), MakerKit (super admin dashboa
 - [ ] Module de facturation non activé : la page n'existe pas et son entrée disparaît du back-office
 
 ### Dependencies
-s32-admin-users, s16-one-time-purchase
+s34-admin-users, s17-one-time-purchase
 
 ### Agentic notes
 Parité ShipSaaS (« suivi du revenu en temps réel ») et MakerKit.
-Piège signalé en s16 : compter un achat unique comme un abonnement toujours actif fausse le MRR. Le critère 2 est là pour l'interdire.
-Piège : ne pas interroger l'API Stripe au rendu. Les webhooks de s15 et s16 alimentent l'état local, qui fait référence.
+S'appuie sur le critère « module de facturation non activé » défini en s16.
+Piège signalé en s17 : compter un achat unique comme un abonnement toujours actif fausse le MRR. Le second critère est là pour l'interdire.
+Piège : ne pas interroger l'API Stripe au rendu. Les webhooks de s16 et s17 alimentent l'état local, qui fait référence.
 
 ---
 
-## Story s34-monitoring-analytics — Observer les erreurs et les usages
+## Story s36-monitoring-analytics — Observer les erreurs et les usages
 **As a** Dev **I want** collecter les erreurs et les événements d'usage **so that** je détecte les incidents et comprenne le comportement de mes utilisateurs.
 
 ### Complexity
@@ -853,13 +929,13 @@ Piège : ne pas interroger l'API Stripe au rendu. Les webhooks de s15 et s16 ali
 - [ ] Une erreur non gérée côté serveur et côté client est remontée à Sentry avec sa trace source lisible (source maps envoyées au build)
 - [ ] Les données sensibles (mot de passe, jeton, cookie de session) sont filtrées avant envoi ; un test soumet une charge utile contenant ces champs et asserte leur absence dans la requête capturée
 - [ ] Une interface `Analytics` typée expose le suivi d'événement et d'affichage de page, et est la seule surface appelée par le code métier
-- [ ] L'implémentation PostHog envoie les événements : vérifié par un test contre un projet PostHog de test, hors CI ; en CI, les requêtes sont capturées et assertées
+- [ ] En CI, les requêtes d'analyse sont capturées et assertées ; hors CI, sur commande explicite, un test contre un projet PostHog de test vérifie l'envoi réel
 - [ ] Sans clé configurée, l'application fonctionne normalement et aucun appel réseau d'analyse n'est émis
-- [ ] Le script d'analyse est déclaré comme non essentiel auprès du registre de s31 : aucun chargement ni événement sans consentement
+- [ ] Le script d'analyse est déclaré comme non essentiel auprès du registre de s33 : aucun chargement ni événement sans consentement
 - [ ] Un événement de démonstration (inscription réussie) est suivi de bout en bout et couvert par un test
 
 ### Dependencies
-s31-cookie-consent
+s33-cookie-consent
 
 ### Agentic notes
 Parité 3/4 : Supastarter et MakerKit livrent Sentry ; ShipFast documente une page analytics.
@@ -868,7 +944,7 @@ Piège : le filtrage des données sensibles doit être testé, pas seulement con
 
 ---
 
-## Story s35-onboarding — Être guidé à la première connexion
+## Story s37-onboarding — Être guidé à la première connexion
 **As a** User **I want** être guidé après mon inscription **so that** j'arrive à un espace de travail utilisable sans tâtonner.
 
 ### Complexity
@@ -877,23 +953,25 @@ Piège : le filtrage des données sensibles doit être testé, pas seulement con
 ### Acceptance criteria
 - [ ] Après une première inscription, l'utilisateur est dirigé vers un parcours en étapes au lieu du tableau de bord
 - [ ] Une étape de profil recueille le nom et l'avatar ; les valeurs saisies sont persistées sur le compte
-- [ ] Les étapes affichées dépendent des modules activés : sans le module organisations, l'étape de création d'organisation n'existe pas ; sans facturation, l'étape de choix d'offre n'existe pas
+- [ ] Les étapes affichées dépendent des modules activés : sans le module organisations, l'étape de création d'organisation n'existe pas ; sans le module de facturation, l'étape de choix d'offre n'existe pas
 - [ ] La progression est persistée : une interruption reprend à l'étape en cours à la reconnexion
 - [ ] Le parcours terminé n'est plus proposé et l'utilisateur atteint directement le tableau de bord
 - [ ] Une étape facultative peut être passée ; une étape obligatoire ne peut pas l'être
 - [ ] Un utilisateur arrivé par invitation rejoint directement l'organisation et saute l'étape de création
+- [ ] Module non activé : l'utilisateur atteint directement le tableau de bord après inscription
 
 ### Dependencies
-s11-organizations, s17-trials-and-gating, s14-file-storage-avatar (avatar de l'étape profil)
+s12-organizations, s18-trials-and-gating, s15-file-storage-avatar (avatar de l'étape profil), s13-invite-members (parcours par invitation)
 
 ### Agentic notes
 Annoncé par Supastarter (parcours d'intégration en plusieurs étapes). Positionné tard par le PRD : c'est un bonus, pas le socle.
-Les quatre étapes du PRD sont couvertes : profil, organisation, offre, progression persistée (F14 de la revue).
+Les quatre étapes du PRD sont couvertes : profil, organisation, offre, progression persistée.
+S'appuie sur les critères « module non activé » définis en s12 et s16.
 Piège : le parcours est piloté par les modules actifs. Une liste d'étapes écrite en dur casserait l'angle du PRD.
 
 ---
 
-## Story s36-mcp-server — Piloter le boilerplate depuis un agent
+## Story s38-mcp-server — Piloter le boilerplate depuis un agent
 **As a** Dev **I want** interroger et modifier les modules depuis un agent via MCP **so that** je configure mon projet en langage naturel.
 
 ### Complexity
@@ -902,22 +980,22 @@ Piège : le parcours est piloté par les modules actifs. Une liste d'étapes éc
 ### Acceptance criteria
 - [ ] Un serveur MCP expose un outil listant les modules et leur état
 - [ ] Un outil active ou désactive un module et renvoie les migrations à jouer
-- [ ] Un outil génère le squelette d'un nouveau module conforme au contrat de s02 (schéma, routes, navigation, traductions, purge, export)
+- [ ] Un outil génère le squelette d'un nouveau module conforme au contrat de s03 (schéma, routes, navigation, traductions, purge, export)
 - [ ] Toute opération modifiant le dépôt renvoie la liste exacte des fichiers modifiés
 - [ ] Une opération refusée (module inconnu, dépôt aux modifications non commitées) renvoie une erreur explicite sans modifier le dépôt
 - [ ] Le serveur démarre depuis une commande documentée et sa configuration client est fournie
 
 ### Dependencies
-s03-cli-toggle-module
+s04-cli-toggle-module
 
 ### Agentic notes
 Exclusivité MakerKit parmi les quatre (serveur MCP livré avec le kit).
-Réutiliser la logique du CLI de s03 : le serveur MCP est une seconde surface d'appel, jamais une seconde implémentation.
+Réutiliser la logique du CLI de s04 : le serveur MCP est une seconde surface d'appel, jamais une seconde implémentation.
 Piège : refuser toute opération sur un dépôt aux modifications non commitées, pour que le développeur puisse toujours annuler.
 
 ---
 
-## Story s37-waitlist — Recueillir des inscriptions avant le lancement
+## Story s39-waitlist — Recueillir des inscriptions avant le lancement
 **As a** Visiteur **I want** m'inscrire sur une liste d'attente **so that** je sois prévenu au lancement du produit.
 
 ### Complexity
@@ -928,18 +1006,20 @@ Piège : refuser toute opération sur un dépôt aux modifications non commitée
 - [ ] Un email déjà inscrit affiche la même confirmation sans créer de doublon
 - [ ] Un email de confirmation est envoyé à l'inscription
 - [ ] Les inscrits sont consultables et exportables en CSV depuis le back-office
-- [ ] Le formulaire est soumis aux limites de débit définies en s23
+- [ ] Le formulaire est soumis aux limites de débit définies en s25
 - [ ] Le module peut remplacer la page d'accueil par la liste d'attente via la configuration, sans modifier le code des pages marketing
+- [ ] Module non activé : aucune route de liste d'attente et la page d'accueil reste inchangée
 
 ### Dependencies
-s32-admin-users, s23-rate-limiting, s19-marketing-pages
+s34-admin-users, s25-rate-limiting, s20-marketing-pages
 
 ### Agentic notes
 Exclusivité MakerKit (vendu comme plugin). Positionné en fin de parcours par le PRD : module d'upsell, jamais avant que le socle tourne.
+**Réutilise le stockage d'inscriptions publiques de s20** (newsletter), distingué par une colonne de source. Ne pas créer un second modèle d'inscription concurrent.
 
 ---
 
-## Story s38-feedback-widget — Envoyer un retour depuis l'application
+## Story s40-feedback-widget — Envoyer un retour depuis l'application
 **As a** User **I want** envoyer un retour depuis l'application **so that** je signale un problème sans changer d'outil.
 
 ### Complexity
@@ -954,15 +1034,15 @@ Exclusivité MakerKit (vendu comme plugin). Positionné en fin de parcours par l
 - [ ] Module non activé : le widget disparaît et aucune route de retour n'existe
 
 ### Dependencies
-s27-notifications-inapp, s32-admin-users
+s29-notifications-inapp, s34-admin-users
 
 ### Agentic notes
 Exclusivité MakerKit (plugin feedback). Module d'upsell.
-Réutiliser le centre de notifications de s27 pour prévenir les superadmins, plutôt qu'un email direct.
+Réutiliser le centre de notifications de s29 pour prévenir les superadmins, plutôt qu'un email direct.
 
 ---
 
-## Story s39-public-roadmap — Voter pour les prochaines fonctionnalités
+## Story s41-public-roadmap — Voter pour les prochaines fonctionnalités
 **As a** User **I want** proposer une fonctionnalité et voter pour celles des autres **so that** le produit évolue selon les besoins réels.
 
 ### Complexity
@@ -975,11 +1055,11 @@ Réutiliser le centre de notifications de s27 pour prévenir les superadmins, pl
 - [ ] Un visiteur non connecté voit les propositions et les compteurs mais ne peut ni proposer ni voter
 - [ ] Un superadmin peut changer le statut d'une proposition, la fusionner avec une autre ou la masquer
 - [ ] La fusion reporte les votes sans créer de doublon de votant
-- [ ] Les propositions sont soumises aux limites de débit définies en s23
+- [ ] Les propositions sont soumises aux limites de débit définies en s25
 - [ ] Module non activé : la page n'existe pas et le lien disparaît du pied de page
 
 ### Dependencies
-s32-admin-users, s23-rate-limiting, s19-marketing-pages
+s34-admin-users, s25-rate-limiting, s20-marketing-pages
 
 ### Agentic notes
 Exclusivité MakerKit (plugin roadmap). Dernier module du parcours : bonus assumé.
