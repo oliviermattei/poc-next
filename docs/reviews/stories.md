@@ -1,89 +1,84 @@
-# Stories Review — killer-boilerplate
+# Stories Review — killer-boilerplate (round 3)
 
-> Revue en contexte frais de `docs/stories.md` face à `docs/prd.md`. 39 stories (s01→s39). Seconde passe : les findings F1–F16 de la revue précédente ont été vérifiés indépendamment et sont tous traités (one-time en s16, harnais de parcours en s21, contrat `purge`/`export` en s02, s31 reformulé sans PostHog, etc.). Numérotation des findings poursuivie à partir de F17.
+> Revue à contexte neuf de `docs/stories.md` contre `docs/prd.md`. 41 stories (s01→s41). Numérotation des findings continuée à partir des revues précédentes (F1–F29) pour éviter les collisions avec les références déjà inscrites dans les notes agentiques.
 
 ## Perimeter coverage
 
 | PRD feature (core loop) | Covered by | OK? |
 |---|---|---|
-| Système de modules + `config/features.ts` + CLI `toggle` (5) | s02-module-registry, s03-cli-toggle-module | ✅ (5 découpé en 4+3) |
-| Auth (password, magic link, OAuth, vérif, reset, sessions, 2FA, passkeys) (3) | s05, s08, s09, s10, s06 (sessions) | ✅ |
-| Multi-tenant (orgs, invitations, rôles, switcher, scoping) (4) | s11, s12, s13 | ✅ |
-| Billing Stripe + abstraction (checkout, portail, abonnements, one-time, seat, webhooks, trials) (5) | s15, s16, s17, s18 | ✅ (5 découpé en 4 stories) |
-| Admin back-office (users/orgs, recherche, ban, reset, sessions, impersonation, métriques) (3) | s32, s33 | ✅ |
-| Emails transactionnels (React Email, adapter, templates traduits, guide DNS) (3) | s04 (+ s07 traduction) | ✅ |
-| App shell (layout, nav depuis modules, dark mode, settings compte/org, profil, avatar) (3) | s06 (+ s11 settings org, s14 avatar) | ✅ |
-| Marketing (landing, sections, pricing depuis config, FAQ, testimonials, contact, newsletter, légales, SEO/OG, sitemap, robots) (2) | s19 | ✅ |
-| Blog MDX (liste, article, tags, RSS, OG auto) (3) | s24 | ✅ |
-| Docs produit (recherche plein texte) (3) | s25 | ✅ |
-| Changelog (2) | s26 | ✅ |
-| i18n (next-intl, routes localisées, switcher, emails traduits) (4) | s07 | ⚠️ contenu couvert, désactivation du module absente (F17) |
-| Storage fichiers (S3/R2, presign, contrôle d'accès, avatars) (3) | s14 | ✅ |
-| Notifications in-app (centre, badge, préférences) (3) | s27 | ✅ |
-| Jobs & cron (adapter, Inngest, events, cron) (4) | s28 | ✅ |
-| Déploiement (Dockerfile, compose prod, Coolify, Vercel, checklist env, migrations) (3) | s22 (+ s01 CI) | ✅ |
-| Pack RGPD (suppression + purge, export, consentement) (3) | s29, s30, s31 | ✅ |
-| Rate limiting + anti-bot (captcha optionnel) (3) | s23 | ✅ |
-| Guest checkout (3) | s20 | ✅ |
-| Serveur MCP (3) | s36 | ✅ |
-| Monitoring + analytics (Sentry + source maps, adapter analytics) (2) | s34 | ✅ |
-| Onboarding multi-étapes (profil, org, plan, progression) (3) | s35 | ✅ |
-| Plugins bonus (waitlist, feedback, roadmap) (3) | s37, s38, s39 | ✅ |
-| Tooling & DX (TS strict, lint, Vitest, Playwright, GHA, Docker, seed, `.env.example` typé, conventions IA) (3) | s01 | ✅ |
+| Système de modules + `config/features.ts` + CLI `toggle` (5) | s03-module-registry, s04-cli-toggle-module | OK (le 5 du PRD est bien éclaté en 4 + 3) |
+| Auth (password, magic link, OAuth, vérif email, reset, sessions, 2FA, passkeys) | s06, s09, s10, s11 (+ sessions actives en s07) | OK |
+| Multi-tenant (orgs, invitations, rôles, switcher, scoping) | s12, s13, s14 | OK |
+| Billing Stripe + abstraction (checkout, portail, abonnements, one-time, seat, webhooks, trials) | s16, s17, s18, s19 | OK (5 éclaté en 4/3/3/4) |
+| Admin back-office (liste, recherche, ban, reset, sessions, impersonation, revenus) | s34, s35 | OK |
+| Emails transactionnels (React Email, adapter, templates traduits, guide DNS) | s05 (+ traduction en s08) | OK |
+| App shell (layout, nav depuis modules, dark mode, settings compte + org, profil, avatar) | s07 (+ settings org en s12, avatar en s15) | OK |
+| Marketing (landing, pricing depuis config, FAQ, testimonials, contact, newsletter, légales, SEO/OG, sitemap, robots) | s20 | OK (mais bundling, voir F31) |
+| Blog MDX (liste, article, tags, RSS, OG auto) | s26 | OK |
+| Docs produit (recherche plein texte) | s27 | OK |
+| Changelog | s28 | OK |
+| i18n (routes localisées, switcher, emails traduits) | s08 | OK |
+| Storage fichiers (S3/R2, presign, contrôle d'accès, avatars) | s15 | OK |
+| Notifications in-app (centre, badge, préférences) | s29 | OK |
+| Jobs & cron (adapter, events, jobs, planifiées) | s30 | OK |
+| Déploiement (Dockerfile, compose prod, Coolify, Vercel, checklist env, migrations) | s24 (+ CI en s02) | OK |
+| Pack RGPD (suppression + purge, export, bannière consentement) | s31, s32, s33 | OK |
+| Rate limiting + anti-bot (IP/compte, captcha optionnel) | s25 | OK |
+| Guest checkout | s21 | OK |
+| Serveur MCP (lister, activer, générer un squelette) | s38 | OK |
+| Monitoring + analytics (Sentry + source maps, adapter analytics) | s36 | OK |
+| Onboarding multi-étapes (profil, org, plan, progression) | s37 | OK |
+| Plugins bonus (waitlist, feedback, roadmap + votes) | s39, s40, s41 | OK |
+| Tooling & DX (TS strict, lint, Vitest, Playwright, GH Actions, compose local, seed, `.env.example`) | s01, s02 | OK |
 
-- [x] Chaque feature du tableau « Replicated (core loop) » est livrée par au moins une story — **aucun trou critique**
-- [ ] Les critères de succès du PRD adossés au périmètre sont portés — le n°4 (preuve de modularité) n'a pas de propriétaire (F18)
+- [x] Chaque feature du tableau « Replicated (core loop) » est délivrée par au moins une story. **Aucun trou de périmètre.** Les critères de succès n°1 et n°4 du PRD ont désormais leurs porteurs (s22, s23), ce qui referme F16 et F18.
 
 ## Scope
-- [x] Aucune story ne réintroduit un élément du cimetière — `eject` explicitement écarté (préambule + s03), module AI absent, providers de paiement autres que Stripe rappelés au cimetière (s15), usage-based rappelé (s18), temps réel rappelé (s27), multi-ORM / non-Postgres / mobile absents, journal d'audit tenu à distance et précisé (s32), clés API et webhooks sortants absents, appareil commercial écarté (s25)
-- [x] Aucune story ne dépasse le périmètre — deux zones grises seulement (F23, F24)
+- [x] Aucune story ne réintroduit un item du cimetière. Vérifié un par un : `eject` explicitement refusé en s04 et dans le préambule ; pas de module AI ; Stripe seul provider (s16) ; temps réel exclu (s29) ; une seule implémentation par adapter (s05 Resend, s15 S3/R2, s30 Inngest, s36 Sentry/PostHog) ; journal d'audit évité en s34 (logs applicatifs, pas de table alimentée par chaque module) ; aucune clé API ni webhook sortant client ; aucun appareil commercial (s27 borne explicitement la doc au SaaS généré).
+- [~] Deux frontières restent des **bordures** correctement bornées mais à surveiller : le compteur de quota de s18 (borné en notes, ne doit jamais alimenter une assiette) et l'export CSV des inscrits en s39 (extension hors tableau PRD, triviale).
 
 ## Story quality
-- [x] Chaque story est une tranche livrable de bout en bout — s01 (scaffolding), s04 (adapter mail) et s21 (harnais E2E) sont défendables : persona Dev, critères observables ; s04 reste le plus limite (F25)
-- [ ] Chaque critère d'acceptation peut devenir un test — deux critères contradictoires (F19, F20)
-- [x] Notes agentiques présentes et utiles — 39/39, avec références aux 4 cibles, pièges concrets et justification des écarts d'ordre
-- [x] Complexité notée ; aucun 5 non découpé ; chaque 4 énonce son risque — les six 4 (s02, s07, s11, s15, s18, s28) l'annoncent en gras ; deux scores discutables (F26)
+- [~] Tranche livrable de bout en bout : s05 reste la plus proche d'une couche technique (assumé en notes) ; s01/s02 sont du bootstrap, défendable pour le persona Dev.
+- [~] Critères testables : très bon niveau d'ensemble ; quelques critères documentaires ou subjectifs non marqués « recette manuelle » (F33).
+- [~] Notes agentiques présentes partout ; deux stories (s28, s41) n'ont ni contrainte ni piège.
+- [x] Aucune complexité 5 résiduelle ; les six 4 (s03, s08, s12, s16, s19, s30) énoncent chacune leur risque en première ligne de notes.
 
 ## La liste dans son ensemble
-- [x] Ordre de dépendance exécutable — les 39 stories ne dépendent que d'ids antérieurs, aucun cycle, aucune référence en avant dans les critères
-- [ ] Dépendances déclarées exactes — quatre listes incomplètes ou artificielles (F21, F22)
-- [x] Ids bien formés (`s<numéro>-<slug>`), uniques et stables — s01→s39, aucun doublon, aucun slug ambigu
-- [x] Pas de chevauchement — les frontières fragiles sont explicitement tranchées (s15 config vs s19 tarifs, s02 contrat vs s29/s30 orchestration) ; un chevauchement résiduel mineur (F27)
+- [x] Ordre exécutable : toutes les dépendances déclarées pointent vers un numéro strictement inférieur. Aucun cycle, aucune référence en avant.
+- [x] Ids : 41 stories, format `s<numéro>-<slug>` respecté, numérotation contiguë s01→s41, aucun doublon.
+- [~] Chevauchements : les frontières sensibles sont explicitement tranchées en notes (s16/s20 tarifs, s20/s39 inscriptions publiques, s10/s25 compteur, s03/s31/s32 purge, s26/s27/s28 pipeline MDX). Une seule reste non arbitrée (F34), et une story bundle plusieurs valeurs (F31).
 
 ## Findings
 
-**F17 — major — s07-i18n (+ s15/s16/s17 billing)** : deux modules pourtant traités comme désactivables ailleurs n'ont aucun critère « module non activé » dans leur propre story.
-(a) **i18n** : le critère de succès n°4 du PRD nomme explicitement i18n parmi les trois modules désactivés de la preuve de modularité. Or s07 impose inconditionnellement « les routes sont préfixées par la locale » et n'énonce nulle part ce que devient l'application sans le module. C'est la story la plus traversante du lot : décider après coup que les routes sont toujours préfixées, ou pas, réécrit chaque route livrée entre s07 et s39.
-(b) **billing** : s33 AC6 affirme « Module de facturation non activé : la page n'existe pas » et s35 AC3 « sans facturation, l'étape de choix d'offre n'existe pas », alors qu'aucune de s15/s16/s17 ne définit ce comportement. Deux stories tardives s'appuient sur une sémantique que personne n'a livrée.
-Comparer avec s11, s14, s18, s26, s27, s33, s38, s39 qui portent bien ce critère : le patron existe, il manque à ces deux-là.
+**F30 — major — s05, s10, s11, s21, s25, s30, s33, s34, s36, s38 : la règle transverse « module non activé » n'est appliquée qu'à la moitié des modules.** Le préambule du fichier pose la règle, et s06 tranche que l'auth est « le seul module obligatoire du socle ». Conséquence logique : tous les autres sont désactivables et doivent définir leur état off. Or dix stories ne portent aucun critère de désactivation. F17 a été corrigé sur i18n et billing uniquement ; le patron n'a pas été généralisé. Le PRD est pourtant explicite (critère de succès n°3 : « chaque feature du tableau est pilotable depuis `config/features.ts` »). Les cas qui cassent réellement, par ordre de gravité :
+- **s05-transactional-emails** : s06 (module *obligatoire*) envoie la vérification d'email et le magic link via le mailer, s13 l'invitation, s21 le lien de mot de passe, s31 la confirmation de suppression, s32 le lien d'export. Si le module mail est désactivable, cinq parcours sont indéfinis ; s'il ne l'est pas, il faut l'écrire comme s06 l'a fait pour l'auth. Rien ne le dit.
+- **s30-background-jobs** : s31 et s32 orchestrent purge et export « par un job de fond ». Jobs coupé, la suppression de compte (obligation RGPD) n'a plus de chemin défini.
+- **s33-cookie-consent** : s36 conditionne le chargement du script d'analyse au registre de s33. Consentement coupé, le comportement légal par défaut n'est pas énoncé.
+- **s25-rate-limiting** : s39 AC5 et s41 AC7 disent « soumis aux limites définies en s25 » ; s25 coupé, ces critères n'ont plus de référent.
+- **s10 / s11** : s25 énumère l'endpoint de vérification 2FA parmi ses points limités ; 2FA coupé, ce critère devient vide.
+- **s34-admin-users** : s35 porte son « module de facturation non activé » mais s34 ne dit rien de son propre off, alors que s39, s40 et s41 dépendent du back-office.
+C'est exactement la situation qui a produit F17, à l'échelle du fichier. Correction : une ligne par story, ou une phrase nommant les modules non désactivables (mail, rate limiting, RGPD… si tel est le choix) — mais alors elle contredit s06 et doit être arbitrée.
 
-**F18 — major — coverage (critère de succès n°4 du PRD)** : « Sur un projet généré avec multi-tenant, seat billing et i18n désactivés : l'application démarre, la suite de tests passe, et il ne reste aucune route morte, aucune entrée de nav orpheline, aucune table inutilisée. » Aucune story ne porte cette recette combinée. Chaque story de module teste son propre off (s11, s14, s18…), mais l'assemblage « trois modules coupés simultanément » n'est vérifié nulle part — et c'est l'angle n°1 du PRD, celui qui distingue le produit de MakerKit. Exactement la situation qui a fait naître s21 pour le critère n°1 (F16) : il manque son symétrique. Un harnais « profil de configuration minimal » exécuté en CI est peu coûteux tant qu'il est posé tôt.
+**F31 — major — s20-marketing-pages : bundle de valeurs distinctes sur le nœud le plus dépendu du fichier.** Neuf critères couvrant quatre tranches sans lien : (a) sections de landing pilotées par `config/marketing.ts` + pages légales + SEO/OG/sitemap/robots, (b) dérivation de la page de tarifs depuis `config/billing.ts`, (c) formulaire de contact avec envoi d'email, (d) capture newsletter avec persistance et déduplication — cette dernière étant un modèle de données réutilisé par s39. Le coût n'est pas cosmétique : parce que (b) est dans le lot, la story entière dépend de s16 **et** s17, ce qui met *toute* la surface marketing derrière la pile de facturation complète. Or sept stories dépendent de s20 (s21, s24, s25, s26, s33, s39, s41) : le bundling sérialise un quart du fichier derrière le billing sans nécessité. Découper en « pages + légales + SEO » (livrable dès s08), « page de tarifs dérivée » (après s17) et « formulaires publics contact + newsletter » supprime la contrainte et rend chaque tranche testable seule.
 
-**F19 — major — s27-notifications-inapp (AC6)** : « un test vérifie qu'aucun appel direct au mailer n'existe hors de cette fonction ». Pris à la lettre, ce test échoue sur le code déjà livré : s05 envoie vérification, magic link et réinitialisation via le mailer, s12 envoie l'invitation, s20 envoie le lien de définition de mot de passe, s29 l'email de confirmation de suppression, s30 le lien d'export. L'implémenteur devra soit restreindre la règle, soit refactorer six stories antérieures dans le tunnel de s27 — expansion de périmètre invisible. Restreindre le critère aux emails **de notification** (types déclarés dans le registre de préférences), pas à tout appel au mailer.
+**F32 — minor — s22-golden-path-e2e : le chrono mesuré n'est pas celui du PRD.** Le critère de succès n°1 mesure « depuis `git clone` […] moins de 30 minutes ». Le scénario de s22 démarre à l'inscription, sur une base vierge déjà migrée et seedée (AC1, AC2) : l'installation des dépendances, la configuration `.env` et la première migration — c'est-à-dire précisément la partie que le boilerplate promet de raccourcir — sont hors mesure. AC7 journalise donc une durée qui n'est pas la durée revendiquée. Soit inclure la phase d'amorçage dans la mesure, soit dire explicitement dans les notes que la recette humaine des 30 minutes couvre le clone et que le harnais ne mesure que le parcours applicatif.
 
-**F20 — major — s21-golden-path-e2e (AC6 vs préambule)** : AC6 dit « Le scénario s'exécute en CI sur les clés de test, et son échec bloque la CI », alors que le préambule du fichier pose comme règle générale que tout critère portant sur un appel réel à un tiers « s'exécute hors CI par défaut », que la CI utilise une implémentation d'enregistrement — et que la note agentique de la story elle-même dit qu'il faut « un tunnel ou un rejeu d'événements enregistrés ». Trois énoncés, trois politiques. Comme ce critère est le seul gate CI du parcours de paiement, l'ambiguïté se paiera à l'exécution : trancher explicitement (rejeu d'événements enregistrés en CI, clés de test hors CI, ou double scénario).
+**F33 — minor — s05, s30, s32, s38 : critères documentaires ou subjectifs non marqués « recette manuelle ».** Le préambule institue ce marquage et s24 l'applique correctement. Manquent : s05 AC7 « la documentation décrit la configuration DNS » ; s30 AC8 « mode développement documenté » ; s32 AC6 « format lisible et documenté » (« lisible » n'est pas assertable) ; s38 AC6 « sa configuration client est fournie ». Chacun devient soit un test de présence/schéma, soit une recette manuelle tracée — pas un troisième régime implicite.
 
-**F21 — minor — s08, s23, s35 : dépendances déclarées incomplètes** : s08 AC5 exige la page de paramètres du compte (livrée en s06) mais ne déclare que s05 ; s23 limite « l'invitation » (s12) et « le téléversement » (s14) sans les déclarer ; s35 AC7 traite l'utilisateur « arrivé par invitation » (s12) sans le déclarer. L'ordre global reste exécutable (toutes ces stories sont antérieures), mais le préambule promet des dépendances **réelles** et `/ks-research` lira ces listes.
+**F34 — minor — s18 AC6 vs s19 AC5 : deux limites de membres, aucun propriétaire déclaré.** s18 pose « une limite quantitative configurée (nombre d'objets, **de membres**, de fichiers) refuse le dépassement » ; s19 pose « l'ajout d'un membre au-delà d'une limite de sièges configurée est refusé ». Ce sont potentiellement deux mécanismes concurrents sur la même action (ajout de membre), avec deux configurations et deux messages. Toutes les autres frontières du fichier sont arbitrées en notes (s16/s20, s20/s39, s10/s25) ; celle-ci ne l'est pas. Dire laquelle des deux fait foi, ou que s19 spécialise le compteur de s18.
 
-**F22 — minor — s10-passkeys, s21-golden-path-e2e : dépendances artificielles** : s10 déclare s09-two-factor alors que WebAuthn ne dépend pas de TOTP — sa vraie dépendance est s06 (paramètres du compte) ; s21 déclare s18-seat-billing alors qu'aucun de ses scénarios (abonnement, achat unique, guest checkout) n'implique de siège. Deux sérialisations inutiles qui interdisent la parallélisation que le préambule revendique.
+**F35 — minor — s03-module-registry : score 4 probablement encore sous-évalué.** Huit critères couvrant le contrat de module (identifiant, schéma Drizzle, routes, nav, traductions, webhooks, purge, export), la config typée avec erreur de compilation, la composition des migrations par module, deux modules de démonstration et le passage de la suite complète dans les deux états. La note reconnaît « risque maximal » et « si le contrat est mal posé ici, chaque story suivante devra être reprise » — c'est la définition d'un 5. Le 5 du PRD a bien été éclaté en s03 + s04, donc la règle est formellement respectée ; mais un second découpage (contrat + config + routes/nav d'un côté, composition des migrations par module de l'autre) réduirait le risque sur la story dont dépendent les 38 suivantes.
 
-**F23 — minor — s17-trials-and-gating (AC6)** : « Une limite quantitative configurée (nombre d'objets, de membres, de fichiers) est vérifiée côté serveur » — c'est du quota de plan, pas de la facturation à l'usage, donc hors cimetière. Mais le compteur d'objets consommés est précisément la brique dont la « facturation à l'usage » du cimetière a besoin. Ajouter une phrase dans les notes : le compteur sert au refus d'action, jamais à une assiette de facturation.
+**F36 — minor — s28-changelog, s41-public-roadmap : notes agentiques sans contrainte ni piège.** Deux lignes de parité chacune. s41 porte pourtant le critère le plus piégeux du lot (« la fusion reporte les votes sans créer de doublon de votant ») et une page publique ouverte au vote, donc un vecteur de spam au-delà du seul rate limiting. Le fichier tient un standard élevé ailleurs ; ces deux-là ne le tiennent pas.
 
-**F24 — minor — s04-transactional-emails** : trois implémentations de `Mailer` sont livrées (Resend, enregistrement CI, capture locale en développement) alors que le cimetière exclut les « secondes implémentations d'adapters ». Ce sont des doublures de test, pas des providers — acceptable, mais l'écrire dans les notes évite qu'un implémenteur en déduise qu'un adapter SMTP est légitime « puisqu'il y en a déjà trois ».
+**F37 — minor (informationnel) — s37-onboarding AC2 : dépendance au storage non couverte par un off.** « Une étape de profil recueille le nom et **l'avatar** » avec s15 en dépendance, mais AC3 et AC8 n'énoncent l'adaptation qu'aux modules organisations et facturation. Storage coupé, le comportement de l'étape profil est indéfini. Cas particulier de F30, listé à part parce qu'il se corrige dans une story qui, elle, porte déjà le patron.
 
-**F25 — minor — s04-transactional-emails** : la story ne livre qu'une interface, un provider et un template de démonstration : aucun email que quelqu'un reçoit réellement dans un parcours produit (le premier arrive en s05). C'est la story la plus proche d'une couche technique du lot. Défendable au vu de l'ordre choisi (justifié dans les notes) ; la rendre pleinement livrable coûterait de la porter avec son premier email réel.
-
-**F26 — minor — s01 et s30 : scores probablement sous-évalués** : s01 vaut 3 pour 10 critères couvrant squelette Next.js, validation d'environnement, migrations, seed, Docker, health, quatre commandes de qualité, conventions agents et workflow CI — au-delà de « business logic / plusieurs états ». s30 vaut 2 pour un export inter-modules, orchestré par job de fond, avec archive, lien signé expirant, permission owner et garde anti-doublon — au-delà de « form + persistence + list ». Aucun n'atteint 5, donc aucun découpage n'est imposé, mais s01 est le candidat naturel à un découpage (démarrage vs harnais qualité/CI).
-
-**F27 — minor — s19-marketing-pages vs s37-waitlist** : les deux capturent un email public avec déduplication silencieuse (s19 AC5, s37 AC1-AC2). Ce ne sont pas la même tranche de valeur, mais rien ne dit si s37 réutilise le stockage de la newsletter ou en crée un second. Le préciser dans les notes de s37 évite deux modèles d'inscription concurrents.
-
-**F28 — minor — s09-two-factor (AC6) vs s23-rate-limiting** : s09 exige « les tentatives de vérification échouées sont limitées en nombre par compte », livré 14 stories avant le module de limitation de débit — et s23 n'énumère pas la vérification 2FA parmi ses points d'entrée protégés. Soit s09 pose un compteur local que s23 devra absorber, soit l'endpoint 2FA échappe à la limitation finale. Nommer lequel.
-
-**F29 — minor — s02-module-registry (AC7)** : « Deux modules de démonstration (l'un activé, l'autre non) prouvent les cinq critères précédents » — les critères portant sur le comportement d'un module sont les AC3 à AC6, soit quatre. Un numéro de critère faux dans la story la plus structurante du projet se propage aux revues.
+## Résolu depuis la revue précédente (vérifié)
+F17 (i18n s08 AC8-AC9, billing s16 AC8), F18 (s23 créée), F19 (s29 AC6 borné au registre de préférences), F20 (deux régimes CI / hors CI explicites en préambule et en s22), F21 (dépendances complétées en s08, s25, s37), F22 (s11 dépend de s07, s22 ne dépend plus du seat billing), F23 et F24 (notes ajoutées), F26 (s01 découpée en s01 + s02, s32 relevée à 3), F27 (réutilisation du stockage d'inscriptions notée en s20 et s39), F28 (articulation s10/s25 tranchée dans les deux sens), F29 (formulation corrigée).
 
 ## Verdict
 
-Aucun trou de périmètre, aucune fuite de cimetière, aucun cycle ni référence en avant : la révision post-F1–F16 a solidement refermé les criticals. Restent quatre majors, tous corrigeables par une édition markdown : deux sémantiques de désactivation manquantes (F17), la recette de modularité orpheline (F18) et deux critères qui se contredisent avec le reste du fichier (F19, F20). Les corriger maintenant coûte quelques lignes ; les découvrir en s07 ou s27 coûte une reprise transversale.
+Le périmètre est intégralement couvert, le cimetière tient, l'ordre est exécutable et les ids sont propres : les criticals restent fermés. Il subsiste deux majors, tous deux corrigibles en markdown. F30 est le plus coûteux si on le laisse passer : c'est F17 non généralisé, et il se découvrira story par story, chaque fois dans le tunnel d'une autre story (typiquement en s31, quand la suppression de compte devra décider ce qu'elle fait sans le module jobs). F31 coûte de la sérialisation inutile sur le nœud le plus dépendu du fichier — le corriger maintenant est un découpage de titres ; le corriger après s20 signifie réécrire les dépendances de sept stories.
 
 Max severity: major
 Stories ready: no
