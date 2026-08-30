@@ -1,0 +1,122 @@
+name: CI
+
+# Tout ce que la Definition of Done exige, sur chaque push et chaque pull
+# request. Un seul de ces contrôles en échec fait échouer le workflow : c'est le
+# seul sens qu'ait un contrôle bloquant.
+on:
+  push:
+  pull_request:
+
+# Une exécution par branche : une nouvelle poussée annule la précédente.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Typage, lint, tests, build
+    runs-on: ubuntu-latest
+
+    services:
+      # La même image que `docker-compose.yml`, pour que la CI éprouve ce que le
+      # développeur exécute. Sans le healthcheck, les migrations démarrent sur
+      # une base qui n'écoute pas encore.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: app
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d app"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Aucun secret : une base jetable, dans le réseau du runner.
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/app
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # `--frozen-lockfile` : l'installation échoue si le lockfile diverge du
+      # `package.json`, au lieu de le réécrire en silence (socle de sécurité §6).
+      - name: Installer les dépendances
+        run: pnpm install --frozen-lockfile
+
+      - name: Typage
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      # Avant les tests : trois d'entre eux interrogent une vraie base.
+      - name: Migrations
+        run: pnpm db:migrate
+
+      - name: Tests unitaires
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      # Critère 12 : un fichier généré par un outil ne salit pas l'arbre.
+      # `next build` réécrit `next-env.d.ts` — c'est pourquoi il est ignoré.
+      - name: L'arbre reste propre après le build
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Le build a modifié des fichiers versionnés :"
+            git status --porcelain
+            git diff
+            exit 1
+          fi
+
+      - name: Installer le navigateur
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Parcours end-to-end
+        run: pnpm test:e2e
+
+      # `pnpm run`, et non `pnpm audit` : la commande interne de pnpm ignorerait
+      # les exceptions datées de `.audit-exceptions.json`.
+      - name: Audit de dépendances
+        run: pnpm run audit
+
+      - name: Traces des parcours en échec
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  secrets:
+    name: Scan de secrets
+    runs-on: ubuntu-latest
+
+    steps:
+      # `fetch-depth: 0` : le scan porte sur l'historique, pas sur l'instantané.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # L'action officielle, qui embarque le binaire Go. Le paquet npm homonyme
+      # (`gitleaks@1.0.0`) n'est pas cet outil et ne scanne rien : ne pas
+      # l'installer.
+      #
+      # `GITLEAKS_LICENSE` n'est requis que pour un dépôt appartenant à une
+      # organisation ; un compte personnel n'en a pas besoin.
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}

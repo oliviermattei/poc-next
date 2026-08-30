@@ -1,0 +1,10 @@
+{
+  "$comment": "Exceptions à l'audit de vulnérabilités. Lues par `pnpm audit` (scripts/audit.ts).",
+  "$regles": [
+    "Une exception nomme l'avis (`advisory` : GHSA-… ou identifiant numérique).",
+    "Elle dit pourquoi elle est acceptable (`reason`), en une phrase qu'un tiers peut juger.",
+    "Elle expire (`expires`, AAAA-MM-JJ). Sans date, ou passée, la commande échoue.",
+    "Elle ne vaut que pour un avis : il n'existe pas d'exception globale."
+  ],
+  "exceptions": []
+}

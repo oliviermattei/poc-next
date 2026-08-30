@@ -4,13 +4,18 @@ node_modules/
 .DS_Store
 .worktrees/
 
+# Rapports et traces Playwright
+playwright-report/
+test-results/
+blob-report/
+
 # Artefacts de build et de cache
 .next/
 .turbo/
 dist/
 *.tsbuildinfo
 
-# Écrits automatiquement par `next dev` (générateur de règles d'agent de Next).
-# Non versionnés : le dépôt n'a qu'un seul fichier de règles, AGENTS.md à la racine.
-apps/web/AGENTS.md
-apps/web/CLAUDE.md
+# Réécrit par `next dev` comme par `next build`, avec un chemin différent selon
+# la commande. Versionné, il salit l'arbre après chaque build. Les deux
+# directives stables qu'il porte vivent dans `apps/web/types/next.d.ts`.
+apps/web/next-env.d.ts

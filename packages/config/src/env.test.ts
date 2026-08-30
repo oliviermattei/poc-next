@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { getEnv, parseEnv } from '@repo/config'
+import { getEnv, parseEnv } from './env'
 
 const DATABASE_URL = 'postgres://user:password@localhost:5432/app'
 

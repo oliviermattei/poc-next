@@ -12,6 +12,9 @@
       "env": ["NODE_ENV", "DATABASE_URL"],
       "outputs": [".next/**", "!.next/cache/**", "dist/**"]
     },
+    "typecheck": {
+      "dependsOn": ["^typecheck"]
+    },
     "db:generate": {
       "cache": false
     },

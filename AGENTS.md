@@ -162,6 +162,34 @@ Full detail in `docs/architecture.md`; each structural decision has an ADR in `d
 
 **Commits** — one commit per story, imperative message in French, carrying that story's research, design and plan.
 
+## Commands
+
+Le harnais de qualité (s02). Chacune de ces commandes est exécutée par la CI, et
+chacune échoue pour une raison précise — une règle qu'aucune commande ne vérifie
+est de la documentation, pas une règle.
+
+| Commande | Ce qu'elle vérifie | Ce qui la fait échouer |
+|---|---|---|
+| `pnpm dev` | l'application démarre | une variable d'environnement absente ou malformée, nommée |
+| `pnpm build` | l'application compile | une erreur de compilation ; le build n'a pas besoin des variables d'exécution |
+| `pnpm typecheck` | racine, `tests/` **et** chaque package | une erreur de type, y compris dans un test |
+| `pnpm lint` | règles ESLint, frontières de couches (ADR 006), surface client de `@repo/config` | un import qui traverse une couche interdite, une règle de style |
+| `pnpm lint:fix` | idem, en réparant ce qui est réparable | rien : c'est la commande de correction |
+| `pnpm test` | tests unitaires et de câblage (Vitest) | une régression de comportement |
+| `pnpm test:e2e` | parcours navigateur (Playwright) | l'application ne démarre pas, ou ne sert pas la page |
+| `pnpm run audit` | vulnérabilités au seuil « élevé », exceptions datées de `.audit-exceptions.json` | une vulnérabilité non exceptée, ou une exception sans date d'expiration. **`pnpm run`** est obligatoire : `pnpm audit` seul appelle la commande interne de pnpm, qui ignore les exceptions |
+| `pnpm db:generate` | génère les migrations SQL depuis le schéma | jamais `push` : la génération est la seule voie |
+| `pnpm db:migrate` | applique les migrations, deux fois de suite sans effet supplémentaire | une migration en échec |
+| `pnpm db:seed` | données de développement, rejouables | un seed non idempotent |
+
+Le scan de secrets n'a pas de script npm : il tourne en CI par l'action
+officielle (le paquet npm `gitleaks` est un homonyme qui ne scanne rien), et en
+local par `docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest git /repo`.
+
+Deux emplacements de test, et deux seulement : `tests/` à la racine pour ce qui
+traverse les packages, `src/**/*.test.ts` dans un package pour ce qui lui
+appartient. Les parcours Playwright vivent dans `e2e/`.
+
 ## Security baseline (non-negotiable)
 
 Full reference: `docs/security.md` (ADR 012). It applies to **every** story, not to a security story. A breach of it is a **critical** review finding, ranked with a functional regression.

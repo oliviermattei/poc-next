@@ -40,6 +40,7 @@
 - Une sonde de santé distingue « démarré » de « prêt » : elle vérifie réellement la dépendance critique, elle ne renvoie pas 200 par principe.
 - Les erreurs non gérées sont remontées avec une trace exploitable ; les données sensibles sont filtrées avant envoi, et le filtrage est **testé**.
 - Les échecs définitifs de jobs, de webhooks et de synchronisations externes sont visibles sans lire les journaux bruts.
+- Une garde de démarrage ne protège que les plateformes qui exécutent réellement un démarrage : en serverless et en `output: 'standalone'`, la validation d'environnement de Next n'est pas rejouée à la requête, et une variable malformée dégrade en 503 silencieux — c'est la sonde de santé, pas le démarrage, qui doit alors le signaler.
 - Toute divergence possible avec un système externe possède une **commande de réconciliation** — c'est le cas de la quantité de sièges facturés face au nombre réel de membres.
 
 ## Comment une story démontre sa conformité

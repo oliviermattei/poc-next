@@ -1,0 +1,23 @@
+{
+  "name": "@repo/eslint-config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Presets ESLint partagés. Seul package du dépôt à déclarer TypeScript 6 : le parser de lint en a besoin, le compilateur reste TypeScript 7 (ADR 011). Voir AGENTS.md.",
+  "exports": {
+    "./base": "./base.ts",
+    "./boundaries": "./boundaries.ts",
+    "./library": "./library.ts",
+    "./next": "./next.ts"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@next/eslint-plugin-next": "^16.3.3",
+    "eslint": "^10.9.1",
+    "eslint-plugin-boundaries": "^7.2.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.11.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.68.0"
+  }
+}

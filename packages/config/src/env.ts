@@ -74,15 +74,6 @@ export function isBuildPhase(source: EnvSource): boolean {
 }
 
 /**
- * Point d'accès unique à l'environnement. Aucun autre module du dépôt ne lit
- * `process.env` directement.
- *
- * En phase de build, l'environnement est renvoyé tel quel, sans validation :
- * les variables d'exécution peuvent alors manquer. Ce qui les consomme doit
- * donc refuser explicitement une valeur absente plutôt que se rabattre sur un
- * défaut — c'est ce que fait `createDatabaseClient`.
- */
-/**
  * Phase que Next transmet à `next.config.ts` pendant `next build`. Elle arrive
  * en argument, alors que `NEXT_PHASE` n'est posée dans l'environnement que plus
  * tard dans le build : à la lecture de la configuration, l'argument est le seul
@@ -106,6 +97,15 @@ export interface AssertStartupEnvOptions {
  *
  * Le build est exempté : `next build` s'exécute sans les variables d'exécution,
  * en CI comme en conteneur.
+ *
+ * Deux frontières connues, mesurées en revue de s01 (N15, N16) :
+ * - la garde ne couvre que le **démarrage auto-hébergé**. En serverless (Vercel)
+ *   comme en `output: 'standalone'`, `next.config.ts` n'est pas exécuté à la
+ *   requête : une variable malformée s'y déploie sans bruit et dégrade en 503
+ *   silencieux. La sonde `/api/health` reste alors le seul signal ;
+ * - `next info` charge la configuration avec sa propre phase, non exemptée : la
+ *   commande de diagnostic s'interrompt précisément quand l'environnement est
+ *   cassé. Contournement : `SKIP_ENV_VALIDATION=1 next info`.
  */
 export function assertStartupEnv(options: AssertStartupEnvOptions = {}): void {
   if (options.phase === NEXT_BUILD_PHASE) {
@@ -115,6 +115,15 @@ export function assertStartupEnv(options: AssertStartupEnvOptions = {}): void {
   getEnv(options.source ?? process.env)
 }
 
+/**
+ * Point d'accès unique à l'environnement. Aucun autre module du dépôt ne lit
+ * `process.env` directement.
+ *
+ * En phase de build, l'environnement est renvoyé tel quel, sans validation :
+ * les variables d'exécution peuvent alors manquer. Ce qui les consomme doit
+ * donc refuser explicitement une valeur absente plutôt que se rabattre sur un
+ * défaut — c'est ce que fait `createDatabaseClient`.
+ */
 export function getEnv(source: EnvSource = process.env): Env {
   if (source.SKIP_ENV_VALIDATION === BUILD_PHASE_TRIGGERS.SKIP_ENV_VALIDATION) {
     console.warn(
