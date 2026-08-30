@@ -50,6 +50,29 @@ describe('rendu React Email du template de démonstration', () => {
     )
   })
 
+  it('déclare la langue du document dans la locale demandée', async () => {
+    // `lang` n'est pas décoratif : c'est ce que lisent les lecteurs d'écran et
+    // les moteurs de traduction des clients de messagerie. Un email français
+    // annoncé `lang="en"` se fait proposer à la traduction depuis l'anglais.
+    const fr = await render(anInput({ locale: 'fr' }))
+    const en = await render(anInput({ locale: 'en' }))
+
+    expect(fr.html).toContain('lang="fr"')
+    expect(en.html).toContain('lang="en"')
+  })
+
+  it('rend le sujet déclaré par le module quand l’appelant n’en impose pas', async () => {
+    // Le contrat de module oblige chaque module à déclarer un sujet **par
+    // locale**. Sans ce repli, chaque appelant devait aller le chercher dans le
+    // registre pour le repasser au rendu qui l'a déjà — ou le coder en dur, et
+    // rien n'empêchait alors un sujet français sur un corps anglais.
+    const { subject: declared } = demoEnabledModule.emails[0]?.locales.en ?? { subject: '' }
+
+    const rendered = await render(anInput({ locale: 'en', subject: undefined }))
+
+    expect(rendered.subject).toBe(declared.replace('{name}', 'Olivier'))
+  })
+
   it('échappe les données : une donnée ne devient jamais du balisage', async () => {
     // Les données d'un email viennent d'un utilisateur (son nom, celui de son
     // organisation). Interpolées dans le HTML sans échappement, elles font de

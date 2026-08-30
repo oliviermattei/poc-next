@@ -24,6 +24,21 @@ Aucun module Node (`node:fs`, `fs`, `node:path`…) hors de `src/dotenv.ts` et
 `NEXT_PUBLIC_*` : le premier composant client qui l'importe traînerait sinon
 `node:fs` dans le graphe client.
 
+## Une variable déclarée vide vaut absente
+
+`dotenv` charge `CLE=` en chaîne vide, et c'est la forme naturelle d'une
+variable optionnelle dans `.env.example` : déclarée, documentée, laissée vide.
+`parseEnv` normalise donc les valeurs vides en absence, **à la source** et pour
+toutes les clés — sans quoi `optional()`, qui n'accepte que `undefined`,
+refuserait la chaîne vide et empêcherait de démarrer un dépôt fraîchement cloné
+dont on a suivi l'instruction de `.env.example` (revue de s06, F1). C'est
+`tests/env-example.test.ts` qui l'attrape : il charge `.env.example` par le vrai
+chargeur et le soumet au vrai schéma. Inventorier des noms de clés ne le voyait
+pas.
+
+Corollaire : une variable requise laissée vide échoue en se nommant comme si
+elle était absente, ce qui est exactement ce qu'elle est.
+
 ## Ne doit jamais contenir
 
 - de valeur par défaut de complaisance pour une variable requise : une variable

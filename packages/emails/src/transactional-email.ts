@@ -21,13 +21,17 @@ import { createElement } from 'react'
  * | Vite (`pnpm test`) | runtime automatique — fonctionne |
  * | esbuild via `tsx` (`pnpm db:*`, `pnpm run audit`) | runtime **classique** : `React.createElement`, et `React` n'est pas défini |
  *
- * `tsx` n'expose aucun moyen de choisir le runtime : ni `jsx` dans un
- * `tsconfig.json`, ni le commentaire `@jsxImportSource`, ni `TSX_TSCONFIG_PATH`
- * — les trois ont été essayés, aucun ne change la sortie d'esbuild. Un `.tsx`
- * ici n'échouerait donc ni au test, ni au build, mais au premier script
- * exécuté par `tsx` qui charge le mailer (une graine qui envoie un email, un
- * ordonnanceur), sur un « React is not defined » que rien ne rattache à ce
- * fichier.
+ * Sous `tsx`, le runtime JSX est décidé par le `tsconfig.json` résolu depuis le
+ * **répertoire courant du processus**, et seulement si son `include` couvre le
+ * fichier : `jsx: "react-jsx"` y fonctionne (comme `TSX_TSCONFIG_PATH`), mais
+ * ni le `tsconfig.json` de ce package quand `tsx` est lancé de la racine, ni le
+ * pragma `@jsxImportSource` seul. Mesuré avec `tsx@4.23.13` ; le détail est
+ * dans l'`AGENTS.md` du package. Ce package est chargé par des scripts lancés
+ * de répertoires différents (`pnpm run audit` de la racine, `pnpm db:*` de
+ * `packages/db`) : il ne contrôle donc pas le réglage, et un `.tsx` ici
+ * n'échouerait ni au test, ni au build, mais au premier de ces scripts, sur un
+ * « React is not defined » que rien ne rattache à ce fichier. `createElement`
+ * ne dépend d'aucun réglage.
  *
  * `apps/web` garde ses `.tsx` : seul Next les compile. Ce package est importé
  * par du code serveur partagé, il n'a pas ce luxe.
@@ -38,12 +42,18 @@ import { createElement } from 'react'
 export interface TransactionalEmailProps {
   readonly subject: string
   readonly body: string
+  /**
+   * Langue du document. Sans elle, `@react-email/html` retombe sur son défaut
+   * (`lang="en"`) et un email français s'annonce anglais — ce que lisent les
+   * lecteurs d'écran et les traducteurs des clients de messagerie.
+   */
+  readonly locale: string
 }
 
-export function TransactionalEmail({ subject, body }: TransactionalEmailProps) {
+export function TransactionalEmail({ subject, body, locale }: TransactionalEmailProps) {
   return createElement(
     Html,
-    null,
+    { lang: locale },
     createElement(Head, null),
     createElement(Preview, null, subject),
     createElement(

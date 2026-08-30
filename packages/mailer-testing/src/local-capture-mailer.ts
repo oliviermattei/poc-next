@@ -63,8 +63,10 @@ export function createLocalCaptureMailer(options: LocalCaptureMailerOptions): Ma
       }
 
       // `basename` est la ceinture par-dessus les bretelles de `safeSegment` :
-      // même si l'assainissement régressait, le fichier resterait dans le
-      // dossier.
+      // il n'est atteignable que si l'assainissement régresse — `safeSegment`
+      // s'exécute d'abord et ne laisse ni `/` ni `.`. Aucun test ne le fait
+      // donc rougir, et c'est normal : il n'est pas une garde active, il est un
+      // filet pour une régression de la garde active.
       const file = basename(`${id}-${safeSegment(input.template)}.html`)
 
       // L'en-tête est visible dans le navigateur, avant le corps de l'email

@@ -57,17 +57,34 @@ un `if` ici reviendrait à masquer une entrée au lieu de ne pas l'avoir.
 fournisseur d'emails, une capture locale et des templates. Le code métier ne
 connaît que le port `Mailer` : il ne saura jamais lequel des deux l'exécute.
 
-**Le choix se fait sur la présence de `RESEND_API_KEY`, jamais sur `NODE_ENV`.**
-Un mailer conditionné par l'environnement est intestable et se trompera un jour
+**Le choix se fait sur la configuration, jamais sur `NODE_ENV`.** Un mailer
+conditionné par l'environnement est intestable et se trompera un jour
 d'environnement — en envoyant de vrais emails depuis une suite, ou en écrivant
 sur disque en production. `tests/mailer.test.ts` croise les deux axes
 (production sans clé, développement avec clé) : remplacer la condition par
 `NODE_ENV` fait rougir les deux cas.
 
-Sans clé, l'application **dégrade** (`docs/reliability.md` §2) : l'email est
-rendu et écrit dans `.mail/`, ignoré par git, consultable dans un navigateur.
-Elle ne refuse pas de démarrer. La configuration DNS qui rend l'envoi réel
-crédible est dans `docs/deliverability.md`.
+Deux configurations, et il faut en choisir une :
+
+| Configuration | Ce qui se passe |
+|---|---|
+| `RESEND_API_KEY` (+ `EMAIL_FROM`) | envoi réel chez le fournisseur |
+| `EMAIL_LOCAL_CAPTURE=1` | l'email est rendu et écrit dans `.mail/`, ignoré par git, consultable dans un navigateur (`docs/reliability.md` §2) |
+| ni l'un ni l'autre | **le démarrage échoue en nommant les deux variables** |
+
+La capture locale est un **opt-in, pas un repli**. En faire la conséquence
+automatique d'une clé absente rendait `{ok:true}` sur un email que personne ne
+recevrait, en production comme ailleurs, sans qu'aucun appelant puisse le
+distinguer d'un envoi réussi (revue de s06, F3). Le schéma refuse cette
+configuration au démarrage ; `lib/mailer.ts` la refuse aussi, parce que
+`getEnv` ne valide rien en phase de build ni sous `SKIP_ENV_VALIDATION`.
+
+Le montage fixe aussi le **budget d'attente** : deux essais de 4 s, recul
+compris, pour tenir sous les dix secondes d'une fonction serverless — aux
+défauts de l'adapter, un fournisseur muet faisait attendre ~31 s.
+
+La configuration DNS qui rend l'envoi réel crédible est dans
+`docs/deliverability.md`.
 
 ## Tests
 

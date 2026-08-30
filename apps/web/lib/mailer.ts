@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 
 import { createResendMailer } from '@repo/adapter-resend'
-import { type Env, getEnv } from '@repo/config'
+import { EMAIL_LOCAL_CAPTURE_ENABLED, type Env, getEnv } from '@repo/config'
 import { createEmailRenderer } from '@repo/emails'
 import { createLocalCaptureMailer } from '@repo/mailer-testing'
 import type { Mailer, MailerLogRecord, MailerLogger } from '@repo/ports'
@@ -25,13 +25,32 @@ import { moduleRegistry } from './module-registry'
  * axes (production sans clé, développement avec clé) et rougit si `NODE_ENV`
  * reprend la main.
  *
- * Sans clé, l'application **dégrade** (`docs/reliability.md` §2) : l'email est
- * rendu et écrit dans `.mail/`, où il s'ouvre dans un navigateur. Elle ne
- * refuse pas de démarrer.
+ * **La capture locale est un opt-in, pas un repli.** `docs/reliability.md` §2
+ * prescrit la capture « en développement local » ; l'étendre à tout
+ * déploiement dépourvu de clé faisait rendre `{ok:true}` sur un email que
+ * personne ne recevrait, indiscernable d'un envoi réussi — en production aussi
+ * (revue s06, F3). `EMAIL_LOCAL_CAPTURE=1` la demande explicitement ; sans clé
+ * et sans ce drapeau, le montage échoue en nommant les deux variables, comme
+ * toute configuration manquante.
  */
 
 /** Dossier de capture, relatif au répertoire d'exécution. Ignoré par git. */
 export const LOCAL_MAIL_DIRECTORY = '.mail'
+
+/**
+ * Le **budget d'attente** de l'appelant, choisi ici et pas subi.
+ *
+ * Aux défauts de l'adapter (10 s de délai, 3 essais), un fournisseur muet fait
+ * attendre ~31 s avant de rendre `{ok:false}` : au-delà du plafond usuel d'une
+ * fonction serverless, la plateforme coupe la requête et il ne reste ni
+ * réponse ni journal. Deux essais de 4 s, recul compris, tiennent sous 10 s —
+ * `tests/mailer.test.ts` le mesure.
+ *
+ * Le nombre d'essais reste supérieur à 1 : la reprise est ce qui absorbe une
+ * panne passagère du fournisseur, et la clé d'idempotence la rend sûre.
+ */
+const APP_MAILER_TIMEOUT_MS = 4_000
+const APP_MAILER_MAX_ATTEMPTS = 2
 
 export interface AppMailerOptions {
   /** Injecté dans les tests ; lu au démarrage sinon. */
@@ -69,11 +88,24 @@ export function createAppMailer(options: AppMailerOptions = {}): Mailer {
       from: env.EMAIL_FROM,
       render,
       logger,
+      timeoutMs: APP_MAILER_TIMEOUT_MS,
+      maxAttempts: APP_MAILER_MAX_ATTEMPTS,
     })
   }
 
-  return createLocalCaptureMailer({
-    directory: options.captureDirectory ?? join(process.cwd(), LOCAL_MAIL_DIRECTORY),
-    render,
-  })
+  if (env.EMAIL_LOCAL_CAPTURE === EMAIL_LOCAL_CAPTURE_ENABLED) {
+    return createLocalCaptureMailer({
+      directory: options.captureDirectory ?? join(process.cwd(), LOCAL_MAIL_DIRECTORY),
+      render,
+    })
+  }
+
+  // Le schéma refuse déjà cette configuration au démarrage. La garde est ici en
+  // plus, parce que `getEnv` rend l'environnement **sans le valider** en phase
+  // de build et sous `SKIP_ENV_VALIDATION` : c'est le seul chemin par lequel un
+  // montage muet pourrait encore passer.
+  throw new Error(
+    'Aucun mailer configuré : renseignez RESEND_API_KEY (avec EMAIL_FROM) pour envoyer, ' +
+      `ou EMAIL_LOCAL_CAPTURE=${EMAIL_LOCAL_CAPTURE_ENABLED} pour capturer les emails dans « ${LOCAL_MAIL_DIRECTORY} » sans rien envoyer.`,
+  )
 }

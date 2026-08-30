@@ -204,9 +204,13 @@ export function createResendMailer(options: ResendMailerOptions): Mailer {
 
           return { ok: true, id: outcome.data.id }
         } catch (cause) {
-          // Le SDK installé ne lève pas ; une version ultérieure le pourrait,
-          // et une exception non rattrapée ici ferait exactement ce que la
-          // forme du port existe pour empêcher — tomber chez l'appelant.
+          // Le SDK installé ne lève pas — il avale ses propres exceptions et
+          // rend `{ data: null, error }` — mais une version ultérieure le
+          // pourrait, et une exception non rattrapée ici ferait exactement ce
+          // que la forme du port existe pour empêcher : tomber chez l'appelant.
+          // Aucun scénario réseau n'atteint donc ce `catch` ; le seul cas qui
+          // l'exerce remplace le SDK par un objet qui lève, et c'est l'unique
+          // endroit de la suite où le SDK est doublé.
           return {
             ok: false,
             error: asError(

@@ -22,6 +22,14 @@ const EMAIL_FROM_PATTERN = /^(?:[^\s<>@]+@[^\s<>@]+\.[A-Za-z]{2,}|.+<[^\s<>@]+@[
  * pour que `ENV_KEYS` reste énumérable une fois la règle croisée posée sur le
  * schéma : `superRefine` rend un schéma qui n'a plus de `shape`.
  */
+/**
+ * La valeur qui active la capture locale — une seule, littérale.
+ *
+ * `'1'` comme `SKIP_ENV_VALIDATION` : accepter `true`, `yes` ou `on` multiplie
+ * les orthographes d'un même choix, et la faute de frappe devient un envoi réel.
+ */
+export const EMAIL_LOCAL_CAPTURE_ENABLED = '1'
+
 const envShape = {
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   DATABASE_URL: z
@@ -39,6 +47,18 @@ const envShape = {
    * `NODE_ENV`.
    */
   RESEND_API_KEY: z.string().min(1).optional(),
+  /**
+   * Active la **capture locale** des emails : ils sont rendus et écrits dans
+   * `.mail/` au lieu de partir. Opt-in explicite, jamais déduit de `NODE_ENV`
+   * ni de l'absence de clé.
+   *
+   * `docs/reliability.md` §2 autorise la capture « en développement local ».
+   * L'étendre à tout déploiement dépourvu de clé rendrait `{ok:true}` sur un
+   * email que personne ne recevra — indiscernable d'un envoi réussi. Le mailer
+   * se choisit donc toujours sur la configuration, mais il faut avoir dit
+   * laquelle : sans clé et sans ce drapeau, le démarrage échoue.
+   */
+  EMAIL_LOCAL_CAPTURE: z.literal(EMAIL_LOCAL_CAPTURE_ENABLED).optional(),
   /** Expéditeur. Obligatoire dès qu'une clé est configurée : voir la règle croisée. */
   EMAIL_FROM: z
     .string()
@@ -50,6 +70,8 @@ const envShape = {
 } as const
 
 export const envSchema = z.object(envShape).superRefine((value, ctx) => {
+  const captureEnabled = value.EMAIL_LOCAL_CAPTURE === EMAIL_LOCAL_CAPTURE_ENABLED
+
   // Règle croisée : une clé sans expéditeur part avec un `from` vide, et
   // l'échec n'apparaît qu'au premier email refusé par le fournisseur.
   if (value.RESEND_API_KEY !== undefined && value.EMAIL_FROM === undefined) {
@@ -57,6 +79,28 @@ export const envSchema = z.object(envShape).superRefine((value, ctx) => {
       code: 'custom',
       path: ['EMAIL_FROM'],
       message: 'is required when RESEND_API_KEY is set',
+    })
+  }
+
+  // Aucun mailer configuré : refusé au démarrage, comme toute configuration
+  // manquante. Le silence donnerait un `{ok:true}` sur un email que personne
+  // ne reçoit.
+  if (value.RESEND_API_KEY === undefined && !captureEnabled) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['RESEND_API_KEY'],
+      message: `is required, unless EMAIL_LOCAL_CAPTURE=${EMAIL_LOCAL_CAPTURE_ENABLED} captures emails on disk instead of sending them`,
+    })
+  }
+
+  // Les deux à la fois : le choix du mailer deviendrait implicite, et un
+  // déploiement muni d'une clé pourrait taire ses emails sans que rien ne le
+  // dise.
+  if (value.RESEND_API_KEY !== undefined && captureEnabled) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['EMAIL_LOCAL_CAPTURE'],
+      message: 'cannot be enabled while RESEND_API_KEY is set: choose one',
     })
   }
 })
@@ -79,8 +123,26 @@ export class EnvValidationError extends Error {
  * Valide une source d'environnement. Lève une `EnvValidationError` dont le
  * message nomme chaque variable fautive.
  */
+/**
+ * Une variable **déclarée vide vaut absente**.
+ *
+ * `dotenv` charge `CLE=` en chaîne vide, et c'est la forme naturelle d'une
+ * variable optionnelle dans `.env.example` : on la déclare, on la documente, on
+ * la laisse vide. Sans cette normalisation, `optional()` — qui n'accepte que
+ * `undefined` — refuse la chaîne vide, et copier `.env.example` en `.env`
+ * empêche l'application de démarrer sur une variable annoncée optionnelle.
+ *
+ * Normalisé **à la source** plutôt que clé par clé : la prochaine variable
+ * optionnelle hériterait sinon du même défaut, et le seul test qui l'attrape
+ * (`tests/env-example.test.ts`) ne le dirait qu'après coup.
+ */
+const withoutBlanks = (source: EnvSource): EnvSource =>
+  Object.fromEntries(
+    Object.entries(source).filter(([, value]) => value === undefined || value.trim() !== ''),
+  )
+
 export function parseEnv(source: EnvSource): Env {
-  const result = envSchema.safeParse(source)
+  const result = envSchema.safeParse(withoutBlanks(source))
 
   if (!result.success) {
     const details = result.error.issues

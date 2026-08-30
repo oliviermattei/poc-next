@@ -64,12 +64,17 @@ export function createEmailRenderer(
   return async (input: SendEmailInput): Promise<RenderedEmail> => {
     const content = contentFor(templates, input)
 
-    // Le sujet vient de l'appel (le port l'expose) ; le corps du template
-    // déclaré. Les deux passent par la **même** interpolation.
-    const subject = interpolate(input.subject, input.data, `« ${input.template} » (sujet)`)
+    // Le sujet vient de l'appel quand l'appelant en impose un, du template
+    // déclaré sinon — le contrat de module l'oblige à en déclarer un par
+    // locale. Sujet et corps passent par la **même** interpolation.
+    const subject = interpolate(
+      input.subject ?? content.subject,
+      input.data,
+      `« ${input.template} » (sujet)`,
+    )
     const body = interpolate(content.body, input.data, `« ${input.template} »`)
 
-    const element = createElement(TransactionalEmail, { subject, body })
+    const element = createElement(TransactionalEmail, { subject, body, locale: input.locale })
 
     // `render` de `@react-email/components@1.0.12` est **asynchrone** — relevé
     // dans le paquet installé, la majeure précédente le rendait de façon

@@ -20,7 +20,9 @@
  *    discriminé oblige à regarder `ok` avant de lire `id` — le compilateur pose
  *    la question que la revue poserait. Corollaire opposable, prouvé par test :
  *    **aucune implémentation de ce port ne rejette**, quoi qu'il arrive au
- *    fournisseur.
+ *    fournisseur — panne réseau et rendu impossible, côté adapter comme côté
+ *    capture locale, et jusqu'au cas où le SDK lui-même lèverait, que
+ *    `resend-mailer.test.ts` provoque en le remplaçant.
  *
  * 3. **Le rendu est injecté, pas hérité.** Une implémentation reçoit son
  *    `EmailRenderer` ; elle ne connaît ni React, ni les templates. C'est ce qui
@@ -50,14 +52,21 @@ export type EmailData = Readonly<Record<string, string | number>>
  * quelle langue rendre, et le choix se ferait deux fois — une fois pour le
  * sujet, une fois pour le corps.
  *
- * `subject` est le sujet **non interpolé**, tel que le module le déclare
- * (`'Bienvenue {name}'`). Une seule fonction d'interpolation traite le sujet et
- * le corps ; interpoler le sujet chez l'appelant en ferait deux, qui
+ * `subject` est le sujet **non interpolé** (`'Bienvenue {name}'`), et il est
+ * **facultatif** : absent, c'est celui que le module déclare pour cette locale
+ * qui est rendu. Le contrat de module (ADR 007) oblige à le déclarer par
+ * locale ; l'exiger aussi à l'appel forçait chaque appelant à aller le chercher
+ * dans le registre pour le repasser au rendu qui l'a déjà — ou à le coder en
+ * dur, et rien n'empêchait alors un sujet français sur un corps anglais. Le
+ * fournir reste possible pour un sujet que le module ne peut pas connaître.
+ *
+ * Dans les deux cas, une seule fonction d'interpolation traite le sujet et le
+ * corps ; interpoler le sujet chez l'appelant en ferait deux, qui
  * divergeraient.
  */
 export interface SendEmailInput {
   readonly to: string
-  readonly subject: string
+  readonly subject?: string
   readonly template: string
   readonly locale: string
   readonly data: EmailData

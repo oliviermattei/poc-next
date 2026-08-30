@@ -80,7 +80,7 @@ Le dépôt n'envoie jamais d'email réel depuis une exécution de CI
 
 | Régime | Ce qui se passe | Comment |
 |---|---|---|
-| Développement, **sans** `RESEND_API_KEY` | l'email est rendu et écrit dans `.mail/`, consultable dans un navigateur | rien à faire : c'est le mode par défaut |
+| Développement, capture locale | l'email est rendu et écrit dans `.mail/`, consultable dans un navigateur, et **rien ne part** | `EMAIL_LOCAL_CAPTURE=1`, sans `RESEND_API_KEY` — c'est ce que `.env.example` livre |
 | CI | doublure d'enregistrement, réseau doublé, aucun envoi | `pnpm test` |
 | Avant un ship qui touche aux emails | envoi réel contre une clé de test | commande ci-dessous |
 
@@ -89,6 +89,13 @@ RESEND_LIVE_TEST=1 RESEND_API_KEY=re_… \
 EMAIL_FROM='Killer SaaS <envoi@exemple.com>' EMAIL_LIVE_TO=vous@exemple.com \
   pnpm vitest run packages/adapters/resend/src/resend-live.test.ts
 ```
+
+La capture locale est un **choix explicite**, pas ce qui reste quand la clé
+manque : sans clé et sans `EMAIL_LOCAL_CAPTURE=1`, l'application refuse de
+démarrer en nommant les deux variables. Un déploiement dépourvu de clé écrirait
+sinon ses emails sur disque en rendant « envoyé » — la panne la plus silencieuse
+qui soit sur un parcours d'inscription. Les deux ensemble sont refusées aussi :
+le choix serait ambigu.
 
 C'est cette recette qui prouve la délivrabilité : elle est la seule à faire
 sortir un message du dépôt. Lisez l'email reçu et vérifiez, dans son en-tête

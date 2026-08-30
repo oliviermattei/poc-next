@@ -38,6 +38,10 @@ jobs:
     env:
       # Aucun secret : une base jetable, dans le réseau du runner.
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/app
+      # La CI n'envoie aucun email réel : elle capture. Le drapeau est
+      # explicite parce que l'absence de clé ne suffit pas à le décider — sans
+      # lui, l'application refuse de démarrer et `pnpm test:e2e` le dit.
+      EMAIL_LOCAL_CAPTURE: '1'
 
     steps:
       - uses: actions/checkout@v7

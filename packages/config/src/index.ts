@@ -5,6 +5,7 @@
  */
 export {
   BUILD_ENV_KEYS,
+  EMAIL_LOCAL_CAPTURE_ENABLED,
   ENV_KEYS,
   EnvValidationError,
   NEXT_BUILD_PHASE,

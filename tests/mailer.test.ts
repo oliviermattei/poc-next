@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import type { Env } from '@repo/config'
+import type { SendEmailResult } from '@repo/ports'
 import type { RegistryEmailTemplate } from '@repo/core'
 import { qualifyEmailTemplateId } from '@repo/emails'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -37,9 +38,15 @@ const CATALOGUE = [
   },
 ] as const satisfies readonly RegistryEmailTemplate[]
 
+/**
+ * Aucun `subject` ici : le port le rend facultatif, et c'est le sujet déclaré
+ * par le module pour la locale demandée qui est rendu. Un appelant qui devait
+ * le fournir allait le chercher dans le registre pour le repasser au rendu qui
+ * l'a déjà — ou le codait en dur, dans une langue qui pouvait ne pas être
+ * celle du corps.
+ */
 const send = () => ({
   to: 'destinataire@example.test',
-  subject: 'Bienvenue {name}',
   template: 'test.welcome',
   locale: 'fr',
   data: { name: 'Olivier' },
@@ -87,7 +94,7 @@ describe('sélection du mailer applicatif', () => {
     const network = stubNetwork()
 
     const mailer = createAppMailer({
-      env: anEnv({ NODE_ENV: 'production' }),
+      env: anEnv({ NODE_ENV: 'production', EMAIL_LOCAL_CAPTURE: '1' }),
       captureDirectory: directory,
       emails: CATALOGUE,
     })
@@ -120,24 +127,70 @@ describe('sélection du mailer applicatif', () => {
     expect(await readdir(directory)).toEqual([])
   })
 
+  it('refuse de se monter quand aucun mailer n’est configuré, en nommant les variables', async () => {
+    // Sans clé et sans capture explicite, l'ancien montage écrivait dans
+    // `.mail/` et rendait `{ok:true}` — en production comme ailleurs, sans
+    // qu'aucun appelant puisse le distinguer d'un envoi réussi.
+    //
+    // La garde est ici **en plus** du schéma : en phase de build et sous
+    // `SKIP_ENV_VALIDATION`, `getEnv` rend l'environnement sans le valider.
+    expect(() => createAppMailer({ env: anEnv(), emails: CATALOGUE })).toThrowError(
+      /EMAIL_LOCAL_CAPTURE/,
+    )
+    expect(() => createAppMailer({ env: anEnv(), emails: CATALOGUE })).toThrowError(
+      /RESEND_API_KEY/,
+    )
+  })
+
+  it('libère l’appelant en moins de dix secondes quand le fournisseur ne répond jamais', async () => {
+    // Aux défauts de l'adapter (10 s de délai, 3 essais, recul entre les
+    // deux), le pire cas fait attendre ~31 s avant que l'appelant sache. C'est
+    // au-delà du plafond usuel d'une fonction serverless : la plateforme coupe
+    // la requête d'inscription avant que le résultat n'existe, et il ne reste
+    // ni réponse ni journal. Le budget se choisit donc ici, au montage, plutôt
+    // que de se subir.
+    vi.useFakeTimers()
+
+    try {
+      vi.stubGlobal('fetch', () => new Promise(() => undefined))
+      const mailer = createAppMailer({
+        env: anEnv({
+          RESEND_API_KEY: 're_test_key',
+          EMAIL_FROM: 'Killer SaaS <envoi@example.test>',
+        }),
+        emails: CATALOGUE,
+      })
+
+      let settled: SendEmailResult | undefined
+      const pending = mailer.send(send()).then((result) => {
+        settled = result
+      })
+      await vi.advanceTimersByTimeAsync(9_999)
+
+      expect(settled?.ok).toBe(false)
+      expect(settled?.ok === false && settled.error.code).toBe('timeout')
+      await pending
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('rend tout ce que le registre déclare, et rien d’autre', async () => {
     // Le catalogue vient du **registre**, pas d'une liste écrite ici : un
     // module non activé ne laisse pas plus de trace dans les emails que dans
     // les routes ou la navigation. Dérivé du registre, ce cas vaut dans les
     // trois états de configuration — y compris celui où aucun module n'est
     // activé, où il ne reste que le refus.
-    const mailer = createAppMailer({ env: anEnv(), captureDirectory: await capturedIn() })
+    const mailer = createAppMailer({
+      env: anEnv({ EMAIL_LOCAL_CAPTURE: '1' }),
+      captureDirectory: await capturedIn(),
+    })
 
     for (const entry of moduleRegistry.emails) {
       const [locale] = Object.keys(entry.template.locales)
       const template = qualifyEmailTemplateId(entry.moduleId, entry.template.id)
 
-      const result = await mailer.send({
-        ...send(),
-        template,
-        locale: locale ?? 'fr',
-        subject: entry.template.locales[locale ?? 'fr']?.subject ?? '',
-      })
+      const result = await mailer.send({ ...send(), template, locale: locale ?? 'fr' })
 
       expect(result.ok, `le template ${template} devrait être rendable`).toBe(true)
     }

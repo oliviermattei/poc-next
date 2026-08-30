@@ -92,11 +92,13 @@ describe('capture locale', () => {
   })
 
   it('reste dans son dossier et n’écrase rien quand le template porte un chemin', async () => {
-    // Le nom du fichier vient d'une donnée d'appel. Deux gardes s'y appliquent
-    // et l'assertion mord sur les deux : sans assainissement du segment, les
-    // deux captures retombent sur le même nom et la seconde écrase la
-    // première ; sans `basename`, l'écriture sort du dossier et il ne reste
-    // rien à lire.
+    // Le nom du fichier vient d'une donnée d'appel. Deux gardes s'y
+    // appliquent, mais **une seule est atteignable** : `safeSegment` s'exécute
+    // en premier et `'../../evade'` en ressort `'evade'`, il ne reste rien pour
+    // `basename`. Ce cas mord donc sur l'assainissement du segment — sans lui,
+    // les deux captures retombent sur le même nom et la seconde écrase la
+    // première. `basename` est la ceinture par-dessus les bretelles : retiré,
+    // aucun cas ne rougit, et il ne sert que si `safeSegment` régresse.
     const directory = await inTempDirectory()
     const mailer = createLocalCaptureMailer({ directory, render: renderer })
 

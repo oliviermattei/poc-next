@@ -44,12 +44,35 @@ Trois transpileurs lisent ce dépôt et ils ne s'accordent pas :
 | Vite (`pnpm test`) | runtime automatique — fonctionne |
 | esbuild via `tsx` (`pnpm db:*`, `pnpm run audit`) | runtime **classique** : `React.createElement`, et `React` n'est pas défini |
 
-`tsx` n'expose aucun moyen de choisir le runtime : ni `jsx` dans un
-`tsconfig.json`, ni le commentaire `@jsxImportSource`, ni `TSX_TSCONFIG_PATH`
-— les trois ont été essayés, aucun ne change la sortie d'esbuild. Un `.tsx` ici
-n'échouerait ni au test, ni au build, mais au premier script exécuté par `tsx`
-qui charge le mailer (une graine qui envoie un email, un ordonnanceur), sur un
-« React is not defined » que rien ne rattache au fichier fautif.
+`tsx` **honore** `jsx` — mais pas celui du package. Ce qui a été mesuré avec le
+`tsx@4.23.13` du dépôt, sur un `.tsx` réel (chaque ligne exécutée, pas déduite) :
+
+| Réglage, et d'où le processus est lancé | Résultat |
+|---|---|
+| aucun réglage | échec, runtime classique |
+| `jsx: "react-jsx"` dans le `tsconfig.json` résolu **depuis le `cwd`**, dont l'`include` couvre le fichier | **fonctionne**, y compris via `extends` du préset du dépôt |
+| le même réglage dans le `tsconfig.json` du package, `tsx` étant lancé depuis la racine | échec |
+| `jsx` dans le `tsconfig.json` racine, dont l'`include` ne couvre pas `packages/**` | échec |
+| `TSX_TSCONFIG_PATH` vers un `tsconfig.json` qui pose `jsx` | **fonctionne** |
+| pragma `/** @jsxImportSource react */` seul | échec — il choisit la source d'import, pas le runtime |
+
+Autrement dit : sous `tsx`, le runtime JSX est décidé par le `tsconfig.json`
+résolu depuis le **répertoire courant du processus**, et seulement si son
+`include` couvre le fichier. Un package importé par du code serveur partagé ne
+contrôle ni l'un ni l'autre : `pnpm run audit` s'exécute depuis la racine,
+`pnpm db:*` depuis `packages/db`, et les deux chargeraient ce fichier sous un
+réglage différent. `createElement` ne dépend d'aucun réglage de compilateur,
+d'où qu'on le lance.
+
+(La version précédente de cette règle affirmait qu'« aucun moyen n'existe, les
+trois ont été essayés » : deux des trois fonctionnent en réalité, et ce qui
+avait été essayé était le `tsconfig.json` **racine**, qui ne gouverne pas
+`packages/emails/src/**`. Relevé en revue de s06, F4.)
+
+Un `.tsx` ici n'échouerait ni au test, ni au build, mais au premier script
+exécuté par `tsx` qui charge le mailer (une graine qui envoie un email, un
+ordonnanceur), sur un « React is not defined » que rien ne rattache au fichier
+fautif.
 
 `apps/web` garde ses `.tsx` : seul Next les compile. Ce package est importé par
 du code serveur partagé, il n'a pas ce luxe. La contrainte est faible en

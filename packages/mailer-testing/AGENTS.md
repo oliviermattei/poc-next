@@ -14,7 +14,7 @@ Deux outils, deux usages :
 | Outil | Ce qu'il fait | Quand |
 |---|---|---|
 | `createRecordingMailer` | garde les envois en mémoire, n'envoie rien, **ne rend rien** | en CI : le test affirme destinataire, template et données |
-| `createLocalCaptureMailer` | rend l'email et l'écrit dans un dossier, ignoré par git | en développement, sans clé d'API (`docs/reliability.md` §2) |
+| `createLocalCaptureMailer` | rend l'email et l'écrit dans un dossier, ignoré par git | en développement, sur demande explicite : `EMAIL_LOCAL_CAPTURE=1` (`docs/reliability.md` §2) |
 
 La doublure ne rend pas le template, délibérément : rendre en CI ferait dépendre
 chaque test d'envoi de la mise en page des emails, et un template cassé ferait
@@ -24,9 +24,14 @@ dans `@repo/emails`.
 **Ces outils sont injectés, jamais sélectionnés par `NODE_ENV`.** C'est le piège
 nommé par la story et par la recherche de s01 : un mailer choisi par
 l'environnement est intestable et se trompera un jour d'environnement. Le choix
-se fait au point de composition (`apps/web/lib/mailer.ts`), sur la **présence
-d'une clé d'API**, et `tests/mailer.test.ts` échoue si `NODE_ENV` reprend la
-main.
+se fait au point de composition (`apps/web/lib/mailer.ts`), sur la
+**configuration** — une clé d'API pour envoyer, `EMAIL_LOCAL_CAPTURE=1` pour
+capturer — et `tests/mailer.test.ts` échoue si `NODE_ENV` reprend la main.
+
+La capture est un **opt-in**. Une clé absente ne suffit pas à la déclencher :
+elle ferait taire les emails d'un déploiement en rendant `{ok:true}`, ce qu'aucun
+appelant ne peut distinguer d'un envoi réussi. Sans clé et sans drapeau, le
+montage échoue.
 
 ## Imports autorisés
 

@@ -3,7 +3,8 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-import { BUILD_ENV_KEYS, ENV_KEYS } from '@repo/config'
+import { BUILD_ENV_KEYS, ENV_KEYS, parseEnv } from '@repo/config'
+import { loadRootEnv } from '@repo/config/server'
 
 const ENV_EXAMPLE_PATH = fileURLToPath(new URL('../.env.example', import.meta.url))
 
@@ -19,6 +20,18 @@ const readDeclaredKeys = async (): Promise<string[]> => {
 }
 
 describe('.env.example', () => {
+  it('démarre l’application une fois copié en `.env`, sans rien y toucher', async () => {
+    // La première ligne du fichier dit « copiez ce fichier en `.env` ». Sur un
+    // clone vierge c'est le premier geste, et il doit suffire : ce cas charge
+    // le fichier par le **vrai** chargeur puis le soumet au **vrai** schéma.
+    // Inventorier les noms de clés ne l'attrape pas — une clé déclarée vide
+    // (`CLE=`) arrive en chaîne vide, que le schéma refusait.
+    const source: Record<string, string | undefined> = {}
+    loadRootEnv({ path: ENV_EXAMPLE_PATH, target: source })
+
+    expect(() => parseEnv(source)).not.toThrow()
+  })
+
   it('déclare toutes les variables lues par le schéma', async () => {
     const declared = await readDeclaredKeys()
 

@@ -83,8 +83,25 @@ EMAIL_FROM='Killer SaaS <envoi@votre-domaine-verifie>' EMAIL_LIVE_TO=vous@votre-
 Sans `RESEND_LIVE_TEST=1` la suite est ignorée : aucun email réel ne part d'une
 exécution de CI, même si une clé traînait dans l'environnement.
 
+Un troisième régime existe, **pour un seul cas** et il est nommé dans le
+fichier : celui qui prouve que l'adapter ne rejette pas si le SDK lève remplace
+le SDK (`vi.doMock('resend')`), parce que le SDK installé avale ses propres
+exceptions et qu'aucun scénario réseau n'atteint le `catch`. C'est l'exception
+assumée à la règle ci-dessus, pas une autorisation générale de doubler le SDK.
+
 **Ce qui a été prouvé par mutation** (le compte est le nombre de cas passés au
 rouge) : tout classer transitoire → 4 ; retirer l'assainissement des messages
-→ 5 ; tirer une clé d'idempotence par tentative → 1 ; retirer la course du
+→ 5 ; **tirer une clé d'idempotence par tentative → 1** ; retirer la course du
 délai d'attente → 2 ; retirer la dispersion → 1 ; retirer le plafond → 1 ;
-retirer le repli sur le code HTTP → 1 ; ne plus rattraper le rendu → 1.
+retirer le repli sur le code HTTP → 1 ; ne plus rattraper le rendu → 1 ; faire
+relancer le `catch` de l'adapter → 1.
+
+La mutation de la clé d'idempotence est celle qui a coûté le plus cher à
+énoncer, et elle mérite son mode d'emploi. Elle consiste à **tirer la clé dans
+`attemptSend`** — pas à changer le texte de la clé. Tant que le harnais
+injectait une fabrique *constante* (`() => 'idem-fixe'`), cette mutation-là
+restait verte : une fabrique constante rend indiscernables « tirée une fois » et
+« tirée à chaque tentative », alors qu'en production c'est `crypto.randomUUID()`
+et que la régression réelle est un doublon chez le destinataire. Le cas injecte
+donc une fabrique **variable** et compte ses tirages (revue de s06, F2). Une
+preuve qui ne prouve pas coûte plus cher qu'une absence de preuve.

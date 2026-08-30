@@ -4,8 +4,8 @@ node_modules/
 .DS_Store
 .worktrees/
 
-# Capture locale des emails : sans clé d'API, l'email est écrit ici plutôt
-# qu'envoyé. Ce sont des emails de développement, jamais du code.
+# Capture locale des emails : avec `EMAIL_LOCAL_CAPTURE=1`, l'email est écrit
+# ici plutôt qu'envoyé. Ce sont des emails de développement, jamais du code.
 .mail/
 
 # Rapports et traces Playwright

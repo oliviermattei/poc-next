@@ -124,22 +124,29 @@ describe('adapter Resend — envoi', () => {
 })
 
 describe('adapter Resend — reprises (docs/reliability.md §3)', () => {
-  it('rejoue une panne transitoire et réussit, avec la même clé d’idempotence', async () => {
+  it('rejoue une panne transitoire et réussit, avec une **seule** clé d’idempotence', async () => {
     // La clé d'idempotence est ce qui rend la reprise sûre : le fournisseur
     // n'envoie pas deux fois l'email si c'est sa réponse qui s'est perdue.
+    //
+    // La fabrique est délibérément **variable**. Une fabrique constante rend
+    // indiscernables « tirée une fois » et « tirée à chaque tentative », alors
+    // qu'en production c'est `crypto.randomUUID()` : une clé neuve par essai
+    // ferait recevoir deux fois le même email à un destinataire dès que le
+    // fournisseur répond en retard.
+    let drawn = 0
     const calls = stubNetwork([
       fails(503, { name: 'internal_server_error', message: 'oups', statusCode: 503 }),
       ok('email-7'),
     ])
 
-    const result = await mailerWith().send(anInput())
+    const result = await mailerWith({
+      newIdempotencyKey: () => `idem-${(drawn += 1)}`,
+    }).send(anInput())
 
     expect(result).toEqual({ ok: true, id: 'email-7' })
     expect(calls).toHaveLength(2)
-    expect(calls.map((call) => call.headers.get('idempotency-key'))).toEqual([
-      'idem-fixe',
-      'idem-fixe',
-    ])
+    expect(calls.map((call) => call.headers.get('idempotency-key'))).toEqual(['idem-1', 'idem-1'])
+    expect(drawn).toBe(1)
   })
 
   it('ne rejoue jamais une erreur de validation', async () => {
@@ -397,5 +404,55 @@ describe('recul exponentiel avec dispersion', () => {
 
     expect(low).toBeLessThan(high)
     expect(low).toBeGreaterThan(0)
+  })
+})
+
+/**
+ * **La seule exception assumée à la règle « on double le réseau ».**
+ *
+ * Le SDK installé avale ses propres exceptions (`fetchRequest` rend
+ * `{ data: null, error }`) : aucun scénario réseau n'atteint le `catch` de
+ * l'adapter, et sans ce cas le garde-fou n'était exercé par rien alors que le
+ * port annonce « aucune implémentation de ce port ne rejette, quoi qu'il
+ * arrive au fournisseur ». Pour que l'annonce soit prouvée, ce cas — et lui
+ * seul — remplace le SDK par un objet qui lève, ce que le SDK réel ne fait pas
+ * mais qu'une version ultérieure pourrait faire.
+ */
+describe('adapter Resend — quand le SDK lui-même lève', () => {
+  it('rend un échec au lieu de rejeter, sans recopier le message du SDK', async () => {
+    vi.resetModules()
+    vi.doMock('resend', () => ({
+      Resend: class {
+        emails = {
+          send: () => {
+            throw new Error(`panne interne, clé ${API_KEY}, pour destinataire@example.test`)
+          },
+        }
+      },
+    }))
+
+    try {
+      const { createResendMailer: createWithThrowingSdk } = await import('./resend-mailer')
+      const mailer = createWithThrowingSdk({
+        apiKey: API_KEY,
+        from: 'Killer SaaS <envoi@example.test>',
+        baseUrl: BASE_URL,
+        render,
+        sleep: noSleep,
+        maxAttempts: 1,
+      })
+
+      const result = await mailer.send(anInput())
+
+      expect(result).toEqual({
+        ok: false,
+        error: { code: 'provider_unavailable', message: expect.any(String), attempts: 1 },
+      })
+      expect(result.ok === false && result.error.message).not.toContain(API_KEY)
+      expect(result.ok === false && result.error.message).not.toContain('destinataire@example.test')
+    } finally {
+      vi.doUnmock('resend')
+      vi.resetModules()
+    }
   })
 })

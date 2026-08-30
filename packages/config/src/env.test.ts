@@ -16,7 +16,7 @@ describe('validation de l’environnement', () => {
   })
 
   it('accepte un environnement valide et applique les valeurs par défaut', () => {
-    const env = parseEnv({ DATABASE_URL })
+    const env = parseEnv({ DATABASE_URL, EMAIL_LOCAL_CAPTURE: '1' })
 
     expect(env.DATABASE_URL).toBe(DATABASE_URL)
     expect(env.NODE_ENV).toBe('development')
@@ -28,11 +28,46 @@ describe('validation de l’environnement', () => {
     ).not.toThrow()
   })
 
-  it('accepte un environnement sans clé d’email : le mailer dégrade en capture locale', () => {
+  it('refuse un environnement où aucun mailer n’est configuré, en nommant les deux variables', () => {
+    // Sans clé **et** sans capture explicite, l'application enverrait les
+    // emails dans le vide en rendant `{ok:true}` : indiscernable d'un envoi
+    // réussi, y compris en production. Une configuration manquante se traite
+    // comme toutes les autres — le démarrage échoue en se nommant.
+    expect(() => parseEnv({ DATABASE_URL })).toThrowError(/EMAIL_LOCAL_CAPTURE/)
+    expect(() => parseEnv({ DATABASE_URL })).toThrowError(/RESEND_API_KEY/)
+  })
+
+  it('accepte un environnement sans clé quand la capture locale est demandée explicitement', () => {
     // `docs/reliability.md` §2 : aucun port ne dépend d'une clé d'API pour
-    // fonctionner en local. Rendre `RESEND_API_KEY` obligatoire ferait échouer
-    // le démarrage d'un développeur qui n'envoie aucun email.
-    expect(() => parseEnv({ DATABASE_URL })).not.toThrow()
+    // fonctionner **en développement local**. La capture reste donc possible
+    // sans clé — mais elle s'active, elle ne se déduit pas d'une absence.
+    expect(() => parseEnv({ DATABASE_URL, EMAIL_LOCAL_CAPTURE: '1' })).not.toThrow()
+  })
+
+  it('refuse une clé d’email et la capture locale ensemble : le choix serait ambigu', () => {
+    expect(() =>
+      parseEnv({
+        DATABASE_URL,
+        RESEND_API_KEY: 're_abc123',
+        EMAIL_FROM: 'envoi@example.test',
+        EMAIL_LOCAL_CAPTURE: '1',
+      }),
+    ).toThrowError(/EMAIL_LOCAL_CAPTURE/)
+  })
+
+  it('traite une variable déclarée vide comme absente', () => {
+    // `dotenv` charge `CLE=` en chaîne vide. Sans cette normalisation, une
+    // variable optionnelle documentée puis laissée vide — la forme même de
+    // `.env.example` — fait échouer le démarrage en se plaignant d'une longueur.
+    const env = parseEnv({
+      DATABASE_URL,
+      RESEND_API_KEY: '',
+      EMAIL_FROM: '',
+      EMAIL_LOCAL_CAPTURE: '1',
+    })
+
+    expect(env.RESEND_API_KEY).toBeUndefined()
+    expect(env.EMAIL_FROM).toBeUndefined()
   })
 
   it('refuse une clé d’email sans expéditeur, en nommant la variable', () => {
