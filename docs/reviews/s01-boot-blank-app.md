@@ -265,3 +265,113 @@ Rien de tout cela ne ships de bug ni ne casse l'existant. Les critères 4, 5, 6 
 
 Max severity: major
 Ship allowed: yes
+
+---
+
+# Review — Story s01-boot-blank-app (3e passage, commit de correctifs `6bb1c10`)
+
+> Revue anti-hallucination en contexte neuf du seul diff `8430a21..6bb1c10` (15 fichiers, +250/−28), sur `dev`. Le diff `45a204d..8430a21` n'est pas rejugé. Postgres disponible (`boilerplate-postgres-1`, sain, base `app`).
+
+## 1. Commandes exécutées, pas rapportées
+
+| Commande | Résultat mesuré |
+|---|---|
+| `pnpm test` | **36 passed / 0 skipped**, exit 0 |
+| `vitest run --reporter=verbose` | les 3 tests d'intégration s'exécutent réellement (23 ms, 6 ms, 12 ms). Aucun `skipIf` n'a mordu |
+| `tsc --noEmit` ×4 projets | zéro diagnostic |
+| `pnpm build --force` avec et sans `.env` | ✓ dans les deux cas |
+| `db:migrate` ×2, `db:seed` ×2 | exit 0 ×4 |
+
+## 2. N1 vérifié contre `next@16.3.3` installé, pas contre la documentation
+
+Le raisonnement de l'implémenteur est **exact, ligne par ligne dans le paquet** :
+
+| Fait | Emplacement | Verdict |
+|---|---|---|
+| Le chargeur appelle la config si c'est une fonction | `server/config.js:1480` | ✓ |
+| Signature réelle | `server/config-shared.js:290-295` → `config(phase, { defaultConfig })` | ✓ API réelle |
+| Un `throw` abandonne le démarrage | `server/config.js:1479-1487`, log puis `throw err` | ✓ |
+| **`NEXT_PHASE` arrive trop tard** | config lue en `build/index.js:498`, variable posée en `:1212` | ✓ **la claim est vraie** |
+| `next dev` / `next start` | `server/next.js:220`, `start-server.js:435` | ✓ les deux valident |
+
+**La garde par phase n'est pas décorative, prouvée en la retirant** : sans elle, `pnpm build` sans `.env` échoue en exit 1. La garde par variable seule aurait cassé le build. Mesuré, pas admis.
+
+### Les quatre états, mesurés
+
+| État | Résultat |
+|---|---|
+| Variable absente | **exit 1**, nomme `DATABASE_URL` |
+| Variable malformée | **exit 1**, `must be a PostgreSQL connection string` |
+| Via Turborepo | **exit 1** propagé (`ELIFECYCLE` → `Failed: @repo/web#dev`) |
+| `next start` | **exit 1**, même message |
+| Bien formée mais injoignable | processus vivant, `/api/health` → **503** |
+| Nominal | `/api/health` → **200** `{"status":"ok","database":"connected"}` |
+| Build avec et sans `.env` | succès dans les deux cas |
+
+Critère 2 tenu dans ses deux moitiés, sur `dev` comme sur `start`.
+
+## 3. Les autres correctifs
+
+**N7** — la claim « le one-liner suggéré était incomplet » est vraie : le correctif partiel conserve la boucle infinie (SIGKILL après 60 s depuis `/tmp`). Déplacer `parse` après la résolution était nécessaire.
+
+**N8** — la claim sur les alias Vitest est vraie, vérifiée dans les deux sens. Forme objet réinstallée → 3 fichiers échouent au chargement (`Cannot find package '@repo/config/server'`) : la casse est **bruyante**, pas silencieuse. Preuve positive du préfixage obtenue en pointant le remplacement sur le dossier : les 36 tests repassent, ce qui n'est possible que si le suffixe est concaténé.
+
+**N6** — vérifié par le comportement du cache : `FULL TURBO`, puis **cache miss** après une ligne ajoutée à `.env`, puis `FULL TURBO` après restauration.
+
+## 4. Morsure des tests (mutations, toutes restaurées)
+
+| # | Mutation | Rouges |
+|---|---|---|
+| M1 | corps d'`assertStartupEnv` → `return` | **1** |
+| M2 | garde de phase supprimée | **1** + `pnpm build` sans `.env` casse |
+| M3 | `./dotenv` réexporté depuis le barril | **1** |
+| M4 | `try/catch` retiré du `JSON.parse` | **1** |
+| M5 | `globalDependencies` retiré | **1** |
+| M6a | correctif N7 entièrement annulé | **1** |
+| M6b | correctif N7 **partiel** | **0** → N11 |
+| M7 | `import … from "node:fs"` (guillemets doubles) | **0** → N13 |
+
+Aucun test décoratif : pas d'assertion sur une classe CSS, une structure DOM ni un inventaire de props.
+
+## Findings
+
+Aucun **critical**, aucun **major**. Les six correctifs font ce qu'ils annoncent, et les deux claims à vérifier contre le paquet installé sont exactes.
+
+**N11 — minor.** Le test de non-régression de N7 épingle « rend un chemin absolu », pas « termine » : ses assertions partent de la racine du dépôt, où le marqueur est toujours trouvé. M6b le démontre — correctif partiel, boucle infinie conservée, suite 36/36 verte. Le code est correct, le filet est plus étroit que sa description.
+
+**N12 — minor.** La réécriture de N2 corrige la fausse certitude puis en introduit une plus petite : la propriété « trouve la même racine depuis n'importe quel répertoire » n'est **pas** perdue par l'alternative statique — `import.meta.url` est par construction indépendant du répertoire courant, mesuré depuis deux emplacements. L'alternative perd la propriété « rien de figé à la compilation », pas les trois.
+
+**N13 — minor.** La garde de surface client ne reconnaît que `/from\s+'([^']+)'/` et les spécificateurs préfixés `node:`. Le dépôt n'a ni Prettier ni ESLint (c'est s02) : M7 réintroduit `node:fs` en guillemets doubles, suite verte. Manque aussi les imports d'effet de bord, les spécificateurs nus, `require`, l'import dynamique. Le nom du test promet plus large que ce qu'il vérifie.
+
+**N14 — minor.** Le JSDoc de `getEnv` est devenu orphelin : le bloc portant la règle « aucun autre module ne lit `process.env` directement » est désormais suivi d'un bloc de constante, si bien que la règle d'architecture se lit comme la doc d'une chaîne.
+
+**N15 — minor.** La garde ne couvre que le démarrage auto-hébergé. `next.config.ts` n'est jamais exécuté à la requête en serverless, ni par un `output: 'standalone'`. Sur Vercel, une `DATABASE_URL` malformée se déploie sans bruit et dégrade en 503. La frontière n'est écrite nulle part.
+
+**N16 — minor.** `next info` charge la configuration avec `PHASE_INFO`, non exemptée : la commande de diagnostic s'interrompt précisément quand l'environnement est cassé.
+
+**N17 — minor.** Les nouveaux tests élargissent F8 : `tests/env-wiring.test.ts` lit `packages/config/src/index.ts` **sur le disque** et parcourt ses imports à la main, contournant le graphe de modules pour l'inspecter en tant que texte. L'arbitrage dû en s02 a un cas de plus, et le plus structurel.
+
+**N18 — minor (report re-mesuré).** N5 toujours vivant : chaque `pnpm build` réécrit `apps/web/next-env.d.ts` et salit l'arbre. Confirmé reproductible trois fois.
+
+**Hors diff — le dépôt a bougé pendant la revue.** Huit commits (`9b5211b`..`761073f`) ont atterri sur `dev` pendant que le reviewer tenait le répertoire, alors qu'`AGENTS.md` pose « un agent, un répertoire ». Aucun fichier du diff relu n'a été touché, donc les mesures tiennent — mais un correctif concurrent sur un fichier de code aurait invalidé cette revue en silence.
+
+Note favorable : `docs/security.md` §5, accepté pendant ce passage, exige « validation de l'environnement au démarrage : une variable manquante ou malformée arrête le processus en nommant la variable ». Le commit `6bb1c10` satisfait ce socle avant même qu'il n'existe.
+
+## Ce que je n'ai PAS pu vérifier
+
+Déploiement réel (ni Vercel, ni Coolify, ni conteneur) — la conclusion de N15 est déduite du code de Next, jamais exécutée sur une plateforme. Build `standalone`. Chemin Neon. Clone neuf (critère 1 toujours recette manuelle). Rendu navigateur. Phases `export`, `analyze`, `test`, `info` — lues dans les constantes, jamais lancées. Rechargement de configuration par les workers statiques du build — déduit du succès du build sans `.env`. La fenêtre de quelques millisecondes entre la bannière `✓ Ready` et la sortie du processus. Windows (une assertion fige des séparateurs POSIX). N3, N4, N10 non retouchés par ce commit.
+
+**Gestes qu'un humain doit faire :** voir mourir le processus sur une variable malformée ; constater `next-env.d.ts` modifié après un build avant d'écrire la CI de s02 ; déployer une fois avec une `DATABASE_URL` malformée et décider si le 503 silencieux est acceptable (N15) ; arbitrer N16 ; faire enfin un clone vierge pour le critère 1.
+
+## Verdict
+
+Le commit fait exactement ce qu'il annonce, et les deux affirmations les plus risquées — celles qu'on ne peut pas vérifier dans la documentation — sont vraies. `next@16.3.3` appelle bien la configuration exportée en fonction avec `(phase, { defaultConfig })`, abandonne bien le démarrage quand ce chargement lève, et pose bien `NEXT_PHASE` sept cents lignes après avoir lu la configuration : la garde par variable seule aurait cassé `pnpm build` sans `.env`, confirmé en retirant la garde par phase. Le chemin le plus dangereux de la story a été pris pour la bonne raison, avec le bon signal.
+
+Les quatre états du critère 2 sont mesurés, pas déduits. La suite est à 36 verts sans un seul skip. Sept mutations sur huit virent au rouge.
+
+Les deux qui ne virent pas sont les vraies leçons de ce passage, et elles se ressemblent : un test dont le **commentaire promet plus que l'assertion**, et une garde dont le **nom promet plus que la regex**. Le code est correct dans les deux cas ; ce sont les filets qui sont plus étroits que leur étiquette. S'y ajoute, pour la deuxième fois sur ce même fichier, une justification écrite qui déborde le fait — plus petite, mais du même genre, et c'est le genre qui se transmet.
+
+Rien ne ships de bug, n'invente d'API ni ne casse l'existant. Le critère 2 est tenu.
+
+Max severity: minor
+Ship allowed: yes
