@@ -13,6 +13,17 @@ Chaque module possède ses migrations ; un projet sans le module n'a aucune trac
 
 Sections des socles couvertes : **`docs/reliability.md` §4 (migrations et compatibilité)** en totalité — rétrocompatibilité, aucune migration destructive, fichiers SQL versionnés, échec de migration interrompant le déploiement.
 
+## État réel à l'entrée de la story (actualisé après s03)
+
+Ce que s01 et s03 ont réellement livré, et sur quoi cette story s'appuie :
+
+- **`composeSchema`** existe dans `packages/db/src/schema.ts:72`, générique et préservant le type. C'est elle que `drizzle-kit` ne voit pas — le finding N3, ouvert depuis s01, documenté sur place.
+- **`runMigrations({ migrationsFolder, migrationsTable, migrationsSchema })`** existe depuis s01 et a été validée en revue comme prévue pour un journal par module.
+- **Le contrat déclare `migrations: string | null`** et les deux modules de démonstration déclarent `null`, avec un commentaire renvoyant ici. **Cette story doit donner de vraies migrations à au moins l'un d'eux**, sinon rien n'est prouvé.
+- **Le registre fournit déjà l'ordre du graphe** : `moduleIds` est ordonné par `requires`, pas par ordre de déclaration. La tâche 5 consomme cet ordre, elle ne le recalcule pas.
+- **`turbo.json` déclare déjà `globalDependencies: ['.env', 'config/**']`** depuis le correctif F1 de s03 : la garde de cache existe, mais elle porte sur la configuration, pas sur le baril généré. La tâche 2 doit vérifier que le baril lui-même est couvert.
+- **Les modules déclarent des tables Drizzle réelles** dans leur couche `infrastructure`, mais leurs repositories sont en mémoire : aucune table n'existe dans aucune base aujourd'hui.
+
 ## Tasks (ordered)
 
 1. [ ] **Générateur de baril** — produit, depuis `config/features.ts`, un fichier réexportant **à plat** les tables des modules activés. C'est le chaînon manquant : `drizzle-kit` n'inspecte que les exports de premier niveau (`prepareFromExports`, vérifié dans le binaire), donc un agrégat construit à l'exécution lui est invisible.
