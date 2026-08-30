@@ -36,10 +36,15 @@ packages/
   db/                      Client Drizzle, composition des schémas, exécution des migrations
   api/                     Serveur Hono racine, contrats oRPC, middlewares partagés
   ui/                      Design system : composants shadcn, tokens, primitives
-  ports/                   Interfaces des dépendances externes (mail, storage, paiement,
-                           jobs, analytics, monitoring, limitation de débit)
-  adapters/                Une implémentation par port : resend, s3, stripe, inngest,
-                           sentry, posthog, ratelimit-postgres
+  ports/                   Interfaces des dépendances externes, un fichier par capacité
+                           (mail, storage, paiement, jobs, analytics, monitoring,
+                           limitation de débit). Aucune dépendance d'exécution.
+  adapters/                Une implémentation par port, **un package par adapter** :
+                           resend, s3, stripe, inngest, sentry, posthog,
+                           ratelimit-postgres. C'est le SDK qu'il faut isoler.
+  emails/                  Rendu React Email des templates déclarés par les modules
+  mailer-testing/          Doublure d'enregistrement et capture locale — **outils de
+                           test, pas des fournisseurs** (ADR 008)
   modules/                 Un package par module applicatif
     auth/ organizations/ billing/ storage/ i18n/ marketing/ blog/ docs/ changelog/
     notifications/ jobs/ gdpr/ admin/ onboarding/ waitlist/ feedback/ roadmap/ …
@@ -126,6 +131,8 @@ Deux règles structurantes :
 | Besoin | Port | Implémentation livrée | Story |
 |---|---|---|---|
 | Email transactionnel | `Mailer` | Resend | s06 |
+
+**Forme du port, posée en s06 et valable pour les cinq suivants** : un port ne lève jamais, il rend un résultat discriminé (`{ok:true,…} | {ok:false,error}`). Une exception remonte aussi à l'appelant, mais *par défaut* — celui qui l'oublie rend un 500 et rien dans le type ne le lui rappelle. Le résultat discriminé impose la gestion au compilateur. Les doublures de test remplacent le **réseau**, jamais le SDK : la sérialisation, les en-têtes et le traitement de la réponse du fournisseur restent exercés.
 | Authentification | — (bibliothèque) | Better Auth | s07 |
 | Fichiers | `Storage` | S3 / Cloudflare R2 (API compatible S3) | s18 |
 | Paiement | `Payments` | Stripe (checkout, portail, webhooks) | s19 |

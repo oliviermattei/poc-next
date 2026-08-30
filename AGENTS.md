@@ -152,6 +152,8 @@ Full detail in `docs/architecture.md`; each structural decision has an ADR in `d
 
 **A disabled module leaves no trace**: no route (404), no navigation entry, no migration applied on a fresh database. A module enabled then disabled keeps its tables and data — deleting them would be `eject`, which is in the PRD graveyard. No cleanup command exists; never introduce one.
 
+**A port never throws** — it returns a discriminated result (`{ok:true,…} | {ok:false,error}`), so the compiler forces the caller to handle failure instead of defaulting to a 500. Shape set in s06, binding for storage, payments, jobs, analytics and monitoring. Test doubles replace the **network**, never the SDK.
+
 **One implementation per port.** Mail Resend, storage S3/R2, payments Stripe, jobs Inngest, errors Sentry, analytics PostHog, rate limiting PostgreSQL. Test doubles are tools, not providers: they never justify a second adapter. Every port must work locally with no API key.
 
 **Naming** — files `kebab-case`, types and components `PascalCase`, functions and variables `camelCase`, tables and columns `snake_case`.
