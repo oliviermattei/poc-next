@@ -15,14 +15,14 @@ Sections des socles couvertes : **`docs/security.md` §3 (autorisation)** — le
 
 ## Tasks (ordered)
 
-1. [ ] **`packages/core` et son `AGENTS.md`** — package, configuration TypeScript, préfixe d'imports autorisés. Sans `AGENTS.md`, le test de s02 échoue.
-2. [ ] **Le type `ModuleDefinition`** — `id`, `requires`, `schema`, `migrations`, `routes` (chacune avec son **niveau de protection** : publique, authentifiée, rôle requis), `navigation`, `messages`, `emails` (avec leurs locales), `webhooks`, `purge`, `export`, `retention` par catégorie de données. Toutes les clés obligatoires, vides autorisées.
-3. [ ] **`config/features.ts` typée** — liste des modules activés. Un identifiant inconnu doit provoquer une **erreur de compilation**, pas une erreur d'exécution : c'est une exigence distincte de la validation des `requires`, ne pas dégrader l'une en l'autre.
-4. [ ] **Validation du graphe `requires`** — module manquant nommé, cycle détecté, auto-référence refusée. Erreurs explicites citant les modules en cause.
-5. [ ] **Construction du registre** — agrégation des routes, de la navigation, des traductions, des emails et des webhooks des seuls modules activés, dans un ordre dérivé du graphe et non de l'ordre de déclaration.
-6. [ ] **Deux modules de démonstration** sous `packages/modules/`, respectant les quatre couches et portant chacun son `AGENTS.md`. L'un activé, l'autre non.
-7. [ ] **Consommation dans `apps/web`** — la navigation se construit depuis le registre, les routes des modules activés sont montées, celles des modules absents ne sont **pas exposées** (pas simplement 404 par `notFound()`).
-8. [ ] **Preuves** — 404 sur une URL de module non activé, absence d'entrée de navigation, `purge`/`export` non appelés, suite verte module activé puis non activé.
+1. [x] **`packages/core` et son `AGENTS.md`** — package, configuration TypeScript, préfixe d'imports autorisés. Sans `AGENTS.md`, le test de s02 échoue.
+2. [x] **Le type `ModuleDefinition`** — `id`, `requires`, `schema`, `migrations`, `routes` (chacune avec son **niveau de protection** : publique, authentifiée, rôle requis), `navigation`, `messages`, `emails` (avec leurs locales), `webhooks`, `purge`, `export`, `retention` par catégorie de données. Toutes les clés obligatoires, vides autorisées.
+3. [x] **`config/features.ts` typée** — liste des modules activés. Un identifiant inconnu doit provoquer une **erreur de compilation**, pas une erreur d'exécution : c'est une exigence distincte de la validation des `requires`, ne pas dégrader l'une en l'autre.
+4. [x] **Validation du graphe `requires`** — module manquant nommé, cycle détecté, auto-référence refusée. Erreurs explicites citant les modules en cause.
+5. [x] **Construction du registre** — agrégation des routes, de la navigation, des traductions, des emails et des webhooks des seuls modules activés, dans un ordre dérivé du graphe et non de l'ordre de déclaration.
+6. [x] **Deux modules de démonstration** sous `packages/modules/`, respectant les quatre couches et portant chacun son `AGENTS.md`. L'un activé, l'autre non.
+7. [x] **Consommation dans `apps/web`** — la navigation se construit depuis le registre, les routes des modules activés sont montées, celles des modules absents ne sont **pas exposées** (pas simplement 404 par `notFound()`).
+8. [x] **Preuves** — 404 sur une URL de module non activé, absence d'entrée de navigation, `purge`/`export` non appelés, suite verte module activé puis non activé.
 
 ## Décision reportée de s02 : la pureté du `domain`
 
@@ -39,7 +39,7 @@ s02 a livré la règle de dépendance entre couches mais pas la pureté du `doma
 
 **Explicitement autorisé : `zod`.** L'ADR 006 interdit au `domain` « framework, ORM ou SDK » — zod n'est aucun des trois. C'est une bibliothèque pure, sans entrée-sortie, et un type de valeur validé appartient au domaine. Le socle de sécurité impose Zod *aux frontières* ; il ne l'interdit pas au centre.
 
-12. [ ] **Implémenter cette liste** dans `tooling/eslint/boundaries.ts`, et la prouver sur l'arborescence de fixtures de s02 : un `domain` important `drizzle-orm` échoue, un `domain` important `zod` passe. Sans preuve par violation réelle, la règle est inerte — c'est la leçon mesurée de s02.
+12. [x] **Implémenter cette liste** dans `tooling/eslint/boundaries.ts`, et la prouver sur l'arborescence de fixtures de s02 : un `domain` important `drizzle-orm` échoue, un `domain` important `zod` passe. Sans preuve par violation réelle, la règle est inerte — c'est la leçon mesurée de s02.
 
 **Conséquence héritée de s02, à connaître** : l'exception de lint pour les tests reste **étroite** (`packages/*/src/`). Les tests d'un module sont donc soumis à ses règles de couches : un test de `domain` ne peut pas importer `infrastructure`, même pour se fabriquer une doublure. Si le premier module réel rend cette contrainte intenable, elle se lève par ADR — pas en élargissant discrètement un glob.
 

@@ -66,10 +66,63 @@ export const layerPolicies = [
 ]
 
 /**
+ * Ce que le `domain` n'a pas le droit d'importer (ADR 006, tranché en s03).
+ *
+ * L'ADR interdit au `domain` « framework, ORM ou SDK » ; voici la liste, et
+ * elle est une **liste de refus**, pas une liste blanche. Interdire tout ce qui
+ * n'est pas nommé serait plus strict que l'ADR : une bibliothèque pure de plus
+ * (dates, décimales) n'a aucune raison d'être refusée, et une règle plus
+ * sévère que sa décision finit désactivée plutôt que discutée.
+ *
+ * Les motifs portent sur la **base** du spécificateur : `drizzle-orm` couvre
+ * `drizzle-orm/pg-core`, `next` couvre `next/navigation`.
+ *
+ * `zod` n'y est délibérément pas : ce n'est ni un framework, ni un ORM, ni un
+ * SDK — c'est une bibliothèque pure, sans entrée-sortie, et un type de valeur
+ * validé appartient au domaine. Le socle de sécurité impose Zod aux frontières ;
+ * il ne l'interdit pas au centre.
+ */
+export const domainForbiddenSources = [
+  // frameworks
+  'next',
+  'react',
+  'react-dom',
+  // ORM et pilotes
+  'drizzle-orm',
+  'drizzle-kit',
+  'pg',
+  // couche API
+  'hono',
+  '@orpc/*',
+  // authentification
+  'better-auth',
+  '@better-auth/*',
+  // SDK de services tiers
+  'stripe',
+  'resend',
+  'inngest',
+  '@aws-sdk/*',
+  'posthog-*',
+  '@sentry/*',
+  // packages d'infrastructure du dépôt
+  '@repo/db',
+  '@repo/ui',
+  '@repo/api',
+  '@repo/config',
+]
+
+/**
  * Bloc de configuration ESLint portant la règle. Partagé, littéralement, entre
  * `eslint.config.ts` (le dépôt réel) et le test qui l'éprouve sur les
  * fixtures : une règle prouvée ailleurs que là où elle s'applique ne prouve
  * rien.
+ *
+ * `checkAllOrigins: true` est ce qui donne son existence à la pureté du
+ * `domain`. Par défaut, la règle n'examine **que** les dépendances locales :
+ * `node_modules` et les modules natifs de Node ne sont jamais regardés — c'est
+ * précisément pourquoi, après s02, un `domain` important `drizzle-orm` passait
+ * sans une erreur. L'activer oblige à dire ce que les autres couches ont le
+ * droit d'importer, d'où la politique qui suit immédiatement les couches.
  */
 export const boundariesConfig: Linter.Config = {
   plugins: { boundaries },
@@ -87,9 +140,40 @@ export const boundariesConfig: Linter.Config = {
       'error',
       {
         default: 'disallow',
+        checkAllOrigins: true,
         message:
           'Frontière de couches (ADR 006) : {{from.type}} ne peut pas importer {{to.type}}.',
-        policies: layerPolicies,
+        policies: [
+          ...layerPolicies,
+          // Hors du `domain`, un paquet tiers ou un module de Node ne regarde
+          // pas cette règle : c'est le rôle du manifeste du package.
+          {
+            from: { element: { type: '!domain' } },
+            allow: { to: { module: { origin: ['external', 'core'] } } },
+          },
+          // Dans le `domain`, la liste de refus ci-dessous décide — donc tout
+          // le reste passe. L'ordre compte : au sein d'une même règle, le
+          // dernier sélecteur qui correspond l'emporte, et le refus vient après.
+          {
+            from: { element: { type: 'domain' } },
+            allow: { to: { module: { origin: 'external' } } },
+          },
+          {
+            from: { element: { type: 'domain' } },
+            disallow: {
+              to: {
+                module: [
+                  // Tous les modules natifs de Node, sous leurs deux écritures :
+                  // l'origine « core » les couvre sans liste à maintenir.
+                  { origin: 'core' },
+                  { origin: 'external', source: domainForbiddenSources },
+                ],
+              },
+            },
+            message:
+              'Pureté du domain (ADR 006) : « {{dependency.source}} » n’a pas sa place dans domain/. Les règles métier ne connaissent ni framework, ni ORM, ni SDK, ni système de fichiers — l’adaptateur va dans infrastructure/, le port dans application/.',
+          },
+        ],
       },
     ],
   },

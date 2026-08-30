@@ -1,8 +1,21 @@
 {
   "extends": "./tooling/typescript/base.json",
   "compilerOptions": {
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["tests", "scripts", "e2e", "vitest.config.ts", "eslint.config.ts", "playwright.config.ts"],
-  "exclude": ["node_modules"]
+  "include": [
+    "config",
+    "tests",
+    "scripts",
+    "e2e",
+    "vitest.config.ts",
+    "eslint.config.ts",
+    "playwright.config.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "tests/fixtures/typing"
+  ]
 }

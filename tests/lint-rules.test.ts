@@ -50,11 +50,38 @@ const FORBIDDEN_EDGES = [
   },
 ]
 
+/**
+ * Pureté du `domain` (ADR 006), tranchée en s03.
+ *
+ * s02 avait livré la règle de dépendance **entre couches** et laissé la pureté
+ * du `domain` de côté, faute d'une liste de refus. La voici : ni framework, ni
+ * ORM, ni pilote, ni couche API, ni authentification, ni SDK tiers, ni package
+ * d'infrastructure du dépôt, ni module natif de Node.
+ *
+ * Le mécanisme n'était pas gratuit à trouver : `boundaries/dependencies` ignore
+ * par défaut tout ce qui ne vient pas du dépôt (`checkAllOrigins` vaut `false`),
+ * ce qui est exactement pourquoi un `domain` important `zod` — ou `drizzle-orm`
+ * — passait sans erreur après s02.
+ */
+const FORBIDDEN_EXTERNALS = [
+  // Le motif porte sur la base du spécificateur : `drizzle-orm` attrape
+  // `drizzle-orm/pg-core`, seule écriture qu'on rencontre en vrai.
+  { what: 'un ORM', file: `${FIXTURES}/domain/reaches-orm.ts`, source: 'drizzle-orm/pg-core' },
+  { what: 'un module natif de Node', file: `${FIXTURES}/domain/reaches-node.ts`, source: 'node:fs' },
+]
+
 /** Fichiers qui n'enfreignent rien : la règle doit les laisser passer. */
 const ALLOWED_FILES = [
   `${FIXTURES}/domain/order.ts`,
+  // zod est explicitement autorisé dans le `domain` : ni framework, ni ORM, ni
+  // SDK. Une règle de pureté qui interdirait tout serait contournée au premier
+  // type de valeur validé.
+  `${FIXTURES}/domain/uses-zod.ts`,
   `${FIXTURES}/application/place-order.ts`,
   `${FIXTURES}/infrastructure/order-repository.ts`,
+  // La pureté ne vaut que pour le `domain` : refuser l'ORM ici prouverait que
+  // la règle est trop large, pas qu'elle marche.
+  `${FIXTURES}/infrastructure/uses-orm.ts`,
   `${FIXTURES}/presentation/order-route.ts`,
 ]
 
@@ -97,12 +124,23 @@ describe('règle de dépendance des couches (ADR 006)', () => {
     expect(report.get(file)?.messages ?? []).toEqual([])
   })
 
+  it.each(FORBIDDEN_EXTERNALS)('refuse $what dans le domain', ({ file, source }) => {
+    const messages = report.get(file)?.messages ?? []
+
+    expect(messages.map((message) => message.ruleId)).toContain('boundaries/dependencies')
+    expect(messages.map((message) => message.message).join('\n')).toContain(
+      `Pureté du domain (ADR 006) : « ${source} »`,
+    )
+  })
+
   it('classe réellement les quatre couches — sinon la règle serait muette', () => {
     // Garde contre l'inertie : si les motifs de chemin ne matchaient plus la
     // structure de `docs/architecture.md`, les assertions ci-dessus resteraient
     // vertes pour les fichiers autorisés et rouges pour les autres. Celle-ci
     // constate que les onze fixtures ont bien été analysées.
-    expect(report.size).toBe(FORBIDDEN_EDGES.length + ALLOWED_FILES.length)
+    expect(report.size).toBe(
+      FORBIDDEN_EDGES.length + FORBIDDEN_EXTERNALS.length + ALLOWED_FILES.length,
+    )
   })
 })
 

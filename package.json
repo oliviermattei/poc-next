@@ -23,8 +23,11 @@
   "devDependencies": {
     "@playwright/test": "^1.62.1",
     "@repo/config": "workspace:*",
+    "@repo/core": "workspace:*",
     "@repo/db": "workspace:*",
     "@repo/eslint-config": "workspace:*",
+    "@repo/module-demo-disabled": "workspace:*",
+    "@repo/module-demo-enabled": "workspace:*",
     "@repo/typescript-config": "workspace:*",
     "@types/node": "^22",
     "drizzle-kit": "^0.31.10",
@@ -34,6 +37,7 @@
     "tsx": "^4.23.13",
     "turbo": "^2",
     "typescript": "^7.0.2",
-    "vitest": "^4"
+    "vitest": "^4",
+    "zod": "^4.5.0"
   }
 }

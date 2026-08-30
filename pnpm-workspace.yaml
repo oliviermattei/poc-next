@@ -1,6 +1,7 @@
 packages:
   - "apps/*"
   - "packages/*"
+  - "packages/modules/*"
   - "tooling/*"
 
 # Scripts de post-installation : refusés par défaut (`docs/security.md` §6),

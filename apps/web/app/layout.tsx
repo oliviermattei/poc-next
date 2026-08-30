@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next'
 import type { ReactNode } from 'react'
 
+import { ModuleNavigation } from './navigation'
+
 export const metadata: Metadata = {
   title: 'Application',
   description: 'Application',
@@ -14,7 +16,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="fr">
-      <body>{children}</body>
+      <body>
+        <ModuleNavigation />
+        {children}
+      </body>
     </html>
   )
 }

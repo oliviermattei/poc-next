@@ -9,6 +9,10 @@ module (`packages/modules/<module>/src/domain`).
 - `@repo/config` pour l'environnement, `@repo/config/server` pour ce qui lit un
   fichier ;
 - `@repo/db` pour la base ;
+- `@repo/core` pour le registre de modules ;
+- les modules du projet, **uniquement** parce que `config/features.ts` les
+  référence : `@repo/module-demo-enabled` et `@repo/module-demo-disabled`
+  aujourd'hui. Aucun fichier de `apps/web` n'importe un module directement ;
 - `next`, `react`, `react-dom` ;
 - `@repo/typescript-config` pour la configuration du compilateur.
 
@@ -22,7 +26,26 @@ point d'accès unique est `@repo/config`.
 - de secret, ni dans le code, ni dans une réponse HTTP : `/api/health` renvoie
   `unreachable` et journalise la cause, jamais la chaîne de connexion ;
 - de composant copié depuis un design externe : le design system vit dans
-  `packages/ui`.
+  `packages/ui` ;
+- de connaissance d'un module en particulier : aucun `if (module activé)`, aucun
+  fichier de route par module, aucune entrée de navigation écrite à la main. Tout
+  cela vient du registre, et c'est ce qui fait qu'un module non activé n'expose
+  rien du tout.
+
+## Le montage des modules
+
+Deux fichiers, et deux seulement :
+
+- `lib/module-registry.ts` construit le registre depuis `config/features.ts`. La
+  validation a lieu à l'import : une configuration incohérente empêche le
+  démarrage en nommant les modules en cause.
+- `app/api/modules/[...path]/route.ts` est **le** point de montage des routes de
+  modules. Un fichier de route par module qui répondrait `notFound()` laisserait
+  une route exposée ; ici la route d'un module non activé n'est dans aucune
+  table.
+
+`app/navigation.tsx` affiche `moduleRegistry.navigation` sans condition. Ajouter
+un `if` ici reviendrait à masquer une entrée au lieu de ne pas l'avoir.
 
 ## Tests
 

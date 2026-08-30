@@ -10,7 +10,13 @@ loadRootEnv()
 
 const nextConfig: NextConfig = {
   // Les packages du monorepo sont livrés en TypeScript source, sans étape de build.
-  transpilePackages: ['@repo/config', '@repo/db'],
+  transpilePackages: [
+    '@repo/config',
+    '@repo/core',
+    '@repo/db',
+    '@repo/module-demo-disabled',
+    '@repo/module-demo-enabled',
+  ],
   // Le pilote PostgreSQL reste externe au bundle serveur.
   serverExternalPackages: ['pg'],
 }
