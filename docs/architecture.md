@@ -119,7 +119,7 @@ Entités principales, par module propriétaire. Aucune table n'est partagée ent
 
 Deux règles structurantes :
 - **Le propriétaire d'une donnée est résolu par une fonction unique.** Selon que le module `organizations` est activé ou non, une donnée appartient à une organisation ou directement à un utilisateur. Le code appelant est identique dans les deux cas.
-- **Aucune clé étrangère vers un module optionnel.** Elle rendrait ce module silencieusement non désactivable ; s04 la refuse à la génération.
+- **Une clé étrangère vers un autre module n'est permise que si ce module est un `requires` déclaré** (ADR 018). Toute autre référence inter-modules est refusée à la génération, les deux modules nommés. Le couplage cesse ainsi d'être silencieux : désactiver la cible sous sa source est déjà refusé par la validation de configuration. Contrepartie à traiter en s34/s35 : une telle clé impose un **ordre de purge**, inverse de l'ordre du graphe.
 
 ## Integration points
 
