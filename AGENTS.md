@@ -1,5 +1,20 @@
 # killer-saas — Repo rules
 
+## Start here (agents)
+
+You are in a **SaaS boilerplate** built by the killer-saas pipeline. Before touching anything, know these five things:
+
+1. **Nothing is coded outside the pipeline.** A feature needs a validated plan in `docs/plans/<story-id>.md` before a line is written, and a passed review before it ships. The only exception is an explicitly announced Quick Fix.
+2. **Read in this order**: `docs/prd.md` (what and why, plus the graveyard of what we deliberately do NOT build) → `docs/stories.md` (the 45 stories and their acceptance criteria) → `docs/architecture.md` (stack, layout, module contract) → `docs/decisions/` (14 ADRs, each with the options rejected and why).
+3. **The three baselines below are not optional** and are checked in review: security (`docs/security.md`), reliability (`docs/reliability.md`), agent-oriented repo. A breach ranks with a functional regression.
+4. **A module is the unit of composition.** It declares one typed contract and lives in `packages/modules/<name>` with four layers. Never scaffold one by hand — generate it (`npx ks`, or the MCP server). Never add a feature outside a module.
+5. **The graveyard is binding.** `eject`, an in-app AI module, non-Stripe payment providers, usage-based billing, realtime notifications, an audit-log table, customer API keys, multi-ORM — all deliberately excluded in `docs/prd.md`. Re-introducing one is a scope breach, not an improvement.
+
+Where things are: `apps/web` (Next, mounts the API) · `config/` (what the project owner edits) · `packages/core` (module contract and registry) · `packages/db` · `packages/api` · `packages/ui` · `packages/ports` + `packages/adapters` (one implementation each) · `packages/modules/*` · `tooling/` · `docs/`.
+
+When a rule and this file disagree with the code, the code is the bug — unless an ADR says otherwise. When you need a rule that does not exist, ask: *which command fails if someone breaks it?* If there is no answer, it is documentation, not a rule.
+
+
 ## Absolute rule
 No direct coding. Every feature goes through the killer-saas pipeline, in order:
 
