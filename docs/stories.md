@@ -20,8 +20,11 @@ Tout n'est pas un module optionnel. Le socle suivant est **toujours actif** et n
 | App shell | s08 | Porte la navigation construite depuis les modules actifs |
 | Rate limiting | s28 | Protège des points d'entrée du socle (connexion, inscription, réinitialisation). Optionnel, il laisserait toute installation par défaut exposée |
 | Suppression de compte et export de données | s34, s35 | Droits RGPD : un droit à l'effacement optionnel n'est pas un droit |
+| Consentement aux cookies | s36 | Couper le consentement en gardant l'analytique serait une non-conformité, pas une option. Le module est inerte par construction quand aucun script non essentiel n'est déclaré |
 
-Tout le reste est un module optionnel et **porte son critère « module non activé »** : ce que deviennent ses routes, sa navigation, ses tables sur base vierge, et le comportement de repli des fonctionnalités qui l'interrogeaient.
+Tout le reste est un **module applicatif optionnel** et **porte son critère « module non activé »** : ce que deviennent ses routes, sa navigation, ses tables sur base vierge, et le comportement de repli des fonctionnalités qui l'interrogeaient.
+
+La règle vise les modules applicatifs, c'est-à-dire ceux qui exposent des routes ou des tables au SaaS généré. **L'outillage du template n'est pas un module** et n'a donc pas d'état off : harnais de qualité (s02), harnais de parcours (s25), recette de modularité (s26) et chaîne de déploiement (s27) font partie du dépôt, pas de l'application livrée.
 
 **Modules requis.** Un module peut déclarer dépendre d'un autre (par exemple la roadmap publique requiert le back-office). La configuration est validée : activer un module sans ses requis échoue. C'est ce qui rend la question « et si tel module est coupé ? » vérifiable mécaniquement plutôt que répétée dans chaque story.
 
@@ -307,8 +310,6 @@ Piège : les pages marketing doivent rester statiques et rapides.
 - [ ] Le formulaire de contact envoie un email à l'adresse configurée et affiche une confirmation ; un champ invalide affiche une erreur sans envoyer
 - [ ] L'inscription à la newsletter enregistre l'email dans une table d'inscriptions publiques portant une colonne de source, et refuse les doublons sans erreur visible
 - [ ] Un email de confirmation d'inscription est envoyé
-- [ ] Les inscriptions sont consultables et exportables en CSV lorsque le back-office est activé
-- [ ] Les deux formulaires sont soumis aux limites de débit du socle
 - [ ] **Module non activé** : aucune route de formulaire public, les liens correspondants disparaissent du site, et la table d'inscriptions est absente d'une base vierge
 
 ### Dependencies
@@ -316,6 +317,7 @@ s10-marketing-site, s06-transactional-emails
 
 ### Agentic notes
 La table d'inscriptions publiques livrée ici est **réutilisée par s42-waitlist**, distinguée par sa colonne de source. Ne pas créer un second modèle d'inscription concurrent.
+Deux tranches voisines n'appartiennent volontairement pas à cette story : la limitation de débit de ces formulaires est livrée et testée en s28 (qui énumère ses points d'entrée), et la consultation ou l'export CSV des inscrits en s37 avec le back-office. Les revendiquer ici produirait des critères invérifiables au ship de s11.
 Piège : l'adresse de destination du contact est de la configuration, jamais une constante.
 
 ---
@@ -356,7 +358,6 @@ Piège : ne jamais laisser un compte sans moyen de connexion après un déliemen
 - [ ] Dix codes de secours à usage unique sont générés à l'activation, affichés une seule fois, et chacun n'est utilisable qu'une fois
 - [ ] Un code TOTP erroné ou rejoué est refusé
 - [ ] La désactivation exige un code valide ou le mot de passe courant
-- [ ] Les tentatives de vérification échouées sont limitées par le mécanisme de limitation de débit du socle, appliqué par compte
 - [ ] **Module non activé** : aucune option de double authentification dans les paramètres, la connexion se termine après le mot de passe, et les tables correspondantes sont absentes d'une base vierge
 
 ### Dependencies
@@ -365,7 +366,7 @@ s08-app-shell
 ### Agentic notes
 Better Auth fournit le plugin `two-factor`. Le coût est dans l'interface : activation, QR code, codes de secours, écran de vérification.
 Parité Supastarter et MakerKit.
-**Articulation avec s28-rate-limiting** : aucun compteur local n'est écrit ici. La limitation passe par le mécanisme du socle, qui énumère l'endpoint de vérification 2FA parmi ses points d'entrée. Une seule logique de limitation dans le code.
+**Articulation avec s28-rate-limiting** : aucun compteur local n'est écrit ici, et aucun critère de limitation non plus — il serait invérifiable au ship de cette story. La limitation de l'endpoint de vérification 2FA est livrée et testée en s28, qui l'énumère parmi ses points d'entrée. Une seule logique de limitation dans le code, un seul endroit où elle est prouvée.
 Piège : les codes de secours doivent être stockés hachés, jamais en clair.
 
 ---
@@ -564,7 +565,6 @@ Piège : un droit permanent stocké comme « abonnement toujours actif » casse 
 - [ ] Le droit est accordé aussi bien par un abonnement actif que par un achat unique (s20)
 - [ ] Une période d'essai configurée sur une offre donne accès aux fonctionnalités payantes jusqu'à son terme, puis les retire
 - [ ] Un essai expiré, un abonnement en retard de paiement et un abonnement annulé après période payée retirent tous l'accès
-- [ ] Une limite quantitative configurée (nombre d'objets, de membres, de fichiers) est vérifiée côté serveur et refuse le dépassement avec un message nommant la limite atteinte
 - [ ] **Module de facturation non activé** : la fonction de vérification accorde l'accès à toutes les fonctionnalités et aucune invitation à souscrire n'apparaît
 - [ ] Chaque combinaison état de facturation × fonctionnalité réservée est couverte par un test
 
@@ -573,8 +573,7 @@ s20-one-time-purchase
 
 ### Agentic notes
 Le gating interroge un **droit d'accès** consolidé (abonnement OU achat unique OU essai), jamais directement l'état d'un abonnement — sinon s20 est inutilisable.
-**Propriétaire du compteur de quota** : la limite quantitative définie ici est le mécanisme unique. La limite de sièges de s23 en est la **spécialisation pour les membres** — une seule configuration, un seul message, aucune logique concurrente.
-**Frontière avec le cimetière** : le compteur sert exclusivement à refuser une action au-delà d'un quota de plan. Il ne doit jamais alimenter une assiette de facturation ni un relevé de consommation : la facturation à l'usage est au cimetière du PRD.
+**Hors périmètre : les quotas quantitatifs génériques** (nombre d'objets, de fichiers). Ils ne sont nommés nulle part dans le périmètre du PRD, et un compteur de consommation est précisément la brique dont la facturation à l'usage — au cimetière — a besoin. Le gating porte sur l'appartenance à une offre, jamais sur un volume consommé. Seule exception, assumée et bornée : la limite de sièges de s23, qui appartient à la facturation au siège du périmètre.
 Piège : une vérification côté client seule est une faille. Le critère porte sur l'API.
 
 ---
@@ -614,7 +613,7 @@ Le parcours sans compte préalable est traité en s24-guest-checkout.
 - [ ] L'ajout d'un membre incrémente la quantité de l'abonnement Stripe ; son retrait la décrémente
 - [ ] La quantité facturée est toujours égale au nombre de membres actifs après toute opération d'ajout ou de retrait
 - [ ] Une invitation en attente n'est pas facturée ; elle le devient à son acceptation
-- [ ] La limite de sièges réutilise le compteur de quota de s21, spécialisé pour les membres : un seul message de refus, une seule configuration
+- [ ] Une limite de sièges peut être configurée sur une offre ; l'ajout d'un membre au-delà est refusé côté serveur avec un message nommant la limite atteinte
 - [ ] Un échec de synchronisation Stripe n'ajoute pas le membre : l'opération est atomique et rejouable
 - [ ] Une commande de réconciliation compare la quantité Stripe au nombre réel de membres et corrige l'écart
 - [ ] **Module non activé** : la facturation reste au forfait, aucune synchronisation de quantité n'a lieu, et aucune limite de sièges n'est appliquée
@@ -895,7 +894,8 @@ Contrainte PRD : adapter avec **Inngest comme seule implémentation**. trigger.d
 ### Acceptance criteria
 - [ ] La suppression exige une confirmation explicite (saisie de l'email ou du nom de l'organisation)
 - [ ] La suppression appelle la fonction de purge de **chaque module activé** ; un module dont la purge échoue interrompt l'opération et la laisse rejouable
-- [ ] La suppression d'un compte efface ou anonymise ses données dans tous les modules activés, fichiers stockés et notifications compris
+- [ ] La suppression d'un compte efface ses données personnelles dans tous les modules activés, fichiers stockés et notifications compris
+- [ ] Les enregistrements dont la conservation est légalement requise (factures, journaux de paiement) sont anonymisés plutôt qu'effacés : le lien vers l'utilisateur est rompu et aucune donnée identifiante ne subsiste ; chaque module déclare, par catégorie de données, laquelle des deux opérations s'applique
 - [ ] La suppression d'une organisation efface ses données, retire ses membres et annule son abonnement chez le provider de paiement
 - [ ] Un utilisateur dernier propriétaire d'une organisation doit d'abord la transférer ou la supprimer ; le message le précise
 - [ ] Après suppression, les sessions sont révoquées et une reconnexion est impossible
@@ -929,7 +929,7 @@ Le contrat de module de s03 porte déjà `purge` : cette story l'orchestre, elle
 - [ ] Une demande d'export déjà en cours n'en déclenche pas une seconde
 
 ### Dependencies
-s33-background-jobs, s18-file-storage-avatar
+s33-background-jobs, s18-file-storage-avatar, s06-transactional-emails
 
 ### Agentic notes
 **Socle non désactivable** : droit à la portabilité, pendant obligatoire de s34.
@@ -977,14 +977,17 @@ Piège : le consentement conditionne le **chargement** du script, pas seulement 
 - [ ] L'impersonation ouvre une session au nom de l'utilisateur, affiche un bandeau permanent et permet d'y mettre fin pour revenir au compte superadmin
 - [ ] Un superadmin ne peut pas impersonner un autre superadmin
 - [ ] Le début et la fin d'une impersonation émettent une entrée dans les logs applicatifs, avec l'identifiant du superadmin et celui de la cible
+- [ ] Une liste des organisations, avec recherche et pagination, est accessible aux superadmins lorsque le module organisations est activé ; module coupé, l'entrée disparaît du back-office
+- [ ] Le détail d'une organisation affiche ses membres et leurs rôles, son offre et l'état de son abonnement
+- [ ] Les inscriptions publiques (newsletter, liste d'attente) sont consultables, filtrables par source et exportables en CSV lorsque le module de formulaires publics est activé
 - [ ] **Module non activé** : aucune route de back-office, aucun rôle de superadmin, et les modules qui le requièrent ne peuvent pas être activés (validation de configuration de s03)
 
 ### Dependencies
-s17-roles-permissions, s21-trials-and-gating
+s17-roles-permissions, s21-trials-and-gating, s11-public-forms
 
 ### Agentic notes
-Le plugin `admin` de Better Auth fournit liste, recherche, pagination, bannissement, réinitialisation, sessions et impersonation avec garde-fou. Le travail réel est l'interface et la vue organisations.
-Module requis par s41-waitlist, s43-feedback-widget et s44-public-roadmap : la validation de configuration refuse une combinaison incohérente au lieu de la laisser échouer à l'exécution.
+Le plugin `admin` de Better Auth fournit liste, recherche, pagination, bannissement, réinitialisation, sessions et impersonation avec garde-fou. Le travail réel est l'interface, la vue organisations et la consultation des inscriptions publiques — trois tranches qui ont chacune leur critère ici, faute de quoi elles ne seraient ni construites ni testées.
+Module requis par s42-waitlist, s43-feedback-widget et s44-public-roadmap : la validation de configuration refuse une combinaison incohérente au lieu de la laisser échouer à l'exécution.
 **Précision par rapport au cimetière** : la traçabilité de l'impersonation est une écriture dans les **logs applicatifs**, pas une table d'audit alimentée par chaque module. Le « journal d'audit » reste au cimetière du PRD.
 
 ---
