@@ -10,12 +10,21 @@ Ce qu'il démontre, et qu'un module réel doit reproduire :
 - les **quatre couches** et leur sens de dépendance (ADR 006), câblées dans
   `src/module.ts` qui est le seul fichier à les connaître toutes ;
 - le **contrat complet** (ADR 007) : aucune clé omise, `emails`, `webhooks`,
-  `purge`, `export` et `retention` compris ;
+  `jobs`, `purge`, `export` et `retention` compris ;
 - le **niveau de protection déclaré** sur chaque route et chaque entrée de
   navigation (`docs/security.md` §3) — publique, authentifiée, réservée à un
-  rôle ;
+  rôle — et **lu** : l'entrée `admin-report` n'apparaît que pour une session
+  qui porte le rôle ;
+- un `href` de navigation qui **mène quelque part** : tant qu'aucune page de
+  module n'existe, il désigne la route montée du module, jamais un chemin
+  d'écran qui répondrait 404 ;
 - **Zod à la frontière** (corps de requête, charge utile de webhook) et un
   webhook **idempotent par identifiant d'événement**.
+
+Les catalogues de traduction s'importent avec `with { type: 'json' }`. Ce n'est
+pas décoratif : les parcours Playwright importent le registre de l'application,
+donc ce module, et le chargeur ESM de Node refuse un import JSON sans attribut.
+Un module qui l'omet fait échouer `pnpm test:e2e`, pas `pnpm test`.
 
 ## Imports autorisés
 

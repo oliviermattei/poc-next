@@ -1,5 +1,6 @@
 {
   "navigation.items": "Éléments de démonstration",
+  "navigation.adminReport": "Rapport d’administration",
   "items.empty": "Aucun élément pour l’instant.",
   "email.welcome.subject": "Bienvenue"
 }

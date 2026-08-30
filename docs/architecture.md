@@ -72,7 +72,7 @@ Règle de dépendance : `presentation → application → domain` et `infrastruc
 ```ts
 interface ModuleDefinition {
   id: string
-  requires: ModuleId[]
+  requires: readonly string[]         // et non ModuleId[] : voir ci-dessous
   schema: DrizzleSchema
   migrations: MigrationsDir
   routes: readonly ModuleRoute[]      // ADR 017 — forme transitoire jusqu'à Hono
@@ -80,13 +80,14 @@ interface ModuleDefinition {
   messages: Record<Locale, Messages>
   emails: readonly EmailTemplate[]    // chacun avec ses locales
   webhooks: readonly WebhookHandler[]
+  jobs: readonly ModuleJob[]          // tâches planifiées : identifiant + expression cron
   dataCategories: readonly DataCategory[]
   purge: (scope: UserScope | OrgScope) => Promise<void>
   export: (scope: UserScope | OrgScope) => Promise<ExportPayload>
   retention: Record<DataCategory, 'erase' | 'anonymize'>
 }
 ```
-Toutes les clés sont obligatoires dès le premier module, quitte à être vides (ADR 007). `retention` est indexée par `dataCategories` : une catégorie déclarée sans politique ne compile pas. `routes` porte une forme transitoire (ADR 017), et l'annuaire statique de `config/features.ts` a sa propre conséquence documentée (ADR 016). Les ajouter plus tard obligerait à rouvrir chaque module déjà écrit.
+Toutes les clés sont obligatoires dès le premier module, quitte à être vides (ADR 007). `jobs` est déclarative comme `routes` et `webhooks` : l'ordonnanceur de s33 se branche sur le registre, jamais sur un enregistrement à l'import — sinon la tâche planifiée d'un module non activé s'exécuterait. `requires` est typée `string[]` et non `ModuleId[]` : l'union des identifiants vient de l'annuaire, qui importe les modules ; la typer fermerait le cycle, et un requis mal orthographié est donc refusé à la construction du registre. `retention` est indexée par `dataCategories` : une catégorie déclarée sans politique ne compile pas. `routes` porte une forme transitoire (ADR 017), et l'annuaire statique de `config/features.ts` a sa propre conséquence documentée (ADR 016). Les ajouter plus tard obligerait à rouvrir chaque module déjà écrit.
 
 ### Règles transverses
 - **Nommage** : fichiers en `kebab-case`, types et composants en `PascalCase`, fonctions et variables en `camelCase`, tables et colonnes en `snake_case`.

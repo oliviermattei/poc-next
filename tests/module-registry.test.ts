@@ -92,6 +92,7 @@ const moduleFixture = (
   messages: { fr: {}, en: {} },
   emails: [],
   webhooks: [],
+  jobs: [],
   dataCategories: [],
   retention: {},
   purge: () => Promise.resolve(),
@@ -249,6 +250,22 @@ describe('construction du registre', () => {
     expect(Object.keys(registry.messages.fr ?? {}).join('\n')).not.toContain('demo-disabled')
   })
 
+  it('n’agrège que les tâches planifiées des modules activés', () => {
+    // Même problème d'agrégation que les webhooks, et même raison de le régler
+    // maintenant : s33 arrive après une trentaine de modules, et son critère
+    // « module non activé : les tâches planifiées ne s'exécutent pas » se
+    // tiendra ici, sans rouvrir un seul module.
+    const job = { id: 'rappel', schedule: '0 3 * * *', run: () => Promise.resolve() }
+
+    const registry = buildRegistry({
+      available: [moduleFixture('a', { jobs: [job] }), moduleFixture('b', { jobs: [job] })],
+      enabled: ['a'],
+    })
+
+    expect(registry.jobs.map((entry) => entry.moduleId)).toEqual(['a'])
+    expect(registry.jobs.map((entry) => entry.job.id)).toEqual(['rappel'])
+  })
+
   it('préfixe les clés de traduction par leur module', () => {
     const registry = buildRegistry({
       available: [...availableModules],
@@ -325,6 +342,20 @@ describe('acheminement des requêtes vers les modules activés', () => {
     expect(response.status).toBe(404)
   })
 
+  it('répond 404, et non 405, sur une méthode qu’aucune route ne déclare', async () => {
+    // Choix assumé (ADR 017) : répondre 405 dirait quelles méthodes sont
+    // acceptées sur ce chemin, ce que le §7 du socle de sécurité refuse. Le
+    // comportement est épinglé ici pour que chaque module en hérite sciemment,
+    // et non par accident de mise en œuvre.
+    const response = await dispatchModuleRequest(
+      demoRegistry,
+      requestTo('/demo-enabled/admin/report', { method: 'DELETE' }),
+      asAdmin,
+    )
+
+    expect(response.status).toBe(404)
+  })
+
   it('refuse une route authentifiée sans session, et n’écrit rien', async () => {
     const before = await countItemsOf('u-member')
 
@@ -379,6 +410,32 @@ describe('acheminement des requêtes vers les modules activés', () => {
   })
 })
 
+/**
+ * Un lien de navigation mène quelque part, ou il ment.
+ *
+ * Le module de démonstration sert de gabarit au générateur de s41 et à tout
+ * agent qui écrit son premier module : un `href` qui ne correspond à rien y
+ * enseignerait qu'un lien n'a besoin de correspondre à rien (revue de s03, F8).
+ * Tant qu'aucun mécanisme de **page** de module n'existe, la seule URL qu'un
+ * module sert réellement est sa route montée : c'est là que pointent ses
+ * entrées. Le jour où une page existe, cette assertion se déplace vers elle,
+ * elle ne disparaît pas.
+ */
+describe('les entrées de navigation du module de démonstration', () => {
+  it.each(demoRegistry.navigation.map((entry) => [entry.id, entry.href] as const))(
+    'l’entrée « %s » pointe sur une URL réellement servie',
+    async (_id, href) => {
+      const response = await dispatchModuleRequest(
+        demoRegistry,
+        new Request(`http://localhost${href}`),
+        asAdmin,
+      )
+
+      expect(response.status).toBe(200)
+    },
+  )
+})
+
 describe('règle métier du module de démonstration', () => {
   it('refuse un titre vide', () => {
     // La règle est prouvée là où elle vit : une assertion prise au bord ne dirait
@@ -415,5 +472,40 @@ describe('webhook déclaré par un module', () => {
     await handler?.handle(event)
 
     expect(await countItemsOf('u-webhook')).toBe(1)
+  })
+})
+
+/**
+ * La configuration des modules doit compter dans la **clé de cache** du build.
+ *
+ * `config/features.ts` vit à la racine du dépôt, hors du package `apps/web` :
+ * les entrées par défaut d'une tâche Turborepo sont les fichiers du package, ce
+ * fichier n'en fait donc pas partie. Sans déclaration explicite, éditer la
+ * configuration puis relancer `pnpm build` rend `FULL TURBO` et sert le bundle
+ * de l'état **précédent** — le geste central du produit expédie alors le mauvais
+ * jeu de modules, en silence (revue de s03, F1).
+ *
+ * L'assertion ne relit pas `turbo.json` : elle interroge le calcul de hachage de
+ * Turborepo lui-même. Une déclaration présente mais qui ne couvrirait pas le
+ * fichier — `config/*.md`, un chemin mal orthographié — laisserait passer une
+ * lecture du fichier de configuration, pas celle-ci.
+ */
+describe('la configuration des modules entre dans la clé de cache du build', () => {
+  const globalCacheInputs = (): Record<string, string> => {
+    const output = execFileSync(
+      'node_modules/.bin/turbo',
+      ['run', 'build', '--dry=json', '--filter=@repo/web'],
+      { cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+    )
+
+    const plan = JSON.parse(output) as {
+      globalCacheInputs?: { files?: Record<string, string> }
+    }
+
+    return plan.globalCacheInputs?.files ?? {}
+  }
+
+  it('hache `config/features.ts` avant de décider qu’un build est réutilisable', () => {
+    expect(Object.keys(globalCacheInputs())).toContain('config/features.ts')
   })
 })

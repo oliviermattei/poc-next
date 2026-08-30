@@ -3,12 +3,14 @@ import type {
   EmailTemplate,
   ModuleExportPayload,
   ModuleMessages,
+  ModuleJob,
   ModuleRoute,
   ModuleScope,
   ModuleSession,
   NavigationEntry,
   WebhookHandler,
 } from './module'
+import { satisfiesProtection } from './protection'
 import { assertDeclarationsAreComplete, resolveEnabledModules } from './validate'
 
 /**
@@ -40,6 +42,11 @@ export interface RegistryWebhookHandler {
   readonly handler: WebhookHandler
 }
 
+export interface RegistryJob {
+  readonly moduleId: string
+  readonly job: ModuleJob
+}
+
 export interface ModuleRegistry {
   /** Les modules activés, dans l'ordre du graphe : un requis avant son requérant. */
   readonly modules: readonly AnyModuleDefinition[]
@@ -50,6 +57,8 @@ export interface ModuleRegistry {
   readonly messages: Readonly<Record<string, ModuleMessages>>
   readonly emails: readonly RegistryEmailTemplate[]
   readonly webhooks: readonly RegistryWebhookHandler[]
+  /** Tâches planifiées à ordonnancer. Vide tant qu'aucun module activé n'en déclare. */
+  readonly jobs: readonly RegistryJob[]
 }
 
 /** Clé de traduction qualifiée : deux modules peuvent nommer leur clé pareil. */
@@ -118,6 +127,7 @@ export function buildRegistry(configuration: {
     webhooks: modules.flatMap((module) =>
       module.webhooks.map((handler) => ({ moduleId: module.id, handler })),
     ),
+    jobs: modules.flatMap((module) => module.jobs.map((job) => ({ moduleId: module.id, job }))),
   }
 }
 
@@ -155,6 +165,12 @@ const refuse = (error: string, status: number): Response =>
  * - **401 / 403** — la route existe, la protection déclarée n'est pas
  *   satisfaite. Le gestionnaire n'est **pas** appelé : le refus n'atteint ni la
  *   règle métier, ni la persistance.
+ *
+ * L'appariement porte sur le couple (chemin, méthode) : une méthode qu'aucune
+ * route ne déclare sur un chemin connu répond **404, et non 405** (ADR 017).
+ * Un 405 énumère implicitement les méthodes acceptées, ce que le §7 du socle de
+ * sécurité refuse. Chaque module hérite de ce choix : c'est écrit ici pour qu'il
+ * en hérite sciemment, et `tests/module-registry.test.ts` l'épingle.
  */
 export async function dispatchModuleRequest(
   registry: ModuleRegistry,
@@ -179,14 +195,11 @@ export async function dispatchModuleRequest(
 
   const session = (await options.resolveSession?.(request)) ?? null
 
-  if (route.protection.level !== 'public') {
-    if (session === null) {
-      return refuse('unauthorized', 401)
-    }
-
-    if (route.protection.level === 'role' && !session.roles.includes(route.protection.role)) {
-      return refuse('forbidden', 403)
-    }
+  if (!satisfiesProtection(route.protection, session)) {
+    // La même règle décide de la visibilité d'une entrée de navigation ; seule
+    // la traduction du refus est propre au transport : 401 quand on ne sait pas
+    // qui appelle, 403 quand on le sait et que ça ne suffit pas.
+    return session === null ? refuse('unauthorized', 401) : refuse('forbidden', 403)
   }
 
   return await route.handler(request, { session })

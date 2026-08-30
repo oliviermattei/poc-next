@@ -30,6 +30,7 @@ export const completeModule = defineModule({
     },
   ],
   webhooks: [],
+  jobs: [],
   dataCategories: ['content', 'identity'],
   retention: { content: 'erase', identity: 'anonymize' },
   purge: () => Promise.resolve(),

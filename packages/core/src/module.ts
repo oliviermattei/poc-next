@@ -95,6 +95,15 @@ export interface ModuleRoute {
  * navigation d'un module traduit doit l'être aussi. `protection` sert la même
  * raison que sur une route — afficher l'entrée d'un écran auquel on n'a pas
  * accès divulgue son existence et promet ce qu'on refusera ensuite.
+ *
+ * Ce champ est **lu**, pas seulement déclaré : `visibleNavigation` retire les
+ * entrées qu'une session ne satisfait pas, avec le prédicat qui décide aussi du
+ * sort des routes. Une déclaration que personne ne lit est une règle qu'aucune
+ * commande ne fait échouer (ADR 013).
+ *
+ * `href` doit mener à quelque chose que l'application sert réellement. Tant
+ * qu'aucun mécanisme de page de module n'existe, c'est la route montée du
+ * module ; un chemin d'écran qui répondrait 404 ferait de l'entrée un mensonge.
  */
 export interface NavigationEntry {
   readonly id: string
@@ -144,6 +153,24 @@ export interface WebhookHandler {
 }
 
 /**
+ * Une tâche planifiée déclarée par un module.
+ *
+ * Elle est **déclarée**, pas enregistrée à l'import : c'est exactement ce que le
+ * registre fait pour les routes et les webhooks, et pour la même raison — une
+ * tâche qui s'enregistre en se chargeant s'exécuterait pour un module que la
+ * configuration n'active pas. s33 branchera l'ordonnanceur (Inngest) sur cette
+ * liste ; il n'aura pas à rouvrir les modules écrits d'ici là.
+ *
+ * `schedule` est une expression cron. Le contrat ne la valide pas : c'est
+ * l'ordonnanceur qui la refusera, en nommant la tâche.
+ */
+export interface ModuleJob {
+  readonly id: string
+  readonly schedule: string
+  readonly run: () => Promise<void>
+}
+
+/**
  * Périmètre d'une purge ou d'un export.
  *
  * Les deux formes existent dès maintenant parce que le propriétaire d'une
@@ -189,6 +216,14 @@ export interface ModuleDefinition<
    * Modules dont celui-ci a besoin. Activer un module sans ses requis échoue à
    * la validation, en nommant le manquant : c'est ce qui remplace la reprise
    * d'un « et si tel module est coupé ? » dans chaque story.
+   *
+   * `readonly string[]` et non `readonly ModuleId[]`, et l'asymétrie avec
+   * `enabledModules` est assumée : l'union des identifiants est dérivée de
+   * l'annuaire de `config/features.ts`, qui **importe** les modules. Typer
+   * `requires` depuis cette union fermerait le cycle module → configuration →
+   * module. Conséquence à connaître : une faute de frappe dans un requis n'est
+   * pas attrapée par le compilateur mais à la construction du registre, qui
+   * nomme le module introuvable et empêche le démarrage.
    */
   readonly requires: readonly string[]
   /**
@@ -210,6 +245,8 @@ export interface ModuleDefinition<
   readonly messages: Readonly<Record<TLocale, ModuleMessages>>
   readonly emails: readonly EmailTemplate<TLocale>[]
   readonly webhooks: readonly WebhookHandler[]
+  /** Tâches planifiées du module. Celles d'un module non activé ne sont pas dans le registre. */
+  readonly jobs: readonly ModuleJob[]
   /**
    * Catégories de données personnelles détenues par le module.
    *
@@ -270,6 +307,7 @@ export function defineModule<
   readonly messages: Readonly<Record<TLocale, ModuleMessages>>
   readonly emails: readonly EmailTemplate<NoInfer<TLocale>>[]
   readonly webhooks: readonly WebhookHandler[]
+  readonly jobs: readonly ModuleJob[]
   readonly dataCategories: readonly TCategory[]
   readonly retention: Readonly<Record<NoInfer<TCategory>, RetentionAction>>
   readonly purge: (scope: ModuleScope) => Promise<void>

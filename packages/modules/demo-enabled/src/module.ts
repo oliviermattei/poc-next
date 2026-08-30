@@ -6,8 +6,8 @@ import {
   createInMemoryDemoItemRepository,
   createSequentialIdGenerator,
 } from './infrastructure/in-memory-demo-item-repository'
-import enMessages from './messages/en.json'
-import frMessages from './messages/fr.json'
+import enMessages from './messages/en.json' with { type: 'json' }
+import frMessages from './messages/fr.json' with { type: 'json' }
 import { createDemoItemRoutes, demoItemNavigation } from './presentation/demo-item-routes'
 import { createDemoWebhookHandlers } from './presentation/demo-webhooks'
 import { demoItems } from './schema'
@@ -26,10 +26,10 @@ export const demoItemUseCases = createDemoItemUseCases({
 /**
  * Le contrat, rempli.
  *
- * Toutes les clés sont là — y compris `webhooks`, `emails`, `purge`, `export` et
- * `retention`, que rien n'oblige à remplir aujourd'hui. C'est le prix à payer
- * une fois pour ne pas rouvrir vingt modules le jour où s34 et s35 en auront
- * besoin.
+ * Toutes les clés sont là — y compris `webhooks`, `emails`, `jobs`, `purge`,
+ * `export` et `retention`, que rien n'oblige à remplir aujourd'hui. C'est le
+ * prix à payer une fois pour ne pas rouvrir vingt modules le jour où s33, s34
+ * et s35 en auront besoin.
  */
 export const demoEnabledModule = defineModule({
   id: 'demo-enabled',
@@ -43,6 +43,7 @@ export const demoEnabledModule = defineModule({
   messages: { fr: frMessages, en: enMessages },
   emails: [welcomeEmail],
   webhooks: createDemoWebhookHandlers(demoItemUseCases),
+  jobs: [],
   dataCategories: ['demo-items'],
   retention: { 'demo-items': 'erase' },
   purge: demoItemUseCases.purgeDemoItems,

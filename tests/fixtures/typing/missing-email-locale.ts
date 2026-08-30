@@ -28,6 +28,7 @@ export const moduleWithIncompleteEmail = defineModule({
     },
   ],
   webhooks: [],
+  jobs: [],
   dataCategories: [],
   retention: {},
   purge: () => Promise.resolve(),

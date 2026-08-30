@@ -7,6 +7,7 @@ export {
   type ModuleDefinition,
   type ModuleExportPayload,
   type ModuleIdOf,
+  type ModuleJob,
   type ModuleMessages,
   type ModuleRoute,
   type ModuleRouteContext,
@@ -28,10 +29,12 @@ export {
   type DispatchOptions,
   type ModuleRegistry,
   type RegistryEmailTemplate,
+  type RegistryJob,
   type RegistryNavigationEntry,
   type RegistryRoute,
   type RegistryWebhookHandler,
 } from './registry'
+export { satisfiesProtection, visibleNavigation } from './protection'
 export {
   assertDeclarationsAreComplete,
   resolveEnabledModules,

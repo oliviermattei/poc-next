@@ -90,7 +90,14 @@ describe('le registre monté par l’application', () => {
   it('ne contient que les modules nommés par config/features.ts', () => {
     // Vrai dans les deux états, et c'est ce qui rend le basculement observable :
     // la liste vient de la configuration, jamais de l'annuaire.
-    expect(moduleRegistry.moduleIds).toEqual([...enabledModules])
+    //
+    // Comparaison d'**ensembles**, pas de suites : `moduleIds` vient du graphe
+    // des requis, pas de l'ordre de déclaration. Le jour où la configuration
+    // listera légitimement un module avant son requis, une égalité de tableaux
+    // rougirait sans qu'aucune régression n'ait eu lieu (revue de s03, F7).
+    // L'ordre dérivé du graphe est vérifié pour lui-même dans
+    // `tests/module-registry.test.ts`.
+    expect(new Set(moduleRegistry.moduleIds)).toEqual(new Set(enabledModules))
   })
 
   it('ne monte aucune route hors des modules activés', () => {

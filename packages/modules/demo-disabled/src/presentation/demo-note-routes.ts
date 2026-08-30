@@ -1,4 +1,4 @@
-import type { ModuleRoute, NavigationEntry } from '@repo/core'
+import { MODULE_ROUTE_PREFIX, type ModuleRoute, type NavigationEntry } from '@repo/core'
 
 import type { DemoNoteUseCases } from '../application/demo-notes'
 
@@ -25,7 +25,7 @@ export function createDemoNoteRoutes(useCases: DemoNoteUseCases): readonly Modul
 export const demoNoteNavigation: readonly NavigationEntry[] = [
   {
     id: 'notes',
-    href: '/demo-disabled/notes',
+    href: `${MODULE_ROUTE_PREFIX}/demo-disabled/notes`,
     labelKey: 'navigation.notes',
     order: 20,
     protection: { level: 'public' },

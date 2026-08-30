@@ -19,6 +19,7 @@ export const moduleWithUndeclaredCategory = defineModule({
   messages: { fr: {}, en: {} },
   emails: [],
   webhooks: [],
+  jobs: [],
   dataCategories: ['content'],
   retention: { content: 'erase', identity: 'anonymize' },
   purge: () => Promise.resolve(),

@@ -1,5 +1,6 @@
 {
   "navigation.items": "Demo items",
+  "navigation.adminReport": "Admin report",
   "items.empty": "No item yet.",
   "email.welcome.subject": "Welcome"
 }

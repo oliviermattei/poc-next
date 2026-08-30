@@ -1,4 +1,4 @@
-import type { ModuleRoute, NavigationEntry } from '@repo/core'
+import { MODULE_ROUTE_PREFIX, type ModuleRoute, type NavigationEntry } from '@repo/core'
 import { z } from 'zod'
 
 import { InvalidDemoItemError } from '../domain/demo-item'
@@ -71,12 +71,33 @@ export function createDemoItemRoutes(useCases: DemoItemUseCases): readonly Modul
   ]
 }
 
+/**
+ * La navigation du module.
+ *
+ * Deux choses s'y jouent, et elles sont vérifiées :
+ *
+ * 1. **Le `href` mène quelque part.** Aucun mécanisme de page de module
+ *    n'existe encore ; la seule URL que ce module sert est sa route montée, et
+ *    c'est donc celle-là que l'entrée désigne — pas un chemin d'écran qui
+ *    répondrait 404. Le préfixe est celui du registre, jamais recopié.
+ * 2. **La protection déclarée est lue.** L'entrée `admin` vise la route
+ *    réservée au rôle `admin` : elle n'apparaît que pour une session qui le
+ *    porte (`visibleNavigation`). Sans elle, `protection` serait un champ que
+ *    le contrat déclare et que personne n'exerce.
+ */
 export const demoItemNavigation: readonly NavigationEntry[] = [
   {
     id: 'items',
-    href: '/demo-enabled/items',
+    href: `${MODULE_ROUTE_PREFIX}/demo-enabled/items`,
     labelKey: 'navigation.items',
     order: 10,
     protection: { level: 'public' },
+  },
+  {
+    id: 'admin-report',
+    href: `${MODULE_ROUTE_PREFIX}/demo-enabled/admin/report`,
+    labelKey: 'navigation.adminReport',
+    order: 20,
+    protection: { level: 'role', role: 'admin' },
   },
 ]

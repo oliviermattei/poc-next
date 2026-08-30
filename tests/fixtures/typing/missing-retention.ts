@@ -18,6 +18,7 @@ export const moduleWithoutRetentionPolicy = defineModule({
   messages: { fr: {}, en: {} },
   emails: [],
   webhooks: [],
+  jobs: [],
   dataCategories: ['content', 'identity'],
   retention: { content: 'erase' },
   purge: () => Promise.resolve(),
