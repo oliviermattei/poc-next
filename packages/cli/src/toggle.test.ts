@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path'
 import { defineModule } from '@repo/core'
 import { afterAll, describe, expect, it } from 'vitest'
 
-import { RegenerationFailedError } from './apply'
+import { ArtifactSnapshotError, RegenerationFailedError } from './apply'
 import { parseArguments } from './arguments'
 import { runToggle } from './commands'
 import { readEnabledModules } from './features-file'
@@ -139,6 +139,18 @@ describe('ks toggle — activation', () => {
     ])
   })
 
+  it('remet un module réactivé à la place que l’annuaire lui donne, pas en fin de liste', () => {
+    // C'est la moitié « décision » du critère 8 : `writeEnabledModules` sait
+    // insérer à une position, encore faut-il lui donner la bonne. Ajouter en fin
+    // de liste rendrait un fichier réordonné après un toggle et son inverse.
+    const independent = [moduleFor('alpha'), moduleFor('beta'), moduleFor('gamma')]
+
+    expect(
+      planToggle({ available: independent, enabled: ['alpha', 'gamma'], moduleId: 'beta' })
+        .nextEnabled,
+    ).toEqual(['alpha', 'beta', 'gamma'])
+  })
+
   it('refuse un cycle, que le CLI ne sait pas détecter lui-même', () => {
     // Preuve de la délégation : aucune ligne du CLI ne cherche de cycle. Si
     // cette assertion tombe, c'est que la validation a été réécrite ici.
@@ -180,6 +192,29 @@ describe('ks toggle — désactivation', () => {
 
     expect(message).toContain('facturation')
     expect(message).toContain('socle')
+    // La phrase déléguée dit « n'est pas activé dans config/features.ts » d'un
+    // module qui l'est encore : elle décrit la configuration **candidate**. Le
+    // refus doit le dire, sinon il est contre-factuel à la lettre.
+    expect(message).toContain('configuration candidate')
+  })
+
+  it('n’affirme pas une cause qu’il n’a pas vérifiée', () => {
+    // Ici, aucun module activé ne dépend de « alpha » : la configuration
+    // candidate est refusée pour une tout autre raison. Un refus qui annonce
+    // systématiquement « un module activé en dépend » envoie chercher au mauvais
+    // endroit, et c'est la seule information que l'utilisateur a.
+    const bancal = [moduleFor('alpha'), moduleFor('beta', ['fantome'])]
+    let message = ''
+
+    try {
+      planToggle({ available: bancal, enabled: ['alpha', 'beta'], moduleId: 'alpha' })
+    } catch (error) {
+      expect(error).toBeInstanceOf(ToggleRefusedError)
+      message = (error as Error).message
+    }
+
+    expect(message).toContain('fantome')
+    expect(message).not.toMatch(/dépend/)
   })
 })
 
@@ -211,14 +246,14 @@ describe('ks toggle — écriture sur un dépôt temporaire', () => {
     readonly barrels: () => Promise<readonly string[]>
   }
 
-  const temporaryRepo = async (): Promise<TemporaryRepo> => {
+  const temporaryRepo = async (features: string = FEATURES): Promise<TemporaryRepo> => {
     const root = await mkdtemp(join(tmpdir(), 'ks-cli-'))
     const featuresPath = join(root, 'config', 'features.ts')
     const generatedPath = join(root, 'generated', 'schema')
 
     await mkdir(dirname(featuresPath), { recursive: true })
     await mkdir(generatedPath, { recursive: true })
-    await writeFile(featuresPath, FEATURES, 'utf8')
+    await writeFile(featuresPath, features, 'utf8')
     await writeFile(join(generatedPath, 'socle.ts'), BARREL, 'utf8')
 
     temporaries.push(root)
@@ -336,6 +371,34 @@ describe('ks toggle — écriture sur un dépôt temporaire', () => {
     expect(await repo.barrels()).toEqual(['socle.ts'])
   })
 
+  it('refuse sans rien écrire quand un dossier d’artefacts existe mais ne peut pas être lu', async () => {
+    // Un dossier absent et un dossier illisible ne sont pas le même fait : le
+    // premier se restaure en le supprimant, le second **contient peut-être le SQL
+    // versionné d'un module**. Les confondre transformerait la restauration en
+    // suppression de migrations, ce qu'ADR 016 interdit. Le toggle refuse donc
+    // avant d'écrire, plutôt que de photographier un dossier qu'il n'a pas lu.
+    const repo = await temporaryRepo()
+    const before = await repo.features()
+    const unreadable = join(repo.root, 'packages', 'modules', 'socle', 'migrations')
+
+    await mkdir(dirname(unreadable), { recursive: true })
+    await writeFile(unreadable, 'ce chemin existe, mais ce n’est pas un dossier\n', 'utf8')
+
+    const harness = environmentFor(repo)
+
+    await expect(
+      runToggle({
+        available,
+        request: { moduleId: 'facturation', interactive: false },
+        environment: { ...harness.environment, generatedPaths: [repo.generatedPath, unreadable] },
+      }),
+    ).rejects.toThrowError(ArtifactSnapshotError)
+
+    expect(await repo.features()).toBe(before)
+    // Rien n'a été touché : ni la configuration, ni le chemin illisible.
+    expect(await readFile(unreadable, 'utf8')).toContain('ce chemin existe')
+  })
+
   it('refuse sans rien écrire quand un requis manque et qu’on n’est pas interactif', async () => {
     const repo = await temporaryRepo()
     const before = await repo.features()
@@ -420,6 +483,45 @@ describe('ks toggle — écriture sur un dépôt temporaire', () => {
     expect(harness.migrated).toEqual([])
   })
 
+  it('deux toggles inverses laissent le fichier commenté identique, sur une entrée **non finale**', async () => {
+    // Le critère 8 de bout en bout, sur le seul cas qui le distingue d'une
+    // coïncidence : l'entrée basculée n'est ni la dernière ni la seule, et le
+    // fichier porte les commentaires du propriétaire.
+    const commented = [
+      '/** Les modules activés. */',
+      'export const enabledModules = [',
+      '  // le socle, jamais coupé',
+      "  'alpha',",
+      "  'beta',",
+      '  // la vitrine publique du produit',
+      "  'gamma',",
+      '] as const satisfies readonly AvailableModuleId[]',
+      '',
+    ].join('\n')
+
+    const independent = [moduleFor('alpha'), moduleFor('beta'), moduleFor('gamma')]
+    const repo = await temporaryRepo(commented)
+    const harness = environmentFor(repo)
+
+    await runToggle({
+      available: independent,
+      request: { moduleId: 'beta', interactive: false },
+      environment: harness.environment,
+    })
+
+    // L'état intermédiaire est vérifié : sans lui, deux écritures inertes se
+    // compenseraient et le test serait vert sans rien prouver.
+    expect(readEnabledModules(await repo.features())).toEqual(['alpha', 'gamma'])
+
+    await runToggle({
+      available: independent,
+      request: { moduleId: 'beta', interactive: false },
+      environment: harness.environment,
+    })
+
+    expect(await repo.features()).toBe(commented)
+  })
+
   it('deux toggles inverses laissent le dépôt exactement dans son état d’origine', async () => {
     const repo = await temporaryRepo()
     const before = await repo.features()
@@ -455,6 +557,14 @@ describe('analyse des arguments', () => {
     expect(() => parseArguments(['toggle', 'facturation', '--with-requiers'])).toThrowError(
       /--with-requiers/,
     )
+  })
+
+  it('rend l’aide plutôt que de la refuser comme une option inconnue', () => {
+    // « --help » est le premier geste de quiconque découvre une commande. Le
+    // refuser en code 1 apprend que l'outil est cassé, pas comment s'en servir.
+    expect(parseArguments(['--help']).command).toBe('help')
+    expect(parseArguments(['-h']).command).toBe('help')
+    expect(parseArguments(['toggle', 'facturation', '--help']).command).toBe('help')
   })
 
   it('refuse `toggle` sans module', () => {

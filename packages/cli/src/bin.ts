@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url'
 
 import type { AnyModuleDefinition } from '@repo/core'
 
-import { RegenerationFailedError } from './apply'
+import { ArtifactSnapshotError, RegenerationFailedError } from './apply'
 import { ArgumentError, parseArguments, USAGE } from './arguments'
 import { renderModuleList, runList, runToggle, type ToggleEnvironment } from './commands'
 import { FeaturesFileError } from './features-file'
@@ -44,10 +44,26 @@ const findRepositoryRoot = (from: string): string => {
   }
 }
 
-/** Lance une commande du dépôt, et échoue bruyamment si elle échoue. */
-const run = (command: string, args: readonly string[], cwd: string): Promise<void> =>
+/**
+ * Lance une commande du dépôt, et échoue bruyamment si elle échoue.
+ *
+ * En mode machine, la sortie du sous-processus part sur **stderr** (le
+ * descripteur `2` du parent) : `pnpm db:generate` écrit sa bannière et celle de
+ * `drizzle-kit` sur stdout, et stdout est réservé au JSON. Elle n'est pas
+ * supprimée pour autant — un échec de régénération sans son message serait
+ * indiagnosticable.
+ */
+const run = (
+  command: string,
+  args: readonly string[],
+  cwd: string,
+  machineReadable: boolean,
+): Promise<void> =>
   new Promise((accept, reject) => {
-    const child = spawn(command, [...args], { cwd, stdio: 'inherit' })
+    const child = spawn(command, [...args], {
+      cwd,
+      stdio: ['inherit', machineReadable ? 2 : 'inherit', 'inherit'],
+    })
 
     child.on('error', reject)
     child.on('close', (code) => {
@@ -84,6 +100,13 @@ const loadAvailableModules = async (root: string): Promise<readonly AnyModuleDef
 export async function runCli(argv: readonly string[]): Promise<number> {
   try {
     const options = parseArguments(argv)
+
+    if (options.command === 'help') {
+      console.log(USAGE)
+
+      return 0
+    }
+
     const root = findRepositoryRoot(process.cwd())
     const featuresPath = join(root, FEATURES)
     const available = await loadAvailableModules(root)
@@ -113,10 +136,18 @@ export async function runCli(argv: readonly string[]): Promise<number> {
           .filter((path): path is string => path !== null)
           .map((path) => join(root, path)),
       ],
-      regenerate: () => run('pnpm', ['db:generate'], root),
-      applyMigrations: () => run('pnpm', ['db:migrate'], root),
+      regenerate: () => run('pnpm', ['db:generate'], root, options.json),
+      applyMigrations: () => run('pnpm', ['db:migrate'], root, options.json),
       confirm: ask,
-      print: (line) => console.log(line),
+      // La prose destinée à l'œil ne partage pas le canal du JSON : en mode
+      // machine, stdout ne porte que l'objet, et tout le reste passe par stderr.
+      print: (line) => {
+        if (options.json) {
+          console.error(line)
+        } else {
+          console.log(line)
+        }
+      },
     }
 
     const outcome = await runToggle({
@@ -140,6 +171,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       error instanceof ArgumentError ||
       error instanceof ToggleRefusedError ||
       error instanceof FeaturesFileError ||
+      error instanceof ArtifactSnapshotError ||
       error instanceof RegenerationFailedError
     ) {
       console.error(error.message)
@@ -147,8 +179,10 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       return 1
     }
 
+    // Pas d'`USAGE` ici : une erreur non classée n'est pas une faute
+    // d'invocation, et imprimer le mode d'emploi enverrait corriger la commande
+    // tapée plutôt que lire ce qui a réellement échoué.
     console.error(error instanceof Error ? error.message : String(error))
-    console.error(`\n${USAGE}`)
 
     return 1
   }

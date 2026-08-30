@@ -6,9 +6,6 @@
   "bin": {
     "ks": "./bin/ks.mjs"
   },
-  "exports": {
-    ".": "./src/index.ts"
-  },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },

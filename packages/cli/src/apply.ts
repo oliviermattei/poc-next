@@ -24,6 +24,21 @@ export class RegenerationFailedError extends Error {
   }
 }
 
+/**
+ * Un dossier d'artefacts existe, mais n'a pas pu être lu.
+ *
+ * Le toggle s'arrête là, **avant d'écrire quoi que ce soit** : sans
+ * photographie, la restauration ne saurait rien remettre, et un dossier
+ * `migrations` traité comme absent serait supprimé — le SQL versionné d'un
+ * module ne se recrée pas (ADR 016).
+ */
+export class ArtifactSnapshotError extends Error {
+  constructor(message: string, options?: { cause: unknown }) {
+    super(message, options)
+    this.name = 'ArtifactSnapshotError'
+  }
+}
+
 interface DirectorySnapshot {
   readonly path: string
   readonly existed: boolean
@@ -48,6 +63,12 @@ const listFiles = async (directory: string): Promise<readonly string[]> => {
  *
  * Un dossier absent est photographié comme absent : le restaurer voudra dire le
  * supprimer, et non le laisser tel que la régénération l'a créé.
+ *
+ * **« Absent » et « illisible » ne sont pas le même fait.** Traiter une lecture
+ * en échec comme une absence ferait supprimer, à la restauration, un dossier qui
+ * existait — et sur un dossier `migrations`, ce serait le SQL versionné d'un
+ * module. Seul `ENOENT` dit l'absence ; tout le reste arrête le toggle avant la
+ * moindre écriture.
  */
 const snapshotDirectory = async (path: string): Promise<DirectorySnapshot> => {
   try {
@@ -57,8 +78,16 @@ const snapshotDirectory = async (path: string): Promise<DirectorySnapshot> => {
     )
 
     return { path, existed: true, files: new Map(contents) }
-  } catch {
-    return { path, existed: false, files: new Map() }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { path, existed: false, files: new Map() }
+    }
+
+    throw new ArtifactSnapshotError(
+      `Impossible de lire ${path} : ${error instanceof Error ? error.message : String(error)}\n` +
+        'Aucun module n’a été basculé : sans photographie de ce dossier, un échec de la régénération ne saurait pas le remettre en état.',
+      { cause: error },
+    )
   }
 }
 

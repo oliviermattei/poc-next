@@ -41,6 +41,22 @@ export interface ToggleInput {
 const quote = (value: string): string => `« ${value} »`
 
 /**
+ * L'entête de la phrase rendue par la validation.
+ *
+ * Elle parle de la configuration **candidate**, pas du fichier sur le disque :
+ * « n’est pas activé dans config/features.ts » est dit d'un module qui l'est
+ * encore au moment où l'utilisateur lit le message. Sans cette précision, le
+ * refus est contre-factuel à la lettre, et envoie vérifier un fichier qui dit le
+ * contraire.
+ *
+ * Et le refus n'annonce **pas** de cause qu'il n'a pas vérifiée : la cause est
+ * celle que la validation donne, quelle qu'elle soit — un dépendant activé, mais
+ * aussi bien un requis inexistant ou un cycle.
+ */
+const candidate = (change: string): string =>
+  `Validation de la configuration candidate — config/features.ts ${change} :`
+
+/**
  * Les requis d'un module qui ne sont pas encore activés, requis avant dépendant.
  *
  * Ce n'est **pas** la validation : c'est ce qu'il faut savoir pour *proposer*.
@@ -78,6 +94,31 @@ export function missingRequirements(input: {
   visit(input.moduleId)
 
   return missing
+}
+
+/**
+ * Insère un identifiant dans la liste des activés **à la place que l'annuaire
+ * lui donne**, sans déplacer les autres.
+ *
+ * L'ajouter en fin de liste ferait rendre au toggle inverse une liste
+ * réordonnée : réactiver une entrée du milieu la renverrait à la fin, et le
+ * critère « toggle puis toggle inverse laisse le fichier identique » ne tiendrait
+ * que sur la dernière entrée. L'annuaire est la seule référence d'ordre stable
+ * du dépôt — l'ordre d'exécution, lui, ne dépend pas de celui-ci : il est dérivé
+ * du graphe des requis par `resolveEnabledModules`.
+ */
+const insertInDirectoryOrder = (
+  available: readonly AnyModuleDefinition[],
+  enabled: readonly string[],
+  moduleId: string,
+): readonly string[] => {
+  const rank = (id: string): number => available.findIndex((module) => module.id === id)
+  const target = rank(moduleId)
+  const at = enabled.findIndex((id) => rank(id) > target)
+
+  return at === -1
+    ? [...enabled, moduleId]
+    : [...enabled.slice(0, at), moduleId, ...enabled.slice(at)]
 }
 
 /** Soumet la configuration candidate à `@repo/core`, et rend son refus tel quel. */
@@ -120,7 +161,7 @@ export function planToggle(input: ToggleInput): TogglePlan {
 
     if (refusal !== null) {
       throw new ToggleRefusedError(
-        `Désactivation de ${quote(moduleId)} refusée : un module activé en dépend.\n${refusal}`,
+        `Désactivation de ${quote(moduleId)} refusée.\n${candidate(`sans ${quote(moduleId)}`)}\n${refusal}`,
       )
     }
 
@@ -129,7 +170,10 @@ export function planToggle(input: ToggleInput): TogglePlan {
 
   const missing = missingRequirements({ available, enabled, moduleId })
   const alsoEnabled = input.withRequirements === true ? missing : []
-  const nextEnabled = [...enabled, ...alsoEnabled, moduleId]
+  const nextEnabled = [...alsoEnabled, moduleId].reduce(
+    (list, id) => insertInDirectoryOrder(available, list, id),
+    enabled,
+  )
   const refusal = refusalOf(available, nextEnabled)
 
   if (refusal !== null) {
@@ -139,7 +183,7 @@ export function planToggle(input: ToggleInput): TogglePlan {
         : ''
 
     throw new ToggleRefusedError(
-      `Activation de ${quote(moduleId)} refusée.\n${refusal}${hint}`,
+      `Activation de ${quote(moduleId)} refusée.\n${candidate(`avec ${quote(moduleId)}`)}\n${refusal}${hint}`,
     )
   }
 

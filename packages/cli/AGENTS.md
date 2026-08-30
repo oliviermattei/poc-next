@@ -28,14 +28,27 @@ rend une sortie lisible par une machine, et hors terminal interactif il ne pose
 aucune question — il refuse en nommant le drapeau qui aurait autorisé l'action.
 Une commande qui attend une réponse sur `stdin` est inutilisable depuis la CI.
 
+**En `--json`, `stdout` ne porte que le JSON.** La prose française part sur
+`stderr`, et la sortie des sous-processus (`pnpm db:generate`, `pnpm db:migrate`)
+aussi — sans quoi la bannière de `pnpm` précède l'objet et plus rien ne
+l'analyse. Rien n'est perdu pour autant : le bruit est dérouté, jamais supprimé.
+`src/bin.test.ts` lance le binaire pour de vrai et **analyse** sa sortie.
+
 ## Imports autorisés
 
 - `@repo/core` pour la validation du graphe des modules — jamais réécrite ici ;
-- `ts-morph` pour l'édition de `config/features.ts`. La seule dépendance ajoutée
-  par cette story, et elle est justifiée (`docs/security.md` §6) : le fichier
-  porte les commentaires du propriétaire, une réécriture par expression
-  régulière les détruit, et le compilateur du dépôt (TypeScript 7, ADR 011)
-  n'expose plus d'API JavaScript qui permettrait de s'en passer ;
+- `ts-morph` pour l'édition de `config/features.ts`, justifié
+  (`docs/security.md` §6) : le fichier porte les commentaires du propriétaire,
+  une réécriture par expression régulière les détruit, et le compilateur du
+  dépôt (TypeScript 7, ADR 011) n'expose plus d'API JavaScript qui permettrait
+  de s'en passer. **À savoir** : `ts-morph@28` embarque son propre analyseur,
+  **TypeScript 6.0.2** (`@ts-morph/common`), alors que le dépôt compile en
+  7.0.2. Sans effet aujourd'hui — `enabledModules` est une liste de chaînes,
+  relue puis revérifiée par `pnpm typecheck` — mais une syntaxe propre à
+  TypeScript 7 dans `config/features.ts` serait lue par une majeure antérieure.
+  Et `insertElement` de `ts-morph` **détruit le commentaire** de l'entrée
+  suivante : l'insertion est faite à une position calculée sur l'AST, jamais par
+  cette API (voir `src/features-file.ts`) ;
 - `tsx` pour exécuter l'entrée TypeScript depuis `bin/ks.mjs` — ce package n'a
   pas d'étape de build, comme les autres packages du dépôt ;
 - les modules de Node (`node:fs/promises`, `node:readline/promises`,
@@ -46,6 +59,10 @@ Une commande qui attend une réponse sur `stdin` est inutilisable depuis la CI.
 Pas de bibliothèque d'analyse d'arguments ni d'invites interactives : l'analyse
 tient en une fonction pure, et `node:readline/promises` pose les questions. Une
 dépendance de plus se justifie par une story, pas par une commodité.
+
+Ce package n'expose aucun point d'entrée importable : on l'utilise par sa
+commande `ks`, pas par un `import`. Un baril de réexports sans consommateur
+donnerait à croire qu'il en existe un.
 
 `config/features.ts` n'est lu que dans `src/bin.ts` — c'est le **point de
 composition**. Les fonctions de `src/` reçoivent des modules et du texte ; sans
@@ -78,3 +95,9 @@ sur disque s'exécute sur un **dépôt temporaire** — une copie de
 `config/features.ts` et du dossier des barils dans un répertoire jetable —
 jamais contre le dépôt courant : un test qui régénère le dépôt qui l'exécute
 rend la suite destructrice.
+
+`src/bin.ts` n'est pas unitaire, ce n'est pas une raison pour le laisser sans
+test : `src/bin.test.ts` lance `bin/ks.mjs` sur un dépôt temporaire et éprouve ce
+qu'aucune fonction ne porte seule — la remontée jusqu'à la racine, la pureté de
+`stdout` en `--json`, les codes de sortie, et **la portée de la transaction**
+(les dossiers de migrations câblés dans `generatedPaths`).

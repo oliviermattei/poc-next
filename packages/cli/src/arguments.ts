@@ -28,6 +28,7 @@ interface CommonOptions {
  * dire à refaire à la main la garantie que cette fonction vient de donner.
  */
 export type ParsedArguments =
+  | ({ readonly command: 'help' } & CommonOptions)
   | ({ readonly command: 'list' } & CommonOptions)
   | ({ readonly command: 'toggle'; readonly moduleId: string } & CommonOptions)
 
@@ -37,6 +38,14 @@ const FLAGS = {
   '--apply-migrations': 'applyMigrations',
 } as const
 
+/**
+ * L'aide, demandée par le drapeau que tout le monde essaie en premier.
+ *
+ * La refuser comme une option inconnue — en code 1, avec le message d'une faute
+ * de frappe — apprend que l'outil est cassé, pas comment s'en servir.
+ */
+const HELP = new Set(['--help', '-h'])
+
 export const USAGE = [
   'Usage : ks <commande> [options]',
   '',
@@ -44,6 +53,7 @@ export const USAGE = [
   '  ks toggle <module>          inverse l’état d’un module dans config/features.ts',
   '',
   'Options :',
+  '  --help, -h                  affiche cette aide',
   '  --json                      sortie lisible par une machine (implique le mode non interactif)',
   '  --with-requires             autorise l’activation des requis manquants',
   '  --apply-migrations          autorise l’application des migrations générées',
@@ -52,6 +62,10 @@ export const USAGE = [
 export function parseArguments(argv: readonly string[]): ParsedArguments {
   const flags = { json: false, withRequirements: false, applyMigrations: false }
   const positional: string[] = []
+
+  if (argv.some((argument) => HELP.has(argument))) {
+    return { command: 'help', ...flags }
+  }
 
   for (const argument of argv) {
     if (!argument.startsWith('-')) {

@@ -4,6 +4,7 @@ import {
   QuoteKind,
   SyntaxKind,
   type ArrayLiteralExpression,
+  type Node,
   type SourceFile,
 } from 'ts-morph'
 
@@ -129,11 +130,63 @@ const quoteOf = (file: SourceFile, array: ArrayLiteralExpression): string => {
 }
 
 /**
+ * Le séparateur qui précède une entrée : un espace sur une liste d'une ligne,
+ * un retour à la ligne suivi de l'indentation sur une liste multiligne.
+ *
+ * Il est **relevé sur le fichier** plutôt que déduit des réglages : c'est le
+ * propriétaire qui décide de la mise en forme de sa liste, et l'aller-retour
+ * doit rendre la sienne, pas celle du CLI.
+ */
+const separatorBefore = (text: string, element: Node): string => {
+  const trivia = text.slice(element.getFullStart(), element.getStart())
+  const lastNewLine = trivia.lastIndexOf('\n')
+
+  return lastNewLine === -1 ? ' ' : `\n${trivia.slice(lastNewLine + 1)}`
+}
+
+/**
+ * Où insérer une entrée pour qu'elle prenne la place que le retrait a libérée :
+ * **avant les commentaires de l'entrée suivante**, mais **après un commentaire
+ * de fin de ligne** de l'entrée précédente.
+ *
+ * La distinction est la seule qui compte ici, et `ts-morph` ne la fait pas :
+ * `insertElement` remplace tout le texte entre l'entrée précédente et la
+ * suivante, ce qui **détruit le commentaire** que le propriétaire a mis au-dessus
+ * de l'entrée suivante. D'où le placement calculé sur les positions de l'AST —
+ * pas une recherche de motif dans le texte, et jamais une écriture non relue :
+ * `writeEnabledModules` réanalyse le résultat avant de le rendre.
+ */
+const anchorBefore = (text: string, element: Node): number => {
+  const fullStart = element.getFullStart()
+  const start = element.getStart()
+  const trivia = text.slice(fullStart, start)
+  const firstNewLine = trivia.indexOf('\n')
+
+  if (firstNewLine === -1) {
+    return start
+  }
+
+  const offset = trivia.slice(firstNewLine + 1).search(/\S/)
+
+  return offset === -1 ? start : fullStart + firstNewLine + 1 + offset
+}
+
+/**
  * Rend le texte du fichier où `enabledModules` vaut exactement `next`.
  *
  * Les retraits d'abord, les ajouts ensuite, et une analyse par opération : une
  * insertion faite avant un retrait invaliderait les positions sur lesquelles le
  * retrait s'appuie.
+ *
+ * Chaque ajout est **inséré à sa position dans `next`**, jamais apposé en fin de
+ * liste. Appendre ne rend le fichier d'origine que lorsque l'entrée basculée est
+ * la dernière : sur toute autre, le toggle inverse rendrait une liste réordonnée,
+ * c'est-à-dire un fichier différent — et le critère qui décide de cette story est
+ * l'identité octet pour octet.
+ *
+ * Ce que la fonction ne sait pas faire : **déplacer** une entrée déjà présente.
+ * Elle le dit au lieu d'écrire une liste qui n'est pas celle qu'on lui a
+ * demandée.
  */
 export function writeEnabledModules(source: string, next: readonly string[]): string {
   const current = readEnabledModules(source)
@@ -159,7 +212,10 @@ export function writeEnabledModules(source: string, next: readonly string[]): st
     text = file.getFullText()
   }
 
-  for (const id of next) {
+  // `next` est parcourue de gauche à droite : les insertions déjà faites
+  // occupent leur position définitive, donc l'index de `next` est aussi l'index
+  // dans la liste en cours d'écriture.
+  for (const [index, id] of next.entries()) {
     if (present.has(id)) {
       continue
     }
@@ -167,10 +223,29 @@ export function writeEnabledModules(source: string, next: readonly string[]): st
     const file = parse(text)
     const array = enabledModulesArray(file)
     const quote = quoteOf(file, array)
+    const entry = `${quote}${id}${quote}`
+    const following = array.getElements()[index]
 
-    array.addElement(`${quote}${id}${quote}`)
+    if (following === undefined) {
+      // En fin de liste, `ts-morph` fait le travail : c'est lui qui rend la
+      // virgule finale que le retrait du dernier élément avait emportée.
+      array.addElement(entry)
 
-    text = file.getFullText()
+      text = file.getFullText()
+      continue
+    }
+
+    const anchor = anchorBefore(text, following)
+
+    text = `${text.slice(0, anchor)}${entry},${separatorBefore(text, following)}${text.slice(anchor)}`
+  }
+
+  const written = readEnabledModules(text)
+
+  if (written.length !== next.length || written.some((id, index) => id !== next[index])) {
+    return fail(
+      `Le CLI ne sait pas réordonner « ${ENABLED_MODULES} » : il retire et il insère. Demandé « ${next.join(', ')} », écrit « ${written.join(', ')} ».`,
+    )
   }
 
   return text
