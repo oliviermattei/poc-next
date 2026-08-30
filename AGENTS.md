@@ -164,6 +164,16 @@ Every control there names the command that fails when it is violated. Do not add
 
 A story's plan names the sections of `docs/security.md` it touches. The review mutates the code and checks the test goes red — it does not take conformity on trust.
 
+## Reliability baseline (non-negotiable)
+
+Full reference: `docs/reliability.md` (ADR 014). Same standing as the security baseline; a breach is a **critical** review finding.
+
+- **Anything triggered from outside is replayable with no extra effect** — webhooks (logged by event id), jobs, migrations, seed. "Idempotent" is proven by running it twice and observing one effect, never asserted in a comment.
+- **A missing third party degrades, it does not break.** No analytics → the app runs. No jobs → purge and export run synchronously. Every port works locally with no API key.
+- **Every outbound call has an explicit timeout.** Retries use exponential backoff with jitter and a cap; transient errors only — retrying a validation error is a defect.
+- **Migrations are backward-compatible with the version still serving traffic**: add before reading, stop writing before dropping. Never destructive outside an explicit eject, which is in the graveyard.
+- **The health probe checks the real dependency**, and any state that can diverge from an external system has a reconciliation command.
+
 ## Agent-oriented repo
 
 This codebase is mostly edited by agents (ADR 013). An agent that cannot find the rule invents one, so rules live where the code is written and are backed by a command:
