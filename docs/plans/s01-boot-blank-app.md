@@ -14,16 +14,16 @@ Démarrer une application vide qui tourne, connectée à Postgres. Sept critère
 
 ## Tasks (ordered)
 
-1. [ ] **Racine du monorepo** — `package.json` (privé, `packageManager` pnpm), `pnpm-workspace.yaml` (`apps/*`, `packages/*`, `tooling/*`), `turbo.json` avec les tâches `dev`, `build`, `test`, `.nvmrc`. Vérifiable : `pnpm install` réussit sur un clone neuf.
-2. [ ] **`tooling/typescript`** — configuration TypeScript stricte partagée, étendue par chaque package. Vérifiable : `tsc --noEmit` passe sur un package vide qui l'étend.
-3. [ ] **`packages/config`** — schéma Zod d'environnement dont les clés sont **énumérables** (le critère 3 en dépend), export typé, et garde de build : la validation ne s'exécute pas pendant `next build`. Vérifiable : une variable manquante lève une erreur nommant la variable ; `NODE_ENV=production` en phase de build n'échoue pas.
-4. [ ] **`.env.example`** — toutes les clés du schéma, commentées, sans aucune valeur secrète. Vérifiable par le test de la tâche 9.
-5. [ ] **`docker-compose.yml`** — Postgres 16, volume nommé, port configurable, `healthcheck` `pg_isready`. Vérifiable : `docker compose up -d` puis connexion réussie sans Postgres installé sur la machine.
-6. [ ] **`packages/db`** — point d'entrée unique construisant le client Drizzle depuis `DATABASE_URL` (le choix du pilote y est encapsulé), et **fonction de composition acceptant une liste de schémas de modules**, vide aujourd'hui. `drizzle.config.ts` écrit d'après la version réellement installée, pas de mémoire (piège n°3 de la recherche). Vérifiable : `pnpm db:generate` produit un fichier SQL sur un schéma de test.
-7. [ ] **`apps/web`** — application Next.js App Router, TypeScript strict, page d'accueil minimale sans style. Vérifiable : `pnpm dev` sert la page sans erreur ni avertissement bloquant.
-8. [ ] **`/api/health`** — route handler `GET` exécutant une requête réelle via `packages/db` et renvoyant 200 avec l'état de la connexion, ou 503 si la base est injoignable. Vérifiable : 200 base démarrée, 503 base arrêtée.
-9. [ ] **Vitest minimal + les tests exigés par les critères** — installation de Vitest à la racine, sans lint, sans Playwright, sans CI (ils appartiennent à s02). Trois tests : variable d'environnement manquante ou malformée, `.env.example` aligné sur les clés du schéma, `/api/health` dans ses deux états.
-10. [ ] **Scripts et pipeline de tâches** — `dev`, `build`, `db:generate`, `db:migrate`, `db:seed`, `test` à la racine, câblés dans `turbo.json`. `db:migrate` utilise `migrate()` de `drizzle-orm/node-postgres/migrator`. Test d'intégration : `db:migrate` deux fois de suite sur une base vierge, puis `db:seed` deux fois, sur le schéma de test.
+1. [x] **Racine du monorepo** — `package.json` (privé, `packageManager` pnpm), `pnpm-workspace.yaml` (`apps/*`, `packages/*`, `tooling/*`), `turbo.json` avec les tâches `dev`, `build`, `test`, `.nvmrc`. Vérifiable : `pnpm install` réussit sur un clone neuf.
+2. [x] **`tooling/typescript`** — configuration TypeScript stricte partagée, étendue par chaque package. Vérifiable : `tsc --noEmit` passe sur un package vide qui l'étend.
+3. [x] **`packages/config`** — schéma Zod d'environnement dont les clés sont **énumérables** (le critère 3 en dépend), export typé, et garde de build : la validation ne s'exécute pas pendant `next build`. Vérifiable : une variable manquante lève une erreur nommant la variable ; `NODE_ENV=production` en phase de build n'échoue pas.
+4. [x] **`.env.example`** — toutes les clés du schéma, commentées, sans aucune valeur secrète. Vérifiable par le test de la tâche 9.
+5. [x] **`docker-compose.yml`** — Postgres 16, volume nommé, port configurable, `healthcheck` `pg_isready`. Vérifiable : `docker compose up -d` puis connexion réussie sans Postgres installé sur la machine.
+6. [x] **`packages/db`** — point d'entrée unique construisant le client Drizzle depuis `DATABASE_URL` (le choix du pilote y est encapsulé), et **fonction de composition acceptant une liste de schémas de modules**, vide aujourd'hui. `drizzle.config.ts` écrit d'après la version réellement installée, pas de mémoire (piège n°3 de la recherche). Vérifiable : `pnpm db:generate` produit un fichier SQL sur un schéma de test.
+7. [x] **`apps/web`** — application Next.js App Router, TypeScript strict, page d'accueil minimale sans style. Vérifiable : `pnpm dev` sert la page sans erreur ni avertissement bloquant.
+8. [x] **`/api/health`** — route handler `GET` exécutant une requête réelle via `packages/db` et renvoyant 200 avec l'état de la connexion, ou 503 si la base est injoignable. Vérifiable : 200 base démarrée, 503 base arrêtée.
+9. [x] **Vitest minimal + les tests exigés par les critères** — installation de Vitest à la racine, sans lint, sans Playwright, sans CI (ils appartiennent à s02). Trois tests : variable d'environnement manquante ou malformée, `.env.example` aligné sur les clés du schéma, `/api/health` dans ses deux états.
+10. [x] **Scripts et pipeline de tâches** — `dev`, `build`, `db:generate`, `db:migrate`, `db:seed`, `test` à la racine, câblés dans `turbo.json`. `db:migrate` utilise `migrate()` de `drizzle-orm/node-postgres/migrator`. Test d'intégration : `db:migrate` deux fois de suite sur une base vierge, puis `db:seed` deux fois, sur le schéma de test.
 
 ## Run interdicts
 

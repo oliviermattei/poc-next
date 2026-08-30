@@ -3,3 +3,14 @@ node_modules/
 .env.local
 .DS_Store
 .worktrees/
+
+# Artefacts de build et de cache
+.next/
+.turbo/
+dist/
+*.tsbuildinfo
+
+# Écrits automatiquement par `next dev` (générateur de règles d'agent de Next).
+# Non versionnés : le dépôt n'a qu'un seul fichier de règles, AGENTS.md à la racine.
+apps/web/AGENTS.md
+apps/web/CLAUDE.md
