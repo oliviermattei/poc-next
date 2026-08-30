@@ -138,5 +138,22 @@ Le cœur est solide et éprouvé plutôt que lu : N3 fermé avec reproduction du
 
 Ce qui reste est un problème de règles écrites, pas de code : la sémantique de clé étrangère livrée est meilleure que la règle littérale du dépôt, mais elle contredit `AGENTS.md`, `docs/architecture.md` et l'ADR 007 sans l'ADR qui la consacrerait.
 
+---
+
+## Addendum — tour de correctifs `364aacc`
+
+> Suite portée à **190 tests**, verts dans les **trois** états : `['demo-enabled']`, `[]`, et les deux activés (ce dernier comptait 4 rouges).
+
+- **F5 fermé** — la garde refuse deux modules déclarant la même table physique, avec un type d'erreur distinct (`DuplicateModuleTableError`) plutôt qu'une réutilisation de l'erreur de clé étrangère : un appelant qui attrape la seconde rapporterait « clé étrangère interdite » pour une faute de propriété.
+- **F7 fermé** — les trois tests qui observaient le registre ambiant construisent désormais le leur. Les trois autres continuent d'observer celui de l'application **à dessein** : leurs assertions dérivent d'`enabledModules`, donc valent dans tous les états. En-tête réécrit pour dire ce qui est vrai, et pourquoi cela compte pour s26.
+- **F6 fermé** — la garde est exercée sur `availableModules`, pas seulement sur des modules synthétiques.
+- **F3 fermé autrement que suggéré, et mieux.** « Lancer `db:generate` et exiger un arbre propre » rougirait sur tout travail légitime en cours : la garde serait désarmée le jour où elle compte. Livré : une **régénération à blanc** dans un cache, comparant les listes de fichiers SQL, sans jamais toucher à l'arbre versionné. La mutation « colonne ajoutée sans régénérer » passe de **0 rouge à 1**.
+- **F4 fermé** — `runMigrations` lit la longueur du journal en base avant et après, et rend `{ applied, count }`. Effet de bord révélateur : un test de s01 nommé « puis ne fait rien au second passage » assertait `{ applied: true }` **deux fois**. Il asserte maintenant `{ applied: false, count: 0 }`.
+- **F2 fermé** — `drizzle.config.ts` ne déclare plus que `dialect` et `casing` ; invoqué seul, `drizzle-kit` refuse (`Please provide required params: [x] schema`) et n'écrit rien.
+
+**Correction au rapport de revue** : le piège de F2 n'est pas atteignable « depuis la racine » — la commande y échoue faute de `drizzle.config.json`. Il l'est depuis `packages/db`, donc aussi via `pnpm --filter`. Le finding tient, son chemin de reproduction était faux.
+
+**Reste ouvert** : la carte module → table dont s26 aura besoin (même racine que F5), l'ordre de purge imposé par les clés étrangères inter-modules (ADR 018, hérité par s34/s35), `enabledModuleSchemas = []` et `db.query` (premier module qui persiste). Et la liste « non vérifié » de la revue est inchangée : la CI n'a jamais tourné, aucun clone neuf, un seul PostgreSQL local, aucune migration concurrente.
+
 Max severity: major
 Ship allowed: yes
