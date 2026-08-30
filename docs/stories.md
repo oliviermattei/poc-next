@@ -162,7 +162,7 @@ Piège : une clé étrangère vers un module optionnel est le moyen le plus cour
 - [ ] L'activation génère et propose d'appliquer les migrations du module
 - [ ] La désactivation informe que les tables et les données sont conservées et qu'une réactivation les retrouvera ; elle ne supprime ni table ni donnée
 - [ ] Un module activé, désactivé, puis réactivé retrouve ses données intactes
-- [ ] Un toggle suivi du toggle inverse laisse `config/features.ts` identique à son état initial
+- [ ] Un toggle suivi du toggle inverse laisse `config/features.ts` identique à son état initial, dès lors que la liste est dans l'ordre canonique de l'annuaire — état que le CLI établit lui-même, en l'annonçant, à la première bascule (ADR 019)
 - [ ] Les commandes sont couvertes par des tests exécutés sur un dépôt temporaire
 
 ### Dependencies
