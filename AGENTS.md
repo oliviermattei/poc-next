@@ -147,6 +147,32 @@ Full detail in `docs/architecture.md`; each structural decision has an ADR in `d
 
 **Commits** — one commit per story, imperative message in French, carrying that story's research, design and plan.
 
+## Security baseline (non-negotiable)
+
+Full reference: `docs/security.md` (ADR 012). It applies to **every** story, not to a security story. A breach of it is a **critical** review finding, ranked with a functional regression.
+
+Every control there names the command that fails when it is violated. Do not add a control nobody can check, and do not weaken one to make something work:
+
+- **CSP** `default-src 'self'`, no `unsafe-inline`, no `unsafe-eval` in production; nonce per request. Adding a source requires a written justification in the story.
+- **Cookies** `HttpOnly`, `Secure`, `SameSite`; session id rotated on every privilege elevation; revocation enforced server-side.
+- **Authorization** checked server-side; another organization's resource returns **404**, never 403; unknown account and wrong password are indistinguishable, in message and in timing.
+- **Zod at every boundary** — env, route params, body, webhooks, config. Parameterized queries only.
+- **Webhooks**: signature verified before any side effect, idempotent by event id.
+- **Secrets** never in the repo, in a build artifact, in a log, in an error response or in telemetry. Env validated at startup, naming the faulty variable.
+- **Supply chain**: lockfile committed, `--frozen-lockfile` in CI, vulnerability audit and secret scan blocking.
+- **Rate limiting** on every public entry point, shared across instances; anti-automation on public forms.
+
+A story's plan names the sections of `docs/security.md` it touches. The review mutates the code and checks the test goes red — it does not take conformity on trust.
+
+## Agent-oriented repo
+
+This codebase is mostly edited by agents (ADR 013). An agent that cannot find the rule invents one, so rules live where the code is written and are backed by a command:
+
+- **`AGENTS.md` per package**, on top of this root file: what the package may import, what it must never contain, where its tests live. A test checks every package has one.
+- **A rule must be executable.** Layer boundaries → lint. Required modules → config validation. Environment wiring → test. Ask of any new rule: *which command fails if I break it?* If none, it is documentation, not a rule.
+- **Generate, don't guess.** `npx ks` (s05) and the MCP server (s41) expose the same operations — list modules, toggle one, scaffold a compliant module. Producing a module skeleton by hand is a smell.
+- **Docs ship with the code that changes them.** A story that alters a convention and leaves its rule stale is incomplete.
+
 ## Definition of Done (per feature)
 - Single PR, structured description, readable diff
 - Passing tests on business logic
