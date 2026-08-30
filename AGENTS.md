@@ -225,6 +225,8 @@ Full reference: `docs/reliability.md` (ADR 014). Same standing as the security b
 This codebase is mostly edited by agents (ADR 013). An agent that cannot find the rule invents one, so rules live where the code is written and are backed by a command:
 
 - **`AGENTS.md` per package**, on top of this root file: what the package may import, what it must never contain, where its tests live. A test checks every package has one.
+- **Never claim exhaustiveness.** A measured list says *what was swept*, never *what exists*. This repo has been caught three times: a package `AGENTS.md` calling three known cases "the only ones", a review's own finding list missing a fourth position, a measurement table omitting a case that works. The next agent reads such a claim as verified and stops looking. Write "found so far, over these N cases", and name the cases.
+- **A green mutation means the test is wrong, not that the code is right.** When you neutralise an invariant and nothing goes red, fix the test — that has happened five times here, and each time the production code was fine while its net was narrower than its name.
 - **A rule must be executable.** Layer boundaries → lint. Required modules → config validation. Environment wiring → test. Ask of any new rule: *which command fails if I break it?* If none, it is documentation, not a rule.
 - **Generate, don't guess.** `npx ks` (s05) and the MCP server (s41) expose the same operations — list modules, toggle one, scaffold a compliant module. Producing a module skeleton by hand is a smell.
 - **Docs ship with the code that changes them.** A story that alters a convention and leaves its rule stale is incomplete.
