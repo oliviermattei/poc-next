@@ -75,17 +75,18 @@ interface ModuleDefinition {
   requires: ModuleId[]
   schema: DrizzleSchema
   migrations: MigrationsDir
-  routes?: HonoRouter
-  navigation?: NavEntry[]
+  routes: readonly ModuleRoute[]      // ADR 017 — forme transitoire jusqu'à Hono
+  navigation: readonly NavEntry[]     // chacune avec son niveau de protection
   messages: Record<Locale, Messages>
-  emails?: EmailTemplate[]          // chacun avec ses locales
-  webhooks?: WebhookHandler[]
+  emails: readonly EmailTemplate[]    // chacun avec ses locales
+  webhooks: readonly WebhookHandler[]
+  dataCategories: readonly DataCategory[]
   purge: (scope: UserScope | OrgScope) => Promise<void>
   export: (scope: UserScope | OrgScope) => Promise<ExportPayload>
   retention: Record<DataCategory, 'erase' | 'anonymize'>
 }
 ```
-Toutes les clés sont obligatoires dès le premier module, quitte à être vides (ADR 007). Les ajouter plus tard obligerait à rouvrir chaque module déjà écrit.
+Toutes les clés sont obligatoires dès le premier module, quitte à être vides (ADR 007). `retention` est indexée par `dataCategories` : une catégorie déclarée sans politique ne compile pas. `routes` porte une forme transitoire (ADR 017), et l'annuaire statique de `config/features.ts` a sa propre conséquence documentée (ADR 016). Les ajouter plus tard obligerait à rouvrir chaque module déjà écrit.
 
 ### Règles transverses
 - **Nommage** : fichiers en `kebab-case`, types et composants en `PascalCase`, fonctions et variables en `camelCase`, tables et colonnes en `snake_case`.

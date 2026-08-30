@@ -146,7 +146,7 @@ Full detail in `docs/architecture.md`; each structural decision has an ADR in `d
 
 **Repo layout** — `apps/web` (Next, mounts the Hono server at `app/api/[[...route]]`), `config/` (features, billing, marketing — edited by the project owner), `packages/core` (module contract and registry), `packages/db`, `packages/api`, `packages/ui`, `packages/ports`, `packages/adapters`, `packages/modules/<module>`, `tooling/`.
 
-**A module is a package** declaring one typed contract: `id`, `requires`, `schema`, `migrations`, `routes`, `navigation`, `messages`, `emails`, `webhooks`, `purge`, `export`, `retention`. Every key is mandatory from the first module, empty if need be — adding one later means reopening every module already written.
+**A module is a package** declaring one typed contract: `id`, `requires`, `schema`, `migrations`, `routes` (**each with its protection level**: public, authenticated, role-gated), `navigation` (same), `messages`, `emails` (with their locales), `webhooks`, `dataCategories`, `retention` (one policy per declared category), `purge`, `export`. Every key is mandatory from the first module, empty if need be — adding one later means reopening every module already written.
 
 **Four layers inside each module**: `domain/` (pure business rules, no framework, no ORM, no SDK) → `application/` (use cases and ports) → `infrastructure/` (Drizzle repositories, adapter calls) and `presentation/` (Hono routes, oRPC contracts, React components). `infrastructure` and `presentation` never import each other. **The boundary rule is enforced by lint in CI, not by review.**
 
