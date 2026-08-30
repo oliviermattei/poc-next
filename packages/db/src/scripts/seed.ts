@@ -1,11 +1,9 @@
-import { fileURLToPath } from 'node:url'
-
-import { config as loadDotenvFile } from 'dotenv'
+import { loadRootEnv } from '@repo/config'
 
 import { closeDatabase, getDatabase } from '../client'
 import { runSeeders } from '../seed'
 
-loadDotenvFile({ path: fileURLToPath(new URL('../../../../.env', import.meta.url)), quiet: true })
+loadRootEnv()
 
 const connection = getDatabase()
 

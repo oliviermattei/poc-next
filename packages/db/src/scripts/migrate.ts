@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url'
 
-import { config as loadDotenvFile } from 'dotenv'
+import { loadRootEnv } from '@repo/config'
 
 import { closeDatabase, getDatabase } from '../client'
 import { runMigrations } from '../migrate'
@@ -8,7 +8,7 @@ import { runMigrations } from '../migrate'
 /** Migrations de l'application, générées par `drizzle-kit generate`. */
 const APP_MIGRATIONS_FOLDER = fileURLToPath(new URL('../../drizzle', import.meta.url))
 
-loadDotenvFile({ path: fileURLToPath(new URL('../../../../.env', import.meta.url)), quiet: true })
+loadRootEnv()
 
 const connection = getDatabase()
 

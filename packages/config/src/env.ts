@@ -50,18 +50,48 @@ export function parseEnv(source: EnvSource): Env {
 }
 
 /**
+ * Variables qui désactivent la validation, et la valeur qui les déclenche.
+ *
+ * Elles ne sont pas dans le schéma : elles ne sont pas posées par le
+ * développeur mais par l'outillage (`NEXT_PHASE` par `next build`) ou à la main
+ * pour un build hors ligne (`SKIP_ENV_VALIDATION`). Elles sont malgré tout lues
+ * par ce module, donc énumérées ici et documentées dans `.env.example`.
+ */
+const BUILD_PHASE_TRIGGERS = {
+  NEXT_PHASE: 'phase-production-build',
+  SKIP_ENV_VALIDATION: '1',
+} as const
+
+/** Clés lues par la garde de build, dérivées des déclencheurs ci-dessus. */
+export const BUILD_ENV_KEYS = Object.keys(BUILD_PHASE_TRIGGERS) as (keyof typeof BUILD_PHASE_TRIGGERS)[]
+
+/**
  * Le build de Next s'exécute sans les secrets d'exécution : y valider
  * l'environnement ferait échouer `next build` en CI comme en conteneur.
  */
 export function isBuildPhase(source: EnvSource): boolean {
-  return source.NEXT_PHASE === 'phase-production-build' || source.SKIP_ENV_VALIDATION === '1'
+  return BUILD_ENV_KEYS.some((key) => source[key] === BUILD_PHASE_TRIGGERS[key])
 }
 
 /**
  * Point d'accès unique à l'environnement. Aucun autre module du dépôt ne lit
  * `process.env` directement.
+ *
+ * En phase de build, l'environnement est renvoyé tel quel, sans validation :
+ * les variables d'exécution peuvent alors manquer. Ce qui les consomme doit
+ * donc refuser explicitement une valeur absente plutôt que se rabattre sur un
+ * défaut — c'est ce que fait `createDatabaseClient`.
  */
 export function getEnv(source: EnvSource = process.env): Env {
+  if (source.SKIP_ENV_VALIDATION === BUILD_PHASE_TRIGGERS.SKIP_ENV_VALIDATION) {
+    console.warn(
+      'SKIP_ENV_VALIDATION=1 : validation de l’environnement désactivée. ' +
+        'Les variables ne sont ni vérifiées ni complétées — réservé au build.',
+    )
+
+    return source as unknown as Env
+  }
+
   if (isBuildPhase(source)) {
     return source as unknown as Env
   }

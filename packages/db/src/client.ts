@@ -1,4 +1,4 @@
-import { getEnv } from '@repo/config'
+import { EnvValidationError, getEnv } from '@repo/config'
 import { sql } from 'drizzle-orm'
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres'
 import { Pool } from 'pg'
@@ -29,6 +29,16 @@ export interface CreateDatabaseClientOptions {
 }
 
 export function createDatabaseClient(options: CreateDatabaseClientOptions): DatabaseConnection {
+  // `pg` accepte une chaîne vide ou absente et se rabat alors sur les défauts de
+  // libpq : utilisateur système, base locale, port 5432. La connexion peut donc
+  // réussir sur une base que personne n'a configurée. Refuser ici est le seul
+  // endroit qui couvre aussi les chemins où la validation est désactivée.
+  if (options.connectionString.trim() === '') {
+    throw new EnvValidationError(
+      'DATABASE_URL est vide : impossible de construire un client de base de données.',
+    )
+  }
+
   const pool = new Pool({
     connectionString: options.connectionString,
     max: options.maxConnections ?? 10,
@@ -64,15 +74,29 @@ export async function closeDatabase(): Promise<void> {
 }
 
 /**
- * Drizzle enveloppe l'erreur du pilote : sans sa cause, le diagnostic se réduit
- * à « Failed query », ce qui ne dit rien de l'échec de connexion.
+ * Drizzle enveloppe l'erreur du pilote, et le pilote lui-même en agrège
+ * plusieurs quand l'hôte a une double pile (IPv6 puis IPv4). Sans déballage des
+ * deux niveaux, le diagnostic se réduit à « Failed query » suivi d'un message
+ * vide — un journal qui ne dit rien de l'échec de connexion.
  */
 function describeError(error: unknown): string {
   if (!(error instanceof Error)) {
     return 'unknown error'
   }
 
-  return error.cause instanceof Error ? `${error.message} — ${error.cause.message}` : error.message
+  const details: string[] = []
+
+  if (error instanceof AggregateError) {
+    details.push(...error.errors.map(describeError))
+  }
+
+  if (error.cause instanceof Error) {
+    details.push(describeError(error.cause))
+  }
+
+  const parts = [error.message.trim(), ...new Set(details)].filter((part) => part.length > 0)
+
+  return parts.length > 0 ? parts.join(' — ') : 'unknown error'
 }
 
 export interface DatabaseStatus {

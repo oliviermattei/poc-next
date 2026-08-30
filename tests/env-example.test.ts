@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-import { ENV_KEYS } from '@repo/config'
+import { BUILD_ENV_KEYS, ENV_KEYS } from '@repo/config'
 
 const ENV_EXAMPLE_PATH = fileURLToPath(new URL('../.env.example', import.meta.url))
 
@@ -23,6 +23,17 @@ describe('.env.example', () => {
     const declared = await readDeclaredKeys()
 
     expect(declared).toEqual(expect.arrayContaining([...ENV_KEYS]))
+  })
+
+  it('documente aussi les variables qui pilotent la garde de build', async () => {
+    // Elles ne sont pas dans le schéma — elles sont posées par l'outillage, pas
+    // par le développeur — mais elles sont lues par le module de configuration,
+    // et `.env.example` est le seul inventaire de ce que le dépôt lit.
+    const content = await readFile(ENV_EXAMPLE_PATH, 'utf8')
+
+    for (const key of BUILD_ENV_KEYS) {
+      expect(content).toMatch(new RegExp(`\\b${key}\\b`))
+    }
   })
 
   it('ne contient aucune valeur secrète, uniquement des valeurs de développement local', async () => {

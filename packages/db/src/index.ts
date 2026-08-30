@@ -4,6 +4,7 @@ export {
   enabledModuleSchemas,
   SchemaCollisionError,
   type AppSchema,
+  type ComposedSchema,
   type ModuleSchema,
 } from './schema'
 export {

@@ -1,8 +1,15 @@
 import { fileURLToPath } from 'node:url'
 
-import { createDatabaseClient, composeSchema, runMigrations, runSeeders, type Seeder } from '@repo/db'
+import {
+  createDatabaseClient,
+  composeSchema,
+  runMigrations,
+  runSeeders,
+  type DatabaseConnection,
+  type Seeder,
+} from '@repo/db'
 import { sql } from 'drizzle-orm'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, expectTypeOf, it } from 'vitest'
 
 import { databaseUrl, isDatabaseReachable } from './fixtures/database'
 import { fixtureItem } from './fixtures/schema'
@@ -17,6 +24,15 @@ describe('composition des schémas de modules', () => {
     expect(composed).toEqual({ subscription: 'subscription-table', file: 'file-table' })
   })
 
+  it('conserve le type des tables composées : `db.query.<table>` reste utilisable', () => {
+    const composed = composeSchema([{ id: 'fixtures', schema: { fixtureItem } }])
+
+    expect(composed.fixtureItem).toBe(fixtureItem)
+    // Vérifié par `tsc`, pas à l'exécution : une composition qui renverrait
+    // `Record<string, unknown>` échouerait ici.
+    expectTypeOf(composed.fixtureItem).toEqualTypeOf<typeof fixtureItem>()
+  })
+
   it('refuse deux modules qui déclarent la même table, en nommant les deux', () => {
     expect(() =>
       composeSchema([
@@ -28,13 +44,26 @@ describe('composition des schémas de modules', () => {
 })
 
 describe('exécution des migrations', () => {
+  // Un `db` inutilisable : toute tentative de migration réelle lèverait.
+  const unusableDb = {} as never
+
   it('n’ouvre pas la base quand le dossier de migrations n’a pas de journal', async () => {
-    // Un `db` inutilisable : toute tentative de migration réelle lèverait.
-    const unusableDb = {} as never
     const folderWithoutJournal = fileURLToPath(new URL('./fixtures/absent', import.meta.url))
 
     await expect(
       runMigrations({ db: unusableDb, migrationsFolder: folderWithoutJournal }),
+    ).resolves.toEqual({ applied: false })
+  })
+
+  it('n’ouvre pas la base quand le journal ne déclare aucune migration', async () => {
+    // C'est l'état réel du dépôt tant qu'aucun module ne livre de table :
+    // `drizzle-kit generate` écrit un journal vide.
+    const folderWithEmptyJournal = fileURLToPath(
+      new URL('./fixtures/empty-journal', import.meta.url),
+    )
+
+    await expect(
+      runMigrations({ db: unusableDb, migrationsFolder: folderWithEmptyJournal }),
     ).resolves.toEqual({ applied: false })
   })
 })
@@ -49,16 +78,22 @@ const databaseReachable = await isDatabaseReachable()
  * ils se skippent : rien ne serait prouvé en simulant la persistance.
  */
 describe.skipIf(!databaseReachable)('migrations et seed sur une base réelle', () => {
-  const connection = createDatabaseClient({ connectionString: databaseUrl, maxConnections: 1 })
+  // Construit dans `beforeAll` : le corps d'un `describe` skippé s'évalue quand
+  // même, et un pool ouvert ici ne serait jamais refermé.
+  let connection: DatabaseConnection
 
   const resetDatabase = async () => {
     await connection.db.execute(sql`drop table if exists fixture_item`)
-    await connection.db.execute(
-      sql`drop table if exists drizzle.fixture_migrations`,
-    )
+    // Sur une base vierge le schéma `drizzle` n'existe pas encore : le créer
+    // rend le `drop` inoffensif quel que soit l'état de départ.
+    await connection.db.execute(sql`create schema if not exists drizzle`)
+    await connection.db.execute(sql`drop table if exists drizzle.fixture_migrations`)
   }
 
-  beforeAll(resetDatabase)
+  beforeAll(async () => {
+    connection = createDatabaseClient({ connectionString: databaseUrl, maxConnections: 1 })
+    await resetDatabase()
+  })
 
   afterAll(async () => {
     await resetDatabase()

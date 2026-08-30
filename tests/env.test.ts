@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { getEnv, parseEnv } from '@repo/config'
 
@@ -26,5 +26,19 @@ describe('validation de l’environnement', () => {
     expect(() =>
       getEnv({ NEXT_PHASE: 'phase-production-build', NODE_ENV: 'production' }),
     ).not.toThrow()
+  })
+
+  it('annonce bruyamment que SKIP_ENV_VALIDATION désactive la validation', () => {
+    // Une trappe silencieuse est pire que pas de trappe : elle transforme une
+    // variable manquante en comportement par défaut du pilote.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    try {
+      getEnv({ SKIP_ENV_VALIDATION: '1' })
+
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('SKIP_ENV_VALIDATION'))
+    } finally {
+      warn.mockRestore()
+    }
   })
 })

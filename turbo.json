@@ -3,15 +3,13 @@
   "tasks": {
     "dev": {
       "cache": false,
-      "persistent": true
+      "persistent": true,
+      "env": ["NODE_ENV", "DATABASE_URL"]
     },
     "build": {
       "dependsOn": ["^build"],
       "env": ["NODE_ENV", "DATABASE_URL"],
       "outputs": [".next/**", "!.next/cache/**", "dist/**"]
-    },
-    "test": {
-      "cache": false
     },
     "db:generate": {
       "cache": false
