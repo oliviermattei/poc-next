@@ -5,10 +5,16 @@ const resolveFromRoot = (path: string) => fileURLToPath(new URL(path, import.met
 
 export default defineConfig({
   resolve: {
-    alias: {
-      '@repo/config': resolveFromRoot('./packages/config/src/index.ts'),
-      '@repo/db': resolveFromRoot('./packages/db/src/index.ts'),
-    },
+    // Alias exacts, dans l'ordre : la forme préfixe ferait résoudre
+    // `@repo/config/server` en `…/src/index.ts/server`.
+    alias: [
+      {
+        find: /^@repo\/config\/server$/,
+        replacement: resolveFromRoot('./packages/config/src/server.ts'),
+      },
+      { find: /^@repo\/config$/, replacement: resolveFromRoot('./packages/config/src/index.ts') },
+      { find: /^@repo\/db$/, replacement: resolveFromRoot('./packages/db/src/index.ts') },
+    ],
   },
   test: {
     environment: 'node',

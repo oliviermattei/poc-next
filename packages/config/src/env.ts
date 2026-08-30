@@ -82,6 +82,39 @@ export function isBuildPhase(source: EnvSource): boolean {
  * donc refuser explicitement une valeur absente plutôt que se rabattre sur un
  * défaut — c'est ce que fait `createDatabaseClient`.
  */
+/**
+ * Phase que Next transmet à `next.config.ts` pendant `next build`. Elle arrive
+ * en argument, alors que `NEXT_PHASE` n'est posée dans l'environnement que plus
+ * tard dans le build : à la lecture de la configuration, l'argument est le seul
+ * signal disponible.
+ */
+export const NEXT_BUILD_PHASE = BUILD_PHASE_TRIGGERS.NEXT_PHASE
+
+export interface AssertStartupEnvOptions {
+  /** Phase transmise par Next. Absente hors de `next.config.ts`. */
+  readonly phase?: string
+  readonly source?: EnvSource
+}
+
+/**
+ * Validation au démarrage du serveur : lève une `EnvValidationError` nommant
+ * chaque variable fautive, avant que le processus ne serve la moindre requête.
+ *
+ * Une base éteinte n'est pas une erreur de configuration : seule la forme des
+ * variables est jugée ici. Un `DATABASE_URL` bien formé mais injoignable laisse
+ * le serveur démarrer, et `/api/health` répond 503.
+ *
+ * Le build est exempté : `next build` s'exécute sans les variables d'exécution,
+ * en CI comme en conteneur.
+ */
+export function assertStartupEnv(options: AssertStartupEnvOptions = {}): void {
+  if (options.phase === NEXT_BUILD_PHASE) {
+    return
+  }
+
+  getEnv(options.source ?? process.env)
+}
+
 export function getEnv(source: EnvSource = process.env): Env {
   if (source.SKIP_ENV_VALIDATION === BUILD_PHASE_TRIGGERS.SKIP_ENV_VALIDATION) {
     console.warn(

@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url'
 
-import { loadRootEnv } from '@repo/config'
+import { loadRootEnv } from '@repo/config/server'
 
 import { closeDatabase, getDatabase } from '../client'
 import { runMigrations } from '../migrate'

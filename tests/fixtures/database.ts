@@ -1,4 +1,5 @@
-import { EnvValidationError, getEnv, loadRootEnv } from '@repo/config'
+import { EnvValidationError, getEnv } from '@repo/config'
+import { loadRootEnv } from '@repo/config/server'
 import { checkDatabaseConnection, createDatabaseClient } from '@repo/db'
 
 /**

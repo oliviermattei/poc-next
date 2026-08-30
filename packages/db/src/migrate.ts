@@ -34,7 +34,17 @@ function hasMigrations(migrationsFolder: string): boolean {
     return false
   }
 
-  const parsed: unknown = JSON.parse(readFileSync(journal, 'utf8'))
+  let parsed: unknown
+
+  try {
+    parsed = JSON.parse(readFileSync(journal, 'utf8'))
+  } catch (error) {
+    // Un `SyntaxError` brut ne dit ni quel fichier ni quelle commande le
+    // produit. Le journal est écrit par `drizzle-kit generate` : nommer le
+    // fichier est la seule information qui mène à la réparation.
+    throw new Error(`Journal de migrations illisible : ${journal}`, { cause: error })
+  }
+
   const entries = (parsed as { entries?: unknown }).entries
 
   return Array.isArray(entries) && entries.length > 0

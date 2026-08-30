@@ -1,12 +1,19 @@
-export { findRootEnvPath, loadRootEnv, type LoadRootEnvOptions } from './dotenv'
+/**
+ * Barril principal : uniquement du code sans dépendance à Node, donc importable
+ * depuis un composant client. Le chargement du `.env` vit dans
+ * `@repo/config/server`.
+ */
 export {
   BUILD_ENV_KEYS,
   ENV_KEYS,
   EnvValidationError,
+  NEXT_BUILD_PHASE,
+  assertStartupEnv,
   envSchema,
   getEnv,
   isBuildPhase,
   parseEnv,
+  type AssertStartupEnvOptions,
   type Env,
   type EnvSource,
 } from './env'

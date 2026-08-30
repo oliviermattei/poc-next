@@ -1,4 +1,4 @@
-import { loadRootEnv } from '@repo/config'
+import { loadRootEnv } from '@repo/config/server'
 
 import { closeDatabase, getDatabase } from '../client'
 import { runSeeders } from '../seed'

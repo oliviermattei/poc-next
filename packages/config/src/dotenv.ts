@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { dirname, join, parse } from 'node:path'
+import { dirname, join, parse, resolve } from 'node:path'
 
 import { config as loadDotenvFile } from 'dotenv'
 
@@ -13,20 +13,29 @@ const WORKSPACE_MARKER = 'pnpm-workspace.yaml'
 
 /**
  * Chemin du `.env` unique du dépôt, résolu à l'exécution en remontant depuis un
- * dossier de départ (par défaut celui du processus).
+ * dossier de départ (par défaut celui du processus) jusqu'au marqueur de racine.
  *
- * Volontairement calculé ainsi, et non par `new URL('../../..', import.meta.url)` :
- * les bundlers analysent cette forme statiquement. Turbopack la traite comme une
- * ressource, **copie le `.env` dans les artefacts de build** et fait échouer la
- * compilation quand le fichier n'existe pas — deux régressions à la fois, une
- * fuite de secrets et un build cassé en déploiement.
+ * Trois propriétés, et c'est tout ce que cette forme prétend :
+ * - elle trouve la même racine depuis n'importe quel répertoire courant —
+ *   `next dev` s'exécute depuis `apps/web`, les scripts de base depuis
+ *   `packages/db`, les tests depuis la racine ;
+ * - elle ne fige aucun chemin dans un artefact : rien n'est calculé à la
+ *   compilation, donc rien ne dépend de l'emplacement du fichier compilé ni du
+ *   nombre de `..` qui séparait la source de la racine ;
+ * - hors du dépôt (image de production, artefact copié), elle renvoie
+ *   `undefined` : il n'y a alors pas de `.env`, et tout vient de
+ *   l'environnement.
  *
- * Renvoie `undefined` hors du dépôt (image de production, artefact copié) : il
- * n'y a alors pas de `.env`, et tout vient de l'environnement.
+ * L'alternative statique `new URL('../../..', import.meta.url)` n'a pas été
+ * rejetée pour une régression mesurée : elle marche, et perd simplement ces
+ * trois propriétés.
  */
 export function findRootEnvPath(from: string = process.cwd()): string | undefined {
-  const { root } = parse(from)
-  let current = from
+  // Résolu d'abord : un chemin relatif n'a pas de racine (`parse('a/b').root`
+  // vaut `''`) et `dirname('.')` vaut `'.'`. La remontée ci-dessous ne
+  // s'arrêterait jamais.
+  let current = resolve(from)
+  const { root } = parse(current)
 
   for (;;) {
     if (existsSync(join(current, WORKSPACE_MARKER))) {

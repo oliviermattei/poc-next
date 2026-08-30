@@ -66,6 +66,16 @@ describe('exécution des migrations', () => {
       runMigrations({ db: unusableDb, migrationsFolder: folderWithEmptyJournal }),
     ).resolves.toEqual({ applied: false })
   })
+
+  it('nomme le journal illisible plutôt que de remonter une erreur de syntaxe brute', async () => {
+    const folderWithMalformedJournal = fileURLToPath(
+      new URL('./fixtures/malformed-journal', import.meta.url),
+    )
+
+    await expect(
+      runMigrations({ db: unusableDb, migrationsFolder: folderWithMalformedJournal }),
+    ).rejects.toThrowError(/malformed-journal\/meta\/_journal\.json/)
+  })
 })
 
 const FIXTURE_MIGRATIONS_FOLDER = fileURLToPath(new URL('./fixtures/migrations', import.meta.url))
