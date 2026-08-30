@@ -160,5 +160,22 @@ Les affirmations qui contredisaient la recherche sont toutes vraies, vérifiées
 
 Ce qui reste est ironique pour une story qui installe des garde-fous : le garde-fou de l'audit se désarme tout seul quand l'outil qu'il pilote tombe en panne, en écrivant « aucun avis au seuil élevé ». Même famille que les deux leçons de s01 — un contrôle dont le message promet plus qu'il n'a vérifié. Trois lignes le referment. Deux autres écarts méritent d'être repris avant s03 : l'exception de test à un astérisque près, et le renvoi vers une règle dépréciée.
 
+---
+
+## Addendum — tour de correctifs `89d2ade`
+
+> Ajouté par l'orchestrateur après la revue. Le major et les cinq mineurs retenus ont été fermés ; suite passée de 93 à **110 tests**, tous verts, `typecheck`/`lint`/`build`/`e2e`/`audit` à zéro.
+
+- **Major fermé.** `readAuditRun` lit désormais le code de sortie **et** la forme du document ensemble. Le discriminant n'est pas le code — `pnpm audit` sort en non-zéro dès qu'il trouve un avis, c'est aussi le cas nominal — mais la présence d'un rapport : clé `error` refusée, statut non nul sans `advisories` refusé, stdout vide et JSON illisible refusés. Prouvé dans les deux formes d'échec, dont « Un audit qui n'a pas eu lieu n'est pas un audit sans vulnérabilité ». Six mutations rouges, dont une qui recâble le script sur l'ancienne lecture et ne rougit qu'au niveau du script — exactement là où le défaut vivait.
+- **L'astérisque : exception maintenue étroite**, et le commentaire dit désormais ce que le code fait. Raison inscrite dans `eslint.config.ts` : l'exception sert au harnais à observer le câblage qu'il vérifie, elle n'a pas de raison de s'étendre *à l'intérieur* d'un module, là où la règle de couches vaut le plus. Un test `domain` qui a besoin d'`infrastructure` ne signale pas une règle trop stricte, il signale un `domain` qui n'est plus pur. Portée épinglée par des assertions via `calculateConfigForFile` : la dérive n'est plus silencieuse.
+- **`--max-warnings=0`** sur `lint` et `lint:fix`. Les règles Next cessent d'être de la documentation.
+- **Bloc généré d'`apps/web/AGENTS.md` : maintenu versionné**, faute de pouvoir ignorer une portion de fichier — ne pas le versionner salirait l'arbre après chaque `next dev`, donc après chaque `test:e2e`, et ferait échouer le critère 12 en permanence. La vérification d'arbre propre de la CI est **déplacée après `test:e2e`**, seule position couvrant la commande qui écrit ce fichier.
+- **`unrs-resolver` supprimé plutôt que justifié** : dépendance fantôme, absente du lockfile, seuls subsistaient des dossiers orphelins. Le cas écrit concerne `esbuild`, la seule entrée réelle.
+- **Fragilités de test corrigées** : le plancher `>= 5` devient deux gardes auto-actualisées (tout dépôt de workspace produit au moins un package ; toute dépendance en `workspace:` résout vers un package découvert). Prouvé : supprimer `packages/config` du disque rougit, alors que l'ancien plancher restait vert.
+
+**Correction au rapport de revue** : `unrs-resolver` y est qualifié de « dépendance légitime ». C'est faux — c'est un fantôme. La conclusion du finding tenait, pour une raison plus forte que celle avancée.
+
+**Reste ouvert** : la recette CI (le workflow n'a toujours jamais tourné), le trou a11y (s08), la pureté du `domain` (s03).
+
 Max severity: major
 Ship allowed: yes
