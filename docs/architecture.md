@@ -8,7 +8,7 @@
 |---|---|---|
 | Langage | TypeScript strict | 001 |
 | Framework | Next.js (App Router, React Server Components) | 001 |
-| UI | Tailwind CSS + shadcn/ui (composants copiés dans `packages/ui`) | 001 |
+| UI | Tailwind CSS v4 (configuration en CSS) + shadcn/ui sur **Base UI**, composants copiés dans `packages/ui` | 001, 009 |
 | Monorepo | Turborepo + pnpm | 002 |
 | Base de données | PostgreSQL 16+, Drizzle ORM, migrations SQL versionnées | 003 |
 | Provider base | Neon par défaut, PostgreSQL conteneurisé (Coolify) supporté et testé | 003 |
@@ -17,6 +17,7 @@
 | Architecture interne | Clean architecture à quatre couches par module | 006 |
 | Composition | Contrat de module + `config/features.ts` | 007 |
 | Providers | Resend, S3/R2, Stripe, Inngest, Sentry, PostHog, compteur PostgreSQL | 008 |
+| Versions | Dernières majeures stables : Next 16, React 19, Tailwind v4, TypeScript 5.9+, pnpm 10+, Node 20.10+ | 010 |
 | Tests | Vitest (unitaire), Playwright (end-to-end) | — |
 | CI/CD | GitHub Actions ; Vercel en cible de référence, Docker et Coolify documentés | — |
 
