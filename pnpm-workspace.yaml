@@ -3,6 +3,20 @@ packages:
   - "packages/*"
   - "tooling/*"
 
+# Scripts de post-installation : refusés par défaut (`docs/security.md` §6),
+# autorisés au cas par cas. Un cas s'écrit — sans quoi la liste grossit d'un
+# nom par erreur d'installation, et le refus par défaut n'existe plus.
+#
+# - `esbuild` : `postinstall: node install.js` télécharge et installe le binaire
+#   natif correspondant à la plateforme, sans lequel le paquet ne fait rien.
+#   Le script fait partie du mécanisme de distribution du paquet, pas d'un
+#   ajout tiers. Dépendance de développement uniquement (Vite/Vitest et
+#   `drizzle-kit`), jamais expédiée à l'exécution.
+#
+# `unrs-resolver` figurait ici jusqu'à la revue de s02 : il n'est **plus** dans
+# le graphe de dépendances (zéro occurrence dans `pnpm-lock.yaml`) depuis
+# l'abandon d'`eslint-config-next`. Une autorisation qui survit à sa dépendance
+# pré-approuve le script d'un paquet que personne n'a examiné, le jour où une
+# montée de version le réintroduit par transitivité.
 onlyBuiltDependencies:
   - esbuild
-  - unrs-resolver

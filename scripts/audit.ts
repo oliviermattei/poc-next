@@ -4,9 +4,11 @@ import { fileURLToPath } from 'node:url'
 
 import {
   AuditExceptionError,
+  AuditRunError,
   parseAuditExceptions,
-  readAuditReport,
+  readAuditRun,
   selectBlockingAdvisories,
+  type AuditAdvisory,
   type AuditException,
 } from './audit-exceptions'
 
@@ -27,25 +29,21 @@ const loadExceptions = (now: Date): AuditException[] => {
   return parseAuditExceptions(raw, now)
 }
 
-const runPnpmAudit = (): unknown => {
+const runPnpmAudit = (): AuditAdvisory[] => {
   const result = spawnSync('pnpm', ['audit', '--json'], {
     encoding: 'utf8',
-    // `pnpm audit` sort en échec dès qu'il trouve une vulnérabilité, quelle que
-    // soit sa sévérité : c'est ce script qui décide, pas le code de sortie.
     maxBuffer: 32 * 1024 * 1024,
   })
 
   if (result.error !== undefined) {
-    throw result.error
+    throw new AuditRunError(`\`pnpm audit\` n'a pas pu être lancé : ${result.error.message}`)
   }
 
-  const stdout = result.stdout.trim()
-
-  if (stdout === '') {
-    throw new Error(`\`pnpm audit\` n'a rien renvoyé : ${result.stderr.trim()}`)
-  }
-
-  return JSON.parse(stdout)
+  // Le code de sortie et la forme du document sont lus ensemble : `pnpm audit`
+  // sort en échec aussi bien quand il trouve un avis (nominal) que quand il n'a
+  // pas pu auditer (`{"error":{…}}`). Les confondre revenait à traiter une
+  // panne de registre comme une absence de vulnérabilité.
+  return readAuditRun(result)
 }
 
 const main = (): number => {
@@ -65,7 +63,20 @@ const main = (): number => {
     throw error
   }
 
-  const advisories = readAuditReport(runPnpmAudit())
+  let advisories: AuditAdvisory[]
+
+  try {
+    advisories = runPnpmAudit()
+  } catch (error) {
+    if (error instanceof AuditRunError) {
+      console.error(`Audit refusé — ${error.message}`)
+
+      return 1
+    }
+
+    throw error
+  }
+
   const blocking = selectBlockingAdvisories(advisories, exceptions)
 
   for (const exception of exceptions) {

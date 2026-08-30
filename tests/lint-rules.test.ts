@@ -1,3 +1,4 @@
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { boundariesOnlyConfig } from '@repo/eslint-config/boundaries'
@@ -195,5 +196,51 @@ describe('un package ne dépend pas d’une application', () => {
     )
 
     expect(ruleIds).not.toContain('no-restricted-imports')
+  })
+})
+
+/**
+ * Portée de l'exception nommée du harnais de test.
+ *
+ * `vitest.config.ts` autorise deux emplacements, dont un motif à double
+ * astérisque qui couvre les futurs modules (`packages/modules/<module>/src/`).
+ * L'exception du lint, elle, est volontairement **plus étroite** : un seul
+ * astérisque, donc les packages de premier niveau uniquement.
+ *
+ * C'est un arbitrage, pas un astérisque oublié. L'exception existe pour que les
+ * tests du harnais puissent observer le câblage qu'ils vérifient ; elle n'a
+ * aucune raison de s'étendre à l'intérieur d'un module, où la règle de couches
+ * est précisément ce qui a le plus de valeur. Un test de `domain` qui a besoin
+ * d'`infrastructure` ne signale pas une règle trop stricte, il signale un
+ * `domain` qui n'est plus pur. Élargir maintenant relâcherait le contrôle avant
+ * d'avoir un seul cas qui le justifie.
+ *
+ * Ces assertions rendent la décision opposable : l'élargir fait rougir la
+ * seconde.
+ */
+describe('portée de l’exception du harnais de test', () => {
+  let eslint: ESLint
+
+  beforeAll(() => {
+    eslint = new ESLint({ cwd: REPO_ROOT })
+  })
+
+  const boundariesSeverity = async (file: string): Promise<unknown> => {
+    const config = (await eslint.calculateConfigForFile(join(REPO_ROOT, file))) as {
+      rules?: Record<string, unknown[]>
+    }
+
+    return config.rules?.['boundaries/dependencies']?.[0]
+  }
+
+  it.each(['tests/lint-rules.test.ts', 'e2e/health.spec.ts', 'packages/config/src/env.test.ts'])(
+    'exempte le harnais transverse — %s',
+    async (file) => {
+      expect(await boundariesSeverity(file)).toBe(0)
+    },
+  )
+
+  it('juge le test d’un module comme le module lui-même', async () => {
+    expect(await boundariesSeverity('packages/modules/orders/src/domain/order.test.ts')).toBe(2)
   })
 })

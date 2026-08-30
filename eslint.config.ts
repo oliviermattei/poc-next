@@ -82,10 +82,19 @@ const configClientSurface: Linter.Config[] = [
  * sur le disque. C'est assumé : un test de câblage doit pouvoir observer le
  * câblage, et un test de couche doit pouvoir importer la couche.
  *
- * Ce qui compte est que l'exception soit **écrite**, bornée aux deux
- * emplacements de test déclarés par `vitest.config.ts` plus `e2e/`, et non
- * obtenue par omission — un chemin qu'aucune règle ne mentionne
- * ne se distingue pas d'un oubli.
+ * Ce qui compte est que l'exception soit **écrite** et **bornée**, et non
+ * obtenue par omission — un chemin qu'aucune règle ne mentionne ne se
+ * distingue pas d'un oubli.
+ *
+ * Elle est **plus étroite que `vitest.config.ts`**, et c'est délibéré. Vitest
+ * accepte les tests de n'importe quelle profondeur sous `packages/`, futurs
+ * modules compris ; l'exception ci-dessous s'arrête aux packages de premier
+ * niveau. **Les tests d'un module sont donc soumis aux règles de couches de ce
+ * module** : un test de `domain` qui a besoin d'`infrastructure` ne signale pas
+ * une règle trop stricte, il signale un `domain` qui n'est plus pur. L'écart
+ * échoue fermé et bruyamment ; s'il devenait un jour injustifiable, il se
+ * lèvera par un ADR, pas par un astérisque. Portée épinglée par
+ * `tests/lint-rules.test.ts`.
  */
 const testHarnessException: Linter.Config[] = [
   {

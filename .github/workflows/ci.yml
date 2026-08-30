@@ -70,22 +70,29 @@ jobs:
       - name: Build
         run: pnpm build
 
-      # Critère 12 : un fichier généré par un outil ne salit pas l'arbre.
-      # `next build` réécrit `next-env.d.ts` — c'est pourquoi il est ignoré.
-      - name: L'arbre reste propre après le build
-        run: |
-          if [ -n "$(git status --porcelain)" ]; then
-            echo "Le build a modifié des fichiers versionnés :"
-            git status --porcelain
-            git diff
-            exit 1
-          fi
-
       - name: Installer le navigateur
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Parcours end-to-end
         run: pnpm test:e2e
+
+      # Critère 12 : un fichier généré par un outil ne salit pas l'arbre.
+      #
+      # Placée **après** les parcours, et pas seulement après le build : c'est
+      # `next dev`, démarré par Playwright, qui réécrit `apps/web/AGENTS.md`
+      # (bloc `nextjs-agent-rules`) et `next-env.d.ts`. Un contrôle qui tourne
+      # avant la commande qui écrit ne couvre pas cette commande — la
+      # prochaine montée de Next changerait le texte du bloc sans que rien ne
+      # le signale. `git status --porcelain` nomme le fichier fautif, la
+      # position unique en fin de job ne coûte donc pas l'attribution.
+      - name: L'arbre reste propre après le build et les parcours
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Une commande a modifié des fichiers versionnés :"
+            git status --porcelain
+            git diff
+            exit 1
+          fi
 
       # `pnpm run`, et non `pnpm audit` : la commande interne de pnpm ignorerait
       # les exceptions datées de `.audit-exceptions.json`.

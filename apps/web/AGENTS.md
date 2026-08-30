@@ -48,6 +48,20 @@ dépendre d'un artefact généré. Les types de routes (`.next/types/**`) resten
 absents tant que rien n'a été construit, ce qui est correct : ils ne décrivent
 que des routes déjà compilées.
 
+## Le bloc `nextjs-agent-rules` ci-dessous est versionné, et c'est un choix
+
+Next l'écrit et le réinsère à chaque `next dev`
+(`node_modules/next/dist/server/lib/generate-agent-files.js`). Il n'existe aucun
+moyen d'ignorer une *portion* de fichier : ne pas le versionner rendrait
+`apps/web/AGENTS.md` modifié après chaque démarrage, donc après chaque
+`pnpm test:e2e`, et ferait échouer en permanence le critère « après le build,
+`git status` reste propre ». Versionné, l'upsert est un no-op.
+
+Le jour où une montée de Next change ce texte, l'étape « l'arbre reste propre »
+de la CI — placée **après** les parcours, précisément pour cela — rougira. La
+correction attendue est alors de recommitter le bloc tel que Next l'écrit, pas
+de le supprimer.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know

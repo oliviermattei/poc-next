@@ -40,6 +40,17 @@ export class AuditExceptionError extends Error {
   }
 }
 
+/**
+ * L'audit n'a pas pu avoir lieu. Distinct d'« aucune vulnérabilité » : c'est la
+ * confusion des deux qui désarmait le contrôle.
+ */
+export class AuditRunError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'AuditRunError'
+  }
+}
+
 /** Sévérités qui bloquent au seuil « élevé ». */
 export const BLOCKING_SEVERITIES = ['high', 'critical']
 
@@ -171,4 +182,69 @@ export function readAuditReport(report: unknown): AuditAdvisory[] {
       },
     ]
   })
+}
+
+export interface AuditRun {
+  /** Code de sortie de `pnpm audit`, `null` si le processus a été tué. */
+  readonly status: number | null
+  readonly stdout: string
+  readonly stderr: string
+}
+
+/**
+ * Interprète l'issue complète de `pnpm audit --json` : le rapport, ou un refus.
+ *
+ * `readAuditReport` ne sait que normaliser un document bien formé ; appelée sur
+ * autre chose, elle rend une liste vide, ce qui se lit « aucune vulnérabilité ».
+ * Or `pnpm audit` répond à une panne — lockfile absent, registre indisponible,
+ * limitation de débit — par `{"error":{…}}` et un code 1. Sans la garde
+ * ci-dessous, une coupure réseau en CI rendait l'étape verte sans qu'aucun
+ * audit n'ait eu lieu : **un contrôle bloquant qui se désactive au moment
+ * précis où il ne peut plus vérifier**.
+ *
+ * La subtilité est qu'un code non nul est aussi le comportement *nominal* :
+ * `pnpm audit` sort en échec dès qu'il trouve un avis, quelle que soit sa
+ * sévérité — c'est ce script qui décide du seuil, pas le code de sortie. Le
+ * discriminant n'est donc pas le code, c'est la **présence d'un rapport** :
+ * un `advisories` absent joint à un code non nul signifie que rien n'a été
+ * audité.
+ */
+export function readAuditRun(run: AuditRun): AuditAdvisory[] {
+  const stdout = run.stdout.trim()
+  const detail = run.stderr.trim() === '' ? `code ${String(run.status)}` : run.stderr.trim()
+
+  if (stdout === '') {
+    throw new AuditRunError(`\`pnpm audit\` n'a rien renvoyé (${detail}).`)
+  }
+
+  let report: unknown
+
+  try {
+    report = JSON.parse(stdout)
+  } catch {
+    throw new AuditRunError(
+      `Sortie de \`pnpm audit --json\` illisible (${detail}) : ${stdout.slice(0, 200)}`,
+    )
+  }
+
+  if (report === null || typeof report !== 'object') {
+    throw new AuditRunError(`Sortie de \`pnpm audit --json\` illisible (${detail}) : objet attendu.`)
+  }
+
+  const failure = (report as { error?: { code?: unknown; message?: unknown } }).error
+
+  if (failure !== undefined) {
+    throw new AuditRunError(
+      `\`pnpm audit\` a échoué : ${String(failure.code ?? 'erreur')} — ${String(failure.message ?? detail)}`,
+    )
+  }
+
+  if (!('advisories' in report) && run.status !== 0) {
+    throw new AuditRunError(
+      `\`pnpm audit\` n'a pas produit de rapport (${detail}). ` +
+        "Un audit qui n'a pas eu lieu n'est pas un audit sans vulnérabilité.",
+    )
+  }
+
+  return readAuditReport(report)
 }
