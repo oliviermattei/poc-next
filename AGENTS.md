@@ -154,7 +154,7 @@ Full detail in `docs/architecture.md`; each structural decision has an ADR in `d
 
 **A port never throws** — it returns a discriminated result (`{ok:true,…} | {ok:false,error}`), so the compiler forces the caller to handle failure instead of defaulting to a 500. Shape set in s06, binding for storage, payments, jobs, analytics and monitoring. Test doubles replace the **network**, never the SDK.
 
-**One implementation per port.** Mail Resend, storage S3/R2, payments Stripe, jobs Inngest, errors Sentry, analytics PostHog, rate limiting PostgreSQL. Test doubles are tools, not providers: they never justify a second adapter. Every port must work locally with no API key.
+**One implementation per port.** Mail Resend, storage S3/R2, payments Stripe, jobs Inngest, errors Sentry, analytics PostHog, rate limiting PostgreSQL. Test doubles are tools, not providers: they never justify a second adapter. Every port must be usable locally with no provider key — through an **explicit** local mode, never inferred from `NODE_ENV`. Explicit means the developer opts in (e.g. `EMAIL_LOCAL_CAPTURE=1`) and a process with neither a key nor the flag refuses to start, naming the variable. A port that silently falls back to a local stand-in cannot tell a real send from a captured one, in production included.
 
 **Naming** — files `kebab-case`, types and components `PascalCase`, functions and variables `camelCase`, tables and columns `snake_case`.
 

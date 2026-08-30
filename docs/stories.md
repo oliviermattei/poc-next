@@ -185,7 +185,7 @@ Piège : éditer `config/features.ts` sans casser le formatage. Préférer une m
 - [ ] Une interface `Mailer` typée expose l'envoi d'un email (destinataire, sujet, template, données) et est la seule surface appelée par le code métier
 - [ ] En CI, une doublure d'enregistrement capture les envois et le test asserte destinataire, template et données
 - [ ] Hors CI, sur commande explicite, un test contre la clé de test Resend vérifie l'envoi réel
-- [ ] En développement, sans clé d'API, l'email est capturé et consultable localement au lieu d'être envoyé
+- [ ] En développement, sur drapeau explicite (`EMAIL_LOCAL_CAPTURE=1`), l'email est capturé et consultable localement au lieu d'être envoyé ; sans clé **et** sans drapeau, le démarrage échoue en nommant la variable, et clé et drapeau ensemble sont refusés
 - [ ] Un template React Email de démonstration est rendu avec ses données et couvert par un test de rendu
 - [ ] Un échec du provider est journalisé et remonté à l'appelant sans faire tomber la requête
 - [ ] La documentation de délivrabilité existe et décrit SPF, DKIM et DMARC ; un test vérifie la présence de la section et de ces trois enregistrements
