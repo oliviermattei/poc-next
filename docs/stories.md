@@ -952,15 +952,18 @@ Symétrique de s34 : même contrat de module (`export` posé en s03), même repl
 - [ ] Une bannière s'affiche à la première visite et permet d'accepter, de refuser et de personnaliser par catégorie
 - [ ] Un script déclaré comme non essentiel n'est injecté qu'après consentement de sa catégorie ; vérifié avec un script factice dont la présence dans le DOM est assertée
 - [ ] Le refus est respecté et persistant : à la visite suivante, ni bannière ni script non essentiel
-- [ ] Le choix est modifiable à tout moment depuis un lien du pied de page, et le retrait du consentement empêche l'injection au chargement suivant
+- [ ] Le choix est modifiable à tout moment, et le retrait du consentement empêche l'injection au chargement suivant
+- [ ] La gestion du consentement est atteignable **quel que soit l'état du module marketing** : par un lien du pied de page quand il est activé, par une entrée des paramètres de compte du shell quand il ne l'est pas
+- [ ] Sur une installation module marketing non activé et analytique activée, un utilisateur connecté peut retirer son consentement et le script cesse d'être injecté
 - [ ] Aucun script non essentiel déclaré : aucune bannière n'apparaît et aucun cookie non essentiel n'est posé
 - [ ] La bannière est traduite dans toutes les locales livrées
 
 ### Dependencies
-s10-marketing-site
+s08-app-shell, s10-marketing-site
 
 ### Agentic notes
 **Aucune des quatre cibles ne le fournit** — angle du PRD. Obligatoire en Europe dès qu'un outil d'analyse est présent.
+**Deux points d'accès, pas un** (finding F57 de la revue) : le pied de page appartient à s10-marketing-site, qui est un module optionnel. Sur une installation marketing coupé + analytique activée — combinaison légale au regard de s10 et s39 — un point d'accès unique dans le pied de page priverait l'utilisateur de tout moyen de retirer son consentement, c'est-à-dire exactement la non-conformité que ce module existe pour empêcher. s36 étant socle, elle ne peut pas déclarer s10 en module requis : elle doit fonctionner sans lui.
 Ce module n'a pas d'état off propre : il est **inerte par construction** quand aucun script non essentiel n'est déclaré (avant-dernier critère). Couper le consentement tout en gardant l'analytics serait une non-conformité, pas une option — d'où le couplage plutôt qu'un booléen.
 Les critères portent sur un **registre de scripts non essentiels** et un script factice, pas sur PostHog : l'outil d'analyse arrive en s39, qui dépend de cette story.
 Piège : le consentement conditionne le **chargement** du script, pas seulement l'envoi des événements.
