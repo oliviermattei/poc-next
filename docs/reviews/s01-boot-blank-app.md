@@ -213,6 +213,48 @@ Ni Docker, ni Colima, ni Postgres sur cette machine. **À lire comme « non prou
 
 ---
 
+---
+
+## Addendum de vérification post-revue — Postgres disponible
+
+> Ajouté par l'orchestrateur après la revue, une fois Docker installé par le propriétaire. **Ce ne sont pas les mesures du reviewer** : ce sont les miennes, exécutées après le commit `6bb1c10` (second tour de correctifs : N1, N2, N7, N6, N8, N9). Les lignes « non prouvé » du tableau ci-dessus sont désormais périmées sur quatre points, et cette section fait foi.
+
+Environnement : Docker Desktop 29.7.2, Compose v5.4.0, conteneur `boilerplate-postgres-1` (`postgres:16-alpine`) sain en 6 secondes, port 5432 publié, base `app` conforme à la `DATABASE_URL` du `.env`.
+
+| Vérification | Commande | Résultat |
+|---|---|---|
+| **Critère 6** — Postgres par Compose | `docker compose up -d` | healthcheck `pg_isready` passé en 6 s, sans Postgres installé sur la machine |
+| **Suite complète** | `pnpm test` | **36 passed, 0 skipped** — les 3 tests d'intégration cessent de se skipper et passent |
+| **Critère 4** — idempotence | `pnpm db:migrate` deux fois | deux passages sans erreur |
+| **Critère 5** — rejouabilité | `pnpm db:seed` deux fois | deux passages sans erreur (sur le schéma de test, aucun module ne déclarant de données) |
+| **Critère 7 — branche 200** | `pnpm dev` + `curl -i /api/health` | `HTTP 200` — `{"status":"ok","database":"connected"}` |
+| **N1 — échec au démarrage** | `DATABASE_URL='mysql://oops@localhost/x' pnpm dev` | processus mort, `exit=1`, `Failed to load next.config.ts` puis `EnvValidationError: - DATABASE_URL: must be a PostgreSQL connection string`. Rien n'est servi (`curl` → `000`) |
+
+Nuance sur N1 : Next imprime `✓ Ready in 242ms` **avant** de charger `next.config.ts`, donc la bannière précède l'erreur d'une fraction de seconde. Cosmétiquement trompeur, sans conséquence — le processus sort en 1 et aucune requête n'est servie.
+
+### Correction apportée par l'implémenteur au raisonnement de N1
+
+La revue écrivait que « la garde de build existe précisément pour permettre une validation au démarrage sans casser `next build` ». C'est exact sur le principe mais insuffisant en pratique : `NEXT_PHASE` n'est **pas** encore dans l'environnement au moment où Next lit `next.config.ts` (il est posé plus loin dans le build, avant le lancement des workers). La garde par variable d'environnement seule aurait donc cassé `pnpm build` sans `.env`. Le correctif exporte une **fonction** de configuration et utilise l'argument `phase` que Next lui passe — le seul signal disponible à cet instant.
+
+### État réel des sept critères après ce second tour
+
+| # | Critère | État |
+|---|---|---|
+| 1 | `pnpm install && pnpm dev` sur clone neuf | Prouvé sur clone temporaire par l'implémenteur ; `--frozen-lockfile` revérifié |
+| 2 | Variable invalide fait échouer le démarrage en la nommant | **Prouvé** — N1 corrigé et vérifié sur `dev` et `next start` |
+| 3 | `.env.example` aligné sur le schéma | **Prouvé** |
+| 4 | `db:migrate` idempotent | **Prouvé** |
+| 5 | `db:seed` rejouable | **Prouvé** sur le schéma de test ; sans objet applicatif tant qu'aucun module ne déclare de données (décision de plan) |
+| 6 | `docker compose up` fournit un Postgres utilisable | **Prouvé** |
+| 7 | `/api/health` répond 200 avec l'état de la connexion | **Prouvé** dans les deux branches, 200 et 503 |
+
+### Ce qui reste ouvert
+
+N3 (baril à plat pour `drizzle-kit`) → bloque s04. N4 (`pnpm typecheck` absent de la Definition of Done), N5 (`next-env.d.ts` versionné et réécrit par `build`), F8 (frontières de packages contournées par le harnais) → s02. F12, pooling `max: 10` → s27.
+
+Le code a changé après le verdict ci-dessous (commit `6bb1c10`) : `next.config.ts` exporte désormais une fonction, `@repo/config` a une entrée serveur séparée, les alias Vitest sont passés en expressions régulières exactes. Ces changements n'ont pas été soumis à une revue en contexte frais.
+
+
 ## Verdict
 
 Le tour de correctifs fait ce qu'il annonce, et proprement. F1 est mort pour de bon : parcours du Dev reproduit, ECONNREFUSED obtenu sur le port du `.env` racine, variable exportée vérifiée comme prioritaire et traversant Turborepo, puis chacune des deux causes ressuscitée séparément pour constater le retour exact du symptôme d'origine. Le correctif tient aussi sur `next start`, chemin que la revue précédente n'avait pas éprouvé. Les six mineurs revendiqués mordent tous sous mutation, `process.env` a disparu hors du module de configuration, la moitié « typage » de F2 est réelle et sa moitié « génération » est documentée avec une exactitude vérifiée dans le binaire de drizzle-kit. La montée en TypeScript 7 est saine.
