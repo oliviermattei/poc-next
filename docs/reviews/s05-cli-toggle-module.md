@@ -416,3 +416,17 @@ l'ADR), pas par l'implémenteur — l'interdit « `docs/` intouché » du plan n
 
 Max severity: major
 Ship allowed: yes
+
+## Clôture — correctif `7b7353c`
+
+F15 et F16 fermés. Balayage rejoué sur **12 mises en forme** (768 allers-retours) : **564 identiques à l'octet, 204 non identiques, 0 anomalie** — zéro fichier invalide, zéro mésattribution, zéro perte muette. Le même balayage sur le code précédent donne **88 anomalies** (11 invalides, 28 mésattributions, 49 pertes muettes).
+
+Les 204 non-identités sont toutes expliquées et annoncées : 177 perte du commentaire de l'entrée retirée (dans `droppedComments`), 16 passage par l'état vide, 11 coupure de ligne insérée devant un crochet fermant collé.
+
+**Un quatrième cas que la revue n'avait pas vu**, trouvé par le balayage de l'implémenteur : le commentaire suivant la dernière entrée sans virgule tombait dans la propriété de position, produisant 34 anomalies supplémentaires. Corrigé. La leçon vaut dans les deux sens — l'affirmation d'exhaustivité reprochée à `AGENTS.md` valait aussi pour la liste de la revue.
+
+**Correction au rapport** : le crochet collé *sans commentaire* donne 0 fichier invalide sur 64 ; les 11 viennent uniquement de la combinaison crochet collé + commentaire de fin de ligne.
+
+La postcondition ne relit plus seulement la liste : le rendu est confronté aux **diagnostics de syntaxe**, et l'écriture est refusée en nommant l'erreur et sa ligne. C'était le troisième filet de cette story à s'avérer plus étroit que son nom.
+
+**Restent ouverts** : F4 (interruption entre écriture et régénération), F5 (cycle de données non automatisé), le trou e2e s03 en état « deux modules activés » (s26).
