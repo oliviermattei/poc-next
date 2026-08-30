@@ -94,7 +94,9 @@ Conditionne s03 : la preuve de modularité s'exprime par « la suite de tests pa
 4
 
 ### Acceptance criteria
-- [ ] Un module se déclare via un contrat typé exposant : identifiant, **modules requis**, schéma Drizzle, routes, entrées de navigation, traductions, handlers de webhooks, **fonction de purge** (données d'un utilisateur ou d'une organisation) et **fonction d'export** (mêmes périmètres)
+- [ ] Un module se déclare via un contrat typé exposant : identifiant, **modules requis**, schéma Drizzle, routes, entrées de navigation, traductions, **templates d'emails**, handlers de webhooks, **fonction de purge** (données d'un utilisateur ou d'une organisation), **fonction d'export** (mêmes périmètres) et **politique de rétention** déclarant, par catégorie de données, si la suppression efface ou anonymise
+- [ ] Un module déclarant une catégorie de données sans politique de rétention fait échouer la compilation
+- [ ] Un template d'email déclaré sans version dans chacune des locales livrées fait échouer un test
 - [ ] `config/features.ts` liste les modules activés ; la configuration est typée et un identifiant inconnu provoque une erreur de compilation
 - [ ] Activer un module sans l'un de ses modules requis fait échouer la validation de configuration, avec un message nommant le module manquant
 - [ ] Un module non activé n'expose aucune route : l'accès à une de ses URL renvoie 404
@@ -108,7 +110,7 @@ s02-quality-harness
 
 ### Agentic notes
 **Story la plus structurante du projet — risque maximal.** C'est l'angle n°1 du PRD. Si le contrat est mal posé ici, chaque story suivante devra être reprise. La composition des migrations par module, l'autre moitié du problème, est isolée en s04 pour réduire la surface de cette story.
-Le contrat inclut `purge` et `export` **dès maintenant**, avec une implémentation vide pour les modules sans données : les ajouter en s34 et s35 obligerait à rouvrir la vingtaine de modules écrits entre-temps.
+Le contrat inclut `purge`, `export`, la **politique de rétention** et les **templates d'emails** **dès maintenant**, avec une déclaration vide pour les modules sans données ni email : les ajouter en s34, s35 ou s09 obligerait à rouvrir la vingtaine de modules écrits entre-temps. C'est la leçon appliquée trois fois plutôt qu'une.
 La déclaration de **modules requis** est ce qui remplace la répétition d'un « et si X est coupé ? » dans chaque story : une combinaison incohérente est refusée au lieu d'être découverte à l'exécution.
 Référence : MakerKit se contente de 13 booléens d'environnement (`NEXT_PUBLIC_ENABLE_TEAM_ACCOUNTS`…) qui masquent l'UI mais laissent les tables en base. Supastarter utilise des fichiers `config.ts` par application. **Aucun des deux ne retire quoi que ce soit.**
 
@@ -259,11 +261,13 @@ L'avatar est traité en s18 : ici, initiales ou placeholder.
 - [ ] Un sélecteur de langue change la locale et persiste le choix entre deux sessions
 - [ ] Aucune chaîne visible n'est écrite en dur : un test échoue si un texte affiché ne provient pas des fichiers de traduction
 - [ ] Chaque module apporte ses propres traductions ; désactiver un module retire ses clés sans casser le chargement des autres
-- [ ] Les emails transactionnels existants sont envoyés dans la langue de l'utilisateur destinataire
+- [ ] Les emails transactionnels sont envoyés dans la langue de l'utilisateur destinataire
+- [ ] Un email destiné à un destinataire sans compte (invitation, guest checkout, liste d'attente) est envoyé dans la locale par défaut du site ; la règle est unique et vaut pour tout email présent ou futur
+- [ ] Un template d'email déclaré par un module et dépourvu de version dans une locale livrée fait échouer un test, quel que soit le module et sa date d'ajout
 - [ ] Une clé manquante dans une locale est détectée par un test, et non silencieusement remplacée en production
 - [ ] Les écrans déjà livrés (authentification, tableau de bord, paramètres) sont entièrement traduits
 - [ ] **Module non activé** : les routes sont servies sans préfixe de locale, l'application et les emails utilisent la langue par défaut configurée, aucun sélecteur n'apparaît, et aucune redirection de locale n'a lieu
-- [ ] La résolution des chaînes reste la même fonction dans les deux cas : un module écrit après s09 n'a pas à savoir si l'i18n est activée
+- [ ] Un composant écrit sans connaissance de l'i18n rend le texte attendu dans les deux configurations : le même scénario de test passe module activé et module non activé, sans variante
 
 ### Dependencies
 s08-app-shell, s06-transactional-emails
@@ -460,7 +464,7 @@ Piège : le retrait d'un membre doit invalider ses sessions actives sur cette or
 - [ ] Un owner peut transférer la propriété ; l'ancien owner devient admin
 - [ ] Une organisation conserve toujours au moins un owner
 - [ ] Toute vérification de permission est effectuée côté serveur : un appel direct à l'API avec un rôle insuffisant renvoie 403
-- [ ] Module organisations non activé : la vérification accorde l'accès au propriétaire des données, sans branche conditionnelle dans le code appelant
+- [ ] Module organisations non activé : la vérification accorde l'accès au propriétaire des données ; le même scénario de test de permission passe module activé et module non activé, sans variante
 - [ ] Chaque combinaison rôle × action sensible est couverte par un test
 
 ### Dependencies
@@ -740,7 +744,7 @@ Piège : les migrations doivent être rétrocompatibles avec la version encore e
 
 ### Acceptance criteria
 - [ ] Les tentatives de connexion sont limitées par IP et par compte ; au-delà du seuil, la réponse est 429 avec un en-tête `Retry-After`
-- [ ] L'inscription, la réinitialisation de mot de passe, le magic link, la vérification de double authentification, l'invitation, les formulaires publics et le téléversement sont limités avec des seuils configurables
+- [ ] L'inscription, la réinitialisation de mot de passe, le magic link, la vérification de double authentification, l'invitation, les formulaires publics, le téléversement et l'ouverture d'un checkout anonyme sont limités avec des seuils configurables
 - [ ] Un point d'entrée appartenant à un module non activé n'est simplement pas enregistré, sans erreur au démarrage
 - [ ] Les seuils sont définis dans la configuration, jamais en dur dans le code
 - [ ] Un captcha optionnel peut être activé sur les formulaires publics ; désactivé, les formulaires restent pleinement fonctionnels
@@ -749,7 +753,7 @@ Piège : les migrations doivent être rétrocompatibles avec la version encore e
 - [ ] Les limites sont neutralisables dans les tests par injection, sans variable d'environnement exploitable en production
 
 ### Dependencies
-s11-public-forms, s07-signup-signin, s13-two-factor, s16-invite-members, s18-file-storage-avatar
+s11-public-forms, s07-signup-signin, s13-two-factor, s16-invite-members, s18-file-storage-avatar, s24-guest-checkout
 
 ### Agentic notes
 **Socle non désactivable** : optionnel, il laisserait toute installation par défaut exposée sur les points d'entrée du socle (connexion, inscription, réinitialisation). **Aucune des quatre cibles ne le fournit** — angle n°4 du PRD.
@@ -895,7 +899,7 @@ Contrainte PRD : adapter avec **Inngest comme seule implémentation**. trigger.d
 - [ ] La suppression exige une confirmation explicite (saisie de l'email ou du nom de l'organisation)
 - [ ] La suppression appelle la fonction de purge de **chaque module activé** ; un module dont la purge échoue interrompt l'opération et la laisse rejouable
 - [ ] La suppression d'un compte efface ses données personnelles dans tous les modules activés, fichiers stockés et notifications compris
-- [ ] Les enregistrements dont la conservation est légalement requise (factures, journaux de paiement) sont anonymisés plutôt qu'effacés : le lien vers l'utilisateur est rompu et aucune donnée identifiante ne subsiste ; chaque module déclare, par catégorie de données, laquelle des deux opérations s'applique
+- [ ] La suppression applique la politique de rétention déclarée par chaque module (contrat de s03) : les catégories marquées « anonymiser » — typiquement les factures et journaux de paiement, dont la conservation est légalement requise — voient le lien vers l'utilisateur rompu sans qu'aucune donnée identifiante ne subsiste
 - [ ] La suppression d'une organisation efface ses données, retire ses membres et annule son abonnement chez le provider de paiement
 - [ ] Un utilisateur dernier propriétaire d'une organisation doit d'abord la transférer ou la supprimer ; le message le précise
 - [ ] Après suppression, les sessions sont révoquées et une reconnexion est impossible
@@ -909,7 +913,7 @@ s33-background-jobs, s18-file-storage-avatar, s19-subscribe-stripe, s17-roles-pe
 ### Agentic notes
 **Socle non désactivable** : droit à l'effacement. Un droit optionnel n'est pas un droit.
 Parité partielle MakerKit (`NEXT_PUBLIC_ENABLE_PERSONAL_ACCOUNT_DELETION`, `..._TEAM_ACCOUNTS_DELETION`, désactivés par défaut).
-Le contrat de module de s03 porte déjà `purge` : cette story l'orchestre, elle ne le crée pas. Si un module livré entre s03 et ici ne l'a pas implémentée, c'est un manquement à corriger dans ce module.
+Le contrat de module de s03 porte déjà `purge` **et la politique de rétention** : cette story les orchestre, elle ne les crée pas. Introduire ici la déclaration de rétention aurait obligé à rouvrir chaque module écrit depuis s03 — l'erreur que s03 évite justement pour `purge` et `export`. Si un module livré entre s03 et ici ne l'a pas implémentée, c'est un manquement à corriger dans ce module.
 
 ---
 
@@ -970,6 +974,9 @@ Piège : le consentement conditionne le **chargement** du script, pas seulement 
 3
 
 ### Acceptance criteria
+- [ ] Le premier superadmin est désigné par une variable d'environnement ou par le seed ; la procédure est documentée et couverte par un test partant d'une base vierge
+- [ ] Un superadmin peut promouvoir un autre compte superadmin et révoquer ce rôle ; le dernier superadmin ne peut pas se révoquer lui-même
+- [ ] Aucun superadmin configuré : les routes du back-office renvoient 404 et le démarrage journalise un avertissement nommant la variable à définir
 - [ ] Un back-office réservé aux superadmins liste les utilisateurs avec recherche et pagination ; un non-superadmin reçoit 404
 - [ ] Le détail d'un utilisateur affiche ses organisations, ses droits d'accès et ses sessions actives
 - [ ] Un superadmin peut bannir et débannir un compte ; un compte banni ne peut plus se connecter et ses sessions sont révoquées
@@ -979,7 +986,7 @@ Piège : le consentement conditionne le **chargement** du script, pas seulement 
 - [ ] Le début et la fin d'une impersonation émettent une entrée dans les logs applicatifs, avec l'identifiant du superadmin et celui de la cible
 - [ ] Une liste des organisations, avec recherche et pagination, est accessible aux superadmins lorsque le module organisations est activé ; module coupé, l'entrée disparaît du back-office
 - [ ] Le détail d'une organisation affiche ses membres et leurs rôles, son offre et l'état de son abonnement
-- [ ] Les inscriptions publiques (newsletter, liste d'attente) sont consultables, filtrables par source et exportables en CSV lorsque le module de formulaires publics est activé
+- [ ] Les inscriptions publiques sont consultables, filtrables par source et exportables en CSV lorsque le module de formulaires publics est activé ; la vue est générique et n'énumère aucune source en dur
 - [ ] **Module non activé** : aucune route de back-office, aucun rôle de superadmin, et les modules qui le requièrent ne peuvent pas être activés (validation de configuration de s03)
 
 ### Dependencies
@@ -1105,9 +1112,8 @@ Piège : refuser toute opération sur un dépôt aux modifications non commitée
 - [ ] Une page de liste d'attente capture l'email et confirme l'inscription
 - [ ] Un email déjà inscrit affiche la même confirmation sans créer de doublon
 - [ ] Un email de confirmation est envoyé à l'inscription
-- [ ] Les inscrits sont consultables et exportables en CSV depuis le back-office, filtrés sur la source « waitlist »
+- [ ] Les inscriptions créées par ce module portent la source « waitlist » et apparaissent dans la vue générique du back-office filtrée sur cette source
 - [ ] Le formulaire est soumis aux limites de débit du socle
-- [ ] Le module peut remplacer la page d'accueil par la liste d'attente via la configuration, sans modifier le code des pages marketing
 - [ ] **Module non activé** : aucune route de liste d'attente et la page d'accueil reste inchangée
 
 ### Dependencies
@@ -1115,6 +1121,7 @@ s37-admin-users, s28-rate-limiting, s11-public-forms
 
 ### Agentic notes
 Exclusivité MakerKit (vendu comme plugin). Module d'upsell : jamais avant que le socle tourne.
+**Hors périmètre, retiré** : le remplacement de la page d'accueil par la liste d'attente, que MakerKit propose. Le PRD dit « page waitlist avec capture email » — la story livre une page, pas une bascule du site.
 **Réutilise la table d'inscriptions publiques de s11**, distinguée par sa colonne de source. Ne pas créer un second modèle concurrent.
 Modules requis déclarés : back-office et formulaires publics.
 
@@ -1154,8 +1161,7 @@ Module requis déclaré : back-office. Le centre de notifications n'est pas requ
 - [ ] Un utilisateur connecté peut proposer une fonctionnalité et voter ; un vote par utilisateur et par proposition
 - [ ] Un vote peut être retiré et le compteur se met à jour
 - [ ] Un visiteur non connecté voit les propositions et les compteurs mais ne peut ni proposer ni voter
-- [ ] Un superadmin peut changer le statut d'une proposition, la fusionner avec une autre ou la masquer
-- [ ] La fusion reporte les votes sans créer de doublon de votant, et le compteur résultant est égal au nombre de votants distincts
+- [ ] Un superadmin peut changer le statut d'une proposition et la masquer ; une proposition masquée disparaît de la page publique sans que ses votes soient supprimés
 - [ ] Les propositions sont soumises aux limites de débit du socle
 - [ ] **Module non activé** : la page n'existe pas et le lien disparaît du pied de page
 
@@ -1164,6 +1170,7 @@ s37-admin-users, s28-rate-limiting, s10-marketing-site
 
 ### Agentic notes
 Exclusivité MakerKit (plugin roadmap). Dernier module du parcours : bonus assumé.
-Module requis déclaré : back-office (changement de statut, fusion, masquage).
-**Piège principal — la fusion des votes.** Deux propositions fusionnées peuvent partager des votants : un simple report additionne les compteurs et double ces votants. Reporter les votes, puis recompter les votants distincts.
-Piège : une page publique ouverte au vote est un vecteur de spam au-delà du débit. Un compte vérifié doit être exigé pour proposer, et le masquage par un superadmin doit retirer la proposition de la page publique sans supprimer les votes.
+Module requis déclaré : back-office (changement de statut, masquage).
+**Hors périmètre, retirée** : la fusion de propositions. Le PRD dit « roadmap publique avec votes » ; la fusion est un outil de gestion de backlog, et son report de votes sans doublon de votant est un piège coûteux pour un module d'upsell.
+**Le masquage est conservé** : une page publique ouverte aux soumissions sans modération est ingérable. C'est une condition d'exploitation, pas un élargissement de périmètre.
+Piège : une page publique ouverte au vote est un vecteur de spam au-delà du débit. Exiger un compte vérifié pour proposer.
