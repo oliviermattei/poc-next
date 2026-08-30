@@ -1,6 +1,7 @@
 import {
   Project,
   SyntaxKind,
+  ts,
   type ArrayLiteralExpression,
   type Node,
   type SourceFile,
@@ -22,12 +23,18 @@ import {
  * ou que l'on retire tel quel, et **tout ce qui n'est pas une entrée — la mise
  * en forme, les fins de ligne, la virgule finale — est recopié à l'octet près**.
  *
+ * Le rendu est **confronté aux diagnostics de syntaxe** avant d'être remis à
+ * l'appelant. Relire la liste ne suffit pas : la récupération d'erreur de
+ * TypeScript rend la liste demandée sur un texte qui ne compile plus, et un
+ * `config/features.ts` invalide rendrait toute bascule ultérieure impossible.
+ *
  * ## La limite, et elle est réelle
  *
- * Le commentaire d'une entrée **appartient à cette entrée** : celui qui la
- * précède comme celui qui la suit en fin de ligne. Retirer l'entrée l'emporte
- * donc avec elle — le laisser en place le réattribuerait au module voisin, et le
- * fichier documenterait le mauvais module.
+ * Le commentaire d'une entrée **appartient à cette entrée**, où qu'il soit
+ * écrit : au-dessus, devant elle sur sa ligne, entre elle et sa virgule, ou
+ * derrière en fin de ligne. Retirer l'entrée l'emporte donc avec elle — le
+ * laisser en place le réattribuerait au module voisin, et le fichier
+ * documenterait le mauvais module.
  *
  * **Une réactivation ne le rend pas.** L'aller-retour est fait de deux
  * invocations séparées : à la seconde, le texte n'existe plus nulle part, ni
@@ -35,7 +42,7 @@ import {
  * `droppedComments`, et le CLI le dit à l'utilisateur au moment où il le fait
  * (`src/commands.ts`).
  *
- * ## Et une seconde, plus étroite
+ * ## Et deux autres, plus étroites
  *
  * Une liste qui passe par l'**état vide** perd ce que sa dernière entrée
  * portait : sa virgule finale et ses guillemets. `[]` ne dit plus rien de ces
@@ -44,10 +51,22 @@ import {
  * réappliqué est la convention du dépôt : virgule finale sur une liste
  * multiligne, et les guillemets du reste du fichier.
  *
- * Mesuré sur 576 allers-retours (quatre modules, tous les sous-ensembles, sept
- * mises en forme) : 504 identiques à l'octet, 64 non identiques par la perte du
- * commentaire ci-dessus — annoncée —, et 8 par cette seconde limite, toutes sur
- * une liste d'une seule entrée qui passe par l'état vide.
+ * Un crochet fermant **collé à la dernière entrée** (`'demo-enabled'] as const`)
+ * passe à la ligne dès qu'une entrée à commentaire de fin de ligne se retrouve
+ * en dernier : sans cette coupure, le `//` avalerait le `]` et la clause
+ * `satisfies`, et le fichier ne compilerait plus. La liste change alors de mise
+ * en forme, une fois.
+ *
+ * Mesuré sur 768 allers-retours — quatre modules, les seize sous-ensembles,
+ * douze mises en forme (une ligne ; multiligne avec et sans virgule finale ;
+ * commentaires de tête ; de fin de ligne ; de bloc devant l'entrée, collés à sa
+ * virgule, sur liste multiligne ; guillemets doubles ; CRLF ; crochet fermant
+ * collé à la dernière entrée, avec et sans commentaires), les quatre bascules
+ * par état. **564 identiques à l'octet**, 204 non identiques : 177 par la perte
+ * du commentaire d'une entrée retirée — toutes annoncées —, 16 par le passage
+ * d'une liste d'une seule entrée par l'état vide, 11 par la coupure de ligne
+ * ci-dessus. **Zéro fichier syntaxiquement invalide, zéro commentaire déplacé
+ * sur un autre module, zéro perte muette.**
  */
 
 export class FeaturesFileError extends Error {
@@ -149,7 +168,11 @@ interface Slot {
   readonly id: string
   readonly lead: string
   readonly body: string
-  /** Ce qui sépare le littéral de sa virgule. Vide en pratique. */
+  /**
+   * Ce qui sépare le littéral de sa virgule — et ce qui le suit quand le fichier
+   * n'en porte pas encore : un commentaire écrit là est **devant** la virgule
+   * qu'un ajout rendra nécessaire, pas derrière.
+   */
   readonly preComma: string
   readonly tail: string
 }
@@ -168,9 +191,18 @@ interface Layout {
   readonly after: string
   readonly slots: readonly Slot[]
   readonly quote: string
+  /**
+   * Le retour à la ligne du fichier, suivi de l'indentation de la ligne qui
+   * porte le crochet ouvrant. Inséré uniquement pour fermer un commentaire de
+   * fin de ligne qui, sinon, avalerait ce qui le suit.
+   */
+  readonly lineBreak: string
 }
 
 const NEWLINE = /\r?\n/
+
+/** Le rendu commence-t-il par une coupure de ligne — celle qui referme un `//` ? */
+const STARTS_WITH_NEWLINE = /^\r?\n/
 
 /**
  * Guillemets à utiliser pour un identifiant ajouté.
@@ -195,6 +227,14 @@ const quoteOf = (file: SourceFile, array: ArrayLiteralExpression): string => {
  * Ce qui reste sur la ligne de la virgule appartient à l'entrée **précédente** —
  * c'est son commentaire de fin de ligne, et le confondre avec celui de la
  * suivante fait documenter le mauvais module.
+ *
+ * Reste ce qu'un humain écrit **devant** une entrée, sur sa ligne :
+ * `[/* le pilote *\/ 'alpha', 'beta']`. Ce commentaire-là décrit « alpha », pas
+ * la première place de la liste — le traiter comme de l'espacement le laisserait
+ * devant « beta » au retrait d'« alpha ». Il appartient donc à l'entrée qui le
+ * suit, comme s'il était écrit une ligne au-dessus. L'espace, lui, reste à la
+ * place : sans quoi retirer la première entrée d'une liste d'une seule ligne
+ * laisserait `[ 'beta']`.
  */
 const ownedStart = (text: string, element: Node): number => {
   const fullStart = element.getFullStart()
@@ -203,13 +243,18 @@ const ownedStart = (text: string, element: Node): number => {
   const firstNewLine = trivia.indexOf('\n')
 
   if (firstNewLine === -1) {
-    return start
+    const comment = trivia.indexOf('/*')
+
+    return comment === -1 ? start : fullStart + comment
   }
 
   const offset = trivia.slice(firstNewLine + 1).search(/\S/)
 
   return offset === -1 ? start : fullStart + firstNewLine + 1 + offset
 }
+
+/** Ce morceau porte-t-il un commentaire du propriétaire ? */
+const carriesComment = (text: string): boolean => text.includes('//') || text.includes('/*')
 
 /**
  * La virgule qui suit une entrée, cherchée **hors commentaire** : une virgule
@@ -251,23 +296,83 @@ const commaIndex = (region: string): number => {
   return -1
 }
 
+interface Split {
+  readonly preComma: string
+  readonly comma: boolean
+  readonly tail: string
+  readonly rest: string
+}
+
 /** Découpe ce qui suit une entrée : sa virgule, son commentaire de fin de ligne, puis le reste. */
-const splitAfter = (
-  region: string,
-): { readonly preComma: string; readonly comma: boolean; readonly tail: string; readonly rest: string } => {
+const splitAfter = (region: string): Split => {
   const at = commaIndex(region)
   const preComma = at === -1 ? '' : region.slice(0, at)
   const remainder = at === -1 ? region : region.slice(at + 1)
   const newLine = NEWLINE.exec(remainder)
 
-  return newLine === null
-    ? { preComma, comma: at !== -1, tail: '', rest: remainder }
-    : {
-        preComma,
-        comma: at !== -1,
-        tail: remainder.slice(0, newLine.index),
-        rest: remainder.slice(newLine.index),
+  if (newLine !== null) {
+    return {
+      preComma,
+      comma: at !== -1,
+      tail: remainder.slice(0, newLine.index),
+      rest: remainder.slice(newLine.index),
+    }
+  }
+
+  // Rien derrière l'entrée jusqu'au crochet fermant : elle est la dernière d'une
+  // liste d'une seule ligne. Ce qui la suit ne lui appartient que si c'est un
+  // commentaire — l'espacement, lui, est une propriété de la place.
+  if (!carriesComment(remainder)) {
+    return { preComma, comma: at !== -1, tail: '', rest: remainder }
+  }
+
+  // Et sans virgule dans le fichier, ce commentaire est écrit **avant** celle
+  // qu'une entrée ajoutée ensuite rendra nécessaire. Le ranger derrière la
+  // virgule le collerait à cette nouvelle entrée : le fichier documenterait le
+  // mauvais module, et l'aller-retour l'emporterait sous son nom.
+  return at === -1
+    ? { preComma: remainder, comma: false, tail: '', rest: '' }
+    : { preComma, comma: true, tail: remainder, rest: '' }
+}
+
+/**
+ * Ce morceau ouvre-t-il un commentaire de ligne qui n'est pas refermé ?
+ *
+ * Un `//` court jusqu'au prochain retour à la ligne : tout ce qu'on écrit
+ * derrière — l'entrée suivante, le crochet fermant, la clause `satisfies` —
+ * passe **dans** le commentaire. Un `/* … *\/` fermé, lui, ne mange rien.
+ */
+const opensLineComment = (text: string): boolean => {
+  let index = 0
+
+  while (index < text.length) {
+    if (text.startsWith('//', index)) {
+      return true
+    }
+
+    if (text.startsWith('/*', index)) {
+      const end = text.indexOf('*/', index)
+
+      if (end === -1) {
+        return false
       }
+
+      index = end + 2
+      continue
+    }
+
+    index += 1
+  }
+
+  return false
+}
+
+/** La coupure de ligne à insérer : celle du fichier, à l'indentation de la liste. */
+const lineBreakOf = (source: string, before: string): string => {
+  const eol = NEWLINE.exec(source)?.[0] ?? '\n'
+  const openingLine = before.slice(before.lastIndexOf('\n') + 1)
+
+  return `${eol}${/^[ \t]*/.exec(openingLine)?.[0] ?? ''}`
 }
 
 const readLayout = (source: string): Layout => {
@@ -297,6 +402,7 @@ const readLayout = (source: string): Layout => {
       after,
       slots: [],
       quote,
+      lineBreak: lineBreakOf(source, before),
     }
   }
 
@@ -329,12 +435,27 @@ const readLayout = (source: string): Layout => {
     }
   }
 
-  return { before, open, between, trailingComma, close, after, slots, quote }
+  return {
+    before,
+    open,
+    between,
+    trailingComma,
+    close,
+    after,
+    slots,
+    quote,
+    lineBreak: lineBreakOf(source, before),
+  }
 }
 
 const render = (layout: Layout, slots: readonly Slot[]): string => {
   if (slots.length === 0) {
-    return `${layout.before}${layout.close}${layout.after}`
+    // Ce qui précède la première entrée n'est de l'espacement que dans le cas
+    // courant. Un commentaire écrit là n'appartient à aucune entrée — le perdre
+    // en vidant la liste serait une suppression silencieuse.
+    const orphan = carriesComment(layout.open) ? layout.open.replace(/[ \t]+$/, '') : ''
+
+    return `${layout.before}${orphan}${layout.close}${layout.after}`
   }
 
   // Une entrée ajoutée au-delà des séparateurs connus reprend le dernier
@@ -343,20 +464,27 @@ const render = (layout: Layout, slots: readonly Slot[]): string => {
   const fallback =
     layout.between.at(-1) ?? (NEWLINE.test(layout.open) ? layout.open : ' ')
 
+  const prefixOf = (index: number): string =>
+    index === 0 ? layout.open : (layout.between[index - 1] ?? fallback)
+
   const body = slots
     .map((slot, index) => {
-      const prefix = index === 0 ? layout.open : (layout.between[index - 1] ?? fallback)
       const last = index === slots.length - 1
       const comma = last && !layout.trailingComma ? '' : ','
+      // Ce qui suit l'entrée à cette place-ci — le séparateur de la suivante, ou
+      // la fin de la liste. Le commentaire de fin de ligne voyage avec l'entrée,
+      // pas la position : son ancienne ligne ne dit rien de sa nouvelle.
+      const following = last ? `${layout.close}${layout.after}` : prefixOf(index + 1)
+      const closesComment = opensLineComment(slot.tail) && !STARTS_WITH_NEWLINE.test(following)
 
-      return `${prefix}${slot.lead}${slot.body}${slot.preComma}${comma}${slot.tail}`
+      return `${prefixOf(index)}${slot.lead}${slot.body}${slot.preComma}${comma}${slot.tail}${
+        closesComment ? layout.lineBreak : ''
+      }`
     })
     .join('')
 
   return `${layout.before}${body}${layout.close}${layout.after}`
 }
-
-const carriesComment = (text: string): boolean => text.includes('//') || text.includes('/*')
 
 /**
  * Le résultat d'une écriture : le texte, et **ce que l'écriture a changé sans
@@ -410,7 +538,23 @@ export function writeEnabledModules(source: string, next: readonly string[]): En
   )
 
   const text = render(layout, slots)
-  const written = readEnabledModules(text)
+  const rendered = parse(text)
+  const [broken] = project
+    .getLanguageService()
+    .compilerObject.getSyntacticDiagnostics(rendered.getFilePath())
+
+  // La relecture de la liste ne suffit pas : la récupération d'erreur de
+  // TypeScript rend la liste demandée sur un texte qui ne compile plus, et un
+  // `config/features.ts` invalide rend toute bascule ultérieure impossible.
+  if (broken !== undefined) {
+    return fail(
+      `Le CLI refuse d’enregistrer un config/features.ts que TypeScript ne sait pas analyser — ligne ${
+        rendered.getLineAndColumnAtPos(broken.start).line
+      } : « ${ts.flattenDiagnosticMessageText(broken.messageText, ' ')} ». Rien n’a été enregistré.`,
+    )
+  }
+
+  const written = literalIds(enabledModulesArray(rendered))
 
   if (written.length !== next.length || written.some((id, index) => id !== next[index])) {
     return fail(
@@ -428,7 +572,13 @@ export function writeEnabledModules(source: string, next: readonly string[]): En
     text,
     reordered: keptBefore.filter((id, index) => keptAfter[index] !== id),
     droppedComments: layout.slots
-      .filter((slot) => !wanted.has(slot.id) && (carriesComment(slot.lead) || carriesComment(slot.tail)))
+      .filter(
+        (slot) =>
+          !wanted.has(slot.id) &&
+          (carriesComment(slot.lead) ||
+            carriesComment(slot.preComma) ||
+            carriesComment(slot.tail)),
+      )
       .map((slot) => slot.id),
   }
 }

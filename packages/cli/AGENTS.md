@@ -32,15 +32,31 @@ le fichier identique. Conséquence : une liste ordonnée à la main est réordon
 raison. Ne jamais rendre cette normalisation silencieuse.
 
 La limite, elle, est réelle et assumée : **le commentaire d'une entrée retirée
-part avec elle et ne revient pas.** Il lui appartient — le laisser en place le
-réattribuerait au module voisin, et le fichier documenterait le mauvais module.
-Une réactivation ne peut pas le deviner : le texte n'est plus nulle part.
-`writeEnabledModules` le rend dans `droppedComments`, `runToggle` le dit à
-l'utilisateur, `src/features-file.test.ts` le fige. Plus étroite, la même
-famille : une liste qui passe par l'état vide perd la virgule finale et les
-guillemets que portait sa dernière entrée ; la convention du dépôt est
-réappliquée. Ces trois points sont les seules non-identités connues d'un
-aller-retour, et ils sont mesurés (576 balayés, 504 identiques à l'octet).
+part avec elle et ne revient pas.** Il lui appartient — où qu'il soit écrit :
+au-dessus, devant l'entrée sur sa ligne, entre elle et sa virgule, ou derrière en
+fin de ligne. Le laisser en place le réattribuerait au module voisin, et le
+fichier documenterait le mauvais module. Une réactivation ne peut pas le
+deviner : le texte n'est plus nulle part. `writeEnabledModules` le rend dans
+`droppedComments`, `runToggle` le dit à l'utilisateur, `src/features-file.test.ts`
+le fige. Deux autres, plus étroites : une liste qui passe par l'état vide perd la
+virgule finale et les guillemets que portait sa dernière entrée (la convention du
+dépôt est réappliquée) ; et un crochet fermant collé à la dernière entrée passe à
+la ligne quand une entrée à commentaire de fin de ligne se retrouve en dernier —
+sans cette coupure le `//` avalerait le `]`.
+
+Ce sont les non-identités **connues à ce jour**, pas une liste close : elles sont
+mesurées par un balayage de 768 allers-retours (quatre modules, les seize
+sous-ensembles, douze mises en forme — une ligne ; multiligne avec et sans
+virgule finale ; commentaires de tête ; de fin de ligne ; de bloc devant
+l'entrée, collés à sa virgule, sur liste multiligne ; guillemets doubles ; CRLF ;
+crochet fermant collé à la dernière entrée, avec et sans commentaires — et les
+quatre bascules par état), dont **564 identiques à l'octet** et 204 écarts
+répartis en 177 + 16 + 11. Une mise en forme qu'il ne couvre pas peut en révéler
+une quatrième ; ce qu'aucune ne peut produire, en revanche, c'est un fichier
+invalide ou un commentaire déplacé en silence : le rendu est confronté aux
+**diagnostics de syntaxe** de TypeScript avant d'être enregistré — relire la
+liste ne suffit pas, la récupération d'erreur la rend intacte sur un fichier
+cassé — et tout commentaire perdu passe par `droppedComments`.
 
 Le CLI est utilisable par un agent autant que par un humain (ADR 013) : `--json`
 rend une sortie lisible par une machine, et hors terminal interactif il ne pose
@@ -65,6 +81,9 @@ l'analyse. Rien n'est perdu pour autant : le bruit est dérouté, jamais supprim
   7.0.2. Sans effet aujourd'hui — `enabledModules` est une liste de chaînes,
   relue puis revérifiée par `pnpm typecheck` — mais une syntaxe propre à
   TypeScript 7 dans `config/features.ts` serait lue par une majeure antérieure.
+  Conséquence de cet écart, désormais : un `config/features.ts` que l'analyseur
+  de `ts-morph` ne sait pas lire fait **refuser** l'écriture en nommant l'erreur,
+  au lieu d'être réécrit à l'aveugle.
   **Aucune API de manipulation de `ts-morph` n'est appelée** : `addElement`
   emporte la virgule finale avec la dernière entrée, `insertElement` détruit le
   commentaire de l'entrée suivante, et toutes reformatent selon leurs propres

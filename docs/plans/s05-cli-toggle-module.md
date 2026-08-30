@@ -14,7 +14,7 @@ Socles couverts : **`docs/reliability.md` §1** (le toggle est idempotent : deux
 ## Tasks (ordered)
 
 1. [x] **`packages/cli`** — package, `AGENTS.md` (ce qu'il peut importer, ce qu'il ne doit jamais contenir), configuration TypeScript, script racine `ks`.
-2. [x] **Édition AST** de `enabledModules` par `ts-morph`, préservant commentaires et formatage. Prouvé par le test « toggle puis toggle inverse rend le fichier **octet pour octet** identique ».
+2. [x] **Édition de `enabledModules` sur les positions de l'AST `ts-morph`**, préservant commentaires et formatage. *Réalisé sans aucune API de manipulation de `ts-morph` — toutes reformatent la liste : l'AST rend les positions, et l'écriture découpe le texte d'origine.* Prouvé par le test « toggle puis toggle inverse rend le fichier **octet pour octet** identique ».
 3. [x] **`ks list`** — modules disponibles, état, requis. Sortie lisible par un humain et par un agent (mode `--json`).
 4. [x] **Validation déléguée** — le CLI appelle `resolveEnabledModules` et traduit son erreur. Aucune réimplémentation : deux vérités divergeraient.
 5. [x] **Activation** — si un requis manque, proposer de l'activer aussi (mode interactif) ou refuser en le nommant (mode non interactif). Puis **régénérer les barils**, sinon la garde de divergence de s04 rend le dépôt rouge.

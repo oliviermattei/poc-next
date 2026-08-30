@@ -386,3 +386,148 @@ describe('toggle puis toggle inverse rend le fichier octet pour octet identique'
     )
   })
 })
+
+/**
+ * Ce que l'écriture doit garantir même sur une mise en forme qu'elle n'a pas
+ * choisie : le fichier rendu **s'analyse**. Un fichier invalide écrit sur disque
+ * rend la commande définitivement impossible sur ce dépôt, et l'échec accuse
+ * l'étape suivante plutôt que celui qui l'a produit.
+ */
+describe('l’écriture ne rend jamais un fichier que TypeScript ne sait plus lire', () => {
+  const glued = [
+    'export const enabledModules = [',
+    "  'socle', // le socle, jamais coupé",
+    "  'facturation'] as const satisfies readonly AvailableModuleId[]",
+    '',
+  ].join('\n')
+
+  it('sur un crochet fermant collé à la dernière entrée, le commentaire n’avale pas ce qui suit', () => {
+    // `'facturation'] as const` est une mise en forme légale, qu'une main écrit.
+    // Sans retour à la ligne après le commentaire de fin de ligne, le crochet
+    // fermant et la clause `satisfies` passent **dans** le commentaire : le
+    // fichier ne compile plus, et plus aucune bascule n'est possible ensuite.
+    expect(write(glued, ['socle'])).toBe(
+      [
+        'export const enabledModules = [',
+        "  'socle' // le socle, jamais coupé",
+        '] as const satisfies readonly AvailableModuleId[]',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  it('déplacer une entrée à commentaire de fin de ligne ne colle pas la suivante derrière', () => {
+    // Le séparateur d'une position ne suit pas l'entrée qui s'y installe : une
+    // entrée commentée arrivée sur une position d'une liste d'une seule ligne
+    // se ferait suivre d'un espace, et la suite du fichier serait commentée.
+    const written = write("export const enabledModules = ['socle', 'facturation', // la facturation\n  'roadmap'] as const\n", [
+      'facturation',
+      'socle',
+      'roadmap',
+    ])
+
+    expect(readEnabledModules(written)).toEqual(['facturation', 'socle', 'roadmap'])
+  })
+
+  it('refuse d’enregistrer un fichier que TypeScript ne sait pas analyser', () => {
+    // La relecture de la liste ne suffit **pas** : la récupération d'erreur de
+    // TypeScript rend la liste demandée sur un texte qui ne compile pas — c'est
+    // elle qui a laissé passer un « ] as const » commenté. Le rendu est donc
+    // confronté aux diagnostics de syntaxe, et le fichier reste intact.
+    const broken = [
+      'export const enabledModules = [',
+      "  'socle',",
+      '] as const',
+      '',
+      'export function garde( {',
+      '',
+    ].join('\n')
+
+    expect(readEnabledModules(broken)).toEqual(['socle'])
+    expect(() => write(broken, [])).toThrowError(FeaturesFileError)
+  })
+})
+
+/**
+ * Un commentaire appartient à l'entrée qu'il explique, où qu'il soit écrit —
+ * au-dessus, devant, derrière. Deux fautes sont interdites : le laisser
+ * documenter le **mauvais** module, et le supprimer sans le dire.
+ */
+describe('les commentaires de bloc appartiennent à une entrée, jamais à une place', () => {
+  it('celui qui précède une entrée sur sa ligne part avec elle, et est signalé', () => {
+    // Le laisser en place l'attribuerait à « beta » : le fichier documenterait
+    // le mauvais module, et rien ne l'annoncerait.
+    const edit = writeEnabledModules(
+      "export const enabledModules = [/* le pilote */ 'alpha', 'beta'] as const\n",
+      ['beta'],
+    )
+
+    expect(edit.text).toBe("export const enabledModules = ['beta'] as const\n")
+    expect(edit.droppedComments).toEqual(['alpha'])
+  })
+
+  it('celui qui sépare deux entrées appartient à celle qui le suit', () => {
+    // Il explique « beta » : retirer « alpha » ne doit ni le supprimer, ni le
+    // faire glisser sur une autre entrée.
+    expect(
+      write("export const enabledModules = ['alpha', /* le pilote */ 'beta'] as const\n", ['beta']),
+    ).toBe("export const enabledModules = [/* le pilote */ 'beta'] as const\n")
+  })
+
+  it('celui qui suit la dernière entrée part avec elle, et est signalé', () => {
+    const edit = writeEnabledModules(
+      "export const enabledModules = ['alpha', 'beta' /* le dernier */] as const\n",
+      ['alpha'],
+    )
+
+    expect(edit.text).toBe("export const enabledModules = ['alpha'] as const\n")
+    expect(edit.droppedComments).toEqual(['beta'])
+  })
+
+  it('celui qui suit la dernière entrée reste devant la virgule qu’un ajout crée', () => {
+    // Sans virgule dans le fichier, ce commentaire est écrit **avant** celle
+    // qu'une entrée ajoutée rendra nécessaire. Le ranger derrière la virgule le
+    // collerait à la nouvelle entrée : « alpha » perdrait le sien, « beta »
+    // hériterait d'une explication qui ne le décrit pas.
+    expect(
+      write("export const enabledModules = ['alpha' /* le pilote */] as const\n", [
+        'alpha',
+        'beta',
+      ]),
+    ).toBe("export const enabledModules = ['alpha' /* le pilote */, 'beta'] as const\n")
+  })
+
+  it('celui qui sépare une entrée de sa virgule est signalé lui aussi', () => {
+    const edit = writeEnabledModules(
+      "export const enabledModules = ['alpha' /* le pilote */, 'beta'] as const\n",
+      ['beta'],
+    )
+
+    expect(edit.text).toBe("export const enabledModules = ['beta'] as const\n")
+    expect(edit.droppedComments).toEqual(['alpha'])
+  })
+
+  it('celui qui n’appartient à aucune entrée survit à une liste vidée', () => {
+    // Écrit sur la ligne du crochet ouvrant, il ne décrit aucune entrée en
+    // particulier : personne ne l'emporte, donc personne ne le supprime.
+    const source = [
+      'export const enabledModules = [ /* la configuration du dépôt */',
+      "  'alpha',",
+      '] as const',
+      '',
+    ].join('\n')
+
+    expect(write(source, [])).toContain('/* la configuration du dépôt */')
+  })
+
+  it('l’aller-retour rend le fichier identique sur chacune de ces places', () => {
+    for (const source of [
+      "export const enabledModules = [/* le pilote */ 'alpha', 'beta'] as const\n",
+      "export const enabledModules = ['alpha', /* le pilote */ 'beta'] as const\n",
+      "export const enabledModules = ['alpha', 'beta' /* le dernier */] as const\n",
+      "export const enabledModules = ['alpha' /* le pilote */, 'beta'] as const\n",
+    ]) {
+      expect(write(source, ['alpha', 'beta'])).toBe(source)
+    }
+  })
+})
