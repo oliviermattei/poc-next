@@ -23,7 +23,7 @@
     "drizzle-kit": "^0.31.10",
     "drizzle-orm": "^0.45.2",
     "turbo": "^2",
-    "typescript": "^5.9.0",
+    "typescript": "^7.0.2",
     "vitest": "^4"
   }
 }
