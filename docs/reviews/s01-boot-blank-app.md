@@ -1,201 +1,225 @@
-# Review — Story s01-boot-blank-app
+# Review — Story s01-boot-blank-app (2e passage, après le tour de correctifs)
 
-> Revue anti-hallucination en contexte neuf du diff `45a204d..HEAD` (46 fichiers, 3 634 insertions), commit d'implémentation `f73f0d9`, sur `dev` (règle worktree levée par le propriétaire). Contrat lu : `docs/plans/s01-boot-blank-app.md`, `docs/research/s01-boot-blank-app.md`, `docs/stories.md:47-54`, `AGENTS.md`, `docs/architecture.md`, `docs/decisions/001-010`.
+> Revue anti-hallucination en contexte neuf du diff `45a204d..HEAD` (51 fichiers, 4 497 insertions), commits `f73f0d9` (implémentation), `3cae433` (correctifs de revue), `e4b29ee` (TypeScript 7, ADR 011), sur `dev` (règle worktree levée par le propriétaire). Contrat lu : `docs/plans/s01-boot-blank-app.md`, `docs/research/s01-boot-blank-app.md`, `docs/stories.md:47-54`, `AGENTS.md`, `docs/architecture.md`, `docs/decisions/001-011`. Je n'avais jamais vu ce code ; la revue précédente n'a été lue qu'après avoir reproduit F1 moi-même.
 
-## 1. Suite de tests — exécutée, pas rapportée
+## 1. Commandes exécutées, pas rapportées
 
 ```
 $ pnpm test
- RUN  v4.1.11 /Users/olivier/www/boilerplate
- Test Files  4 passed (4)
-      Tests  12 passed | 3 skipped (15)
-   Duration  554ms
+ Test Files  5 passed (5)
+      Tests  26 passed | 3 skipped (29)
 ```
 
-Les 3 skips sont ceux attendus : `describe.skipIf(!databaseReachable)` dans `tests/health.test.ts` (1) et `tests/migrations.test.ts` (2). Aucun faux vert : `tests/fixtures/database.ts` ouvre réellement un pool et exécute `select 1` avant de décider, il ne consulte pas seulement la présence de la variable. **Le skip est honnête, c'est exactement ce que le plan demandait.**
-
-Vérifications supplémentaires exécutées :
+Avant le tour de correctifs : 15 tests. Aujourd'hui : 29. Ce sont **14 tests nouveaux**, pas 8 comme annoncé — l'écart est en faveur du diff, je le note pour la trace. Les 3 skips restent ceux attendus (`describe.skipIf(!databaseReachable)`), et `tests/fixtures/database.ts` ouvre toujours un vrai pool et exécute `select 1` avant de décider : le skip est honnête.
 
 | Commande | Résultat |
 |---|---|
-| `pnpm exec tsc --noEmit` (racine, `packages/config`, `packages/db`, `apps/web`) | 4/4 sans diagnostic |
-| `pnpm --filter @repo/web run build` | ✓ compilé, 3 pages, `/api/health` marquée `ƒ (Dynamic)`, **sans `DATABASE_URL`** |
-| `pnpm db:generate` | `0 tables` → `No schema changes, nothing to migrate`, aucun fichier créé |
-| `pnpm db:migrate` (sans base) | échoue en nommant `DATABASE_URL`, résolution des imports OK |
+| `pnpm exec tsc --noEmit` — racine, `packages/config`, `packages/db`, `apps/web` | 4/4, zéro diagnostic, **TypeScript 7.0.2** |
+| `pnpm build` (`--force`, cache purgé) | ✓ compilé, 3 routes, `/api/health` en `ƒ (Dynamic)` |
+| `pnpm build` **sans `.env` racine** | ✓ succès, aucun bruit dotenv |
+| `pnpm build` **avec `.env` racine** | ✓ succès, `apps/web/.next/` ne contient **aucun** `.env`, aucune chaîne `postgres://…@localhost` |
 | `pnpm install --frozen-lockfile` | `Lockfile is up to date` |
-| `tsc --noEmit` dans `apps/web` avec `.next/` supprimé | aucun diagnostic (`skipLibCheck` couvre `next-env.d.ts`) |
+| `pnpm db:generate` / `db:migrate` / `db:seed` | OK ; `0 tables`, journal vide → « aucune migration à appliquer », aucune connexion ouverte |
+| `pnpm exec tsc --noEmit` dans `apps/web` avec `.next/` supprimé | zéro diagnostic |
 
-## 2. Vérification des API réellement installées
+## 2. F1 est mort — vérifié trois fois, pas cru sur parole
 
-Le piège n°3 de la recherche (`drizzle.config.ts` écrit de mémoire) était le risque d'hallucination le plus probable. Il a été évité, et je l'ai vérifié dans le paquet installé, pas dans la documentation :
+**Reproduction du parcours réel.** `.env` racine (`DATABASE_URL=postgres://postgres:postgres@localhost:5432/app`), aucun Postgres, `pnpm dev`, `curl` :
 
-| Élément du diff | Vérification | Verdict |
+```
+GET / 200
+GET /api/health 503
+@repo/web:dev: Health check: database unreachable — Failed query: select 1
+@repo/web:dev: params: — connect ECONNREFUSED ::1:5432 — connect ECONNREFUSED 127.0.0.1:5432
+```
+
+La variable **atteint le processus qui sert la route** : l'échec est une connexion refusée sur le port du fichier, plus une variable absente. C'est exactement le critère de correction fixé par la revue précédente.
+
+**Variable exportée, deuxième cause.** `DATABASE_URL='postgres://probe:probe@127.0.0.1:1/probe' pnpm dev` → `ECONNREFUSED 127.0.0.1:1`. L'export l'emporte sur le fichier (`override: false`) et traverse Turborepo.
+
+**`next start` aussi** (chemin production auto-hébergé, jamais éprouvé au premier passage) : `next.config.ts` s'exécute, `ECONNREFUSED …:5432`. Le correctif ne vaut pas que pour `dev`.
+
+**Les deux causes sont indépendamment mortelles, et je l'ai prouvé en les ressuscitant une par une** (mutations restaurées, cf. §4) : retirer `loadRootEnv()` de `next.config.ts` ramène mot pour mot le symptôme de F1 ; retirer `DATABASE_URL` de la tâche `dev` de `turbo.json` fait filtrer la variable exportée par le mode strict de Turborepo 2. La déclaration `turbo.json` **n'est donc pas décorative**.
+
+## 3. Vérification des API contre les paquets installés (pas la doc)
+
+Les quatre `tsc --noEmit` passent en TypeScript 7 strict, `skipLibCheck` n'occulte pas un export manquant : c'est déjà une preuve forte que tous les imports du diff existent. Vérifications ciblées en plus, dans `node_modules` :
+
+| Élément | Vérification | Verdict |
 |---|---|---|
-| `defineConfig({ dialect: 'postgresql', schema, out, casing: 'snake_case' })` | `drizzle-kit@0.31.10/index.d.mts:112-145` — `Config` a bien `dialect`, `out?`, `schema?`, `casing?: 'camelCase' \| 'snake_case'`, et la branche `{}` de l'union rend `dbCredentials` facultatif pour `generate` | ✓ forme actuelle, aucune trace de `driver: 'pg'` |
-| `import { migrate } from 'drizzle-orm/node-postgres/migrator'` | fichier présent ; `migrate<TSchema>(db, config: MigrationConfig)` | ✓ |
-| `migrationsTable` / `migrationsSchema` (déviation n°6) | `drizzle-orm/migrator.d.ts` : `MigrationConfig { migrationsFolder: string; migrationsTable?: string; migrationsSchema?: string }` | ✓ **API réelle, pas inventée** |
-| `drizzle(pool, { schema, casing })` | `node-postgres/driver.d.ts` + `utils.d.ts:47-52` : `DrizzleConfig` expose `schema?`, `casing?: Casing` | ✓ |
-| `NEXT_PHASE === 'phase-production-build'` | `next@16.3.3/dist/build/index.js:1212` pose `process.env.NEXT_PHASE = PHASE_PRODUCTION_BUILD` ; `constants.js:337` : `'phase-production-build'` | ✓ valeur exacte |
-| `envSchema.shape`, `safeParse`, `error.issues` | zod 4.5.4 | ✓ |
-| `describe.skipIf`, `vi.stubEnv`, `vi.resetModules` | vitest 4.1.11 | ✓ |
+| `dotenv.config({ path, processEnv, override, quiet })` | `dotenv@17.4.2/lib/main.d.ts` déclare les quatre | ✓ API réelle |
+| `prepareFromExports` (justification du commentaire de `schema.ts`) | `drizzle-kit@0.31.10/bin.cjs:16727` : `Object.values(exports2).forEach(...)`, aucune descente récursive | ✓ **le commentaire dit vrai** |
+| `vi.doMock` / `vi.doUnmock` | `vitest@4.1.11/dist/index.d.ts:450,458` | ✓ |
+| `migrate`, `migrationsTable`, `migrationsSchema`, `drizzle(pool, {schema, casing})`, `defineConfig({dialect,schema,out,casing})` | déjà vérifiés au 1er passage, inchangés | ✓ |
+| `AggregateError` / `error.errors` | intégré ES2021, couvert par `lib: ES2022` | ✓ |
+| Options de `tooling/typescript/*.json` sous TS 7 | sonde isolée : `tsc` échoue en TS5023 sur une option retirée. Le dépôt ne produit aucun TS5023 | ✓ **aucune option supprimée n'est utilisée** |
+| Sévérité réelle de `base.json` sous TS 7 | sonde isolée : `noUnusedLocals` (TS6133) et `noUncheckedIndexedAccess` (TS2322) mordent | ✓ config non creuse |
+| Lockfile | une seule version de TypeScript, `7.0.2`, dans les 4 projets | ✓ ADR 011 respecté |
 
 Aucune API inventée dans le diff.
 
-## 3. Preuve de morsure des tests (mutations, restaurées)
+## 4. Morsure des tests (mutations, toutes restaurées)
 
-| # | Fichier | Mutation | Rouges |
+| # | Cible | Mutation | Rouges |
 |---|---|---|---|
-| A | `apps/web/app/api/health/route.ts` | `if (!status.connected)` → `if (false)` | **2** |
-| B | `packages/config/src/env.ts` | `if (!result.success)` → `if (false)` + retour de `source` | **2** |
-| C | `packages/db/src/schema.ts` | garde de collision `if (owner !== undefined)` → `if (false)` | **1** |
-| D | `packages/db/src/migrate.ts` | `if (!existsSync(journal))` → `if (false)` | **1** |
-| E | `.env.example` | `DATABASE_URL=` commenté | **1** |
+| M1 | `apps/web/next.config.ts` | `loadRootEnv()` commenté | **1** (+ F1 reproduit à l'exécution) |
+| M2 | `turbo.json` | `DATABASE_URL` retiré de la tâche `dev` | **1** (+ variable exportée filtrée) |
+| M3 | `packages/db/src/schema.ts` | retour de `composeSchema` remis à `Record<string, unknown>` | **0 au runtime**, 1 erreur `tsc` — voir N3 |
+| M4 | `packages/db/src/migrate.ts` | `entries.length > 0` → `true` | **1** |
+| M5 | `packages/db/src/client.ts` | garde chaîne vide → `if (false)` | **1** |
+| M6 | `packages/db/src/client.ts` | déballage `AggregateError` supprimé | **1** |
+| M7 | `packages/config/src/env.ts` | `console.warn` de `SKIP_ENV_VALIDATION` supprimé | **1** |
+| M8 | `.env.example` | `SKIP_ENV_VALIDATION` renommé | **1** |
 
-Les cinq invariants centraux de la story mordent. Restauration prouvée : `git diff --exit-code` → 0 et `git status --porcelain` vide après chaque mutation et à la fin de la revue.
+Restauration prouvée après chaque mutation : `git status --porcelain` vide, `git diff --exit-code` → 0.
 
-Deux tests ne mordent sur rien et survivent trivialement aux mutations correspondantes — ils ne sont pas décoratifs au sens du barème (ils gardent une invariante de sécurité), mais ils n'ajoutent pas de couverture : `tests/env-example.test.ts` « ne contient aucune valeur secrète » (heuristique par regex) et `tests/health.test.ts` « répond 503 sans divulguer la chaîne de connexion » (le corps est un JSON à deux clés constantes).
+`tests/env-wiring.test.ts` est le seul test de la story qui garde un câblage plutôt qu'une fonction. M1 et M2 prouvent qu'il fait son travail. Sa limite : il constate que `next.config.ts` **appelle** `loadRootEnv`, pas que Next exécute `next.config.ts` dans le processus qui sert la route. Cette seconde moitié n'est couverte par aucun test automatisé.
 
 ---
 
 ## Findings
 
-### CRITICAL — F1. `pnpm dev` ne transmet jamais `DATABASE_URL` à l'application : `/api/health` ne peut structurellement pas renvoyer 200
+### MAJOR — N1. Critère 2 à moitié satisfait : une variable manquante ou malformée ne fait pas échouer le démarrage
 
-Le critère 7 (« `/api/health` répond 200 avec l'état de la connexion ») et la prémisse même du critère 1 (« une application qui démarre, **connectée à Postgres** ») sont inatteignables par le parcours documenté. Deux causes se cumulent, chacune vérifiée séparément et empiriquement, **sans base de données** :
-
-**Cause 1 — Next lit `.env` dans `apps/web/`, pas à la racine du dépôt.**
-`.env.example` vit à la racine et dit en tête « Copiez ce fichier en `.env` ». `packages/db/src/scripts/{migrate,seed}.ts` chargent explicitement ce `.env` racine via dotenv, donc `pnpm db:migrate` fonctionne. `apps/web`, lui, ne le voit pas.
+Le critère dit : « Une variable d'environnement manquante ou malformée **fait échouer le démarrage** avec un message nommant la variable fautive ». Mesuré sur le code livré, sans mutation :
 
 ```
-# .env à la racine, pnpm exec next dev dans apps/web
-Health check: database unreachable — Invalid environment variables:
-  - DATABASE_URL: Invalid input: expected string, received undefined
-
-# le même fichier déplacé dans apps/web/.env
-- Environments: .env
-Health check: database unreachable — Failed query: select 1
-params:  — connect ECONNREFUSED 127.0.0.1:1        ← la variable est enfin lue
-```
-
-**Cause 2 — `turbo.json` ne déclare pas `DATABASE_URL` sur la tâche `dev`, et Turborepo 2 filtre en mode strict.**
-La tâche `dev` de `turbo.json` n'a que `cache: false` et `persistent: true`, contrairement à `build`, `db:migrate` et `db:seed` qui déclarent `env: ["DATABASE_URL"]`. Conséquence mesurée : même le contournement par variable exportée échoue.
-
-```
-$ DATABASE_URL='postgres://probe:probe@127.0.0.1:1/probe' pnpm dev
+$ DATABASE_URL='mysql://oops@localhost/x' pnpm dev
+@repo/web:dev: ✓ Ready in 331ms
+@repo/web:dev:  GET / 200 in 912ms
 @repo/web:dev: Health check: database unreachable — Invalid environment variables:
-@repo/web:dev:   - DATABASE_URL: Invalid input: expected string, received undefined
-
-$ cd apps/web && DATABASE_URL='postgres://probe:probe@127.0.0.1:1/probe' pnpm exec next dev
-Health check: database unreachable — Failed query: select 1 — connect ECONNREFUSED 127.0.0.1:1
+@repo/web:dev:   - DATABASE_URL: must be a PostgreSQL connection string (postgres://…)
+@repo/web:dev:  GET /api/health 503
 ```
 
-Le parcours réel d'un Dev qui suit le dépôt (`cp .env.example .env` → `docker compose up -d` → `pnpm db:migrate` → `pnpm dev` → `curl /api/health`) donne donc : migrations appliquées, puis **503 pour toujours**. L'absence de Docker sur cette machine ne masque rien ici : le défaut est en amont de la connexion, la variable n'atteint jamais le processus.
+L'application **démarre**, sert `/` en 200, et ne signale la variable fautive qu'au premier appel de la sonde, dans les journaux serveur. La moitié « message nommant la variable fautive » est parfaitement tenue ; la moitié « fait échouer le démarrage » ne l'est pas. Un Dev qui se trompe de chaîne de connexion voit une application qui a l'air de marcher.
 
-À noter, ce n'est pas un défaut de test mais un trou de dispositif : `tests/health.test.ts` importe directement la fonction `GET` depuis `apps/web/app/api/health/route.ts` avec `vi.stubEnv`, donc il ne traverse ni le runtime Next ni la résolution d'environnement de Next ou de Turbo. Aucun test de la story ne pouvait attraper F1.
+C'est la conséquence de la validation paresseuse, choisie pour la bonne raison — la recherche pose « la validation ne doit pas casser le build » — mais la garde de build existe précisément pour permettre une validation **au démarrage du serveur** sans casser `next build`. Les deux ne s'excluent pas. `pnpm db:migrate` et `pnpm db:seed`, eux, échouent bien immédiatement.
 
-Directions de correction (au choix, décision de l'auteur) : déclarer `env: ["DATABASE_URL"]` sur la tâche `dev` de `turbo.json` **et** faire lire le `.env` racine par `apps/web` (chargement explicite dans `next.config.ts`, ou lien/`.env` dédié à l'app avec `.env.example` correspondant). Le correctif n'est complet que si les deux causes sont traitées : chacune seule laisse le 503.
+Ni le plan ni la revue précédente ne l'avaient relevé. Non bloquant (le diagnostic existe et nomme la variable), mais le critère 2 doit être marqué « partiellement satisfait », pas coché.
 
----
+### MAJOR — N2. La justification écrite dans `packages/config/src/dotenv.ts` n'est pas reproductible
 
-### MAJOR — F2. `composeSchema` est invisible pour `drizzle-kit generate` et efface le typage : le pari désigné par le plan tient à moitié
+Le commentaire est la raison d'être du mécanisme de résolution à l'exécution, et il est formulé comme un fait mesuré : les bundlers analyseraient statiquement `new URL('../../..', import.meta.url)`, Turbopack copierait le `.env` dans les artefacts de build et ferait échouer la compilation quand le fichier n'existe pas.
 
-Le plan nomme lui-même ce point comme « celui sur lequel tout repose » et fixe le test : *« Si la fonction écrite ici ne sert pas telle quelle en s04, elle est du décor. »* Vérification faite dans le paquet installé, elle ne servira pas telle quelle.
+J'ai implémenté la forme rejetée dans `apps/web/next.config.ts` (à la profondeur correcte) et mesuré, cache purgé :
 
-1. **drizzle-kit ne descend pas dans un objet.** `drizzle-kit@0.31.10/bin.cjs`, `prepareFromExports` : `Object.values(exports).forEach(t => { if (is(t, PgTable)) tables.push(t) })`. Il n'inspecte que les exports de premier niveau et ne traverse aucun objet imbriqué. Or `packages/db/drizzle.config.ts` pointe `schema: './src/schema.ts'`, dont le seul agrégat de tables sera `export const appSchema = composeSchema(enabledModuleSchemas)` — un objet. En s04, les tables des modules composées par cette fonction seront **ignorées par `generate`**. Aujourd'hui la liste est vide, donc `0 tables` est correct et rien ne casse ; l'échec est différé, pas absent.
-2. **Le typage est détruit à la composition.** `ModuleSchema.schema: Record<string, unknown>` et `composeSchema(...): Record<string, unknown>` donnent `AppSchema = Record<string, unknown>`, donc `NodePgDatabase<Record<string, unknown>>`. L'API relationnelle `db.query.<table>` sera inutilisable et non typée quel que soit le module ajouté. Une signature générique (`composeSchema<T extends readonly ModuleSchema[]>`) est ce qu'il faudrait pour que la fonction survive à s04.
+- `next build` avec `.env` présent : **succès**. `find apps/web/.next -name "*.env*"` → vide. `grep -rl "postgres:postgres@localhost" apps/web/.next` → vide. **Aucune fuite.**
+- `next build` avec `.env` absent : **succès**. **Aucun build cassé.**
 
-Ce qui, en revanche, est bien s04-compatible et mérite d'être noté au crédit du diff : `runMigrations` accepte `migrationsFolder` + `migrationsTable` + `migrationsSchema`, ce qui permet exactement « n'appliquer que les migrations des modules activés », un dossier et un journal par module. La moitié « exécution » du pari tient ; c'est la moitié « composition » qui est du décor.
+Le mécanisme invoqué est réel *dans le code applicatif bundlé*, mais `next.config.ts` est compilé par le chargeur de configuration de Next, pas par le bundler d'application : il ne s'applique pas là où le commentaire dit qu'il s'applique. Accessoirement, le chemin cité dans le rapport de correctifs (`'../../../.env'` depuis `apps/web/next.config.ts`) pointe **au-dessus** de la racine du dépôt et n'a donc jamais été une alternative fonctionnelle.
 
-Non bloquant pour s01 (aucun module, aucune table), mais à rouvrir **avant** s04 sous peine de le découvrir table par table.
+**Le code livré reste le meilleur des deux** — résolution depuis n'importe quel répertoire courant, `undefined` hors du dépôt, dégradation propre en déploiement — et je ne demande pas de le changer. Ce qui est en cause est le commentaire : un « on a rejeté X parce que Y » où Y est faux devient, dans six mois, la raison pour laquelle personne n'ose simplifier. À réécrire en ce qu'elle est vraiment : un choix de robustesse, pas un contournement d'une régression mesurée.
 
----
+### MAJOR — N3 (report). `composeSchema` reste invisible pour `drizzle-kit generate` : la moitié « génération » de F2
+
+La moitié « typage » est réellement corrigée : `composeSchema<const TModules>` + `ComposedSchema` préservent le type, et `expectTypeOf` échoue sous `tsc` dès qu'on rétablit `Record<string, unknown>` (M3). `AppSchema` vaut `Record<string, never>` pour une liste vide, ce qui est correct.
+
+La moitié « génération » reste ouverte, **délibérément et honnêtement** : le commentaire de `packages/db/src/schema.ts` décrit exactement ce que fait `prepareFromExports`, vérifié ligne par ligne dans `drizzle-kit@0.31.10/bin.cjs:16727`. Il nomme le chaînon manquant (fichier baril réexportant à plat) et le renvoie à s04. Aucune table aujourd'hui, donc aucun risque en s01. Finding maintenu ouvert au niveau major pour qu'il ne se perde pas : il ne bloque pas ce ship, il bloque s04.
 
 ### MINOR
 
-**F3 — Critère 5 littéralement non satisfait.** `pnpm db:seed` ne peuple rien : `seeders: readonly Seeder[] = []`. Le critère dit « peuple la base de développement avec un jeu de données minimal ». Le plan (frontmatter `validated: yes`) a assumé cette reformulation et la justifie — inventer une table de production aurait violé un interdit sanctionné trois fois par la revue des stories. Je l'enregistre donc comme décision de plan, pas comme dérive, mais le critère reste à repasser quand le premier module livre un seed.
+**N4 — La garantie de typage n'est vérifiée par aucune commande de la Definition of Done.** `expectTypeOf` est un no-op à l'exécution : sous mutation M3, `pnpm test` reste vert et `pnpm build` passe ; seul `tsc --noEmit` **à la racine** échoue. Or il n'existe ni script `typecheck` racine, ni tâche `typecheck` dans `turbo.json` — les trois scripts par package sont orphelins et ne couvriraient pas `tests/`. La DoD dit « `pnpm test` passe » ; elle ne protège pas ce que le correctif vient d'ajouter. s02 livre `pnpm typecheck` : c'est là que ça se règle.
 
-**F4 — `turbo.json` déclare une tâche `test` qu'aucun package n'implémente.** Le script racine est `"test": "vitest run"`, il ne passe pas par Turbo. Configuration morte (déviation n°9, confirmée).
+**N5 — `apps/web/next-env.d.ts` est versionné alors que Next le réécrit selon la commande.** La version committée est la variante `dev` ; un `pnpm build` la réécrit et salit l'arbre. Antérieur au tour de correctifs, manqué par la revue précédente. Conséquence : toute vérification `git diff --exit-code` dans la CI de s02 échouera après un build.
 
-**F5 — Le journal vide committé rend une garde inatteignable.** `packages/db/drizzle/meta/_journal.json` est committé avec `"entries":[]`, donc `existsSync(journal)` est toujours vrai sur le chemin réel : le retour `{ applied: false }` et le message « Aucune migration à appliquer : aucun module ne déclare de schéma. » ne peuvent jamais se produire en usage normal. La branche n'est atteinte que par le test à dossier inexistant. Code et message trompeurs.
+**N6 — Le `.env` racine ne fait pas partie de la clé de cache de la tâche `build`.** Mesuré : modifier `DATABASE_URL` puis relancer `pnpm build` → `FULL TURBO`. Turborepo hache la variable du processus, pas le fichier, et `turbo.json` n'a ni `globalDependencies` ni `inputs`. Sans effet aujourd'hui, mais dès la première variable `NEXT_PUBLIC_*`, le cache servira un artefact construit avec l'ancienne valeur. Correctif d'une ligne : `"globalDependencies": [".env"]`.
 
-**F6 — Deux variables lues par le module de configuration échappent au test d'alignement.** `SKIP_ENV_VALIDATION` et `NEXT_PHASE` sont lues par `isBuildPhase` mais absentes du schéma Zod, donc de `ENV_KEYS`, donc de `.env.example`, alors que `docs/architecture.md` pose « `.env.example` est exhaustif et vérifié par un test ». `SKIP_ENV_VALIDATION=1` désactive toute validation à l'exécution et fait retourner `process.env` brut casté en `Env` : `new Pool({ connectionString: undefined })` se rabat alors silencieusement sur les défauts libpq au lieu d'échouer. Trappe volontaire et courante, mais non documentée et non testée.
-Le sens unique du test (déviation n°10) n'est en revanche **pas** un défaut : le critère 3 demande littéralement « un test échoue si une variable du schéma en est absente », et les 4 clés `POSTGRES_*` sont explicitement commentées comme lues par Docker Compose seul.
+**N7 — `findRootEnvPath` boucle indéfiniment sur un `from` relatif.** `parse('a/b').root === ''` et `dirname('.') === '.'`, donc la condition d'arrêt n'est jamais atteinte. Reproduit hors dépôt. Non atteignable par un appelant actuel, mais la fonction est **exportée dans le barrel public de `@repo/config`**. Corrigeable par `let current = resolve(from)`.
 
-**F7 — Lecture directe de `process.env` hors du module de configuration.** `tests/fixtures/database.ts:9` : `process.env.DATABASE_URL ?? ''`. Règle transverse de `docs/architecture.md`. Périmètre test, donc mineur, mais c'est le premier précédent dans un dépôt dont la règle est un argument de vente.
+**N8 — Le barrel de `@repo/config` tire désormais des modules Node.** `src/index.ts` réexporte `./dotenv`, qui importe `node:fs` et `node:path`. `@repo/config` est le point d'accès unique à l'environnement et hébergera les `NEXT_PUBLIC_*` : le premier composant client qui l'importera traînera `node:fs` dans le graphe client. Séparer l'export serveur coûte peu maintenant.
 
-**F8 — Le harnais de test contourne les frontières de packages.** `vitest.config.ts` alias `@repo/config` et `@repo/db` vers `./packages/*/src/index.ts`, et `tests/health.test.ts` importe `../apps/web/app/api/health/route`. L'ADR 002 pose que « un import non déclaré dans `package.json` échoue » : dans les tests, plus rien n'échoue. À arbitrer en s02 quand le harnais devient officiel.
+**N9 — `hasMigrations` fait `JSON.parse` sans garde.** Un `_journal.json` malformé remonte un `SyntaxError` brut au lieu d'une erreur nommant le fichier.
 
-**F9 — Un `pg.Pool` est construit même quand le bloc d'intégration est skippé.** `describe.skipIf(...)` évalue quand même le corps du describe, donc `createDatabaseClient({ connectionString: '' })` s'exécute et le `afterAll` qui devait le fermer est skippé. Sans effet observé (la suite se termine en 554 ms), mais le pool est orphelin.
+**N10 — Dérive documentaire après ADR 011.** `docs/architecture.md` affiche toujours « TypeScript 5.9+ » en citant l'ADR 010, superseded sur ce point. Le plan interdisait à l'implémenteur de toucher `architecture.md` : ce n'est pas une dérive d'exécution, c'est une mise à jour de cadrage due sur la branche par défaut. De même, les tâches 1 et 10 du plan décrivent un `turbo.json` portant une tâche `test`, cochées, alors que le correctif l'a retirée en réponse à F4.
 
-**F10 — TypeScript épinglé `^5.9` alors que `npm view typescript version` renvoie `7.0.2`.** Conforme à la lettre de l'ADR 010 (« TypeScript 5.9+ ») mais en tension avec son principe (« dernières majeures stables », « démarrer une majeure en retard, c'est naître obsolète »). L'ADR étant immuable, l'écart demande un arbitrage explicite (ADR successeur ou montée), pas un `^5.9` silencieux.
+### Findings de la revue précédente — état
 
-**F11 — Un remote git `origin` existe, alors que le plan interdit « ne pas ajouter de remote git ».** `git remote -v` → `git@github.com:oliviermattei/boilerplate.git`. La configuration git n'étant pas versionnée, l'ajout n'est **pas attribuable au diff** et peut être le fait du propriétaire ; `git branch -r` est vide, donc rien n'a été poussé. Consigné pour la trace, pas imputé.
+| # | Objet | État vérifié |
+|---|---|---|
+| F1 | `DATABASE_URL` n'atteint pas `apps/web` | **Corrigé**, reproduit et remuté deux fois |
+| F2 | `composeSchema` : typage + génération | Typage **corrigé** ; génération **ouverte, documentée avec exactitude** (N3) |
+| F3 | Critère 5 sans objet | Inchangé, décision de plan assumée |
+| F4 | Tâche `test` morte | **Corrigée** (retirée) — cf. N10 |
+| F5 | Garde de journal inatteignable | **Corrigée** (M4) |
+| F6 | `SKIP_ENV_VALIDATION` / `NEXT_PHASE` | **Corrigé** : documenté, testé (M8), trappe bruyante (M7), garde chaîne vide (M5) |
+| F7 | `process.env` hors module de config | **Corrigé** |
+| F8 | Harnais franchissant les frontières de packages | Inchangé. À arbitrer en s02 |
+| F9 | Pool orphelin | **Corrigé** |
+| F10 | TypeScript `^5.9` | **Corrigé** : ADR 011, `7.0.2` partout |
+| F11 | Remote git `origin` | Inchangé, non attribuable au diff |
+| F12 | Imports intra-package sans extension | Inchangé, contrainte latente |
+| — | Pooling `max: 10` figé (ADR 003) | Inchangé, s27 |
 
-**F12 — Imports intra-package sans extension** (déviation n°3). Vérifié fonctionnel sous tsx (`pnpm db:migrate` résout correctement), Next/Turbopack, Vitest et `tsc` en `moduleResolution: bundler`. Mais `packages/db` déclare `"type": "module"` et `"exports": { ".": "./src/index.ts" }` : sous un Node ESM nu, sans transpileur, la résolution échouerait. Contrainte latente à documenter plutôt qu'un défaut actuel.
+`describeError` déballe désormais `AggregateError` — hors liste demandée, mais justifié et prouvé (M6) : sans lui, sur un hôte double pile, le journal était muet. Ajout accepté.
 
----
-
-## Interdits du plan — vérification ligne à ligne
+## Interdits du plan — revérifiés sur le diff complet
 
 | Interdit | Vérification | Verdict |
 |---|---|---|
-| Aucun package hors `config` et `db` | `ls packages/` → `config`, `db`. `tooling/typescript` est la tâche 2 du plan | ✓ |
-| Aucune table de production | seule table du diff : `fixture_item` dans `tests/fixtures/schema.ts` | ✓ |
-| Jamais `drizzle-kit push` | aucune occurrence dans les scripts ni les configs (le seul « push » du dépôt est un commentaire qui l'interdit) | ✓ |
-| Pas d'ESLint, Playwright, `.github/` | `.github/` absent, aucune de ces dépendances dans les 5 `package.json` | ✓ |
+| Aucun package hors `config` et `db` | `ls packages/` → `config`, `db` | ✓ |
+| Aucune table de production | seule table : `fixture_item` sous `tests/fixtures/` | ✓ |
+| Jamais `drizzle-kit push` | aucune occurrence hors commentaire l'interdisant | ✓ |
+| Pas d'ESLint, Playwright, `.github/` | absents | ✓ |
 | Pas de Tailwind, shadcn, Base UI, Hono, oRPC | aucune occurrence | ✓ |
-| `docs/` non modifié hors plan/recherche | `git diff --stat -- docs` = `docs/plans/s01-boot-blank-app.md`, 10 lignes, **uniquement des `[ ]` → `[x]`** | ✓ |
-| Pas de remote git | voir F11 | ⚠ non attribuable |
-| Aucun secret, identifiant personnel ou nom de projet en dur | `.env.example` ne contient que `postgres/postgres/app` en local ; `layout.tsx` et `page.tsx` disent « Application » ; `package.json` racine se nomme `boilerplate` | ✓ |
+| `docs/` non modifié hors plan/recherche | plan (cases cochées), revue précédente, **ADR 011 (nouveau)** | ⚠ voir ci-dessous |
+| Pas de remote git ajouté | inchangé | ⚠ non attribuable |
+| Aucun secret ni identifiant personnel | ✓ | ✓ |
 
-## Plan, tâche par tâche
-
-Les 10 tâches sont livrées et cochées. Dérive de fichiers (déviation n°4) : `tooling/typescript/{nextjs.json,package.json}`, les `tsconfig.json` par package, le `tsconfig.json` racine, `tests/fixtures/*`, `apps/web/next-env.d.ts`, `packages/db/drizzle/meta/_journal.json`, les ajouts au `.gitignore`. Tous porteurs (les tsconfig sont nécessaires à la tâche 2, les fixtures à la tâche 10), aucun n'ouvre de périmètre. La section « Files touched » du plan est indicative, pas exhaustive : pas de finding.
-
-Déviations annoncées par l'implémenteur, jugées une à une :
-
-1. **Vitest à la tâche 1 au lieu de la 9** — la tâche 9 autorisait explicitement l'installation de Vitest à la racine ; seul l'ordre change, imposé par le TDD. Acceptable, pas de finding.
-2. **Scripts séparés de la bibliothèque** — vérifié : `next build` passe (`✓ Compiled successfully`), les chemins `new URL('../../../../.env', import.meta.url)` et `new URL('../../drizzle', import.meta.url)` depuis `packages/db/src/scripts/` résolvent bien vers `<racine>/.env` et `packages/db/drizzle`, et `pnpm db:migrate` va jusqu'à la validation d'environnement. Design **meilleur** que la liste du plan (bibliothèque pure, entrypoints séparés). Acceptable.
-3. Voir F12. 4. Voir ci-dessus. 5. **devDeps racine** (`drizzle-kit`, `drizzle-orm`, `@types/node`) — requis par `tests/fixtures/{drizzle.config,schema}.ts` et `tests/migrations.test.ts`. Acceptable.
-6. **`migrationsTable`/`migrationsSchema`** — API réelle vérifiée dans `drizzle-orm/migrator.d.ts`, et c'est précisément ce qui rendra les journaux par module possibles en s04. Acceptable, plutôt un point fort.
-7. **`apps/web/{AGENTS,CLAUDE}.md` gitignorés** — cohérent avec « le dépôt n'a qu'un seul fichier de règles ». Acceptable. 8. Voir F10. 9. Voir F4. 10. Voir F6.
+Sur ADR 011 : formellement un ajout sous `docs/` hors périmètre du plan. Mais `AGENTS.md` **exige** un ADR pour une décision structurelle, la décision est celle du propriétaire, l'ADR est bien formé (MADR, options rejetées, critère de retour arrière nommé) et ne réécrit aucun document figé. Déviation justifiée, pas un finding — sa seule conséquence à traiter est N10.
 
 ## ADRs
 
-ADR 001 ✓ (Next 16.3.3 App Router, React 19.2.8, TS strict ; Tailwind/shadcn différés par interdit de plan, pas contredits). ADR 002 ✓ pour la structure, ⚠ F8 pour les frontières dans les tests. ADR 003 ✓ sur `DATABASE_URL` unique et point d'entrée unique ; le pilote par défaut est `node-postgres`, pas `@neondatabase/serverless`, ce qui reste compatible avec « Neon par défaut » puisque Neon parle le protocole standard via son pooler et que la route est `runtime = 'nodejs'` — mais le « à surveiller : le pooling » de l'ADR n'est traité qu'à moitié : `getDatabase()` fige `max: 10` sans réglage par environnement, ce qui est le bon endroit pour le corriger (c'est bien encapsulé) mais reste à faire en s27. ADR 010 ✓ sauf F10.
+ADR 001 ✓. ADR 002 ✓ pour la structure ; ⚠ F8 pour les tests. ADR 003 ✓ ; « à surveiller : le pooling » toujours à moitié traité. ADR 010 ✓. **ADR 011 ✓ vérifié dans le paquet installé** : `typescript@7.0.2` (compilateur natif), une seule version au lockfile, aucune option supprimée utilisée, vérifications strictes actives, `next build`, `drizzle-kit` et `vitest` fonctionnels. Le critère de retour arrière de l'ADR n'est pas déclenché.
 
 ---
 
 ## Ce que je n'ai PAS pu vérifier
 
-Cette machine n'a ni Docker, ni Colima, ni Postgres local — contrainte déjà consignée dans le plan. En conséquence, **et il faut le lire comme « non prouvé », pas comme « satisfait »** :
+Ni Docker, ni Colima, ni Postgres sur cette machine. **À lire comme « non prouvé », jamais comme « satisfait ».**
 
-- **Critère 4 (idempotence de `db:migrate`)** — jamais exécuté. Le test existe et est correct à la lecture, il est skippé.
-- **Critère 5 (rejouabilité de `db:seed`)** — jamais exécuté, et littéralement sans objet aujourd'hui (F3).
-- **Critère 6 (`docker compose up`)** — `docker-compose.yml` n'a jamais tourné. L'image `postgres:16-alpine`, le `healthcheck pg_isready`, le volume nommé et l'interpolation `${POSTGRES_PORT:-5432}` sont lus, pas éprouvés.
-- **Critère 7, branche 200** — jamais obtenue. Et d'après F1, elle est aujourd'hui inatteignable par les commandes de la story.
-- **`drop table if exists drizzle.fixture_migrations` quand le schéma `drizzle` n'existe pas encore** (premier passage de `resetDatabase`) — je crois que PostgreSQL émet un NOTICE et non une erreur, mais je ne l'ai pas exécuté. Si je me trompe, `beforeAll` casse les deux tests d'intégration au premier lancement sur base vierge.
-- **Chemin Neon** — jamais exercé. La portabilité promise par l'ADR 003 n'est affirmée que par un commentaire dans `packages/db/src/client.ts`.
-- **`pnpm install` sur un clone réellement neuf** — je n'ai validé que `--frozen-lockfile` sur l'arbre existant, pas un `git clone` dans un répertoire vide.
-- **Rendu navigateur** — j'ai fait des `curl` (HTTP 200 sur `/`, 503 sur `/api/health`), je n'ai jamais ouvert la page. Elle est volontairement sans style, donc l'enjeu est nul, mais je ne l'ai pas vue.
-- **`next start` en production avec une vraie base** — seul `next build` a été exécuté.
+- **Critère 4 — idempotence de `db:migrate`** : jamais exécuté contre une base. Aujourd'hui la commande ne touche même pas la base (journal vide).
+- **Critère 5 — rejouabilité de `db:seed`** : jamais exécuté, et sans objet (`seeders = []`).
+- **Critère 6 — `docker compose up`** : jamais exécuté. Image, healthcheck, volume, interpolation de port sont lus, pas éprouvés.
+- **Critère 7, branche 200** : jamais obtenue. **Elle n'est plus démontrée inatteignable** — c'est le changement majeur de ce passage — mais elle reste non prouvée.
+- **`drop table` sur base vierge** : neutralisé par un `create schema if not exists` préalable. Toujours pas exécuté.
+- **`db.query.<table>` réellement utilisable** : M3 prouve que le *type* survit, pas que l'API relationnelle est peuplée à l'exécution (elle exige aussi une configuration de relations). Problème de s04.
+- **Chemin Neon** : jamais exercé.
+- **`pnpm install` sur un clone réellement neuf** : seul `--frozen-lockfile` validé. Critère 1 = recette manuelle.
+- **Rendu navigateur** : `curl` uniquement.
+- **Déploiement serverless** : `next.config.ts` n'est pas exécuté à la requête sur Vercel, donc `loadRootEnv()` non plus — cohérent sur le papier (les variables viennent de la plateforme), jamais déployé.
 
 **Gestes qu'un humain doit faire, dans cet ordre :**
-1. Démarrer Docker/Colima, `cp .env.example .env`, `docker compose up -d`, vérifier que le healthcheck passe.
-2. `pnpm db:migrate` deux fois, `pnpm db:seed` deux fois, puis `pnpm test` : **les 3 tests skippés doivent devenir verts**, et le compte doit passer à 15 passed / 0 skipped. Tant que ce chiffre n'est pas constaté, les critères 4, 5 et 6 restent non prouvés.
-3. `pnpm dev` puis `curl -i localhost:3000/api/health` en attendant 200 — c'est le geste qui échoue aujourd'hui (F1) et celui qui validera le correctif.
-4. `git clone` dans un répertoire vierge, `pnpm install && pnpm dev`, page servie sans erreur : critère 1, recette manuelle assumée par le plan.
-5. `next build && next start` avec un `DATABASE_URL` réel, pour éprouver la garde de build hors du chemin `dev`.
+1. Démarrer Docker/Colima, `cp .env.example .env`, `docker compose up -d`, attendre le healthcheck.
+2. `pnpm db:migrate` deux fois, `pnpm db:seed` deux fois, puis `pnpm test` : **les 3 skips doivent devenir verts, 29 passed / 0 skipped**.
+3. `pnpm dev` puis `curl -i localhost:3000/api/health` **en attendant 200** — le geste qui clôt le critère 7.
+4. `DATABASE_URL='mysql://x' pnpm dev` : constater que le serveur démarre quand même (N1) avant de décider si l'on corrige maintenant ou en s02.
+5. `git clone` vierge, `pnpm install && pnpm dev` : critère 1.
+6. `pnpm build` puis `git status` : constater `next-env.d.ts` modifié (N5) avant d'écrire la CI de s02.
+
+---
+
+## État des sept critères
+
+| # | Critère | État |
+|---|---|---|
+| 1 | `pnpm install && pnpm dev` sur clone neuf | **Partiellement prouvé** — `--frozen-lockfile` OK, `/` servi en 200 ; le clone vierge reste une recette manuelle |
+| 2 | Variable manquante/malformée fait échouer le démarrage en la nommant | **Partiellement satisfait** — le message nomme la variable ; le démarrage n'échoue pas (N1) |
+| 3 | `.env.example` aligné sur le schéma, testé | **Prouvé** — 3 tests, mordent sous mutation |
+| 4 | `db:migrate` idempotent | **Non prouvé** — pas de Postgres ici |
+| 5 | `db:seed` rejouable | **Non prouvé et sans objet** — aucun seed (décision de plan) |
+| 6 | `docker compose up` fournit un Postgres utilisable | **Non prouvé** — jamais exécuté |
+| 7 | `/api/health` répond 200 avec l'état de la connexion | **503 prouvé** ; **200 non prouvé, mais plus démontré impossible** — F1 est mort |
 
 ---
 
 ## Verdict
 
-Le diff est propre, honnête et remarquablement peu hallucinatoire : les cinq invariants centraux mordent sous mutation, aucune API n'est inventée, le piège n°3 de la recherche (`drizzle.config.ts`) est évité et vérifié contre la version installée, les tests d'intégration se skippent au lieu de simuler, et tous les interdits du plan tiennent. C'est du bon travail de plomberie.
+Le tour de correctifs fait ce qu'il annonce, et proprement. F1 est mort pour de bon : parcours du Dev reproduit, ECONNREFUSED obtenu sur le port du `.env` racine, variable exportée vérifiée comme prioritaire et traversant Turborepo, puis chacune des deux causes ressuscitée séparément pour constater le retour exact du symptôme d'origine. Le correctif tient aussi sur `next start`, chemin que la revue précédente n'avait pas éprouvé. Les six mineurs revendiqués mordent tous sous mutation, `process.env` a disparu hors du module de configuration, la moitié « typage » de F2 est réelle et sa moitié « génération » est documentée avec une exactitude vérifiée dans le binaire de drizzle-kit. La montée en TypeScript 7 est saine.
 
-Il livre néanmoins un défaut qui vide de sa substance la promesse de la story : « une application qui démarre, **connectée à Postgres** ». `pnpm dev` ne transmet pas `DATABASE_URL` à `apps/web`, pour deux raisons indépendantes et cumulées, l'une dans le placement du `.env`, l'autre dans `turbo.json`. Le 200 de `/api/health` n'est pas « non prouvé faute de Docker » : il est inatteignable, et je l'ai démontré sans base de données. Aucun test de la story ne pouvait l'attraper, parce que le test de santé importe la fonction `GET` directement et court-circuite Next et Turbo.
+Restent trois choses à ne pas laisser filer. Un critère d'acceptation à moitié tenu que personne n'avait vu : l'application démarre avec une `DATABASE_URL` malformée, alors que le critère 2 demande le contraire. Un commentaire qui justifie le cœur du correctif par une régression que je n'ai pas pu reproduire — le code est bon, sa raison écrite ne l'est pas, et c'est le genre de fausse certitude qui se transmet. Une garantie de typage que la commande de la Definition of Done ne vérifie pas.
 
-F1 corrigé, et vérifié par le geste n°3 ci-dessus, la story est bonne à embarquer avec F2 ouvert pour s04.
+Rien de tout cela ne ships de bug ni ne casse l'existant. Les critères 4, 5, 6 et le 200 du critère 7 restent **non prouvés faute de Postgres** — non pas satisfaits, non prouvés — et doivent être repassés dès qu'une base est disponible, avant que s02 ne s'appuie dessus.
 
-Max severity: critical
-Ship allowed: no
+Max severity: major
+Ship allowed: yes

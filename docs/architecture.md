@@ -17,7 +17,7 @@
 | Architecture interne | Clean architecture à quatre couches par module | 006 |
 | Composition | Contrat de module + `config/features.ts` | 007 |
 | Providers | Resend, S3/R2, Stripe, Inngest, Sentry, PostHog, compteur PostgreSQL | 008 |
-| Versions | Dernières majeures stables : Next 16, React 19, Tailwind v4, TypeScript 5.9+, pnpm 10+, Node 20.10+ | 010 |
+| Versions | Dernières majeures stables : Next 16, React 19, Tailwind v4, **TypeScript 7**, pnpm 10+, Node 20.10+ | 010, 011 |
 | Tests | Vitest (unitaire), Playwright (end-to-end) | — |
 | CI/CD | GitHub Actions ; Vercel en cible de référence, Docker et Coolify documentés | — |
 
