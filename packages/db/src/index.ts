@@ -17,6 +17,7 @@ export {
 } from './barrel'
 export {
   assertNoForbiddenModuleReferences,
+  DuplicateModuleTableError,
   ForbiddenModuleReferenceError,
   type ModuleReferenceSource,
 } from './references'

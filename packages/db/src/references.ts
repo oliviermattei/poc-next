@@ -37,6 +37,20 @@ export class ForbiddenModuleReferenceError extends Error {
   }
 }
 
+/**
+ * Deux modules déclarent la même table physique.
+ *
+ * Type distinct, et pas un `ForbiddenModuleReferenceError` : ce n'est pas une
+ * référence qui est en cause mais une propriété, et un appelant qui rapporterait
+ * « clé étrangère interdite » se tromperait de diagnostic.
+ */
+export class DuplicateModuleTableError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'DuplicateModuleTableError'
+  }
+}
+
 const quote = (value: string): string => `« ${value} »`
 
 /** Les tables déclarées par un module, dans l'ordre de déclaration. */
@@ -83,7 +97,25 @@ export function assertNoForbiddenModuleReferences(
 
   for (const module of modules) {
     for (const table of declaredTables(module)) {
-      ownerOfTable.set(getTableConfig(table).name, module.id)
+      const { name } = getTableConfig(table)
+      const previousOwner = ownerOfTable.get(name)
+
+      // `composeSchema` attrape les collisions de **nom d'export** ; celle-ci
+      // porte sur le nom physique, que deux noms d'export différents lui
+      // cachent. La laisser passer aurait deux effets : le propriétaire retenu
+      // serait le dernier écrit, donc une clé étrangère interdite serait jugée
+      // sur les requis du mauvais module ; et le déploiement jouerait deux
+      // `create table` pour la même relation, le second en échec.
+      if (previousOwner !== undefined && previousOwner !== module.id) {
+        throw new DuplicateModuleTableError(
+          `Table déclarée deux fois : ${quote(name)} est déclarée par le module ` +
+            `${quote(previousOwner)} et par le module ${quote(module.id)}. Une table appartient à ` +
+            `un seul module — celui qui en porte la purge, l’export et la rétention. Renommer ` +
+            `l’une des deux, ou la déclarer dans un seul module.`,
+        )
+      }
+
+      ownerOfTable.set(name, module.id)
     }
   }
 

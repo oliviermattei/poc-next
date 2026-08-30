@@ -36,12 +36,22 @@ const connection = getDatabase()
 
 try {
   const outcomes = await runModuleMigrations({ db: connection.db, plan })
-  const applied = outcomes.filter((outcome) => outcome.applied).map((outcome) => outcome.moduleId)
+  const applied = outcomes.filter((outcome) => outcome.applied)
 
+  // Trois états distincts, et la distinction est le seul intérêt de cette
+  // ligne : « rien à appliquer » n'est pas « déjà à jour », et annoncer
+  // « appliquées » sur un passage qui n'a rien joué masque l'unique événement
+  // qu'un déploiement surveille.
   console.info(
     applied.length > 0
-      ? `Migrations appliquées, dans l’ordre du graphe : ${applied.join(', ')}.`
-      : 'Aucune migration à appliquer : aucun module activé n’en déclare.',
+      ? `Migrations appliquées, dans l’ordre du graphe : ${applied
+          .map((outcome) => `${outcome.moduleId} (${outcome.count})`)
+          .join(', ')}.`
+      : outcomes.length > 0
+        ? `Rien à appliquer : aucune migration en attente pour les modules activés — ${outcomes
+            .map((outcome) => outcome.moduleId)
+            .join(', ')}.`
+        : 'Aucune migration à appliquer : aucun module activé n’en déclare.',
   )
 } finally {
   await closeDatabase()

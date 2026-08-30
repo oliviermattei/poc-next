@@ -93,10 +93,11 @@ export function composeSchema<const TModules extends readonly ModuleSchema[]>(
  *
  * Vide, et ce n'est pas un oubli : `@repo/db` ne dépend d'aucun package de
  * module, et il ne doit pas — l'`infrastructure/` d'un module dépendra de ce
- * package pour sa connexion, la dépendance inverse fermerait un cycle. Aucun
- * module ne persiste encore (les repositories de démonstration sont en
- * mémoire) ; le jour où l'un le fera, c'est le point de composition qui
- * possède la configuration qui lui passera les schémas, comme
+ * package pour sa connexion, et la dépendance inverse fermerait alors un cycle.
+ * Aucun module ne persiste encore (les repositories de démonstration sont en
+ * mémoire), donc le cycle est **prospectif** : il n'existe pas aujourd'hui, il
+ * est certain dès le premier module qui persistera. Ce jour-là, c'est le point
+ * de composition qui possède la configuration qui passera les schémas, comme
  * `src/scripts/migrate.ts` lui passe déjà le plan de migration.
  *
  * Rien de tout cela ne concerne la génération des migrations : elle lit les

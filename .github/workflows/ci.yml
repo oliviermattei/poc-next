@@ -65,8 +65,13 @@ jobs:
       # ce qui les empêche de mentir : toute divergence — un module activé sans
       # régénération, une table modifiée sans migration — laisse un fichier
       # différent, et le contrôle « l'arbre reste propre » en fin de job échoue
-      # en le nommant. La suite de tests porte la même garde sur les barils,
-      # pour que la divergence se voie aussi en local.
+      # en le nommant.
+      #
+      # `pnpm test` porte les deux mêmes gardes, pour que la divergence se voie
+      # avant le push : le dossier des barils comparé à sa régénération, et une
+      # régénération **à blanc** des migrations hors de l'arbre versionné. Cette
+      # étape-ci reste la seule à attraper les artefacts qu'aucune des deux ne
+      # prévoit.
       - name: Régénérer les migrations des modules activés
         run: pnpm db:generate
 

@@ -1,4 +1,10 @@
-import { buildRegistry, exportModules, MODULE_ROUTE_PREFIX, purgeModules } from '@repo/core'
+import {
+  buildRegistry,
+  dispatchModuleRequest,
+  exportModules,
+  MODULE_ROUTE_PREFIX,
+  purgeModules,
+} from '@repo/core'
 import { demoDisabledModule, demoNoteUseCases } from '@repo/module-demo-disabled'
 import { demoItemUseCases } from '@repo/module-demo-enabled'
 import { describe, expect, it } from 'vitest'
@@ -10,15 +16,31 @@ import { availableModules, enabledModules } from '../config/features'
 /**
  * Ce que devient un module que la configuration ne nomme pas.
  *
- * Toutes les assertions de ce fichier sont vraies **dans les deux états** de
- * `config/features.ts` — module de démonstration activé ou non. C'est la
- * condition pour que « la suite passe dans les deux états » veuille dire
- * quelque chose : une suite qui adapte ses attentes à la configuration ne
- * prouve plus rien sur la configuration.
+ * Toutes les assertions de ce fichier sont vraies **quelle que soit** la
+ * configuration du dépôt, et elles le sont par construction : ce qui doit
+ * observer un module exclu construit son propre registre, au lieu d'observer
+ * celui de l'application et d'espérer que `config/features.ts` n'a pas bougé.
+ * Un test qui n'est vrai que dans l'état courant du dépôt ne prouve rien sur la
+ * modularité — et il obligerait la recette de s26, qui exécute cette suite sous
+ * plusieurs configurations, à porter une liste d'exceptions.
+ *
+ * Le registre de l'application n'est observé que là où l'assertion est
+ * elle-même dérivée de la configuration (`enabledModules`), donc vraie dans
+ * tous les états.
  */
 
 const requestTo = (path: string): Request =>
   new Request(`http://localhost${MODULE_ROUTE_PREFIX}${path}`)
+
+/**
+ * Une configuration où `demo-disabled` est exclu **par le test**. C'est ce qui
+ * rend les assertions ci-dessous indépendantes de `config/features.ts` : elles
+ * portent sur l'exclusion, pas sur l'état du dépôt.
+ */
+const withoutDemoDisabled = buildRegistry({
+  available: [...availableModules],
+  enabled: ['demo-enabled'],
+})
 
 describe('un module non activé', () => {
   it('déclare pourtant bien une route et une entrée de navigation', () => {
@@ -31,7 +53,7 @@ describe('un module non activé', () => {
   it('n’expose aucune route : l’URL déclarée répond 404', async () => {
     const declared = demoDisabledModule.routes[0]?.path ?? ''
 
-    const response = await GET(requestTo(declared))
+    const response = await dispatchModuleRequest(withoutDemoDisabled, requestTo(declared))
 
     expect(response.status).toBe(404)
     // Et surtout : pas la charge utile du module. Un 404 qui aurait exécuté le
@@ -40,7 +62,7 @@ describe('un module non activé', () => {
   })
 
   it('n’apparaît dans aucune entrée de navigation', () => {
-    const entries = moduleRegistry.navigation
+    const entries = withoutDemoDisabled.navigation
 
     expect(entries.map((entry) => entry.moduleId)).not.toContain(demoDisabledModule.id)
     expect(entries.map((entry) => entry.href)).not.toContain(
@@ -49,7 +71,7 @@ describe('un module non activé', () => {
   })
 
   it('ne laisse aucune traduction dans le catalogue de l’application', () => {
-    const keys = Object.values(moduleRegistry.messages).flatMap((catalog) =>
+    const keys = Object.values(withoutDemoDisabled.messages).flatMap((catalog) =>
       Object.keys(catalog),
     )
 
@@ -57,7 +79,7 @@ describe('un module non activé', () => {
   })
 
   it('ne voit ni sa purge ni son export appelés, et cela ne lève rien', async () => {
-    const registry = buildRegistry({ available: [...availableModules], enabled: ['demo-enabled'] })
+    const registry = withoutDemoDisabled
     const scope = { kind: 'user', userId: 'u-purge' } as const
 
     await demoItemUseCases.addDemoItem({ ownerId: scope.userId, title: 'À effacer' })

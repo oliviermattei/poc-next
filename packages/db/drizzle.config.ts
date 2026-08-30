@@ -1,28 +1,28 @@
-import { fileURLToPath } from 'node:url'
-
 import { defineConfig } from 'drizzle-kit'
 
 /**
- * Configuration de `drizzle-kit generate` uniquement : les migrations sont des
- * fichiers SQL versionnés, jamais un `push`. L'application des migrations passe
- * par `src/migrate.ts`, qui lit `DATABASE_URL` via le module de configuration —
- * cette configuration-ci n'a donc besoin d'aucun accès à la base.
+ * Ce que `drizzle-kit` doit savoir, et **rien de plus** : le dialecte et la
+ * casse. Ce fichier déclare, il n'orchestre pas — `src/scripts/generate.ts`
+ * l'importe pour ces deux valeurs, puis appelle `drizzle-kit` une fois par
+ * module en passant lui-même `--schema` et `--out`. Deux déclarations du
+ * dialecte divergeraient, et une casse différente renommerait des colonnes.
  *
- * `schema` désigne le dossier des **barils générés**, plus `src/schema.ts`. La
- * raison est mesurée sur le binaire installé : `prepareFromExports` n'inspecte
- * que les exports de premier niveau et ne descend dans aucun objet. Le schéma
- * composé à l'exécution par `composeSchema` lui est donc invisible — `generate`
- * répond « 0 tables » — là où les barils, qui réexportent les tables à plat,
- * lui font voir celles des modules activés. C'est le finding N3, ouvert depuis
- * s01.
- *
- * Ce fichier **déclare**, il n'orchestre pas : `src/scripts/generate.ts`
- * l'importe pour en tirer le dialecte, la casse et la vue agrégée, puis appelle
- * `drizzle-kit` une fois par module en surchargeant `--schema` et `--out`. Un
+ * `schema` et `out` en sont **volontairement absents**, et c'est une garde, pas
+ * une omission : il n'existe pas de dossier de migrations de l'application. Un
  * `out` unique ne saurait pas exprimer « un dossier et un journal par module »,
  * et un dossier commun réécrirait les migrations des autres modules à chaque
- * activation. `out` est donc délibérément absent : il n'existe pas de dossier
- * de migrations de l'application.
+ * activation. Or `drizzle-kit` ne se plaint pas d'un `out` manquant — il se
+ * rabat sur `./drizzle` relatif au répertoire courant. Tant que `schema`
+ * restait ici, `drizzle-kit generate` lancé depuis `packages/db` produisait
+ * donc en silence un dossier fusionnant les tables de tous les modules
+ * activés : l'artefact exact que cette configuration prétend abolir. Sans
+ * `schema`, la commande refuse (« Please provide required params ») et n'écrit
+ * rien. Un test l'exige.
+ *
+ * Les migrations sont des fichiers SQL versionnés, jamais un `push` : ce
+ * fichier n'a donc besoin d'aucun accès à la base. L'application des migrations
+ * passe par `src/migrate.ts`, qui lit `DATABASE_URL` via le module de
+ * configuration.
  *
  * Note d'outillage : `drizzle-kit generate` refuse `--config` en même temps que
  * toute autre option (« You can't use both --config and other cli options »).
@@ -30,6 +30,5 @@ import { defineConfig } from 'drizzle-kit'
  */
 export default defineConfig({
   dialect: 'postgresql',
-  schema: fileURLToPath(new URL('../../generated/schema', import.meta.url)),
   casing: 'snake_case',
 })

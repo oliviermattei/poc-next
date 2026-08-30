@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
-import { readdir, readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { cp, mkdir, readdir, readFile, rm } from 'node:fs/promises'
+import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { buildRegistry, resolveEnabledModules } from '@repo/core'
@@ -22,10 +22,13 @@ import { pgTable, text, type AnyPgColumn } from 'drizzle-orm/pg-core'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { availableModules, enabledModules } from '../config/features'
+import drizzleConfig from '../packages/db/drizzle.config'
 import { databaseUrl, isDatabaseReachable } from './fixtures/database'
 
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url))
 const GENERATED_SCHEMA_DIR = join(REPO_ROOT, 'generated', 'schema')
+const DB_PACKAGE_DIR = join(REPO_ROOT, 'packages', 'db')
+const DRIZZLE_KIT = join(REPO_ROOT, 'node_modules', '.bin', 'drizzle-kit')
 
 /** Le registre du dépôt tel qu'il est configuré : ordre du graphe compris. */
 const moduleRegistry = buildRegistry({
@@ -89,6 +92,99 @@ describe('le baril versionné correspond à `config/features.ts`', () => {
       )
     }
   })
+})
+
+/**
+ * Le SQL versionné correspond-il encore aux schémas des modules activés ?
+ *
+ * La garde précédente porte sur le **baril** — les noms d'export et le jeu de
+ * modules. Elle est aveugle au **SQL** : une colonne ajoutée à un schéma sans
+ * régénération laissait la suite verte, et seule la CI (donc après le push)
+ * voyait la divergence. Une suite verte n'était donc pas un signal que les
+ * migrations étaient à jour.
+ *
+ * La vérification est une régénération **à blanc** : les migrations du module
+ * sont recopiées hors de l'arbre versionné, `drizzle-kit` y rejoue son diff, et
+ * on compte les fichiers SQL. Un fichier de plus veut dire qu'une migration
+ * manque au dépôt. L'arbre versionné n'est jamais touché — un contrôle qui
+ * exigerait un `git status` propre rougirait sur tout travail en cours.
+ */
+describe('les migrations versionnées correspondent aux schémas des modules activés', () => {
+  const SCRATCH_DIR = join(REPO_ROOT, 'node_modules', '.cache', 'drizzle-divergence')
+
+  afterAll(async () => {
+    await rm(SCRATCH_DIR, { recursive: true, force: true })
+  })
+
+  it('une régénération à blanc n’écrit aucune migration de plus', async () => {
+    await rm(SCRATCH_DIR, { recursive: true, force: true })
+    await mkdir(SCRATCH_DIR, { recursive: true })
+
+    const sqlFiles = async (folder: string): Promise<readonly string[]> =>
+      (await readdir(folder)).filter((name) => name.endsWith('.sql')).sort()
+
+    for (const module of moduleRegistry.modules) {
+      if (module.migrations === null) {
+        continue
+      }
+
+      const versioned = join(REPO_ROOT, module.migrations)
+      const scratch = join(SCRATCH_DIR, module.id)
+
+      await cp(versioned, scratch, { recursive: true })
+
+      execFileSync(
+        DRIZZLE_KIT,
+        [
+          'generate',
+          '--dialect',
+          drizzleConfig.dialect,
+          '--casing',
+          drizzleConfig.casing ?? 'snake_case',
+          // Chemins relatifs à la racine : passé un chemin absolu,
+          // `drizzle-kit` le préfixe de `./` et ne retrouve plus son instantané.
+          '--schema',
+          relative(REPO_ROOT, join(GENERATED_SCHEMA_DIR, `${module.id}.ts`)),
+          '--out',
+          relative(REPO_ROOT, scratch),
+        ],
+        { cwd: REPO_ROOT, stdio: ['ignore', 'pipe', 'pipe'], timeout: 120_000 },
+      )
+
+      expect(await sqlFiles(scratch)).toEqual(await sqlFiles(versioned))
+    }
+  }, 180_000)
+})
+
+/**
+ * `packages/db/drizzle.config.ts` ne doit pas pouvoir produire, à lui seul, le
+ * dossier de migrations de l'application que le critère 1 abolit.
+ *
+ * `out` en est absent à raison, mais `drizzle-kit` ne s'en plaint pas : il se
+ * rabat sur `./drizzle` relatif au répertoire courant. Invoqué depuis
+ * `packages/db`, `drizzle-kit generate` produisait donc un dossier fusionnant
+ * les tables de tous les modules activés — l'artefact exact que la story
+ * supprime. Le fichier ne déclare plus que ce que `src/scripts/generate.ts`
+ * consomme (dialecte et casse), et l'invocation directe échoue au lieu
+ * d'écrire.
+ */
+describe('la configuration `drizzle-kit` ne s’exécute pas seule', () => {
+  it('refuse une invocation directe et n’écrit aucun dossier de migrations', async () => {
+    let refused = false
+
+    try {
+      execFileSync(DRIZZLE_KIT, ['generate'], {
+        cwd: DB_PACKAGE_DIR,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 120_000,
+      })
+    } catch {
+      refused = true
+    }
+
+    expect(refused).toBe(true)
+    await expect(readdir(join(DB_PACKAGE_DIR, 'drizzle'))).rejects.toThrow()
+  }, 180_000)
 })
 
 /**
@@ -182,6 +278,39 @@ describe('références inter-modules refusées à la génération', () => {
     expect(() =>
       assertNoForbiddenModuleReferences([moduleReferencing('app', [], orphan.id)]),
     ).toThrowError(/app.*table_orpheline|table_orpheline.*app/s)
+  })
+
+  it('refuse deux modules qui déclarent la même table physique, en nommant les deux', () => {
+    // `composeSchema` attrape les collisions de **nom d'export** ; celle-ci
+    // porte sur le nom de table, et deux noms d'export différents la lui
+    // cachent. Sans ce refus, le propriétaire retenu serait le dernier écrit :
+    // une clé étrangère interdite passerait selon les requis du mauvais module,
+    // et le déploiement jouerait deux `create table` pour la même relation.
+    const sameTable = () => pgTable('demo_items', { id: text('id').primaryKey() })
+
+    const modules = [
+      { id: 'premier', requires: [], schema: { items: sameTable() } },
+      { id: 'second', requires: [], schema: { elements: sameTable() } },
+    ]
+
+    let message = ''
+
+    try {
+      assertNoForbiddenModuleReferences(modules)
+    } catch (error) {
+      message = (error as Error).message
+    }
+
+    expect(message).toContain('demo_items')
+    expect(message).toContain('premier')
+    expect(message).toContain('second')
+  })
+
+  it('accepte l’annuaire réel du dépôt', () => {
+    // La garde n'est appelée que par `pnpm db:generate` : sans ce test, une clé
+    // étrangère interdite ajoutée à un vrai module laisserait la suite verte et
+    // n'échouerait qu'en CI.
+    expect(() => assertNoForbiddenModuleReferences([...availableModules])).not.toThrow()
   })
 })
 
@@ -315,7 +444,15 @@ describe.skipIf(!databaseReachable)('migrations de modules sur une base réelle'
   }
 
   it('ne crée sur une base vierge que les tables des modules activés', async () => {
-    await runModuleMigrations({ db: connection.db, plan: planFor(['demo-enabled']) })
+    const outcomes = await runModuleMigrations({
+      db: connection.db,
+      plan: planFor(['demo-enabled']),
+    })
+
+    // Le rapport dit ce qui a été **exécuté**, pas ce qui existait sur disque :
+    // c'est la seule ligne du déploiement qui distingue « une migration est
+    // passée » de « il n'y avait rien à faire ».
+    expect(outcomes).toEqual([{ moduleId: 'demo-enabled', applied: true, count: 1 }])
 
     const tables = await listDatabaseTables({ db: connection.db })
 
@@ -323,10 +460,13 @@ describe.skipIf(!databaseReachable)('migrations de modules sur une base réelle'
     expect(tables).not.toContain('demo_notes')
   })
 
-  it('n’applique rien de plus au second passage', async () => {
+  it('n’applique rien de plus au second passage, et ne prétend pas le contraire', async () => {
     await runModuleMigrations({ db: connection.db, plan: planFor(['demo-enabled']) })
-    await runModuleMigrations({ db: connection.db, plan: planFor(['demo-enabled']) })
+    const second = await runModuleMigrations({ db: connection.db, plan: planFor(['demo-enabled']) })
 
+    // Un « appliquées » sur un passage qui n'a rien exécuté masque le seul
+    // événement qu'on surveille au déploiement.
+    expect(second).toEqual([{ moduleId: 'demo-enabled', applied: false, count: 0 }])
     expect(await journalEntries('demo-enabled')).toBe(1)
     expect(await listDatabaseTables({ db: connection.db })).toContain('demo_items')
   })
@@ -339,6 +479,9 @@ describe.skipIf(!databaseReachable)('migrations de modules sur une base réelle'
     })
 
     expect(applied.map((outcome) => outcome.moduleId)).toEqual(['demo-enabled', 'demo-disabled'])
+    // `demo-enabled` était déjà migré par les tests précédents : seul
+    // `demo-disabled` a réellement quelque chose à jouer.
+    expect(applied.map((outcome) => outcome.count)).toEqual([0, 1])
 
     await connection.db.execute(
       sql`insert into demo_notes (id, owner_id, body) values ('n-1', 'u-1', 'gardée')`,

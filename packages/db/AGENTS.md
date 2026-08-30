@@ -18,9 +18,30 @@ autres déjà jouées.
 `config/features.ts`, qui réexporte à plat les tables déclarées au contrat —
 puis appelle `drizzle-kit` une fois par module. Le baril n'est pas une commodité :
 `drizzle-kit` n'inspecte que les exports de premier niveau du fichier qu'on lui
-désigne, un schéma composé à l'exécution lui est invisible (« 0 tables »). Les
-barils sont versionnés, et `pnpm test` compare le dossier à sa régénération :
-une divergence échoue.
+désigne, un schéma composé à l'exécution lui est invisible (« 0 tables »).
+
+`packages/db/drizzle.config.ts` ne déclare que le **dialecte** et la **casse** —
+ce que `generate.ts` en consomme. Ni `schema`, ni `out` : sans `schema`,
+`drizzle-kit generate` invoqué seul refuse au lieu de se rabattre sur `./drizzle`
+et de produire en silence un dossier fusionnant les tables de tous les modules.
+Il n'existe pas de dossier de migrations de l'application.
+
+### Ce que chaque garde attrape, et ce qu'elle n'attrape pas
+
+Les barils **et** le SQL des migrations sont versionnés, sans quoi un clone neuf
+ne pourrait rien générer. Deux gardes distinctes les empêchent de mentir, et il
+faut savoir laquelle répond à quoi :
+
+| Divergence | Attrapée par |
+|---|---|
+| Un module activé sans régénérer le baril | `pnpm test` (comparaison du dossier `generated/schema/` à sa régénération) |
+| Un schéma modifié sans migration correspondante | `pnpm test` (régénération **à blanc** hors de l'arbre versionné : un fichier SQL de plus fait rougir) |
+| Tout autre artefact d'outil laissé dans l'arbre | La CI seule, par « l'arbre reste propre » après `pnpm db:generate` |
+
+La régénération à blanc recopie les migrations du module hors de l'arbre et y
+rejoue le diff de `drizzle-kit` : elle ne touche jamais le dépôt. Un contrôle
+local qui exigerait un `git status` propre rougirait sur tout travail en cours,
+et serait donc désarmé le jour où il servirait.
 
 L'ordre d'application vient du **graphe des requis**, rendu par `buildRegistry` :
 un module requis migre avant son dépendant. Jamais l'ordre alphabétique, jamais
@@ -39,9 +60,13 @@ composition**, pas la bibliothèque. Les fonctions de `src/` reçoivent des
 modules ; sans cela, aucun test ne pourrait en composer d'autres.
 
 Ce package ne dépend d'**aucun** package de module, et ne doit pas : l'
-`infrastructure/` d'un module dépendra de lui pour sa connexion, la dépendance
-inverse fermerait un cycle. C'est pourquoi les barils vivent à la racine du
-dépôt, seul endroit qui déclare déjà les packages de modules.
+`infrastructure/` d'un module dépendra de lui pour sa connexion, et la
+dépendance inverse fermerait alors un cycle. Aucun module ne dépend de
+`@repo/db` aujourd'hui — leurs repositories sont en mémoire — donc le cycle est
+**prospectif**, mais il est certain dès le premier module qui persiste. C'est
+pourquoi les barils vivent dès maintenant à la racine du dépôt, seul endroit qui
+déclare déjà les packages de modules : les y déplacer plus tard voudrait dire
+les y déplacer sous la contrainte.
 
 ## Ne doit jamais contenir
 
@@ -52,7 +77,10 @@ dépôt, seul endroit qui déclare déjà les packages de modules.
   elle rendrait ce module silencieusement non désactivable.
   `assertNoForbiddenModuleReferences` la refuse **à la génération**, en nommant
   les deux modules ; la liste des modules référençables n'est écrite nulle part,
-  elle se déduit des `requires` déclarés ;
+  elle se déduit des `requires` déclarés (ADR 018). La même garde refuse deux
+  modules qui déclarent la **même table physique** : `composeSchema` n'attrape
+  que les collisions de nom d'export, et un propriétaire mal attribué ferait
+  juger une clé étrangère sur les requis du mauvais module ;
 - de commande de nettoyage : un module activé puis désactivé conserve ses tables
   et ses données. Les supprimer serait `eject`, au cimetière du PRD ;
 - de migration destructive, ni d'appel à `drizzle-kit push`. Les migrations sont

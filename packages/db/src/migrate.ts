@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
+import { sql } from 'drizzle-orm'
 import { migrate } from 'drizzle-orm/node-postgres/migrator'
 
 import type { DatabaseConnection } from './client'
@@ -14,8 +15,10 @@ export interface RunMigrationsOptions {
 }
 
 export interface MigrationsResult {
-  /** Faux quand aucune migration n'existe encore : la base n'est pas touchée. */
+  /** Vrai seulement si **cet appel** a exécuté au moins une migration. */
   readonly applied: boolean
+  /** Combien de migrations cet appel a réellement jouées. */
+  readonly count: number
 }
 
 /**
@@ -50,15 +53,52 @@ function hasMigrations(migrationsFolder: string): boolean {
   return Array.isArray(entries) && entries.length > 0
 }
 
+/** Défauts de Drizzle pour le journal en base, quand l'appelant n'en fixe pas. */
+const DEFAULT_MIGRATIONS_TABLE = '__drizzle_migrations'
+const DEFAULT_MIGRATIONS_SCHEMA = 'drizzle'
+
 /**
- * Applique les migrations en attente. L'idempotence est celle de Drizzle : le
- * journal des migrations déjà appliquées vit dans la base, un second passage
- * n'exécute rien.
+ * Combien de migrations le journal **en base** compte, ou zéro s'il n'existe pas.
+ *
+ * Lu avant et après l'exécution : c'est la seule façon de savoir ce que Drizzle
+ * a joué, `migrate()` ne rendant rien. Sans cette lecture, « appliquées » ne
+ * dirait que « des migrations existent sur disque », et un déploiement qui n'a
+ * rien fait serait indiscernable de celui qui a créé une table.
+ */
+async function journalLength(
+  db: RunMigrationsOptions['db'],
+  schema: string,
+  table: string,
+): Promise<number> {
+  const relation = await db.execute<{ present: boolean }>(
+    sql`select to_regclass(${`${schema}.${table}`}) is not null as present`,
+  )
+
+  if (relation.rows[0]?.present !== true) {
+    return 0
+  }
+
+  const counted = await db.execute<{ count: number }>(
+    sql`select count(*)::int as count from ${sql.identifier(schema)}.${sql.identifier(table)}`,
+  )
+
+  return Number(counted.rows[0]?.count ?? 0)
+}
+
+/**
+ * Applique les migrations en attente, et rapporte ce qui a **réellement** été
+ * joué. L'idempotence est celle de Drizzle : le journal des migrations déjà
+ * appliquées vit dans la base, un second passage n'exécute rien — et le dit.
  */
 export async function runMigrations(options: RunMigrationsOptions): Promise<MigrationsResult> {
   if (!hasMigrations(options.migrationsFolder)) {
-    return { applied: false }
+    return { applied: false, count: 0 }
   }
+
+  const schema = options.migrationsSchema ?? DEFAULT_MIGRATIONS_SCHEMA
+  const table = options.migrationsTable ?? DEFAULT_MIGRATIONS_TABLE
+
+  const before = await journalLength(options.db, schema, table)
 
   await migrate(options.db, {
     migrationsFolder: options.migrationsFolder,
@@ -68,7 +108,9 @@ export async function runMigrations(options: RunMigrationsOptions): Promise<Migr
       : { migrationsSchema: options.migrationsSchema }),
   })
 
-  return { applied: true }
+  const count = (await journalLength(options.db, schema, table)) - before
+
+  return { applied: count > 0, count }
 }
 
 /**
@@ -146,7 +188,9 @@ export function planModuleMigrations(
 
 export interface ModuleMigrationOutcome {
   readonly moduleId: string
+  /** Vrai seulement si ce passage a exécuté au moins une migration du module. */
   readonly applied: boolean
+  readonly count: number
 }
 
 /**
@@ -164,14 +208,14 @@ export async function runModuleMigrations(options: {
   const outcomes: ModuleMigrationOutcome[] = []
 
   for (const step of options.plan) {
-    const { applied } = await runMigrations({
+    const { applied, count } = await runMigrations({
       db: options.db,
       migrationsFolder: step.migrationsFolder,
       migrationsTable: step.migrationsTable,
       migrationsSchema: step.migrationsSchema,
     })
 
-    outcomes.push({ moduleId: step.moduleId, applied })
+    outcomes.push({ moduleId: step.moduleId, applied, count })
   }
 
   return outcomes

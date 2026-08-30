@@ -52,7 +52,7 @@ describe('exécution des migrations', () => {
 
     await expect(
       runMigrations({ db: unusableDb, migrationsFolder: folderWithoutJournal }),
-    ).resolves.toEqual({ applied: false })
+    ).resolves.toEqual({ applied: false, count: 0 })
   })
 
   it('n’ouvre pas la base quand le journal ne déclare aucune migration', async () => {
@@ -64,7 +64,7 @@ describe('exécution des migrations', () => {
 
     await expect(
       runMigrations({ db: unusableDb, migrationsFolder: folderWithEmptyJournal }),
-    ).resolves.toEqual({ applied: false })
+    ).resolves.toEqual({ applied: false, count: 0 })
   })
 
   it('nomme le journal illisible plutôt que de remonter une erreur de syntaxe brute', async () => {
@@ -124,8 +124,10 @@ describe.skipIf(!databaseReachable)('migrations et seed sur une base réelle', (
   }
 
   it('applique les migrations sur une base vierge, puis ne fait rien au second passage', async () => {
-    await expect(migrateOnce()).resolves.toEqual({ applied: true })
-    await expect(migrateOnce()).resolves.toEqual({ applied: true })
+    await expect(migrateOnce()).resolves.toEqual({ applied: true, count: 1 })
+    // Le second passage n'exécute rien, et le dit : `applied` rapporte ce que
+    // Drizzle a joué, pas ce que le journal sur disque contient.
+    await expect(migrateOnce()).resolves.toEqual({ applied: false, count: 0 })
 
     const tables = await countRows(
       sql`select count(*)::int as count from information_schema.tables where table_name = 'fixture_item'`,
