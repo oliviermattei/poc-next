@@ -124,7 +124,28 @@ All pipeline data lives in markdown files under docs/, versioned by git. No data
 - Decisions — docs/decisions/NNN-<slug>.md (MADR format, @templates/adr.md): one file per structural decision, with the considered options and why they were rejected. Immutable: a change means a new ADR superseding the old one. Framing decisions commit on the default branch; story decisions travel with feature/<id>.
 
 ## Technical conventions
-<< IP Mike: boilerplate structure, stack, patterns, naming, commit rules. >>
+
+Full detail in `docs/architecture.md`; each structural decision has an ADR in `docs/decisions/`.
+
+**Stack** — TypeScript strict, Next.js App Router, Tailwind + shadcn/ui (copied into `packages/ui`), Turborepo + pnpm, PostgreSQL 16+ with Drizzle, Better Auth, Hono mounted in Next with oRPC contracts, Vitest + Playwright, GitHub Actions.
+
+**Repo layout** — `apps/web` (Next, mounts the Hono server at `app/api/[[...route]]`), `config/` (features, billing, marketing — edited by the project owner), `packages/core` (module contract and registry), `packages/db`, `packages/api`, `packages/ui`, `packages/ports`, `packages/adapters`, `packages/modules/<module>`, `tooling/`.
+
+**A module is a package** declaring one typed contract: `id`, `requires`, `schema`, `migrations`, `routes`, `navigation`, `messages`, `emails`, `webhooks`, `purge`, `export`, `retention`. Every key is mandatory from the first module, empty if need be — adding one later means reopening every module already written.
+
+**Four layers inside each module**: `domain/` (pure business rules, no framework, no ORM, no SDK) → `application/` (use cases and ports) → `infrastructure/` (Drizzle repositories, adapter calls) and `presentation/` (Hono routes, oRPC contracts, React components). `infrastructure` and `presentation` never import each other. **The boundary rule is enforced by lint in CI, not by review.**
+
+**A disabled module leaves no trace**: no route (404), no navigation entry, no migration applied on a fresh database. A module enabled then disabled keeps its tables and data — deleting them would be `eject`, which is in the PRD graveyard. No cleanup command exists; never introduce one.
+
+**One implementation per port.** Mail Resend, storage S3/R2, payments Stripe, jobs Inngest, errors Sentry, analytics PostHog, rate limiting PostgreSQL. Test doubles are tools, not providers: they never justify a second adapter. Every port must work locally with no API key.
+
+**Naming** — files `kebab-case`, types and components `PascalCase`, functions and variables `camelCase`, tables and columns `snake_case`.
+
+**Rules that bite** — Zod at every boundary (env, routes, webhooks, config); no direct `process.env` outside the config module; `drizzle-kit generate` only, never `push` in production; migrations backward-compatible with the version still online; no foreign key toward an optional module; 404 rather than 403 on another organization's resource; identical error message for unknown account and wrong password; permissions checked server-side.
+
+**Third-party integrations, two regimes, never mixed** — in CI: recording doubles for outbound calls, replay of recorded webhook events for inbound ones, both blocking. Outside CI, on an explicit command: real test keys, run before every ship.
+
+**Commits** — one commit per story, imperative message in French, carrying that story's research, design and plan.
 
 ## Definition of Done (per feature)
 - Single PR, structured description, readable diff

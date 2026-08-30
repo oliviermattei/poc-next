@@ -1,0 +1,147 @@
+# Architecture — killer-boilerplate
+
+> Décidée sur documents : le dépôt ne contient aucun code applicatif. Le squelette est produit par s01 et s02 à travers le pipeline, pas avant. Chaque décision structurante ci-dessous est adossée à un ADR dans `docs/decisions/`.
+
+## Stack
+
+| Couche | Choix | ADR |
+|---|---|---|
+| Langage | TypeScript strict | 001 |
+| Framework | Next.js (App Router, React Server Components) | 001 |
+| UI | Tailwind CSS + shadcn/ui (composants copiés dans `packages/ui`) | 001 |
+| Monorepo | Turborepo + pnpm | 002 |
+| Base de données | PostgreSQL 16+, Drizzle ORM, migrations SQL versionnées | 003 |
+| Provider base | Neon par défaut, PostgreSQL conteneurisé (Coolify) supporté et testé | 003 |
+| Authentification | Better Auth (plugins `organization`, `admin`, `two-factor`, `passkey`) | 004 |
+| Couche API | Hono monté dans Next, contrats oRPC, TanStack Query | 005 |
+| Architecture interne | Clean architecture à quatre couches par module | 006 |
+| Composition | Contrat de module + `config/features.ts` | 007 |
+| Providers | Resend, S3/R2, Stripe, Inngest, Sentry, PostHog, compteur PostgreSQL | 008 |
+| Tests | Vitest (unitaire), Playwright (end-to-end) | — |
+| CI/CD | GitHub Actions ; Vercel en cible de référence, Docker et Coolify documentés | — |
+
+## Repo structure
+
+```
+apps/
+  web/                     Application Next.js — rendu, layouts, montage du serveur Hono
+    app/api/[[...route]]/  Route handler attrape-tout : point de montage unique de l'API
+config/                    Configuration éditée par le propriétaire du projet
+  features.ts              Modules activés (typé, validé au démarrage)
+  billing.ts               Offres : mode, prix, intervalle, essai, siège
+  marketing.ts             Sections de la page d'accueil, contenu et ordre
+packages/
+  core/                    Contrat de module, registre, validation de configuration
+  db/                      Client Drizzle, composition des schémas, exécution des migrations
+  api/                     Serveur Hono racine, contrats oRPC, middlewares partagés
+  ui/                      Design system : composants shadcn, tokens, primitives
+  ports/                   Interfaces des dépendances externes (mail, storage, paiement,
+                           jobs, analytics, monitoring, limitation de débit)
+  adapters/                Une implémentation par port : resend, s3, stripe, inngest,
+                           sentry, posthog, ratelimit-postgres
+  modules/                 Un package par module applicatif
+    auth/ organizations/ billing/ storage/ i18n/ marketing/ blog/ docs/ changelog/
+    notifications/ jobs/ gdpr/ admin/ onboarding/ waitlist/ feedback/ roadmap/ …
+tooling/                   Configurations partagées : eslint, typescript, tailwind, vitest
+docs/                      PRD, stories, architecture, design system, décisions, recherches,
+                           plans, revues
+```
+
+Un module non activé n'est pas importé par l'application : son package existe dans le dépôt, mais ni ses routes, ni sa navigation, ni ses migrations n'entrent dans la composition.
+
+## Patterns & conventions
+
+### Les quatre couches d'un module
+```
+packages/modules/<module>/src/
+  domain/          Entités et règles métier pures. Aucune importation de framework, d'ORM ou de SDK.
+  application/     Cas d'usage et ports. Dépend de domain uniquement.
+  infrastructure/  Repositories Drizzle, appels aux adapters. Dépend de application et domain.
+  presentation/    Routes Hono, contrats oRPC, composants React, navigation. Dépend de application et domain.
+  module.ts        Déclaration du contrat de module.
+  schema.ts        Tables Drizzle du module.
+  migrations/      Migrations SQL du module.
+  messages/        fr.json, en.json.
+  emails/          Templates React Email et leurs locales.
+```
+
+Règle de dépendance : `presentation → application → domain` et `infrastructure → application → domain`. `infrastructure` et `presentation` ne se connaissent pas. La règle est **vérifiée par lint en CI**, pas par la relecture (ADR 006).
+
+### Le contrat de module
+```ts
+interface ModuleDefinition {
+  id: string
+  requires: ModuleId[]
+  schema: DrizzleSchema
+  migrations: MigrationsDir
+  routes?: HonoRouter
+  navigation?: NavEntry[]
+  messages: Record<Locale, Messages>
+  emails?: EmailTemplate[]          // chacun avec ses locales
+  webhooks?: WebhookHandler[]
+  purge: (scope: UserScope | OrgScope) => Promise<void>
+  export: (scope: UserScope | OrgScope) => Promise<ExportPayload>
+  retention: Record<DataCategory, 'erase' | 'anonymize'>
+}
+```
+Toutes les clés sont obligatoires dès le premier module, quitte à être vides (ADR 007). Les ajouter plus tard obligerait à rouvrir chaque module déjà écrit.
+
+### Règles transverses
+- **Nommage** : fichiers en `kebab-case`, types et composants en `PascalCase`, fonctions et variables en `camelCase`, tables et colonnes en `snake_case`.
+- **Validation** : Zod à chaque frontière — environnement, entrées de routes, webhooks, configuration.
+- **Environnement** : aucune lecture directe de `process.env` hors du module de configuration. `.env.example` est exhaustif et vérifié par un test.
+- **Migrations** : `drizzle-kit generate` uniquement, jamais `push` en production. Une migration doit être rétrocompatible avec la version encore en ligne.
+- **Erreurs** : jamais de message distinguant « compte inconnu » de « mot de passe invalide ». Un accès à une ressource d'une autre organisation renvoie 404, jamais 403.
+- **Permissions** : vérifiées côté serveur. Masquer un bouton n'est pas une permission.
+- **Tests** : Vitest pour le domaine et l'application, Playwright pour les parcours. Deux régimes d'intégration tierce, jamais mélangés — doublure d'enregistrement et rejeu d'événements en CI (bloquants), clés de test réelles hors CI avant chaque ship.
+- **Commits** : un commit par story, message impératif en français, portant la recherche, le design et le plan de la story.
+
+## Data model
+
+Entités principales, par module propriétaire. Aucune table n'est partagée entre modules : les références inter-modules passent par l'identifiant et un port.
+
+| Module | Entités |
+|---|---|
+| `auth` | `user`, `session`, `account` (fournisseurs OAuth), `verification`, `two_factor`, `backup_code`, `passkey` |
+| `organizations` | `organization`, `member` (rôle owner/admin/member), `invitation` |
+| `billing` | `customer`, `subscription`, `one_time_purchase`, `entitlement`, `webhook_event` (idempotence) |
+| `storage` | `file` (propriétaire, type MIME, taille, clé de stockage) |
+| `notifications` | `notification`, `notification_preference` |
+| `marketing` | `public_subscription` (email + **source** : newsletter, waitlist), `contact_message` |
+| `gdpr` | `deletion_request`, `export_request`, `consent` |
+| `feedback` | `feedback_item` |
+| `roadmap` | `roadmap_item`, `roadmap_vote` |
+| `onboarding` | `onboarding_progress` |
+| `ratelimit` | `rate_limit_window` (compteur partagé entre instances) |
+
+Deux règles structurantes :
+- **Le propriétaire d'une donnée est résolu par une fonction unique.** Selon que le module `organizations` est activé ou non, une donnée appartient à une organisation ou directement à un utilisateur. Le code appelant est identique dans les deux cas.
+- **Aucune clé étrangère vers un module optionnel.** Elle rendrait ce module silencieusement non désactivable ; s04 la refuse à la génération.
+
+## Integration points
+
+| Besoin | Port | Implémentation livrée | Story |
+|---|---|---|---|
+| Email transactionnel | `Mailer` | Resend | s06 |
+| Authentification | — (bibliothèque) | Better Auth | s07 |
+| Fichiers | `Storage` | S3 / Cloudflare R2 (API compatible S3) | s18 |
+| Paiement | `Payments` | Stripe (checkout, portail, webhooks) | s19 |
+| Jobs et cron | `Jobs` | Inngest, avec repli synchrone si le module est coupé | s33 |
+| Erreurs | `Monitoring` | Sentry (source maps au build) | s39 |
+| Analytique | `Analytics` | PostHog, chargée après consentement | s39 |
+| Limitation de débit | `RateLimiter` | Compteur PostgreSQL, Redis documenté | s28 |
+
+Chaque port doit fonctionner en développement local **sans clé d'API** : capture locale des emails, stockage sur disque, jobs synchrones, analytique inerte.
+
+## Design / UX
+
+Le design system global est capturé dans `docs/design-system.md` par `/ks-design-system`, à partir de `packages/ui`. Les écrans de chaque story dérivent de ce système ; inventer un composant ou un token hors système est interdit, un besoin non couvert se signale comme « design system gap ».
+
+Écrans structurants, par ordre d'apparition : écrans d'authentification (s07), shell de tableau de bord avec navigation issue des modules actifs (s08), paramètres de compte (s08) et d'organisation (s15), page d'accueil sectionnée (s10), page de tarifs dérivée de `config/billing.ts` (s22), back-office superadmin (s37).
+
+## Points de vigilance repris des revues
+
+- **s03 est la story la plus risquée du projet.** Le contrat de module conditionne les quarante suivantes.
+- **Le lint de frontières est ce qui sépare une architecture d'une intention.** S'il est désactivé, la clean architecture disparaît en quelques stories.
+- **La limitation de débit arrive en s28.** Tous les états livrables antérieurs exposent inscription, invitations, téléversement et checkout anonyme sans limite : ne pas mettre un projet réel en production avant cette story.
+- **Deux points restent ouverts et devront être tranchés en Research** : l'accès au consentement quand le module marketing est coupé (finding F57), et le découpage éventuel de s37, la plus grosse story restante.
