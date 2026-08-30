@@ -141,5 +141,22 @@ La story tient son point dur. La contrainte est portée par le compilateur et je
 
 Restent trois majors, tous cernés et corrigeables sans toucher au contrat : un cache de build qui peut expédier le mauvais jeu de modules, un champ de sécurité que personne ne lit, et trois fichiers de règles pour agents qui ne décrivent plus le code livré — dans la story dont ces fichiers sont le produit principal.
 
+---
+
+## Addendum — tour de correctifs `a3b2db2`
+
+> Ajouté par l'orchestrateur. Les trois majors sont fermés ; suite portée de 160 à **168 tests**, verts dans les deux états, plus 6 parcours end-to-end.
+
+- **F1 fermé.** `globalDependencies: ['.env', 'config/**']` — global plutôt qu'un `inputs` par tâche, parce que `typecheck` et `build` dépendent tous deux de la configuration des modules. Prouvé par le geste exact du reviewer, sans `--force` : `FULL TURBO`, puis édition de `config/features.ts`, puis **cache miss** et artefact rendant `<ul></ul>`, puis restauration et `FULL TURBO` de nouveau. Le test interroge Turborepo lui-même (`turbo run build --dry=json`) pour savoir si `config/features.ts` fait partie des entrées hachées : une déclaration présente mais qui raterait le fichier échoue quand même.
+- **F2 fermé par l'implémentation, pas par l'épinglage.** `satisfiesProtection` est écrite une fois et sert à la fois `visibleNavigation` et `dispatchModuleRequest` — la seule différence est le transport (401 appelant inconnu, 403 connu mais insuffisant). `demo-enabled` porte désormais une entrée `role: 'admin'`, donc le champ mord dans le dépôt livré. Le témoin côté appelant vit dans le fichier end-to-end, parce que le `<nav>` n'est rendu que par Playwright.
+- **F3.1 fermé, et deux dérives supplémentaires trouvées en relisant** : « les deux contraintes portées par le compilateur » alors qu'il y en a trois, et une référence à `composeSchema` depuis `packages/core` — fonction qui appartient à `@repo/db`.
+- **F5 : la clé `jobs` entre au contrat**, avec un gestionnaire `run` en plus de `id` et `schedule` — l'argument du finding vaut aussi pour `run` : une tâche planifiée sans appelable est indécidable pour le runner de s33. Les deux modules de démonstration la déclarent vide. `requires` reste `readonly string[]` : la typer depuis l'annuaire fermerait un cycle module → `config/features.ts` → module, et l'asymétrie est désormais écrite à trois endroits.
+- **F7, F8, F9, F10 fermés.** Le lien de navigation pointe sur la route montée ; **aucune page Next n'a été ajoutée** — une page sous `apps/web` pour un module survivrait à sa désactivation, ce que la story nie.
+- **`e2e/modules.spec.ts` livré** : les quatre vérifications HTTP que la revue avait faites à la main vivent désormais dans la CI. Elles dérivent leurs attentes du registre, donc passent dans les deux états.
+
+Sept mutations, toutes rouges, dont une qui prouve que le test end-to-end du 404 n'est pas vacant (activer tous les modules le fait rougir).
+
+**Reste ouvert, par renvoi de la revue** : F4 (Hono), F6 (ensemble de locales de l'application, s09), le `role: string` libre de s17. Et un point déclaré : `packages/core/AGENTS.md` est corrigé mais **non épinglé** par un test — tout mécanisme envisagé revenait à de la couverture par sous-chaîne de documentation, que la discipline de test du dépôt interdit.
+
 Max severity: major
 Ship allowed: yes
