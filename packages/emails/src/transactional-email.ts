@@ -25,13 +25,16 @@ import { createElement } from 'react'
  * **répertoire courant du processus**, et seulement si son `include` couvre le
  * fichier : `jsx: "react-jsx"` y fonctionne (comme `TSX_TSCONFIG_PATH`), mais
  * ni le `tsconfig.json` de ce package quand `tsx` est lancé de la racine, ni le
- * pragma `@jsxImportSource` seul. Mesuré avec `tsx@4.23.13` ; le détail est
- * dans l'`AGENTS.md` du package. Ce package est chargé par des scripts lancés
- * de répertoires différents (`pnpm run audit` de la racine, `pnpm db:*` de
- * `packages/db`) : il ne contrôle donc pas le réglage, et un `.tsx` ici
- * n'échouerait ni au test, ni au build, mais au premier de ces scripts, sur un
- * « React is not defined » que rien ne rattache à ce fichier. `createElement`
- * ne dépend d'aucun réglage.
+ * pragma `@jsxImportSource` seul. Mesuré avec `tsx@4.23.13` ; le détail — dont
+ * le seul mécanisme qui fonctionne sans réglage, le pragma **complet**
+ * `@jsxRuntime automatic @jsxImportSource react`, à réécrire en tête de chaque
+ * fichier — est dans l'`AGENTS.md` du package. Ce package est chargé par des
+ * scripts lancés de répertoires différents (`pnpm run audit` de la racine,
+ * `pnpm db:*` de `packages/db`) : il ne contrôle donc pas le réglage, et un
+ * `.tsx` ici n'échouerait ni au test, ni au build, mais au premier de ces
+ * scripts, sur un « React is not defined » que rien ne rattache à ce fichier.
+ * `createElement` ne dépend ni d'un réglage ni d'un en-tête : il n'y a rien à
+ * oublier.
  *
  * `apps/web` garde ses `.tsx` : seul Next les compile. Ce package est importé
  * par du code serveur partagé, il n'a pas ce luxe.

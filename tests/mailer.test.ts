@@ -127,6 +127,28 @@ describe('sélection du mailer applicatif', () => {
     expect(await readdir(directory)).toEqual([])
   })
 
+  it('traite une clé déclarée vide comme absente — la configuration livrée par `.env.example`', async () => {
+    // Le seul chemin pour lequel cette garde existe est celui où `getEnv` rend
+    // l'environnement **sans le valider** : phase de build et
+    // `SKIP_ENV_VALIDATION`. `withoutBlanks` vit dans `parseEnv`, que ces
+    // chemins sautent — `RESEND_API_KEY=` y vaut `''`, donc « renseignée », et
+    // la branche fournisseur l'emportait sur la capture explicitement demandée
+    // (revue de s06, G2). La décision doit être celle du schéma partout.
+    const directory = await capturedIn()
+    const network = stubNetwork()
+
+    const mailer = createAppMailer({
+      env: anEnv({ RESEND_API_KEY: '', EMAIL_FROM: '', EMAIL_LOCAL_CAPTURE: '1' }),
+      captureDirectory: directory,
+      emails: CATALOGUE,
+    })
+    const result = await mailer.send(send())
+
+    expect(result.ok).toBe(true)
+    expect(network.calls).toBe(0)
+    expect(await readdir(directory)).toHaveLength(1)
+  })
+
   it('refuse de se monter quand aucun mailer n’est configuré, en nommant les variables', async () => {
     // Sans clé et sans capture explicite, l'ancien montage écrivait dans
     // `.mail/` et rendait `{ok:true}` — en production comme ailleurs, sans

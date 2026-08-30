@@ -39,12 +39,13 @@ const envShape = {
       message: 'must be a PostgreSQL connection string (postgres://…)',
     }),
   /**
-   * Clé du fournisseur d'emails (Resend), **optionnelle**.
+   * Clé du fournisseur d'emails (Resend), **optionnelle** ici.
    *
-   * `docs/reliability.md` §2 : aucun port ne dépend d'une clé d'API pour
-   * fonctionner en développement local. Sans elle, le mailer est la capture
-   * locale — le choix se fait sur la **présence de la clé**, jamais sur
-   * `NODE_ENV`.
+   * Optionnelle parce que tout processus ne monte pas un mailer. Ce qui en
+   * monte un exige l'une des deux configurations — la clé, ou la capture
+   * locale explicite — et refuse de démarrer sans elle
+   * (`apps/web/lib/mailer-config.ts`). Le choix se fait toujours sur cette
+   * configuration, jamais sur `NODE_ENV`.
    */
   RESEND_API_KEY: z.string().min(1).optional(),
   /**
@@ -56,7 +57,8 @@ const envShape = {
    * L'étendre à tout déploiement dépourvu de clé rendrait `{ok:true}` sur un
    * email que personne ne recevra — indiscernable d'un envoi réussi. Le mailer
    * se choisit donc toujours sur la configuration, mais il faut avoir dit
-   * laquelle : sans clé et sans ce drapeau, le démarrage échoue.
+   * laquelle : sans clé et sans ce drapeau, l'application qui monte un mailer
+   * refuse de démarrer.
    */
   EMAIL_LOCAL_CAPTURE: z.literal(EMAIL_LOCAL_CAPTURE_ENABLED).optional(),
   /** Expéditeur. Obligatoire dès qu'une clé est configurée : voir la règle croisée. */
@@ -82,16 +84,12 @@ export const envSchema = z.object(envShape).superRefine((value, ctx) => {
     })
   }
 
-  // Aucun mailer configuré : refusé au démarrage, comme toute configuration
-  // manquante. Le silence donnerait un `{ok:true}` sur un email que personne
-  // ne reçoit.
-  if (value.RESEND_API_KEY === undefined && !captureEnabled) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['RESEND_API_KEY'],
-      message: `is required, unless EMAIL_LOCAL_CAPTURE=${EMAIL_LOCAL_CAPTURE_ENABLED} captures emails on disk instead of sending them`,
-    })
-  }
+  // Ce schéma ne dit **pas** qu'il faut un mailer : il juge la forme des
+  // variables, pour tout processus qui lit cet environnement. `pnpm db:migrate`
+  // n'envoie aucun email et doit s'exécuter avec le seul `DATABASE_URL` (revue
+  // de s06, G3). L'exigence « il faut un mailer » appartient à ce qui en monte
+  // un : `apps/web/lib/mailer-config.ts`, appliquée au démarrage de
+  // l'application par `apps/web/next.config.ts`.
 
   // Les deux à la fois : le choix du mailer deviendrait implicite, et un
   // déploiement muni d'une clé pourrait taire ses emails sans que rien ne le
@@ -212,13 +210,24 @@ export interface AssertStartupEnvOptions {
  * - `next info` charge la configuration avec sa propre phase, non exemptée : la
  *   commande de diagnostic s'interrompt précisément quand l'environnement est
  *   cassé. Contournement : `SKIP_ENV_VALIDATION=1 next info`.
+ *
+ * Rend l'environnement **validé**, ou `undefined` quand la validation a été
+ * sautée. Ce qui doit être vérifié au démarrage en plus du schéma — le choix du
+ * mailer, que seule l'application qui en monte un exige — se greffe sur ce
+ * retour et hérite ainsi des mêmes échappatoires, sans les redéclarer.
  */
-export function assertStartupEnv(options: AssertStartupEnvOptions = {}): void {
+export function assertStartupEnv(options: AssertStartupEnvOptions = {}): Env | undefined {
   if (options.phase === NEXT_BUILD_PHASE) {
-    return
+    return undefined
   }
 
-  getEnv(options.source ?? process.env)
+  const source = options.source ?? process.env
+  const env = getEnv(source)
+
+  // `getEnv` rend la source telle quelle, sans rien vérifier, en phase de build
+  // et sous `SKIP_ENV_VALIDATION` : ne la rendre que lorsqu'elle a réellement
+  // été validée évite qu'un appelant ne décide sur des valeurs non vérifiées.
+  return isBuildPhase(source) ? undefined : env
 }
 
 /**

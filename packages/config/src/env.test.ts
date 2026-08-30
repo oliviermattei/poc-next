@@ -28,13 +28,14 @@ describe('validation de l’environnement', () => {
     ).not.toThrow()
   })
 
-  it('refuse un environnement où aucun mailer n’est configuré, en nommant les deux variables', () => {
-    // Sans clé **et** sans capture explicite, l'application enverrait les
-    // emails dans le vide en rendant `{ok:true}` : indiscernable d'un envoi
-    // réussi, y compris en production. Une configuration manquante se traite
-    // comme toutes les autres — le démarrage échoue en se nommant.
-    expect(() => parseEnv({ DATABASE_URL })).toThrowError(/EMAIL_LOCAL_CAPTURE/)
-    expect(() => parseEnv({ DATABASE_URL })).toThrowError(/RESEND_API_KEY/)
+  it('n’impose aucun mailer à un processus qui n’en monte pas', () => {
+    // Le schéma juge la **forme** des variables, pour tout le monde : un
+    // conteneur de migration muni du seul `DATABASE_URL` doit s'exécuter. Exiger
+    // ici un choix de mailer cassait `pnpm db:migrate` — une commande qui
+    // n'envoie aucun email. La règle « il faut un mailer » vit là où un mailer
+    // se monte : `apps/web/lib/mailer-config.ts`, appliquée au démarrage de
+    // l'application par `apps/web/next.config.ts`.
+    expect(() => parseEnv({ DATABASE_URL })).not.toThrow()
   })
 
   it('accepte un environnement sans clé quand la capture locale est demandée explicitement', () => {

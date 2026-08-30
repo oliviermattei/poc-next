@@ -39,8 +39,17 @@ jobs:
       # Aucun secret : une base jetable, dans le réseau du runner.
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/app
       # La CI n'envoie aucun email réel : elle capture. Le drapeau est
-      # explicite parce que l'absence de clé ne suffit pas à le décider — sans
-      # lui, l'application refuse de démarrer et `pnpm test:e2e` le dit.
+      # explicite parce que l'absence de clé ne suffit pas à le décider.
+      #
+      # Mesuré, sans lui, dans l'ordre réel des étapes : migrations, tests
+      # unitaires et build passent — ils ne montent aucun mailer, et le schéma
+      # d'environnement n'en exige d'aucun processus — puis `pnpm test:e2e`
+      # échoue, parce que Playwright démarre l'application et que celle-ci, elle,
+      # refuse de démarrer sans avoir dit ce qu'elle fait de ses emails.
+      #
+      # Au niveau du job, et pas de la seule étape des parcours : y ajouter un
+      # jour un secret `RESEND_API_KEY` casserait **toutes** les étapes qui
+      # valident l'environnement, la clé et le drapeau étant exclusifs.
       EMAIL_LOCAL_CAPTURE: '1'
 
     steps:

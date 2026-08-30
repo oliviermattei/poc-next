@@ -55,14 +55,25 @@ Trois transpileurs lisent ce dépôt et ils ne s'accordent pas :
 | `jsx` dans le `tsconfig.json` racine, dont l'`include` ne couvre pas `packages/**` | échec |
 | `TSX_TSCONFIG_PATH` vers un `tsconfig.json` qui pose `jsx` | **fonctionne** |
 | pragma `/** @jsxImportSource react */` seul | échec — il choisit la source d'import, pas le runtime |
+| pragma `/** @jsxRuntime automatic @jsxImportSource react */` | **fonctionne** — sans aucun `tsconfig.json`, et quel que soit le répertoire de lancement |
+
+Ce tableau porte sur les mécanismes essayés, pas sur tous ceux qui existent :
+la dernière ligne a été ajoutée après coup (revue de s06, G7), et une prochaine
+version de `tsx` peut en ajouter d'autres. Le mesurer avant de l'écrire reste la
+seule règle.
 
 Autrement dit : sous `tsx`, le runtime JSX est décidé par le `tsconfig.json`
 résolu depuis le **répertoire courant du processus**, et seulement si son
 `include` couvre le fichier. Un package importé par du code serveur partagé ne
 contrôle ni l'un ni l'autre : `pnpm run audit` s'exécute depuis la racine,
 `pnpm db:*` depuis `packages/db`, et les deux chargeraient ce fichier sous un
-réglage différent. `createElement` ne dépend d'aucun réglage de compilateur,
-d'où qu'on le lance.
+réglage différent.
+
+Le seul mécanisme qu'un package contrôle réellement est donc le **pragma
+complet** — mais il se réécrit en tête de chaque fichier, et l'oublier une fois
+casse un script au chargement, pas au test ni au build. `createElement` ne
+dépend d'aucun réglage de compilateur ni d'aucun en-tête : il n'y a rien à
+oublier, d'où qu'on le lance.
 
 (La version précédente de cette règle affirmait qu'« aucun moyen n'existe, les
 trois ont été essayés » : deux des trois fonctionnent en réalité, et ce qui

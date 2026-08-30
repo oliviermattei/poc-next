@@ -144,6 +144,22 @@ describe('validation de l’environnement au démarrage du serveur', () => {
   const DEV_SERVER_PHASE = 'phase-development-server'
   const BUILD_PHASE = 'phase-production-build'
 
+  /**
+   * Chaque cas déclare l'**intégralité** de ce que la garde lit.
+   *
+   * Un cas qui n'annonce que `DATABASE_URL` ne passe que sur un poste dont le
+   * `.env` complète le reste : la suite d'un clone neuf rougit alors sur un
+   * environnement que le test n'a jamais nommé (revue de s06, G1). La valeur
+   * vide vaut absence — et c'est la seule forme qui tienne ici, `next.config`
+   * rechargeant le `.env` racine à chaque import : une variable **supprimée**
+   * y serait repeuplée par le fichier, une variable vide non.
+   */
+  const stubMailer = (choice: 'capture' | 'aucun'): void => {
+    vi.stubEnv('RESEND_API_KEY', '')
+    vi.stubEnv('EMAIL_FROM', '')
+    vi.stubEnv('EMAIL_LOCAL_CAPTURE', choice === 'capture' ? '1' : '')
+  }
+
   const loadNextConfig = async () => {
     vi.resetModules()
     const { default: config } = await import('../apps/web/next.config')
@@ -158,6 +174,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
 
   it('refuse de démarrer sur une `DATABASE_URL` malformée, en la nommant', async () => {
     vi.stubEnv('DATABASE_URL', 'mysql://oops@localhost/x')
+    stubMailer('capture')
 
     const config = await loadNextConfig()
 
@@ -168,10 +185,56 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     // Une base éteinte n'est pas une erreur de configuration : le serveur doit
     // démarrer et `/api/health` répondre 503.
     vi.stubEnv('DATABASE_URL', 'postgres://app:app@127.0.0.1:1/app')
+    stubMailer('capture')
 
     const config = await loadNextConfig()
 
     expect(() => config(DEV_SERVER_PHASE)).not.toThrow()
+  })
+
+  it('refuse de démarrer quand aucun mailer n’est configuré, en nommant les deux variables', async () => {
+    // C'est cette application qui **monte** le mailer : le choix se vérifie au
+    // démarrage, pas au premier email — un expéditeur ou une clé manquants
+    // n'échoueraient sinon qu'en production, sur un parcours d'inscription.
+    // Le schéma d'environnement, lui, ne l'exige de personne : un conteneur de
+    // migration muni du seul `DATABASE_URL` n'a aucun mailer à choisir (G3).
+    vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
+    stubMailer('aucun')
+
+    const config = await loadNextConfig()
+
+    expect(() => config(DEV_SERVER_PHASE)).toThrowError(/RESEND_API_KEY/)
+    expect(() => config(DEV_SERVER_PHASE)).toThrowError(/EMAIL_LOCAL_CAPTURE/)
+  })
+
+  it('ne réclame pas de mailer pendant `next build` : le build s’exécute sans les variables d’exécution', async () => {
+    vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
+    stubMailer('aucun')
+
+    const config = await loadNextConfig()
+
+    expect(() => config(BUILD_PHASE)).not.toThrow()
+  })
+
+  it('ne réclame pas de mailer sous `SKIP_ENV_VALIDATION` : la trappe reste ouverte', async () => {
+    // La garde du mailer se greffe sur ce que `assertStartupEnv` rend, et cette
+    // fonction ne rend rien quand elle n'a rien validé. Sans cela, la garde
+    // déciderait sur des valeurs non vérifiées, et le contournement documenté
+    // pour diagnostiquer un environnement cassé (`SKIP_ENV_VALIDATION=1 next
+    // info`) échouerait précisément quand on en a besoin.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    try {
+      vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
+      stubMailer('aucun')
+      vi.stubEnv('SKIP_ENV_VALIDATION', '1')
+
+      const config = await loadNextConfig()
+
+      expect(() => config(DEV_SERVER_PHASE)).not.toThrow()
+    } finally {
+      warn.mockRestore()
+    }
   })
 
   it('ne valide pas pendant `next build` : le build s’exécute sans les variables d’exécution', async () => {

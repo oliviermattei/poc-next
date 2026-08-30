@@ -1,12 +1,13 @@
 import { join } from 'node:path'
 
 import { createResendMailer } from '@repo/adapter-resend'
-import { EMAIL_LOCAL_CAPTURE_ENABLED, type Env, getEnv } from '@repo/config'
+import { type Env, getEnv } from '@repo/config'
 import { createEmailRenderer } from '@repo/emails'
 import { createLocalCaptureMailer } from '@repo/mailer-testing'
 import type { Mailer, MailerLogRecord, MailerLogger } from '@repo/ports'
 import type { RegistryEmailTemplate } from '@repo/core'
 
+import { LOCAL_MAIL_DIRECTORY, resolveMailerConfig } from './mailer-config'
 import { moduleRegistry } from './module-registry'
 
 /**
@@ -17,25 +18,28 @@ import { moduleRegistry } from './module-registry'
  * que le port `Mailer` (`@repo/ports`) — il ne saura jamais lequel des deux
  * l'exécute, et c'est exactement ce que le port existe pour garantir.
  *
- * **Le choix se fait sur la présence de la clé d'API, jamais sur `NODE_ENV`.**
- * C'est le piège nommé par la story et déjà relevé dans la recherche de s01 :
- * un mailer conditionné par l'environnement est intestable, et se trompera un
- * jour d'environnement — en envoyant de vrais emails depuis une suite, ou en
- * écrivant sur disque en production. `tests/mailer.test.ts` croise les deux
- * axes (production sans clé, développement avec clé) et rougit si `NODE_ENV`
- * reprend la main.
+ * **Le choix se fait sur la configuration — la clé du fournisseur ou le drapeau
+ * de capture — jamais sur `NODE_ENV`.** C'est le piège nommé par la story et
+ * déjà relevé dans la recherche de s01 : un mailer conditionné par
+ * l'environnement est intestable, et se trompera un jour d'environnement — en
+ * envoyant de vrais emails depuis une suite, ou en écrivant sur disque en
+ * production. `tests/mailer.test.ts` croise les deux axes (production sans clé,
+ * développement avec clé) et rougit si `NODE_ENV` reprend la main.
  *
  * **La capture locale est un opt-in, pas un repli.** `docs/reliability.md` §2
  * prescrit la capture « en développement local » ; l'étendre à tout
  * déploiement dépourvu de clé faisait rendre `{ok:true}` sur un email que
  * personne ne recevrait, indiscernable d'un envoi réussi — en production aussi
  * (revue s06, F3). `EMAIL_LOCAL_CAPTURE=1` la demande explicitement ; sans clé
- * et sans ce drapeau, le montage échoue en nommant les deux variables, comme
- * toute configuration manquante.
+ * et sans ce drapeau, rien ne se monte.
+ *
+ * La règle elle-même est dans `mailer-config.ts`, d'où `next.config.ts` la
+ * réapplique au démarrage : le montage et la garde de démarrage ne peuvent pas
+ * diverger, et la configuration de Next n'a pas à charger le SDK du
+ * fournisseur pour poser une question à trois variables.
  */
 
-/** Dossier de capture, relatif au répertoire d'exécution. Ignoré par git. */
-export const LOCAL_MAIL_DIRECTORY = '.mail'
+export { LOCAL_MAIL_DIRECTORY } from './mailer-config'
 
 /**
  * Le **budget d'attente** de l'appelant, choisi ici et pas subi.
@@ -82,10 +86,16 @@ export function createAppMailer(options: AppMailerOptions = {}): Mailer {
   const render = createEmailRenderer(options.emails ?? moduleRegistry.emails)
   const logger = options.logger ?? consoleLogger
 
-  if (env.RESEND_API_KEY !== undefined && env.EMAIL_FROM !== undefined) {
+  // La règle qui décide vit dans `mailer-config.ts` — partagée avec la garde de
+  // démarrage de `next.config.ts`, pour que les deux ne puissent pas diverger.
+  // Elle lève, en nommant les deux variables, quand rien n'est configuré : le
+  // schéma d'environnement, lui, ne l'exige d'aucun processus.
+  const config = resolveMailerConfig(env)
+
+  if (config.kind === 'provider') {
     return createResendMailer({
-      apiKey: env.RESEND_API_KEY,
-      from: env.EMAIL_FROM,
+      apiKey: config.apiKey,
+      from: config.from,
       render,
       logger,
       timeoutMs: APP_MAILER_TIMEOUT_MS,
@@ -93,19 +103,8 @@ export function createAppMailer(options: AppMailerOptions = {}): Mailer {
     })
   }
 
-  if (env.EMAIL_LOCAL_CAPTURE === EMAIL_LOCAL_CAPTURE_ENABLED) {
-    return createLocalCaptureMailer({
-      directory: options.captureDirectory ?? join(process.cwd(), LOCAL_MAIL_DIRECTORY),
-      render,
-    })
-  }
-
-  // Le schéma refuse déjà cette configuration au démarrage. La garde est ici en
-  // plus, parce que `getEnv` rend l'environnement **sans le valider** en phase
-  // de build et sous `SKIP_ENV_VALIDATION` : c'est le seul chemin par lequel un
-  // montage muet pourrait encore passer.
-  throw new Error(
-    'Aucun mailer configuré : renseignez RESEND_API_KEY (avec EMAIL_FROM) pour envoyer, ' +
-      `ou EMAIL_LOCAL_CAPTURE=${EMAIL_LOCAL_CAPTURE_ENABLED} pour capturer les emails dans « ${LOCAL_MAIL_DIRECTORY} » sans rien envoyer.`,
-  )
+  return createLocalCaptureMailer({
+    directory: options.captureDirectory ?? join(process.cwd(), LOCAL_MAIL_DIRECTORY),
+    render,
+  })
 }

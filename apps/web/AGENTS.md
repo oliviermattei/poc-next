@@ -53,9 +53,20 @@ un `if` ici reviendrait à masquer une entrée au lieu de ne pas l'avoir.
 
 ## Le montage du mailer
 
-`lib/mailer.ts` est le seul fichier du dépôt qui sache à la fois qu'il existe un
-fournisseur d'emails, une capture locale et des templates. Le code métier ne
-connaît que le port `Mailer` : il ne saura jamais lequel des deux l'exécute.
+Deux fichiers :
+
+- `lib/mailer-config.ts` porte la **règle** — quelle configuration décide de
+  quel mailer, et le refus quand aucune n'est donnée. Il ne dépend que de
+  `@repo/config` ;
+- `lib/mailer.ts` **construit** l'implémentation correspondante. C'est le seul
+  fichier du dépôt qui sache à la fois qu'il existe un fournisseur d'emails, une
+  capture locale et des templates. Le code métier ne connaît que le port
+  `Mailer` : il ne saura jamais lequel des deux l'exécute.
+
+Séparés parce que `next.config.ts` réapplique la règle au **démarrage** : le
+montage et la garde de démarrage ne peuvent pas diverger, et la configuration de
+Next n'a pas à charger le SDK du fournisseur, React Email et le registre de
+modules pour poser une question à trois variables.
 
 **Le choix se fait sur la configuration, jamais sur `NODE_ENV`.** Un mailer
 conditionné par l'environnement est intestable et se trompera un jour
@@ -70,14 +81,24 @@ Deux configurations, et il faut en choisir une :
 |---|---|
 | `RESEND_API_KEY` (+ `EMAIL_FROM`) | envoi réel chez le fournisseur |
 | `EMAIL_LOCAL_CAPTURE=1` | l'email est rendu et écrit dans `.mail/`, ignoré par git, consultable dans un navigateur (`docs/reliability.md` §2) |
-| ni l'un ni l'autre | **le démarrage échoue en nommant les deux variables** |
+| les deux | refusé par le schéma d'environnement : le choix serait ambigu |
+| ni l'un ni l'autre | **le démarrage de cette application échoue en nommant les deux variables** |
 
 La capture locale est un **opt-in, pas un repli**. En faire la conséquence
 automatique d'une clé absente rendait `{ok:true}` sur un email que personne ne
 recevrait, en production comme ailleurs, sans qu'aucun appelant puisse le
-distinguer d'un envoi réussi (revue de s06, F3). Le schéma refuse cette
-configuration au démarrage ; `lib/mailer.ts` la refuse aussi, parce que
-`getEnv` ne valide rien en phase de build ni sous `SKIP_ENV_VALIDATION`.
+distinguer d'un envoi réussi (revue de s06, F3).
+
+**L'exigence est celle de cette application, pas celle du dépôt.** Le schéma de
+`@repo/config` juge la forme des variables pour tout processus qui lit cet
+environnement ; il n'impose aucun mailer, sans quoi `pnpm db:migrate` — un
+conteneur muni du seul `DATABASE_URL` — ne s'exécuterait plus (revue de s06,
+G3). C'est ce qui monte un mailer qui exige un choix : `next.config.ts` au
+démarrage, `lib/mailer.ts` au montage. Le second n'est pas redondant : `getEnv`
+ne valide rien en phase de build ni sous `SKIP_ENV_VALIDATION`, et c'est aussi
+pourquoi la règle normalise elle-même les valeurs vides — sur ces chemins, le
+`RESEND_API_KEY=` que livre `.env.example` se lisait « clé renseignée » et la
+branche fournisseur l'emportait sur la capture demandée (revue de s06, G2).
 
 Le montage fixe aussi le **budget d'attente** : deux essais de 4 s, recul
 compris, pour tenir sous les dix secondes d'une fonction serverless — aux
