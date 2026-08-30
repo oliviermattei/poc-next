@@ -35,9 +35,12 @@ export const demoEnabledModule = defineModule({
   id: 'demo-enabled',
   requires: [],
   schema: { demoItems },
-  // s04 : ce module n'a pas encore de migrations, et le contrat le dit au lieu
-  // de le laisser deviner.
-  migrations: null,
+  // Dossier des migrations SQL du module, relatif à la racine du dépôt : c'est
+  // la seule forme qui ne dépende ni du répertoire courant, ni d'un
+  // `import.meta.url` que le bundler du serveur Next réécrit. `pnpm db:generate`
+  // y écrit, `pnpm db:migrate` y lit, et le journal appliqué porte le nom du
+  // module.
+  migrations: 'packages/modules/demo-enabled/migrations',
   routes: createDemoItemRoutes(demoItemUseCases),
   navigation: demoItemNavigation,
   messages: { fr: frMessages, en: enMessages },

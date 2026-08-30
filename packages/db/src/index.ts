@@ -8,6 +8,19 @@ export {
   type ModuleSchema,
 } from './schema'
 export {
+  moduleSchemaBarrelFile,
+  moduleSchemaPackage,
+  planModuleSchemaBarrels,
+  renderModuleSchemaBarrel,
+  type ModuleSchemaBarrel,
+  type ModuleSchemaSource,
+} from './barrel'
+export {
+  assertNoForbiddenModuleReferences,
+  ForbiddenModuleReferenceError,
+  type ModuleReferenceSource,
+} from './references'
+export {
   checkDatabaseConnection,
   closeDatabase,
   createDatabaseClient,
@@ -15,5 +28,18 @@ export {
   type DatabaseConnection,
   type DatabaseStatus,
 } from './client'
-export { runMigrations, type MigrationsResult, type RunMigrationsOptions } from './migrate'
+export { listDatabaseTables, type ListDatabaseTablesOptions } from './introspect'
+export {
+  migrationsTableFor,
+  planModuleMigrations,
+  runMigrations,
+  runModuleMigrations,
+  MIGRATIONS_SCHEMA,
+  type MigratableModule,
+  type MigrationsResult,
+  type ModuleMigrationOutcome,
+  type ModuleMigrationStep,
+  type PlanModuleMigrationsOptions,
+  type RunMigrationsOptions,
+} from './migrate'
 export { runSeeders, seeders, type RunSeedersOptions, type Seeder } from './seed'

@@ -29,7 +29,10 @@ export const demoDisabledModule = defineModule({
   id: 'demo-disabled',
   requires: ['demo-enabled'],
   schema: { demoNotes },
-  migrations: null,
+  // Ce module a de vraies migrations **et** n'est pas activé : c'est ce couple
+  // qui rend la preuve possible. Un module sans migration prouverait seulement
+  // qu'on ne crée pas ce qui n'existe pas.
+  migrations: 'packages/modules/demo-disabled/migrations',
   routes: createDemoNoteRoutes(demoNoteUseCases),
   navigation: demoNoteNavigation,
   messages: { fr: frMessages, en: enMessages },

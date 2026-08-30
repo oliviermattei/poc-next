@@ -70,3 +70,109 @@ export async function runMigrations(options: RunMigrationsOptions): Promise<Migr
 
   return { applied: true }
 }
+
+/**
+ * Un module au regard des migrations : ce que le contrat en dit, et rien de
+ * plus. Volontairement structurel — `@repo/db` reçoit des modules, il ne lit
+ * pas `config/features.ts`.
+ */
+export interface MigratableModule {
+  readonly id: string
+  /** Dossier des migrations, relatif à la racine du dépôt, ou `null`. */
+  readonly migrations: string | null
+}
+
+export interface ModuleMigrationStep {
+  readonly moduleId: string
+  readonly migrationsFolder: string
+  readonly migrationsTable: string
+  readonly migrationsSchema: string
+}
+
+/** Schéma qui héberge les journaux, un par module. Convention Drizzle. */
+export const MIGRATIONS_SCHEMA = 'drizzle'
+
+const MIGRATIONS_TABLE_PREFIX = '__drizzle_migrations_'
+
+/** Limite d'un identifiant PostgreSQL : au-delà, la troncature est silencieuse. */
+const POSTGRES_IDENTIFIER_LIMIT = 63
+
+/**
+ * Journal d'un module, dérivé de son identifiant de façon stable.
+ *
+ * Un journal par module, et non un journal commun : c'est ce qui fait qu'activer
+ * un module applique **ses** migrations sans que Drizzle croie les autres déjà
+ * jouées, et que désactiver un module ne perturbe pas le décompte de ceux qui
+ * restent.
+ */
+export function migrationsTableFor(moduleId: string): string {
+  const table = `${MIGRATIONS_TABLE_PREFIX}${moduleId.replaceAll('-', '_')}`
+
+  if (table.length > POSTGRES_IDENTIFIER_LIMIT) {
+    throw new Error(
+      `Identifiant de module trop long : le journal « ${table} » dépasse la limite de ` +
+        `${POSTGRES_IDENTIFIER_LIMIT} caractères de PostgreSQL, qui tronquerait sans le dire — ` +
+        `deux modules partageraient alors le même journal.`,
+    )
+  }
+
+  return table
+}
+
+export interface PlanModuleMigrationsOptions {
+  /**
+   * Les modules activés, **dans l'ordre du graphe des requis**. C'est l'ordre
+   * que rend `buildRegistry` : le plan le conserve, il ne retrie pas. Un tri
+   * alphabétique appliquerait les tables d'un dépendant avant celles de son
+   * requis.
+   */
+  readonly modules: readonly MigratableModule[]
+  readonly repoRoot: string
+}
+
+/** Ce qu'il y a à appliquer, module par module, dans l'ordre reçu. */
+export function planModuleMigrations(
+  options: PlanModuleMigrationsOptions,
+): readonly ModuleMigrationStep[] {
+  return options.modules
+    .filter((module) => module.migrations !== null)
+    .map((module) => ({
+      moduleId: module.id,
+      migrationsFolder: join(options.repoRoot, module.migrations as string),
+      migrationsTable: migrationsTableFor(module.id),
+      migrationsSchema: MIGRATIONS_SCHEMA,
+    }))
+}
+
+export interface ModuleMigrationOutcome {
+  readonly moduleId: string
+  readonly applied: boolean
+}
+
+/**
+ * Applique les migrations des modules, dans l'ordre du plan.
+ *
+ * Aucune notion de module désactivé ici : un module absent du plan n'a rien à
+ * appliquer, et il n'y a donc rien à ignorer. C'est ce qui fait qu'une base
+ * vierge ne porte aucune trace d'un module non activé — pas un `if`, une
+ * absence.
+ */
+export async function runModuleMigrations(options: {
+  readonly db: RunMigrationsOptions['db']
+  readonly plan: readonly ModuleMigrationStep[]
+}): Promise<readonly ModuleMigrationOutcome[]> {
+  const outcomes: ModuleMigrationOutcome[] = []
+
+  for (const step of options.plan) {
+    const { applied } = await runMigrations({
+      db: options.db,
+      migrationsFolder: step.migrationsFolder,
+      migrationsTable: step.migrationsTable,
+      migrationsSchema: step.migrationsSchema,
+    })
+
+    outcomes.push({ moduleId: step.moduleId, applied })
+  }
+
+  return outcomes
+}

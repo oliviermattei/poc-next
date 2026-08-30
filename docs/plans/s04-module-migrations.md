@@ -26,14 +26,14 @@ Ce que s01 et s03 ont réellement livré, et sur quoi cette story s'appuie :
 
 ## Tasks (ordered)
 
-1. [ ] **Générateur de baril** — produit, depuis `config/features.ts`, un fichier réexportant **à plat** les tables des modules activés. C'est le chaînon manquant : `drizzle-kit` n'inspecte que les exports de premier niveau (`prepareFromExports`, vérifié dans le binaire), donc un agrégat construit à l'exécution lui est invisible.
-2. [ ] **Baril committé + garde de divergence** — le fichier est versionné pour qu'un clone neuf puisse générer, et la CI le régénère puis compare : toute divergence échoue. C'est la seule combinaison qui tienne dans les deux sens.
-3. [ ] **`drizzle.config.ts` pointe sur le baril**, plus sur `schema.ts`.
-4. [ ] **Migrations par module** — un dossier et un journal par module, nom de journal dérivé de l'identifiant de façon stable. Réutiliser `runMigrations({ migrationsFolder, migrationsTable, migrationsSchema })`, livré par s01 et validé en revue comme prévu pour cet usage.
-5. [ ] **Ordre d'application dérivé du graphe `requires`** de s03 — jamais l'ordre alphabétique, jamais l'ordre de déclaration. Un module requis voit ses tables créées avant celles de son dépendant.
-6. [ ] **Garde de clé étrangère inter-modules** — une référence vers un module optionnel est refusée **à la génération**, en nommant les deux modules. Une référence vers un module du socle (`auth`) est autorisée, et la liste du socle est dérivée de la déclaration, pas écrite en dur.
-7. [ ] **Vérification par le schéma réel** — après migration sur base vierge, aucune table d'un module non activé n'existe ; la vérification lit `information_schema`, pas les fichiers de migration. Ce mécanisme sera réutilisé tel quel par s26.
-8. [ ] **Non-destruction** — un module activé puis désactivé conserve tables et données ; aucune migration destructive n'est jamais produite.
+1. [x] **Générateur de baril** — produit, depuis `config/features.ts`, un fichier réexportant **à plat** les tables des modules activés. C'est le chaînon manquant : `drizzle-kit` n'inspecte que les exports de premier niveau (`prepareFromExports`, vérifié dans le binaire), donc un agrégat construit à l'exécution lui est invisible.
+2. [x] **Baril committé + garde de divergence** — le fichier est versionné pour qu'un clone neuf puisse générer, et la CI le régénère puis compare : toute divergence échoue. C'est la seule combinaison qui tienne dans les deux sens.
+3. [x] **`drizzle.config.ts` pointe sur le baril**, plus sur `schema.ts`.
+4. [x] **Migrations par module** — un dossier et un journal par module, nom de journal dérivé de l'identifiant de façon stable. Réutiliser `runMigrations({ migrationsFolder, migrationsTable, migrationsSchema })`, livré par s01 et validé en revue comme prévu pour cet usage.
+5. [x] **Ordre d'application dérivé du graphe `requires`** de s03 — jamais l'ordre alphabétique, jamais l'ordre de déclaration. Un module requis voit ses tables créées avant celles de son dépendant.
+6. [x] **Garde de clé étrangère inter-modules** — une référence vers un module optionnel est refusée **à la génération**, en nommant les deux modules. Une référence vers un module du socle (`auth`) est autorisée, et la liste du socle est dérivée de la déclaration, pas écrite en dur.
+7. [x] **Vérification par le schéma réel** — après migration sur base vierge, aucune table d'un module non activé n'existe ; la vérification lit `information_schema`, pas les fichiers de migration. Ce mécanisme sera réutilisé tel quel par s26.
+8. [x] **Non-destruction** — un module activé puis désactivé conserve tables et données ; aucune migration destructive n'est jamais produite.
 
 ## Run interdicts
 

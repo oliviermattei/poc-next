@@ -7,6 +7,7 @@
   },
   "include": [
     "config",
+    "generated",
     "tests",
     "scripts",
     "e2e",

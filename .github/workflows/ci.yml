@@ -60,6 +60,16 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      # Les barils de `generated/schema/` et les migrations SQL sont versionnés,
+      # sans quoi un clone neuf ne pourrait rien générer. Les régénérer ici est
+      # ce qui les empêche de mentir : toute divergence — un module activé sans
+      # régénération, une table modifiée sans migration — laisse un fichier
+      # différent, et le contrôle « l'arbre reste propre » en fin de job échoue
+      # en le nommant. La suite de tests porte la même garde sur les barils,
+      # pour que la divergence se voie aussi en local.
+      - name: Régénérer les migrations des modules activés
+        run: pnpm db:generate
+
       # Avant les tests : trois d'entre eux interrogent une vraie base.
       - name: Migrations
         run: pnpm db:migrate
@@ -76,7 +86,8 @@ jobs:
       - name: Parcours end-to-end
         run: pnpm test:e2e
 
-      # Critère 12 : un fichier généré par un outil ne salit pas l'arbre.
+      # Critère 12 : un fichier généré par un outil ne salit pas l'arbre. C'est
+      # aussi la garde de divergence des artefacts de `pnpm db:generate`.
       #
       # Placée **après** les parcours, et pas seulement après le build : c'est
       # `next dev`, démarré par Playwright, qui réécrit `apps/web/AGENTS.md`

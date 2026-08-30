@@ -8,12 +8,13 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "db:generate": "drizzle-kit generate",
+    "db:generate": "tsx src/scripts/generate.ts",
     "db:migrate": "tsx src/scripts/migrate.ts",
     "db:seed": "tsx src/scripts/seed.ts"
   },
   "dependencies": {
     "@repo/config": "workspace:*",
+    "@repo/core": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "pg": "^8.23.0"
   },
