@@ -10,6 +10,10 @@ module (`packages/modules/<module>/src/domain`).
   fichier ;
 - `@repo/db` pour la base ;
 - `@repo/core` pour le registre de modules ;
+- `@repo/ports` pour le port `Mailer`, `@repo/adapter-resend` pour son unique
+  implémentation, `@repo/emails` pour le rendu des templates et
+  `@repo/mailer-testing` pour la capture locale — **uniquement** dans
+  `lib/mailer.ts`, qui est le point de composition du mailer ;
 - les modules du projet, **uniquement** parce que `config/features.ts` les
   référence : `@repo/module-demo-enabled` et `@repo/module-demo-disabled`
   aujourd'hui. Aucun fichier de `apps/web` n'importe un module directement ;
@@ -46,6 +50,24 @@ Deux fichiers, et deux seulement :
 
 `app/navigation.tsx` affiche `moduleRegistry.navigation` sans condition. Ajouter
 un `if` ici reviendrait à masquer une entrée au lieu de ne pas l'avoir.
+
+## Le montage du mailer
+
+`lib/mailer.ts` est le seul fichier du dépôt qui sache à la fois qu'il existe un
+fournisseur d'emails, une capture locale et des templates. Le code métier ne
+connaît que le port `Mailer` : il ne saura jamais lequel des deux l'exécute.
+
+**Le choix se fait sur la présence de `RESEND_API_KEY`, jamais sur `NODE_ENV`.**
+Un mailer conditionné par l'environnement est intestable et se trompera un jour
+d'environnement — en envoyant de vrais emails depuis une suite, ou en écrivant
+sur disque en production. `tests/mailer.test.ts` croise les deux axes
+(production sans clé, développement avec clé) : remplacer la condition par
+`NODE_ENV` fait rougir les deux cas.
+
+Sans clé, l'application **dégrade** (`docs/reliability.md` §2) : l'email est
+rendu et écrit dans `.mail/`, ignoré par git, consultable dans un navigateur.
+Elle ne refuse pas de démarrer. La configuration DNS qui rend l'envoi réel
+crédible est dans `docs/deliverability.md`.
 
 ## Tests
 

@@ -7,7 +7,22 @@ import { z } from 'zod'
  * que ses clés restent énumérables : le test d'alignement de `.env.example`
  * en dépend.
  */
-export const envSchema = z.object({
+/**
+ * Expéditeur des emails transactionnels : `adresse` ou `Nom <adresse>`.
+ *
+ * Vérifié ici plutôt qu'à l'envoi : un expéditeur malformé n'échoue qu'au
+ * premier email, c'est-à-dire en production, sur un parcours d'inscription.
+ */
+const EMAIL_FROM_PATTERN = /^(?:[^\s<>@]+@[^\s<>@]+\.[A-Za-z]{2,}|.+<[^\s<>@]+@[^\s<>@]+\.[A-Za-z]{2,}>)$/
+
+/**
+ * Les clés du contrat, déclarées littéralement.
+ *
+ * Extraites dans une constante — et non écrites en ligne dans `z.object` —
+ * pour que `ENV_KEYS` reste énumérable une fois la règle croisée posée sur le
+ * schéma : `superRefine` rend un schéma qui n'a plus de `shape`.
+ */
+const envShape = {
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   DATABASE_URL: z
     .string()
@@ -15,6 +30,35 @@ export const envSchema = z.object({
     .refine((value) => /^postgres(ql)?:\/\/.+/.test(value), {
       message: 'must be a PostgreSQL connection string (postgres://…)',
     }),
+  /**
+   * Clé du fournisseur d'emails (Resend), **optionnelle**.
+   *
+   * `docs/reliability.md` §2 : aucun port ne dépend d'une clé d'API pour
+   * fonctionner en développement local. Sans elle, le mailer est la capture
+   * locale — le choix se fait sur la **présence de la clé**, jamais sur
+   * `NODE_ENV`.
+   */
+  RESEND_API_KEY: z.string().min(1).optional(),
+  /** Expéditeur. Obligatoire dès qu'une clé est configurée : voir la règle croisée. */
+  EMAIL_FROM: z
+    .string()
+    .min(1)
+    .refine((value) => EMAIL_FROM_PATTERN.test(value), {
+      message: 'must be an email address, optionally named (Name <user@example.com>)',
+    })
+    .optional(),
+} as const
+
+export const envSchema = z.object(envShape).superRefine((value, ctx) => {
+  // Règle croisée : une clé sans expéditeur part avec un `from` vide, et
+  // l'échec n'apparaît qu'au premier email refusé par le fournisseur.
+  if (value.RESEND_API_KEY !== undefined && value.EMAIL_FROM === undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['EMAIL_FROM'],
+      message: 'is required when RESEND_API_KEY is set',
+    })
+  }
 })
 
 export type Env = z.infer<typeof envSchema>
@@ -22,7 +66,7 @@ export type Env = z.infer<typeof envSchema>
 export type EnvSource = Record<string, string | undefined>
 
 /** Clés lues par l'application, dans l'ordre de déclaration du schéma. */
-export const ENV_KEYS = Object.keys(envSchema.shape) as (keyof Env)[]
+export const ENV_KEYS = Object.keys(envShape) as (keyof Env)[]
 
 export class EnvValidationError extends Error {
   constructor(message: string) {

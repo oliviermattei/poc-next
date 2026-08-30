@@ -109,6 +109,15 @@ export const domainForbiddenSources = [
   '@repo/ui',
   '@repo/api',
   '@repo/config',
+  // ports et adapters (s06). Un port est l'interface d'une dépendance
+  // **externe** : il vit dans `application`, son implémentation dans
+  // `infrastructure`. Le `domain` qui connaît `Mailer` connaît le monde
+  // extérieur, même sans en importer le SDK — et le motif `@repo/adapter-*`
+  // couvre les cinq adapters à venir sans qu'il faille rouvrir cette liste.
+  '@repo/ports',
+  '@repo/adapter-*',
+  '@repo/emails',
+  '@repo/mailer-testing',
 ]
 
 /**

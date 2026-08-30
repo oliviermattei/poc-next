@@ -10,11 +10,15 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@repo/adapter-resend": "workspace:*",
     "@repo/config": "workspace:*",
     "@repo/core": "workspace:*",
     "@repo/db": "workspace:*",
+    "@repo/emails": "workspace:*",
+    "@repo/mailer-testing": "workspace:*",
     "@repo/module-demo-disabled": "workspace:*",
     "@repo/module-demo-enabled": "workspace:*",
+    "@repo/ports": "workspace:*",
     "next": "^16.3.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

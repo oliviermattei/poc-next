@@ -68,6 +68,11 @@ const FORBIDDEN_EXTERNALS = [
   // `drizzle-orm/pg-core`, seule écriture qu'on rencontre en vrai.
   { what: 'un ORM', file: `${FIXTURES}/domain/reaches-orm.ts`, source: 'drizzle-orm/pg-core' },
   { what: 'un module natif de Node', file: `${FIXTURES}/domain/reaches-node.ts`, source: 'node:fs' },
+  // Un port est l'interface d'une dépendance externe : il vit dans
+  // `application`, jamais dans `domain` (ADR 006). Sans cette entrée, la règle
+  // laissait passer `import type { Mailer } from '@repo/ports'` au centre —
+  // l'interdit de s06 n'était alors qu'une phrase.
+  { what: 'un port', file: `${FIXTURES}/domain/reaches-port.ts`, source: '@repo/ports' },
 ]
 
 /** Fichiers qui n'enfreignent rien : la règle doit les laisser passer. */
@@ -78,6 +83,9 @@ const ALLOWED_FILES = [
   // type de valeur validé.
   `${FIXTURES}/domain/uses-zod.ts`,
   `${FIXTURES}/application/place-order.ts`,
+  // Le pendant de `domain/reaches-port.ts` : refuser un port partout prouverait
+  // que la règle est trop large, pas qu'elle marche.
+  `${FIXTURES}/application/uses-port.ts`,
   `${FIXTURES}/infrastructure/order-repository.ts`,
   // La pureté ne vaut que pour le `domain` : refuser l'ORM ici prouverait que
   // la règle est trop large, pas qu'elle marche.

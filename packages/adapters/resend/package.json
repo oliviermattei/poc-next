@@ -1,0 +1,22 @@
+{
+  "name": "@repo/adapter-resend",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@repo/ports": "workspace:*",
+    "resend": "^6.25.0"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "workspace:*",
+    "@types/node": "^22",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
+  }
+}

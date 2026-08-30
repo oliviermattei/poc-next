@@ -13,13 +13,13 @@ Socles couverts : **`docs/security.md` §5** (aucun secret dans un journal, filt
 
 ## Tasks (ordered)
 
-1. [ ] **`packages/ports`** — le package, son `AGENTS.md`, et l'interface `Mailer` : envoi d'un email (destinataire, sujet, template, données), rien d'autre. C'est le **gabarit de cinq autres ports** (storage, paiement, jobs, analytique, monitoring) : la forme retenue ici sera copiée.
-2. [ ] **Doublure d'enregistrement** — capture les envois, expose destinataire, template et données pour assertion. Exportée pour les suites. Injectée, **jamais** choisie par `NODE_ENV`.
-3. [ ] **`packages/adapters/resend`** — l'unique implémentation livrée, avec `AGENTS.md`. Délai d'attente explicite, reprises en recul exponentiel avec dispersion sur erreurs transitoires uniquement.
-4. [ ] **Capture locale** — sans clé d'API, l'email est écrit localement et consultable. Dossier ignoré par git.
-5. [ ] **Rendu React Email** — un template de démonstration, rendu avec ses données, couvert par un test de rendu.
-6. [ ] **Dégradation et journalisation** — un échec du provider est journalisé et remonté à l'appelant **sans faire tomber la requête**. Aucun secret ni contenu d'email dans le journal ; le filtrage est **testé par mutation**, pas seulement configuré.
-7. [ ] **Documentation de délivrabilité** — SPF, DKIM, DMARC, avec un test vérifiant la présence de la section et des trois enregistrements.
+1. [x] **`packages/ports`** — le package, son `AGENTS.md`, et l'interface `Mailer` : envoi d'un email (destinataire, sujet, template, données), rien d'autre. C'est le **gabarit de cinq autres ports** (storage, paiement, jobs, analytique, monitoring) : la forme retenue ici sera copiée.
+2. [x] **Doublure d'enregistrement** — capture les envois, expose destinataire, template et données pour assertion. Exportée pour les suites. Injectée, **jamais** choisie par `NODE_ENV`.
+3. [x] **`packages/adapters/resend`** — l'unique implémentation livrée, avec `AGENTS.md`. Délai d'attente explicite, reprises en recul exponentiel avec dispersion sur erreurs transitoires uniquement.
+4. [x] **Capture locale** — sans clé d'API, l'email est écrit localement et consultable. Dossier ignoré par git.
+5. [x] **Rendu React Email** — un template de démonstration, rendu avec ses données, couvert par un test de rendu.
+6. [x] **Dégradation et journalisation** — un échec du provider est journalisé et remonté à l'appelant **sans faire tomber la requête**. Aucun secret ni contenu d'email dans le journal ; le filtrage est **testé par mutation**, pas seulement configuré.
+7. [x] **Documentation de délivrabilité** — SPF, DKIM, DMARC, avec un test vérifiant la présence de la section et des trois enregistrements.
 
 ## Run interdicts
 
