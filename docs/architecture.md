@@ -140,6 +140,20 @@ Le design system global est capturé dans `docs/design-system.md` par `/ks-desig
 
 Écrans structurants, par ordre d'apparition : écrans d'authentification (s07), shell de tableau de bord avec navigation issue des modules actifs (s08), paramètres de compte (s08) et d'organisation (s15), page d'accueil sectionnée (s10), page de tarifs dérivée de `config/billing.ts` (s22), back-office superadmin (s37).
 
+## Socles transverses
+
+Trois référentiels s'appliquent à **toute** story, au même titre que la règle de dépendance des couches. Ils ne sont pas des phases : ce sont des contraintes permanentes, opposables en revue, et chacun de leurs contrôles nomme la vérification qui échoue s'il est violé.
+
+| Socle | Référentiel | ADR | Portée |
+|---|---|---|---|
+| Sécurité | `docs/security.md` | 012 | En-têtes et politique de sécurité du contenu, sessions, autorisation, entrées/sorties, secrets, chaîne d'approvisionnement, journalisation et abus |
+| Fiabilité | `docs/reliability.md` | 014 | Idempotence, dégradation, délais et reprises, migrations rétrocompatibles, observabilité |
+| Dépôt orienté agents | `AGENTS.md` racine + par package | 013 | Règles localisées, contraintes exécutables, génération plutôt que devinette |
+
+Le plan d'une story nomme les sections applicables ; la revue les vérifie en mutant le code, pas en lisant les intentions. Un manquement est un finding **critical**, au même rang qu'une régression fonctionnelle.
+
+Conséquence directe sur le contrat de module : une route déclarée par un module indique son niveau de protection (publique, authentifiée, réservée à un rôle). Sans cela, le §3 du socle de sécurité serait invérifiable autrement que par relecture.
+
 ## Points de vigilance repris des revues
 
 - **s03 est la story la plus risquée du projet.** Le contrat de module conditionne les quarante suivantes.
