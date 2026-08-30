@@ -24,6 +24,25 @@ Sections des socles couvertes : **`docs/security.md` §3 (autorisation)** — le
 7. [ ] **Consommation dans `apps/web`** — la navigation se construit depuis le registre, les routes des modules activés sont montées, celles des modules absents ne sont **pas exposées** (pas simplement 404 par `notFound()`).
 8. [ ] **Preuves** — 404 sur une URL de module non activé, absence d'entrée de navigation, `purge`/`export` non appelés, suite verte module activé puis non activé.
 
+## Décision reportée de s02 : la pureté du `domain`
+
+s02 a livré la règle de dépendance entre couches mais pas la pureté du `domain`, faute d'une liste de refus que le plan ne tranchait pas. Elle est tranchée ici, et s'applique dès le premier module.
+
+**Interdits dans `domain/`**, par `boundaries/dependencies` avec un sélecteur `dependency` (`boundaries/external` est déprécié) :
+- frameworks : `next`, `react`, `react-dom`
+- ORM et pilotes : `drizzle-orm`, `drizzle-kit`, `pg`
+- couche API : `hono`, `@orpc/*`
+- authentification : `better-auth`, `@better-auth/*`
+- SDK de services tiers : `stripe`, `resend`, `inngest`, `@aws-sdk/*`, `posthog-*`, `@sentry/*`
+- packages d'infrastructure du dépôt : `@repo/db`, `@repo/ui`, `@repo/api`, `@repo/config`
+- l'intégralité des modules natifs de Node (liste dérivée de `node:module`, comme la garde de surface client de s02)
+
+**Explicitement autorisé : `zod`.** L'ADR 006 interdit au `domain` « framework, ORM ou SDK » — zod n'est aucun des trois. C'est une bibliothèque pure, sans entrée-sortie, et un type de valeur validé appartient au domaine. Le socle de sécurité impose Zod *aux frontières* ; il ne l'interdit pas au centre.
+
+12. [ ] **Implémenter cette liste** dans `tooling/eslint/boundaries.ts`, et la prouver sur l'arborescence de fixtures de s02 : un `domain` important `drizzle-orm` échoue, un `domain` important `zod` passe. Sans preuve par violation réelle, la règle est inerte — c'est la leçon mesurée de s02.
+
+**Conséquence héritée de s02, à connaître** : l'exception de lint pour les tests reste **étroite** (`packages/*/src/`). Les tests d'un module sont donc soumis à ses règles de couches : un test de `domain` ne peut pas importer `infrastructure`, même pour se fabriquer une doublure. Si le premier module réel rend cette contrainte intenable, elle se lève par ADR — pas en élargissant discrètement un glob.
+
 ## Run interdicts
 
 - **Ne pas anticiper s04** : ni composition des migrations, ni fichier baril, ni `drizzle.config.ts` modifié. Le contrat déclare `schema` et `migrations` ; il ne les assemble pas.
