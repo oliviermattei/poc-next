@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -139,16 +139,35 @@ describe('ks toggle — activation', () => {
     ])
   })
 
-  it('remet un module réactivé à la place que l’annuaire lui donne, pas en fin de liste', () => {
-    // C'est la moitié « décision » du critère 8 : `writeEnabledModules` sait
-    // insérer à une position, encore faut-il lui donner la bonne. Ajouter en fin
-    // de liste rendrait un fichier réordonné après un toggle et son inverse.
+  it('écrit la liste dans l’ordre de l’annuaire, quel que soit l’ordre du fichier (ADR 019)', () => {
+    // C'est la moitié « décision » du critère 8. L'ordre de `enabledModules` est
+    // canonique : celui de l'annuaire. Un aller-retour, ce sont deux invocations
+    // séparées, et à la seconde la position d'origine du module retiré n'existe
+    // nulle part — seul un ordre dérivé de l'annuaire rend le fichier identique.
     const independent = [moduleFor('alpha'), moduleFor('beta'), moduleFor('gamma')]
 
     expect(
       planToggle({ available: independent, enabled: ['alpha', 'gamma'], moduleId: 'beta' })
         .nextEnabled,
     ).toEqual(['alpha', 'beta', 'gamma'])
+    // Une liste ordonnée à la main est normalisée, y compris pour les entrées
+    // qu'on ne touche pas : c'est ce que le CLI annonce.
+    expect(
+      planToggle({ available: independent, enabled: ['gamma', 'alpha'], moduleId: 'beta' })
+        .nextEnabled,
+    ).toEqual(['alpha', 'beta', 'gamma'])
+  })
+
+  it('normalise aussi l’ordre en désactivation', () => {
+    const independent = [moduleFor('alpha'), moduleFor('beta'), moduleFor('gamma')]
+
+    expect(
+      planToggle({
+        available: independent,
+        enabled: ['gamma', 'beta', 'alpha'],
+        moduleId: 'beta',
+      }).nextEnabled,
+    ).toEqual(['alpha', 'gamma'])
   })
 
   it('refuse un cycle, que le CLI ne sait pas détecter lui-même', () => {
@@ -520,6 +539,98 @@ describe('ks toggle — écriture sur un dépôt temporaire', () => {
     })
 
     expect(await repo.features()).toBe(commented)
+  })
+
+  it('ne perd pas un dossier de migrations parce qu’un de ses fichiers est illisible', async () => {
+    // Un `ENOENT` venu d'un **fichier** ne dit pas que le dossier est absent. Le
+    // prendre pour tel fait photographier « absent » un dossier qui existe, et la
+    // restauration le supprime alors définitivement — sur un dossier
+    // `migrations`, c'est le SQL versionné d'un module, qui ne se recrée pas
+    // (ADR 016). Seule la lecture de premier niveau décide de l'absence.
+    const repo = await temporaryRepo()
+    const before = await repo.features()
+    const migrations = join(repo.root, 'packages', 'modules', 'socle', 'migrations')
+
+    await mkdir(migrations, { recursive: true })
+    await writeFile(join(migrations, '0000_init.sql'), '-- SQL versionné\n', 'utf8')
+    // Un lien cassé : le dossier se liste, mais ce fichier ne se lit pas.
+    await symlink(join(migrations, 'absent.sql'), join(migrations, '0001_lien.sql'))
+
+    const harness = environmentFor(repo, {
+      regenerate: async () => {
+        throw new Error('schéma invalide : 0 tables')
+      },
+    })
+
+    await expect(
+      runToggle({
+        available,
+        request: { moduleId: 'facturation', interactive: false },
+        environment: { ...harness.environment, generatedPaths: [repo.generatedPath, migrations] },
+      }),
+    ).rejects.toThrowError(ArtifactSnapshotError)
+
+    expect(await repo.features()).toBe(before)
+    expect(await readdir(migrations)).toContain('0000_init.sql')
+  })
+
+  it('annonce la normalisation de l’ordre, en nommant le fichier et la raison', async () => {
+    // ADR 019 : l'ordre est canonique, donc une liste ordonnée à la main est
+    // réordonnée à la première bascule. Le faire en silence sur un fichier qu'on
+    // édite à la main est exactement ce que l'ADR interdit.
+    const independent = [moduleFor('alpha'), moduleFor('beta'), moduleFor('gamma')]
+    const repo = await temporaryRepo(
+      "export const enabledModules = ['gamma', 'alpha'] as const\n",
+    )
+    const harness = environmentFor(repo)
+
+    const outcome = await runToggle({
+      available: independent,
+      request: { moduleId: 'beta', interactive: false },
+      environment: harness.environment,
+    })
+
+    expect(readEnabledModules(await repo.features())).toEqual(['alpha', 'beta', 'gamma'])
+    expect(outcome.reordered).toEqual(['gamma', 'alpha'])
+
+    const output = harness.lines.join('\n')
+
+    expect(output).toContain('config/features.ts')
+    expect(output).toContain('ordre')
+    expect(output).toContain('gamma')
+  })
+
+  it('dit que le retrait a emporté le commentaire du propriétaire', async () => {
+    // La limite du CLI, dite là où l'utilisateur la subit : le commentaire part
+    // avec son entrée et une réactivation ne le rendra pas. Ne pas le dire, c'est
+    // lui faire découvrir la perte à la relecture, sans savoir quand elle a eu
+    // lieu.
+    const independent = [moduleFor('alpha'), moduleFor('beta')]
+    const repo = await temporaryRepo(
+      [
+        'export const enabledModules = [',
+        "  'alpha',",
+        '  // celui-ci sert la démo du lundi',
+        "  'beta',",
+        '] as const',
+        '',
+      ].join('\n'),
+    )
+    const harness = environmentFor(repo)
+
+    const outcome = await runToggle({
+      available: independent,
+      request: { moduleId: 'beta', interactive: false },
+      environment: harness.environment,
+    })
+
+    expect(outcome.droppedComments).toEqual(['beta'])
+    expect(await repo.features()).not.toContain('démo du lundi')
+
+    const output = harness.lines.join('\n')
+
+    expect(output).toContain('commentaire')
+    expect(output).toContain('beta')
   })
 
   it('deux toggles inverses laissent le dépôt exactement dans son état d’origine', async () => {

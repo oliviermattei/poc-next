@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import type { AnyModuleDefinition } from '@repo/core'
 
 import { applyToggle } from './apply'
-import { readEnabledModules } from './features-file'
+import { readEnabledModules, type EnabledModulesEdit } from './features-file'
 import { describeModules, renderModuleList, type ModuleSummary } from './modules'
 import { missingRequirements, planToggle, ToggleRefusedError } from './toggle'
 
@@ -42,9 +42,46 @@ export interface ToggleOutcome {
   readonly enabled: readonly string[]
   readonly alsoEnabled: readonly string[]
   readonly migrationsApplied: boolean
+  /** Entrées déjà présentes que l'ordre canonique a déplacées (ADR 019). */
+  readonly reordered: readonly string[]
+  /** Entrées retirées dont le commentaire du propriétaire est parti avec elles. */
+  readonly droppedComments: readonly string[]
 }
 
 const quote = (value: string): string => `« ${value} »`
+
+/**
+ * Ce que l'écriture a changé **sans qu'on le lui demande**, dit à voix haute.
+ *
+ * ADR 019 fait de l'ordre de `enabledModules` une propriété canonique, donc une
+ * liste ordonnée à la main est réordonnée à la première bascule. Ce coût est
+ * payé une fois, et il est **annoncé** : une normalisation silencieuse d'un
+ * fichier qu'on édite à la main est exactement ce que l'ADR interdit.
+ *
+ * Et le commentaire d'une entrée retirée part avec elle — le laisser en place le
+ * réattribuerait au module voisin. Une réactivation ne le rendra pas : à la
+ * seconde invocation, le texte n'existe plus nulle part. Le dire au moment où
+ * ça arrive est la seule chance qu'a l'utilisateur de le récupérer.
+ */
+const announce = (environment: ToggleEnvironment, edit: EnabledModulesEdit): void => {
+  if (edit.reordered.length > 0) {
+    environment.print(
+      `config/features.ts : la liste des modules activés a été réécrite dans l’ordre de l’annuaire ` +
+        `${quote('availableModules')} — ${edit.reordered.map(quote).join(', ')} ${
+          edit.reordered.length > 1 ? 'ont changé' : 'a changé'
+        } de place. C’est l’ordre canonique du dépôt (ADR 019), établi une fois : ` +
+        'les bascules suivantes ne réordonneront plus rien.',
+    )
+  }
+
+  for (const id of edit.droppedComments) {
+    environment.print(
+      `Le commentaire que vous aviez écrit à côté de ${quote(id)} dans config/features.ts est parti ` +
+        'avec son entrée — le laisser en place l’aurait attribué au module voisin. Une réactivation ' +
+        'ne le rétablira pas : le CLI ne peut pas deviner un texte qui n’est plus dans le fichier.',
+    )
+  }
+}
 
 export async function runList(input: {
   readonly available: readonly AnyModuleDefinition[]
@@ -82,12 +119,18 @@ export async function runToggle(input: {
 
   const plan = planToggle({ available, enabled, moduleId: request.moduleId, withRequirements })
 
-  await applyToggle({
+  const edit = await applyToggle({
     featuresPath: environment.featuresPath,
     nextEnabled: plan.nextEnabled,
     generatedPaths: environment.generatedPaths,
     regenerate: environment.regenerate,
   })
+
+  const written = {
+    enabled: plan.nextEnabled,
+    reordered: edit.reordered,
+    droppedComments: edit.droppedComments,
+  }
 
   if (plan.action === 'disable') {
     environment.print(
@@ -95,7 +138,9 @@ export async function runToggle(input: {
         'une réactivation les retrouvera intactes. Il n’existe aucune commande pour les retirer.',
     )
 
-    return { ...plan, enabled: plan.nextEnabled, migrationsApplied: false }
+    announce(environment, edit)
+
+    return { ...plan, ...written, migrationsApplied: false }
   }
 
   const activated = [...plan.alsoEnabled, plan.moduleId]
@@ -109,8 +154,10 @@ export async function runToggle(input: {
     }. Barils régénérés.`,
   )
 
+  announce(environment, edit)
+
   if (withMigrations.length === 0) {
-    return { ...plan, enabled: plan.nextEnabled, migrationsApplied: false }
+    return { ...plan, ...written, migrationsApplied: false }
   }
 
   environment.print(
@@ -129,13 +176,13 @@ export async function runToggle(input: {
       'Migrations non appliquées. Lancez « pnpm db:migrate » quand votre base est prête.',
     )
 
-    return { ...plan, enabled: plan.nextEnabled, migrationsApplied: false }
+    return { ...plan, ...written, migrationsApplied: false }
   }
 
   await environment.applyMigrations()
   environment.print('Migrations appliquées.')
 
-  return { ...plan, enabled: plan.nextEnabled, migrationsApplied: true }
+  return { ...plan, ...written, migrationsApplied: true }
 }
 
 export { ToggleRefusedError }

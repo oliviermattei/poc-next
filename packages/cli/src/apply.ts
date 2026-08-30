@@ -1,7 +1,7 @@
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, relative } from 'node:path'
 
-import { writeEnabledModules } from './features-file'
+import { writeEnabledModules, type EnabledModulesEdit } from './features-file'
 
 /**
  * L'écriture du toggle, et sa seule promesse : **le dépôt n'est jamais laissé
@@ -58,19 +58,40 @@ const listFiles = async (directory: string): Promise<readonly string[]> => {
   return nested.flat()
 }
 
+const unreadable = (path: string, error: unknown): never => {
+  throw new ArtifactSnapshotError(
+    `Impossible de lire ${path} : ${error instanceof Error ? error.message : String(error)}\n` +
+      'Aucun module n’a été basculé : sans photographie de ce dossier, un échec de la régénération ne saurait pas le remettre en état.',
+    { cause: error },
+  )
+}
+
 /**
  * Le contenu exact d'un dossier d'artefacts, en mémoire.
  *
  * Un dossier absent est photographié comme absent : le restaurer voudra dire le
  * supprimer, et non le laisser tel que la régénération l'a créé.
  *
- * **« Absent » et « illisible » ne sont pas le même fait.** Traiter une lecture
- * en échec comme une absence ferait supprimer, à la restauration, un dossier qui
- * existait — et sur un dossier `migrations`, ce serait le SQL versionné d'un
- * module. Seul `ENOENT` dit l'absence ; tout le reste arrête le toggle avant la
- * moindre écriture.
+ * **Seule la lecture de premier niveau décide de l'absence.** `readdir` sur le
+ * dossier lui-même répond à la question « existe-t-il ? » et à aucune autre : un
+ * `ENOENT` venu d'un *fichier* — un lien symbolique cassé, une purge concurrente
+ * — dit que le dossier est illisible, pas qu'il est absent. Les confondre ferait
+ * traiter la restauration comme une suppression définitive, et sur un dossier
+ * `migrations` ce serait le SQL versionné d'un module, qui ne se recrée pas
+ * (ADR 016). Tout ce qui n'est pas ce premier `ENOENT` arrête donc le toggle
+ * avant la moindre écriture.
  */
 const snapshotDirectory = async (path: string): Promise<DirectorySnapshot> => {
+  try {
+    await readdir(path)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { path, existed: false, files: new Map() }
+    }
+
+    return unreadable(path, error)
+  }
+
   try {
     const files = await listFiles(path)
     const contents = await Promise.all(
@@ -79,15 +100,7 @@ const snapshotDirectory = async (path: string): Promise<DirectorySnapshot> => {
 
     return { path, existed: true, files: new Map(contents) }
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return { path, existed: false, files: new Map() }
-    }
-
-    throw new ArtifactSnapshotError(
-      `Impossible de lire ${path} : ${error instanceof Error ? error.message : String(error)}\n` +
-        'Aucun module n’a été basculé : sans photographie de ce dossier, un échec de la régénération ne saurait pas le remettre en état.',
-      { cause: error },
-    )
+    return unreadable(path, error)
   }
 }
 
@@ -124,12 +137,12 @@ export interface ApplyToggleOptions {
   readonly regenerate: () => Promise<void>
 }
 
-export async function applyToggle(options: ApplyToggleOptions): Promise<void> {
+export async function applyToggle(options: ApplyToggleOptions): Promise<EnabledModulesEdit> {
   const original = await readFile(options.featuresPath, 'utf8')
-  const next = writeEnabledModules(original, options.nextEnabled)
+  const edit = writeEnabledModules(original, options.nextEnabled)
   const snapshots = await Promise.all(options.generatedPaths.map(snapshotDirectory))
 
-  await writeFile(options.featuresPath, next, 'utf8')
+  await writeFile(options.featuresPath, edit.text, 'utf8')
 
   try {
     await options.regenerate()
@@ -146,4 +159,6 @@ export async function applyToggle(options: ApplyToggleOptions): Promise<void> {
       { cause: error },
     )
   }
+
+  return edit
 }

@@ -28,6 +28,14 @@ const REPO_FEATURES = readFileSync(
 /** Un identifiant qu'aucun état de la configuration ne contient. */
 const FICTIF = 'module-fictif'
 
+/**
+ * Le texte écrit. L'écriture rend aussi **ce qu'elle a changé sans qu'on le lui
+ * demande** — l'ordre normalisé, le commentaire emporté — et ces deux champs
+ * sont éprouvés à part : le CLI les annonce, ils ne sont pas décoratifs.
+ */
+const write = (source: string, next: readonly string[]): string =>
+  writeEnabledModules(source, next).text
+
 const CURRENT = readEnabledModules(REPO_FEATURES)
 
 describe('lecture de `enabledModules`', () => {
@@ -60,11 +68,11 @@ describe('écriture de `enabledModules`', () => {
   it('réécrire ce qu’on vient de lire ne change pas un octet du fichier', () => {
     // Lecture et écriture se répondent : si elles divergeaient, un toggle
     // réécrirait le fichier même là où il ne change rien.
-    expect(writeEnabledModules(REPO_FEATURES, CURRENT)).toBe(REPO_FEATURES)
+    expect(write(REPO_FEATURES, CURRENT)).toBe(REPO_FEATURES)
   })
 
   it('active un module sans toucher aux commentaires du fichier', () => {
-    const written = writeEnabledModules(REPO_FEATURES, [...CURRENT, FICTIF])
+    const written = write(REPO_FEATURES, [...CURRENT, FICTIF])
 
     expect(readEnabledModules(written)).toEqual([...CURRENT, FICTIF])
     // Les commentaires du propriétaire, mot pour mot : tout ce qui n'est pas la
@@ -75,7 +83,7 @@ describe('écriture de `enabledModules`', () => {
   })
 
   it('ne touche pas à l’annuaire `availableModules`', () => {
-    const written = writeEnabledModules(REPO_FEATURES, [])
+    const written = write(REPO_FEATURES, [])
     const directory = (text: string) =>
       text.slice(
         text.indexOf('export const availableModules'),
@@ -85,20 +93,54 @@ describe('écriture de `enabledModules`', () => {
     expect(directory(written)).toBe(directory(REPO_FEATURES))
   })
 
-  it('refuse de réordonner la liste plutôt que d’en écrire une autre', () => {
-    // Le CLI retire et il insère ; il ne déplace pas. Demander un ordre qu'il ne
-    // sait pas produire doit s'arrêter là : écrire une liste différente de celle
-    // qu'on a demandée est le seul mode d'échec qu'un appelant ne verrait pas.
+  it('réordonne une liste écrite à la main, et dit lesquelles ont bougé', () => {
+    // ADR 019 : l'ordre de `enabledModules` est celui de l'annuaire. Le CLI
+    // l'établit lui-même, une fois — et il ne le fait pas en silence, sinon la
+    // liste qu'un propriétaire a ordonnée à la main change sans qu'il le sache.
+    const edit = writeEnabledModules("export const enabledModules = ['beta', 'alpha'] as const\n", [
+      'alpha',
+      'beta',
+    ])
+
+    expect(edit.text).toBe("export const enabledModules = ['alpha', 'beta'] as const\n")
+    expect(edit.reordered).toEqual(['beta', 'alpha'])
+  })
+
+  it('emmène le commentaire d’une entrée déplacée avec elle', () => {
+    const edit = writeEnabledModules(
+      [
+        'export const enabledModules = [',
+        '  // la vitrine publique',
+        "  'roadmap',",
+        "  'socle', // jamais coupé",
+        '] as const',
+        '',
+      ].join('\n'),
+      ['socle', 'roadmap'],
+    )
+
+    expect(edit.text).toBe(
+      [
+        'export const enabledModules = [',
+        "  'socle', // jamais coupé",
+        '  // la vitrine publique',
+        "  'roadmap',",
+        '] as const',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  it('n’écrit rien quand on lui demande deux fois le même identifiant', () => {
+    // Écrire une liste différente de celle qu'on a demandée est le seul mode
+    // d'échec qu'un appelant ne verrait pas.
     expect(() =>
-      writeEnabledModules("export const enabledModules = ['alpha', 'beta'] as const\n", [
-        'beta',
-        'alpha',
-      ]),
+      write("export const enabledModules = ['alpha'] as const\n", ['alpha', 'alpha']),
     ).toThrowError(FeaturesFileError)
   })
 
   it('refuse d’écrire dans un fichier sans `enabledModules`', () => {
-    expect(() => writeEnabledModules('export const availableModules = []\n', ['x'])).toThrowError(
+    expect(() => write('export const availableModules = []\n', ['x'])).toThrowError(
       FeaturesFileError,
     )
   })
@@ -119,11 +161,11 @@ describe('toggle puis toggle inverse rend le fichier octet pour octet identique'
    * compensent, pas que l'écriture préserve la mise en forme.
    */
   const roundTrip = (source: string, first: readonly string[], second: readonly string[]): string => {
-    const once = writeEnabledModules(source, first)
+    const once = write(source, first)
 
     expect(readEnabledModules(once)).toEqual(first)
 
-    return writeEnabledModules(once, second)
+    return write(once, second)
   }
 
   it('sur le fichier du dépôt : activer puis désactiver', () => {
@@ -134,7 +176,7 @@ describe('toggle puis toggle inverse rend le fichier octet pour octet identique'
     // Le sens inverse a besoin d'un module présent au départ, quel que soit
     // l'état du dépôt : on part donc du fichier augmenté de l'identifiant
     // fictif, et c'est lui qu'on retire puis remet.
-    const augmented = writeEnabledModules(REPO_FEATURES, [...CURRENT, FICTIF])
+    const augmented = write(REPO_FEATURES, [...CURRENT, FICTIF])
 
     expect(roundTrip(augmented, CURRENT, [...CURRENT, FICTIF])).toBe(augmented)
   })
@@ -165,7 +207,7 @@ describe('toggle puis toggle inverse rend le fichier octet pour octet identique'
       '',
     ].join('\n')
 
-    expect(writeEnabledModules(source, ['demo-disabled'])).toContain(
+    expect(write(source, ['demo-disabled'])).toContain(
       '// celui-ci porte son explication',
     )
   })
@@ -194,7 +236,7 @@ describe('toggle puis toggle inverse rend le fichier octet pour octet identique'
     // Les commentaires du propriétaire appartiennent aux entrées qu'ils
     // expliquent : retirer « facturation » ne doit pas faire glisser celui de
     // « roadmap » sur une autre entrée, ni emporter celui de « socle ».
-    const once = writeEnabledModules(commented, ['socle', 'roadmap'])
+    const once = write(commented, ['socle', 'roadmap'])
 
     expect(once).toBe(
       [
@@ -209,11 +251,26 @@ describe('toggle puis toggle inverse rend le fichier octet pour octet identique'
     )
   })
 
+  it('le retrait emporte le commentaire de l’entrée retirée, et le signale', () => {
+    // La limite du CLI, écrite là où on la vérifie. Le commentaire appartient à
+    // l'entrée : le laisser en place l'attribuerait à « socle », et le fichier
+    // documenterait le mauvais module. Il part donc avec elle — et **ne revient
+    // pas** : l'aller-retour est fait de deux invocations, et à la seconde le
+    // texte n'existe plus nulle part. D'où `droppedComments`, que le CLI dit.
+    const edit = writeEnabledModules(commented, ['socle', 'facturation'])
+
+    expect(edit.text).not.toContain('la roadmap publique')
+    expect(edit.droppedComments).toEqual(['roadmap'])
+    expect(write(edit.text, ['socle', 'facturation', 'roadmap'])).not.toContain(
+      'la roadmap publique',
+    )
+  })
+
   it('écrit exactement la liste demandée, y compris quand l’ajout n’est pas en dernier', () => {
     // Le contrat de la fonction : la liste écrite **est** celle qu'on demande.
     // Appendre en fin de liste rendrait une autre liste que celle-là, et
     // l'appelant ne pourrait jamais rendre le fichier à son état d'origine.
-    const written = writeEnabledModules(
+    const written = write(
       "export const enabledModules = ['socle', 'roadmap'] as const\n",
       ['socle', 'facturation', 'roadmap'],
     )
@@ -222,17 +279,109 @@ describe('toggle puis toggle inverse rend le fichier octet pour octet identique'
     expect(written).toBe("export const enabledModules = ['socle', 'facturation', 'roadmap'] as const\n")
   })
 
+  const trailingComma = [
+    'export const enabledModules = [',
+    "  'socle',",
+    "  'facturation',",
+    '] as const satisfies readonly AvailableModuleId[]',
+    '',
+  ].join('\n')
+
+  it('retirer la dernière entrée d’une liste multiligne lui laisse sa virgule finale', () => {
+    // La virgule finale est une propriété de la **liste**, pas de l'entrée qui
+    // se trouve être la dernière. L'emporter avec l'entrée retirée change la
+    // mise en forme du propriétaire, et le sens activation → désactivation ne
+    // rend plus le fichier d'origine.
+    expect(write(trailingComma, ['socle'])).toBe(
+      [
+        'export const enabledModules = [',
+        "  'socle',",
+        '] as const satisfies readonly AvailableModuleId[]',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  it('sur une liste multiligne à virgule finale : activer puis désactiver', () => {
+    // Le sens que l'aller-retour du dépôt ne couvre pas : la liste réelle tient
+    // sur une ligne aujourd'hui, donc ce cas y est vert par accident de
+    // configuration. Éprouvé ici sur une liste qui ne dépend d'aucun état.
+    expect(
+      roundTrip(trailingComma, ['socle', 'facturation', 'roadmap'], ['socle', 'facturation']),
+    ).toBe(trailingComma)
+  })
+
+  const endOfLineComment = [
+    'export const enabledModules = [',
+    "  'socle',",
+    "  'facturation', // coupable en démo",
+    "  'roadmap',",
+    '] as const',
+    '',
+  ].join('\n')
+
+  it('le commentaire de fin de ligne part avec l’entrée qu’il explique', () => {
+    // Le laisser en place le réattribue au module précédent : le fichier ne perd
+    // pas une ligne, il en documente un autre. C'est un mensonge, et l'aller-retour
+    // ne le défait pas.
+    expect(write(endOfLineComment, ['socle', 'roadmap'])).toBe(
+      [
+        'export const enabledModules = [',
+        "  'socle',",
+        "  'roadmap',",
+        '] as const',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  it('sur un fichier en CRLF, la ligne insérée est en CRLF', () => {
+    const crlf = trailingComma.replaceAll('\n', '\r\n')
+    const written = write(crlf, ['socle', 'facturation', 'roadmap'])
+
+    // Un « \n » écrit en dur au milieu d'un fichier en CRLF rend un fichier aux
+    // fins de ligne mélangées.
+    expect(written).not.toMatch(/[^\r]\n/)
+    expect(written).toBe(
+      [
+        'export const enabledModules = [',
+        "  'socle',",
+        "  'facturation',",
+        "  'roadmap',",
+        '] as const satisfies readonly AvailableModuleId[]',
+        '',
+      ].join('\r\n'),
+    )
+  })
+
+  it('une liste vidée puis regarnie retrouve sa forme multiligne', () => {
+    // Une liste vide ne dit plus rien de ce que portait sa dernière entrée. Ce
+    // qui subsiste — le crochet fermant sur sa propre ligne — suffit à savoir
+    // qu'elle était multiligne, et à y réinsérer une entrée à son indentation.
+    // La virgule finale, elle, est la convention du dépôt, réappliquée.
+    const single = [
+      'export const enabledModules = [',
+      "  'socle',",
+      '] as const',
+      '',
+    ].join('\n')
+    const emptied = write(single, [])
+
+    expect(emptied).toContain('[\n]')
+    expect(write(emptied, ['socle'])).toBe(single)
+  })
+
   const singleLineMultiple =
     "export const enabledModules = ['demo-enabled', 'demo-disabled'] as const\n"
 
   it('sur une liste d’une ligne : retirer le premier ne laisse pas d’espace parasite', () => {
-    expect(writeEnabledModules(singleLineMultiple, ['demo-disabled'])).toBe(
+    expect(write(singleLineMultiple, ['demo-disabled'])).toBe(
       "export const enabledModules = ['demo-disabled'] as const\n",
     )
   })
 
   it('sur une liste d’une ligne : retirer le dernier ne laisse pas de virgule parasite', () => {
-    expect(writeEnabledModules(singleLineMultiple, ['demo-enabled'])).toBe(
+    expect(write(singleLineMultiple, ['demo-enabled'])).toBe(
       "export const enabledModules = ['demo-enabled'] as const\n",
     )
   })

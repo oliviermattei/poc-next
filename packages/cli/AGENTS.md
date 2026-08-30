@@ -4,7 +4,7 @@ Le CLI `ks` : le geste central du produit rendu exécutable. Deux commandes,
 `ks list` et `ks toggle <module>`, et une seule écriture — la liste
 `enabledModules` de `config/features.ts`.
 
-Trois choses à savoir avant d'y toucher.
+Quatre choses à savoir avant d'y toucher.
 
 **1. Le toggle est atomique du point de vue du dépôt.** Il touche la
 configuration, les barils générés, et éventuellement la base. En faire deux sur
@@ -23,6 +23,25 @@ configuration candidate, attrape son refus et le traduit. Une seconde
 implémentation divergerait au premier cas limite, et c'est la validation qui
 perdrait.
 
+**4. L'ordre de `enabledModules` est canonique, et une chose ne revient pas.**
+ADR 019 : le CLI écrit toujours la liste dans l'ordre de l'annuaire. Un
+aller-retour, ce sont deux invocations séparées — à la seconde, la position
+d'origine du module retiré n'existe nulle part, donc seul un ordre dérivé rend
+le fichier identique. Conséquence : une liste ordonnée à la main est réordonnée
+à la première bascule, **et le CLI l'annonce**, en nommant le fichier et la
+raison. Ne jamais rendre cette normalisation silencieuse.
+
+La limite, elle, est réelle et assumée : **le commentaire d'une entrée retirée
+part avec elle et ne revient pas.** Il lui appartient — le laisser en place le
+réattribuerait au module voisin, et le fichier documenterait le mauvais module.
+Une réactivation ne peut pas le deviner : le texte n'est plus nulle part.
+`writeEnabledModules` le rend dans `droppedComments`, `runToggle` le dit à
+l'utilisateur, `src/features-file.test.ts` le fige. Plus étroite, la même
+famille : une liste qui passe par l'état vide perd la virgule finale et les
+guillemets que portait sa dernière entrée ; la convention du dépôt est
+réappliquée. Ces trois points sont les seules non-identités connues d'un
+aller-retour, et ils sont mesurés (576 balayés, 504 identiques à l'octet).
+
 Le CLI est utilisable par un agent autant que par un humain (ADR 013) : `--json`
 rend une sortie lisible par une machine, et hors terminal interactif il ne pose
 aucune question — il refuse en nommant le drapeau qui aurait autorisé l'action.
@@ -37,7 +56,7 @@ l'analyse. Rien n'est perdu pour autant : le bruit est dérouté, jamais supprim
 ## Imports autorisés
 
 - `@repo/core` pour la validation du graphe des modules — jamais réécrite ici ;
-- `ts-morph` pour l'édition de `config/features.ts`, justifié
+- `ts-morph` pour **lire** `config/features.ts`, justifié
   (`docs/security.md` §6) : le fichier porte les commentaires du propriétaire,
   une réécriture par expression régulière les détruit, et le compilateur du
   dépôt (TypeScript 7, ADR 011) n'expose plus d'API JavaScript qui permettrait
@@ -46,9 +65,11 @@ l'analyse. Rien n'est perdu pour autant : le bruit est dérouté, jamais supprim
   7.0.2. Sans effet aujourd'hui — `enabledModules` est une liste de chaînes,
   relue puis revérifiée par `pnpm typecheck` — mais une syntaxe propre à
   TypeScript 7 dans `config/features.ts` serait lue par une majeure antérieure.
-  Et `insertElement` de `ts-morph` **détruit le commentaire** de l'entrée
-  suivante : l'insertion est faite à une position calculée sur l'AST, jamais par
-  cette API (voir `src/features-file.ts`) ;
+  **Aucune API de manipulation de `ts-morph` n'est appelée** : `addElement`
+  emporte la virgule finale avec la dernière entrée, `insertElement` détruit le
+  commentaire de l'entrée suivante, et toutes reformatent selon leurs propres
+  réglages. L'écriture est un découpage du texte d'origine, calculé sur les
+  positions de l'AST (voir `src/features-file.ts`) ;
 - `tsx` pour exécuter l'entrée TypeScript depuis `bin/ks.mjs` — ce package n'a
   pas d'étape de build, comme les autres packages du dépôt ;
 - les modules de Node (`node:fs/promises`, `node:readline/promises`,

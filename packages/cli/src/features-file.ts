@@ -1,7 +1,5 @@
 import {
-  IndentationText,
   Project,
-  QuoteKind,
   SyntaxKind,
   type ArrayLiteralExpression,
   type Node,
@@ -16,15 +14,40 @@ import {
  * ne touche jamais. Une réécriture par expression régulière tiendrait sur le cas
  * nominal et détruirait un commentaire au premier cas non prévu — d'où l'AST.
  *
- * Les réglages de manipulation ne sont pas décoratifs, ils sont la condition de
- * l'identité octet pour octet. Mesuré sur `ts-morph@28` : sans
- * `useTrailingCommas`, insérer dans une liste multiligne à virgule finale rend
- * une liste **sans** virgule finale et mal indentée — le fichier reste valide,
- * mais le toggle inverse ne rend plus un fichier identique, et c'est exactement
- * le critère de la story.
+ * `ts-morph` sert ici à **lire**, jamais à écrire : ses API de manipulation
+ * (`addElement`, `removeElement`, `insertElement`) reformatent la liste selon
+ * leurs propres réglages, emportent la virgule finale avec la dernière entrée et
+ * détruisent le commentaire de l'entrée suivante. L'écriture est donc un
+ * découpage du texte d'origine : chaque entrée est un morceau que l'on déplace
+ * ou que l'on retire tel quel, et **tout ce qui n'est pas une entrée — la mise
+ * en forme, les fins de ligne, la virgule finale — est recopié à l'octet près**.
  *
- * Ce qui est en dehors de la liste n'est jamais réécrit : `ts-morph` n'édite que
- * les nœuds désignés, et rend le reste du texte tel quel.
+ * ## La limite, et elle est réelle
+ *
+ * Le commentaire d'une entrée **appartient à cette entrée** : celui qui la
+ * précède comme celui qui la suit en fin de ligne. Retirer l'entrée l'emporte
+ * donc avec elle — le laisser en place le réattribuerait au module voisin, et le
+ * fichier documenterait le mauvais module.
+ *
+ * **Une réactivation ne le rend pas.** L'aller-retour est fait de deux
+ * invocations séparées : à la seconde, le texte n'existe plus nulle part, ni
+ * dans le fichier ni ailleurs. `writeEnabledModules` le **signale** dans
+ * `droppedComments`, et le CLI le dit à l'utilisateur au moment où il le fait
+ * (`src/commands.ts`).
+ *
+ * ## Et une seconde, plus étroite
+ *
+ * Une liste qui passe par l'**état vide** perd ce que sa dernière entrée
+ * portait : sa virgule finale et ses guillemets. `[]` ne dit plus rien de ces
+ * deux-là. La forme multiligne, elle, survit — `[` et `]` restent sur deux
+ * lignes — et une entrée réinsérée retrouve son indentation. Ce qui est
+ * réappliqué est la convention du dépôt : virgule finale sur une liste
+ * multiligne, et les guillemets du reste du fichier.
+ *
+ * Mesuré sur 576 allers-retours (quatre modules, tous les sous-ensembles, sept
+ * mises en forme) : 504 identiques à l'octet, 64 non identiques par la perte du
+ * commentaire ci-dessus — annoncée —, et 8 par cette seconde limite, toutes sur
+ * une liste d'une seule entrée qui passe par l'état vide.
  */
 
 export class FeaturesFileError extends Error {
@@ -41,14 +64,10 @@ const fail = (message: string): never => {
 /** Nom de la déclaration éditée. L'annuaire, lui, n'est jamais touché. */
 const ENABLED_MODULES = 'enabledModules'
 
-const project = new Project({
-  useInMemoryFileSystem: true,
-  manipulationSettings: {
-    indentationText: IndentationText.TwoSpaces,
-    quoteKind: QuoteKind.Single,
-    useTrailingCommas: true,
-  },
-})
+/** Indentation d'une entrée ajoutée à une liste multiligne jusque-là vide. */
+const INDENT = '  '
+
+const project = new Project({ useInMemoryFileSystem: true })
 
 let counter = 0
 
@@ -95,23 +114,63 @@ const enabledModulesArray = (file: SourceFile): ArrayLiteralExpression => {
   return array
 }
 
+const literalId = (element: Node): string => {
+  const literal = element.asKind(SyntaxKind.StringLiteral)
+
+  if (literal === undefined) {
+    return fail(
+      `« ${ENABLED_MODULES} » contient l’élément « ${element.getText()} », qui n’est pas un identifiant littéral. Le CLI refuse d’écrire dans une liste qu’il ne peut pas relire à l’identique.`,
+    )
+  }
+
+  return literal.getLiteralValue()
+}
+
 const literalIds = (array: ArrayLiteralExpression): readonly string[] =>
-  array.getElements().map((element) => {
-    const literal = element.asKind(SyntaxKind.StringLiteral)
-
-    if (literal === undefined) {
-      return fail(
-        `« ${ENABLED_MODULES} » contient l’élément « ${element.getText()} », qui n’est pas un identifiant littéral. Le CLI refuse d’écrire dans une liste qu’il ne peut pas relire à l’identique.`,
-      )
-    }
-
-    return literal.getLiteralValue()
-  })
+  array.getElements().map(literalId)
 
 /** Les identifiants activés, lus dans le texte du fichier. */
 export function readEnabledModules(source: string): readonly string[] {
   return literalIds(enabledModulesArray(parse(source)))
 }
+
+/**
+ * Un morceau de texte qui **appartient** à une entrée, et qui la suit partout.
+ *
+ * - `lead` : les commentaires que le propriétaire a écrits au-dessus d'elle ;
+ * - `body` : le littéral, guillemets d'origine compris ;
+ * - `tail` : le commentaire de fin de ligne, après la virgule.
+ *
+ * Ce qui reste — les retours à la ligne, l'indentation, la virgule finale — est
+ * une propriété de la **liste**, pas de l'entrée : il ne bouge pas quand elle
+ * bouge.
+ */
+interface Slot {
+  readonly id: string
+  readonly lead: string
+  readonly body: string
+  /** Ce qui sépare le littéral de sa virgule. Vide en pratique. */
+  readonly preComma: string
+  readonly tail: string
+}
+
+interface Layout {
+  /** Le texte jusqu'au crochet ouvrant inclus. */
+  readonly before: string
+  /** Entre le crochet ouvrant et la première entrée. */
+  readonly open: string
+  /** Entre l'entrée `i` et l'entrée `i + 1`. */
+  readonly between: readonly string[]
+  readonly trailingComma: boolean
+  /** Entre la dernière entrée et le crochet fermant. */
+  readonly close: string
+  /** Le texte à partir du crochet fermant. */
+  readonly after: string
+  readonly slots: readonly Slot[]
+  readonly quote: string
+}
+
+const NEWLINE = /\r?\n/
 
 /**
  * Guillemets à utiliser pour un identifiant ajouté.
@@ -130,33 +189,14 @@ const quoteOf = (file: SourceFile, array: ArrayLiteralExpression): string => {
 }
 
 /**
- * Le séparateur qui précède une entrée : un espace sur une liste d'une ligne,
- * un retour à la ligne suivi de l'indentation sur une liste multiligne.
+ * Où commencent les commentaires qui appartiennent à une entrée : après le
+ * retour à la ligne qui suit la virgule précédente.
  *
- * Il est **relevé sur le fichier** plutôt que déduit des réglages : c'est le
- * propriétaire qui décide de la mise en forme de sa liste, et l'aller-retour
- * doit rendre la sienne, pas celle du CLI.
+ * Ce qui reste sur la ligne de la virgule appartient à l'entrée **précédente** —
+ * c'est son commentaire de fin de ligne, et le confondre avec celui de la
+ * suivante fait documenter le mauvais module.
  */
-const separatorBefore = (text: string, element: Node): string => {
-  const trivia = text.slice(element.getFullStart(), element.getStart())
-  const lastNewLine = trivia.lastIndexOf('\n')
-
-  return lastNewLine === -1 ? ' ' : `\n${trivia.slice(lastNewLine + 1)}`
-}
-
-/**
- * Où insérer une entrée pour qu'elle prenne la place que le retrait a libérée :
- * **avant les commentaires de l'entrée suivante**, mais **après un commentaire
- * de fin de ligne** de l'entrée précédente.
- *
- * La distinction est la seule qui compte ici, et `ts-morph` ne la fait pas :
- * `insertElement` remplace tout le texte entre l'entrée précédente et la
- * suivante, ce qui **détruit le commentaire** que le propriétaire a mis au-dessus
- * de l'entrée suivante. D'où le placement calculé sur les positions de l'AST —
- * pas une recherche de motif dans le texte, et jamais une écriture non relue :
- * `writeEnabledModules` réanalyse le résultat avant de le rendre.
- */
-const anchorBefore = (text: string, element: Node): number => {
+const ownedStart = (text: string, element: Node): number => {
   const fullStart = element.getFullStart()
   const start = element.getStart()
   const trivia = text.slice(fullStart, start)
@@ -172,81 +212,223 @@ const anchorBefore = (text: string, element: Node): number => {
 }
 
 /**
- * Rend le texte du fichier où `enabledModules` vaut exactement `next`.
- *
- * Les retraits d'abord, les ajouts ensuite, et une analyse par opération : une
- * insertion faite avant un retrait invaliderait les positions sur lesquelles le
- * retrait s'appuie.
- *
- * Chaque ajout est **inséré à sa position dans `next`**, jamais apposé en fin de
- * liste. Appendre ne rend le fichier d'origine que lorsque l'entrée basculée est
- * la dernière : sur toute autre, le toggle inverse rendrait une liste réordonnée,
- * c'est-à-dire un fichier différent — et le critère qui décide de cette story est
- * l'identité octet pour octet.
- *
- * Ce que la fonction ne sait pas faire : **déplacer** une entrée déjà présente.
- * Elle le dit au lieu d'écrire une liste qui n'est pas celle qu'on lui a
- * demandée.
+ * La virgule qui suit une entrée, cherchée **hors commentaire** : une virgule
+ * dans `// coupable, en démo` n'en est pas une.
  */
-export function writeEnabledModules(source: string, next: readonly string[]): string {
-  const current = readEnabledModules(source)
-  const wanted = new Set(next)
-  const present = new Set(current)
+const commaIndex = (region: string): number => {
+  let index = 0
 
-  let text = source
+  while (index < region.length) {
+    if (region[index] === ',') {
+      return index
+    }
 
-  for (const id of current) {
-    if (wanted.has(id)) {
+    if (region.startsWith('//', index)) {
+      const end = region.indexOf('\n', index)
+
+      if (end === -1) {
+        return -1
+      }
+
+      index = end + 1
       continue
     }
 
-    const file = parse(text)
-    const array = enabledModulesArray(file)
+    if (region.startsWith('/*', index)) {
+      const end = region.indexOf('*/', index)
 
-    array.removeElement(
-      array
-        .getElements()
-        .findIndex((element) => element.asKind(SyntaxKind.StringLiteral)?.getLiteralValue() === id),
+      if (end === -1) {
+        return -1
+      }
+
+      index = end + 2
+      continue
+    }
+
+    index += 1
+  }
+
+  return -1
+}
+
+/** Découpe ce qui suit une entrée : sa virgule, son commentaire de fin de ligne, puis le reste. */
+const splitAfter = (
+  region: string,
+): { readonly preComma: string; readonly comma: boolean; readonly tail: string; readonly rest: string } => {
+  const at = commaIndex(region)
+  const preComma = at === -1 ? '' : region.slice(0, at)
+  const remainder = at === -1 ? region : region.slice(at + 1)
+  const newLine = NEWLINE.exec(remainder)
+
+  return newLine === null
+    ? { preComma, comma: at !== -1, tail: '', rest: remainder }
+    : {
+        preComma,
+        comma: at !== -1,
+        tail: remainder.slice(0, newLine.index),
+        rest: remainder.slice(newLine.index),
+      }
+}
+
+const readLayout = (source: string): Layout => {
+  const file = parse(source)
+  const array = enabledModulesArray(file)
+  const elements = array.getElements()
+  const [first] = elements
+  const quote = quoteOf(file, array)
+  const innerStart = array.getStart() + 1
+  const closeStart = array.getEnd() - 1
+  const before = source.slice(0, innerStart)
+  const after = source.slice(closeStart)
+
+  if (first === undefined) {
+    // Une liste vide ne dit plus comment elle s'écrivait. Ce qu'il en reste — un
+    // retour à la ligne et l'indentation du crochet fermant — suffit pourtant à
+    // savoir si elle était multiligne, et à y réinsérer une entrée à sa place.
+    const inner = source.slice(innerStart, closeStart)
+    const shape = /(\r?\n)([ \t]*)$/.exec(inner)
+
+    return {
+      before,
+      open: shape === null ? '' : `${shape[1]}${shape[2]}${INDENT}`,
+      between: [],
+      trailingComma: shape !== null,
+      close: inner,
+      after,
+      slots: [],
+      quote,
+    }
+  }
+
+  const slots: Slot[] = []
+  const between: string[] = []
+  let trailingComma = false
+  let close = ''
+
+  const open = source.slice(innerStart, ownedStart(source, first))
+
+  for (const [index, element] of elements.entries()) {
+    const start = ownedStart(source, element)
+    const next = elements[index + 1]
+    const region = source.slice(element.getEnd(), next === undefined ? closeStart : ownedStart(source, next))
+    const { preComma, comma, tail, rest } = splitAfter(region)
+
+    slots.push({
+      id: literalId(element),
+      lead: source.slice(start, element.getStart()),
+      body: element.getText(),
+      preComma,
+      tail,
+    })
+
+    if (next === undefined) {
+      trailingComma = comma
+      close = rest
+    } else {
+      between.push(rest)
+    }
+  }
+
+  return { before, open, between, trailingComma, close, after, slots, quote }
+}
+
+const render = (layout: Layout, slots: readonly Slot[]): string => {
+  if (slots.length === 0) {
+    return `${layout.before}${layout.close}${layout.after}`
+  }
+
+  // Une entrée ajoutée au-delà des séparateurs connus reprend le dernier
+  // séparateur du fichier, **tel quel** : c'est ce qui rend ses fins de ligne
+  // et son indentation plutôt que celles du CLI.
+  const fallback =
+    layout.between.at(-1) ?? (NEWLINE.test(layout.open) ? layout.open : ' ')
+
+  const body = slots
+    .map((slot, index) => {
+      const prefix = index === 0 ? layout.open : (layout.between[index - 1] ?? fallback)
+      const last = index === slots.length - 1
+      const comma = last && !layout.trailingComma ? '' : ','
+
+      return `${prefix}${slot.lead}${slot.body}${slot.preComma}${comma}${slot.tail}`
+    })
+    .join('')
+
+  return `${layout.before}${body}${layout.close}${layout.after}`
+}
+
+const carriesComment = (text: string): boolean => text.includes('//') || text.includes('/*')
+
+/**
+ * Le résultat d'une écriture : le texte, et **ce que l'écriture a changé sans
+ * qu'on le lui demande**.
+ *
+ * Les deux champs existent pour être dits à l'utilisateur : une normalisation
+ * silencieuse d'un fichier qu'il édite à la main est exactement ce qu'ADR 019
+ * interdit.
+ */
+export interface EnabledModulesEdit {
+  readonly text: string
+  /** Entrées déjà présentes que l'ordre canonique a déplacées (ADR 019). */
+  readonly reordered: readonly string[]
+  /** Entrées retirées dont le commentaire du propriétaire est parti avec elles. */
+  readonly droppedComments: readonly string[]
+}
+
+/**
+ * Rend le texte du fichier où `enabledModules` vaut exactement `next`, **dans
+ * cet ordre**.
+ *
+ * L'ordre est celui que l'appelant demande, et `planToggle` le dérive de
+ * l'annuaire : c'est l'ordre canonique d'ADR 019. Écrire dans cet ordre est ce
+ * qui rend le critère 8 atteignable — un aller-retour, ce sont deux invocations
+ * séparées, et à la seconde la position d'origine d'une entrée retirée n'existe
+ * plus nulle part.
+ *
+ * L'écriture est relue avant d'être rendue : rendre une liste différente de
+ * celle qu'on a demandée est le seul mode d'échec qu'un appelant ne verrait pas.
+ */
+export function writeEnabledModules(source: string, next: readonly string[]): EnabledModulesEdit {
+  if (new Set(next).size !== next.length) {
+    return fail(
+      `Le CLI refuse d’écrire deux fois le même identifiant dans « ${ENABLED_MODULES} » : « ${next.join(', ')} ».`,
     )
-
-    text = file.getFullText()
   }
 
-  // `next` est parcourue de gauche à droite : les insertions déjà faites
-  // occupent leur position définitive, donc l'index de `next` est aussi l'index
-  // dans la liste en cours d'écriture.
-  for (const [index, id] of next.entries()) {
-    if (present.has(id)) {
-      continue
-    }
+  const layout = readLayout(source)
+  const bySlot = new Map(layout.slots.map((slot) => [slot.id, slot]))
+  const wanted = new Set(next)
 
-    const file = parse(text)
-    const array = enabledModulesArray(file)
-    const quote = quoteOf(file, array)
-    const entry = `${quote}${id}${quote}`
-    const following = array.getElements()[index]
+  const slots = next.map(
+    (id) =>
+      bySlot.get(id) ?? {
+        id,
+        lead: '',
+        body: `${layout.quote}${id}${layout.quote}`,
+        preComma: '',
+        tail: '',
+      },
+  )
 
-    if (following === undefined) {
-      // En fin de liste, `ts-morph` fait le travail : c'est lui qui rend la
-      // virgule finale que le retrait du dernier élément avait emportée.
-      array.addElement(entry)
-
-      text = file.getFullText()
-      continue
-    }
-
-    const anchor = anchorBefore(text, following)
-
-    text = `${text.slice(0, anchor)}${entry},${separatorBefore(text, following)}${text.slice(anchor)}`
-  }
-
+  const text = render(layout, slots)
   const written = readEnabledModules(text)
 
   if (written.length !== next.length || written.some((id, index) => id !== next[index])) {
     return fail(
-      `Le CLI ne sait pas réordonner « ${ENABLED_MODULES} » : il retire et il insère. Demandé « ${next.join(', ')} », écrit « ${written.join(', ')} ».`,
+      `L’écriture de « ${ENABLED_MODULES} » n’a pas rendu la liste demandée : « ${next.join(', ')} » demandé, « ${written.join(', ')} » écrit. Rien n’a été enregistré.`,
     )
   }
 
-  return text
+  // Le déplacement est jugé **contre le fichier d'origine**, jamais contre la
+  // liste demandée : c'est la demande qui porte la normalisation, donc la
+  // comparer à elle-même ne verrait jamais rien bouger.
+  const keptBefore = layout.slots.map((slot) => slot.id).filter((id) => wanted.has(id))
+  const keptAfter = next.filter((id) => bySlot.has(id))
+
+  return {
+    text,
+    reordered: keptBefore.filter((id, index) => keptAfter[index] !== id),
+    droppedComments: layout.slots
+      .filter((slot) => !wanted.has(slot.id) && (carriesComment(slot.lead) || carriesComment(slot.tail)))
+      .map((slot) => slot.id),
+  }
 }

@@ -97,28 +97,34 @@ export function missingRequirements(input: {
 }
 
 /**
- * Insère un identifiant dans la liste des activés **à la place que l'annuaire
- * lui donne**, sans déplacer les autres.
+ * L'ordre canonique de `enabledModules` : celui de l'annuaire (ADR 019).
  *
- * L'ajouter en fin de liste ferait rendre au toggle inverse une liste
- * réordonnée : réactiver une entrée du milieu la renverrait à la fin, et le
- * critère « toggle puis toggle inverse laisse le fichier identique » ne tiendrait
- * que sur la dernière entrée. L'annuaire est la seule référence d'ordre stable
- * du dépôt — l'ordre d'exécution, lui, ne dépend pas de celui-ci : il est dérivé
- * du graphe des requis par `resolveEnabledModules`.
+ * Le CLI écrit **toujours** dans cet ordre, et c'est ce qui rend le critère 8
+ * atteignable. Un aller-retour, ce sont deux invocations séparées : à la
+ * seconde, le fichier ne contient plus le module, donc sa position d'origine
+ * n'existe nulle part. Faire de l'ordre une propriété dérivée de l'annuaire lève
+ * la question — dès la première bascule le fichier est canonique, et tout
+ * aller-retour ultérieur est identique octet pour octet.
+ *
+ * L'ordre d'**exécution** ne vient pas d'ici : il est dérivé du graphe des
+ * requis par `resolveEnabledModules`. Les confondre ferait croire qu'éditer ce
+ * fichier change l'ordre d'application des migrations.
+ *
+ * Un identifiant que l'annuaire ne connaît pas est conservé en fin de liste
+ * plutôt qu'écarté : c'est à la validation de le refuser en le nommant, pas à un
+ * tri de le faire disparaître.
  */
-const insertInDirectoryOrder = (
+const canonicalOrder = (
   available: readonly AnyModuleDefinition[],
-  enabled: readonly string[],
-  moduleId: string,
+  ids: readonly string[],
 ): readonly string[] => {
-  const rank = (id: string): number => available.findIndex((module) => module.id === id)
-  const target = rank(moduleId)
-  const at = enabled.findIndex((id) => rank(id) > target)
+  const wanted = new Set(ids)
+  const known = new Set(available.map((module) => module.id))
 
-  return at === -1
-    ? [...enabled, moduleId]
-    : [...enabled.slice(0, at), moduleId, ...enabled.slice(at)]
+  return [
+    ...available.map((module) => module.id).filter((id) => wanted.has(id)),
+    ...ids.filter((id) => !known.has(id)),
+  ]
 }
 
 /** Soumet la configuration candidate à `@repo/core`, et rend son refus tel quel. */
@@ -156,7 +162,10 @@ export function planToggle(input: ToggleInput): TogglePlan {
   }
 
   if (enabled.includes(moduleId)) {
-    const nextEnabled = enabled.filter((id) => id !== moduleId)
+    const nextEnabled = canonicalOrder(
+      available,
+      enabled.filter((id) => id !== moduleId),
+    )
     const refusal = refusalOf(available, nextEnabled)
 
     if (refusal !== null) {
@@ -170,10 +179,7 @@ export function planToggle(input: ToggleInput): TogglePlan {
 
   const missing = missingRequirements({ available, enabled, moduleId })
   const alsoEnabled = input.withRequirements === true ? missing : []
-  const nextEnabled = [...alsoEnabled, moduleId].reduce(
-    (list, id) => insertInDirectoryOrder(available, list, id),
-    enabled,
-  )
+  const nextEnabled = canonicalOrder(available, [...enabled, ...alsoEnabled, moduleId])
   const refusal = refusalOf(available, nextEnabled)
 
   if (refusal !== null) {
