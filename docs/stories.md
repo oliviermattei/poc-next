@@ -72,11 +72,17 @@ Piège : les migrations Drizzle doivent être versionnées en fichiers SQL (`dri
 
 ### Acceptance criteria
 - [ ] `pnpm typecheck`, `pnpm lint`, `pnpm test` et `pnpm test:e2e` s'exécutent et passent sur le dépôt vide
+- [ ] `pnpm typecheck` couvre la racine, `tests/` et chaque package ; une erreur de type introduite volontairement dans un test le fait échouer
 - [ ] `pnpm lint` échoue sur une violation introduite volontairement et la commande de correction automatique la répare
+- [ ] Le lint fait respecter la règle de dépendance des couches (ADR 006) : un import de `domain` vers `infrastructure` échoue
+- [ ] `pnpm audit` bloque la CI au seuil « élevé » ; un scan de secrets sur le diff bloque également
+- [ ] Chaque package possède un `AGENTS.md` nommant ce qu'il peut importer et ce qu'il ne doit pas contenir ; un test échoue si un package en est dépourvu
 - [ ] Un test unitaire et un test end-to-end de démonstration existent et échouent si l'application ne démarre pas
 - [ ] Un fichier de conventions pour agents de code (`AGENTS.md` du template généré) décrit l'architecture en couches, les règles de module et les commandes ; un test vérifie sa présence et ses sections obligatoires
-- [ ] Le workflow GitHub Actions exécute typecheck, lint, tests unitaires et end-to-end sur chaque push, et échoue si l'un d'eux échoue
+- [ ] Le workflow GitHub Actions exécute typecheck, lint, tests unitaires, end-to-end, audit de dépendances et scan de secrets sur chaque push, et échoue si l'un d'eux échoue
+- [ ] Le workflow installe en `--frozen-lockfile` et échoue si le lockfile diverge
 - [ ] Le workflow démarre une base Postgres de test et joue les migrations avant les tests
+- [ ] Un fichier généré par un outil ne salit pas l'arbre : après `pnpm build`, `git status` reste propre
 
 ### Dependencies
 s01-boot-blank-app
@@ -211,6 +217,11 @@ Piège : le mailer de test doit être injecté, jamais conditionné par `NODE_EN
 - [ ] Le parcours « mot de passe oublié » envoie un lien de réinitialisation ; le lien consommé invalide les autres liens en cours
 - [ ] La déconnexion révoque la session ; une requête ultérieure avec l'ancien cookie est refusée
 - [ ] Une route protégée accédée sans session redirige vers la connexion, puis revient à l'URL demandée après authentification
+- [ ] L'identifiant de session est régénéré à chaque élévation de privilège (connexion, second facteur validé, fin d'impersonation)
+- [ ] Le cookie de session est `HttpOnly`, `Secure` et `SameSite` ; il n'est jamais lisible par le JavaScript client
+- [ ] Un changement de mot de passe ou d'email révoque les autres sessions actives, vérifié côté serveur et non par retrait d'une liste
+- [ ] Les événements de sécurité (connexion, échec, réinitialisation, vérification) sont journalisés avec leur acteur, sans jamais journaliser de secret
+- [ ] Le temps de réponse ne distingue pas un compte inconnu d'un mot de passe invalide
 
 ### Dependencies
 s06-transactional-emails
@@ -1177,3 +1188,32 @@ Module requis déclaré : back-office (changement de statut, masquage).
 **Hors périmètre, retirée** : la fusion de propositions. Le PRD dit « roadmap publique avec votes » ; la fusion est un outil de gestion de backlog, et son report de votes sans doublon de votant est un piège coûteux pour un module d'upsell.
 **Le masquage est conservé** : une page publique ouverte aux soumissions sans modération est ingérable. C'est une condition d'exploitation, pas un élargissement de périmètre.
 Piège : une page publique ouverte au vote est un vecteur de spam au-delà du débit. Exiger un compte vérifié pour proposer.
+
+---
+
+# Stories ajoutées après le cadrage initial
+
+> Ajoutées en cours de route au titre du socle de sécurité (ADR 012) et du dépôt orienté agents (ADR 013). **Leur numéro n'indique pas leur rang d'exécution** : l'ordre reste dérivé des dépendances déclarées, et les ids des stories déjà implémentées ne sont jamais renumérotés.
+
+## Story s45-security-headers — Servir l'application derrière une politique de sécurité stricte
+**As a** Dev **I want** que toute réponse porte des en-têtes de sécurité et une politique de sécurité du contenu stricte **so that** mon SaaS résiste aux injections de script et au détournement d'interface dès sa mise en ligne.
+
+### Complexity
+3
+
+### Acceptance criteria
+- [ ] Toute réponse HTML porte `Content-Security-Policy`, `Strict-Transport-Security`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` et une politique d'encadrement (`frame-ancestors`)
+- [ ] La politique de sécurité du contenu est `default-src 'self'` sans `unsafe-inline` ni `unsafe-eval` en production ; les scripts portent un **nonce par requête**
+- [ ] Un script en ligne sans nonce est bloqué par le navigateur ; vérifié par un test end-to-end qui constate l'absence d'exécution
+- [ ] Les sources tierces autorisées sont déclarées dans une configuration unique, jamais dispersées ; ajouter une source hors de cette configuration fait échouer un test
+- [ ] Les en-têtes sont présents aussi bien sur les pages publiques que sur les routes de l'API
+- [ ] Un rapport de violation est collecté en développement, sans dépendre d'un service tiers
+- [ ] Un test échoue si `unsafe-inline` ou `unsafe-eval` réapparaît dans la politique de production
+
+### Dependencies
+s08-app-shell, s10-marketing-site
+
+### Agentic notes
+**Aucune des quatre cibles ne documente de politique de sécurité du contenu** — angle du PRD, section 1 de `docs/security.md`.
+Piège principal : Next injecte des scripts en ligne pour l'hydratation. Le nonce doit être généré par requête dans le middleware et propagé, ce qui interdit la mise en cache statique des pages concernées — c'est le compromis à documenter, pas à contourner en autorisant `unsafe-inline`.
+Piège : les scripts d'analyse de s39 et le captcha de s28 sont des sources tierces. Elles se déclarent dans la configuration unique, et leur chargement reste soumis au consentement de s36.
