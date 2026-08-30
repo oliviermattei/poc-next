@@ -18,10 +18,12 @@
     "audit": "tsx scripts/audit.ts",
     "db:generate": "turbo run db:generate",
     "db:migrate": "turbo run db:migrate",
-    "db:seed": "turbo run db:seed"
+    "db:seed": "turbo run db:seed",
+    "ks": "node packages/cli/bin/ks.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
+    "@repo/cli": "workspace:*",
     "@repo/config": "workspace:*",
     "@repo/core": "workspace:*",
     "@repo/db": "workspace:*",

@@ -1,0 +1,155 @@
+import { spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { createInterface } from 'node:readline/promises'
+import { dirname, join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
+
+import type { AnyModuleDefinition } from '@repo/core'
+
+import { RegenerationFailedError } from './apply'
+import { ArgumentError, parseArguments, USAGE } from './arguments'
+import { renderModuleList, runList, runToggle, type ToggleEnvironment } from './commands'
+import { FeaturesFileError } from './features-file'
+import { ToggleRefusedError } from './toggle'
+
+/**
+ * Le **point de composition** du CLI : le seul fichier qui lise
+ * `config/features.ts` et qui lance des processus. Tout le reste de `src/`
+ * reçoit des modules et du texte, et se teste sur un dépôt temporaire.
+ *
+ * La racine du dépôt est cherchée en remontant depuis le répertoire courant :
+ * `ks` doit répondre la même chose depuis `apps/web` que depuis la racine, et
+ * la déduire de l'emplacement de ce fichier ferait éditer le dépôt qui héberge
+ * le CLI plutôt que celui où l'on travaille.
+ */
+const FEATURES = join('config', 'features.ts')
+
+const findRepositoryRoot = (from: string): string => {
+  let current = resolve(from)
+
+  for (;;) {
+    if (existsSync(join(current, FEATURES))) {
+      return current
+    }
+
+    const parent = dirname(current)
+
+    if (parent === current) {
+      throw new ArgumentError(
+        `Aucun ${FEATURES} trouvé depuis ${from} : « ks » s’exécute dans un dépôt killer-saas.`,
+      )
+    }
+
+    current = parent
+  }
+}
+
+/** Lance une commande du dépôt, et échoue bruyamment si elle échoue. */
+const run = (command: string, args: readonly string[], cwd: string): Promise<void> =>
+  new Promise((accept, reject) => {
+    const child = spawn(command, [...args], { cwd, stdio: 'inherit' })
+
+    child.on('error', reject)
+    child.on('close', (code) => {
+      if (code === 0) {
+        accept()
+      } else {
+        reject(new Error(`« ${command} ${args.join(' ')} » a terminé avec le code ${String(code)}.`))
+      }
+    })
+  })
+
+const ask = async (question: string): Promise<boolean> => {
+  const rl = createInterface({ input: process.stdin, output: process.stderr })
+
+  try {
+    const answer = (await rl.question(`${question} [o/N] `)).trim().toLowerCase()
+
+    return answer === 'o' || answer === 'oui' || answer === 'y' || answer === 'yes'
+  } finally {
+    rl.close()
+  }
+}
+
+interface FeaturesModule {
+  readonly availableModules: readonly AnyModuleDefinition[]
+}
+
+const loadAvailableModules = async (root: string): Promise<readonly AnyModuleDefinition[]> => {
+  const loaded = (await import(pathToFileURL(join(root, FEATURES)).href)) as FeaturesModule
+
+  return loaded.availableModules
+}
+
+export async function runCli(argv: readonly string[]): Promise<number> {
+  try {
+    const options = parseArguments(argv)
+    const root = findRepositoryRoot(process.cwd())
+    const featuresPath = join(root, FEATURES)
+    const available = await loadAvailableModules(root)
+
+    if (options.command === 'list') {
+      const summaries = await runList({ available, featuresPath })
+
+      console.log(options.json ? JSON.stringify(summaries, null, 2) : renderModuleList(summaries))
+
+      return 0
+    }
+
+    // Hors terminal — un agent, la CI — aucune question n'est posée : personne
+    // n'y répondrait, et une commande qui attend sur `stdin` est inutilisable
+    // (ADR 013). `--json` force le même régime.
+    const interactive = process.stdin.isTTY === true && !options.json
+
+    const environment: ToggleEnvironment = {
+      featuresPath,
+      // Les artefacts que la régénération réécrit : le dossier des barils, et
+      // les migrations de chaque module. Photographiés avant, restaurés si la
+      // régénération échoue.
+      generatedPaths: [
+        join(root, 'generated', 'schema'),
+        ...available
+          .map((module) => module.migrations)
+          .filter((path): path is string => path !== null)
+          .map((path) => join(root, path)),
+      ],
+      regenerate: () => run('pnpm', ['db:generate'], root),
+      applyMigrations: () => run('pnpm', ['db:migrate'], root),
+      confirm: ask,
+      print: (line) => console.log(line),
+    }
+
+    const outcome = await runToggle({
+      available,
+      request: {
+        moduleId: options.moduleId,
+        interactive,
+        withRequirements: options.withRequirements,
+        applyMigrations: options.applyMigrations,
+      },
+      environment,
+    })
+
+    if (options.json) {
+      console.log(JSON.stringify(outcome, null, 2))
+    }
+
+    return 0
+  } catch (error) {
+    if (
+      error instanceof ArgumentError ||
+      error instanceof ToggleRefusedError ||
+      error instanceof FeaturesFileError ||
+      error instanceof RegenerationFailedError
+    ) {
+      console.error(error.message)
+
+      return 1
+    }
+
+    console.error(error instanceof Error ? error.message : String(error))
+    console.error(`\n${USAGE}`)
+
+    return 1
+  }
+}

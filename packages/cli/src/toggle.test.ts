@@ -1,0 +1,463 @@
+import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+
+import { defineModule } from '@repo/core'
+import { afterAll, describe, expect, it } from 'vitest'
+
+import { RegenerationFailedError } from './apply'
+import { parseArguments } from './arguments'
+import { runToggle } from './commands'
+import { readEnabledModules } from './features-file'
+import { describeModules, renderModuleList } from './modules'
+import { missingRequirements, planToggle, ToggleRefusedError } from './toggle'
+
+/**
+ * Un seul fichier de test pour les deux commandes et pour l'écriture atomique.
+ *
+ * Le coût d'une suite se paie **par fichier** (environnement, chargement des
+ * modules), pas par assertion : ouvrir un fichier par unité multiplierait le
+ * temps d'exécution sans rien prouver de plus. Les groupes ci-dessous portent
+ * la distinction.
+ *
+ * Les modules sont fabriqués ici, jamais importés de `config/features.ts` : les
+ * fonctions du CLI **reçoivent** l'annuaire, elles ne le lisent pas. C'est ce
+ * qui permet d'éprouver un graphe que le dépôt ne contient pas — un cycle, une
+ * chaîne de requis à trois maillons — sans toucher à sa configuration.
+ */
+const moduleFor = (id: string, requires: readonly string[] = []) =>
+  defineModule({
+    id,
+    requires,
+    schema: {},
+    migrations: `packages/modules/${id}/migrations`,
+    routes: [],
+    navigation: [],
+    messages: { fr: {} },
+    emails: [],
+    webhooks: [],
+    jobs: [],
+    dataCategories: [],
+    retention: {},
+    purge: async () => {},
+    export: async () => ({}),
+  })
+
+const available = [
+  moduleFor('socle'),
+  moduleFor('facturation', ['socle']),
+  moduleFor('roadmap', ['facturation']),
+]
+
+describe('ks list', () => {
+  it('rend chaque module de l’annuaire, son état et ses requis', () => {
+    expect(describeModules({ available, enabled: ['socle'] })).toEqual([
+      { id: 'socle', enabled: true, requires: [], requiredBy: ['facturation'] },
+      { id: 'facturation', enabled: false, requires: ['socle'], requiredBy: ['roadmap'] },
+      { id: 'roadmap', enabled: false, requires: ['facturation'], requiredBy: [] },
+    ])
+  })
+
+  it('distingue les deux états dans la sortie lue par un humain', () => {
+    const rendered = renderModuleList(describeModules({ available, enabled: ['socle'] }))
+
+    // La ligne d'un module est celle qui **commence** par son identifiant, pas
+    // celle qui le contient : « socle » apparaît aussi dans les requis des
+    // autres. Et l'état est comparé **entier** : « activé » est un sous-mot de
+    // « désactivé », donc une assertion de sous-chaîne serait verte dans les
+    // deux cas — c'est-à-dire aveugle à l'inversion des deux états.
+    const fieldsOf = (id: string): readonly string[] =>
+      (
+        rendered
+          .split('\n')
+          .find((line) => line.split(/\s+/)[1] === id) ?? ''
+      )
+        .split(/\s+/)
+        .slice(2)
+
+    expect(fieldsOf('socle')[0]).toBe('activé')
+    expect(fieldsOf('facturation')[0]).toBe('désactivé')
+    // Le requis est nommé : sans lui, « activer facturation » échoue sans que
+    // la liste ait prévenu.
+    expect(fieldsOf('facturation').join(' ')).toContain('requiert : socle')
+  })
+})
+
+/**
+ * La validation du graphe **n'est pas ici**. `resolveEnabledModules` refuse
+ * déjà un requis non activé, un cycle, une auto-référence et un identifiant
+ * inconnu, en nommant les modules ; le CLI lui soumet la configuration
+ * candidate et traduit son refus. Deux implémentations divergeraient, et ce
+ * serait la validation qui perdrait.
+ *
+ * Les cas ci-dessous sont donc choisis pour ce qu'ils prouvent de la
+ * **délégation** — un cycle, qu'aucune ligne du CLI ne sait détecter, y compris.
+ */
+describe('ks toggle — activation', () => {
+  it('active un module dont les requis sont déjà là', () => {
+    expect(planToggle({ available, enabled: ['socle'], moduleId: 'facturation' })).toEqual({
+      action: 'enable',
+      moduleId: 'facturation',
+      nextEnabled: ['socle', 'facturation'],
+      alsoEnabled: [],
+    })
+  })
+
+  it('refuse quand un requis manque, en nommant le manquant et la façon de l’activer', () => {
+    let message = ''
+
+    try {
+      planToggle({ available, enabled: [], moduleId: 'facturation' })
+    } catch (error) {
+      expect(error).toBeInstanceOf(ToggleRefusedError)
+      message = (error as Error).message
+    }
+
+    expect(message).toContain('facturation')
+    expect(message).toContain('socle')
+    expect(message).toContain('--with-requires')
+  })
+
+  it('active aussi les requis transitifs quand on l’y autorise, le requis avant son dépendant', () => {
+    expect(
+      planToggle({ available, enabled: [], moduleId: 'roadmap', withRequirements: true }),
+    ).toEqual({
+      action: 'enable',
+      moduleId: 'roadmap',
+      nextEnabled: ['socle', 'facturation', 'roadmap'],
+      alsoEnabled: ['socle', 'facturation'],
+    })
+  })
+
+  it('nomme les requis manquants sans les activer', () => {
+    expect(missingRequirements({ available, enabled: [], moduleId: 'roadmap' })).toEqual([
+      'socle',
+      'facturation',
+    ])
+    expect(missingRequirements({ available, enabled: ['socle'], moduleId: 'roadmap' })).toEqual([
+      'facturation',
+    ])
+  })
+
+  it('refuse un cycle, que le CLI ne sait pas détecter lui-même', () => {
+    // Preuve de la délégation : aucune ligne du CLI ne cherche de cycle. Si
+    // cette assertion tombe, c'est que la validation a été réécrite ici.
+    const cyclic = [moduleFor('a', ['b']), moduleFor('b', ['a'])]
+
+    expect(() =>
+      planToggle({ available: cyclic, enabled: [], moduleId: 'a', withRequirements: true }),
+    ).toThrowError(/Cycle/)
+  })
+
+  it('refuse un identifiant que l’annuaire ne contient pas, en le nommant', () => {
+    expect(() => planToggle({ available, enabled: [], moduleId: 'inexistant' })).toThrowError(
+      /inexistant/,
+    )
+  })
+})
+
+describe('ks toggle — désactivation', () => {
+  it('désactive un module dont personne d’activé ne dépend', () => {
+    expect(
+      planToggle({ available, enabled: ['socle', 'facturation'], moduleId: 'facturation' }),
+    ).toEqual({
+      action: 'disable',
+      moduleId: 'facturation',
+      nextEnabled: ['socle'],
+      alsoEnabled: [],
+    })
+  })
+
+  it('refuse quand un module activé en dépend, en nommant le dépendant', () => {
+    let message = ''
+
+    try {
+      planToggle({ available, enabled: ['socle', 'facturation'], moduleId: 'socle' })
+    } catch (error) {
+      expect(error).toBeInstanceOf(ToggleRefusedError)
+      message = (error as Error).message
+    }
+
+    expect(message).toContain('facturation')
+    expect(message).toContain('socle')
+  })
+})
+
+/**
+ * Tout ce qui écrit s'exécute sur un **dépôt temporaire** : une copie de
+ * `config/features.ts` et du dossier des barils dans un répertoire jetable.
+ * Un test qui régénérerait le dépôt qui l'exécute rendrait la suite
+ * destructrice, et il faudrait le désarmer le jour où il servirait.
+ */
+describe('ks toggle — écriture sur un dépôt temporaire', () => {
+  const FEATURES = [
+    '/**',
+    ' * Les modules du projet — le fichier que le propriétaire édite.',
+    ' */',
+    'export const availableModules = [socleModule, facturationModule, roadmapModule] as const',
+    '',
+    '/** Les modules activés. */',
+    "export const enabledModules = ['socle'] as const satisfies readonly AvailableModuleId[]",
+    '',
+  ].join('\n')
+
+  const BARREL = '// baril versionné\nexport { socleTable } from \'@repo/module-socle\'\n'
+
+  interface TemporaryRepo {
+    readonly root: string
+    readonly featuresPath: string
+    readonly generatedPath: string
+    readonly features: () => Promise<string>
+    readonly barrels: () => Promise<readonly string[]>
+  }
+
+  const temporaryRepo = async (): Promise<TemporaryRepo> => {
+    const root = await mkdtemp(join(tmpdir(), 'ks-cli-'))
+    const featuresPath = join(root, 'config', 'features.ts')
+    const generatedPath = join(root, 'generated', 'schema')
+
+    await mkdir(dirname(featuresPath), { recursive: true })
+    await mkdir(generatedPath, { recursive: true })
+    await writeFile(featuresPath, FEATURES, 'utf8')
+    await writeFile(join(generatedPath, 'socle.ts'), BARREL, 'utf8')
+
+    temporaries.push(root)
+
+    return {
+      root,
+      featuresPath,
+      generatedPath,
+      features: () => readFile(featuresPath, 'utf8'),
+      barrels: async () => (await readdir(generatedPath)).sort(),
+    }
+  }
+
+  const temporaries: string[] = []
+
+  afterAll(async () => {
+    for (const root of temporaries) {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  /**
+   * L'environnement du CLI, réduit à ce qui sort du processus : régénérer,
+   * migrer, demander, écrire une ligne. Les remplacer est ce qui permet
+   * d'observer qu'une migration **n'a pas** été appliquée — un effet dont
+   * l'absence est le critère.
+   */
+  const environmentFor = (
+    repo: TemporaryRepo,
+    overrides: {
+      readonly regenerate?: () => Promise<void>
+      readonly confirm?: (question: string) => Promise<boolean>
+    } = {},
+  ) => {
+    const lines: string[] = []
+    const migrated: string[] = []
+    const questions: string[] = []
+
+    return {
+      lines,
+      migrated,
+      questions,
+      environment: {
+        featuresPath: repo.featuresPath,
+        generatedPaths: [repo.generatedPath],
+        regenerate:
+          overrides.regenerate ??
+          (async () => {
+            // Ce que fait la vraie régénération : réécrire le dossier des
+            // barils depuis la configuration.
+            const enabled = readEnabledModules(await repo.features())
+
+            await rm(repo.generatedPath, { recursive: true, force: true })
+            await mkdir(repo.generatedPath, { recursive: true })
+
+            for (const id of enabled) {
+              await writeFile(
+                join(repo.generatedPath, `${id}.ts`),
+                `// baril versionné\nexport { ${id}Table } from '@repo/module-${id}'\n`,
+                'utf8',
+              )
+            }
+          }),
+        applyMigrations: async () => {
+          migrated.push('appliquées')
+        },
+        confirm: async (question: string) => {
+          questions.push(question)
+
+          return overrides.confirm?.(question) ?? false
+        },
+        print: (line: string) => lines.push(line),
+      },
+    }
+  }
+
+  it('active un module, écrit la configuration et régénère les barils', async () => {
+    const repo = await temporaryRepo()
+    const harness = environmentFor(repo)
+
+    const outcome = await runToggle({
+      available,
+      request: { moduleId: 'facturation', interactive: false },
+      environment: harness.environment,
+    })
+
+    expect(outcome.action).toBe('enable')
+    expect(readEnabledModules(await repo.features())).toEqual(['socle', 'facturation'])
+    expect(await repo.barrels()).toEqual(['facturation.ts', 'socle.ts'])
+  })
+
+  it('restaure la configuration **et** les barils quand la régénération échoue', async () => {
+    const repo = await temporaryRepo()
+    const before = await repo.features()
+    const harness = environmentFor(repo, {
+      regenerate: async () => {
+        // Une régénération réelle écrit avant d'échouer : c'est ce demi-état
+        // que la restauration doit effacer.
+        await writeFile(join(repo.generatedPath, 'facturation.ts'), '// à moitié écrit\n', 'utf8')
+
+        throw new Error('schéma invalide : 0 tables')
+      },
+    })
+
+    await expect(
+      runToggle({
+        available,
+        request: { moduleId: 'facturation', interactive: false },
+        environment: harness.environment,
+      }),
+    ).rejects.toThrowError(RegenerationFailedError)
+
+    // Octet pour octet : le dépôt n'est jamais laissé entre deux états.
+    expect(await repo.features()).toBe(before)
+    expect(await repo.barrels()).toEqual(['socle.ts'])
+  })
+
+  it('refuse sans rien écrire quand un requis manque et qu’on n’est pas interactif', async () => {
+    const repo = await temporaryRepo()
+    const before = await repo.features()
+    const harness = environmentFor(repo)
+
+    await expect(
+      runToggle({
+        available,
+        request: { moduleId: 'roadmap', interactive: false },
+        environment: harness.environment,
+      }),
+    ).rejects.toThrowError(ToggleRefusedError)
+
+    expect(await repo.features()).toBe(before)
+    expect(await repo.barrels()).toEqual(['socle.ts'])
+    // Un refus ne pose pas de question : hors terminal, personne ne répondrait.
+    expect(harness.questions).toEqual([])
+  })
+
+  it('propose d’activer le requis manquant en mode interactif, et le fait si on accepte', async () => {
+    const repo = await temporaryRepo()
+    const harness = environmentFor(repo, { confirm: async () => true })
+
+    const outcome = await runToggle({
+      available,
+      request: { moduleId: 'roadmap', interactive: true },
+      environment: harness.environment,
+    })
+
+    expect(outcome.alsoEnabled).toEqual(['facturation'])
+    expect(readEnabledModules(await repo.features())).toEqual(['socle', 'facturation', 'roadmap'])
+    expect(harness.questions.join('\n')).toContain('facturation')
+  })
+
+  it('génère les migrations et **propose** de les appliquer, sans y toucher', async () => {
+    const repo = await temporaryRepo()
+    const harness = environmentFor(repo)
+
+    const outcome = await runToggle({
+      available,
+      request: { moduleId: 'facturation', interactive: false },
+      environment: harness.environment,
+    })
+
+    // Le seul effet qu'une commande de configuration ne doit jamais avoir sans
+    // qu'on le lui demande : toucher la base.
+    expect(harness.migrated).toEqual([])
+    expect(outcome.migrationsApplied).toBe(false)
+    expect(harness.lines.join('\n')).toContain('pnpm db:migrate')
+  })
+
+  it('applique les migrations quand on l’y autorise explicitement', async () => {
+    const repo = await temporaryRepo()
+    const harness = environmentFor(repo)
+
+    const outcome = await runToggle({
+      available,
+      request: { moduleId: 'facturation', interactive: false, applyMigrations: true },
+      environment: harness.environment,
+    })
+
+    expect(harness.migrated).toEqual(['appliquées'])
+    expect(outcome.migrationsApplied).toBe(true)
+  })
+
+  it('informe que la désactivation conserve tables et données, et n’offre aucun nettoyage', async () => {
+    const repo = await temporaryRepo()
+    const harness = environmentFor(repo)
+
+    await runToggle({
+      available,
+      request: { moduleId: 'socle', interactive: false },
+      environment: harness.environment,
+    })
+
+    const output = harness.lines.join('\n')
+
+    expect(output).toContain('conservé')
+    // Aucune commande de nettoyage, sous aucun nom : ce serait `eject`, au
+    // cimetière du PRD (ADR 016).
+    expect(output).not.toMatch(/supprim|nettoy|purge|drop\b/i)
+    expect(harness.migrated).toEqual([])
+  })
+
+  it('deux toggles inverses laissent le dépôt exactement dans son état d’origine', async () => {
+    const repo = await temporaryRepo()
+    const before = await repo.features()
+    const harness = environmentFor(repo)
+
+    for (let pass = 0; pass < 2; pass += 1) {
+      await runToggle({
+        available,
+        request: { moduleId: 'facturation', interactive: false },
+        environment: harness.environment,
+      })
+    }
+
+    expect(await repo.features()).toBe(before)
+    expect(await repo.barrels()).toEqual(['socle.ts'])
+  })
+})
+
+describe('analyse des arguments', () => {
+  it('lit la commande, le module et les drapeaux', () => {
+    expect(parseArguments(['toggle', 'facturation', '--with-requires', '--json'])).toEqual({
+      command: 'toggle',
+      moduleId: 'facturation',
+      json: true,
+      withRequirements: true,
+      applyMigrations: false,
+    })
+  })
+
+  it('refuse un drapeau inconnu au lieu de l’ignorer', () => {
+    // Ignorer une faute de frappe ferait exécuter autre chose que ce que
+    // l'appelant — humain ou agent — croit avoir demandé.
+    expect(() => parseArguments(['toggle', 'facturation', '--with-requiers'])).toThrowError(
+      /--with-requiers/,
+    )
+  })
+
+  it('refuse `toggle` sans module', () => {
+    expect(() => parseArguments(['toggle'])).toThrowError(/module/)
+  })
+})

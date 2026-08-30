@@ -13,15 +13,15 @@ Socles couverts : **`docs/reliability.md` §1** (le toggle est idempotent : deux
 
 ## Tasks (ordered)
 
-1. [ ] **`packages/cli`** — package, `AGENTS.md` (ce qu'il peut importer, ce qu'il ne doit jamais contenir), configuration TypeScript, script racine `ks`.
-2. [ ] **Édition AST** de `enabledModules` par `ts-morph`, préservant commentaires et formatage. Prouvé par le test « toggle puis toggle inverse rend le fichier **octet pour octet** identique ».
-3. [ ] **`ks list`** — modules disponibles, état, requis. Sortie lisible par un humain et par un agent (mode `--json`).
-4. [ ] **Validation déléguée** — le CLI appelle `resolveEnabledModules` et traduit son erreur. Aucune réimplémentation : deux vérités divergeraient.
-5. [ ] **Activation** — si un requis manque, proposer de l'activer aussi (mode interactif) ou refuser en le nommant (mode non interactif). Puis **régénérer les barils**, sinon la garde de divergence de s04 rend le dépôt rouge.
-6. [ ] **Désactivation** — refusée si un module activé en dépend, le dépendant nommé. Informer que **tables et données sont conservées** ; ne proposer aucune commande de nettoyage, sous aucun nom.
-7. [ ] **Génération et proposition** — l'activation génère les migrations et **propose** de les appliquer. Ne jamais les appliquer d'office : une commande de configuration ne touche pas une base sans le dire.
-8. [ ] **Atomicité** — si la régénération échoue, la configuration est restaurée. Le dépôt n'est jamais laissé entre deux états. Prouvé par un test qui fait échouer la régénération.
-9. [ ] **Tests sur dépôt temporaire** — les commandes s'exécutent contre une copie, jamais contre le dépôt courant.
+1. [x] **`packages/cli`** — package, `AGENTS.md` (ce qu'il peut importer, ce qu'il ne doit jamais contenir), configuration TypeScript, script racine `ks`.
+2. [x] **Édition AST** de `enabledModules` par `ts-morph`, préservant commentaires et formatage. Prouvé par le test « toggle puis toggle inverse rend le fichier **octet pour octet** identique ».
+3. [x] **`ks list`** — modules disponibles, état, requis. Sortie lisible par un humain et par un agent (mode `--json`).
+4. [x] **Validation déléguée** — le CLI appelle `resolveEnabledModules` et traduit son erreur. Aucune réimplémentation : deux vérités divergeraient.
+5. [x] **Activation** — si un requis manque, proposer de l'activer aussi (mode interactif) ou refuser en le nommant (mode non interactif). Puis **régénérer les barils**, sinon la garde de divergence de s04 rend le dépôt rouge.
+6. [x] **Désactivation** — refusée si un module activé en dépend, le dépendant nommé. Informer que **tables et données sont conservées** ; ne proposer aucune commande de nettoyage, sous aucun nom.
+7. [x] **Génération et proposition** — l'activation génère les migrations et **propose** de les appliquer. Ne jamais les appliquer d'office : une commande de configuration ne touche pas une base sans le dire.
+8. [x] **Atomicité** — si la régénération échoue, la configuration est restaurée. Le dépôt n'est jamais laissé entre deux états. Prouvé par un test qui fait échouer la régénération.
+9. [x] **Tests sur dépôt temporaire** — les commandes s'exécutent contre une copie, jamais contre le dépôt courant.
 
 ## Run interdicts
 

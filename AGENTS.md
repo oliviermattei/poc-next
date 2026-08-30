@@ -181,6 +181,7 @@ est de la documentation, pas une règle.
 | `pnpm db:generate` | génère les migrations SQL depuis le schéma | jamais `push` : la génération est la seule voie |
 | `pnpm db:migrate` | applique les migrations, deux fois de suite sans effet supplémentaire | une migration en échec |
 | `pnpm db:seed` | données de développement, rejouables | un seed non idempotent |
+| `pnpm ks` | le CLI de modules : `list` et `toggle` (aussi `npx ks`) | un module inconnu, un requis manquant, un dépendant encore activé, ou une régénération en échec — la configuration est alors restaurée |
 
 Le scan de secrets n'a pas de script npm : il tourne en CI par l'action
 officielle (le paquet npm `gitleaks` est un homonyme qui ne scanne rien), et en
