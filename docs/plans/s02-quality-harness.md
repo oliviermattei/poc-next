@@ -27,6 +27,18 @@ Sections de `docs/security.md` couvertes par cette story : **§6 dépendances et
 10. [ ] **Workflow CI** — `.github/workflows/ci.yml` : `--frozen-lockfile`, typecheck, lint, tests unitaires, service Postgres + migrations, end-to-end, audit, scan de secrets, build. Échoue si l'un échoue.
 11. [ ] **`AGENTS.md` racine du template** — vérifier que les sections obligatoires (architecture en couches, règles de module, commandes) sont présentes, et que le test qui le contrôle échoue si l'une disparaît.
 
+## Findings de s01 explicitement renvoyés à cette story
+
+Ils font partie du périmètre, au même titre que les douze critères. Chacun a été mesuré par une revue, pas supposé.
+
+12. [ ] **N4 — la garantie de typage n'est vérifiée par aucune commande.** Fermé par la tâche 1. `expectTypeOf` est un no-op à l'exécution : sous mutation, `pnpm test` reste vert et seul `tsc --noEmit` à la racine échoue.
+13. [ ] **N5 / N18 — `apps/web/next-env.d.ts` salit l'arbre après chaque build.** Reproduit quatre fois par deux revues. Bloque le critère 12 ; à trancher (tâche 7) **avant** d'ajouter un `git diff --exit-code` en CI.
+14. [ ] **N17 / F8 — les tests contournent les frontières de packages.** Alias Vitest vers les sources, import direct de `apps/web/...`, et depuis le dernier correctif une lecture de `packages/config/src/index.ts` **sur le disque**. L'ADR 002 exige qu'un import non déclaré échoue ; l'arbitrage est dû ici, par une exception **nommée** dans la configuration du lint, jamais par omission.
+15. [ ] **N13 — la garde de surface client est plus étroite que son nom.** Elle ne reconnaît que les guillemets simples et les spécificateurs préfixés `node:` ; un `import … from "node:fs"` passe (prouvé par mutation). Le lint de la tâche 2 la remplace : une règle ESLint interdisant les modules Node dans le barril public de `@repo/config` couvre les guillemets, les spécificateurs nus, `require` et l'import dynamique.
+16. [ ] **N11 — un test dont le commentaire promet plus que l'assertion.** Le test de `findRootEnvPath` épingle « rend un chemin absolu » alors qu'il annonce « termine hors du dépôt » : un correctif partiel réintroduisant la boucle infinie laisse la suite verte. Élargir l'assertion à un chemin résolvant hors de tout workspace.
+17. [ ] **N14 — JSDoc orphelin dans `packages/config/src/env.ts`.** Le bloc portant la règle « aucun autre module ne lit `process.env` directement » s'est retrouvé rattaché à une constante au lieu de `getEnv`.
+18. [ ] **N15 et N16 — deux frontières à écrire, pas à coder.** La validation au démarrage ne couvre pas le serverless ni `output: 'standalone'` (sur Vercel, une variable malformée dégrade en 503 silencieux) ; et `next info` s'interrompt quand l'environnement est cassé, précisément quand on en aurait besoin. Une ligne dans le commentaire du code et une dans `docs/reliability.md`.
+
 ## Run interdicts
 
 - **Aucun module applicatif, aucun package nouveau** hors `tooling/eslint`. `packages/core`, `ports`, `adapters`, `ui`, `modules` appartiennent à leurs stories.
