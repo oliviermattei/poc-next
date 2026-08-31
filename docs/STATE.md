@@ -33,7 +33,7 @@ open -a Docker && docker compose up -d                                # Postgres
 
 | Voie | Story | Worktree | Base / port |
 |---|---|---|---|
-| A | s13-two-factor | `feature/s13-two-factor` | `s13`, port 3113 |
+| A | s13-two-factor | commit `bc02ef8`, **en revue** | `s13`, port 3113 |
 | B | s16-invite-members | commit `74a73a8`, **en revue** | `s16`, port 3116 |
 | C | s11-public-forms | commit `0911aa9`, **en revue** | `s11`, port 3111 |
 
