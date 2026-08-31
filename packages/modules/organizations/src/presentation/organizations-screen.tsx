@@ -25,8 +25,11 @@ import type {
 import {
   invitationStatusKey,
   ORGANIZATIONS_KEYS as K,
+  roleActionForKey,
+  roleActionKey,
   roleLabelKey,
 } from '../domain/message-keys'
+import { grantsOwnership, ORGANIZATION_ACTION } from '../domain/permissions'
 import type { OrganizationsIntl } from './organizations-intl'
 
 /**
@@ -57,6 +60,7 @@ export interface OrganizationsScreenProps {
     readonly resendInvitation: string
     readonly revokeInvitation: string
     readonly removeMember: string
+    readonly setMemberRole: string
   }
   /** Le compte de l'appelant : c'est lui qui « quitte » au lieu de « retirer ». */
   readonly viewerId: string
@@ -159,17 +163,18 @@ function Row({ label, children }: { readonly label: string; readonly children: R
 function RowAction({
   action,
   organizationId,
-  field,
-  value,
+  fields,
   label,
   accessibleName,
+  variant = 'ghost',
 }: {
   readonly action: string
   readonly organizationId: string
-  readonly field: string
-  readonly value: string
+  /** Les champs cachés de cette action, en plus du périmètre. */
+  readonly fields: Readonly<Record<string, string>>
   readonly label: string
   readonly accessibleName: string
+  readonly variant?: 'ghost' | 'outline'
 }) {
   return (
     <form method="post" action={action} aria-label={accessibleName}>
@@ -177,11 +182,16 @@ function RowAction({
           Le champ est caché mais il n'est pas une autorisation : la route relit
           l'appartenance, et une valeur falsifiée répond 404 (ADR 025). */}
       <input type="hidden" name="organizationId" value={organizationId} />
-      <input type="hidden" name={field} value={value} />
+      {Object.entries(fields).map(([name, value]) => (
+        <input key={name} type="hidden" name={name} value={value} />
+      ))}
       {/* `variant="ghost"` et la hauteur par défaut : le design system ne nomme
           aucune échelle de tailles, et `packages/ui` n'en expose pas. Une taille
-          inventée ici serait un design system gap comblé sur place. */}
-      <Button type="submit" variant="ghost" aria-label={accessibleName}>
+          inventée ici serait un design system gap comblé sur place.
+          `outline` est réservé au transfert de propriété : il change qui
+          gouverne l'organisation, et il mérite d'être distinct sans être
+          `destructive`, que le design system garde pour la suppression. */}
+      <Button type="submit" variant={variant} aria-label={accessibleName}>
         {label}
       </Button>
     </form>
@@ -194,12 +204,14 @@ function MembersCard({
   organizationId,
   viewerId,
   removeAction,
+  setRoleAction,
 }: {
   readonly intl: OrganizationsIntl
   readonly members: readonly OrganizationMemberView[]
   readonly organizationId: string
   readonly viewerId: string
   readonly removeAction: string
+  readonly setRoleAction: string
 }) {
   return (
     <Card>
@@ -213,6 +225,21 @@ function MembersCard({
             <Row key={member.userId} label={member.email}>
               <Badge variant="secondary">{intl.t(roleLabelKey(member.role))}</Badge>
               {member.userId === viewerId ? <Badge variant="outline">{intl.t(K.membersYou)}</Badge> : null}
+              {/* **Les rôles que cette ligne peut recevoir, tels que le serveur
+                  les a calculés** (s17). L'écran ne compare aucun rôle : la
+                  liste est vide, ou elle ne l'est pas. Une comparaison écrite
+                  ici ferait exister la matrice à deux endroits. */}
+              {member.assignableRoles.map((role) => (
+                <RowAction
+                  key={role}
+                  action={setRoleAction}
+                  organizationId={organizationId}
+                  fields={{ userId: member.userId, role }}
+                  label={intl.t(roleActionKey(role))}
+                  accessibleName={intl.t(roleActionForKey(role), { email: member.email })}
+                  variant={grantsOwnership(role) ? 'outline' : 'ghost'}
+                />
+              ))}
               {/* **Le dernier propriétaire n'a pas de bouton** : l'action
                   n'existe pas plutôt que d'échouer. Ce n'est pas la permission —
                   le serveur refuse de toute façon (`docs/security.md` §3) —,
@@ -221,8 +248,7 @@ function MembersCard({
                 <RowAction
                   action={removeAction}
                   organizationId={organizationId}
-                  field="userId"
-                  value={member.userId}
+                  fields={{ userId: member.userId }}
                   label={
                     member.userId === viewerId
                       ? intl.t(K.membersLeave)
@@ -305,16 +331,14 @@ function InvitationsCard({
                 <RowAction
                   action={actions.resendInvitation}
                   organizationId={organizationId}
-                  field="invitationId"
-                  value={invitation.id}
+                  fields={{ invitationId: invitation.id }}
                   label={intl.t(K.invitationsResend)}
                   accessibleName={intl.t(K.invitationsResendFor, { email: invitation.email })}
                 />
                 <RowAction
                   action={actions.revokeInvitation}
                   organizationId={organizationId}
-                  field="invitationId"
-                  value={invitation.id}
+                  fields={{ invitationId: invitation.id }}
                   label={intl.t(K.invitationsRevoke)}
                   accessibleName={intl.t(K.invitationsRevokeFor, { email: invitation.email })}
                 />
@@ -346,7 +370,7 @@ export function OrganizationsScreen({
   refusalKey,
   viewerId,
 }: OrganizationsScreenProps) {
-  const { current, memberships, members, invitations } = view
+  const { current, memberships, members, invitations, permissions } = view
 
   return (
     <>
@@ -407,10 +431,17 @@ export function OrganizationsScreen({
           organizationId={current.id}
           viewerId={viewerId}
           removeAction={actions.removeMember}
+          setRoleAction={actions.setMemberRole}
         />
       )}
 
-      {current === null ? null : (
+      {/* **Les cartes disparaissent, elles ne sont pas grisées** (s17). Le
+          design system réserve « l'action reste visible mais mène à une
+          invitation à souscrire » au gating d'offre (s21) : un simple membre ne
+          peut rien acheter pour devenir administrateur. La carte des membres,
+          elle, reste — savoir avec qui l'on partage ses données n'est pas un
+          privilège. */}
+      {current === null || !permissions[ORGANIZATION_ACTION.invite] ? null : (
         <InvitationsCard
           intl={intl}
           invitations={invitations}
@@ -419,7 +450,7 @@ export function OrganizationsScreen({
         />
       )}
 
-      {current === null ? null : (
+      {current === null || !permissions[ORGANIZATION_ACTION.rename] ? null : (
         <Card>
           <CardHeader>
             <CardTitle>{intl.t(K.settingsTitle)}</CardTitle>

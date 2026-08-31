@@ -1,8 +1,8 @@
-import { and, eq, gt, isNull, ne, or, sql } from 'drizzle-orm'
+import { and, eq, gt, isNull, ne, notInArray, or, sql } from 'drizzle-orm'
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core'
 
 import type { InvitationOutcome, OrganizationRepository, SlugOutcome } from '../application/ports'
-import { FOUNDER_ROLE } from '../domain/organization'
+import { FOUNDER_ROLE, SUCCEEDED_OWNER_ROLE } from '../domain/organization'
 import {
   organization,
   organizationActiveSelection,
@@ -376,7 +376,7 @@ export function createDrizzleOrganizationRepository(
       })
     },
 
-    removeMember: async (access, userId) => {
+    removeMember: async (access, removal) => {
       // **C'est ce prédicat qui refuse**, et lui seul : la règle du `domain` ne
       // sert qu'à nommer le refus et à décider si l'écran propose l'action. Une
       // lecture des membres qui déciderait, suivie d'un `delete` qui obéit,
@@ -397,7 +397,86 @@ export function createDrizzleOrganizationRepository(
           .where(
             and(
               eq(organizationMember.organizationId, access.organizationId),
-              eq(organizationMember.userId, userId),
+              eq(organizationMember.userId, removal.userId),
+              or(
+                ne(organizationMember.role, FOUNDER_ROLE),
+                gt(
+                  sql<number>`(select count(*) from ${organizationMember} as owners
+                      where owners.organization_id = ${access.organizationId}
+                        and owners.role = ${FOUNDER_ROLE})`,
+                  1,
+                ),
+              ),
+              // **La borne de rôle de s17, dans le même prédicat** : un `admin`
+              // ne retire pas un `owner`. Décidée par le `domain`, appliquée
+              // ici — la lire avant l'ordre laisserait la fenêtre où la cible
+              // devient propriétaire entre les deux.
+              removal.unremovableRoles.length === 0
+                ? undefined
+                : notInArray(organizationMember.role, [...removal.unremovableRoles]),
+            ),
+          )
+          .returning({ id: organizationMember.id })
+
+        return removed.length > 0
+      })
+    },
+
+    setMemberRole: async (access, change) => {
+      // **Le même verrou, la même clé que le retrait** (s16, F1), et ce n'est
+      // pas une précaution de plus : s17 ouvre une **seconde** voie vers
+      // « une organisation sans propriétaire » — la rétrogradation. Deux
+      // rétrogradations concurrentes des deux seuls propriétaires évalueraient
+      // chacune la sous-requête sur l'état d'avant l'autre. La clé étant
+      // l'organisation, une rétrogradation est aussi sérialisée contre un
+      // retrait : les deux voies ne peuvent pas se croiser.
+      return await db.transaction(async (transaction) => {
+        await lockOrganizationMembership(transaction, access.organizationId)
+
+        if (change.transfersOwnership) {
+          // **Le transfert** (critère 4) : la cible devient propriétaire et
+          // l'appelant administrateur, dans la **même** transaction. Le nombre
+          // de propriétaires ne descend donc jamais sous un, et il n'y a aucun
+          // prédicat de comptage à écrire — l'invariant tient par construction.
+          const [promoted] = await transaction
+            .update(organizationMember)
+            .set({ role: change.role })
+            .where(
+              and(
+                eq(organizationMember.organizationId, access.organizationId),
+                eq(organizationMember.userId, change.userId),
+              ),
+            )
+            .returning({ id: organizationMember.id })
+
+          if (promoted === undefined) {
+            return false
+          }
+
+          await transaction
+            .update(organizationMember)
+            .set({ role: SUCCEEDED_OWNER_ROLE })
+            .where(
+              and(
+                eq(organizationMember.organizationId, access.organizationId),
+                eq(organizationMember.userId, access.userId),
+              ),
+            )
+
+          return true
+        }
+
+        // Hors transfert, **le prédicat porte la règle du dernier
+        // propriétaire** : rétrograder un propriétaire n'est permis que s'il en
+        // reste un autre. Une lecture qui déciderait avant ferait deux vérités,
+        // et laisserait la fenêtre entre les deux.
+        const changed = await transaction
+          .update(organizationMember)
+          .set({ role: change.role })
+          .where(
+            and(
+              eq(organizationMember.organizationId, access.organizationId),
+              eq(organizationMember.userId, change.userId),
               or(
                 ne(organizationMember.role, FOUNDER_ROLE),
                 gt(
@@ -411,7 +490,7 @@ export function createDrizzleOrganizationRepository(
           )
           .returning({ id: organizationMember.id })
 
-        return removed.length > 0
+        return changed.length > 0
       })
     },
   }

@@ -6,7 +6,8 @@ import {
   createOrganizationsUseCases,
   type OrganizationsUseCases,
 } from '../application/organization-use-cases'
-import type { InvitationTokenFactory } from '../application/ports'
+import type { InvitationTokenFactory, SecurityLog } from '../application/ports'
+import { consoleSecurityLog } from './console-security-log'
 import {
   createDrizzleOrganizationRepository,
   type OrganizationsDatabase,
@@ -49,6 +50,13 @@ export interface ConfigureOrganizationsOptions {
   readonly now?: () => Date
   /** La fabrique de jetons. Injectable pour la même raison que l'horloge. */
   readonly tokens?: InvitationTokenFactory
+  /**
+   * Le journal des événements de sécurité (s17, `docs/security.md` §7).
+   *
+   * Injectable pour la même raison que l'horloge : un journal non injecté est un
+   * journal qu'aucun cas ne peut lire. Par défaut, la sortie standard.
+   */
+  readonly securityLog?: SecurityLog
 }
 
 export interface OrganizationsService {
@@ -80,6 +88,7 @@ const build = (options: ConfigureOrganizationsOptions): OrganizationsService => 
     emailLocale: options.emailLocale,
     now: options.now ?? (() => new Date()),
     tokens: options.tokens ?? createInvitationTokenFactory(),
+    securityLog: options.securityLog ?? consoleSecurityLog,
   }),
 })
 

@@ -1,6 +1,8 @@
 import type { Mailer } from '@repo/ports'
 
 import type { OrganizationRole } from '../domain/organization'
+import type { OrganizationSecurityEvent } from '../domain/security-event'
+
 import type { MembershipRecord, OrganizationAccess } from './organization-access'
 
 /**
@@ -186,8 +188,46 @@ export interface OrganizationRepository {
    * Retire une appartenance. Le prédicat porte **lui-même** la règle du dernier
    * propriétaire : une lecture suivie d'un `delete` laisserait la fenêtre où
    * deux propriétaires se retirent simultanément.
+   *
+   * `unremovableRoles` (s17) est la borne de rôle, **décidée par le `domain`**
+   * (`unremovableRolesFor`) et appliquée ici dans le même prédicat : un `admin`
+   * ne retire pas un `owner`. La passer plutôt que la coder ici garde la
+   * politique dans la couche qui la possède, et la fenêtre fermée.
    */
-  removeMember(access: OrganizationAccess, userId: string): Promise<boolean>
+  removeMember(
+    access: OrganizationAccess,
+    removal: {
+      readonly userId: string
+      readonly unremovableRoles: readonly OrganizationRole[]
+    },
+  ): Promise<boolean>
+
+  /**
+   * Change le rôle d'un membre. `false` quand rien n'a changé — la ligne
+   * n'existe pas dans cette organisation, ou le prédicat a refusé.
+   *
+   * Deux chemins, un seul verrou (s17) :
+   *
+   * - `transfersOwnership` : la cible devient propriétaire **et** l'appelant
+   *   administrateur, dans la même transaction (critère 4). Le nombre de
+   *   propriétaires ne descend jamais sous un ;
+   * - sinon, le prédicat porte la règle du dernier propriétaire, comme celui du
+   *   retrait : rétrograder un propriétaire n'est permis que s'il en reste un
+   *   autre.
+   *
+   * Dans les deux cas la transaction prend d'abord le **même** verrou
+   * consultatif que le retrait, sur la même clé : c'est ce qui empêche une
+   * rétrogradation et un retrait concurrents de laisser l'organisation sans
+   * gouvernance.
+   */
+  setMemberRole(
+    access: OrganizationAccess,
+    change: {
+      readonly userId: string
+      readonly role: OrganizationRole
+      readonly transfersOwnership: boolean
+    },
+  ): Promise<boolean>
 
   /** L'adresse d'un compte, telle que l'acceptation la compare à l'invitation. */
   emailOf(userId: string): Promise<string | null>
@@ -280,7 +320,24 @@ export interface OrganizationsDependencies {
   readonly now: () => Date
   /** Fabrique de jetons : un secret imprévisible et son empreinte. */
   readonly tokens: InvitationTokenFactory
+  /**
+   * Le journal des événements de sécurité (`docs/security.md` §7).
+   *
+   * Injecté comme le mailer : le module ne sait pas où cela part. Son
+   * implémentation par défaut écrit sur la sortie standard, jusqu'au port de
+   * supervision de s39.
+   */
+  readonly securityLog: SecurityLog
 }
+
+/**
+ * Le port du journal de sécurité.
+ *
+ * Il ne rend rien et ne lève pas : journaliser ne doit jamais changer l'issue
+ * d'une requête. Sa forme d'entrée est **fermée**
+ * (`domain/security-event.ts`) — il n'y a aucun champ où glisser un secret.
+ */
+export type SecurityLog = (event: OrganizationSecurityEvent) => void
 
 /**
  * La fabrique du jeton d'invitation, **injectée**.

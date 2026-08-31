@@ -23,12 +23,17 @@ import {
   EMPTY_ORGANIZATIONS_VIEW,
   INVITATION_QUOTA_PER_WINDOW,
   INVITATION_QUOTA_WINDOW_SECONDS,
+  ORGANIZATION_ACTIONS,
   ORGANIZATIONS_KEYS,
   organizationMember,
   organizationsMessageKeys,
+  assignableRolesFor,
+  permissionsOf,
   organizationsModule,
   organizationRoutePath,
   resetOrganizationsService,
+  type OrganizationRole,
+  type OrganizationSecurityEvent,
   type OrganizationsService,
   type OrganizationsView,
 } from '@repo/module-organizations'
@@ -154,6 +159,15 @@ const lastInvitationLink = (): string => {
 
 const tokenOf = (link: string): string => new URL(link).searchParams.get('token') ?? ''
 
+/**
+ * Le journal de sécurité de la suite (s17).
+ *
+ * Injecté comme le mailer : sans cela, l'exigence « journaliser le changement de
+ * rôle avec son acteur » (`docs/security.md` §7) ne serait vérifiable que par
+ * relecture.
+ */
+const securityEvents: OrganizationSecurityEvent[] = []
+
 /** Compteur d'identifiants : déterministes, donc lisibles dans un échec. */
 let sequence = 0
 
@@ -200,7 +214,8 @@ const call = async (
     | 'resendInvitation'
     | 'revokeInvitation'
     | 'acceptInvitation'
-    | 'removeMember',
+    | 'removeMember'
+    | 'setMemberRole',
   options: CallOptions = {},
 ): Promise<Response> => {
   const url = `${APP_URL}${organizationRoutePath(path)}`
@@ -252,6 +267,7 @@ beforeAll(async () => {
     appUrl: APP_URL,
     emailLocale: defaultLocale,
     now: () => clock,
+    securityLog: (event) => securityEvents.push(event),
   })
 })
 
@@ -1190,14 +1206,17 @@ describe.runIf(databaseReachable)('le retrait d’un membre', () => {
   it('refuse de retirer le dernier propriétaire, y compris par lui-même', async () => {
     const { founder, member, organizationId } = await anOrganizationOfTwo()
 
+    // **Depuis s17, ce refus arrive plus tôt** : un simple membre ne retire
+    // personne d'autre, donc il n'atteint même pas la règle du dernier
+    // propriétaire — 403, avant toute écriture. Le refus `last_owner` par un
+    // tiers est d'ailleurs devenu inatteignable : pour retirer un propriétaire
+    // il faut en être un, et il y en a alors deux.
     const refusedByOther = await call('removeMember', {
       session: member,
       body: { organizationId, userId: founder.userId },
     })
 
-    expect(refusedByOther.headers.get('location')).toBe(
-      `${APP_URL}/organizations?error=last_owner`,
-    )
+    expect(refusedByOther.status).toBe(403)
 
     const refusedBySelf = await call('removeMember', {
       session: founder,
@@ -1310,6 +1329,575 @@ describe.runIf(databaseReachable)('le retrait d’un membre', () => {
   })
 })
 
+/* ------------------------------------------------------------------------- *
+ * s17 — les permissions.
+ *
+ * La **matrice** est éprouvée une fois, à la règle
+ * (`packages/modules/organizations/src/domain/organization-rules.test.ts`). Ce
+ * bloc prouve autre chose, et qui ne se prouve nulle part ailleurs : que chaque
+ * porte l'**appelle**, que le refus est un 403 côté serveur — donc qu'un appel
+ * direct échoue même quand l'écran a masqué le déclencheur —, et qu'un refus
+ * n'écrit rien.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * Une organisation, son propriétaire, et un second compte au rôle demandé.
+ *
+ * L'appartenance du second est **écrite directement** : construire un `admin`
+ * avec la route de changement de rôle ferait des fixtures qui dépendent du code
+ * que ces cas mesurent.
+ */
+const anOrganizationWithRole = async (
+  role: OrganizationRole,
+): Promise<{
+  readonly owner: ModuleSession
+  readonly other: ModuleSession
+  readonly organizationId: string
+}> => {
+  const owner = await anAccount()
+  const organizationId = await anOrganization(owner)
+  const other = await anAccount()
+
+  await connection.db.insert(organizationMember).values({
+    id: generateId('mbr'),
+    organizationId,
+    userId: other.userId,
+    role,
+  })
+
+  return { owner, other, organizationId }
+}
+
+describe.runIf(databaseReachable)('le refus d’un rôle insuffisant', () => {
+  it('rend 403 à un membre de l’organisation, et 404 à qui n’en est pas', async () => {
+    // **Le partage 403 / 404 se fait sur l'appartenance, pas sur le rôle.**
+    // Un membre sait déjà que son organisation existe : lui répondre 403 ne lui
+    // apprend rien. Un non-membre, lui, ne doit pas l'apprendre — d'où le 404,
+    // et d'où l'ordre : autorisation d'abord, permission ensuite
+    // (`docs/security.md` §3).
+    const { owner, other, organizationId } = await anOrganizationWithRole('member')
+
+    const forbidden = await call('update', {
+      session: other,
+      body: { organizationId, name: 'Renommé par un membre', slug: aSlug() },
+    })
+
+    expect(forbidden.status).toBe(403)
+
+    // Un compte qui a **sa propre** organisation, donc un rôle quelque part :
+    // sur celle-ci, il n'est rien, et la réponse ne le distingue pas d'une
+    // organisation inexistante.
+    const elsewhere = await anAccount()
+
+    await anOrganization(elsewhere)
+
+    const hidden = await call('update', {
+      session: elsewhere,
+      body: { organizationId, name: 'Renommé par un étranger', slug: aSlug() },
+    })
+
+    expect(hidden.status).toBe(404)
+
+    // Et aucun des deux refus n'a écrit quoi que ce soit.
+    const after = await service.useCases.viewOrganizations(owner.userId)
+
+    expect(after.current?.name).toBe('Studio Martin')
+  })
+
+  it('ferme les quatre autres portes à un simple membre, sans rien écrire ni envoyer', async () => {
+    // **Un témoin par porte**, et rien de plus : la matrice est éprouvée à la
+    // règle. Ce qui se prouve ici, c'est que chacune l'appelle — retirer la
+    // garde d'une seule fait rougir ce cas.
+    const { owner, other, organizationId } = await anOrganizationWithRole('member')
+
+    // **La cible du retrait est un membre parfaitement retirable**, et c'est le
+    // détail qui décide : viser le propriétaire ferait passer le cas par la
+    // règle du dernier propriétaire, et la garde de rôle pourrait sauter sans
+    // que rien ne rougisse — mesuré, la première version de ce cas restait
+    // verte sous mutation.
+    const bystander = await anAccount()
+
+    await connection.db.insert(organizationMember).values({
+      id: generateId('mbr'),
+      organizationId,
+      userId: bystander.userId,
+      role: 'member',
+    })
+
+    await call('invite', { session: owner, body: { organizationId, email: anUnknownEmail() } })
+
+    const [invitation] = await invitationsOf(owner)
+    const invitationId = invitation?.id ?? ''
+    const sentBefore = outbox.sent.length
+
+    const refusals = await Promise.all([
+      call('invite', { session: other, body: { organizationId, email: anUnknownEmail() } }),
+      call('resendInvitation', { session: other, body: { organizationId, invitationId } }),
+      call('revokeInvitation', { session: other, body: { organizationId, invitationId } }),
+      call('removeMember', { session: other, body: { organizationId, userId: bystander.userId } }),
+    ])
+
+    expect(refusals.map((response) => response.status)).toEqual([403, 403, 403, 403])
+
+    // Aucun email n'est parti, l'invitation est intacte, et les trois membres
+    // sont toujours là — un refus qui atteint la donnée n'est pas un refus.
+    expect(outbox.sent.length).toBe(sentBefore)
+    expect(await invitationsOf(owner)).toEqual([
+      expect.objectContaining({ id: invitationId, status: 'pending' }),
+    ])
+    expect(await countRows('organization_member', 'organization_id', organizationId)).toBe(3)
+  })
+
+  it('refuse un rôle que la matrice ne connaît pas, sans faillir en 500', async () => {
+    // La base ne contraint pas la valeur de `organization_member.role` : une
+    // ligne portant un rôle inconnu est représentable, et le rôle est relu à
+    // chaque requête. Elle doit **refuser**, pas lever (revue de s17, F3).
+    const owner = await anAccount()
+    const organizationId = await anOrganization(owner)
+    const outsider = await anAccount()
+
+    await connection.db.insert(organizationMember).values({
+      id: generateId('mbr'),
+      organizationId,
+      userId: outsider.userId,
+      role: 'superadmin' as OrganizationRole,
+    })
+
+    const refused = await call('update', {
+      session: outsider,
+      body: { organizationId, name: 'Renommé par un rôle inconnu', slug: aSlug() },
+    })
+
+    expect(refused.status).toBe(403)
+  })
+
+  it('laisse un simple membre quitter l’organisation', async () => {
+    // Quitter n'est pas une action d'administration : c'est le geste de la
+    // personne sur sa propre appartenance. Le fermer avec le reste priverait un
+    // membre du seul geste qui lui reste.
+    const { other, organizationId } = await anOrganizationWithRole('member')
+
+    const left = await call('removeMember', {
+      session: other,
+      body: { organizationId, userId: other.userId },
+    })
+
+    expect(left.headers.get('location')).toBe(`${APP_URL}/organizations`)
+    expect(await countRows('organization_member', 'organization_id', organizationId)).toBe(1)
+  })
+
+  it('laisse un administrateur inviter et retirer un membre', async () => {
+    const { owner, other: admin, organizationId } = await anOrganizationWithRole('admin')
+    const newcomer = await anAccount()
+
+    await connection.db.insert(organizationMember).values({
+      id: generateId('mbr'),
+      organizationId,
+      userId: newcomer.userId,
+      role: 'member',
+    })
+
+    const invited = await call('invite', {
+      session: admin,
+      body: { organizationId, email: anUnknownEmail() },
+    })
+
+    expect(invited.headers.get('location')).toBe(`${APP_URL}/organizations`)
+
+    const removed = await call('removeMember', {
+      session: admin,
+      body: { organizationId, userId: newcomer.userId },
+    })
+
+    expect(removed.headers.get('location')).toBe(`${APP_URL}/organizations`)
+    expect(await countRows('organization_member', 'user_id', newcomer.userId)).toBe(0)
+    expect(await countRows('organization_member', 'user_id', owner.userId)).toBe(1)
+  })
+
+  it('refuse à un administrateur de retirer un propriétaire ou un autre administrateur', async () => {
+    // Critère 3 : « un admin … peut inviter et retirer des **members** », et il
+    // « ne peut pas modifier un owner ». Sans cette borne, l'échelon
+    // intermédiaire destitue celui du dessus — et, jusqu'à la revue de s17,
+    // **son pair** : deux administrateurs pouvaient se retirer l'un l'autre,
+    // une prise de pouvoir latérale que personne n'avait décidée.
+    const { owner, other: admin, organizationId } = await anOrganizationWithRole('admin')
+    // **Un second propriétaire**, et c'est le détail qui décide : avec un seul,
+    // le retrait serait déjà refusé par la règle du dernier propriétaire, et la
+    // borne de rôle pourrait sauter sans que rien ne rougisse. Ici, le retrait
+    // réussirait si la borne n'était pas dans le prédicat — mesuré.
+    const secondOwner = await anAccount()
+
+    await connection.db.insert(organizationMember).values({
+      id: generateId('mbr'),
+      organizationId,
+      userId: secondOwner.userId,
+      role: 'owner',
+    })
+
+    // Un **second administrateur**, la cible de la borne neuve.
+    const peer = await anAccount()
+
+    await connection.db.insert(organizationMember).values({
+      id: generateId('mbr'),
+      organizationId,
+      userId: peer.userId,
+      role: 'admin',
+    })
+
+    const refused = await call('removeMember', {
+      session: admin,
+      body: { organizationId, userId: owner.userId },
+    })
+
+    expect(refused.status).toBe(403)
+
+    const laterally = await call('removeMember', {
+      session: admin,
+      body: { organizationId, userId: peer.userId },
+    })
+
+    expect(laterally.status).toBe(403)
+    expect(await countRows('organization_member', 'user_id', owner.userId)).toBe(1)
+    expect(await countRows('organization_member', 'user_id', peer.userId)).toBe(1)
+    expect(await countRows('organization_member', 'organization_id', organizationId)).toBe(4)
+  })
+})
+
+describe.runIf(databaseReachable)('le changement de rôle', () => {
+  /** Le rôle que la vue du propriétaire attribue à ce compte, ou `undefined`. */
+  const roleOf = async (
+    viewer: ModuleSession,
+    userId: string,
+  ): Promise<OrganizationRole | undefined> =>
+    (await membersOf(viewer)).find((member) => member.userId === userId)?.role
+
+  it('promeut un membre, puis le rétrograde, et le rejeu n’ajoute rien', async () => {
+    const { owner, other, organizationId } = await anOrganizationWithRole('member')
+
+    const promoted = await call('setMemberRole', {
+      session: owner,
+      body: { organizationId, userId: other.userId, role: 'admin' },
+    })
+
+    expect(promoted.headers.get('location')).toBe(`${APP_URL}/organizations`)
+    expect(await roleOf(owner, other.userId)).toBe('admin')
+
+    // Rejouable : le même ordre, le même état, aucune ligne de plus
+    // (`docs/reliability.md` §1).
+    const replayed = await call('setMemberRole', {
+      session: owner,
+      body: { organizationId, userId: other.userId, role: 'admin' },
+    })
+
+    expect(replayed.headers.get('location')).toBe(`${APP_URL}/organizations`)
+    expect(await countRows('organization_member', 'user_id', other.userId)).toBe(1)
+
+    const demoted = await call('setMemberRole', {
+      session: owner,
+      body: { organizationId, userId: other.userId, role: 'member' },
+    })
+
+    expect(demoted.headers.get('location')).toBe(`${APP_URL}/organizations`)
+    expect(await roleOf(owner, other.userId)).toBe('member')
+  })
+
+  it('transfère la propriété : l’ancien propriétaire devient administrateur', async () => {
+    // **Critère 4.** Nommer quelqu'un d'autre propriétaire *est* le transfert :
+    // les deux lignes changent dans la même transaction, si bien que le nombre
+    // de propriétaires ne descend jamais sous un.
+    const { owner, other, organizationId } = await anOrganizationWithRole('member')
+
+    const transferred = await call('setMemberRole', {
+      session: owner,
+      body: { organizationId, userId: other.userId, role: 'owner' },
+    })
+
+    expect(transferred.headers.get('location')).toBe(`${APP_URL}/organizations`)
+    // Lu par l'**ancien** propriétaire : c'est lui dont l'organisation est
+    // courante, et il voit sa propre destitution.
+    expect(await roleOf(owner, other.userId)).toBe('owner')
+    expect(await roleOf(owner, owner.userId)).toBe('admin')
+
+    // Et l'ancien propriétaire a réellement perdu le pouvoir : il ne distribue
+    // plus les rôles.
+    const refused = await call('setMemberRole', {
+      session: owner,
+      body: { organizationId, userId: other.userId, role: 'member' },
+    })
+
+    expect(refused.status).toBe(403)
+  })
+
+  it('refuse un rôle qui n’existe pas, sans rien écrire', async () => {
+    const { owner, other, organizationId } = await anOrganizationWithRole('member')
+
+    const refused = await call('setMemberRole', {
+      session: owner,
+      body: { organizationId, userId: other.userId, role: 'superadmin' },
+    })
+
+    expect(refused.headers.get('location')).toBe(`${APP_URL}/organizations?error=invalid_role`)
+    expect(await roleOf(owner, other.userId)).toBe('member')
+  })
+
+  it('refuse de rétrograder le dernier propriétaire', async () => {
+    // La seconde voie vers « une organisation sans gouvernance », après le
+    // retrait de s16. Le prédicat de l'ordre de modification compte les
+    // propriétaires dans la même instruction.
+    const { owner, organizationId } = await anOrganizationWithRole('member')
+
+    const refused = await call('setMemberRole', {
+      session: owner,
+      body: { organizationId, userId: owner.userId, role: 'admin' },
+    })
+
+    expect(refused.headers.get('location')).toBe(`${APP_URL}/organizations?error=last_owner`)
+    expect(await roleOf(owner, owner.userId)).toBe('owner')
+  })
+
+  it('laisse un propriétaire se rétrograder dès qu’il en reste un autre', async () => {
+    const { owner, other, organizationId } = await anOrganizationWithRole('owner')
+
+    const demoted = await call('setMemberRole', {
+      session: owner,
+      body: { organizationId, userId: owner.userId, role: 'member' },
+    })
+
+    expect(demoted.headers.get('location')).toBe(`${APP_URL}/organizations`)
+    expect(await roleOf(owner, owner.userId)).toBe('member')
+    expect(await roleOf(owner, other.userId)).toBe('owner')
+  })
+
+  it('refuse la distribution des rôles à un administrateur', async () => {
+    const { other: admin, organizationId } = await anOrganizationWithRole('admin')
+    const third = await anAccount()
+
+    await connection.db.insert(organizationMember).values({
+      id: generateId('mbr'),
+      organizationId,
+      userId: third.userId,
+      role: 'member',
+    })
+
+    const refused = await call('setMemberRole', {
+      session: admin,
+      body: { organizationId, userId: third.userId, role: 'admin' },
+    })
+
+    expect(refused.status).toBe(403)
+    expect(await countRows('organization_member', 'user_id', third.userId)).toBe(1)
+  })
+
+  it('garde un propriétaire quand deux rétrogradations partent ensemble, à chaque course', async () => {
+    // **La seconde voie vers l'état interdit**, et elle est neuve : s16 a fermé
+    // le retrait, s17 ouvre la rétrogradation. Sans sérialisation, deux ordres
+    // en vol évaluent chacun la sous-requête sur l'état d'avant l'autre et
+    // laissent l'organisation sans propriétaire — l'état qu'aucune route ne
+    // rattrape, puisqu'il faut être propriétaire pour en nommer un.
+    //
+    // Une **seule** session, deux soumissions parallèles : « rétrograder
+    // l'autre » et « me rétrograder ». C'est le geste que l'écran offre. Dix
+    // courses, et non une : une course qu'on n'attrape qu'un tirage sur quatre
+    // est un test plus étroit que son nom. Les deux connexions du pool sont
+    // réveillées avant la mesure, et les deux requêtes partent dans le même
+    // tour de boucle.
+    const RACES = 10
+    const owners: number[] = []
+
+    for (let race = 0; race < RACES; race += 1) {
+      const founder = await anAccount()
+      const organizationId = await anOrganization(founder)
+      const second = await anAccount()
+
+      await connection.db.insert(organizationMember).values({
+        id: generateId('mbr'),
+        organizationId,
+        userId: second.userId,
+        role: 'owner',
+      })
+
+      await Promise.all([
+        connection.db.execute(sql`select 1`),
+        connection.db.execute(sql`select 1`),
+      ])
+
+      await Promise.all([
+        call('setMemberRole', {
+          session: founder,
+          body: { organizationId, userId: second.userId, role: 'member' },
+        }),
+        call('setMemberRole', {
+          session: founder,
+          body: { organizationId, userId: founder.userId, role: 'member' },
+        }),
+      ])
+
+      const counted = await connection.db.execute<{ count: number }>(
+        sql`select count(*)::int as count from organization_member
+            where organization_id = ${organizationId} and role = 'owner'`,
+      )
+
+      owners.push(Number(counted.rows[0]?.count ?? 0))
+    }
+
+    // Le message porte les tirages : un échec doit dire **combien** de courses
+    // ont laissé l'organisation sans propriétaire, pas seulement qu'il y en a.
+    expect(owners, `propriétaires restants par course : ${owners.join(', ')}`).toEqual(
+      Array.from({ length: RACES }, () => 1),
+    )
+  })
+
+  it('change le pouvoir à l’instant, sur la même session, sans reconnexion', async () => {
+    // **Le jumeau montant du cas de s16** (« fait perdre l'accès immédiatement,
+    // à la même session »), et c'est ce qui permet de ne pas faire tourner
+    // l'identifiant de session à une élévation de privilège (ADR 026, ADR 030).
+    //
+    // Le jeton ne porte **aucune** autorité organisationnelle : le pouvoir est
+    // la ligne `organization_member`, relue dans le prédicat de la lecture
+    // conjointe à chaque requête. Si un jour une lecture la mettait en cache,
+    // ce cas rougirait — et l'ADR 026 serait à rouvrir.
+    const { owner, other, organizationId } = await anOrganizationWithRole('member')
+
+    // La **même** valeur de session est réutilisée d'un bout à l'autre : rien
+    // n'est reconnecté, rien n'est re-résolu côté appelant.
+    const before = await call('invite', {
+      session: other,
+      body: { organizationId, email: anUnknownEmail() },
+    })
+
+    expect(before.status).toBe(403)
+
+    await call('setMemberRole', {
+      session: owner,
+      body: { organizationId, userId: other.userId, role: 'admin' },
+    })
+
+    // Le pouvoir **augmente** aussitôt : aucune reconnexion, aucun nouveau
+    // cookie.
+    const promoted = await call('invite', {
+      session: other,
+      body: { organizationId, email: anUnknownEmail() },
+    })
+
+    expect(promoted.headers.get('location')).toBe(`${APP_URL}/organizations`)
+
+    await call('setMemberRole', {
+      session: owner,
+      body: { organizationId, userId: other.userId, role: 'member' },
+    })
+
+    // Et il **retombe** aussitôt : c'est la réciproque, celle qui est opposable.
+    const demoted = await call('invite', {
+      session: other,
+      body: { organizationId, email: anUnknownEmail() },
+    })
+
+    expect(demoted.status).toBe(403)
+  })
+
+  it('journalise le changement de rôle et son refus, avec leur acteur', async () => {
+    // `docs/security.md` §7 nomme explicitement « changement de rôle » parmi les
+    // événements de sécurité à journaliser **avec leur acteur**. Le refus de
+    // permission l'est aussi : c'est le signal d'une tentative d'élévation, et
+    // le module `auth` journalise déjà ses refus pour la même raison
+    // (`auth.session_revocation_refused`).
+    const { owner, other, organizationId } = await anOrganizationWithRole('member')
+
+    securityEvents.length = 0
+
+    await call('setMemberRole', {
+      session: owner,
+      body: { organizationId, userId: other.userId, role: 'admin' },
+    })
+
+    expect(securityEvents).toEqual([
+      {
+        event: 'organizations.role_changed',
+        actor: owner.userId,
+        organizationId,
+        target: other.userId,
+        role: 'admin',
+        transfersOwnership: false,
+      },
+    ])
+
+    securityEvents.length = 0
+
+    // L'`admin` fraîchement nommé tente de distribuer un rôle : refusé, et
+    // journalisé sous son propre compte.
+    await call('setMemberRole', {
+      session: other,
+      body: { organizationId, userId: owner.userId, role: 'member' },
+    })
+
+    expect(securityEvents).toEqual([
+      {
+        event: 'organizations.role_change_refused',
+        actor: other.userId,
+        organizationId,
+        target: owner.userId,
+        role: 'member',
+        transfersOwnership: false,
+      },
+    ])
+  })
+
+  it('refuse le droit avant de juger le corps, et journalise ce refus-là aussi', async () => {
+    // **L'ordre du module, sans exception** : autorisation, puis permission,
+    // puis validation (revue de s17, F5). Valider d'abord rendait à un appelant
+    // sans aucun droit un 303 vers l'écran avec un motif traduit — exactement ce
+    // que l'ADR 030 rejette, « un motif traduit dans l'URL décrirait la
+    // politique à qui la sonde » — et surtout : une sonde d'élévation qui envoie
+    // toujours un rôle malformé n'entrait **jamais** dans le journal du §7.
+    const { owner, other, organizationId } = await anOrganizationWithRole('member')
+
+    securityEvents.length = 0
+
+    const refused = await call('setMemberRole', {
+      session: other,
+      body: { organizationId, userId: owner.userId, role: 'pas-un-role' },
+    })
+
+    expect(refused.status).toBe(403)
+    // La cible est nommée telle qu'elle est arrivée ; le rôle, lui, n'a pas de
+    // valeur connue — le journal dit `null` plutôt que d'inventer.
+    expect(securityEvents).toEqual([
+      {
+        event: 'organizations.role_change_refused',
+        actor: other.userId,
+        organizationId,
+        target: owner.userId,
+        role: null,
+        transfersOwnership: false,
+      },
+    ])
+  })
+
+  it('n’agit que dans l’organisation autorisée', async () => {
+    // Les deux portes, comme pour la révocation et le retrait : la cible d'une
+    // autre organisation n'est « pas membre », et l'identifiant d'organisation
+    // d'autrui rend 404 — jamais 403, qui confirmerait son existence.
+    const { other, organizationId } = await anOrganizationWithRole('member')
+    const elsewhere = await anAccount()
+    const otherOrganizationId = await anOrganization(elsewhere)
+
+    const refused = await call('setMemberRole', {
+      session: elsewhere,
+      body: { organizationId: otherOrganizationId, userId: other.userId, role: 'admin' },
+    })
+
+    expect(refused.headers.get('location')).toBe(`${APP_URL}/organizations?error=not_a_member`)
+
+    const disguised = await call('setMemberRole', {
+      session: elsewhere,
+      body: { organizationId, userId: other.userId, role: 'admin' },
+    })
+
+    expect(disguised.status).toBe(404)
+    expect(await countRows('organization_member', 'user_id', other.userId)).toBe(1)
+  })
+})
+
 describe.runIf(databaseReachable)('ce que l’écran voit', () => {
   it('liste les membres avec leur adresse, et dit lequel ne peut pas être retiré', async () => {
     const { founder, member } = await anAccount().then(async (first) => {
@@ -1333,6 +1921,78 @@ describe.runIf(databaseReachable)('ce que l’écran voit', () => {
     // pas un bouton, il n'en a pas. Le serveur refuse malgré tout.
     expect(members.find((entry) => entry.userId === founder.userId)?.removable).toBe(false)
     expect(members.find((entry) => entry.userId === member.userId)?.removable).toBe(true)
+  })
+
+  /**
+   * **Les affordances sont dérivées du rôle de l'appelant, par le serveur**
+   * (revue de s17, F1).
+   *
+   * Le cas de rendu qui porte ce nom reçoit `permissions` et `assignableRoles`
+   * en **paramètres** : il éprouve le `.tsx`, jamais le calcul. Mesuré en revue :
+   * remplacer `assignableRolesFor(access, identity)` par les trois rôles en dur
+   * laissait 1086 cas et 58 parcours au vert, et un simple `member` se serait vu
+   * offrir « Administrateur » et « Transférer la propriété » sur chaque ligne —
+   * chacun refusé par un 403 nu, donc un écran qui ment.
+   *
+   * Ce cas confronte donc la vue **servie** aux fonctions du `domain`, pour les
+   * trois rôles. Il ne rejoue pas la matrice — elle est éprouvée à la règle : il
+   * prouve que la vue la **consulte avec le rôle de l'appelant**, et pas avec un
+   * autre.
+   */
+  it('dérive les droits et les rôles offerts du rôle de l’appelant, pour chacun des trois', async () => {
+    const { owner, other: member, organizationId } = await anOrganizationWithRole('member')
+    const admin = await anAccount()
+
+    await connection.db.insert(organizationMember).values({
+      id: generateId('mbr'),
+      organizationId,
+      userId: admin.userId,
+      role: 'admin',
+    })
+
+    /** La vue telle que ce compte la reçoit, son organisation courante posée. */
+    const seenBy = async (session: ModuleSession): Promise<OrganizationsView> => {
+      await call('switch', { session, body: { organizationId } })
+
+      return await service.useCases.viewOrganizations(session.userId)
+    }
+
+    const viewers = [
+      { session: owner, role: 'owner' as const },
+      { session: admin, role: 'admin' as const },
+      { session: member, role: 'member' as const },
+    ]
+
+    for (const viewer of viewers) {
+      const view = await seenBy(viewer.session)
+      const actor = { userId: viewer.session.userId, role: viewer.role }
+
+      expect(view.permissions, viewer.role).toEqual(permissionsOf(viewer.role))
+      expect(view.members, viewer.role).toHaveLength(3)
+
+      for (const row of view.members) {
+        expect(row.assignableRoles, `${viewer.role} → ${row.role}`).toEqual(
+          assignableRolesFor(actor, { userId: row.userId, role: row.role }),
+        )
+      }
+    }
+
+    // Les ancres, pour que ce cas ne se compare pas seulement à lui-même : un
+    // `member` ne se voit offrir **aucun** rôle nulle part et ne peut rien, un
+    // `owner` s'en voit offrir sur les lignes des autres et aucun sur la sienne.
+    const asMember = await seenBy(member)
+
+    expect(asMember.members.flatMap((row) => row.assignableRoles)).toEqual([])
+    expect(asMember.permissions['member.invite']).toBe(false)
+    expect(asMember.permissions['member.set_role']).toBe(false)
+
+    const asOwner = await seenBy(owner)
+    const rowOf = (userId: string) => asOwner.members.find((row) => row.userId === userId)
+
+    expect(rowOf(member.userId)?.assignableRoles).toEqual(['admin', 'owner'])
+    expect(rowOf(admin.userId)?.assignableRoles).toEqual(['member', 'owner'])
+    expect(rowOf(owner.userId)?.assignableRoles).toEqual([])
+    expect(asOwner.permissions['member.set_role']).toBe(true)
   })
 
   it('ne montre ni membres ni invitations quand aucune organisation n’est courante', async () => {
@@ -1589,10 +2249,21 @@ describe('un module `organizations` non activé', () => {
       memberships: [],
       members: [],
       invitations: [],
+      permissions: permissionsOf(null),
     })
     expect(
       resolveDataOwner({ session: { userId: 'usr_1', roles: [] }, activeOrganizationId: null }),
     ).toEqual({ kind: 'user', userId: 'usr_1' })
+  })
+
+  it('accorde toute action au compte, faute d’organisation à consulter', () => {
+    // **Critère 7**, câblé : la vue servie module coupé porte les permissions de
+    // « aucune organisation », c'est-à-dire toutes. Le même appel décide dans
+    // les deux configurations, sans variante — c'est `allows(null, …)` qui le
+    // tient, et son cas vit à la règle.
+    for (const action of ORGANIZATION_ACTIONS) {
+      expect(EMPTY_ORGANIZATIONS_VIEW.permissions[action], action).toBe(true)
+    }
   })
 })
 
@@ -1612,14 +2283,23 @@ describe('un module `organizations` non activé', () => {
  * l'assertion une lecture directe.
  */
 describe('le sélecteur d’organisation, quand rien n’est sélectionné', () => {
+  /**
+   * Les URL des routes, **distinctes et improbables**.
+   *
+   * Les valeurs d'origine (`/c`, `/u`, `/m`…) étaient des sous-chaînes : `/u`
+   * se trouve dans n'importe quel `</ul>`, et un cas « cette action n'est pas
+   * offerte » passait donc au vert par accident. C'est le mode d'échec
+   * « couverture par sous-chaîne » de la méthode, mesuré ici.
+   */
   const ACTIONS = {
-    create: '/c',
-    switch: '/s',
-    update: '/u',
-    invite: '/i',
-    resendInvitation: '/r',
-    revokeInvitation: '/x',
-    removeMember: '/m',
+    create: '/route-create',
+    switch: '/route-switch',
+    update: '/route-update',
+    invite: '/route-invite',
+    resendInvitation: '/route-resend',
+    revokeInvitation: '/route-revoke',
+    removeMember: '/route-remove',
+    setMemberRole: '/route-set-role',
   }
   const A_MEMBERSHIP = {
     id: 'org_1',
@@ -1676,12 +2356,92 @@ describe('le sélecteur d’organisation, quand rien n’est sélectionné', () 
       current: A_MEMBERSHIP,
       memberships: [A_MEMBERSHIP],
       members: [
-        { userId: 'usr_1', email: 'alice@example.test', role: 'owner' as const, removable },
+        {
+          userId: 'usr_1',
+          email: 'alice@example.test',
+          role: 'owner' as const,
+          removable,
+          assignableRoles: [],
+        },
       ],
     })
 
     expect(await render(withMembers(false))).not.toContain(ACTIONS.removeMember)
     expect(await render(withMembers(true))).toContain(ACTIONS.removeMember)
+  })
+
+  /**
+   * **L'écran ne décide de rien** (s17).
+   *
+   * Il ne compare aucun rôle : il lit `permissions` et `assignableRoles`,
+   * calculés par le serveur avec les fonctions qui gardent aussi les routes. Une
+   * condition de rôle écrite dans le `.tsx` ferait exister la matrice à deux
+   * endroits, et le second serait celui qui ment.
+   *
+   * Ce qui est mesuré ici est l'**affordance**, pas la permission : le serveur
+   * refuse de toute façon, en 403, et les cas de câblage plus haut le prouvent.
+   */
+  it('ne montre à un simple membre ni l’invitation, ni les paramètres', async () => {
+    const asRole = async (role: 'owner' | 'admin' | 'member'): Promise<string> => {
+      const membership = { ...A_MEMBERSHIP, role }
+
+      return await render({
+        current: membership,
+        memberships: [membership],
+        members: [
+          {
+            userId: 'usr_1',
+            email: 'alice@example.test',
+            role,
+            removable: true,
+            assignableRoles: [],
+          },
+        ],
+        invitations: [],
+        permissions: permissionsOf(role),
+      })
+    }
+
+    const asMember = await asRole('member')
+
+    expect(asMember).not.toContain(ACTIONS.invite)
+    expect(asMember).not.toContain(ACTIONS.update)
+    // La carte des membres, elle, reste : savoir avec qui l'on partage ses
+    // données n'est pas un privilège.
+    expect(asMember).toContain(ORGANIZATIONS_KEYS.membersTitle)
+
+    for (const role of ['owner', 'admin'] as const) {
+      const html = await asRole(role)
+
+      expect(html, role).toContain(ACTIONS.invite)
+      expect(html, role).toContain(ACTIONS.update)
+    }
+  })
+
+  it('n’offre un bouton de rôle que sur les lignes qui en reçoivent un', async () => {
+    const withAssignable = (assignableRoles: readonly OrganizationRole[]): OrganizationsView => ({
+      ...EMPTY_ORGANIZATIONS_VIEW,
+      current: A_MEMBERSHIP,
+      memberships: [A_MEMBERSHIP],
+      members: [
+        {
+          userId: 'usr_2',
+          email: 'paul@example.test',
+          role: 'member' as const,
+          removable: true,
+          assignableRoles,
+        },
+      ],
+      permissions: permissionsOf('owner'),
+    })
+
+    expect(await render(withAssignable([]))).not.toContain(ACTIONS.setMemberRole)
+
+    const offered = await render(withAssignable(['admin', 'owner']))
+
+    expect(offered).toContain(ACTIONS.setMemberRole)
+    // Le libellé du bouton nomme le rôle **posé**, pas le rôle courant.
+    expect(offered).toContain(ORGANIZATIONS_KEYS.membersTransfer)
   })
 })
 

@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>s17 — Limiter les actions selon le rôle (maquette de référence)</title>
+    <!--
+      Maquette de RÉFÉRENCE, pas du code. Les tokens sont recopiés de
+      docs/design-system.md ; l'implémentation compose avec packages/ui.
+      Aucun composant ni token inventé : Card, Badge, Button, Alert, Separator,
+      PageHeader, OrgSwitcher — tous déjà dans le baril.
+
+      Ce fichier montre le MÊME écran vu par les trois rôles. C'est la seule
+      chose que s17 change : ce qui disparaît, et les deux boutons de rôle qui
+      s'ajoutent sur une ligne de membre.
+    -->
+    <style>
+      :root {
+        --background: oklch(1 0 0);
+        --foreground: oklch(0.145 0 0);
+        --card: oklch(1 0 0);
+        --card-foreground: oklch(0.145 0 0);
+        --muted: oklch(0.97 0 0);
+        --muted-foreground: oklch(0.556 0 0);
+        --primary: oklch(0.205 0 0);
+        --primary-foreground: oklch(0.985 0 0);
+        --secondary: oklch(0.97 0 0);
+        --secondary-foreground: oklch(0.205 0 0);
+        --destructive: oklch(0.577 0.245 27.325);
+        --border: oklch(0.922 0 0);
+        --radius: 0.5rem;
+      }
+
+      body {
+        margin: 0;
+        padding: 2rem 1rem;
+        background: var(--background);
+        color: var(--foreground);
+        font: 400 0.875rem/1.5 system-ui, sans-serif;
+      }
+
+      .page {
+        max-width: 48rem;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+      }
+
+      h1 {
+        font-size: 1.875rem;
+        font-weight: 600;
+        margin: 0;
+      }
+
+      h2 {
+        font-size: 1.25rem;
+        font-weight: 600;
+        margin: 0;
+      }
+
+      h3 {
+        font-size: 1rem;
+        font-weight: 600;
+        margin: 2rem 0 0;
+      }
+
+      .muted {
+        color: var(--muted-foreground);
+      }
+
+      .small {
+        font-size: 0.75rem;
+      }
+
+      .card {
+        background: var(--card);
+        color: var(--card-foreground);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 1.25rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+
+      .alert {
+        border: 1px solid var(--destructive);
+        color: var(--destructive);
+        border-radius: var(--radius);
+        padding: 0.75rem 1rem;
+      }
+
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.75rem;
+        min-width: 0;
+        padding: 0.75rem 0;
+      }
+
+      ul.list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+
+      ul.list > li + li {
+        border-top: 1px solid var(--border);
+      }
+
+      /* Le libellé prend sa propre ligne sous 640 px (acquis s16, F5), puis
+         partage la ligne au-delà. */
+      .grow {
+        flex: 0 0 100%;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      @media (min-width: 640px) {
+        .grow {
+          flex: 1 1 auto;
+        }
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        padding: 0.125rem 0.5rem;
+        font-size: 0.75rem;
+        background: var(--secondary);
+        color: var(--secondary-foreground);
+      }
+
+      .badge.outline {
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--muted-foreground);
+      }
+
+      .btn {
+        height: 2.5rem;
+        display: inline-flex;
+        align-items: center;
+        padding: 0 0.875rem;
+        border-radius: calc(var(--radius) - 2px);
+        border: 1px solid transparent;
+        background: var(--primary);
+        color: var(--primary-foreground);
+        font-size: 0.875rem;
+        cursor: pointer;
+      }
+
+      .btn.ghost {
+        height: 2.5rem;
+        background: transparent;
+        color: var(--foreground);
+        border-color: transparent;
+        padding: 0 0.625rem;
+      }
+
+      .btn.outline {
+        background: transparent;
+        color: var(--foreground);
+        border-color: var(--border);
+      }
+
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        flex: 1 1 16rem;
+        min-width: 0;
+      }
+
+      input[type='email'],
+      input[type='text'] {
+        height: 2.5rem;
+        border: 1px solid var(--border);
+        border-radius: calc(var(--radius) - 2px);
+        background: var(--background);
+        color: var(--foreground);
+        padding: 0 0.75rem;
+        font: inherit;
+      }
+
+      .separator {
+        height: 1px;
+        background: var(--border);
+        border: 0;
+        margin: 0;
+      }
+
+      .note {
+        border-left: 3px solid var(--border);
+        padding-left: 0.75rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <h3>Vu par un propriétaire — l'écran complet</h3>
+
+      <header>
+        <h1>Organisations</h1>
+        <p class="muted">Choisissez le contexte de travail et modifiez ses informations.</p>
+      </header>
+
+      <div class="alert" role="alert">Une organisation garde toujours au moins un propriétaire.</div>
+
+      <section class="card">
+        <div>
+          <h2>Organisation courante</h2>
+          <p class="muted small">Vos données sont rattachées à cette organisation.</p>
+        </div>
+        <div class="row">
+          <button class="btn ghost" type="button">Studio Martin ⌄</button>
+          <span class="badge">Propriétaire</span>
+        </div>
+      </section>
+
+      <!-- Bloc 4 — la carte de s16, avec les affordances de rôle de s17 -->
+      <section class="card">
+        <div>
+          <h2>Membres</h2>
+          <p class="muted small">Les personnes qui accèdent aux données de cette organisation.</p>
+        </div>
+        <ul class="list">
+          <li class="row">
+            <span class="grow">vous@example.test</span>
+            <span class="badge">Propriétaire</span>
+            <span class="badge outline">Vous</span>
+            <!-- Dernier propriétaire : ni retrait, ni rétrogradation. Le serveur
+                 refuse aussi — masquer n'est pas une permission. -->
+          </li>
+          <li class="row">
+            <span class="grow">paul@example.test</span>
+            <span class="badge">Administrateur</span>
+            <button class="btn ghost" type="submit">Nommer paul@example.test membre</button>
+            <button class="btn outline" type="submit">Transférer la propriété à paul@example.test</button>
+            <button class="btn ghost" type="submit">Retirer paul@example.test</button>
+          </li>
+          <li class="row">
+            <span class="grow">marie-adresse-tres-longue@example.test</span>
+            <span class="badge">Membre</span>
+            <button class="btn ghost" type="submit">Nommer marie-adresse-tres-longue@example.test administrateur</button>
+            <button class="btn outline" type="submit">Transférer la propriété à marie-adresse-tres-longue@example.test</button>
+            <button class="btn ghost" type="submit">Retirer marie-adresse-tres-longue@example.test</button>
+          </li>
+        </ul>
+        <p class="muted small note">
+          Le texte visible du bouton est court (« Administrateur », « Membre »,
+          « Propriétaire ») ; le nom accessible nomme sa cible. Trois boutons
+          identiques sur trois lignes seraient indiscernables au clavier.
+        </p>
+      </section>
+
+      <section class="card">
+        <div>
+          <h2>Invitations</h2>
+          <p class="muted small">Invitez quelqu’un par email à rejoindre cette organisation.</p>
+        </div>
+        <form class="row" method="post" aria-label="Invitations">
+          <div class="field">
+            <label for="invite-email">Adresse email</label>
+            <input id="invite-email" name="email" type="email" required />
+          </div>
+          <button class="btn" type="submit">Inviter</button>
+        </form>
+        <hr class="separator" />
+        <ul class="list">
+          <li class="row">
+            <span class="grow">nouvelle@example.test</span>
+            <span class="badge">En attente</span>
+            <button class="btn ghost" type="submit">Renvoyer l’invitation de nouvelle@example.test</button>
+            <button class="btn ghost" type="submit">Révoquer l’invitation de nouvelle@example.test</button>
+          </li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <div>
+          <h2>Paramètres</h2>
+          <p class="muted small">Le nom et l’identifiant de l’organisation courante.</p>
+        </div>
+        <form method="post" aria-label="Paramètres">
+          <div class="field">
+            <label for="settings-name">Nom</label>
+            <input id="settings-name" name="name" type="text" value="Studio Martin" />
+          </div>
+          <button class="btn" type="submit">Enregistrer</button>
+        </form>
+      </section>
+
+      <section class="card">
+        <div>
+          <h2>Créer une organisation</h2>
+          <p class="muted small">Vous en serez le propriétaire.</p>
+        </div>
+        <form method="post" aria-label="Créer une organisation">
+          <div class="field">
+            <label for="create-name">Nom</label>
+            <input id="create-name" name="name" type="text" />
+          </div>
+          <button class="btn" type="submit">Créer l’organisation</button>
+        </form>
+      </section>
+
+      <h3>Vu par un administrateur — la propriété ne se touche pas</h3>
+
+      <section class="card">
+        <div>
+          <h2>Membres</h2>
+          <p class="muted small">Les personnes qui accèdent aux données de cette organisation.</p>
+        </div>
+        <ul class="list">
+          <li class="row">
+            <span class="grow">marie@example.test</span>
+            <span class="badge">Propriétaire</span>
+            <!-- Un administrateur ne modifie pas un propriétaire : aucune
+                 affordance sur cette ligne. -->
+          </li>
+          <li class="row">
+            <span class="grow">vous@example.test</span>
+            <span class="badge">Administrateur</span>
+            <span class="badge outline">Vous</span>
+            <button class="btn ghost" type="submit">Quitter l’organisation</button>
+          </li>
+          <li class="row">
+            <span class="grow">paul@example.test</span>
+            <span class="badge">Membre</span>
+            <button class="btn ghost" type="submit">Retirer paul@example.test</button>
+          </li>
+        </ul>
+      </section>
+
+      <p class="muted small note">
+        Les cartes « Invitations » et « Paramètres » restent présentes pour un
+        administrateur : il invite, révoque, renvoie et renomme.
+      </p>
+
+      <h3>Vu par un membre — trois cartes, et un seul geste</h3>
+
+      <section class="card">
+        <div>
+          <h2>Membres</h2>
+          <p class="muted small">Les personnes qui accèdent aux données de cette organisation.</p>
+        </div>
+        <ul class="list">
+          <li class="row">
+            <span class="grow">marie@example.test</span>
+            <span class="badge">Propriétaire</span>
+          </li>
+          <li class="row">
+            <span class="grow">paul@example.test</span>
+            <span class="badge">Administrateur</span>
+          </li>
+          <li class="row">
+            <span class="grow">vous@example.test</span>
+            <span class="badge">Membre</span>
+            <span class="badge outline">Vous</span>
+            <button class="btn ghost" type="submit">Quitter l’organisation</button>
+          </li>
+        </ul>
+      </section>
+
+      <p class="muted small note">
+        Ni « Invitations », ni « Paramètres » : les cartes disparaissent, elles ne
+        sont pas grisées. Le grisage avec invitation à souscrire est réservé au
+        gating d'offre (s21) — un membre ne peut rien acheter pour devenir
+        administrateur. « Créer une organisation » reste, parce que créer la
+        sienne n'est pas une action sur celle-ci.
+      </p>
+    </div>
+  </body>
+</html>

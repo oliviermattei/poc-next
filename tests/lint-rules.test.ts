@@ -1012,3 +1012,86 @@ describe('le module `organizations` n’importe `@repo/module-auth` que dans deu
     ).not.toEqual([])
   })
 })
+
+/**
+ * **La matrice des rôles est écrite une fois** (revue de s17, F4).
+ *
+ * L'`AGENTS.md` du module l'écrivait — « aucune comparaison de rôle hors de
+ * `domain/permissions.ts` » — et son propre commit la démentait trois fois : un
+ * `role === 'owner'` dans le `.tsx` de l'écran et deux dans `domain/message-keys.ts`.
+ * Aucune commande ne la tenait : c'était de la documentation, pas une règle
+ * (ADR 013). Elle en est une depuis ce bloc — la comparaison à un rôle littéral
+ * est refusée partout dans le module **sauf** dans le fichier qui décide, et la
+ * notion d'« ce rôle donne la propriété » y est devenue une fonction nommée.
+ *
+ * **Ce qu'elle ne tient pas**, dit plutôt que sous-entendu : elle voit les
+ * comparaisons à un littéral (`===`, `!==`, `==`, `!=`), pas un `switch (role)`,
+ * pas une valeur passée par une variable, pas un `includes`. Elle borne la
+ * forme la plus probable, celle qui a été écrite trois fois ici.
+ */
+describe('la matrice des rôles ne se compare qu’à un endroit', () => {
+  const ROLE_COMPARISON = [
+    "import type { OrganizationRole } from '../domain/organization'",
+    'export const variantFor = (role: OrganizationRole) =>',
+    "  role === 'owner' ? 'outline' : 'ghost'",
+  ].join('\n')
+
+  let eslint: ESLint
+
+  beforeAll(() => {
+    eslint = new ESLint({ cwd: REPO_ROOT })
+  })
+
+  const roleMessages = async (code: string, filePath: string): Promise<string[]> => {
+    const [result] = await eslint.lintText(code, { filePath })
+
+    return (result?.messages ?? [])
+      .map((message) => message.message)
+      .filter((message) => message.includes('domain/permissions.ts'))
+  }
+
+  it.each([
+    ['la couche présentation, en `.tsx`', 'presentation/probe.tsx'],
+    ['un cas d’usage', 'application/probe.ts'],
+    ['un repository', 'infrastructure/probe.ts'],
+    // Le `domain` n'a pas de passe-droit non plus : les deux comparaisons de
+    // trop de s17 y vivaient, dans `message-keys.ts`.
+    ['un autre fichier du domaine', 'domain/probe.ts'],
+  ])('refuse une comparaison de rôle — %s', async (_name, path) => {
+    expect(
+      await roleMessages(ROLE_COMPARISON, `packages/modules/organizations/src/${path}`),
+    ).not.toEqual([])
+  })
+
+  it('la laisse au fichier qui décide, sans quoi la règle serait fausse', async () => {
+    expect(
+      await roleMessages(
+        ROLE_COMPARISON,
+        'packages/modules/organizations/src/domain/permissions.ts',
+      ),
+    ).toEqual([])
+  })
+
+  it('ne juge pas les autres modules, qui n’ont pas cette matrice', async () => {
+    expect(
+      await roleMessages(ROLE_COMPARISON, 'packages/modules/auth/src/domain/probe.ts'),
+    ).toEqual([])
+  })
+
+  it('garde les interdits que ce bloc aurait pu écraser', async () => {
+    // En configuration plate, une déclaration de plus de `no-restricted-syntax`
+    // **remplace** la précédente : le fichier qui décide doit garder la porte de
+    // lecture et les interdits communs.
+    const messages = await new ESLint({ cwd: REPO_ROOT })
+      .lintText(
+        [
+          "import { organization } from '../schema'",
+          'export const read = async (db: any) => await db.select().from(organization)',
+        ].join('\n'),
+        { filePath: 'packages/modules/organizations/src/domain/permissions.ts' },
+      )
+      .then(([result]) => (result?.messages ?? []).map((message) => message.message))
+
+    expect(messages.filter((message) => message.includes('scoped-reads.ts'))).not.toEqual([])
+  })
+})

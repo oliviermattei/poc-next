@@ -11,6 +11,7 @@ import {
   type OrganizationRefusal,
   type OrganizationRole,
 } from './organization'
+import { grantsOwnership } from './permissions'
 
 /**
  * **Toutes** les clés de traduction du module, dérivées ici et nulle part
@@ -58,6 +59,7 @@ export const ORGANIZATION_REFUSALS = [
   'invalid_name',
   'invalid_slug',
   'slug_unavailable',
+  'invalid_role',
 ] as const satisfies readonly OrganizationRefusal[]
 
 /** Les clés fixes de l'écran, qualifiées une fois pour toutes. */
@@ -111,6 +113,15 @@ export const ORGANIZATIONS_KEYS = {
   membersRemove: organizationsKey('members.remove'),
   membersRemoveFor: organizationsKey('members.removeFor'),
   membersLeave: organizationsKey('members.leave'),
+  /**
+   * s17 — le transfert de propriété : un libellé à lui, distinct des autres
+   * rôles.
+   *
+   * « Propriétaire » dirait le rôle posé sans dire ce que le geste coûte à qui
+   * clique : il perd la propriété. Le bouton doit dire ce qui va se passer.
+   */
+  membersTransfer: organizationsKey('members.transfer'),
+  membersTransferFor: organizationsKey('members.transferFor'),
   invitationsTitle: organizationsKey('invitations.title'),
   invitationsDescription: organizationsKey('invitations.description'),
   invitationsEmailLabel: organizationsKey('invitations.emailLabel'),
@@ -133,6 +144,31 @@ export const ORGANIZATIONS_KEYS = {
 } as const
 
 /**
+ * Le libellé du bouton qui **pose** un rôle sur une ligne, et son nom accessible.
+ *
+ * Deux clés par rôle, exactement comme les boutons de s16 : le texte visible est
+ * court (« Administrateur »), le nom accessible nomme sa cible (« Nommer
+ * marie@… administrateur »). Trois boutons identiques sur trois lignes sont
+ * indiscernables au clavier comme pour une aide technique ; mettre l'adresse
+ * *dans* le bouton le rendrait indéformable et ferait déborder l'écran à 390 px
+ * — mesuré en s16.
+ *
+ * `owner` a ses propres clés : « Propriétaire » dirait le rôle posé sans dire ce
+ * que le geste coûte à qui clique — il perd la propriété.
+ *
+ * Composées par une **fonction nommée** et non dans le `.tsx` : une clé
+ * construite dans un composant est invisible au balayage de `tests/i18n.test.ts`
+ * et se lit comme un fragment de phrase concaténé.
+ */
+export const roleActionKey = (role: OrganizationRole): string =>
+  grantsOwnership(role) ? ORGANIZATIONS_KEYS.membersTransfer : organizationsKey(`members.make.${role}`)
+
+export const roleActionForKey = (role: OrganizationRole): string =>
+  grantsOwnership(role)
+    ? ORGANIZATIONS_KEYS.membersTransferFor
+    : organizationsKey(`members.makeFor.${role}`)
+
+/**
  * Les statuts qu'une invitation peut porter à l'écran.
  *
  * Seuls `pending` et `expired` y figurent : `accepted` et `revoked` sortent de
@@ -148,6 +184,8 @@ export const DISPLAYED_INVITATION_STATUSES = [
 export const organizationsMessageKeys = (): readonly string[] => [
   ...Object.values(ORGANIZATIONS_KEYS),
   ...ORGANIZATION_ROLES.map(roleLabelKey),
+  ...ORGANIZATION_ROLES.map(roleActionKey),
+  ...ORGANIZATION_ROLES.map(roleActionForKey),
   ...ORGANIZATION_REFUSALS.map(refusalMessageKey),
   ...INVITATION_REFUSALS.map(refusalMessageKey),
   ...DISPLAYED_INVITATION_STATUSES.map(invitationStatusKey),

@@ -2,9 +2,11 @@
 
 La multi-tenance : créer une organisation, basculer entre les siennes, en
 modifier le nom et l'identifiant (s15) ; puis y **inviter** quelqu'un, accepter,
-révoquer, renvoyer, et **retirer** un membre (s16). **C'est le module qui décide
-de la forme du périmètre organisationnel pour tout le reste du produit** — une
-frontière molle ici devient une fuite de données quinze stories plus loin.
+révoquer, renvoyer, et **retirer** un membre (s16) ; puis décider **qui a le
+droit de quoi** — la matrice des rôles, le changement de rôle et le transfert de
+propriété (s17). **C'est le module qui décide de la forme du périmètre
+organisationnel pour tout le reste du produit** — une frontière molle ici devient
+une fuite de données quinze stories plus loin.
 
 Module **optionnel**. Coupé, l'application est mono-utilisateur : aucune route,
 aucune entrée de navigation, aucune des **quatre** tables sur une base vierge, et
@@ -13,11 +15,24 @@ activé (`resolveDataOwner`, `@repo/core`).
 
 ## Les invariants, et la commande qui tient chacun
 
-Treize, sur ce qui a été éprouvé jusqu'ici — pas « tous ceux qui existent ».
+Ce qui a été éprouvé jusqu'ici — pas « tous ceux qui existent ». **Le tableau
+est la liste** : un compte écrit à côté de lui vieillit à la ligne suivante, et
+celui qui était ici annonçait « Dix-huit » pour vingt lignes (revue de s17, F2).
+Un décompte se lit, il ne s'écrit pas.
 
 | Invariant | Comment il est tenu | Ce qui échoue si on le casse |
 |---|---|---|
 | L'organisation d'un autre répond **404, jamais 403** | `findMembership` porte les deux conditions dans **un seul** ordre ; `null` ne distingue pas « pas membre » de « n'existe pas » | `tests/organizations.test.ts` — le cas rougit à 403 comme à 200 |
+| **Un membre dont le rôle ne suffit pas reçoit 403**, et un non-membre toujours 404 | l'ordre est **autorisation, permission, puis validation** — `accessFrom`, `allows`, et seulement ensuite Zod : aux six portes, sans exception (revue de s17, F5) | `tests/organizations.test.ts` — « rend 403 à un membre de l'organisation, et 404 à qui n'en est pas », et « refuse le droit avant de juger le corps, et journalise ce refus-là aussi » : ce dernier rougit dès que la validation repasse devant |
+| **Chaque rôle × chaque action sensible est décidé une fois**, dans le `domain` | `domain/permissions.ts` : `ORGANIZATION_ACTIONS` et `MATRIX`. Les six portes appellent `allows(access.role, …)` juste après l'autorisation | `organization-rules.test.ts` — la matrice complète (3 × 6) ; **et** un témoin de refus par porte dans `tests/organizations.test.ts`, chacun rougissant si sa garde saute |
+| **Un `admin` ne retire qu'un `member`** : ni un `owner`, ni un autre `admin` | la borne est **dans le prédicat du `delete`** (`unremovableRolesFor`, passé au repository), pas dans une lecture préalable | `tests/organizations.test.ts` — « refuse à un administrateur de retirer un propriétaire ou un autre administrateur », sur une organisation à **deux** propriétaires : avec un seul, la règle du dernier propriétaire attrapait le cas à la place et la mutation restait verte ; **et** `organization-rules.test.ts` à la règle |
+| **Un rôle hors matrice ne permet rien** — il est refusé, pas levé | `allows` replie sur `MATRIX[role] ?? []`. La colonne `role` est un `text not null` **sans contrainte de valeur** : une ligne inconnue est représentable, et le rôle est relu en base à chaque requête | `organization-rules.test.ts` — « refuse un rôle que la matrice ne connaît pas, au lieu de lever » ; `tests/organizations.test.ts` le mesure jusqu'à la route (403, pas 500) |
+| **Les affordances de l'écran sont dérivées du rôle de l'appelant, par le serveur** | `viewOrganizations` calcule `permissions` et `assignableRoles` avec les fonctions du `domain`, à partir du rôle porté par l'`OrganizationAccess` | `tests/organizations.test.ts` — « dérive les droits et les rôles offerts du rôle de l'appelant, pour chacun des trois ». Le cas de rendu, lui, les reçoit en paramètres : il éprouve le `.tsx`, jamais le calcul — mesuré, les mettre en dur laissait 1086 cas et 58 parcours au vert (revue de s17, F1) |
+| **La matrice ne se compare qu'à un endroit** | `pnpm lint` refuse une comparaison de rôle à un littéral partout dans le module, sauf dans `domain/permissions.ts`. La notion « ce rôle donne la propriété » y est une fonction nommée, `grantsOwnership` | `pnpm lint`, et `tests/lint-rules.test.ts` — quatre emplacements refusés, le fichier qui décide permis. La règle ne voit ni `switch`, ni `includes`, ni comparaison à une variable |
+| **Nommer quelqu'un d'autre `owner` est le transfert** : l'ancien devient `admin` | les deux lignes changent dans la **même** transaction, sous le même verrou | `tests/organizations.test.ts` — « transfère la propriété : l'ancien propriétaire devient administrateur » |
+| **Une rétrogradation ne retire pas le dernier propriétaire**, y compris sous concurrence | même discipline que le retrait : `pg_advisory_xact_lock` sur la **même** clé, puis un prédicat qui compte les propriétaires dans la même instruction | `tests/organizations.test.ts` — « refuse de rétrograder le dernier propriétaire » **et** « garde un propriétaire quand deux rétrogradations partent ensemble » : dix courses, **9 puis 10 rouges sur 10** sans le verrou |
+| **Le pouvoir suit la ligne, pas le jeton de session** | le rôle vient de l'`OrganizationAccess`, relu à chaque requête par `membershipOf` ; rien ne le met en cache | `tests/organizations.test.ts` — « change le pouvoir à l'instant, sur la même session, sans reconnexion ». Mettre `findMembership` en cache fait rougir ce cas et celui du transfert (ADR 030) |
+| **Un changement de rôle est journalisé**, avec son acteur — le refus de droit compris | port `SecurityLog`, forme **fermée** (`domain/security-event.ts`) : chaque champ y est nommé, aucun champ libre, et l'interface est la liste. La cible et le rôle passent par Zod ; au refus, ils valent `null` quand le corps n'en nommait pas | `tests/organizations.test.ts` — « journalise le changement de rôle et son refus, avec leur acteur » et « refuse le droit avant de juger le corps, et journalise ce refus-là aussi » |
 | **Un membre retiré cesse aussitôt de résoudre vers l'organisation quittée** | `activeOrganizationIdOf` joint la sélection courante à `organization_member` sur le **compte** ; la ligne de sélection n'est jamais nettoyée, c'est la lecture qui filtre | `tests/organizations.test.ts` — « cesse de résoudre vers une organisation qu'on a quittée » rougit dès que la jointure perd le compte |
 | **Une lecture du module passe par sa porte unique** | `infrastructure/scoped-reads.ts` est le seul fichier où `select`, `from` et `execute` sont permis ; chacune de ses fonctions prend le propriétaire en **premier paramètre** | `pnpm lint` — une lecture écrite ailleurs dans le module est refusée, et `tests/lint-rules.test.ts` rejoue la sonde qui l'a prouvé |
 | Une écriture ne reçoit **jamais** un identifiant d'organisation nu | `OrganizationAccess` porte une marque de type non exportée ; seul `authorizeOrganization` en produit | `pnpm typecheck` — la fixture `tests/fixtures/typing/forged-organization-access.ts` **doit** échouer, et `tests/module-registry.test.ts` lit le diagnostic |
@@ -60,6 +75,35 @@ la requête passait `typecheck`, `lint` et 811 tests. C'est le genre de phrase
 qui fait qu'un agent suivant cesse de chercher (ADR 013). Ce tableau dit ce que
 chaque commande refuse, et rien de plus.
 
+## Deux choses qui ressemblent à des bugs et n'en sont pas
+
+**Un `member` peut quitter l'organisation**, alors que le critère 2 dit qu'il ne
+peut pas « retirer un membre ». Se retirer soi-même n'est pas une action
+d'administration : c'est le geste de la personne sur sa propre appartenance, et
+sans lui un membre serait captif de l'organisation qui l'a invité. La règle est
+explicite et vient **en premier** dans `removalPermission` et dans
+`unremovableRolesFor` ; la règle du dernier propriétaire, elle, continue de
+s'appliquer — un propriétaire unique ne part pas. Arbitrage validé à la revue de
+s17 ; le cas est « laisse un simple membre quitter l'organisation ».
+
+**Une organisation sans propriétaire est ingouvernable, et rien ici ne la
+répare.** `member.set_role` est réservé au propriétaire : sans propriétaire,
+personne ne peut en nommer un, et l'organisation est figée à vie. L'état est
+**inatteignable par les routes** — le prédicat de l'`update` et celui du
+`delete` comptent les propriétaires sous le même verrou, et trois croisements de
+concurrence ont été sondés à la revue.
+
+Il reste **productible par la base**, et c'est le piège de la story qui
+supprimera un compte (s34) : `organization_member.user_id` référence
+`auth_user.id` en `onDelete: 'cascade'`
+(`src/schema.ts:62-64`). Effacer le compte du dernier propriétaire efface sa
+ligne d'appartenance sans que rien ne compte les propriétaires restants —
+l'organisation survit, ses membres aussi, et plus personne ne peut nommer un
+rôle, renommer, inviter, révoquer ni retirer. `docs/reliability.md` §5 demande
+une **commande de réconciliation** pour tout état qui peut diverger : elle
+appartient à s34, avec sa suppression, et pas à s17. La nommer ici est le seul
+moyen que l'agent de s34 la trouve **avant** d'écrire sa purge, et non après.
+
 ## Ce que Better Auth aurait fait, et pourquoi ce n'est pas fait
 
 Son plugin `organization` ajoute `activeOrganizationId` à la table `session`
@@ -99,6 +143,18 @@ donc identique avant et après une bascule ; la rotation d'identifiant que
 l'obtenir demanderait un point d'entrée dans le module `auth`, qui n'existe pas
 (`docs/research/s15-organizations.md` §3).
 
+**s17 l'a réattaquée une troisième fois, dans le sens montant.** Promouvoir
+quelqu'un `admin` ou `owner` **augmente** son pouvoir : c'est le cas typique de
+la fixation de session, et l'argument de s16 — « l'adresse du destinataire est
+dans le prédicat de consommation, une session implantée ne consomme rien » — n'y
+répond pas, puisque c'est un tiers déjà propriétaire qui décide de l'élévation.
+Ce qui tient est plus simple et il est **mesuré** : le jeton ne gagne rien parce
+qu'il ne porte rien, et la propriété opposable est la réciproque **dans les deux
+sens** — la même session gagne le droit puis le reperd, sans reconnexion
+(`tests/organizations.test.ts`, « change le pouvoir à l'instant, sur la même
+session »). Mettre `findMembership` en cache fait rougir ce cas. **ADR 030**
+porte la décision, ses options rejetées, et les trois faits qui la rouvriraient.
+
 **Seconde conséquence, celle qui piège la story suivante.** L'organisation
 active a le **compte** pour clé primaire, pas la session : il n'y a qu'une
 organisation active par compte, dernière bascule gagnante. Deux onglets ouverts
@@ -113,7 +169,8 @@ du périmètre courant au moment de la soumission. C'est le prix de la persistan
 
 ## Les formulaires n'ont pas de JavaScript
 
-Les **huit** routes répondent **303 vers l'écran**, pas du JSON. Les formulaires
+Les **neuf** routes répondent **303 vers l'écran** ou, depuis s17, **403** quand
+le rôle ne suffit pas — jamais du JSON de succès. Les formulaires
 sont donc des `<form method="post">` natifs, sans composant client : il n'y a
 aucune fenêtre pré-hydratation à couvrir, puisque la soumission native **est**
 le chemin nominal. Le `method` reste écrit en toutes lettres — `pnpm lint` le
@@ -201,7 +258,9 @@ pourquoi les routes reçoivent un **accès différé** au service, et que
   l'autorisation est dans le prédicat, en un seul ordre. Une vérification
   suivie d'une opération laisse la fenêtre où l'on sert la donnée d'autrui ;
 - **de 403 sur une organisation dont l'appelant n'est pas membre** : 404, et
-  rien d'autre ;
+  rien d'autre. Le 403 est réservé au **membre** dont le rôle ne suffit pas
+  (s17, critère 6) — il sait déjà que l'organisation existe, et le lui cacher ne
+  protégerait rien. La ligne de partage est l'appartenance, jamais le rôle ;
 - **de compte lu ailleurs que dans la session** : les routes prennent
   `context.session.userId`, jamais un champ du corps ;
 - **de vérification d'unicité par `select` avant l'écriture** : c'est la
@@ -221,11 +280,28 @@ pourquoi les routes reçoivent un **accès différé** au service, et que
   l'adresse d'une personne souvent sans compte. Elle a sa catégorie
   (`invitation`), sa politique (`erase`) et sa purge, éprouvée en **exécutant**
   la purge (revue de s16, F6) ;
-- **de garde de rôle** : s16 n'en pose aucune. N'importe quel membre peut
-  inviter et retirer, et le rôle attribué à un invité est `member`, **fixe**
-  (`INVITED_ROLE`). Choisir le rôle et restreindre l'action sont des
-  permissions : c'est s17, et c'est écrit ici pour que ce ne soit pas lu comme
-  un oubli ;
+- **de comparaison de rôle hors de `domain/permissions.ts`** : la matrice est
+  écrite une fois. Un `role === 'owner'` dans un cas d'usage, un repository ou
+  un `.tsx` la ferait exister à deux endroits, et le second serait celui qui
+  ment. L'écran lit `view.permissions` et `members[].assignableRoles`, calculés
+  par le serveur avec les fonctions qui gardent aussi les routes. **C'est
+  `pnpm lint` qui le tient depuis le tour de correction de s17** : jusque-là la
+  phrase était démentie trois fois dans le commit qui l'écrivait — le `.tsx` de
+  l'écran et deux fois `domain/message-keys.ts` —, et la règle a fait apparaître
+  deux occurrences de plus que la revue n'avait pas nommées, dans
+  `domain/invitation.ts`. Une notion dérivée du rôle est une **fonction nommée**
+  du fichier qui décide (`grantsOwnership`). Ce que la règle ne voit pas : un
+  `switch (role)`, un `includes`, une comparaison à une variable, et un rôle
+  ajouté à `ORGANIZATION_ROLES` sans être ajouté au sélecteur ;
+- **de choix de rôle à l'invitation** : `INVITED_ROLE` reste `member`, **fixe**.
+  Le rôle se change après l'entrée, par la route de s17 — ce qui le fait passer
+  par la permission, le verrou et le journal. Un champ de rôle dans le
+  formulaire d'invitation contournerait les trois ;
+- **de garde de rôle posée dans `RouteProtection`** : le niveau `role` du contrat
+  de module interroge `ModuleSession.roles`, une liste de **plateforme** (vide en
+  production, réservée au superadmin de s37). Un rôle d'organisation dépend de
+  *quelle* organisation ; l'y ranger reproduirait ce que l'ADR 025 refuse
+  (ADR 030). Les neuf routes restent `authenticated` ;
 - **de jeton d'invitation en clair en base** : `token_hash` porte une empreinte
   SHA-256, et rien d'autre. La porte de lecture n'expose jamais cette colonne ;
 - **de lecture d'un compte par son adresse** : les lectures partent d'un
@@ -240,9 +316,11 @@ pourquoi les routes reçoivent un **accès différé** au service, et que
   de l'identifiant, normalisation, identifiants réservés, unicité du motif de
   refus, rôle du créateur, puis (s16) la forme et la normalisation d'une adresse
   invitée, la précédence des statuts d'invitation, l'échéance, la règle du
-  dernier propriétaire et le quota. Aucune de ces règles ne se prouve ailleurs,
-  et les cas de s16 vivent dans **ce** fichier plutôt que dans un second : c'est
-  la même unité, et un fichier de plus coûte un environnement complet ;
+  dernier propriétaire et le quota, puis (s17) la **matrice complète** rôle ×
+  action, les bornes de l'`admin`, les rôles assignables et le motif de refus
+  d'un changement de rôle. Aucune de ces règles ne se prouve ailleurs, et les cas
+  de s16 comme de s17 vivent dans **ce** fichier plutôt que dans un second :
+  c'est la même unité, et un fichier de plus coûte un environnement complet ;
 - `tests/organizations.test.ts` à la racine : le **câblage** — base réelle,
   répartiteur, 404 contre 403, périmètre organisationnel, purge rejouée, module
   coupé, et la dérivation des identifiants réservés confrontée aux écrans du

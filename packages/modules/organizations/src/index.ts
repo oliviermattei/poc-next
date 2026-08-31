@@ -51,7 +51,19 @@ export {
   type MembershipRecord,
   type OrganizationAccess,
 } from './application/organization-access'
-export type { OrganizationRepository, SlugOutcome } from './application/ports'
+export type { OrganizationRepository, SecurityLog, SlugOutcome } from './application/ports'
+export type {
+  OrganizationSecurityEvent,
+  OrganizationSecurityEventName,
+} from './domain/security-event'
+export {
+  allows,
+  assignableRolesFor,
+  ORGANIZATION_ACTIONS,
+  permissionsOf,
+  type OrganizationAction,
+  type OrganizationPermissions,
+} from './domain/permissions'
 export {
   FOUNDER_ROLE,
   ORGANIZATIONS_MODULE_ID,

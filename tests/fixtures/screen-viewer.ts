@@ -1,4 +1,5 @@
 import type { DescribedSession, DescribedSignInMethod } from '@repo/module-auth'
+import { permissionsOf } from '@repo/module-organizations'
 
 /**
  * L'appelant que voient les écrans pendant le rendu de `tests/rendered-text.test.ts`.
@@ -77,13 +78,30 @@ export const FIXTURE_ORGANIZATIONS = {
     },
   ],
   members: [
-    { userId: 'usr_1', email: FIXTURE_EMAIL, role: 'owner' as const, removable: false },
-    { userId: 'usr_2', email: FIXTURE_MEMBER_EMAIL, role: 'member' as const, removable: true },
+    {
+      userId: 'usr_1',
+      email: FIXTURE_EMAIL,
+      role: 'owner' as const,
+      removable: false,
+      assignableRoles: [],
+    },
+    // s17 — une ligne qui porte **des boutons de rôle**, pour que leurs deux
+    // libellés (visible et accessible) entrent dans le balayage du rendu.
+    {
+      userId: 'usr_2',
+      email: FIXTURE_MEMBER_EMAIL,
+      role: 'member' as const,
+      removable: true,
+      assignableRoles: ['admin' as const, 'owner' as const],
+    },
   ],
   invitations: [
     { id: 'inv_1', email: FIXTURE_INVITED_EMAIL, status: 'pending' as const },
     { id: 'inv_2', email: FIXTURE_EXPIRED_INVITED_EMAIL, status: 'expired' as const },
   ],
+  // Le rendu se fait avec les permissions d'un propriétaire : c'est l'écran
+  // complet, donc celui dont **tous** les libellés doivent passer le filet.
+  permissions: permissionsOf('owner'),
 }
 
 /** L'invitation que voit l'écran d'atterrissage pendant ce rendu (s16). */

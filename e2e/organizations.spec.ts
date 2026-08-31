@@ -278,6 +278,100 @@ test('invite quelqu’un, il accepte, puis il est retiré', async ({ page, brows
 })
 
 /**
+ * **Les rôles, dans un vrai navigateur** (s17).
+ *
+ * Ce que ce parcours prouve et qu'aucun test de nœud ne peut prouver : la
+ * promotion est une soumission **native** suivie d'une redirection 303 que le
+ * navigateur suit, l'écran de l'intéressé change **sans reconnexion**, et
+ * surtout — c'est le point de la story — **masquer un déclencheur n'est pas une
+ * permission** : le même compte, une fois rétrogradé, poste directement sur la
+ * route d'invitation et reçoit un 403.
+ */
+test('promeut un membre, puis le rétrograde : l’écran et la route suivent', async ({
+  page,
+  browser,
+}) => {
+  test.skip(!mounted, 'Le module est coupé dans cette configuration.')
+
+  await aSignedInAccount(page, 's17-owner')
+  await page.goto(publicPath('/organizations'))
+  await submitCreation(page, 'Studio Rôles', aSlug())
+  await expect(page).toHaveURL(urlOf('/organizations'))
+
+  const memberContext = await browser.newContext({ locale: 'fr-FR' })
+  const member = await memberContext.newPage()
+  const memberEmail = await aSignedInAccount(member, 's17-membre')
+
+  const sentAfter = Date.now()
+
+  await page
+    .getByRole('form', { name: text('organizations.invitations.title') })
+    .getByLabel(text('organizations.invitations.emailLabel'))
+    .fill(memberEmail)
+  await page
+    .getByRole('form', { name: text('organizations.invitations.title') })
+    .getByRole('button', { name: text('organizations.invitations.submit') })
+    .click()
+  await expect(page).toHaveURL(urlOf('/organizations'))
+
+  await member.goto(await linkSentTo(memberEmail, { since: sentAfter }))
+  await member.getByRole('button', { name: text('organizations.accept.submit') }).click()
+  await expect(member).toHaveURL(urlOf('/organizations'))
+
+  // **Un simple membre ne voit ni la carte d'invitation, ni les paramètres.**
+  await expect(
+    member.getByRole('form', { name: text('organizations.invitations.title') }),
+  ).toBeHidden()
+  await expect(
+    member.getByRole('form', { name: text('organizations.settings.title') }),
+  ).toBeHidden()
+  // La carte des membres, elle, reste : savoir avec qui l'on partage ses
+  // données n'est pas un privilège.
+  await expect(member.getByText(text('organizations.members.title'))).toBeVisible()
+
+  // Le propriétaire le promeut, par un bouton de ligne nommant sa cible.
+  await page.reload()
+  await page
+    .getByRole('button', { name: `Nommer ${memberEmail} administrateur` })
+    .click()
+  await expect(page).toHaveURL(urlOf('/organizations'))
+
+  // **Sans reconnexion** : le même contexte, le même cookie, un simple
+  // rechargement — et la carte d'invitation est là.
+  await member.reload()
+  await expect(
+    member.getByRole('form', { name: text('organizations.invitations.title') }),
+  ).toBeVisible()
+
+  // L'identifiant de l'organisation, tel que l'écran le pose dans son
+  // formulaire d'invitation : c'est lui que l'appel direct fournira.
+  const organizationId = await member
+    .getByRole('form', { name: text('organizations.invitations.title') })
+    .locator('input[name="organizationId"]')
+    .inputValue()
+
+  // Rétrogradé, toujours sans reconnexion.
+  await page.getByRole('button', { name: `Ramener ${memberEmail} au rang de membre` }).click()
+  await expect(page).toHaveURL(urlOf('/organizations'))
+
+  await member.reload()
+  await expect(
+    member.getByRole('form', { name: text('organizations.invitations.title') }),
+  ).toBeHidden()
+
+  // **Le déclencheur est masqué ; la route, elle, refuse.** 403 et non 404 : ce
+  // compte est membre de cette organisation, il en connaît l'existence.
+  const refused = await member.request.post('/api/modules/organizations/invite', {
+    form: { organizationId, email: `s17-direct-${randomUUID()}@example.test` },
+    maxRedirects: 0,
+  })
+
+  expect(refused.status()).toBe(403)
+
+  await memberContext.close()
+})
+
+/**
  * **À 390 px, on doit lire quelle invitation on révoque** (revue de s16, F5).
  *
  * La mesure de la première livraison — débordement horizontal nul — était

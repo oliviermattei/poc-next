@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import type { OrganizationRole } from './organization'
+import { grantsOwnership } from './permissions'
 
 /**
  * Les règles pures de l'invitation et du retrait d'un membre (s16).
@@ -273,11 +274,11 @@ export function removalRefusal(
     return 'not_a_member'
   }
 
-  if (target.role !== 'owner') {
+  if (!grantsOwnership(target.role)) {
     return null
   }
 
-  const owners = members.filter((member) => member.role === 'owner').length
+  const owners = members.filter((member) => grantsOwnership(member.role)).length
 
   return owners <= 1 ? 'last_owner' : null
 }

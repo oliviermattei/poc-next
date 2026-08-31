@@ -12,7 +12,7 @@ import { INVITATION_SCREEN_PATH } from '../domain/invitation'
  * le répartiteur répond 404 sans atteindre le module, et un module coupé n'a
  * aucune de ces routes dans la table de routage.
  *
- * **Les huit sont `authenticated`** : le répartiteur refuse donc avant
+ * **Les neuf sont `authenticated`** : le répartiteur refuse donc avant
  * d'appeler le gestionnaire, et le refus n'atteint ni la règle, ni la base.
  * L'acceptation d'une invitation en fait partie — le jeton autorise l'accès à
  * **une organisation**, il ne remplace pas une session, et un invité sans compte
@@ -45,6 +45,8 @@ const PATHS = {
   revokeInvitation: '/organizations/invitations/revoke',
   acceptInvitation: '/organizations/invitations/accept',
   removeMember: '/organizations/members/remove',
+  // s17 — le rôle d'un membre, transfert de propriété compris.
+  setMemberRole: '/organizations/members/role',
 } as const
 
 /** Le chemin public d'une route du module, préfixe de montage compris. */
@@ -62,6 +64,20 @@ export const ORGANIZATIONS_SCREEN_PATH = '/organizations'
  * inventé.
  */
 const notFound = (): Response => Response.json({ error: 'not_found' }, { status: 404 })
+
+/**
+ * Ce que rend un **membre** dont le rôle ne suffit pas (s17, critère 6).
+ *
+ * **403, et pas 404** : l'appelant est membre, il voit l'organisation à
+ * l'écran, il en connaît l'identifiant — le 404 ne lui cacherait rien et lui
+ * mentirait. Le 404 reste pour l'organisation dont on n'est pas membre, où
+ * l'existence, elle, doit rester inconnue.
+ *
+ * **Et pas un 303 vers l'écran** : le déclencheur d'une action interdite est
+ * absent de l'interface, donc seul un appel direct arrive ici. Lui rendre une
+ * page d'erreur traduite décrirait à l'appelant ce qu'il a raté ; le code suffit.
+ */
+const forbidden = (): Response => Response.json({ error: 'forbidden' }, { status: 403 })
 
 /**
  * Le corps d'une soumission, quelle que soit sa forme.
@@ -96,6 +112,10 @@ const backToScreen = (request: Request, outcome: OrganizationOutcome): Response 
     return notFound()
   }
 
+  if (outcome.status === 'forbidden') {
+    return forbidden()
+  }
+
   const destination = new URL(ORGANIZATIONS_SCREEN_PATH, request.url)
 
   if (outcome.status === 'refused') {
@@ -123,6 +143,10 @@ const backToInvitation = (
 ): Response => {
   if (outcome.status === 'not_found') {
     return notFound()
+  }
+
+  if (outcome.status === 'forbidden') {
+    return forbidden()
   }
 
   const destination = new URL(
@@ -213,6 +237,7 @@ export function createOrganizationRoutes(
     ),
     acceptRoute,
     submit(PATHS.removeMember, async (useCases, input) => await useCases.removeMember(input)),
+    submit(PATHS.setMemberRole, async (useCases, input) => await useCases.setMemberRole(input)),
   ]
 }
 

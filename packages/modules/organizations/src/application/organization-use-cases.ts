@@ -21,10 +21,22 @@ import {
 import {
   FOUNDER_ROLE,
   ORGANIZATIONS_MODULE_ID,
+  ORGANIZATION_ROLES,
   parseOrganizationDraft,
   type OrganizationRefusal,
   type OrganizationRole,
 } from '../domain/organization'
+import {
+  allows,
+  assignableRolesFor,
+  isOwnershipTransfer,
+  ORGANIZATION_ACTION,
+  permissionsOf,
+  removalPermission,
+  roleChangeRefusal,
+  unremovableRolesFor,
+  type OrganizationPermissions,
+} from '../domain/permissions'
 import { authorizeOrganization, type OrganizationAccess } from './organization-access'
 import type { OrganizationsDependencies } from './ports'
 
@@ -65,6 +77,18 @@ export interface OrganizationsView {
   readonly members: readonly OrganizationMemberView[]
   /** Les invitations vivantes de l'organisation courante. */
   readonly invitations: readonly OrganizationInvitationView[]
+  /**
+   * Ce que l'appelant a le droit de faire ici (s17), calculé **par le serveur**.
+   *
+   * L'écran ne compare aucun rôle : il lit ces booléens, produits par la même
+   * fonction qui garde les routes. Une condition de rôle écrite dans un `.tsx`
+   * ferait exister la matrice à deux endroits, et le second serait celui qui
+   * ment.
+   *
+   * **Sans organisation courante — module coupé compris — tout est permis** : la
+   * donnée appartient alors au compte, qui en est le propriétaire (critère 7).
+   */
+  readonly permissions: OrganizationPermissions
 }
 
 /**
@@ -80,6 +104,14 @@ export interface OrganizationMemberView {
   readonly email: string
   readonly role: OrganizationRole
   readonly removable: boolean
+  /**
+   * Les rôles que l'appelant peut poser sur **cette** ligne (s17), dans l'ordre
+   * d'affichage — le transfert de propriété en dernier.
+   *
+   * Vide quand il n'en distribue aucun, et vide sur sa propre ligne. Calculé ici
+   * par la règle du `domain`, pour la même raison que `removable`.
+   */
+  readonly assignableRoles: readonly OrganizationRole[]
 }
 
 /** Une invitation, telle que l'écran l'affiche. Aucun jeton n'en sort. */
@@ -94,6 +126,10 @@ export const EMPTY_ORGANIZATIONS_VIEW: OrganizationsView = {
   memberships: [],
   members: [],
   invitations: [],
+  // `null` n'est pas « aucun droit » : c'est « aucune organisation ». La donnée
+  // appartient alors au compte, qui en est le propriétaire — critère 7, et c'est
+  // la vue que l'application sert quand le module est coupé.
+  permissions: permissionsOf(null),
 }
 
 /** Ce qu'un écran a le droit de savoir d'une invitation avant de l'accepter. */
@@ -106,6 +142,18 @@ export interface InvitationPreview {
 export type OrganizationOutcome =
   | { readonly status: 'ok'; readonly organizationId: string }
   | { readonly status: 'not_found' }
+  /**
+   * **Membre, mais pas assez** (s17, critère 6).
+   *
+   * Distinct de `not_found`, et le partage se fait sur l'**appartenance**, pas
+   * sur le rôle : un membre sait déjà que son organisation existe, lui répondre
+   * 403 ne lui apprend rien ; un non-membre, lui, ne doit pas l'apprendre, d'où
+   * le 404 (`docs/security.md` §3). Distinct de `refused` aussi : un refus
+   * métier revient sur l'écran en 303 avec son motif, alors qu'un rôle
+   * insuffisant n'a pas d'écran — le déclencheur est absent, et seul un appel
+   * direct l'atteint.
+   */
+  | { readonly status: 'forbidden' }
   | {
       readonly status: 'refused'
       readonly refusal: OrganizationRefusal | InvitationRefusal
@@ -168,6 +216,19 @@ export interface OrganizationsUseCases {
     readonly body: unknown
   }): Promise<OrganizationOutcome>
   removeMember(input: { readonly userId: string; readonly body: unknown }): Promise<OrganizationOutcome>
+  /* --------------------------------------------------------------------- *
+   * s17
+   * --------------------------------------------------------------------- */
+  /**
+   * Change le rôle d'un membre — et **c'est aussi le transfert de propriété** :
+   * nommer quelqu'un d'autre `owner` rétrograde l'appelant en `admin`. Une
+   * seule route pour un seul geste ; deux feraient deux chemins vers le même
+   * invariant, et le second serait celui qu'on oublie de sérialiser.
+   */
+  setMemberRole(input: {
+    readonly userId: string
+    readonly body: unknown
+  }): Promise<OrganizationOutcome>
   /** Ce que l'écran d'atterrissage montre avant l'acceptation, ou `null`. */
   describeInvitation(token: string): Promise<InvitationPreview | null>
   purge(scope: ModuleScope): Promise<void>
@@ -183,6 +244,40 @@ const INVITATION_ID = z.object({ invitationId: z.string().trim().min(1).max(64) 
 const MEMBER_ID = z.object({ userId: z.string().trim().min(1).max(64) })
 
 /**
+ * Le compte visé et le rôle demandé (s17).
+ *
+ * L'énumération vient du `domain`, elle n'est pas recopiée : Zod à **chaque**
+ * frontière (`docs/security.md` §4), et un rôle inventé est une entrée
+ * malformée, pas un droit manquant — d'où `invalid_role` et non un 403.
+ */
+const MEMBER_ROLE = z.object({
+  userId: z.string().trim().min(1).max(64),
+  role: z.enum(ORGANIZATION_ROLES),
+})
+
+/**
+ * Ce qu'un corps **refusé** permet malgré tout de nommer au journal (revue de
+ * s17, F5).
+ *
+ * La permission est décidée avant la validation, comme aux cinq autres portes :
+ * l'événement de refus est donc écrit alors que le corps n'a pas encore été
+ * jugé. Chaque champ passe quand même par Zod — `docs/security.md` §4 ne
+ * s'assouplit pas parce que la valeur part dans un journal —, et ce qui ne
+ * valide pas vaut `null`. Rien de brut n'entre dans la sortie standard.
+ */
+const attemptedRoleChange = (
+  body: unknown,
+): { readonly target: string | null; readonly role: OrganizationRole | null } => {
+  const target = MEMBER_ID.safeParse(body)
+  const role = z.object({ role: z.enum(ORGANIZATION_ROLES) }).safeParse(body)
+
+  return {
+    target: target.success ? target.data.userId : null,
+    role: role.success ? role.data.role : null,
+  }
+}
+
+/**
  * Le jeton d'invitation, tel qu'il arrive.
  *
  * Borné en longueur comme le reste : ce qui arrive ici vient de nulle part, et
@@ -193,8 +288,17 @@ const INVITATION_TOKEN = z.object({ token: z.string().trim().min(1).max(256) })
 export function createOrganizationsUseCases(
   dependencies: OrganizationsDependencies,
 ): OrganizationsUseCases {
-  const { repository, reservedSlugs, generateId, mailer, appUrl, emailLocale, now, tokens } =
-    dependencies
+  const {
+    repository,
+    reservedSlugs,
+    generateId,
+    mailer,
+    appUrl,
+    emailLocale,
+    now,
+    tokens,
+    securityLog,
+  } = dependencies
 
   /** La lecture conjointe, enveloppée : le port garde son receveur. */
   const findMembership = (input: {
@@ -370,6 +474,12 @@ export function createOrganizationsUseCases(
         return { status: 'not_found' }
       }
 
+      // **La permission ensuite, et jamais avant.** Inverser les deux rendrait
+      // 403 sur l'organisation d'un autre, donc confirmerait son existence.
+      if (!allows(access.role, ORGANIZATION_ACTION.rename)) {
+        return { status: 'forbidden' }
+      }
+
       const draft = parseOrganizationDraft(body, reservedSlugs)
 
       if (!draft.ok) {
@@ -399,7 +509,7 @@ export function createOrganizationsUseCases(
       const current = summaries.find((summary) => summary.id === activeId) ?? null
 
       if (current === null) {
-        return { current: null, memberships: summaries, members: [], invitations: [] }
+        return { ...EMPTY_ORGANIZATIONS_VIEW, memberships: summaries }
       }
 
       // Le détail de l'organisation courante n'est lu qu'après une
@@ -411,7 +521,7 @@ export function createOrganizationsUseCases(
       })
 
       if (access === null) {
-        return { current: null, memberships: summaries, members: [], invitations: [] }
+        return { ...EMPTY_ORGANIZATIONS_VIEW, memberships: summaries }
       }
 
       const [identities, invitations] = await Promise.all([
@@ -423,13 +533,19 @@ export function createOrganizationsUseCases(
       return {
         current,
         memberships: summaries,
+        // Les permissions de l'appelant **dans cette organisation**, par la même
+        // fonction que celle qui garde les routes (s17).
+        permissions: permissionsOf(access.role),
         members: identities.map((identity) => ({
           userId: identity.userId,
           email: identity.email,
           role: identity.role,
-          // La règle du `domain`, appelée ici : l'écran ne compte pas les
-          // propriétaires, il lit une donnée.
-          removable: removalRefusal(identities, identity.userId) === null,
+          // Les règles du `domain`, appelées ici : l'écran ne compte pas les
+          // propriétaires et ne compare aucun rôle, il lit des données.
+          removable:
+            removalRefusal(identities, identity.userId) === null &&
+            removalPermission(access, identity),
+          assignableRoles: assignableRolesFor(access, identity),
         })),
         invitations: invitations.map((invitation) => ({
           id: invitation.id,
@@ -448,6 +564,10 @@ export function createOrganizationsUseCases(
 
       if (access === null) {
         return { status: 'not_found' }
+      }
+
+      if (!allows(access.role, ORGANIZATION_ACTION.invite)) {
+        return { status: 'forbidden' }
       }
 
       const parsed = parseInvitationEmail(body)
@@ -498,6 +618,10 @@ export function createOrganizationsUseCases(
         return { status: 'not_found' }
       }
 
+      if (!allows(access.role, ORGANIZATION_ACTION.resendInvitation)) {
+        return { status: 'forbidden' }
+      }
+
       const parsed = INVITATION_ID.safeParse(body)
 
       if (!parsed.success) {
@@ -539,6 +663,10 @@ export function createOrganizationsUseCases(
 
       if (access === null) {
         return { status: 'not_found' }
+      }
+
+      if (!allows(access.role, ORGANIZATION_ACTION.revokeInvitation)) {
+        return { status: 'forbidden' }
       }
 
       const parsed = INVITATION_ID.safeParse(body)
@@ -622,13 +750,117 @@ export function createOrganizationsUseCases(
         return { status: 'refused', refusal: 'not_a_member' }
       }
 
+      const target = parsed.data.userId
+
+      // **Ce qui se décide sans lire se décide tout de suite** : un rôle qui ne
+      // retire personne d'autre. Quitter reste permis à tous — c'est le geste de
+      // la personne sur sa propre appartenance, pas une administration.
+      if (target !== access.userId && !allows(access.role, ORGANIZATION_ACTION.removeMember)) {
+        return { status: 'forbidden' }
+      }
+
       // **On écrit d'abord.** Le prédicat de l'ordre de suppression porte la
-      // règle du dernier propriétaire ; une lecture qui déciderait avant lui
-      // ferait deux vérités, et laisserait la fenêtre entre les deux. La lecture
-      // ne sert donc qu'à **nommer** le refus, et seulement s'il y en a un.
-      const removed = await repository.removeMember(access, parsed.data.userId)
+      // règle du dernier propriétaire **et** la borne de rôle de s17 (un `admin`
+      // ne touche pas un `owner`) ; une lecture qui déciderait avant lui ferait
+      // deux vérités, et laisserait la fenêtre où la cible devient propriétaire
+      // entre la lecture et la suppression. La lecture ne sert donc qu'à
+      // **nommer** le refus, et seulement s'il y en a un.
+      const removed = await repository.removeMember(access, {
+        userId: target,
+        unremovableRoles: unremovableRolesFor(access, target),
+      })
 
       if (removed) {
+        return { status: 'ok', organizationId: access.organizationId }
+      }
+
+      const members = await repository.listMemberIdentities(access)
+      const targetMember = members.find((member) => member.userId === target)
+
+      // La ligne existe mais le prédicat l'a écartée pour une **permission** :
+      // c'est un 403, pas un refus métier. Distinguer les deux est ce que le
+      // critère 6 demande.
+      if (targetMember !== undefined && !removalPermission(access, targetMember)) {
+        return { status: 'forbidden' }
+      }
+
+      return {
+        status: 'refused',
+        // Sinon : ou bien la ligne n'existe pas, ou bien c'est le dernier
+        // propriétaire. La règle pure départage, et son repli est le refus le
+        // plus prudent.
+        refusal: removalRefusal(members, target) ?? 'last_owner',
+      }
+    },
+
+    setMemberRole: async ({ userId, body }) => {
+      // **L'autorisation d'abord**, comme partout : un non-membre reçoit 404 et
+      // n'apprend rien de son corps de requête, pas même que son rôle n'aurait
+      // pas suffi.
+      const access = await accessFrom(userId, body)
+
+      if (access === null) {
+        return { status: 'not_found' }
+      }
+
+      // **La permission ensuite, et avant la validation** — l'ordre du module,
+      // sans exception (revue de s17, F5). Valider d'abord rendait à un appelant
+      // sans aucun droit un 303 vers l'écran avec un motif traduit, que l'ADR 030
+      // rejette explicitement, et laissait une sonde d'élévation qui envoie
+      // toujours un rôle malformé hors du journal du §7.
+      if (!allows(access.role, ORGANIZATION_ACTION.setRole)) {
+        const attempted = attemptedRoleChange(body)
+
+        // Un refus d'élévation est un signal, pas une erreur d'usage : il se
+        // journalise, comme `auth.session_revocation_refused`. La cible et le
+        // rôle sont ceux que le corps nommait, `null` quand il n'en nommait
+        // aucun — le journal ne devine pas.
+        securityLog({
+          event: 'organizations.role_change_refused',
+          actor: access.userId,
+          organizationId: access.organizationId,
+          target: attempted.target,
+          role: attempted.role,
+          transfersOwnership:
+            attempted.target !== null &&
+            attempted.role !== null &&
+            isOwnershipTransfer(access, attempted.target, attempted.role),
+        })
+
+        return { status: 'forbidden' }
+      }
+
+      const parsed = MEMBER_ROLE.safeParse(body)
+
+      if (!parsed.success) {
+        return { status: 'refused', refusal: 'invalid_role' }
+      }
+
+      const transfersOwnership = isOwnershipTransfer(
+        access,
+        parsed.data.userId,
+        parsed.data.role,
+      )
+      const attempt = {
+        actor: access.userId,
+        organizationId: access.organizationId,
+        target: parsed.data.userId,
+        role: parsed.data.role,
+        transfersOwnership,
+      } as const
+
+      // **On écrit d'abord.** Le prédicat porte la règle du dernier
+      // propriétaire, et la transaction prend le verrou — la lecture qui suit ne
+      // sert qu'à nommer le refus, et seulement s'il y en a un.
+      const changed = await repository.setMemberRole(access, {
+        userId: parsed.data.userId,
+        role: parsed.data.role,
+        transfersOwnership,
+      })
+
+      if (changed) {
+        securityLog({ event: 'organizations.role_changed', ...attempt })
+
         return { status: 'ok', organizationId: access.organizationId }
       }
 
@@ -636,10 +868,7 @@ export function createOrganizationsUseCases(
 
       return {
         status: 'refused',
-        // La ligne n'a pas été supprimée : ou bien elle n'existe pas, ou bien
-        // c'est le dernier propriétaire. La règle pure départage, et son repli
-        // est le refus le plus prudent.
-        refusal: removalRefusal(members, parsed.data.userId) ?? 'last_owner',
+        refusal: roleChangeRefusal(members, parsed.data.userId, parsed.data.role) ?? 'last_owner',
       }
     },
 

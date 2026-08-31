@@ -403,6 +403,35 @@ const SCOPED_READ_SYNTAX = scopedReadSyntax(['select', 'from', 'execute'])
 const TRANSACTION_LOCKS_FILE =
   'packages/modules/organizations/src/infrastructure/transaction-locks.ts'
 
+/**
+ * **La matrice des rôles est écrite une fois** (revue de s17, F4).
+ *
+ * L'`AGENTS.md` du module l'annonçait — « aucune comparaison de rôle hors de
+ * `domain/permissions.ts` » — et le commit qui l'écrivait la démentait trois
+ * fois : un `role === 'owner'` dans le `.tsx` de l'écran, deux dans
+ * `domain/message-keys.ts`. Aucune commande ne la tenait, donc c'était de la
+ * documentation (ADR 013). La voici en règle : comparer un rôle à un littéral
+ * est refusé partout dans le module, **sauf** dans le fichier qui décide.
+ *
+ * **Ce qu'elle ne tient pas**, dit plutôt que sous-entendu : elle voit les
+ * comparaisons à un littéral (`===`, `!==`, `==`, `!=`) — la forme écrite trois
+ * fois ici —, pas un `switch (role)`, pas un `includes`, pas une comparaison à
+ * une variable. Et elle porte sur ces trois chaînes : un rôle ajouté à
+ * `ORGANIZATION_ROLES` sans être ajouté ici passerait. La liste est reprise du
+ * `domain` par le lecteur, pas importée : `eslint.config.ts` ne compile pas le
+ * module.
+ */
+const ROLE_COMPARISON_MESSAGE =
+  'La matrice des rôles s’écrit une fois, dans `packages/modules/organizations/src/domain/permissions.ts` (revue de s17, F4). Une comparaison de rôle ailleurs la fait exister à deux endroits, et le second est celui qui ment : l’écran lit `view.permissions` et `members[].assignableRoles`, et une notion dérivée du rôle — « ce rôle donne la propriété », par exemple — est une fonction nommée du `domain`.'
+
+const ROLE_COMPARISON_SYNTAX = ['owner', 'admin', 'member'].map((role) => ({
+  selector: `BinaryExpression[operator=/^[!=]==?$/] > Literal[value='${role}']`,
+  message: ROLE_COMPARISON_MESSAGE,
+}))
+
+/** Le fichier qui décide : la matrice y vit, les comparaisons aussi. */
+const PERMISSIONS_FILE = 'packages/modules/organizations/src/domain/permissions.ts'
+
 const organizationPerimeter: Linter.Config[] = [
   {
     files: [sources('packages/modules/organizations/src')],
@@ -422,6 +451,7 @@ const organizationPerimeter: Linter.Config[] = [
         ...MODULE_SYNTAX,
         ...OUTBOUND_FETCH_SYNTAX,
         ...SCOPED_READ_SYNTAX,
+        ...ROLE_COMPARISON_SYNTAX,
       ],
     },
   },
@@ -435,6 +465,35 @@ const organizationPerimeter: Linter.Config[] = [
         ...MODULE_SYNTAX,
         ...OUTBOUND_FETCH_SYNTAX,
         ...scopedReadSyntax(['select', 'from']),
+        ...ROLE_COMPARISON_SYNTAX,
+      ],
+    },
+  },
+  {
+    // La porte de lecture est exclue du bloc du périmètre — c'est sa raison
+    // d'être —, elle ne l'est pas de la matrice : sans ce bloc, elle serait le
+    // seul fichier du module où comparer un rôle passerait.
+    files: ['packages/modules/organizations/src/infrastructure/scoped-reads.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...MODULE_SYNTAX,
+        ...OUTBOUND_FETCH_SYNTAX,
+        ...ROLE_COMPARISON_SYNTAX,
+      ],
+    },
+  },
+  {
+    // **Le fichier qui décide**, et lui seul : la matrice y vit, donc les
+    // comparaisons de rôle y sont chez elles. Tout le reste est repris — en
+    // configuration plate, ce bloc remplace la valeur posée plus haut.
+    files: [PERMISSIONS_FILE],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...MODULE_SYNTAX,
+        ...OUTBOUND_FETCH_SYNTAX,
+        ...SCOPED_READ_SYNTAX,
       ],
     },
   },

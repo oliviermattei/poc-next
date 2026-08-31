@@ -19,7 +19,17 @@ import {
   ORGANIZATION_ROLES,
   parseOrganizationDraft,
   type OrganizationRefusal,
+  type OrganizationRole,
 } from './organization'
+import {
+  allows,
+  assignableRolesFor,
+  ORGANIZATION_ACTIONS,
+  permissionsOf,
+  removalPermission,
+  roleChangeRefusal,
+  type OrganizationAction,
+} from './permissions'
 
 /**
  * Les règles pures du module, éprouvées **là où elles vivent**.
@@ -271,5 +281,184 @@ describe('le quota d’émission d’invitations', () => {
     expect(exceedsInvitationQuota(INVITATION_QUOTA_PER_WINDOW - 1)).toBe(false)
     expect(exceedsInvitationQuota(INVITATION_QUOTA_PER_WINDOW)).toBe(true)
     expect(INVITATION_QUOTA_WINDOW_SECONDS).toBe(60 * 60)
+  })
+})
+
+/* ------------------------------------------------------------------------- *
+ * s17 — la matrice des permissions.
+ *
+ * **Elle est énumérée ici, et seulement ici.** Ses appelants — les six portes du
+ * module — prouvent chacun qu'ils l'appellent, par un témoin de refus ; ils ne
+ * rejouent pas cette matrice (`tests/organizations.test.ts`). Une matrice
+ * répétée à N portes multiplie la suite par N et éprouve la même décision par
+ * une autre porte.
+ * ------------------------------------------------------------------------- */
+
+describe('la matrice des permissions', () => {
+  /**
+   * **Chaque rôle × chaque action sensible** (critère 8). Le tableau est écrit
+   * à la main, en face de la fonction : le dériver de la fonction ferait un
+   * test qui se compare à lui-même.
+   */
+  const EXPECTED: Readonly<Record<'owner' | 'admin' | 'member', readonly OrganizationAction[]>> = {
+    owner: [
+      'organization.rename',
+      'member.invite',
+      'invitation.resend',
+      'invitation.revoke',
+      'member.remove',
+      'member.set_role',
+    ],
+    // Un `admin` invite, révoque, renvoie, renomme et retire — mais il ne
+    // distribue pas les rôles : les critères énumèrent ce qu'il peut faire
+    // (« inviter et retirer des members »), et le rôle n'y est pas.
+    admin: [
+      'organization.rename',
+      'member.invite',
+      'invitation.resend',
+      'invitation.revoke',
+      'member.remove',
+    ],
+    member: [],
+  }
+
+  it('couvre exactement les actions que le module garde', () => {
+    // Sans ce cas, ajouter une action sans l'inscrire au tableau ci-dessus la
+    // laisserait hors de la matrice, donc non éprouvée.
+    expect([...ORGANIZATION_ACTIONS].sort()).toEqual(
+      [...new Set(Object.values(EXPECTED).flat())].sort(),
+    )
+  })
+
+  it.each(['owner', 'admin', 'member'] as const)('décide de chaque action pour un %s', (role) => {
+    for (const action of ORGANIZATION_ACTIONS) {
+      expect(allows(role, action), `${role} × ${action}`).toBe(EXPECTED[role].includes(action))
+    }
+  })
+
+  it('accorde tout au compte qui n’a pas d’organisation', () => {
+    // **Critère 7.** Module coupé — ou compte sans organisation courante —, la
+    // donnée appartient au compte : il en est le propriétaire, il n'y a pas de
+    // rôle à consulter. Le même appel sert les deux configurations.
+    for (const action of ORGANIZATION_ACTIONS) {
+      expect(allows(null, action), action).toBe(true)
+    }
+
+    expect(permissionsOf(null)['member.set_role']).toBe(true)
+  })
+
+  it('rend l’enregistrement complet, une entrée par action', () => {
+    expect(Object.keys(permissionsOf('member')).sort()).toEqual([...ORGANIZATION_ACTIONS].sort())
+  })
+
+  it('refuse un rôle que la matrice ne connaît pas, au lieu de lever', () => {
+    // **Rien n'empêche une telle ligne d'exister** : `organization_member.role`
+    // est un `text not null` sans contrainte de valeur, et le rôle est relu en
+    // base à chaque requête. Un rôle hors matrice doit donc être **refusé** —
+    // avant la correction, `MATRIX[role].includes(...)` levait un `TypeError`,
+    // c'est-à-dire un 500 au lieu d'un refus (revue de s17, F3). Un défaut qui
+    // ferme est un défaut ; un défaut qui ouvre est une faille.
+    const unknown = 'superadmin' as OrganizationRole
+
+    for (const action of ORGANIZATION_ACTIONS) {
+      expect(allows(unknown, action), action).toBe(false)
+    }
+
+    expect(Object.values(permissionsOf(unknown))).toEqual(ORGANIZATION_ACTIONS.map(() => false))
+  })
+})
+
+describe('qui peut retirer qui', () => {
+  const owner = { userId: 'usr_owner', role: 'owner' } as const
+  const admin = { userId: 'usr_admin', role: 'admin' } as const
+  const member = { userId: 'usr_member', role: 'member' } as const
+
+  it('laisse chacun se retirer soi-même, quel que soit son rôle', () => {
+    // Quitter n'est pas une permission d'administration : c'est le geste de la
+    // personne sur sa propre appartenance. La règle du dernier propriétaire
+    // continue de s'appliquer, ailleurs.
+    for (const actor of [owner, admin, member]) {
+      expect(removalPermission(actor, actor), actor.role).toBe(true)
+    }
+  })
+
+  it('refuse à un membre de retirer quelqu’un d’autre', () => {
+    expect(removalPermission(member, admin)).toBe(false)
+    expect(removalPermission(member, owner)).toBe(false)
+  })
+
+  it('laisse un administrateur retirer un membre, et lui seul', () => {
+    expect(removalPermission(admin, member)).toBe(true)
+  })
+
+  it('refuse à un administrateur de retirer un propriétaire ou un autre administrateur', () => {
+    // Critère 3 à la lettre : un `admin` « peut inviter et retirer des
+    // **members** ». Laisser deux administrateurs se retirer l'un l'autre serait
+    // une prise de pouvoir latérale que personne n'a décidée (revue de s17,
+    // arbitrage 2) : l'échelon intermédiaire ne touche ni celui du dessus, ni
+    // son pair.
+    expect(removalPermission(admin, owner)).toBe(false)
+    expect(removalPermission(admin, { userId: 'usr_autre', role: 'admin' })).toBe(false)
+  })
+
+  it('laisse un propriétaire retirer n’importe qui', () => {
+    expect(removalPermission(owner, admin)).toBe(true)
+    expect(removalPermission(owner, { userId: 'usr_2', role: 'owner' })).toBe(true)
+  })
+})
+
+describe('les rôles qu’une ligne de membre peut recevoir', () => {
+  const owner = { userId: 'usr_owner', role: 'owner' } as const
+  const admin = { userId: 'usr_admin', role: 'admin' } as const
+  const member = { userId: 'usr_member', role: 'member' } as const
+
+  it('n’en propose aucun à qui ne distribue pas les rôles', () => {
+    expect(assignableRolesFor(admin, member)).toEqual([])
+    expect(assignableRolesFor(member, admin)).toEqual([])
+  })
+
+  it('n’en propose aucun sur sa propre ligne', () => {
+    // Se rétrograder soi-même passe par « quitter » ou par un transfert vers
+    // quelqu'un d'autre : une ligne qui proposerait à un propriétaire de se
+    // rétrograder l'inviterait à laisser l'organisation sans gouvernance.
+    expect(assignableRolesFor(owner, owner)).toEqual([])
+  })
+
+  it('exclut le rôle que la ligne porte déjà, et place le transfert en dernier', () => {
+    // L'ordre est une décision du domaine, pas de l'écran : le geste qui change
+    // qui gouverne vient après ceux qui ne le changent pas.
+    expect(assignableRolesFor(owner, member)).toEqual(['admin', 'owner'])
+    expect(assignableRolesFor(owner, admin)).toEqual(['member', 'owner'])
+    expect(assignableRolesFor(owner, { userId: 'usr_2', role: 'owner' })).toEqual([
+      'admin',
+      'member',
+    ])
+  })
+})
+
+describe('le motif de refus d’un changement de rôle', () => {
+  const owner = { userId: 'usr_owner', role: 'owner' } as const
+  const admin = { userId: 'usr_admin', role: 'admin' } as const
+  const member = { userId: 'usr_member', role: 'member' } as const
+
+  it('nomme « pas membre » une cible absente de la liste', () => {
+    expect(roleChangeRefusal([owner, member], 'usr_inconnu', 'admin')).toBe('not_a_member')
+  })
+
+  it('refuse de rétrograder le dernier propriétaire', () => {
+    // La règle **nomme** le refus ; l'invariant, lui, est tenu par le prédicat
+    // de l'ordre de modification et par le verrou porté par la transaction.
+    expect(roleChangeRefusal([owner, member], owner.userId, 'admin')).toBe('last_owner')
+  })
+
+  it('accepte de rétrograder un propriétaire dès qu’il en reste un autre', () => {
+    expect(
+      roleChangeRefusal([owner, { userId: 'usr_2', role: 'owner' }], owner.userId, 'member'),
+    ).toBeNull()
+  })
+
+  it('accepte de promouvoir un membre, et de nommer un propriétaire', () => {
+    expect(roleChangeRefusal([owner, member], member.userId, 'admin')).toBeNull()
+    expect(roleChangeRefusal([owner, admin], admin.userId, 'owner')).toBeNull()
   })
 })

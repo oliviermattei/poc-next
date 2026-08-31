@@ -31,15 +31,33 @@ export type OrganizationRole = (typeof ORGANIZATION_ROLES)[number]
 export const FOUNDER_ROLE: OrganizationRole = 'owner'
 
 /**
- * Les motifs de refus, et il n'y en a que trois.
+ * Ce que devient un propriétaire qui **transfère** la propriété (critère 4 de
+ * s17) : administrateur, pas simple membre.
+ *
+ * Le rétrograder jusqu'à `member` lui retirerait d'un coup le droit d'inviter
+ * et de retirer, alors qu'il vient seulement de désigner un successeur ; et le
+ * laisser propriétaire ne serait pas un transfert.
+ */
+export const SUCCEEDED_OWNER_ROLE: OrganizationRole = 'admin'
+
+/**
+ * Les motifs de refus de l'organisation elle-même.
  *
  * `slug_unavailable` couvre **à la fois** l'identifiant réservé et
  * l'identifiant déjà pris, et c'est une décision de sécurité, pas une paresse :
  * deux motifs distincts feraient du formulaire de création un test d'existence
  * d'organisation (`docs/security.md` §7). Le message dit quoi faire, pas
  * pourquoi.
+ *
+ * `invalid_role` (s17) est le quatrième : un rôle demandé qui n'est pas un rôle
+ * du produit. Il n'a rien à voir avec une permission — un rôle inconnu est une
+ * entrée malformée, refusée par Zod à la frontière, pas un droit manquant.
  */
-export type OrganizationRefusal = 'invalid_name' | 'invalid_slug' | 'slug_unavailable'
+export type OrganizationRefusal =
+  | 'invalid_name'
+  | 'invalid_slug'
+  | 'slug_unavailable'
+  | 'invalid_role'
 
 export interface OrganizationDraft {
   readonly name: string

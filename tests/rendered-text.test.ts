@@ -620,8 +620,14 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           // « quitter », il ne s'affiche jamais.
           'viewerId',
           'organizationId',
-          'field',
           'removeAction',
+          // s17 — la route du changement de rôle, et le rôle **posé** par un
+          // bouton de ligne. Ce sont un chemin monté et un identifiant de rôle,
+          // jamais du texte : le garde-fou de prose reste actif, `role="Membre"`
+          // rougirait toujours. Déclarées **sur cet écran**.
+          'setMemberRole',
+          'setRoleAction',
+          'fields',
         ],
         render: async () =>
           (await import('../apps/web/app/organizations/page')).default({
