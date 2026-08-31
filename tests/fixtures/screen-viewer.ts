@@ -38,6 +38,33 @@ export const SIGNED_IN: ViewerFixture = {
 
 export const ANONYMOUS: ViewerFixture = { session: null, account: null }
 
+/**
+ * Les organisations que voit l'écran de s15 pendant ce rendu.
+ *
+ * Ce sont **des données** : un nom et un identifiant public s'affichent tels
+ * quels et ne viennent d'aucun catalogue. Le test les énumère pour les
+ * distinguer d'un texte écrit en dur.
+ */
+export const FIXTURE_ORGANIZATION_NAME = 'Studio Martin'
+export const FIXTURE_ORGANIZATION_SLUG = 'studio-martin'
+
+export const FIXTURE_ORGANIZATIONS = {
+  current: {
+    id: 'org_1',
+    name: FIXTURE_ORGANIZATION_NAME,
+    slug: FIXTURE_ORGANIZATION_SLUG,
+    role: 'owner' as const,
+  },
+  memberships: [
+    {
+      id: 'org_1',
+      name: FIXTURE_ORGANIZATION_NAME,
+      slug: FIXTURE_ORGANIZATION_SLUG,
+      role: 'owner' as const,
+    },
+  ],
+}
+
 export const FIXTURE_SESSIONS: readonly DescribedSession[] = [
   {
     id: 'ses_1',

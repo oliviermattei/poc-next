@@ -324,7 +324,6 @@ const MODULE_SYNTAX = [
   ...COMPONENT_BASE_SYNTAX,
   ...FORM_METHOD_SYNTAX,
 ]
-
 const moduleDatabaseBoundary: Linter.Config[] = [
   {
     files: [sources('packages/modules')],
@@ -338,6 +337,73 @@ const moduleDatabaseBoundary: Linter.Config[] = [
     // interdits du module.
     files: ['packages/modules/*/src/infrastructure/oauth-outbound.ts'],
     rules: { 'no-restricted-syntax': ['error', ...MODULE_SYNTAX] },
+  },
+]
+
+/**
+ * **Une lecture du module `organizations` passe par sa porte unique**
+ * (constat F2 de la revue de s15).
+ *
+ * La story affirmait rendre « l'oubli du périmètre organisationnel impossible
+ * plutôt que déconseillé ». La revue a mesuré le contraire : un fichier neuf
+ * dans `infrastructure/`, lisant `organization` par un identifiant venu du
+ * corps de la requête, passait `pnpm typecheck`, `pnpm lint` et les 811 tests.
+ * La marque de type d'`OrganizationAccess` garde les deux **écritures** qui
+ * l'exigent ; aucune commande ne gardait les **lectures**, c'est-à-dire le
+ * chemin par lequel une fuite se produit.
+ *
+ * D'où cette règle, qui est le levier le plus étroit qui morde : dans tout le
+ * module, appeler `select`, `from` ou `execute` sur une connexion est refusé,
+ * **sauf** dans `infrastructure/scoped-reads.ts`. Ce fichier est la seule porte
+ * de lecture, et chacune de ses fonctions prend le propriétaire en premier
+ * paramètre — le compilateur refuse alors de l'omettre. Une lecture neuve n'a
+ * plus que deux issues : passer par la porte, ou faire échouer `pnpm lint`.
+ *
+ * **Ce qu'elle ne tient pas**, et il faut le lire avant de s'y fier :
+ *
+ * - à l'intérieur de la porte, rien n'oblige le prédicat à porter le compte.
+ *   C'est `tests/organizations.test.ts` qui l'éprouve, par mutation ;
+ * - un appel dont le nom de méthode n'est pas visible à la syntaxe
+ *   (`const { select } = db`) n'est pas vu. Il faut l'écrire exprès ;
+ * - la portée est **ce module**. Un futur module qui porterait de la donnée
+ *   d'organisation aura besoin de la sienne : cette règle ne la lui donne pas.
+ *
+ * Elle **reprend** les sélecteurs des blocs précédents : en configuration
+ * plate, une seconde déclaration de `no-restricted-syntax` sur les mêmes
+ * fichiers remplace les options de la première. Sans la reprise, ce module
+ * serait le seul du dépôt où `@repo/db` et un `<form>` sans `method`
+ * passeraient — deux cas de `tests/lint-rules.test.ts` rougissent si elle
+ * disparaît.
+ */
+const SCOPED_READ_MESSAGE =
+  'Périmètre organisationnel (revue s15, F2) : une lecture du module `organizations` passe par `infrastructure/scoped-reads.ts`, dont chaque fonction exige le propriétaire en premier paramètre. Une lecture écrite ailleurs peut oublier l’appartenance — c’est exactement ce qui a été mesuré, et ce qui rendait `dataOwnerOf` capable de résoudre vers une organisation quittée.'
+
+const SCOPED_READ_SYNTAX = ['select', 'from', 'execute'].flatMap((method) =>
+  [
+    // `db.select(…)`, `?.` compris — la forme qu'on écrit.
+    `CallExpression[callee.type='MemberExpression'][callee.property.name='${method}']`,
+    // `db['select'](…)` — la même chose, écrite pour ne pas être vue.
+    `CallExpression[callee.type='MemberExpression'][callee.property.value='${method}']`,
+  ].map((selector) => ({ selector, message: SCOPED_READ_MESSAGE })),
+)
+
+const organizationPerimeter: Linter.Config[] = [
+  {
+    files: [sources('packages/modules/organizations/src')],
+    ignores: ['packages/modules/organizations/src/infrastructure/scoped-reads.ts'],
+    rules: {
+      // En configuration plate, le dernier bloc qui matche **remplace** la
+      // valeur de `no-restricted-syntax` : ce bloc doit donc reprendre tout ce
+      // que le module devait déjà respecter — les interdits communs et la
+      // porte réseau de s12 — sinon les poser ici les ferait disparaître pour
+      // ce module précis, sans que rien ne rougisse.
+      'no-restricted-syntax': [
+        'error',
+        ...MODULE_SYNTAX,
+        ...OUTBOUND_FETCH_SYNTAX,
+        ...SCOPED_READ_SYNTAX,
+      ],
+    },
   },
 ]
 
@@ -477,6 +543,9 @@ const config: Linter.Config[] = [
   ...componentBaseBoundary,
   ...configClientSurface,
   ...moduleDatabaseBoundary,
+  // Après `moduleDatabaseBoundary`, dont il reprend les sélecteurs : le dernier
+  // bloc qui matche décide de `no-restricted-syntax`.
+  ...organizationPerimeter,
   ...testHarnessException,
 ]
 

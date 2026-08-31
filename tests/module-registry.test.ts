@@ -65,6 +65,11 @@ describe('contraintes du contrat portées par le compilateur', () => {
       'une politique de rétention pour une catégorie non déclarée',
       'undeclared-retention-category.ts',
     ],
+    // s15 : le périmètre organisationnel est tenu par le **compilateur**, pas
+    // par une relecture. Un accès fabriqué à partir d'un identifiant reçu du
+    // client ne compile pas — retirer la marque de type le ferait compiler, et
+    // ce cas rougirait.
+    ['un accès à une organisation fabriqué à la main', 'forged-organization-access.ts'],
   ])('refuse %s', (_case, fixture) => {
     expect(diagnostics).toContain(fixture)
   })

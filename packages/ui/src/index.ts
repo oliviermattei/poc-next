@@ -61,6 +61,11 @@ export {
   MarketingSection,
   type MarketingSectionProps,
 } from './composed/marketing-section'
+export {
+  OrgSwitcher,
+  type OrgSwitcherOption,
+  type OrgSwitcherProps,
+} from './composed/org-switcher'
 export { PageHeader, type PageHeaderProps } from './composed/page-header'
 export {
   Sidebar,

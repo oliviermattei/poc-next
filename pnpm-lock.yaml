@@ -50,6 +50,9 @@ importers:
       '@repo/module-marketing':
         specifier: workspace:*
         version: link:packages/modules/marketing
+      '@repo/module-organizations':
+        specifier: workspace:*
+        version: link:packages/modules/organizations
       '@repo/ports':
         specifier: workspace:*
         version: link:packages/ports
@@ -143,6 +146,9 @@ importers:
       '@repo/module-marketing':
         specifier: workspace:*
         version: link:../../packages/modules/marketing
+      '@repo/module-organizations':
+        specifier: workspace:*
+        version: link:../../packages/modules/organizations
       '@repo/ports':
         specifier: workspace:*
         version: link:../../packages/ports
@@ -466,6 +472,43 @@ importers:
       '@repo/ui':
         specifier: workspace:*
         version: link:../../ui
+      zod:
+        specifier: ^4.5.0
+        version: 4.5.4
+    devDependencies:
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../../../tooling/typescript
+      '@types/node':
+        specifier: ^22
+        version: 22.20.1
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.2.18
+      react:
+        specifier: ^19.2.0
+        version: 19.2.8
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+
+  packages/modules/organizations:
+    dependencies:
+      '@repo/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@repo/module-auth':
+        specifier: workspace:*
+        version: link:../auth
+      '@repo/ui':
+        specifier: workspace:*
+        version: link:../../ui
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@types/pg@8.23.1)(kysely@0.29.5)(pg@8.23.0)
+      lucide-react:
+        specifier: 1.37.0
+        version: 1.37.0(react@19.2.8)
       zod:
         specifier: ^4.5.0
         version: 4.5.4

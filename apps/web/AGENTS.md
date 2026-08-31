@@ -16,15 +16,18 @@ module (`packages/modules/<module>/src/domain`).
   `lib/mailer.ts`, qui est le point de composition du mailer ;
 - les modules du projet, **uniquement** parce que `config/features.ts` les
   référence : `@repo/module-auth`, `@repo/module-i18n`,
-  `@repo/module-marketing`, `@repo/module-demo-enabled` et
-  `@repo/module-demo-disabled` aujourd'hui. Trois fichiers font exception et
+  `@repo/module-marketing`, `@repo/module-organizations`,
+  `@repo/module-demo-enabled` et
+  `@repo/module-demo-disabled` aujourd'hui. Quatre fichiers font exception et
   importent un module directement — `lib/auth.ts`, le point de composition de
-  l'authentification, `lib/locale-routing.ts`, celui de l'i18n, et
-  `lib/marketing.ts`, celui du site public (voir plus bas). Les écrans du site
-  public importent en plus `@repo/module-marketing/presentation`, le second
-  point d'entrée du module : ses composants React n'ont pas leur place dans le
-  barril que lit `config/features.ts`, qu'aucun outil du dépôt ne compile en
-  JSX (**ADR 024**, la règle de tout module à composants) ;
+  l'authentification, `lib/locale-routing.ts`, celui de l'i18n,
+  `lib/marketing.ts`, celui du site public, et `lib/organizations.ts`, celui des
+  organisations (voir plus bas). Les écrans du site public et celui des
+  organisations importent en plus le second point d'entrée de leur module
+  (`@repo/module-marketing/presentation`,
+  `@repo/module-organizations/presentation`) : ses composants React n'ont pas
+  leur place dans le barril que lit `config/features.ts`, qu'aucun outil du
+  dépôt ne compile en JSX (**ADR 024**, la règle de tout module à composants) ;
 - `zod` pour valider les entrées de route — le paramètre `[document]` des pages
   légales aujourd'hui. Zod à **chaque** frontière (`docs/security.md` §4), y
   compris un segment d'URL ;
@@ -424,6 +427,44 @@ un bundle client, pour un écran dont l'existence signale que ce registre peut
 Mesuré sur le build de production, Chromium (revue de s45, section de clôture) :
 `/fr/adresse-inexistante` → **0 violation**, `/fr/<page qui lève>` → 500 et
 **0 violation**, l'écran de dernier recours rendu.
+## Le montage des organisations
+
+Un fichier, sur le modèle exact du site public :
+
+- `lib/organizations.ts` porte le **choix** — le module `organizations` est-il
+  monté ? C'est le seul fichier de l'application qui connaisse
+  `@repo/module-organizations`, et le seul qui regarde s'il est activé. Il rend
+  une valeur dont la **forme est la même dans les deux états** : un drapeau
+  `available`, une vue à deux champs, une organisation active qui vaut `null`.
+  Module coupé, ses deux lectures n'ouvrent **aucune connexion** ;
+- `app/organizations/page.tsx` **lit** cette valeur sans jamais nommer de
+  module : `available` est une **donnée**, comme `sections.length` l'est pour la
+  racine. Module coupé, l'écran répond 404 — le même arbitrage que
+  `legal/[document]`.
+
+C'est aussi ce fichier qui donne au module deux choses qu'il ne peut pas se
+procurer : la **connexion** (ADR 020) et les **identifiants publics réservés**.
+Ces derniers sont dérivés — segments de tête de la navigation du registre,
+langues servies — plus la liste des écrans que l'application sert elle-même.
+Cette dernière est écrite, et **vérifiée par une commande** :
+`tests/organizations.test.ts` lit les segments de premier niveau réellement
+présents sous `apps/web/app` et exige que chacun soit refusé. Ajouter un écran
+sans réserver son segment fait rougir `pnpm test` — sans quoi une organisation
+pourrait s'appeler `sign-in`.
+
+**`resolveDataOwner` est la fonction unique** qui dit à qui appartient une
+donnée (`@repo/core`, `docs/security.md` §3). `dataOwnerOf(session)`, exportée
+par `lib/organizations.ts`, l'appelle — c'est elle que les écrans et les routes
+emploient, et son appelant est identique que le module soit activé ou non :
+c'est ce qui empêche le mode mono-utilisateur de dupliquer chaque requête. Elle
+reçoit la session plutôt que de la lire elle-même : lire le cookie ici
+importerait `next/headers` et rendrait ce fichier inutilisable hors d'un
+contexte de requête.
+
+Ce qu'elle rend est le périmètre **au moment de l'appel**, et l'appartenance y
+est jointe à la lecture : un compte retiré d'une organisation retombe
+immédiatement sur son périmètre de compte, sans qu'aucune ligne n'ait été
+nettoyée (ADR 025).
 
 ## Le montage du mailer
 

@@ -789,3 +789,115 @@ describe('un module n’appelle pas le réseau à main nue', () => {
     expect(ruleIds.filter((id) => id.startsWith('no-restricted-'))).toEqual([])
   })
 })
+
+/**
+ * **Le périmètre organisationnel, rendu exécutable** (constat F2 de la revue de
+ * s15).
+ *
+ * La story affirmait que le module rend « l'oubli du périmètre impossible ».
+ * La revue a mesuré le contraire : un fichier neuf posé dans
+ * `infrastructure/`, lisant `organization` par un identifiant venu du corps de
+ * la requête, passait `pnpm typecheck`, `pnpm lint` et les 811 tests. La marque
+ * de type ne protège que les deux écritures qui la déclarent ; une **lecture**
+ * n'était gardée par rien.
+ *
+ * La garde est donc déplacée là où une commande la tient : **une seule porte de
+ * lecture**, `infrastructure/scoped-reads.ts`, dont chaque fonction prend le
+ * propriétaire en premier paramètre — donc ne peut pas l'omettre. Partout
+ * ailleurs dans le module, appeler `select`, `from` ou `execute` sur une
+ * connexion est refusé par `pnpm lint`.
+ *
+ * **Ce que cette garde ne tient pas**, dit plutôt que sous-entendu : à
+ * l'intérieur de la porte elle-même, rien n'oblige le prédicat à porter le
+ * compte — c'est `tests/organizations.test.ts` (« cesse de résoudre vers une
+ * organisation qu'on a quittée ») qui l'éprouve, par mutation. Et un appel
+ * dont le nom de méthode n'est pas visible à la syntaxe
+ * (`const { select } = db`) n'est pas vu. La garde borne la surface à un
+ * fichier de quatre lectures ; elle ne lit pas le SQL.
+ */
+describe('une lecture du module `organizations` passe par sa porte unique', () => {
+  const PERIMETER = 'scoped-reads.ts'
+
+  /** La sonde de la revue, à la lettre : une lecture sans appartenance. */
+  const UNSCOPED_READ = [
+    "import { eq } from 'drizzle-orm'",
+    "import { organization } from '../schema'",
+    'export const readAnyOrganization = async (db: any, body: { organizationId: string }) =>',
+    '  await db.select().from(organization).where(eq(organization.id, body.organizationId))',
+  ].join('\n')
+
+  let eslint: ESLint
+
+  beforeAll(() => {
+    eslint = new ESLint({ cwd: REPO_ROOT })
+  })
+
+  const messagesFor = async (code: string, filePath: string): Promise<string[]> => {
+    const [result] = await eslint.lintText(code, { filePath })
+
+    return (result?.messages ?? []).map((message) => message.message)
+  }
+
+  it.each([
+    ['un fichier neuf d’infrastructure', 'infrastructure/probe.ts'],
+    ['la couche application', 'application/probe.ts'],
+    ['la couche présentation', 'presentation/probe.ts'],
+    // Le fichier des repositories est le plus tentant : c'est là que vit déjà
+    // la connexion. Il n'a pas de passe-droit — il délègue ses lectures.
+    [
+      'le fichier des repositories lui-même',
+      'infrastructure/drizzle-organization-repositories.ts',
+    ],
+  ])('refuse la lecture non périmétrée — %s', async (_name, path) => {
+    const messages = await messagesFor(
+      UNSCOPED_READ,
+      `packages/modules/organizations/src/${path}`,
+    )
+
+    expect(messages.filter((message) => message.includes(PERIMETER))).not.toEqual([])
+  })
+
+  it('laisse la porte de lecture lire, sans quoi la règle serait fausse', async () => {
+    const messages = await messagesFor(
+      UNSCOPED_READ,
+      'packages/modules/organizations/src/infrastructure/scoped-reads.ts',
+    )
+
+    expect(messages.filter((message) => message.includes(PERIMETER))).toEqual([])
+  })
+
+  it('ne juge pas les autres modules, qui n’ont pas ce périmètre', async () => {
+    const messages = await messagesFor(
+      UNSCOPED_READ,
+      'packages/modules/auth/src/infrastructure/probe.ts',
+    )
+
+    expect(messages.filter((message) => message.includes(PERIMETER))).toEqual([])
+  })
+
+  /**
+   * En configuration plate, un second bloc `no-restricted-syntax` sur les mêmes
+   * fichiers **remplace** les options du premier : sans reprise explicite, le
+   * module des organisations serait le seul du dépôt où `@repo/db` et un
+   * `<form>` sans `method` passeraient. Les deux cas ci-dessous rougissent si la
+   * reprise disparaît.
+   */
+  it.each([
+    [
+      '`@repo/db` reste refusé',
+      'infrastructure/probe.ts',
+      "import { db } from '@repo/db'\nexport const connection = db",
+      '@repo/db',
+    ],
+    [
+      'un `<form>` sans méthode reste refusé',
+      'presentation/probe.tsx',
+      'export const Probe = () => <form action="/x" />',
+      'method',
+    ],
+  ])('garde les interdits que ce bloc aurait pu écraser — %s', async (_n, path, code, needle) => {
+    const messages = await messagesFor(code, `packages/modules/organizations/src/${path}`)
+
+    expect(messages.filter((message) => message.includes(needle))).not.toEqual([])
+  })
+})

@@ -45,7 +45,7 @@ export {
   type LocaleChoice,
   type NestedMessages,
 } from './i18n'
-export { satisfiesProtection, visibleNavigation } from './protection'
+export { resolveDataOwner, satisfiesProtection, visibleNavigation } from './protection'
 export {
   assertDeclarationsAreComplete,
   resolveEnabledModules,

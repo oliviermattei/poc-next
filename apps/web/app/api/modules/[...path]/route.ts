@@ -2,6 +2,7 @@ import { dispatchModuleRequest } from '@repo/core'
 
 import { resolveModuleSession } from '../../../../lib/auth'
 import { moduleRegistry } from '../../../../lib/module-registry'
+import { prepareModuleServices } from '../../../../lib/module-services'
 
 /**
  * **Le** point de montage des routes de modules.
@@ -23,8 +24,15 @@ import { moduleRegistry } from '../../../../lib/module-registry'
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
-const handle = (request: Request): Promise<Response> =>
-  dispatchModuleRequest(moduleRegistry, request, { resolveSession: resolveModuleSession })
+const handle = (request: Request): Promise<Response> => {
+  // Les modules qui persistent reçoivent leur connexion **avant** d'être
+  // servis : le répartiteur monte des routes, il ne construit rien. Ce fichier
+  // ne nomme aucun module — `lib/module-services.ts` est le pendant de
+  // `lib/module-registry.ts`, et c'est lui qui sait qui a besoin de quoi.
+  prepareModuleServices()
+
+  return dispatchModuleRequest(moduleRegistry, request, { resolveSession: resolveModuleSession })
+}
 
 export const GET = handle
 export const POST = handle

@@ -146,7 +146,7 @@ Ceux que s08 utilise réellement, et rien de plus — copier l'inventaire comple
 
 | Copiés | `Accordion`, `Alert`, `Badge`, `Button`, `Card`, `DropdownMenu`, `Input`, `Label`, `Separator`, `Sheet` |
 | --- | --- |
-| Composés maison | `EmptyState`, `LocaleSwitcher`, `MarketingSection`, `PageHeader`, `Sidebar` / `SidebarNav`, `ThemeProvider`, `ThemeToggle` |
+| Composés maison | `EmptyState`, `LocaleSwitcher`, `MarketingSection`, `OrgSwitcher`, `PageHeader`, `Sidebar` / `SidebarNav`, `ThemeProvider`, `ThemeToggle` |
 
 Le reste de l'inventaire de `docs/design-system.md` — `Form`, `Table`,
 `DataTable`, `Tabs`, `Toaster`, `Command`, `AlertDialog`, `Avatar`, `Tooltip`,
@@ -155,6 +155,26 @@ Le reste de l'inventaire de `docs/design-system.md` — `Form`, `Table`,
 `ConfirmDialog`, et les composés des stories à venir — **n'est pas encore
 copié**. C'est la liste au 31 août 2026, révisée par s10 ; le document fait foi,
 pas ce tableau.
+
+`OrgSwitcher` est arrivé avec **s15**, que le document lui attribue nommément.
+Il reprend `LocaleSwitcher` à une différence près, et elle est tranchée : les
+options du sélecteur de langue sont des **liens** (la langue vit dans l'URL,
+donc un `GET` la change), celles du sélecteur d'organisation sont des **boutons
+de soumission** d'un `<form method="post">`. Basculer d'organisation change un
+état serveur ; un `GET` qui change un état serveur est une faute d'HTTP autant
+qu'une porte ouverte à la requête intersite.
+
+**Le menu a besoin de JavaScript pour s'ouvrir**, et c'est structurel : Radix
+monte son contenu dans un portail à l'ouverture, qui est un état React. La revue
+de s15 a relevé qu'un visiteur sans script voyait donc ses organisations sans
+pouvoir en changer. Le repli est un `<noscript>` **dans le même formulaire** :
+les mêmes options en boutons de soumission natifs, l'organisation courante
+exclue puisque le déclencheur la porte déjà — deux boutons du même nom seraient
+indiscernables pour une aide technique. Rien d'inline n'est ajouté (la CSP
+interdit `unsafe-inline`), et le navigateur masque le bloc dès que le script
+tourne. `e2e/organizations.spec.ts` le parcourt avec `javaScriptEnabled: false` ;
+c'est le seul endroit du dépôt qui puisse le prouver, un rendu statique n'ayant
+pas de moteur qui décide d'afficher un `<noscript>`.
 
 `Accordion` et `MarketingSection` sont arrivés avec s10 : le premier porte la
 FAQ marketing (que le document lui attribue explicitement), le second est

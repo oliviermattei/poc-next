@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>s15 — Organisations (maquette de référence)</title>
+    <!--
+      Maquette de RÉFÉRENCE, pas du code. Les tokens sont recopiés de
+      docs/design-system.md ; l'implémentation compose avec packages/ui.
+    -->
+    <style>
+      :root {
+        --background: oklch(1 0 0);
+        --foreground: oklch(0.145 0 0);
+        --card: oklch(1 0 0);
+        --card-foreground: oklch(0.145 0 0);
+        --muted: oklch(0.97 0 0);
+        --muted-foreground: oklch(0.556 0 0);
+        --primary: oklch(0.205 0 0);
+        --primary-foreground: oklch(0.985 0 0);
+        --secondary: oklch(0.97 0 0);
+        --secondary-foreground: oklch(0.205 0 0);
+        --destructive: oklch(0.577 0.245 27.325);
+        --destructive-foreground: oklch(0.985 0 0);
+        --border: oklch(0.922 0 0);
+        --input: oklch(0.922 0 0);
+        --ring: oklch(0.708 0 0);
+        --radius: 0.5rem;
+      }
+      .dark {
+        --background: oklch(0.145 0 0);
+        --foreground: oklch(0.985 0 0);
+        --card: oklch(0.205 0 0);
+        --card-foreground: oklch(0.985 0 0);
+        --muted: oklch(0.269 0 0);
+        --muted-foreground: oklch(0.708 0 0);
+        --primary: oklch(0.985 0 0);
+        --primary-foreground: oklch(0.205 0 0);
+        --secondary: oklch(0.269 0 0);
+        --secondary-foreground: oklch(0.985 0 0);
+        --destructive: oklch(0.704 0.191 22.216);
+        --border: oklch(1 0 0 / 10%);
+        --input: oklch(1 0 0 / 15%);
+        --ring: oklch(0.556 0 0);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--background);
+        color: var(--foreground);
+        font: 400 0.875rem/1.5 system-ui, sans-serif;
+      }
+      main { max-width: 56rem; margin: 0 auto; padding: 2.5rem 1rem; display: flex; flex-direction: column; gap: 1.5rem; min-width: 0; }
+      h1 { font-size: 1.875rem; font-weight: 600; margin: 0; }
+      h2 { font-size: 1.25rem; font-weight: 600; margin: 0; }
+      .muted { color: var(--muted-foreground); margin: 0.25rem 0 0; }
+      .small { font-size: 0.75rem; color: var(--muted-foreground); }
+      .card {
+        background: var(--card); color: var(--card-foreground);
+        border: 1px solid var(--border); border-radius: var(--radius);
+        padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; min-width: 0;
+      }
+      .row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; min-width: 0; }
+      .badge {
+        border: 1px solid var(--border); border-radius: calc(var(--radius) - 2px);
+        padding: 0.125rem 0.5rem; font-size: 0.75rem; background: var(--secondary);
+        color: var(--secondary-foreground);
+      }
+      label { display: block; font-weight: 500; margin-bottom: 0.5rem; }
+      input {
+        width: 100%; height: 2.5rem; padding: 0 0.75rem;
+        border: 1px solid var(--input); border-radius: calc(var(--radius) - 2px);
+        background: transparent; color: inherit; font: inherit;
+      }
+      input:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+      button {
+        height: 2.5rem; padding: 0 1rem; border: 0; border-radius: calc(var(--radius) - 2px);
+        background: var(--primary); color: var(--primary-foreground); font: inherit;
+        font-weight: 500; cursor: pointer;
+      }
+      button.outline { background: transparent; color: inherit; border: 1px solid var(--border); }
+      .alert {
+        border: 1px solid var(--destructive); color: var(--destructive);
+        border-radius: calc(var(--radius) - 2px); padding: 0.75rem 1rem;
+      }
+      .menu {
+        border: 1px solid var(--border); border-radius: var(--radius);
+        background: var(--card); padding: 0.25rem; margin-top: 0.25rem;
+        box-shadow: 0 8px 24px oklch(0 0 0 / 12%); /* surface flottante : ombre admise */
+        display: inline-flex; flex-direction: column; min-width: 14rem;
+      }
+      .menu button {
+        background: transparent; color: inherit; text-align: left; height: 2.25rem;
+        display: flex; align-items: center; gap: 0.5rem; border-radius: calc(var(--radius) - 4px);
+      }
+      .menu button[aria-current='true'] { background: var(--muted); }
+      .empty {
+        border: 1px dashed var(--border); border-radius: var(--radius);
+        padding: 2.5rem 1.5rem; text-align: center; display: flex;
+        flex-direction: column; align-items: center; gap: 0.75rem;
+      }
+      .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+      .grid { display: grid; gap: 1rem; }
+      .split { display: flex; flex-direction: column; gap: 2.5rem; }
+      .frame { border-top: 1px solid var(--border); padding-top: 1.5rem; }
+    </style>
+  </head>
+  <body>
+    <main class="split">
+      <!-- ================= État nominal ================= -->
+      <section>
+        <header>
+          <h1>Organisations</h1>
+          <p class="muted">Choisissez le contexte de travail et modifiez ses informations.</p>
+        </header>
+
+        <div class="grid" style="margin-top: 1.5rem">
+          <div class="card">
+            <div>
+              <h2>Organisation courante</h2>
+              <p class="muted">Vos données sont rattachées à cette organisation.</p>
+            </div>
+            <div class="row">
+              <!-- OrgSwitcher : un <form method="post"> autour d'un DropdownMenu -->
+              <form method="post" action="/api/modules/organizations/switch">
+                <button class="outline truncate" aria-label="Changer d’organisation">
+                  Studio Martin ▾
+                </button>
+                <div class="menu" role="menu">
+                  <button type="submit" name="organizationId" value="org_1" aria-current="true">
+                    ✓ Studio Martin
+                  </button>
+                  <button type="submit" name="organizationId" value="org_2">
+                    <span aria-hidden="true" style="width: 1rem"></span> Atelier Nord
+                  </button>
+                </div>
+              </form>
+              <span class="badge">Propriétaire</span>
+            </div>
+          </div>
+
+          <div class="card">
+            <div>
+              <h2>Paramètres</h2>
+              <p class="muted">Le nom et l’identifiant de l’organisation courante.</p>
+            </div>
+            <form method="post" action="/api/modules/organizations/update" class="grid">
+              <div>
+                <label for="u-name">Nom</label>
+                <input id="u-name" name="name" value="Studio Martin" />
+              </div>
+              <div>
+                <label for="u-slug">Identifiant</label>
+                <input id="u-slug" name="slug" value="studio-martin" />
+                <p class="small">Lettres minuscules, chiffres et tirets.</p>
+              </div>
+              <div><button type="submit">Enregistrer</button></div>
+            </form>
+          </div>
+
+          <div class="card">
+            <div>
+              <h2>Créer une organisation</h2>
+              <p class="muted">Vous en serez le propriétaire.</p>
+            </div>
+            <div class="alert" role="alert">
+              Cet identifiant n’est pas disponible. Choisissez-en un autre.
+            </div>
+            <form method="post" action="/api/modules/organizations/create" class="grid">
+              <div>
+                <label for="c-name">Nom</label>
+                <input id="c-name" name="name" placeholder="Atelier Nord" />
+              </div>
+              <div>
+                <label for="c-slug">Identifiant</label>
+                <input id="c-slug" name="slug" placeholder="atelier-nord" />
+              </div>
+              <div><button type="submit">Créer l’organisation</button></div>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= État vide ================= -->
+      <section class="frame">
+        <header>
+          <h1>Organisations</h1>
+          <p class="muted">Choisissez le contexte de travail et modifiez ses informations.</p>
+        </header>
+
+        <div class="grid" style="margin-top: 1.5rem">
+          <div class="empty">
+            <div aria-hidden="true">🏢</div>
+            <h2>Aucune organisation</h2>
+            <p class="muted">Créez-en une pour séparer vos données par contexte de travail.</p>
+          </div>
+
+          <div class="card">
+            <div>
+              <h2>Créer une organisation</h2>
+              <p class="muted">Vous en serez le propriétaire.</p>
+            </div>
+            <form method="post" action="/api/modules/organizations/create" class="grid">
+              <div>
+                <label for="e-name">Nom</label>
+                <input id="e-name" name="name" placeholder="Atelier Nord" />
+              </div>
+              <div>
+                <label for="e-slug">Identifiant</label>
+                <input id="e-slug" name="slug" placeholder="atelier-nord" />
+              </div>
+              <div><button type="submit">Créer l’organisation</button></div>
+            </form>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

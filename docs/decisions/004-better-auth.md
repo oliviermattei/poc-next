@@ -1,6 +1,6 @@
 # ADR 004 — Better Auth comme socle d'authentification
 
-- Status: accepted
+- Status: accepted — l'emploi du plugin `organization` est supersédé par l'ADR 025
 - Date: 2026-08-30
 - Scope: framing
 

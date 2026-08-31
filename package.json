@@ -36,6 +36,7 @@
     "@repo/module-demo-enabled": "workspace:*",
     "@repo/module-i18n": "workspace:*",
     "@repo/module-marketing": "workspace:*",
+    "@repo/module-organizations": "workspace:*",
     "@repo/ports": "workspace:*",
     "@repo/typescript-config": "workspace:*",
     "@types/node": "^22",

@@ -70,6 +70,28 @@ vi.mock('../apps/web/lib/auth', async () => {
   }
 })
 
+/**
+ * Les organisations de l'appelant : **la base**, et rien d'autre.
+ *
+ * `available` reste celui du vrai point de composition — c'est lui qui décide
+ * si l'écran rend ou refuse, et le doubler ferait de ce fichier une
+ * démonstration de sa propre fixture. Seules les deux lectures sont remplacées,
+ * comme `lib/auth` l'est plus haut.
+ */
+vi.mock('../apps/web/lib/organizations', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../apps/web/lib/organizations')>()
+  const { FIXTURE_ORGANIZATIONS } = await import('./fixtures/screen-viewer')
+
+  return {
+    ...actual,
+    organizations: {
+      ...actual.organizations,
+      activeOrganizationId: () => Promise.resolve(FIXTURE_ORGANIZATIONS.current.id),
+      view: () => Promise.resolve(FIXTURE_ORGANIZATIONS),
+    },
+  }
+})
+
 vi.mock('../apps/web/lib/i18n', async () => {
   const { createTranslator } = await import('next-intl')
   const { localeRouting } = await import('../apps/web/lib/locale-routing')
@@ -210,6 +232,9 @@ const TECHNICAL_PROPS = new Set([
   // explicitement à son appelant (« role="alert" pour un refus »). Le
   // vocabulaire est clos et technique ; le garde-fou `PROSE` refuse quand même
   // une phrase déguisée en rôle.
+  // s15 — un rôle : `role="alert"` d'une alerte comme `role="owner"` d'une
+  // appartenance. Ni l'un ni l'autre ne s'affiche : le libellé du rôle passe
+  // par `roleLabelKey`, qui est un marqueur.
   'role',
   'side',
   'signInHref',
@@ -333,6 +358,17 @@ interface AcceptanceRules {
   readonly catalogueKeys: ReadonlySet<string>
   readonly data: ReadonlySet<string>
   readonly locales: readonly string[]
+  /**
+   * Les props techniques propres à **cet** écran (constat F5 de la revue de
+   * s15).
+   *
+   * s15 avait ajouté `create`, `switch` et `update` à la liste globale pour
+   * trois URL de routes : trois noms très communs, désormais blanchis sur
+   * **n'importe quel** écran du dépôt. Une garde qu'on desserre pour tout le
+   * monde afin de laisser passer un écran n'est plus une garde. Le nom vit donc
+   * là où il est écrit, et nulle part ailleurs.
+   */
+  readonly screenProps: ReadonlySet<string>
 }
 
 /** Ce qu'une chaîne rendue doit être pour être admise. Tout le reste est un défaut. */
@@ -374,7 +410,9 @@ const offenders = (found: readonly Verdict[], rules: AcceptanceRules): readonly 
         return false
       }
 
-      return !(TECHNICAL_PROPS.has(name) && !PROSE.test(trimmed))
+      const technical = TECHNICAL_PROPS.has(name) || rules.screenProps.has(name)
+
+      return !(technical && !PROSE.test(trimmed))
     })
     .map(({ where, value }) => `${where} : « ${value} »`)
 
@@ -389,6 +427,8 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       FIXTURE_EMAIL,
       FIXTURE_IP,
       FIXTURE_NAME,
+      FIXTURE_ORGANIZATION_NAME,
+      FIXTURE_ORGANIZATION_SLUG,
       FIXTURE_SESSION_CREATED_AT,
       FIXTURE_USER_AGENT,
       SIGNED_IN,
@@ -403,6 +443,8 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       FIXTURE_EMAIL,
       FIXTURE_IP,
       FIXTURE_USER_AGENT,
+      FIXTURE_ORGANIZATION_NAME,
+      FIXTURE_ORGANIZATION_SLUG,
       new Intl.DateTimeFormat(defaultLocale, {
         dateStyle: 'long',
         timeStyle: 'short',
@@ -410,7 +452,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       }).format(FIXTURE_SESSION_CREATED_AT),
     ])
 
-    const rules: AcceptanceRules = {
+    const rules: Omit<AcceptanceRules, 'screenProps'> = {
       isMarker,
       catalogueKeys: keys,
       data,
@@ -432,6 +474,8 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
      * refus légitimes est prédictible ; il est donc prédit.
      */
     const { marketingSite } = await import('../apps/web/lib/marketing')
+    const { organizations } = await import('../apps/web/lib/organizations')
+    const organizationsMounted = organizations.available
     const LEGAL_SLUG = 'privacy'
     const publicSite = marketingSite.sections.length > 0
     const legalServed = marketingSite.legalDocuments.some(
@@ -459,6 +503,8 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
        * serveur envoie.
        */
       readonly ownDocument?: boolean
+      /** Les props techniques que **cet** écran écrit, et qu'aucun autre n'hérite. */
+      readonly technicalProps?: readonly string[]
       readonly render: () => Promise<ReactNode>
     }[] = [
       {
@@ -495,6 +541,26 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         viewer: SIGNED_IN,
         refuses: null,
         render: async () => (await import('../apps/web/app/account/page')).default(),
+      },
+      {
+        // s15. L'écran refuse quand le module n'est pas monté — comme une page
+        // légale dont le slug n'est pas déclaré. Le refus attendu est **dérivé**
+        // de l'état du module, jamais concédé : le fichier passe donc dans les
+        // deux configurations, et une redirection inattendue rougirait.
+        id: 'organisations',
+        file: 'organizations/page.tsx',
+        viewer: SIGNED_IN,
+      refuses: organizationsMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        // Les trois URL des routes du module, remises à son écran. Ce sont des
+        // chemins montés, jamais du texte — et le garde-fou de prose reste
+        // actif ici aussi : `create="Créer une organisation"` rougirait.
+        // Déclarées **sur cet écran** : ailleurs, une prop nommée `create`
+        // portant une chaîne fait toujours rougir.
+        technicalProps: ['create', 'switch', 'update'],
+        render: async () =>
+          (await import('../apps/web/app/organizations/page')).default({
+            searchParams: Promise.resolve({ error: 'slug_unavailable' }),
+          }),
       },
       {
         id: 'connexion',
@@ -682,7 +748,12 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       )
 
       failures.push(
-        ...new Set(offenders(observed, rules).map((offender) => `${screen.id} — ${offender}`)),
+        ...new Set(
+          offenders(observed, {
+            ...rules,
+            screenProps: new Set(screen.technicalProps ?? []),
+          }).map((offender) => `${screen.id} — ${offender}`),
+        ),
       )
     }
 
