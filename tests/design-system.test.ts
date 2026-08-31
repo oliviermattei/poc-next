@@ -1,4 +1,5 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -27,7 +28,7 @@ import { describe, expect, it } from 'vitest'
 
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url))
 
-/** Ce qui ne porte pas de composant de production : dépendances, artefacts, fixtures. */
+/** Ce qui ne porte pas de composant de production : artefacts et fixtures suivis. */
 const IGNORED_DIRECTORIES = new Set([
   'node_modules',
   '.git',
@@ -164,23 +165,18 @@ describe('les tokens de `packages/ui` sont ceux du design system', () => {
       ...sourcePatterns('apps/web/app/globals.css'),
     ].map(toRegExp)
 
-    const components: string[] = []
-
-    const walk = (current: string): void => {
-      for (const entry of readdirSync(current, { withFileTypes: true })) {
-        const path = join(current, entry.name)
-
-        if (entry.isDirectory()) {
-          if (!IGNORED_DIRECTORIES.has(entry.name)) {
-            walk(path)
-          }
-        } else if (entry.name.endsWith('.tsx')) {
-          components.push(path)
-        }
-      }
-    }
-
-    walk(REPO_ROOT)
+    // Les fichiers suivis par git, et eux seuls. Un balayage du système de
+    // fichiers voyait aussi les worktrees des voies parallèles, rangés sous
+    // `.claude/worktrees/` : il jugeait alors l'arbre d'une autre branche, et
+    // rougissait pour un fichier absent de celui-ci.
+    const components = execFileSync('git', ['ls-files', '-z', '--', '*.tsx'], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+    })
+      .split('\u0000')
+      .filter((path) => path.length > 0)
+      .filter((path) => !path.split('/').some((segment) => IGNORED_DIRECTORIES.has(segment)))
+      .map((path) => join(REPO_ROOT, path))
 
     // Garde contre l'inertie : un balayage qui ne trouve rien rendrait la
     // boucle suivante vraie sur zéro fichier.
