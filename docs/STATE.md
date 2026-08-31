@@ -31,13 +31,11 @@ open -a Docker && docker compose up -d                                # Postgres
 
 ## Voies en cours (vague parallèle, ouverte le 31/08/2026)
 
-| Voie | Story | Worktree | Base Postgres |
+| Voie | Story | Worktree | Base / port |
 |---|---|---|---|
-| A | s10-marketing-site | **fusionnée dans `dev`** (`57e9658`), revue `minor`/ship oui | close |
-| C | s45-security-headers | **fusionnée dans `dev`** (`4d87bb5`), revue `major`/ship oui | close |
-| D | s15-organizations | **fusionnée dans `dev`** (`9bb3309`), revue `none`/ship oui | close |
-| E | s13-two-factor | **à relancer** — voie tuée par une limite d'usage avant d'avoir rien écrit | `s13`, port 3113 |
-| B | s12-oauth-signin | **fusionnée dans `dev`** (`5e73810`), revue `minor`/ship oui | close |
+| A | s13-two-factor | `feature/s13-two-factor` | `s13`, port 3113 |
+| B | s16-invite-members | `feature/s16-invite-members` | `s16`, port 3116 |
+| C | s11-public-forms | `feature/s11-public-forms` — **seule autorisée sur `config/features.ts` et `generated/`** | `s11`, port 3111 |
 
 **Le worktree d'un agent arrive sur une branche `worktree-agent-<id>`, pas sur `feature/<id>`** :
 la première consigne d'une voie est de la renommer (`git branch -m feature/<id>`). Sans ça la
