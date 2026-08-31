@@ -33,8 +33,8 @@ open -a Docker && docker compose up -d                                # Postgres
 
 | Voie | Story | Worktree | Base / port |
 |---|---|---|---|
-| A | s13-two-factor | commit `bc02ef8`, revue **critical**, **tour de correction** | `s13`, port 3113 |
-| D | s17-roles-permissions | `feature/s17-roles-permissions` | `s17`, port 3117 |
+| A | s13-two-factor | corrigée (`9362aaf`), seconde revue `major`/ship oui, **dernier tour** (garde renversée) | `s13`, port 3113 |
+| D | s17-roles-permissions | commit `97b3e8a`, **en revue** | `s17`, port 3117 |
 | B | s16-invite-members | **fusionnée dans `dev`** (`6f14cc4`), revue `none`/ship oui | close |
 | C | s11-public-forms | **fusionnée dans `dev`** (`9cf45c2`), revue `none`/ship oui | close |
 
