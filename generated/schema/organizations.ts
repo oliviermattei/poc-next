@@ -5,4 +5,4 @@
 // la seule forme que `drizzle-kit generate` sait lire (exports de premier
 // niveau uniquement).
 
-export { organization, organizationActiveSelection, organizationMember } from '@repo/module-organizations'
+export { organization, organizationActiveSelection, organizationInvitation, organizationMember } from '@repo/module-organizations'

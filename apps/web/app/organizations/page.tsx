@@ -1,4 +1,8 @@
-import { ORGANIZATION_REFUSALS, refusalMessageKey } from '@repo/module-organizations'
+import {
+  INVITATION_REFUSALS,
+  ORGANIZATION_REFUSALS,
+  refusalMessageKey,
+} from '@repo/module-organizations'
 import { OrganizationsScreen } from '@repo/module-organizations/presentation'
 import { notFound, redirect } from 'next/navigation'
 import { z } from 'zod'
@@ -40,7 +44,7 @@ import { organizationRoutePath, organizations } from '../../lib/organizations'
  * puisque aucune clé absente ne se replie (s09). L'énumération vient du module,
  * elle n'est pas recopiée ici.
  */
-const REFUSAL = z.enum(ORGANIZATION_REFUSALS)
+const REFUSAL = z.enum([...ORGANIZATION_REFUSALS, ...INVITATION_REFUSALS])
 
 const refusalKeyOf = (value: string | string[] | undefined): string | null => {
   const parsed = REFUSAL.safeParse(value)
@@ -77,7 +81,12 @@ export default async function OrganizationsPage({
         create: organizationRoutePath('create'),
         switch: organizationRoutePath('switch'),
         update: organizationRoutePath('update'),
+        invite: organizationRoutePath('invite'),
+        resendInvitation: organizationRoutePath('resendInvitation'),
+        revokeInvitation: organizationRoutePath('revokeInvitation'),
+        removeMember: organizationRoutePath('removeMember'),
       }}
+      viewerId={session.userId}
       refusalKey={refusalKeyOf(parameters['error'])}
     />
   )

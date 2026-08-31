@@ -8,6 +8,7 @@ import {
   buildRegistry,
   dispatchModuleRequest,
   MODULE_ROUTE_PREFIX,
+  purgeModules,
   type AnyModuleDefinition,
 } from '@repo/core'
 import {
@@ -383,6 +384,36 @@ describe('construction du registre', () => {
       locales: ['fr'],
     })
 
+    expect(registry.moduleIds).toEqual(['a', 'b'])
+  })
+
+  it('purge le dépendant avant son requis, l’inverse de l’ordre de montage', async () => {
+    // **Effacer va du dépendant vers son requis** : c'est le seul ordre dans
+    // lequel un module peut encore résoudre ce que son requis détient. Mesuré
+    // en s16 : `organizations` efface l'adresse d'une invitation en la lisant
+    // sur le compte, et le compte appartient à `auth`. Purgé après `auth`, il
+    // n'avait plus rien à lire, et l'adresse d'une personne survivait à
+    // l'effacement de son compte (revue de s16, F6).
+    //
+    // C'est aussi l'ordre des clés étrangères : un dépendant référence son
+    // requis, jamais l'inverse (ADR 018).
+    const purged: string[] = []
+    const registry = buildRegistry({
+      available: [
+        moduleFixture('a', { purge: () => (purged.push('a'), Promise.resolve()) }),
+        moduleFixture('b', {
+          requires: ['a'],
+          purge: () => (purged.push('b'), Promise.resolve()),
+        }),
+      ],
+      enabled: ['a', 'b'],
+      locales: ['fr'],
+    })
+
+    await purgeModules(registry, { kind: 'user', userId: 'u-ordre' })
+
+    expect(purged).toEqual(['b', 'a'])
+    // Le montage, lui, ne bouge pas : un requis est monté avant son dépendant.
     expect(registry.moduleIds).toEqual(['a', 'b'])
   })
 

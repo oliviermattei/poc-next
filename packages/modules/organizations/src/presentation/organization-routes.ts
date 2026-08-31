@@ -4,6 +4,7 @@ import type {
   OrganizationOutcome,
   OrganizationsUseCases,
 } from '../application/organization-use-cases'
+import { INVITATION_SCREEN_PATH } from '../domain/invitation'
 
 /**
  * Les routes du module, **énumérées une par une**, avec leur niveau de
@@ -11,8 +12,11 @@ import type {
  * le répartiteur répond 404 sans atteindre le module, et un module coupé n'a
  * aucune de ces routes dans la table de routage.
  *
- * **Les trois sont `authenticated`** : le répartiteur refuse donc avant
+ * **Les huit sont `authenticated`** : le répartiteur refuse donc avant
  * d'appeler le gestionnaire, et le refus n'atteint ni la règle, ni la base.
+ * L'acceptation d'une invitation en fait partie — le jeton autorise l'accès à
+ * **une organisation**, il ne remplace pas une session, et un invité sans compte
+ * doit d'abord en créer un (critère 2).
  *
  * ## Pourquoi des formulaires natifs, et pas du `fetch`
  *
@@ -35,6 +39,12 @@ const PATHS = {
   create: '/organizations/create',
   switch: '/organizations/switch',
   update: '/organizations/update',
+  // s16 — l'invitation, son cycle de vie, et le retrait d'un membre.
+  invite: '/organizations/invite',
+  resendInvitation: '/organizations/invitations/resend',
+  revokeInvitation: '/organizations/invitations/revoke',
+  acceptInvitation: '/organizations/invitations/accept',
+  removeMember: '/organizations/members/remove',
 } as const
 
 /** Le chemin public d'une route du module, préfixe de montage compris. */
@@ -97,6 +107,37 @@ const backToScreen = (request: Request, outcome: OrganizationOutcome): Response 
   return new Response(null, { status: 303, headers: { location: destination.toString() } })
 }
 
+/**
+ * Le retour de l'écran d'acceptation, avec le motif du refus.
+ *
+ * La destination est une **constante du module** (`INVITATION_SCREEN_PATH`), pas
+ * un paramètre : `docs/security.md` §4 interdit une redirection pilotée par une
+ * valeur reçue. Le jeton est **repassé** parce que l'écran doit pouvoir montrer
+ * de quelle invitation il parle et proposer de réessayer ; il est déjà dans les
+ * mains de l'appelant, et il n'ouvre rien de plus qu'avant.
+ */
+const backToInvitation = (
+  request: Request,
+  token: string,
+  outcome: OrganizationOutcome,
+): Response => {
+  if (outcome.status === 'not_found') {
+    return notFound()
+  }
+
+  const destination = new URL(
+    outcome.status === 'ok' ? ORGANIZATIONS_SCREEN_PATH : INVITATION_SCREEN_PATH,
+    request.url,
+  )
+
+  if (outcome.status === 'refused') {
+    destination.searchParams.set('token', token)
+    destination.searchParams.set('error', outcome.refusal)
+  }
+
+  return new Response(null, { status: 303, headers: { location: destination.toString() } })
+}
+
 export function createOrganizationRoutes(
   service: () => { readonly useCases: OrganizationsUseCases },
 ): readonly ModuleRoute[] {
@@ -128,10 +169,50 @@ export function createOrganizationRoutes(
     },
   })
 
+  /**
+   * L'acceptation, seule route dont le retour n'est pas l'écran des
+   * organisations : un refus ramène l'invité **là où il était**, avec le motif.
+   * Le renvoyer sur un écran d'organisations qu'il ne peut pas voir n'aurait
+   * aucun sens.
+   */
+  const acceptRoute: ModuleRoute = {
+    method: 'POST',
+    path: PATHS.acceptInvitation,
+    protection: { level: 'authenticated' },
+    handler: async (request, context) => {
+      if (context.session === null) {
+        return notFound()
+      }
+
+      const body = await submittedBody(request)
+      const outcome = await service().useCases.acceptInvitation({
+        userId: context.session.userId,
+        body,
+      })
+      const token =
+        typeof body === 'object' && body !== null && 'token' in body
+          ? String((body as { token: unknown }).token)
+          : ''
+
+      return backToInvitation(request, token, outcome)
+    },
+  }
+
   return [
     submit(PATHS.create, async (useCases, input) => await useCases.createOrganization(input)),
     submit(PATHS.switch, async (useCases, input) => await useCases.switchOrganization(input)),
     submit(PATHS.update, async (useCases, input) => await useCases.renameOrganization(input)),
+    submit(PATHS.invite, async (useCases, input) => await useCases.inviteMember(input)),
+    submit(
+      PATHS.resendInvitation,
+      async (useCases, input) => await useCases.resendInvitation(input),
+    ),
+    submit(
+      PATHS.revokeInvitation,
+      async (useCases, input) => await useCases.revokeInvitation(input),
+    ),
+    acceptRoute,
+    submit(PATHS.removeMember, async (useCases, input) => await useCases.removeMember(input)),
   ]
 }
 

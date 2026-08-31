@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>s16 — Inviter quelqu'un dans son organisation (maquette de référence)</title>
+    <!--
+      Maquette de RÉFÉRENCE, pas du code. Les tokens sont recopiés de
+      docs/design-system.md ; l'implémentation compose avec packages/ui.
+      Aucun composant ni token inventé.
+    -->
+    <style>
+      :root {
+        --background: oklch(1 0 0);
+        --foreground: oklch(0.145 0 0);
+        --card: oklch(1 0 0);
+        --card-foreground: oklch(0.145 0 0);
+        --muted: oklch(0.97 0 0);
+        --muted-foreground: oklch(0.556 0 0);
+        --primary: oklch(0.205 0 0);
+        --primary-foreground: oklch(0.985 0 0);
+        --secondary: oklch(0.97 0 0);
+        --secondary-foreground: oklch(0.205 0 0);
+        --destructive: oklch(0.577 0.245 27.325);
+        --destructive-foreground: oklch(0.985 0 0);
+        --border: oklch(0.922 0 0);
+        --radius: 0.5rem;
+      }
+
+      body {
+        margin: 0;
+        padding: 2rem 1rem;
+        background: var(--background);
+        color: var(--foreground);
+        font: 400 0.875rem/1.5 system-ui, sans-serif;
+      }
+
+      .page {
+        max-width: 48rem;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+      }
+
+      h1 {
+        font-size: 1.875rem;
+        font-weight: 600;
+        margin: 0;
+      }
+
+      h2 {
+        font-size: 1.25rem;
+        font-weight: 600;
+        margin: 0;
+      }
+
+      .muted {
+        color: var(--muted-foreground);
+      }
+
+      .small {
+        font-size: 0.75rem;
+      }
+
+      .card {
+        background: var(--card);
+        color: var(--card-foreground);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 1.25rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+
+      .alert {
+        border: 1px solid var(--destructive);
+        color: var(--destructive);
+        border-radius: var(--radius);
+        padding: 0.75rem 1rem;
+      }
+
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.75rem;
+        min-width: 0;
+        padding: 0.75rem 0;
+      }
+
+      ul.list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+
+      ul.list > li + li {
+        border-top: 1px solid var(--border);
+      }
+
+      .grow {
+        flex: 1 1 12rem;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        padding: 0.125rem 0.5rem;
+        font-size: 0.75rem;
+        background: var(--secondary);
+        color: var(--secondary-foreground);
+      }
+
+      .badge.outline {
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--muted-foreground);
+      }
+
+      .btn {
+        height: 2.5rem;
+        display: inline-flex;
+        align-items: center;
+        padding: 0 0.875rem;
+        border-radius: calc(var(--radius) - 2px);
+        border: 1px solid transparent;
+        background: var(--primary);
+        color: var(--primary-foreground);
+        font-size: 0.875rem;
+        cursor: pointer;
+      }
+
+      .btn.ghost {
+        height: 2rem;
+        background: transparent;
+        color: var(--foreground);
+        border-color: transparent;
+        padding: 0 0.625rem;
+      }
+
+      .btn.ghost:hover {
+        background: var(--muted);
+      }
+
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        flex: 1 1 16rem;
+        min-width: 0;
+      }
+
+      input[type='email'],
+      input[type='text'] {
+        height: 2.5rem;
+        border: 1px solid var(--border);
+        border-radius: calc(var(--radius) - 2px);
+        background: var(--background);
+        color: var(--foreground);
+        padding: 0 0.75rem;
+        font: inherit;
+      }
+
+      .invite-form {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      @media (min-width: 640px) {
+        .invite-form {
+          flex-direction: row;
+          align-items: flex-end;
+        }
+      }
+
+      .separator {
+        height: 1px;
+        background: var(--border);
+        border: 0;
+        margin: 0;
+      }
+
+      .empty {
+        border: 1px dashed var(--border);
+        border-radius: var(--radius);
+        padding: 2rem 1rem;
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        align-items: center;
+      }
+
+      .accept {
+        max-width: 28rem;
+        margin: 0 auto;
+      }
+
+      .note {
+        border-left: 3px solid var(--border);
+        padding-left: 0.75rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header>
+        <h1>Organisations</h1>
+        <p class="muted">Choisissez le contexte de travail et modifiez ses informations.</p>
+      </header>
+
+      <div class="alert" role="alert">
+        Cette personne est déjà membre de l’organisation.
+      </div>
+
+      <!-- Bloc 3 — existant (s15) -->
+      <section class="card">
+        <div>
+          <h2>Organisation courante</h2>
+          <p class="muted small">Vos données sont rattachées à cette organisation.</p>
+        </div>
+        <div class="row">
+          <button class="btn ghost" type="button">Studio Martin ⌄</button>
+          <span class="badge">Propriétaire</span>
+        </div>
+      </section>
+
+      <!-- Bloc 4 — NEUF : membres -->
+      <section class="card">
+        <div>
+          <h2>Membres</h2>
+          <p class="muted small">Les personnes qui accèdent aux données de cette organisation.</p>
+        </div>
+        <ul class="list">
+          <li class="row">
+            <span class="grow">marie@example.test</span>
+            <span class="badge">Propriétaire</span>
+            <!-- dernier propriétaire : aucun bouton. Le serveur refuse aussi. -->
+          </li>
+          <li class="row">
+            <span class="grow">paul@example.test</span>
+            <span class="badge">Membre</span>
+            <button class="btn ghost" type="submit">Retirer paul@example.test</button>
+          </li>
+          <li class="row">
+            <span class="grow">vous@example.test</span>
+            <span class="badge">Membre</span>
+            <button class="btn ghost" type="submit">Quitter l’organisation</button>
+          </li>
+        </ul>
+      </section>
+
+      <!-- Bloc 5 — NEUF : invitations -->
+      <section class="card" id="invite-member">
+        <div>
+          <h2>Invitations</h2>
+          <p class="muted small">Invitez quelqu’un par email à rejoindre cette organisation.</p>
+        </div>
+
+        <form class="invite-form" method="post" aria-label="Inviter quelqu’un">
+          <div class="field">
+            <label for="invite-email">Adresse email</label>
+            <input id="invite-email" name="email" type="email" required />
+          </div>
+          <button class="btn" type="submit">Inviter</button>
+        </form>
+        <p class="muted small">
+          Un lien à usage unique lui sera envoyé. Il expire au bout de 7 jours.
+        </p>
+
+        <hr class="separator" />
+
+        <ul class="list">
+          <li class="row">
+            <span class="grow">nouvelle@example.test</span>
+            <span class="badge">En attente</span>
+            <button class="btn ghost" type="submit">Renvoyer l’invitation de nouvelle@example.test</button>
+            <button class="btn ghost" type="submit">Révoquer l’invitation de nouvelle@example.test</button>
+          </li>
+          <li class="row">
+            <span class="grow">oubliee@example.test</span>
+            <span class="badge outline">Expirée</span>
+            <button class="btn ghost" type="submit">Renvoyer l’invitation de oubliee@example.test</button>
+            <button class="btn ghost" type="submit">Révoquer l’invitation de oubliee@example.test</button>
+          </li>
+        </ul>
+
+        <!-- Variante liste vide -->
+        <div class="empty">
+          <strong>Aucune invitation en attente</strong>
+          <span class="muted">Invitez quelqu’un pour travailler sur les mêmes données.</span>
+          <a class="btn" href="#invite-member">Inviter</a>
+        </div>
+      </section>
+
+      <!-- Blocs 6 et 7 — existants (s15), non redessinés ici -->
+      <p class="note muted small">
+        Les cartes « Paramètres » et « Créer une organisation » restent celles de s15,
+        après ces deux blocs.
+      </p>
+
+      <hr class="separator" />
+
+      <!-- Écran 2 — /invitations/accept -->
+      <h1>/invitations/accept</h1>
+
+      <section class="card accept">
+        <div>
+          <h2>Rejoindre Studio Martin</h2>
+          <p class="muted small">
+            Vous avez été invité à rejoindre cette organisation. Vous en deviendrez membre.
+          </p>
+        </div>
+        <form method="post" aria-label="Rejoindre Studio Martin">
+          <button class="btn" type="submit">Rejoindre</button>
+        </form>
+      </section>
+
+      <section class="card accept">
+        <div>
+          <h2>Rejoindre Studio Martin</h2>
+          <p class="muted small">
+            Connectez-vous ou créez un compte pour rejoindre cette organisation.
+          </p>
+        </div>
+        <div class="row">
+          <a class="btn" href="#">Se connecter</a>
+          <a class="btn ghost" href="#">Créer un compte</a>
+        </div>
+      </section>
+
+      <section class="card accept">
+        <div class="alert" role="alert">Cette invitation a expiré. Demandez-en une nouvelle.</div>
+        <a class="btn ghost" href="#">Retour à l’accueil</a>
+      </section>
+    </div>
+  </body>
+</html>

@@ -1,12 +1,13 @@
 import { authUser } from '@repo/module-auth'
+import { sql } from 'drizzle-orm'
 import { index, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core'
 
 /**
- * Les tables du module `organizations` — **trois, et pas une de plus**.
+ * Les tables du module `organizations` — **quatre, et pas une de plus**.
  *
  * Elles n'existent que lorsque le module est activé : `pnpm db:generate` ne
  * génère que pour les modules de `config/features.ts`, et sur une base vierge
- * dont la configuration ne nomme pas ce module, aucune des trois n'est créée.
+ * dont la configuration ne nomme pas ce module, aucune des quatre n'est créée.
  * C'est exactement ce que la story reproche à MakerKit, qui garde
  * `organizations`, `members` et `invitations` en base même en mode solo.
  *
@@ -113,9 +114,81 @@ export const organizationActiveSelection = pgTable('organization_active_selectio
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
 })
 
+/**
+ * Une invitation à rejoindre une organisation (s16).
+ *
+ * **Le jeton n'est pas ici.** La colonne `token_hash` porte l'empreinte SHA-256
+ * du secret, jamais le secret : une copie de cette table ne rend aucun lien
+ * utilisable. C'est la propriété que `packages/modules/auth/src/infrastructure/token-factory.ts`
+ * documente, et dont il nomme aussi la **limite** — le lien de réinitialisation
+ * de Better Auth, lui, est écrit en clair dans `auth_verification`. s16 émet son
+ * propre jeton, elle n'hérite pas de cette limite.
+ *
+ * **La ligne est son propre journal de cycle de vie.** `accepted_at`,
+ * `revoked_at` et `expires_at` ne sont pas trois drapeaux redondants : ce sont
+ * les trois motifs de refus que le critère 3 exige de distinguer (« expirée,
+ * déjà acceptée ou révoquée affiche une erreur **explicite** »). Effacer
+ * l'empreinte à la consommation rendrait les trois indiscernables ; le prédicat
+ * de l'ordre de consommation suffit à interdire le rejeu.
+ *
+ * **L'unicité est celle de la base**, jamais une vérification préalable
+ * (`docs/reliability.md` §1) : un index unique **partiel** interdit deux
+ * invitations vivantes pour la même adresse dans la même organisation. Le
+ * prédicat ne peut pas porter `now()` — un prédicat d'index PostgreSQL doit être
+ * immuable —, donc il couvre « ni acceptée ni révoquée », **expirées
+ * comprises**. Conséquence assumée et voulue : une invitation échue se
+ * **renvoie** (le renvoi tourne le jeton et repousse l'échéance) plutôt que de
+ * se dupliquer.
+ *
+ * Les deux clés étrangères vers `auth_user` sont permises parce que `auth` est
+ * un requis déclaré (ADR 018). Elles sont en `set null` et non en cascade : la
+ * suppression du compte qui a invité ne doit pas emporter l'invitation d'un
+ * tiers, et l'organisation, elle, cascade déjà.
+ */
+export const organizationInvitation = pgTable(
+  'organization_invitation',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    /** L'adresse invitée, **normalisée** par le `domain` avant d'arriver ici. */
+    email: text('email').notNull(),
+    /** `member` aujourd'hui : choisir le rôle est une permission, donc s17. */
+    role: text('role').notNull(),
+    /** L'empreinte SHA-256 du jeton, en base64url. Jamais le jeton. */
+    tokenHash: text('token_hash').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
+    invitedBy: text('invited_by').references(() => authUser.id, { onDelete: 'set null' }),
+    acceptedAt: timestamp('accepted_at', { withTimezone: true, mode: 'date' }),
+    acceptedBy: text('accepted_by').references(() => authUser.id, { onDelete: 'set null' }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true, mode: 'date' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (table) => [
+    // Une seule invitation vivante par adresse et par organisation. C'est la
+    // base qui décide, et sa violation qui est traduite en refus nommé — comme
+    // `organization_slug_key` l'est en `slug_unavailable`.
+    // Le prédicat est écrit en `sql` et non en `and(isNull(…), isNull(…))` :
+    // `and` rend `SQL | undefined`, que `.where` d'un index refuse.
+    uniqueIndex('organization_invitation_pending_key')
+      .on(table.organizationId, table.email)
+      .where(sql`${table.acceptedAt} is null and ${table.revokedAt} is null`),
+    // Le jeton désigne **une** invitation : sans cette unicité, une collision
+    // d'empreinte (ou une insertion fautive) rendrait la consommation
+    // ambiguë.
+    uniqueIndex('organization_invitation_token_key').on(table.tokenHash),
+    // La question de l'écran : « quelles invitations cette organisation a-t-elle
+    // en attente ? ». Sans lui, chaque affichage balaye la table.
+    index('organization_invitation_organization_id_idx').on(table.organizationId),
+  ],
+)
+
 /** Les tables du module, telles que le contrat les déclare. */
 export const organizationsSchema = {
   organization,
   organizationMember,
   organizationActiveSelection,
+  organizationInvitation,
 } as const

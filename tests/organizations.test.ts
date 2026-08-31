@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -16,10 +16,15 @@ import {
   runModuleMigrations,
   type DatabaseConnection,
 } from '@repo/db'
+import { createRecordingMailer } from '@repo/mailer-testing'
 import { authModule, authUser } from '@repo/module-auth'
 import {
   configureOrganizations,
+  EMPTY_ORGANIZATIONS_VIEW,
+  INVITATION_QUOTA_PER_WINDOW,
+  INVITATION_QUOTA_WINDOW_SECONDS,
   ORGANIZATIONS_KEYS,
+  organizationMember,
   organizationsMessageKeys,
   organizationsModule,
   organizationRoutePath,
@@ -27,6 +32,7 @@ import {
   type OrganizationsService,
   type OrganizationsView,
 } from '@repo/module-organizations'
+import type { Mailer } from '@repo/ports'
 import { sql } from 'drizzle-orm'
 import { getTableConfig } from 'drizzle-orm/pg-core'
 import { createElement } from 'react'
@@ -34,7 +40,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { flatMessagesFor } from '../apps/web/lib/messages'
-import { appLocales } from '../config/i18n'
+import { appLocales, defaultLocale } from '../config/i18n'
 import { availableModules } from '../config/features'
 import { databaseUrl, isDatabaseReachable } from './fixtures/database'
 
@@ -96,6 +102,58 @@ let service: OrganizationsService
  */
 const RESERVED = new Set(['account', 'sign-in'])
 
+/**
+ * L'horloge de la suite, **injectée**.
+ *
+ * Une invitation expire ; sans horloge injectée, l'éprouver demanderait
+ * d'attendre sept jours ou d'écrire une date en base à la main, c'est-à-dire de
+ * court-circuiter le code qu'on mesure.
+ */
+let clock = new Date('2026-09-01T12:00:00.000Z')
+
+/**
+ * Le mailer de la suite : une doublure du **réseau**, jamais du SDK.
+ *
+ * Elle enregistre toujours ce qu'on lui confie, et rend l'échec quand la suite
+ * le demande : c'est la seule façon d'éprouver « l'invitation est écrite,
+ * l'email n'est pas parti, et elle reste renvoyable »
+ * (`docs/reliability.md` §2).
+ */
+const outbox = createRecordingMailer()
+let deliveryFails = false
+
+const mailer: Mailer = {
+  send: async (input) => {
+    const recorded = await outbox.send(input)
+
+    return deliveryFails
+      ? {
+          ok: false,
+          error: { code: 'provider_unavailable', message: 'panne simulée', attempts: 1 },
+        }
+      : recorded
+  },
+}
+
+/**
+ * Le lien d'invitation **tel qu'il est parti**, lu dans le dernier email.
+ *
+ * C'est volontairement la seule façon d'obtenir un jeton dans cette suite : le
+ * test suit le lien que le destinataire reçoit, pas une valeur que la couche
+ * d'écriture lui aurait tendue.
+ */
+const lastInvitationLink = (): string => {
+  const sent = outbox.sent.at(-1)
+
+  if (sent === undefined) {
+    throw new Error('Aucun email d’invitation n’a été envoyé.')
+  }
+
+  return String(sent.data['url'])
+}
+
+const tokenOf = (link: string): string => new URL(link).searchParams.get('token') ?? ''
+
 /** Compteur d'identifiants : déterministes, donc lisibles dans un échec. */
 let sequence = 0
 
@@ -108,17 +166,20 @@ const generateId = (prefix: string): string => {
 const aSlug = (): string => `s15-${randomUUID().slice(0, 8)}`
 
 /** Un compte réel : les appartenances portent une clé étrangère vers `auth_user`. */
-const anAccount = async (): Promise<ModuleSession> => {
+const anAccount = async (email?: string): Promise<ModuleSession> => {
   const userId = `usr_s15_${randomUUID()}`
 
   await connection.db.insert(authUser).values({
     id: userId,
     name: 'Compte de test',
-    email: `s15-${randomUUID()}@example.test`,
+    email: email ?? `s15-${randomUUID()}@example.test`,
   })
 
   return { userId, roles: [] }
 }
+
+/** Une adresse qui n'a **aucun** compte : le pendant d'`anAccount`. */
+const anUnknownEmail = (): string => `s15-inconnu-${randomUUID()}@example.test`
 
 interface CallOptions {
   readonly session?: ModuleSession | null
@@ -131,7 +192,15 @@ interface CallOptions {
  * avec la session que le point de composition résoudrait.
  */
 const call = async (
-  path: 'create' | 'switch' | 'update',
+  path:
+    | 'create'
+    | 'switch'
+    | 'update'
+    | 'invite'
+    | 'resendInvitation'
+    | 'revokeInvitation'
+    | 'acceptInvitation'
+    | 'removeMember',
   options: CallOptions = {},
 ): Promise<Response> => {
   const url = `${APP_URL}${organizationRoutePath(path)}`
@@ -179,6 +248,10 @@ beforeAll(async () => {
     db: connection.db,
     reservedSlugs: RESERVED,
     generateId,
+    mailer,
+    appUrl: APP_URL,
+    emailLocale: defaultLocale,
+    now: () => clock,
   })
 })
 
@@ -300,10 +373,9 @@ describe.runIf(databaseReachable)('le périmètre organisationnel', () => {
       body: { name: 'Studio Martin', slug: aSlug(), userId: victim.userId },
     })
 
-    expect(await service.useCases.viewOrganizations(victim.userId)).toEqual({
-      current: null,
-      memberships: [],
-    })
+    expect(await service.useCases.viewOrganizations(victim.userId)).toEqual(
+      EMPTY_ORGANIZATIONS_VIEW,
+    )
     expect((await service.useCases.viewOrganizations(caller.userId)).memberships).toHaveLength(1)
   })
 
@@ -486,6 +558,792 @@ describe.runIf(databaseReachable)('l’organisation courante', () => {
   })
 })
 
+/* ------------------------------------------------------------------------- *
+ * s16 — l'invitation, l'acceptation et le retrait.
+ *
+ * Le même chemin qu'une requête de l'application : le répartiteur, une vraie
+ * base, la vraie règle. Ce bloc ne rejoue pas la matrice du `domain`
+ * (`packages/modules/organizations/src/domain/organization-rules.test.ts`) : il
+ * prouve que ces règles sont **appelées**, qu'un refus n'écrit rien, et que ce
+ * qui doit être rejouable l'est.
+ * ------------------------------------------------------------------------- */
+
+/** Une organisation neuve, dont le compte donné est propriétaire. */
+const anOrganization = async (session: ModuleSession): Promise<string> => {
+  await call('create', { session, body: { name: 'Studio Martin', slug: aSlug() } })
+
+  const active = await service.useCases.activeOrganizationId(session.userId)
+
+  if (active === null) {
+    throw new Error('L’organisation n’a pas été créée.')
+  }
+
+  return active
+}
+
+const invitationsOf = async (session: ModuleSession) =>
+  (await service.useCases.viewOrganizations(session.userId)).invitations
+
+const membersOf = async (session: ModuleSession) =>
+  (await service.useCases.viewOrganizations(session.userId)).members
+
+describe.runIf(databaseReachable)('l’émission d’une invitation', () => {
+  it('écrit une invitation en attente et envoie un lien dont la base ne garde que l’empreinte', async () => {
+    const founder = await anAccount()
+    const organizationId = await anOrganization(founder)
+    const guest = anUnknownEmail()
+
+    const response = await call('invite', {
+      session: founder,
+      body: { organizationId, email: guest },
+    })
+
+    expect(response.status).toBe(303)
+    expect(response.headers.get('location')).toBe(`${APP_URL}/organizations`)
+
+    // L'email part au destinataire, avec le template **qualifié par le module**.
+    const sent = outbox.sent.at(-1)
+
+    expect(sent?.to).toBe(guest)
+    expect(sent?.template).toBe('organizations.invitation')
+
+    // L'invitation apparaît dans la liste en attente (critère 1).
+    expect(await invitationsOf(founder)).toEqual([
+      expect.objectContaining({ email: guest, status: 'pending' }),
+    ])
+
+    // **Le jeton est un secret** : il voyage dans le lien, la base n'en garde
+    // que l'empreinte. Un vol de la table ne rend aucun lien utilisable — c'est
+    // exactement ce que s07 n'avait pas tenu pour la réinitialisation.
+    const token = tokenOf(lastInvitationLink())
+
+    expect(token.length).toBeGreaterThan(20)
+    expect(await countRows('organization_invitation', 'token_hash', token)).toBe(0)
+
+    const digest = createHash('sha256').update(token).digest('base64url')
+
+    expect(await countRows('organization_invitation', 'token_hash', digest)).toBe(1)
+  })
+
+  it('répond exactement la même chose que l’adresse ait un compte ou non', async () => {
+    // `docs/security.md` §7 : inviter ne doit **rien** apprendre de l'existence
+    // d'un compte. Le module ne sait d'ailleurs pas interroger `auth_user` par
+    // adresse — c'est ce qui rend l'absence d'énumération structurelle.
+    const founder = await anAccount()
+    const organizationId = await anOrganization(founder)
+    const known = await anAccount()
+    const knownEmail = `s15-connu-${randomUUID()}@example.test`
+    const unknownEmail = anUnknownEmail()
+
+    await connection.db.execute(
+      sql`update auth_user set email = ${knownEmail} where id = ${known.userId}`,
+    )
+
+    const first = await call('invite', {
+      session: founder,
+      body: { organizationId, email: knownEmail },
+    })
+    const second = await call('invite', {
+      session: founder,
+      body: { organizationId, email: unknownEmail },
+    })
+
+    expect(second.status).toBe(first.status)
+    expect(second.headers.get('location')).toBe(first.headers.get('location'))
+    expect(await invitationsOf(founder)).toHaveLength(2)
+  })
+
+  it('rend 404 sur l’organisation d’un autre, sans rien écrire', async () => {
+    const founder = await anAccount()
+    const organizationId = await anOrganization(founder)
+    const stranger = await anAccount()
+
+    const refused = await call('invite', {
+      session: stranger,
+      body: { organizationId, email: anUnknownEmail() },
+    })
+
+    expect(refused.status).toBe(404)
+    expect(await countRows('organization_invitation', 'organization_id', organizationId)).toBe(0)
+  })
+
+  it('refuse d’inviter quelqu’un qui est déjà membre, à la casse près', async () => {
+    const email = `s15-membre-${randomUUID()}@example.test`
+    const founder = await anAccount(email)
+    const organizationId = await anOrganization(founder)
+
+    const refused = await call('invite', {
+      session: founder,
+      body: { organizationId, email: email.toUpperCase() },
+    })
+
+    expect(refused.headers.get('location')).toBe(`${APP_URL}/organizations?error=already_member`)
+    expect(await countRows('organization_invitation', 'organization_id', organizationId)).toBe(0)
+  })
+
+  it('refuse une seconde invitation vivante pour la même adresse, sans doubler la ligne', async () => {
+    const founder = await anAccount()
+    const organizationId = await anOrganization(founder)
+    const guest = anUnknownEmail()
+
+    await call('invite', { session: founder, body: { organizationId, email: guest } })
+    const refused = await call('invite', {
+      session: founder,
+      body: { organizationId, email: guest },
+    })
+
+    expect(refused.headers.get('location')).toBe(`${APP_URL}/organizations?error=already_invited`)
+    expect(await countRows('organization_invitation', 'email', guest)).toBe(1)
+  })
+
+  it('refuse une adresse malformée sans rien écrire ni rien envoyer', async () => {
+    const founder = await anAccount()
+    const organizationId = await anOrganization(founder)
+    const before = outbox.sent.length
+
+    const refused = await call('invite', {
+      session: founder,
+      body: { organizationId, email: 'pas-une-adresse' },
+    })
+
+    expect(refused.headers.get('location')).toBe(`${APP_URL}/organizations?error=invalid_email`)
+    expect(await countRows('organization_invitation', 'organization_id', organizationId)).toBe(0)
+    expect(outbox.sent.length).toBe(before)
+  })
+
+  it('refuse au-delà du quota d’émission de l’organisation', async () => {
+    const founder = await anAccount()
+    const organizationId = await anOrganization(founder)
+
+    for (let issued = 0; issued < INVITATION_QUOTA_PER_WINDOW; issued += 1) {
+      const accepted = await call('invite', {
+        session: founder,
+        body: { organizationId, email: anUnknownEmail() },
+      })
+
+      expect(accepted.headers.get('location')).toBe(`${APP_URL}/organizations`)
+    }
+
+    const refused = await call('invite', {
+      session: founder,
+      body: { organizationId, email: anUnknownEmail() },
+    })
+
+    expect(refused.headers.get('location')).toBe(`${APP_URL}/organizations?error=invitation_quota`)
+    expect(await countRows('organization_invitation', 'organization_id', organizationId)).toBe(
+      INVITATION_QUOTA_PER_WINDOW,
+    )
+  })
+
+  it('rouvre le quota une fois la fenêtre passée', async () => {
+    // **La fenêtre glissante, observée** (constat F4). Sans ce cas, retirer
+    // `created_at >= since` du comptage laissait 957 tests verts : le quota
+    // devenait un quota **à vie**, et une organisation qui a émis vingt
+    // invitations depuis sa création n'en aurait plus jamais émis une seule.
+    //
+    // C'est pour cette fenêtre que l'instant d'émission est écrit depuis
+    // l'horloge du module : la même horloge décide de l'échéance et du
+    // comptage, et c'est ce qui rend la fenêtre mesurable ici.
+    const founder = await anAccount()
+    const organizationId = await anOrganization(founder)
+    const issuedAt = clock
+
+    try {
+      for (let issued = 0; issued < INVITATION_QUOTA_PER_WINDOW; issued += 1) {
+        await call('invite', { session: founder, body: { organizationId, email: anUnknownEmail() } })
+      }
+
+      const refused = await call('invite', {
+        session: founder,
+        body: { organizationId, email: anUnknownEmail() },
+      })
+
+      expect(refused.headers.get('location')).toBe(
+        `${APP_URL}/organizations?error=invitation_quota`,
+      )
+
+      // Une heure plus tard, les vingt émissions sont sorties de la fenêtre.
+      clock = new Date(issuedAt.getTime() + INVITATION_QUOTA_WINDOW_SECONDS * 1_000 + 1)
+
+      const accepted = await call('invite', {
+        session: founder,
+        body: { organizationId, email: anUnknownEmail() },
+      })
+
+      expect(accepted.headers.get('location')).toBe(`${APP_URL}/organizations`)
+      expect(await countRows('organization_invitation', 'organization_id', organizationId)).toBe(
+        INVITATION_QUOTA_PER_WINDOW + 1,
+      )
+    } finally {
+      clock = issuedAt
+    }
+  })
+
+  it('laisse l’invitation en attente quand l’email ne part pas, et le dit', async () => {
+    // `docs/reliability.md` §2 : une opération multi-étapes laisse un état
+    // explicite permettant de la rejouer. Ici, l'état est « en attente », et le
+    // rejeu est le renvoi.
+    const founder = await anAccount()
+    const organizationId = await anOrganization(founder)
+    const guest = anUnknownEmail()
+
+    deliveryFails = true
+
+    try {
+      const response = await call('invite', {
+        session: founder,
+        body: { organizationId, email: guest },
+      })
+
+      expect(response.headers.get('location')).toBe(`${APP_URL}/organizations?error=email_failed`)
+    } finally {
+      deliveryFails = false
+    }
+
+    expect(await invitationsOf(founder)).toEqual([
+      expect.objectContaining({ email: guest, status: 'pending' }),
+    ])
+  })
+})
+
+describe.runIf(databaseReachable)('l’acceptation d’une invitation', () => {
+  /** Un invité muni de son lien : le cas nominal, réemployé par les refus. */
+  const anInvitation = async (): Promise<{
+    readonly founder: ModuleSession
+    readonly guest: ModuleSession
+    readonly organizationId: string
+    readonly token: string
+    readonly invitationId: string
+  }> => {
+    const founder = await anAccount()
+    const organizationId = await anOrganization(founder)
+    const email = `s15-invite-${randomUUID()}@example.test`
+    const guest = await anAccount(email)
+
+    await call('invite', { session: founder, body: { organizationId, email } })
+
+    const [invitation] = await invitationsOf(founder)
+
+    return {
+      founder,
+      guest,
+      organizationId,
+      token: tokenOf(lastInvitationLink()),
+      invitationId: invitation?.id ?? '',
+    }
+  }
+
+  it('fait de l’invité un membre, et pose l’organisation acceptée comme courante', async () => {
+    // L'organisation acceptée devient **courante** : sans cela l'invité
+    // atterrirait sur « Choisir une organisation » — l'état que le constat F7 de
+    // la revue de s15 nommait déjà comme celui d'un compte invité.
+    const { guest, organizationId, token } = await anInvitation()
+
+    const accepted = await call('acceptInvitation', { session: guest, body: { token } })
+
+    expect(accepted.status).toBe(303)
+    expect(accepted.headers.get('location')).toBe(`${APP_URL}/organizations`)
+
+    const view = await service.useCases.viewOrganizations(guest.userId)
+
+    expect(view.memberships.map((membership) => membership.id)).toContain(organizationId)
+    expect(view.current?.id).toBe(organizationId)
+    expect(view.current?.role).toBe('member')
+  })
+
+  it('se rejoue sans créer une seconde appartenance, et le second essai le dit', async () => {
+    // `docs/reliability.md` §1 : « idempotent » se prouve en exécutant deux
+    // fois et en constatant **un** effet.
+    const { guest, organizationId, token } = await anInvitation()
+
+    await call('acceptInvitation', { session: guest, body: { token } })
+    const replayed = await call('acceptInvitation', { session: guest, body: { token } })
+
+    expect(replayed.headers.get('location')).toBe(
+      `${APP_URL}/invitations/accept?token=${token}&error=invitation_accepted`,
+    )
+    expect(
+      await countRows('organization_member', 'organization_id', organizationId),
+    ).toBe(2)
+  })
+
+  it('refuse un lien révoqué, et n’ajoute aucun membre', async () => {
+    const { founder, guest, organizationId, token, invitationId } = await anInvitation()
+
+    await call('revokeInvitation', { session: founder, body: { organizationId, invitationId } })
+
+    const refused = await call('acceptInvitation', { session: guest, body: { token } })
+
+    expect(refused.headers.get('location')).toContain('error=invitation_revoked')
+    expect(await countRows('organization_member', 'organization_id', organizationId)).toBe(1)
+  })
+
+  it('refuse un lien échu, et n’ajoute aucun membre', async () => {
+    const { guest, organizationId, token } = await anInvitation()
+    const issuedAt = clock
+
+    clock = new Date(issuedAt.getTime() + 8 * 24 * 60 * 60 * 1_000)
+
+    try {
+      const refused = await call('acceptInvitation', { session: guest, body: { token } })
+
+      expect(refused.headers.get('location')).toContain('error=invitation_expired')
+    } finally {
+      clock = issuedAt
+    }
+
+    expect(await countRows('organization_member', 'organization_id', organizationId)).toBe(1)
+  })
+
+  it('refuse un lien inconnu', async () => {
+    const guest = await anAccount()
+
+    const refused = await call('acceptInvitation', {
+      session: guest,
+      body: { token: 'jeton-invente' },
+    })
+
+    expect(refused.headers.get('location')).toContain('error=invitation_unknown')
+  })
+
+  it('refuse un lien émis pour une autre adresse que celle du compte connecté', async () => {
+    // Le lien est un secret, mais il n'est pas transférable : il autorise **une
+    // adresse**. Faire suivre l'email ne donne donc pas l'accès à qui le reçoit.
+    const { organizationId, token } = await anInvitation()
+    const someoneElse = await anAccount()
+
+    const refused = await call('acceptInvitation', { session: someoneElse, body: { token } })
+
+    expect(refused.headers.get('location')).toContain('error=invitation_other_recipient')
+    expect(await countRows('organization_member', 'organization_id', organizationId)).toBe(1)
+  })
+
+  it('n’accepte rien en GET : ouvrir le lien ne le consomme pas', async () => {
+    // Un aperçu de lien — client de messagerie, antivirus, proxy — suit les
+    // `GET`. Une route d'acceptation en `GET` consommerait donc le jeton à
+    // usage unique avant que l'invité ne l'ouvre.
+    const { guest, token } = await anInvitation()
+
+    const opened = await dispatchModuleRequest(
+      registry,
+      new Request(`${APP_URL}${organizationRoutePath('acceptInvitation')}?token=${token}`, {
+        method: 'GET',
+      }),
+      { resolveSession: () => Promise.resolve(guest) },
+    )
+
+    expect(opened.status).toBe(404)
+    expect(await service.useCases.describeInvitation(token)).toMatchObject({ status: 'pending' })
+  })
+
+  it('refuse l’acceptation à qui n’est pas connecté, avant d’atteindre la base', async () => {
+    const { organizationId, token } = await anInvitation()
+
+    const anonymous = await call('acceptInvitation', { session: null, body: { token } })
+
+    expect(anonymous.status).toBe(401)
+    expect(await countRows('organization_member', 'organization_id', organizationId)).toBe(1)
+  })
+})
+
+describe.runIf(databaseReachable)('la révocation et le renvoi', () => {
+  it('renvoie l’invitation en tournant son jeton : l’ancien lien meurt', async () => {
+    const founder = await anAccount()
+    const organizationId = await anOrganization(founder)
+    const email = `s15-renvoi-${randomUUID()}@example.test`
+    const guest = await anAccount(email)
+
+    await call('invite', { session: founder, body: { organizationId, email } })
+
+    const firstToken = tokenOf(lastInvitationLink())
+    const [invitation] = await invitationsOf(founder)
+
+    const resent = await call('resendInvitation', {
+      session: founder,
+      body: { organizationId, invitationId: invitation?.id ?? '' },
+    })
+
+    expect(resent.headers.get('location')).toBe(`${APP_URL}/organizations`)
+
+    const secondToken = tokenOf(lastInvitationLink())
+
+    expect(secondToken).not.toBe(firstToken)
+    // **Une seule invitation vivante** : un renvoi ne double pas la ligne de la
+    // liste, et n'ouvre pas un second lien utilisable. La ligne précédente
+    // reste en base, éteinte — c'est elle qui fait du renvoi une émission
+    // comptée par le quota (constat F2).
+    expect(await invitationsOf(founder)).toEqual([
+      expect.objectContaining({ email, status: 'pending' }),
+    ])
+
+    const withOldLink = await call('acceptInvitation', {
+      session: guest,
+      body: { token: firstToken },
+    })
+
+    expect(withOldLink.headers.get('location')).toContain('error=invitation_unknown')
+
+    const withNewLink = await call('acceptInvitation', {
+      session: guest,
+      body: { token: secondToken },
+    })
+
+    expect(withNewLink.headers.get('location')).toBe(`${APP_URL}/organizations`)
+  })
+
+  it('compte le renvoi dans le quota d’émission de l’organisation', async () => {
+    // **Le quota est un quota d'émission** (ADR 026), et un renvoi est une
+    // émission : c'est un email de plus expédié depuis le domaine du produit.
+    // Mesuré avant la correction : cinquante renvois consécutifs de la même
+    // invitation envoyaient cinquante emails, sans un seul refus (constat F2).
+    const founder = await anAccount()
+    const organizationId = await anOrganization(founder)
+    const email = `s15-quota-renvoi-${randomUUID()}@example.test`
+
+    await call('invite', { session: founder, body: { organizationId, email } })
+
+    // La première émission est l'invitation ; les suivantes sont des renvois.
+    for (let issued = 1; issued < INVITATION_QUOTA_PER_WINDOW; issued += 1) {
+      const [invitation] = await invitationsOf(founder)
+      const resent = await call('resendInvitation', {
+        session: founder,
+        body: { organizationId, invitationId: invitation?.id ?? '' },
+      })
+
+      expect(resent.headers.get('location')).toBe(`${APP_URL}/organizations`)
+    }
+
+    const [invitation] = await invitationsOf(founder)
+    const sentBefore = outbox.sent.length
+
+    const refused = await call('resendInvitation', {
+      session: founder,
+      body: { organizationId, invitationId: invitation?.id ?? '' },
+    })
+
+    expect(refused.headers.get('location')).toBe(`${APP_URL}/organizations?error=invitation_quota`)
+    // Le refus n'atteint pas le port d'envoi : c'est l'email que le quota borne.
+    expect(outbox.sent.length).toBe(sentBefore)
+  })
+
+  it('retire une invitation révoquée de la liste en attente, et se rejoue sans effet', async () => {
+    const founder = await anAccount()
+    const organizationId = await anOrganization(founder)
+
+    await call('invite', { session: founder, body: { organizationId, email: anUnknownEmail() } })
+
+    const [invitation] = await invitationsOf(founder)
+    const invitationId = invitation?.id ?? ''
+
+    await call('revokeInvitation', { session: founder, body: { organizationId, invitationId } })
+
+    expect(await invitationsOf(founder)).toEqual([])
+
+    const replayed = await call('revokeInvitation', {
+      session: founder,
+      body: { organizationId, invitationId },
+    })
+
+    expect(replayed.headers.get('location')).toBe(
+      `${APP_URL}/organizations?error=invitation_unknown`,
+    )
+    expect(await countRows('organization_invitation', 'id', invitationId)).toBe(1)
+  })
+
+  it('refuse d’agir sur l’invitation d’une autre organisation', async () => {
+    const founder = await anAccount()
+    const organizationId = await anOrganization(founder)
+
+    await call('invite', { session: founder, body: { organizationId, email: anUnknownEmail() } })
+
+    const [invitation] = await invitationsOf(founder)
+    const invitationId = invitation?.id ?? ''
+
+    // Un compte qui a **sa propre** organisation : l'identifiant d'organisation
+    // qu'il fournit est légitimement le sien, seule l'invitation ne l'est pas.
+    const other = await anAccount()
+    const otherOrganizationId = await anOrganization(other)
+
+    const refused = await call('revokeInvitation', {
+      session: other,
+      body: { organizationId: otherOrganizationId, invitationId },
+    })
+
+    expect(refused.headers.get('location')).toBe(
+      `${APP_URL}/organizations?error=invitation_unknown`,
+    )
+    expect(await invitationsOf(founder)).toHaveLength(1)
+
+    // Et par l'autre porte : l'identifiant d'organisation d'autrui rend 404.
+    const disguised = await call('revokeInvitation', {
+      session: other,
+      body: { organizationId, invitationId },
+    })
+
+    expect(disguised.status).toBe(404)
+    expect(await invitationsOf(founder)).toHaveLength(1)
+  })
+
+  it('refuse de renvoyer l’invitation d’une autre organisation, sans toucher son jeton', async () => {
+    // Le **cas jumeau** du précédent, absent jusqu'au tour de correction
+    // (constat F3) : retirer `organization_id` du prédicat du renvoi laissait
+    // 957 tests verts. Sans lui, un membre de A ferait tourner le jeton d'une
+    // invitation de B — l'invité de B perdrait son lien — et déclencherait un
+    // email vers l'adresse de B.
+    const founder = await anAccount()
+    const organizationId = await anOrganization(founder)
+    const email = `s15-jumeau-${randomUUID()}@example.test`
+    const guest = await anAccount(email)
+
+    await call('invite', { session: founder, body: { organizationId, email } })
+
+    const link = lastInvitationLink()
+    const [invitation] = await invitationsOf(founder)
+    const invitationId = invitation?.id ?? ''
+    const sentBefore = outbox.sent.length
+
+    const other = await anAccount()
+    const otherOrganizationId = await anOrganization(other)
+
+    const refused = await call('resendInvitation', {
+      session: other,
+      body: { organizationId: otherOrganizationId, invitationId },
+    })
+
+    expect(refused.headers.get('location')).toBe(
+      `${APP_URL}/organizations?error=invitation_unknown`,
+    )
+    // **Aucun email n'est parti** : le refus n'atteint pas le port d'envoi.
+    expect(outbox.sent.length).toBe(sentBefore)
+
+    // Et le jeton de l'invitation de l'autre organisation vit toujours : c'est
+    // ce que le prédicat de périmètre protège.
+    const accepted = await call('acceptInvitation', {
+      session: guest,
+      body: { token: tokenOf(link) },
+    })
+
+    expect(accepted.headers.get('location')).toBe(`${APP_URL}/organizations`)
+  })
+})
+
+describe.runIf(databaseReachable)('le retrait d’un membre', () => {
+  /** Une organisation à deux : un fondateur, un membre entré par invitation. */
+  const anOrganizationOfTwo = async (): Promise<{
+    readonly founder: ModuleSession
+    readonly member: ModuleSession
+    readonly organizationId: string
+  }> => {
+    const founder = await anAccount()
+    const organizationId = await anOrganization(founder)
+    const email = `s15-equipier-${randomUUID()}@example.test`
+    const member = await anAccount(email)
+
+    await call('invite', { session: founder, body: { organizationId, email } })
+    await call('acceptInvitation', {
+      session: member,
+      body: { token: tokenOf(lastInvitationLink()) },
+    })
+
+    return { founder, member, organizationId }
+  }
+
+  it('fait perdre l’accès immédiatement, à la **même** session, sans reconnexion', async () => {
+    // C'est ce qui remplace la rotation d'identifiant de session (ADR 026) : le
+    // jeton ne porte aucune autorité organisationnelle, donc le retrait de la
+    // ligne suffit. Si le jeton mettait un droit en cache, ce cas rougirait.
+    const { founder, member, organizationId } = await anOrganizationOfTwo()
+    const { dataOwnerOf, organizations } = await import('../apps/web/lib/organizations')
+
+    expect(await service.useCases.activeOrganizationId(member.userId)).toBe(organizationId)
+
+    const removed = await call('removeMember', {
+      session: founder,
+      body: { organizationId, userId: member.userId },
+    })
+
+    expect(removed.headers.get('location')).toBe(`${APP_URL}/organizations`)
+    expect(await service.useCases.activeOrganizationId(member.userId)).toBeNull()
+    expect((await service.useCases.viewOrganizations(member.userId)).memberships).toEqual([])
+
+    if (organizations.available) {
+      expect(await dataOwnerOf(member)).toEqual({ kind: 'user', userId: member.userId })
+    }
+
+    // Et la ligne de sélection est **toujours là** : c'est la lecture qui porte
+    // l'appartenance, pas un nettoyage (ADR 025).
+    expect(await countRows('organization_active_selection', 'user_id', member.userId)).toBe(1)
+  })
+
+  it('laisse un membre se retirer lui-même', async () => {
+    const { member, organizationId } = await anOrganizationOfTwo()
+
+    const left = await call('removeMember', {
+      session: member,
+      body: { organizationId, userId: member.userId },
+    })
+
+    expect(left.headers.get('location')).toBe(`${APP_URL}/organizations`)
+    expect(await countRows('organization_member', 'organization_id', organizationId)).toBe(1)
+  })
+
+  it('refuse de retirer le dernier propriétaire, y compris par lui-même', async () => {
+    const { founder, member, organizationId } = await anOrganizationOfTwo()
+
+    const refusedByOther = await call('removeMember', {
+      session: member,
+      body: { organizationId, userId: founder.userId },
+    })
+
+    expect(refusedByOther.headers.get('location')).toBe(
+      `${APP_URL}/organizations?error=last_owner`,
+    )
+
+    const refusedBySelf = await call('removeMember', {
+      session: founder,
+      body: { organizationId, userId: founder.userId },
+    })
+
+    expect(refusedBySelf.headers.get('location')).toBe(`${APP_URL}/organizations?error=last_owner`)
+    expect(await countRows('organization_member', 'user_id', founder.userId)).toBe(1)
+  })
+
+  it('garde un propriétaire quand deux retraits partent ensemble, à chaque course', async () => {
+    // **La course, exercée par construction** (constat F1 de la revue).
+    //
+    // Deux propriétaires, une **seule** session, deux soumissions parallèles :
+    // « retirer l'autre » et « me retirer ». C'est le geste que l'écran offre —
+    // deux clics rapprochés sur deux boutons —, et sans sérialisation il laisse
+    // l'organisation sans personne pour la gouverner, état qu'aucune route de
+    // s16 ne rattrape (aucune promotion avant s17).
+    //
+    // Dix courses, et non une : une course qu'on n'attrape qu'un tirage sur
+    // quatre est un test plus étroit que son nom. Les deux connexions du pool
+    // sont réveillées avant la mesure, et les deux requêtes partent dans le même
+    // tour de boucle — la fenêtre est ouverte aussi large que possible.
+    const RACES = 10
+    const remaining: number[] = []
+
+    for (let race = 0; race < RACES; race += 1) {
+      const founder = await anAccount()
+      const organizationId = await anOrganization(founder)
+      const second = await anAccount()
+
+      // Un **second propriétaire** : le produit n'en fabrique pas encore (la
+      // promotion est s17), et l'invariant ne se mesure qu'à partir de deux.
+      await connection.db.insert(organizationMember).values({
+        id: generateId('mbr'),
+        organizationId,
+        userId: second.userId,
+        role: 'owner',
+      })
+
+      // La barrière : deux connexions déjà ouvertes, pour que l'acquisition
+      // d'une connexion ne sérialise pas ce que la course doit mesurer.
+      await Promise.all([
+        connection.db.execute(sql`select 1`),
+        connection.db.execute(sql`select 1`),
+      ])
+
+      await Promise.all([
+        call('removeMember', {
+          session: founder,
+          body: { organizationId, userId: second.userId },
+        }),
+        call('removeMember', {
+          session: founder,
+          body: { organizationId, userId: founder.userId },
+        }),
+      ])
+
+      remaining.push(await countRows('organization_member', 'organization_id', organizationId))
+    }
+
+    // Exactement un membre restant à chaque course, et c'est un propriétaire :
+    // les deux comptes de la course le sont.
+    expect(remaining).toEqual(Array.from({ length: RACES }, () => 1))
+  })
+
+  it('refuse de retirer quelqu’un qui n’est pas membre', async () => {
+    const { founder, organizationId } = await anOrganizationOfTwo()
+    const stranger = await anAccount()
+
+    const refused = await call('removeMember', {
+      session: founder,
+      body: { organizationId, userId: stranger.userId },
+    })
+
+    expect(refused.headers.get('location')).toBe(`${APP_URL}/organizations?error=not_a_member`)
+  })
+
+  it('refuse de retirer un membre d’une autre organisation', async () => {
+    // Le **cas jumeau** du refus de révocation, absent jusqu'au tour de
+    // correction (constat F3) : retirer `organization_id` du prédicat du
+    // retrait laissait 957 tests verts. Sans lui, l'appelant supprimerait
+    // l'appartenance de sa cible dans **toutes** les organisations où elle est
+    // membre, en fournissant l'identifiant de la sienne.
+    const { member, organizationId } = await anOrganizationOfTwo()
+
+    const other = await anAccount()
+    const otherOrganizationId = await anOrganization(other)
+
+    const refused = await call('removeMember', {
+      session: other,
+      body: { organizationId: otherOrganizationId, userId: member.userId },
+    })
+
+    expect(refused.headers.get('location')).toBe(`${APP_URL}/organizations?error=not_a_member`)
+    expect(await countRows('organization_member', 'organization_id', organizationId)).toBe(2)
+  })
+
+  it('rend 404 quand l’organisation n’est pas la sienne', async () => {
+    const { member, organizationId } = await anOrganizationOfTwo()
+    const stranger = await anAccount()
+
+    const refused = await call('removeMember', {
+      session: stranger,
+      body: { organizationId, userId: member.userId },
+    })
+
+    expect(refused.status).toBe(404)
+    expect(await countRows('organization_member', 'organization_id', organizationId)).toBe(2)
+  })
+})
+
+describe.runIf(databaseReachable)('ce que l’écran voit', () => {
+  it('liste les membres avec leur adresse, et dit lequel ne peut pas être retiré', async () => {
+    const { founder, member } = await anAccount().then(async (first) => {
+      const organizationId = await anOrganization(first)
+      const email = `s15-vue-${randomUUID()}@example.test`
+      const second = await anAccount(email)
+
+      await call('invite', { session: first, body: { organizationId, email } })
+      await call('acceptInvitation', {
+        session: second,
+        body: { token: tokenOf(lastInvitationLink()) },
+      })
+
+      return { founder: first, member: second }
+    })
+
+    const members = await membersOf(founder)
+
+    expect(members).toHaveLength(2)
+    // Le dernier propriétaire n'a pas d'action de retrait : l'écran ne masque
+    // pas un bouton, il n'en a pas. Le serveur refuse malgré tout.
+    expect(members.find((entry) => entry.userId === founder.userId)?.removable).toBe(false)
+    expect(members.find((entry) => entry.userId === member.userId)?.removable).toBe(true)
+  })
+
+  it('ne montre ni membres ni invitations quand aucune organisation n’est courante', async () => {
+    const account = await anAccount()
+
+    expect(await service.useCases.viewOrganizations(account.userId)).toEqual(
+      EMPTY_ORGANIZATIONS_VIEW,
+    )
+  })
+})
+
 describe.runIf(databaseReachable)('la purge et l’export du module', () => {
   it('efface les appartenances d’un compte, et se rejoue sans rien de plus', async () => {
     const account = await anAccount()
@@ -499,6 +1357,44 @@ describe.runIf(databaseReachable)('la purge et l’export du module', () => {
 
     expect(await countRows('organization_member', 'user_id', account.userId)).toBe(0)
     expect(await countRows('organization_active_selection', 'user_id', account.userId)).toBe(0)
+  })
+
+  it('efface l’adresse invitée avec le compte qui la porte, et se rejoue', async () => {
+    // **`organization_invitation.email` est une donnée personnelle** (constat
+    // F6) : c'est l'adresse d'une personne qui n'est pas encore membre, et qui
+    // n'a pas nécessairement de compte. Mesuré avant la correction : après
+    // `purge({kind:'user'})`, la ligne et son adresse étaient toujours là.
+    const founder = await anAccount()
+    const organizationId = await anOrganization(founder)
+    const email = `s15-purge-${randomUUID()}@example.test`
+    const guest = await anAccount(email)
+
+    await call('invite', { session: founder, body: { organizationId, email } })
+
+    expect(await countRows('organization_invitation', 'email', email)).toBe(1)
+
+    await organizationsModule.purge({ kind: 'user', userId: guest.userId })
+    await organizationsModule.purge({ kind: 'user', userId: guest.userId })
+
+    expect(await countRows('organization_invitation', 'email', email)).toBe(0)
+    // La catégorie est déclarée **et** dotée d'une politique : sans la
+    // déclaration, rien n'obligeait à écrire cette purge.
+    expect(organizationsModule.dataCategories).toContain('invitation')
+  })
+
+  it('rend à l’export les invitations adressées au compte', async () => {
+    const founder = await anAccount()
+    const organizationId = await anOrganization(founder)
+    const email = `s15-export-${randomUUID()}@example.test`
+    const guest = await anAccount(email)
+
+    await call('invite', { session: founder, body: { organizationId, email } })
+
+    const payload = await organizationsModule.export({ kind: 'user', userId: guest.userId })
+
+    expect(payload).toMatchObject({
+      invitations: [{ email, status: 'pending' }],
+    })
   })
 
   it('efface une organisation et ses appartenances, et se rejoue', async () => {
@@ -638,7 +1534,7 @@ describe('un module `organizations` non activé', () => {
     // Sans cette garde, tout ce qui suit serait vide de sens.
     expect(organizationsModule.routes.length).toBeGreaterThan(0)
     expect(organizationsModule.navigation.length).toBeGreaterThan(0)
-    expect(Object.keys(organizationsModule.schema).length).toBe(3)
+    expect(Object.keys(organizationsModule.schema).length).toBe(4)
   })
 
   it('n’expose aucune route : chacune de ses URL répond 404', async () => {
@@ -679,6 +1575,7 @@ describe('un module `organizations` non activé', () => {
     expect(declared.sort()).toEqual([
       'organization',
       'organization_active_selection',
+      'organization_invitation',
       'organization_member',
     ])
   })
@@ -687,9 +1584,12 @@ describe('un module `organizations` non activé', () => {
     // C'est le critère « toute donnée est rattachée directement à
     // l'utilisateur » : rien ne change chez l'appelant, seule l'organisation
     // active vaut `null`.
-    const { EMPTY_ORGANIZATIONS_VIEW } = await import('@repo/module-organizations')
-
-    expect(EMPTY_ORGANIZATIONS_VIEW).toEqual({ current: null, memberships: [] })
+    expect(EMPTY_ORGANIZATIONS_VIEW).toEqual({
+      current: null,
+      memberships: [],
+      members: [],
+      invitations: [],
+    })
     expect(
       resolveDataOwner({ session: { userId: 'usr_1', roles: [] }, activeOrganizationId: null }),
     ).toEqual({ kind: 'user', userId: 'usr_1' })
@@ -712,7 +1612,15 @@ describe('un module `organizations` non activé', () => {
  * l'assertion une lecture directe.
  */
 describe('le sélecteur d’organisation, quand rien n’est sélectionné', () => {
-  const ACTIONS = { create: '/c', switch: '/s', update: '/u' }
+  const ACTIONS = {
+    create: '/c',
+    switch: '/s',
+    update: '/u',
+    invite: '/i',
+    resendInvitation: '/r',
+    revokeInvitation: '/x',
+    removeMember: '/m',
+  }
   const A_MEMBERSHIP = {
     id: 'org_1',
     name: 'Studio Martin',
@@ -728,13 +1636,14 @@ describe('le sélecteur d’organisation, quand rien n’est sélectionné', () 
         view,
         intl: { t: (key: string) => key },
         actions: ACTIONS,
+        viewerId: 'usr_1',
         refusalKey: null,
       }),
     )
   }
 
   it('invite à en choisir une, au lieu d’annoncer l’état vide comme courant', async () => {
-    const html = await render({ current: null, memberships: [A_MEMBERSHIP] })
+    const html = await render({ ...EMPTY_ORGANIZATIONS_VIEW, memberships: [A_MEMBERSHIP] })
 
     expect(html).toContain(ORGANIZATIONS_KEYS.switcherNone)
     // Le libellé de l'état vide appartient à l'écran sans appartenance ; il n'a
@@ -743,10 +1652,36 @@ describe('le sélecteur d’organisation, quand rien n’est sélectionné', () 
   })
 
   it('nomme l’organisation courante dès qu’il y en a une', async () => {
-    const html = await render({ current: A_MEMBERSHIP, memberships: [A_MEMBERSHIP] })
+    const html = await render({
+      ...EMPTY_ORGANIZATIONS_VIEW,
+      current: A_MEMBERSHIP,
+      memberships: [A_MEMBERSHIP],
+    })
 
     expect(html).toContain(A_MEMBERSHIP.name)
     expect(html).not.toContain(ORGANIZATIONS_KEYS.switcherNone)
+  })
+
+  /**
+   * **Le dernier propriétaire n'a pas de bouton de retrait** (critère 7, côté
+   * écran).
+   *
+   * Ce n'est pas la permission — le serveur refuse de toute façon, et
+   * `tests/organizations.test.ts` le mesure par le répartiteur —, c'est
+   * l'affordance : promettre une action qu'on va refuser est un écran cassé.
+   */
+  it('n’offre pas de retrait au membre que la règle protège', async () => {
+    const withMembers = (removable: boolean): OrganizationsView => ({
+      ...EMPTY_ORGANIZATIONS_VIEW,
+      current: A_MEMBERSHIP,
+      memberships: [A_MEMBERSHIP],
+      members: [
+        { userId: 'usr_1', email: 'alice@example.test', role: 'owner' as const, removable },
+      ],
+    })
+
+    expect(await render(withMembers(false))).not.toContain(ACTIONS.removeMember)
+    expect(await render(withMembers(true))).toContain(ACTIONS.removeMember)
   })
 })
 

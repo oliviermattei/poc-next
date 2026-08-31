@@ -500,6 +500,9 @@ importers:
       '@repo/module-auth':
         specifier: workspace:*
         version: link:../auth
+      '@repo/ports':
+        specifier: workspace:*
+        version: link:../../ports
       '@repo/ui':
         specifier: workspace:*
         version: link:../../ui

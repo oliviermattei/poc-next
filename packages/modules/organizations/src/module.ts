@@ -1,6 +1,7 @@
 import { defineModule } from '@repo/core'
 
 import { ORGANIZATIONS_MODULE_ID } from './domain/organization'
+import { invitationEmail } from './emails/invitation'
 import { requireOrganizationsService } from './infrastructure/organizations-runtime'
 import enMessages from './messages/en.json' with { type: 'json' }
 import frMessages from './messages/fr.json' with { type: 'json' }
@@ -36,15 +37,25 @@ export const organizationsModule = defineModule({
   routes: createOrganizationRoutes(requireOrganizationsService),
   navigation: organizationsNavigation,
   messages: { fr: frMessages, en: enMessages },
-  emails: [],
+  // Un seul template, livré dans **les deux locales du module** : le contrat
+  // indexe `emails[].locales` par les locales de `messages`, donc un template
+  // incomplet ne compile pas (ADR 007).
+  emails: [invitationEmail],
   webhooks: [],
   jobs: [],
   // Une organisation et une appartenance sont des données personnelles : la
   // seconde nomme un compte, la première est le contexte de son travail. Les
   // deux sont **effacées**, jamais anonymisées — une organisation anonyme
   // resterait un contexte que ses anciens membres pourraient encore atteindre.
-  dataCategories: ['organization', 'membership'],
-  retention: { organization: 'erase', membership: 'erase' },
+  //
+  // **`invitation` est la troisième**, et elle a manqué à la première livraison
+  // de s16 (revue, constat F6) : `organization_invitation.email` porte l'adresse
+  // d'une personne qui **n'a pas nécessairement de compte** — c'est le cas
+  // nominal du critère 2 —, donc une donnée personnelle qu'aucune autre
+  // catégorie ne couvre. Effacée, elle aussi : une invitation anonyme ne veut
+  // rien dire, et l'adresse *est* la donnée.
+  dataCategories: ['organization', 'membership', 'invitation'],
+  retention: { organization: 'erase', membership: 'erase', invitation: 'erase' },
   purge: (scope) => requireOrganizationsService().useCases.purge(scope),
   export: (scope) => requireOrganizationsService().useCases.export(scope),
 })

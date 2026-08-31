@@ -440,7 +440,21 @@ Un fichier, sur le modèle exact du site public :
 - `app/organizations/page.tsx` **lit** cette valeur sans jamais nommer de
   module : `available` est une **donnée**, comme `sections.length` l'est pour la
   racine. Module coupé, l'écran répond 404 — le même arbitrage que
-  `legal/[document]`.
+  `legal/[document]` ;
+- `app/invitations/accept/page.tsx` (s16) fait de même : c'est l'écran
+  d'atterrissage d'un lien d'invitation, servi à un visiteur **anonyme comme
+  connecté** — un anonyme y voit deux chemins, connexion (avec retour vers cette
+  URL, jeton compris) et inscription. **Rien n'y est accepté en `GET`** : un
+  aperçu de lien — client de messagerie, antivirus, proxy — suit les `GET` et
+  consommerait le jeton à usage unique avant l'invité. L'acceptation est un
+  `<form method="post">` vers la route du module.
+
+Ce fichier donne aussi au module ce qu'il ne peut pas se procurer pour envoyer
+un email : le **port** `Mailer` (construit par `lib/mailer.ts`, jamais un
+fournisseur), l'`APP_URL` validée par `lib/auth-config.ts` — jamais déduite d'un
+en-tête `Host`, sans quoi un lien d'invitation pourrait pointer vers le domaine
+d'un attaquant —, et la locale **du site**, parce qu'un destinataire dont rien
+n'est connu n'en a pas d'autre.
 
 C'est aussi ce fichier qui donne au module deux choses qu'il ne peut pas se
 procurer : la **connexion** (ADR 020) et les **identifiants publics réservés**.

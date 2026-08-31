@@ -227,12 +227,21 @@ export async function dispatchModuleRequest(
  *
  * Un module non activé n'est pas dans la liste : sa fonction de purge n'est pas
  * appelée, et son absence ne provoque aucune erreur — il n'y a rien à ignorer.
+ *
+ * **L'ordre est celui du graphe, à l'envers : le dépendant avant son requis**
+ * (ADR 029). C'est le seul ordre dans lequel un module peut encore résoudre ce
+ * que son requis détient — et c'est aussi le sens des clés étrangères, un
+ * dépendant référençant son requis (ADR 018). Mesuré en s16 : purgé après
+ * `auth`, le module `organizations` ne pouvait plus lire l'adresse du compte
+ * effacé, et l'adresse d'une personne survivait dans une invitation en attente.
+ * Le montage, lui, garde l'ordre direct : une route d'un requis existe avant
+ * celles de son dépendant.
  */
 export async function purgeModules(
   registry: ModuleRegistry,
   scope: ModuleScope,
 ): Promise<readonly string[]> {
-  for (const module of registry.modules) {
+  for (const module of [...registry.modules].reverse()) {
     await module.purge(scope)
   }
 

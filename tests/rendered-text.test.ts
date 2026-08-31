@@ -80,7 +80,7 @@ vi.mock('../apps/web/lib/auth', async () => {
  */
 vi.mock('../apps/web/lib/organizations', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../apps/web/lib/organizations')>()
-  const { FIXTURE_ORGANIZATIONS } = await import('./fixtures/screen-viewer')
+  const { FIXTURE_INVITATION, FIXTURE_ORGANIZATIONS } = await import('./fixtures/screen-viewer')
 
   return {
     ...actual,
@@ -88,6 +88,7 @@ vi.mock('../apps/web/lib/organizations', async (importOriginal) => {
       ...actual.organizations,
       activeOrganizationId: () => Promise.resolve(FIXTURE_ORGANIZATIONS.current.id),
       view: () => Promise.resolve(FIXTURE_ORGANIZATIONS),
+      invitation: () => Promise.resolve(FIXTURE_INVITATION),
     },
   }
 })
@@ -432,7 +433,10 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
     const {
       ANONYMOUS,
       FIXTURE_EMAIL,
+      FIXTURE_EXPIRED_INVITED_EMAIL,
+      FIXTURE_INVITED_EMAIL,
       FIXTURE_IP,
+      FIXTURE_MEMBER_EMAIL,
       FIXTURE_NAME,
       FIXTURE_ORGANIZATION_NAME,
       FIXTURE_ORGANIZATION_SLUG,
@@ -452,6 +456,11 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       FIXTURE_USER_AGENT,
       FIXTURE_ORGANIZATION_NAME,
       FIXTURE_ORGANIZATION_SLUG,
+      // s16 — les adresses affichées par les cartes « Membres » et
+      // « Invitations », et par l'écran d'atterrissage. Ce sont des données.
+      FIXTURE_MEMBER_EMAIL,
+      FIXTURE_INVITED_EMAIL,
+      FIXTURE_EXPIRED_INVITED_EMAIL,
       new Intl.DateTimeFormat(defaultLocale, {
         dateStyle: 'long',
         timeStyle: 'short',
@@ -563,10 +572,53 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // actif ici aussi : `create="Créer une organisation"` rougirait.
         // Déclarées **sur cet écran** : ailleurs, une prop nommée `create`
         // portant une chaîne fait toujours rougir.
-        technicalProps: ['create', 'switch', 'update'],
+        technicalProps: [
+          'create',
+          'switch',
+          'update',
+          // s16 — les quatre URL de plus, déclarées **sur cet écran** : ailleurs,
+          // une prop nommée `invite` portant une chaîne fait toujours rougir.
+          'invite',
+          'resendInvitation',
+          'revokeInvitation',
+          'removeMember',
+          // L'identifiant du compte de l'appelant : il départage « retirer » de
+          // « quitter », il ne s'affiche jamais.
+          'viewerId',
+          'organizationId',
+          'field',
+          'removeAction',
+        ],
         render: async () =>
           (await import('../apps/web/app/organizations/page')).default({
             searchParams: Promise.resolve({ error: 'slug_unavailable' }),
+          }),
+      },
+      {
+        // s16 — l'écran d'atterrissage d'un lien d'invitation, pour un visiteur
+        // **connecté** : c'est la branche qui rend le bouton d'acceptation.
+        id: 'invitation, visiteur connecté',
+        file: 'invitations/accept/page.tsx',
+        viewer: SIGNED_IN,
+        refuses: organizationsMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        technicalProps: ['acceptAction', 'signUpHref', 'homeHref', 'status'],
+        render: async () =>
+          (await import('../apps/web/app/invitations/accept/page')).default({
+            searchParams: Promise.resolve({ token: 'jeton', error: 'invitation_expired' }),
+          }),
+      },
+      {
+        // Le même écran, **anonyme** : l'autre branche, celle qui propose la
+        // connexion et l'inscription (critère 2). Sans elle, ses deux libellés
+        // sortiraient du filet.
+        id: 'invitation, visiteur anonyme',
+        file: 'invitations/accept/page.tsx',
+        viewer: ANONYMOUS,
+        refuses: organizationsMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        technicalProps: ['acceptAction', 'signUpHref', 'homeHref', 'status'],
+        render: async () =>
+          (await import('../apps/web/app/invitations/accept/page')).default({
+            searchParams: Promise.resolve({ token: 'jeton' }),
           }),
       },
       {

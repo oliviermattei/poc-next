@@ -1,17 +1,22 @@
+import { getEnv } from '@repo/config'
 import { resolveDataOwner, type ModuleScope, type ModuleSession } from '@repo/core'
 import { getDatabase } from '@repo/db'
 import {
   EMPTY_ORGANIZATIONS_VIEW,
+  INVITATION_SCREEN_PATH,
   organizationRoutePath,
   organizationsModule,
   ORGANIZATIONS_SCREEN_PATH,
   provideOrganizations,
   requireOrganizationsService,
+  type InvitationPreview,
   type OrganizationsService,
   type OrganizationsView,
 } from '@repo/module-organizations'
 
+import { resolveAuthConfig } from './auth-config'
 import { localeRouting } from './locale-routing'
+import { createAppMailer } from './mailer'
 import { moduleRegistry } from './module-registry'
 
 /**
@@ -68,6 +73,13 @@ export interface OrganizationsFeature {
   readonly activeOrganizationId: (userId: string) => Promise<string | null>
   /** Ce que l'écran affiche. Vide et immuable module coupé. */
   readonly view: (userId: string) => Promise<OrganizationsView>
+  /**
+   * Ce que l'écran d'atterrissage d'un lien d'invitation montre, ou `null`.
+   *
+   * Toujours `null` module coupé, **sans toucher la base** : l'écran répond
+   * alors 404, comme `/organizations`.
+   */
+  readonly invitation: (token: string) => Promise<InvitationPreview | null>
 }
 
 /**
@@ -81,6 +93,7 @@ const ABSENT_ORGANIZATIONS: OrganizationsFeature = {
   prepare: () => {},
   activeOrganizationId: () => Promise.resolve(null),
   view: () => Promise.resolve(EMPTY_ORGANIZATIONS_VIEW),
+  invitation: () => Promise.resolve(null),
 }
 
 /**
@@ -102,6 +115,9 @@ const APPLICATION_SEGMENTS = [
   'account',
   'api',
   'forgot-password',
+  // L'écran d'atterrissage d'un lien d'invitation (s16) : un écran servi par
+  // l'application, donc un identifiant qu'aucune organisation ne peut prendre.
+  'invitations',
   'legal',
   // Le rebond same-site du retour de fournisseur (s12) : un écran servi par
   // l'application, donc un identifiant qu'aucune organisation ne peut prendre.
@@ -140,7 +156,23 @@ const mounted = moduleRegistry.moduleIds.includes(organizationsModule.id)
  * réservés, que lui non plus ne peut pas connaître.
  */
 const provide = (): void => {
-  provideOrganizations(() => ({ db: getDatabase().db, reservedSlugs }))
+  provideOrganizations(() => ({
+    db: getDatabase().db,
+    reservedSlugs,
+    // Le **port** d'envoi, jamais un fournisseur : `lib/mailer.ts` est le seul
+    // fichier qui sache qu'il existe Resend et une capture locale, et le module
+    // ne connaît que `Mailer` — exactement comme `lib/auth.ts` le fait.
+    mailer: createAppMailer(),
+    // L'URL publique, **jamais déduite d'un en-tête `Host`** : la déduire
+    // laisserait un attaquant faire pointer un lien d'invitation vers son
+    // propre domaine. C'est la même règle et la même variable que celles qui
+    // construisent les liens de vérification (`lib/auth-config.ts`).
+    appUrl: resolveAuthConfig(getEnv()).appUrl,
+    // Un destinataire dont rien n'est connu reçoit la langue **du site** : il
+    // n'a pas de requête, donc pas de préférence. La règle est celle du module
+    // `auth` (`AuthService.localeOf`), appliquée ici sans le détour.
+    emailLocale: localeRouting.defaultLocale,
+  }))
 }
 
 const organizationsService = (): OrganizationsService => {
@@ -156,6 +188,8 @@ export const organizations: OrganizationsFeature = mounted
       activeOrganizationId: async (userId) =>
         await organizationsService().useCases.activeOrganizationId(userId),
       view: async (userId) => await organizationsService().useCases.viewOrganizations(userId),
+      invitation: async (token) =>
+        await organizationsService().useCases.describeInvitation(token),
     }
   : ABSENT_ORGANIZATIONS
 
@@ -189,4 +223,4 @@ export async function dataOwnerOf(session: ModuleSession | null): Promise<Module
 }
 
 /** Ce que les écrans ont le droit de connaître du module : ses chemins. */
-export { ORGANIZATIONS_SCREEN_PATH, organizationRoutePath }
+export { INVITATION_SCREEN_PATH, ORGANIZATIONS_SCREEN_PATH, organizationRoutePath }

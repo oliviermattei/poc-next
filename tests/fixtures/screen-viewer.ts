@@ -48,6 +48,19 @@ export const ANONYMOUS: ViewerFixture = { session: null, account: null }
 export const FIXTURE_ORGANIZATION_NAME = 'Studio Martin'
 export const FIXTURE_ORGANIZATION_SLUG = 'studio-martin'
 
+/**
+ * Les adresses affichées par les cartes « Membres » et « Invitations » (s16).
+ *
+ * Deux membres et deux invitations, et ce n'est pas de la générosité : un seul
+ * membre laisserait la branche « retirer un autre » non rendue, et une seule
+ * invitation ne montrerait qu'un des deux statuts. Le second membre est
+ * `removable`, le premier ne l'est pas — les deux formes de la ligne passent
+ * donc sous le filet.
+ */
+export const FIXTURE_MEMBER_EMAIL = 'bruno@example.test'
+export const FIXTURE_INVITED_EMAIL = 'claire@example.test'
+export const FIXTURE_EXPIRED_INVITED_EMAIL = 'david@example.test'
+
 export const FIXTURE_ORGANIZATIONS = {
   current: {
     id: 'org_1',
@@ -63,6 +76,21 @@ export const FIXTURE_ORGANIZATIONS = {
       role: 'owner' as const,
     },
   ],
+  members: [
+    { userId: 'usr_1', email: FIXTURE_EMAIL, role: 'owner' as const, removable: false },
+    { userId: 'usr_2', email: FIXTURE_MEMBER_EMAIL, role: 'member' as const, removable: true },
+  ],
+  invitations: [
+    { id: 'inv_1', email: FIXTURE_INVITED_EMAIL, status: 'pending' as const },
+    { id: 'inv_2', email: FIXTURE_EXPIRED_INVITED_EMAIL, status: 'expired' as const },
+  ],
+}
+
+/** L'invitation que voit l'écran d'atterrissage pendant ce rendu (s16). */
+export const FIXTURE_INVITATION = {
+  organizationName: FIXTURE_ORGANIZATION_NAME,
+  email: FIXTURE_INVITED_EMAIL,
+  status: 'pending' as const,
 }
 
 export const FIXTURE_SESSIONS: readonly DescribedSession[] = [

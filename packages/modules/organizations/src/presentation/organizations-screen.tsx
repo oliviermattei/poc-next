@@ -12,11 +12,21 @@ import {
   Label,
   OrgSwitcher,
   PageHeader,
+  Separator,
 } from '@repo/ui'
-import { Building2Icon } from 'lucide-react'
+import { Building2Icon, MailPlusIcon } from 'lucide-react'
+import type { ReactNode } from 'react'
 
-import type { OrganizationsView } from '../application/organization-use-cases'
-import { ORGANIZATIONS_KEYS as K, roleLabelKey } from '../domain/message-keys'
+import type {
+  OrganizationInvitationView,
+  OrganizationMemberView,
+  OrganizationsView,
+} from '../application/organization-use-cases'
+import {
+  invitationStatusKey,
+  ORGANIZATIONS_KEYS as K,
+  roleLabelKey,
+} from '../domain/message-keys'
 import type { OrganizationsIntl } from './organizations-intl'
 
 /**
@@ -38,12 +48,18 @@ import type { OrganizationsIntl } from './organizations-intl'
 export interface OrganizationsScreenProps {
   readonly view: OrganizationsView
   readonly intl: OrganizationsIntl
-  /** URL des trois routes du module, résolues par l'application. */
+  /** URL des routes du module, résolues par l'application. */
   readonly actions: {
     readonly create: string
     readonly switch: string
     readonly update: string
+    readonly invite: string
+    readonly resendInvitation: string
+    readonly revokeInvitation: string
+    readonly removeMember: string
   }
+  /** Le compte de l'appelant : c'est lui qui « quitte » au lieu de « retirer ». */
+  readonly viewerId: string
   /**
    * La **clé de catalogue** du refus rapporté par la redirection, ou `null`.
    *
@@ -96,6 +112,221 @@ function DraftFields({
   )
 }
 
+/**
+ * Une ligne de liste : le libellé, puis ses affordances.
+ *
+ * `min-w-0` et `truncate` évitent le débordement horizontal
+ * (`docs/design-system.md`, § Responsive) : sans eux, une adresse longue pousse
+ * la carte et fait défiler la page en largeur.
+ *
+ * **Mais éviter le débordement ne suffit pas** (revue de s16, F5). Avec
+ * `flex-1` seul — donc `flex-basis: 0` —, le libellé « tient » toujours et ne
+ * provoque jamais le retour à la ligne que `flex-wrap` promettait : il absorbe
+ * seul toute la compression, et rendait l'adresse tronquée à **neuf pixels** à
+ * 390 px, mesuré au navigateur. Deux invitations devenaient indiscernables,
+ * alors que la ligne porte une action destructive.
+ *
+ * `basis-full` sous `sm` donne donc au libellé sa propre ligne, et renvoie les
+ * affordances à la suivante ; `sm:flex-1 sm:basis-auto` rend le comportement
+ * d'origine dès qu'il y a la place. `e2e/organizations.spec.ts` mesure la
+ * largeur réellement rendue à 390 px : c'est la seule preuve possible, une
+ * assertion sur la classe utilitaire ne prouverait que sa présence.
+ */
+function Row({ label, children }: { readonly label: string; readonly children: ReactNode }) {
+  return (
+    <li className="flex min-w-0 flex-wrap items-center gap-3 border-t border-border py-3 first:border-t-0 first:pt-0">
+      <span className="min-w-0 basis-full truncate sm:flex-1 sm:basis-auto">{label}</span>
+      {children}
+    </li>
+  )
+}
+
+/**
+ * Une action de ligne : un formulaire natif, un champ caché, un bouton.
+ *
+ * Un formulaire **par action**, et c'est ce qui permet à l'écran de n'avoir
+ * aucun composant client : la soumission native est le chemin nominal, et le
+ * `method` reste écrit en toutes lettres — `pnpm lint` le refuse autrement.
+ *
+ * **Deux libellés, et la raison est mesurée.** Le texte visible est court
+ * (« Retirer »), le nom accessible nomme sa cible (« Retirer marie@… ») : quatre
+ * boutons « Retirer » sont indiscernables au clavier comme pour une aide
+ * technique, mais mettre l'adresse **dans** le bouton la rend indéformable
+ * (`whitespace-nowrap`) et fait déborder l'écran — mesuré, 1033 px de contenu
+ * dans une fenêtre de 390 px, avec une adresse longue. L'`aria-label` remplace le
+ * contenu pour une aide technique : le nom reste complet, la largeur non.
+ */
+function RowAction({
+  action,
+  organizationId,
+  field,
+  value,
+  label,
+  accessibleName,
+}: {
+  readonly action: string
+  readonly organizationId: string
+  readonly field: string
+  readonly value: string
+  readonly label: string
+  readonly accessibleName: string
+}) {
+  return (
+    <form method="post" action={action} aria-label={accessibleName}>
+      {/* Le périmètre est celui que l'écran **affiche**, posé par le serveur.
+          Le champ est caché mais il n'est pas une autorisation : la route relit
+          l'appartenance, et une valeur falsifiée répond 404 (ADR 025). */}
+      <input type="hidden" name="organizationId" value={organizationId} />
+      <input type="hidden" name={field} value={value} />
+      {/* `variant="ghost"` et la hauteur par défaut : le design system ne nomme
+          aucune échelle de tailles, et `packages/ui` n'en expose pas. Une taille
+          inventée ici serait un design system gap comblé sur place. */}
+      <Button type="submit" variant="ghost" aria-label={accessibleName}>
+        {label}
+      </Button>
+    </form>
+  )
+}
+
+function MembersCard({
+  intl,
+  members,
+  organizationId,
+  viewerId,
+  removeAction,
+}: {
+  readonly intl: OrganizationsIntl
+  readonly members: readonly OrganizationMemberView[]
+  readonly organizationId: string
+  readonly viewerId: string
+  readonly removeAction: string
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{intl.t(K.membersTitle)}</CardTitle>
+        <CardDescription>{intl.t(K.membersDescription)}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ul className="flex flex-col">
+          {members.map((member) => (
+            <Row key={member.userId} label={member.email}>
+              <Badge variant="secondary">{intl.t(roleLabelKey(member.role))}</Badge>
+              {member.userId === viewerId ? <Badge variant="outline">{intl.t(K.membersYou)}</Badge> : null}
+              {/* **Le dernier propriétaire n'a pas de bouton** : l'action
+                  n'existe pas plutôt que d'échouer. Ce n'est pas la permission —
+                  le serveur refuse de toute façon (`docs/security.md` §3) —,
+                  c'est ne pas promettre ce qu'on refusera. */}
+              {member.removable ? (
+                <RowAction
+                  action={removeAction}
+                  organizationId={organizationId}
+                  field="userId"
+                  value={member.userId}
+                  label={
+                    member.userId === viewerId
+                      ? intl.t(K.membersLeave)
+                      : intl.t(K.membersRemove)
+                  }
+                  accessibleName={
+                    member.userId === viewerId
+                      ? intl.t(K.membersLeave)
+                      : intl.t(K.membersRemoveFor, { email: member.email })
+                  }
+                />
+              ) : null}
+            </Row>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  )
+}
+
+function InvitationsCard({
+  intl,
+  invitations,
+  organizationId,
+  actions,
+}: {
+  readonly intl: OrganizationsIntl
+  readonly invitations: readonly OrganizationInvitationView[]
+  readonly organizationId: string
+  readonly actions: {
+    readonly invite: string
+    readonly resendInvitation: string
+    readonly revokeInvitation: string
+  }
+}) {
+  return (
+    <Card id="invite-member">
+      <CardHeader>
+        <CardTitle>{intl.t(K.invitationsTitle)}</CardTitle>
+        <CardDescription>{intl.t(K.invitationsDescription)}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <form
+          method="post"
+          action={actions.invite}
+          aria-label={intl.t(K.invitationsTitle)}
+          className="flex flex-col gap-2 sm:flex-row sm:items-end"
+        >
+          <input type="hidden" name="organizationId" value={organizationId} />
+          <div className="flex min-w-0 flex-1 flex-col gap-2">
+            <Label htmlFor="invite-email">{intl.t(K.invitationsEmailLabel)}</Label>
+            <Input id="invite-email" name="email" type="email" autoComplete="email" required />
+          </div>
+          <div>
+            <Button type="submit">{intl.t(K.invitationsSubmit)}</Button>
+          </div>
+        </form>
+        <p className="text-xs text-muted-foreground">{intl.t(K.invitationsHint)}</p>
+
+        <Separator />
+
+        {invitations.length === 0 ? (
+          <EmptyState
+            icon={<MailPlusIcon />}
+            title={intl.t(K.invitationsEmptyTitle)}
+            description={intl.t(K.invitationsEmptyDescription)}
+            action={
+              <Button asChild>
+                <a href="#invite-member">{intl.t(K.invitationsSubmit)}</a>
+              </Button>
+            }
+          />
+        ) : (
+          <ul className="flex flex-col">
+            {invitations.map((invitation) => (
+              <Row key={invitation.id} label={invitation.email}>
+                <Badge variant={invitation.status === 'pending' ? 'secondary' : 'outline'}>
+                  {intl.t(invitationStatusKey(invitation.status))}
+                </Badge>
+                <RowAction
+                  action={actions.resendInvitation}
+                  organizationId={organizationId}
+                  field="invitationId"
+                  value={invitation.id}
+                  label={intl.t(K.invitationsResend)}
+                  accessibleName={intl.t(K.invitationsResendFor, { email: invitation.email })}
+                />
+                <RowAction
+                  action={actions.revokeInvitation}
+                  organizationId={organizationId}
+                  field="invitationId"
+                  value={invitation.id}
+                  label={intl.t(K.invitationsRevoke)}
+                  accessibleName={intl.t(K.invitationsRevokeFor, { email: invitation.email })}
+                />
+              </Row>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 const CREATE_LABELS = {
   name: K.createName,
   slug: K.createSlug,
@@ -113,8 +344,9 @@ export function OrganizationsScreen({
   intl,
   actions,
   refusalKey,
+  viewerId,
 }: OrganizationsScreenProps) {
-  const { current, memberships } = view
+  const { current, memberships, members, invitations } = view
 
   return (
     <>
@@ -166,6 +398,25 @@ export function OrganizationsScreen({
             )}
           </CardContent>
         </Card>
+      )}
+
+      {current === null ? null : (
+        <MembersCard
+          intl={intl}
+          members={members}
+          organizationId={current.id}
+          viewerId={viewerId}
+          removeAction={actions.removeMember}
+        />
+      )}
+
+      {current === null ? null : (
+        <InvitationsCard
+          intl={intl}
+          invitations={invitations}
+          organizationId={current.id}
+          actions={actions}
+        />
       )}
 
       {current === null ? null : (

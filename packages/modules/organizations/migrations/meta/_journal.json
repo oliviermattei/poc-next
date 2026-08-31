@@ -8,6 +8,13 @@
       "when": 1788186535529,
       "tag": "0000_married_absorbing_man",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788197710412,
+      "tag": "0001_cynical_kitty_pryde",
+      "breakpoints": true
     }
   ]
 }

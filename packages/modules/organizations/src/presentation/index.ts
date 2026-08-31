@@ -14,4 +14,5 @@ export {
   OrganizationsScreen,
   type OrganizationsScreenProps,
 } from './organizations-screen'
+export { InvitationScreen, type InvitationScreenProps } from './invitation-screen'
 export type { OrganizationsIntl } from './organizations-intl'

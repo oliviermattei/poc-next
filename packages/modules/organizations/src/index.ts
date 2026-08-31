@@ -2,7 +2,7 @@
  * Le module des organisations — **optionnel**, et c'est tout son intérêt.
  *
  * Coupé, l'application est mono-utilisateur : aucune route, aucune entrée de
- * navigation, aucune des trois tables sur une base vierge, et toute donnée est
+ * navigation, aucune des quatre tables sur une base vierge, et toute donnée est
  * rattachée directement au compte par `resolveDataOwner` (`@repo/core`), sans
  * qu'un seul appelant change de code.
  *
@@ -22,6 +22,7 @@ export { organizationsModule } from './module'
 export {
   organization,
   organizationActiveSelection,
+  organizationInvitation,
   organizationMember,
   organizationsSchema,
 } from './schema'
@@ -37,6 +38,9 @@ export {
 export type { OrganizationsDatabase } from './infrastructure/drizzle-organization-repositories'
 export {
   EMPTY_ORGANIZATIONS_VIEW,
+  type InvitationPreview,
+  type OrganizationInvitationView,
+  type OrganizationMemberView,
   type OrganizationOutcome,
   type OrganizationsUseCases,
   type OrganizationsView,
@@ -56,6 +60,18 @@ export {
   type OrganizationRefusal,
   type OrganizationRole,
 } from './domain/organization'
+export {
+  ACCEPT_REFUSALS,
+  INVITATION_QUOTA_PER_WINDOW,
+  INVITATION_QUOTA_WINDOW_SECONDS,
+  INVITATION_REFUSALS,
+  INVITATION_SCREEN_PATH,
+  INVITED_ROLE,
+  refusalForStatus,
+  type InvitationRefusal,
+  type InvitationStatus,
+} from './domain/invitation'
+export { invitationEmail } from './emails/invitation'
 export {
   ORGANIZATIONS_KEYS,
   ORGANIZATION_REFUSALS,

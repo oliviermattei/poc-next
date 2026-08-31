@@ -1,6 +1,11 @@
 import { qualifyMessageKey } from '@repo/core'
 
 import {
+  INVITATION_REFUSALS,
+  type InvitationRefusal,
+  type InvitationStatus,
+} from './invitation'
+import {
   ORGANIZATIONS_MODULE_ID,
   ORGANIZATION_ROLES,
   type OrganizationRefusal,
@@ -41,8 +46,12 @@ export const organizationsKey = (key: string): string =>
 export const roleLabelKey = (role: OrganizationRole): string => organizationsKey(`role.${role}`)
 
 /** Le message d'un refus, tel que l'écran l'affiche. */
-export const refusalMessageKey = (refusal: OrganizationRefusal): string =>
+export const refusalMessageKey = (refusal: OrganizationRefusal | InvitationRefusal): string =>
   organizationsKey(`error.${refusal}`)
+
+/** Le libellé du statut d'une invitation (en attente, échue). */
+export const invitationStatusKey = (status: InvitationStatus): string =>
+  organizationsKey(`invitations.status.${status}`)
 
 /** Les motifs de refus que l'écran sait rendre. Dérivés du `domain`, pas recopiés. */
 export const ORGANIZATION_REFUSALS = [
@@ -84,11 +93,62 @@ export const ORGANIZATIONS_KEYS = {
   createSubmit: organizationsKey('create.submit'),
   emptyTitle: organizationsKey('empty.title'),
   emptyDescription: organizationsKey('empty.description'),
+  /* ----------------------------------------------------------------------- *
+   * s16 — les membres, les invitations, et l'écran d'atterrissage du lien.
+   * ----------------------------------------------------------------------- */
+  membersTitle: organizationsKey('members.title'),
+  membersDescription: organizationsKey('members.description'),
+  membersYou: organizationsKey('members.you'),
+  /**
+   * Le texte **visible** du bouton, court, et son **nom accessible**, qui nomme
+   * sa cible.
+   *
+   * Les deux, parce qu'aucun des deux ne suffit : quatre boutons « Retirer »
+   * sont indiscernables au clavier comme pour une aide technique, et une adresse
+   * écrite dans le bouton le rend indéformable et fait déborder l'écran — mesuré
+   * à 390 px, 1033 px de contenu.
+   */
+  membersRemove: organizationsKey('members.remove'),
+  membersRemoveFor: organizationsKey('members.removeFor'),
+  membersLeave: organizationsKey('members.leave'),
+  invitationsTitle: organizationsKey('invitations.title'),
+  invitationsDescription: organizationsKey('invitations.description'),
+  invitationsEmailLabel: organizationsKey('invitations.emailLabel'),
+  invitationsHint: organizationsKey('invitations.hint'),
+  invitationsSubmit: organizationsKey('invitations.submit'),
+  invitationsResend: organizationsKey('invitations.resend'),
+  invitationsResendFor: organizationsKey('invitations.resendFor'),
+  invitationsRevoke: organizationsKey('invitations.revoke'),
+  invitationsRevokeFor: organizationsKey('invitations.revokeFor'),
+  invitationsEmptyTitle: organizationsKey('invitations.emptyTitle'),
+  invitationsEmptyDescription: organizationsKey('invitations.emptyDescription'),
+  acceptTitle: organizationsKey('accept.title'),
+  acceptDescription: organizationsKey('accept.description'),
+  acceptSubmit: organizationsKey('accept.submit'),
+  acceptAnonymous: organizationsKey('accept.anonymous'),
+  acceptSignIn: organizationsKey('accept.signIn'),
+  acceptSignUp: organizationsKey('accept.signUp'),
+  acceptBack: organizationsKey('accept.back'),
+  acceptRefusedTitle: organizationsKey('accept.refusedTitle'),
 } as const
+
+/**
+ * Les statuts qu'une invitation peut porter à l'écran.
+ *
+ * Seuls `pending` et `expired` y figurent : `accepted` et `revoked` sortent de
+ * la liste des invitations vivantes, donc aucun écran ne les affiche. Le refus
+ * qui les nomme, lui, passe par `refusalMessageKey`.
+ */
+export const DISPLAYED_INVITATION_STATUSES = [
+  'pending',
+  'expired',
+] as const satisfies readonly InvitationStatus[]
 
 /** Toutes les clés du module, fixes et composées, pour la garde de complétude. */
 export const organizationsMessageKeys = (): readonly string[] => [
   ...Object.values(ORGANIZATIONS_KEYS),
   ...ORGANIZATION_ROLES.map(roleLabelKey),
   ...ORGANIZATION_REFUSALS.map(refusalMessageKey),
+  ...INVITATION_REFUSALS.map(refusalMessageKey),
+  ...DISPLAYED_INVITATION_STATUSES.map(invitationStatusKey),
 ]

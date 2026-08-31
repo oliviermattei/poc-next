@@ -1,13 +1,17 @@
 import { randomUUID } from 'node:crypto'
 
+import type { Mailer } from '@repo/ports'
+
 import {
   createOrganizationsUseCases,
   type OrganizationsUseCases,
 } from '../application/organization-use-cases'
+import type { InvitationTokenFactory } from '../application/ports'
 import {
   createDrizzleOrganizationRepository,
   type OrganizationsDatabase,
 } from './drizzle-organization-repositories'
+import { createInvitationTokenFactory } from './invitation-tokens'
 
 /**
  * Le service du module, **construit à la première requête**, pas à l'import.
@@ -30,6 +34,21 @@ export interface ConfigureOrganizationsOptions {
   readonly reservedSlugs: ReadonlySet<string>
   /** Fabrique d'identifiants, pour que la suite puisse en poser de déterministes. */
   readonly generateId?: (prefix: string) => string
+  /**
+   * Le port d'envoi d'emails, **fourni** par le point de composition (s16).
+   *
+   * Le module ne sait pas qu'il existe un fournisseur ni une capture locale : il
+   * ne connaît que `Mailer` (`@repo/ports`), exactement comme le module `auth`.
+   */
+  readonly mailer: Mailer
+  /** L'URL publique, qui construit le lien d'invitation. Jamais déduite d'un en-tête. */
+  readonly appUrl: string
+  /** La langue de l'email d'invitation : celle du site, faute de destinataire connu. */
+  readonly emailLocale: string
+  /** L'horloge, injectable : une échéance non injectée est une échéance non testable. */
+  readonly now?: () => Date
+  /** La fabrique de jetons. Injectable pour la même raison que l'horloge. */
+  readonly tokens?: InvitationTokenFactory
 }
 
 export interface OrganizationsService {
@@ -56,6 +75,11 @@ const build = (options: ConfigureOrganizationsOptions): OrganizationsService => 
     repository: createDrizzleOrganizationRepository(options.db),
     reservedSlugs: options.reservedSlugs,
     generateId: options.generateId ?? defaultIdGenerator,
+    mailer: options.mailer,
+    appUrl: options.appUrl,
+    emailLocale: options.emailLocale,
+    now: options.now ?? (() => new Date()),
+    tokens: options.tokens ?? createInvitationTokenFactory(),
   }),
 })
 

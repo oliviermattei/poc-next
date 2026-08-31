@@ -90,7 +90,12 @@ test('crée une organisation, la renomme, et la retrouve à la session suivante'
   // Le déclencheur du sélecteur porte le nom de l'organisation courante.
   await expect(page.getByRole('button', { name: 'Studio Martin' })).toBeVisible()
   // Le créateur en est **propriétaire** (critère 4), et le rôle est traduit.
-  await expect(page.getByText(text('organizations.role.owner'), { exact: true })).toBeVisible()
+  // `first()` depuis s16 : le rôle est désormais affiché deux fois sur cet
+  // écran — à côté du sélecteur, et sur la ligne du membre dans la carte
+  // « Membres ». Les deux sont légitimes, et la carte courante vient d'abord.
+  await expect(
+    page.getByText(text('organizations.role.owner'), { exact: true }).first(),
+  ).toBeVisible()
 
   // Le renommage passe par le formulaire de paramètres (critère 5).
   await settingsForm(page).getByLabel(text('organizations.settings.nameLabel')).fill('Atelier Nord')
@@ -179,6 +184,213 @@ test('bascule d’organisation, et refuse celle d’un autre compte', async ({ p
   expect(refused.status()).toBe(404)
 
   await other.close()
+})
+
+/**
+ * **Le parcours d'invitation, de bout en bout** (s16).
+ *
+ * Ce que ce parcours prouve et qu'aucun test de nœud ne peut prouver : l'email
+ * part réellement par le port `Mailer` — il est lu **sur le disque**, dans la
+ * capture locale —, le lien qu'il contient s'ouvre dans un navigateur **sans
+ * consommer le jeton**, et l'acceptation est une soumission native suivie d'une
+ * redirection 303 que le navigateur suit.
+ *
+ * Il enchaîne ensuite les deux gestes qui achèvent la story : le membre apparaît
+ * dans la liste, puis il est retiré et **perd immédiatement l'organisation**,
+ * sans reconnexion — c'est ce qui remplace la rotation d'identifiant de session
+ * (ADR 026).
+ */
+test('invite quelqu’un, il accepte, puis il est retiré', async ({ page, browser }) => {
+  test.skip(!mounted, 'Le module est coupé dans cette configuration.')
+
+  await aSignedInAccount(page, 's16-founder')
+  await page.goto(publicPath('/organizations'))
+  await submitCreation(page, 'Studio Invité', aSlug())
+  await expect(page).toHaveURL(urlOf('/organizations'))
+
+  // L'invité a **déjà** un compte : c'est la moitié « utilisateur existant » du
+  // critère 2. L'autre moitié — l'inscription enchaînée — est couverte par le
+  // parcours anonyme plus bas.
+  const guestContext = await browser.newContext({ locale: 'fr-FR' })
+  const guest = await guestContext.newPage()
+  const guestEmail = await aSignedInAccount(guest, 's16-guest')
+
+  const sentAfter = Date.now()
+
+  await page
+    .getByRole('form', { name: text('organizations.invitations.title') })
+    .getByLabel(text('organizations.invitations.emailLabel'))
+    .fill(guestEmail)
+  await page
+    .getByRole('form', { name: text('organizations.invitations.title') })
+    .getByRole('button', { name: text('organizations.invitations.submit') })
+    .click()
+
+  // L'invitation apparaît dans la liste en attente (critère 1).
+  await expect(page).toHaveURL(urlOf('/organizations'))
+  await expect(page.getByText(guestEmail, { exact: true })).toBeVisible()
+  await expect(
+    page.getByText(text('organizations.invitations.status.pending')),
+  ).toBeVisible()
+
+  // L'email est lu **dans la capture locale** : c'est le vrai port, et le lien
+  // est celui que l'invité recevrait.
+  const invitationLink = await linkSentTo(guestEmail, { since: sentAfter })
+
+  // **Ouvrir le lien ne le consomme pas** : deux `GET` d'affilée, puis
+  // l'acceptation fonctionne encore.
+  await guest.goto(invitationLink)
+  await guest.goto(invitationLink)
+  await guest.getByRole('button', { name: text('organizations.accept.submit') }).click()
+
+  await expect(guest).toHaveURL(urlOf('/organizations'))
+  await expect(guest.getByRole('button', { name: 'Studio Invité' })).toBeVisible()
+
+  // Le même lien, rejoué : refus explicite, et aucune seconde appartenance.
+  await guest.goto(invitationLink)
+  // Désigné par son **texte** : sur un chargement complet, Next pose son propre
+  // `role="alert"` (l'annonceur de route), et un sélecteur par rôle en trouve
+  // deux.
+  await expect(
+    guest.getByText(text('organizations.error.invitation_accepted')),
+  ).toBeVisible()
+  await expect(
+    guest.getByRole('button', { name: text('organizations.accept.submit') }),
+  ).toBeHidden()
+
+  // Côté fondateur, le membre est là et l'invitation a quitté la liste.
+  await page.reload()
+  await expect(page.getByText(guestEmail, { exact: true })).toBeVisible()
+  await expect(
+    page.getByText(text('organizations.invitations.emptyTitle')),
+  ).toBeVisible()
+
+  // Le retrait, et la perte d'accès **immédiate** pour la même session.
+  await page.getByRole('button', { name: `Retirer ${guestEmail}` }).click()
+  await expect(page).toHaveURL(urlOf('/organizations'))
+  await expect(page.getByText(guestEmail, { exact: true })).toBeHidden()
+
+  await guest.goto(publicPath('/organizations'))
+  await expect(guest.getByRole('button', { name: 'Studio Invité' })).toBeHidden()
+  await expect(guest.getByText(text('organizations.empty.title'))).toBeVisible()
+
+  await guestContext.close()
+})
+
+/**
+ * **À 390 px, on doit lire quelle invitation on révoque** (revue de s16, F5).
+ *
+ * La mesure de la première livraison — débordement horizontal nul — était
+ * exacte, et elle reste vraie ; elle ne mesurait simplement pas la lisibilité.
+ * La ligne rendait l'adresse tronquée à **un ou deux caractères** (« c. »,
+ * « u. ») à côté d'un bouton « Révoquer » : deux invitations devenaient
+ * indiscernables, alors que la ligne porte une action destructive.
+ *
+ * Ce que ce parcours mesure, et qu'aucun test de nœud ne peut mesurer : la
+ * **largeur réellement rendue** du libellé, dans un moteur, à la largeur où la
+ * carte se comprime. Une assertion sur une classe utilitaire (`basis-full`)
+ * prouverait qu'on a écrit la classe, jamais qu'on lit l'adresse.
+ */
+test('à 390 px, l’adresse invitée reste lisible à côté de ses actions', async ({ page }) => {
+  test.skip(!mounted, 'Le module est coupé dans cette configuration.')
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await aSignedInAccount(page, 's16-etroit')
+  await page.goto(publicPath('/organizations'))
+  await submitCreation(page, 'Studio Étroit', aSlug())
+
+  // Deux invitations : une adresse longue, et une courte qui doit tenir en
+  // entier. Deux lignes, parce que c'est le cas où les confondre coûte cher.
+  const long = `s16-adresse-tres-longue-${randomUUID()}@example.test`
+  const short = `s16-${randomUUID().slice(0, 4)}@ex.test`
+
+  for (const email of [long, short]) {
+    await page
+      .getByRole('form', { name: text('organizations.invitations.title') })
+      .getByLabel(text('organizations.invitations.emailLabel'))
+      .fill(email)
+    await page
+      .getByRole('form', { name: text('organizations.invitations.title') })
+      .getByRole('button', { name: text('organizations.invitations.submit') })
+      .click()
+    await expect(page).toHaveURL(urlOf('/organizations'))
+  }
+
+  const longLabel = page.getByText(long, { exact: true })
+
+  await expect(longLabel).toBeVisible()
+
+  // **La largeur visible du libellé**, en pixels rendus. Avant la correction :
+  // une dizaine de pixels, soit un caractère et un point de troncature.
+  const longBox = await longLabel.boundingBox()
+
+  expect(longBox?.width ?? 0).toBeGreaterThanOrEqual(200)
+
+  // L'adresse courte, elle, est lue **en entier** : rien ne la tronque.
+  const shortLabel = page.getByText(short, { exact: true })
+  const truncated = await shortLabel.evaluate(
+    (element) => element.scrollWidth > element.clientWidth + 1,
+  )
+
+  expect(truncated).toBe(false)
+
+  // Et la propriété déjà acquise ne se perd pas : aucun débordement horizontal.
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  )
+
+  expect(overflow).toBeLessThanOrEqual(0)
+})
+
+/**
+ * **Le lien ouvert par quelqu'un qui n'a pas encore de compte** (critère 2).
+ *
+ * L'écran ne consomme rien : il montre l'organisation et propose les deux
+ * chemins. La connexion emporte le retour vers cette même URL, jeton compris.
+ */
+test('un lien d’invitation ouvert sans session propose de se connecter', async ({
+  page,
+  browser,
+}) => {
+  test.skip(!mounted, 'Le module est coupé dans cette configuration.')
+
+  await aSignedInAccount(page, 's16-anon-founder')
+  await page.goto(publicPath('/organizations'))
+  await submitCreation(page, 'Studio Anonyme', aSlug())
+
+  const invited = `s16-nouveau-${randomUUID()}@example.test`
+  const sentAfter = Date.now()
+
+  await page
+    .getByRole('form', { name: text('organizations.invitations.title') })
+    .getByLabel(text('organizations.invitations.emailLabel'))
+    .fill(invited)
+  await page
+    .getByRole('form', { name: text('organizations.invitations.title') })
+    .getByRole('button', { name: text('organizations.invitations.submit') })
+    .click()
+  await expect(page).toHaveURL(urlOf('/organizations'))
+
+  const invitationLink = await linkSentTo(invited, { since: sentAfter })
+
+  const anonymous = await browser.newContext({ locale: 'fr-FR' })
+  const visitor = await anonymous.newPage()
+
+  await visitor.goto(invitationLink)
+
+  // Le nom de l'organisation est là, l'acceptation ne l'est pas.
+  await expect(visitor.getByText('Studio Anonyme')).toBeVisible()
+  await expect(
+    visitor.getByRole('button', { name: text('organizations.accept.submit') }),
+  ).toBeHidden()
+  await expect(
+    visitor.getByRole('link', { name: text('organizations.accept.signIn') }),
+  ).toBeVisible()
+  await expect(
+    visitor.getByRole('link', { name: text('organizations.accept.signUp') }),
+  ).toBeVisible()
+
+  await anonymous.close()
 })
 
 /**

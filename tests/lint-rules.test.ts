@@ -813,7 +813,7 @@ describe('un module n’appelle pas le réseau à main nue', () => {
  * organisation qu'on a quittée ») qui l'éprouve, par mutation. Et un appel
  * dont le nom de méthode n'est pas visible à la syntaxe
  * (`const { select } = db`) n'est pas vu. La garde borne la surface à un
- * fichier de quatre lectures ; elle ne lit pas le SQL.
+ * fichier — dix lectures à ce jour ; elle ne lit pas le SQL.
  */
 describe('une lecture du module `organizations` passe par sa porte unique', () => {
   const PERIMETER = 'scoped-reads.ts'
@@ -899,5 +899,116 @@ describe('une lecture du module `organizations` passe par sa porte unique', () =
     const messages = await messagesFor(code, `packages/modules/organizations/src/${path}`)
 
     expect(messages.filter((message) => message.includes(needle))).not.toEqual([])
+  })
+
+  /**
+   * **L'élargissement du tour de correction, et sa borne** (s16, F1).
+   *
+   * Fermer la course du dernier propriétaire demande `pg_advisory_xact_lock`,
+   * qui s'appelle par `execute`. Un seul fichier l'obtient —
+   * `infrastructure/transaction-locks.ts` — et il n'obtient que celui-là : une
+   * lecture de table y reste refusée, et `execute` reste refusé partout
+   * ailleurs. Sans ces trois cas, « la porte s'élargit d'un cran » serait une
+   * phrase, pas une borne.
+   */
+  const LOCK_FILE = 'packages/modules/organizations/src/infrastructure/transaction-locks.ts'
+  const ADVISORY_LOCK = [
+    "import { sql } from 'drizzle-orm'",
+    'export const lock = async (db: any, id: string) =>',
+    '  await db.execute(sql`select pg_advisory_xact_lock(hashtext(${id}))`)',
+  ].join('\n')
+
+  it('laisse le fichier des verrous prendre un verrou consultatif', async () => {
+    expect(
+      (await messagesFor(ADVISORY_LOCK, LOCK_FILE)).filter((message) =>
+        message.includes(PERIMETER),
+      ),
+    ).toEqual([])
+  })
+
+  it('refuse quand même la lecture d’une table dans le fichier des verrous', async () => {
+    expect(
+      (await messagesFor(UNSCOPED_READ, LOCK_FILE)).filter((message) =>
+        message.includes(PERIMETER),
+      ),
+    ).not.toEqual([])
+  })
+
+  it('refuse `execute` partout ailleurs dans le module', async () => {
+    const messages = await messagesFor(
+      ADVISORY_LOCK,
+      'packages/modules/organizations/src/infrastructure/drizzle-organization-repositories.ts',
+    )
+
+    expect(messages.filter((message) => message.includes(PERIMETER))).not.toEqual([])
+  })
+})
+
+/**
+ * **`@repo/module-auth` ne s'importe que dans deux fichiers du module**
+ * (revue de s16, F9).
+ *
+ * L'`AGENTS.md` du module l'écrivait déjà — `src/schema.ts` pour les clés
+ * étrangères, `infrastructure/scoped-reads.ts` pour la jointure qui donne un
+ * nom lisible à un membre — mais aucune commande ne le tenait : un troisième
+ * fichier qui l'importerait ne faisait rougir rien. Or c'est cette borne qui
+ * rend l'absence d'énumération de comptes **structurelle** : les lectures
+ * partent d'un identifiant de compte, jamais d'une adresse, et la surface à
+ * relire pour s'en assurer tient dans deux fichiers.
+ */
+describe('le module `organizations` n’importe `@repo/module-auth` que dans deux fichiers', () => {
+  const AUTH_IMPORT = [
+    "import { authUser } from '@repo/module-auth'",
+    'export const table = authUser',
+  ].join('\n')
+
+  let eslint: ESLint
+
+  beforeAll(() => {
+    eslint = new ESLint({ cwd: REPO_ROOT })
+  })
+
+  const messagesFor = async (filePath: string): Promise<string[]> => {
+    const [result] = await eslint.lintText(AUTH_IMPORT, { filePath })
+
+    return (result?.messages ?? []).map((message) => message.message)
+  }
+
+  const names = (messages: readonly string[]): readonly string[] =>
+    messages.filter((message) => message.includes('@repo/module-auth'))
+
+  it.each([
+    ['un fichier neuf d’infrastructure', 'infrastructure/probe.ts'],
+    ['la couche application', 'application/probe.ts'],
+    ['la couche présentation', 'presentation/probe.ts'],
+    ['le fichier des repositories', 'infrastructure/drizzle-organization-repositories.ts'],
+    ['le point de composition du module', 'module.ts'],
+  ])('le refuse — %s', async (_name, path) => {
+    expect(names(await messagesFor(`packages/modules/organizations/src/${path}`))).not.toEqual([])
+  })
+
+  it.each([
+    ['le schéma, pour les clés étrangères', 'schema.ts'],
+    ['la porte de lecture, pour la jointure', 'infrastructure/scoped-reads.ts'],
+  ])('le permet — %s', async (_name, path) => {
+    expect(names(await messagesFor(`packages/modules/organizations/src/${path}`))).toEqual([])
+  })
+
+  it('ne juge pas les autres modules, qui n’ont pas cette borne', async () => {
+    expect(names(await messagesFor('packages/modules/marketing/src/probe.ts'))).toEqual([])
+  })
+
+  it('garde les interdits que ce bloc aurait pu écraser', async () => {
+    // Même piège qu'ailleurs : en configuration plate, une seconde déclaration
+    // de `no-restricted-imports` **remplace** la première. Sans reprise, ce
+    // module serait le seul où un import de Radix passerait (ADR 022).
+    const [result] = await eslint.lintText(
+      "import { Dialog } from '@radix-ui/react-dialog'\nexport const D = Dialog",
+      { filePath: 'packages/modules/organizations/src/presentation/probe.ts' },
+    )
+
+    expect(
+      (result?.messages ?? []).filter((message) => message.message.includes('packages/ui')),
+    ).not.toEqual([])
   })
 })

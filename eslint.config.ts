@@ -378,18 +378,38 @@ const moduleDatabaseBoundary: Linter.Config[] = [
 const SCOPED_READ_MESSAGE =
   'Périmètre organisationnel (revue s15, F2) : une lecture du module `organizations` passe par `infrastructure/scoped-reads.ts`, dont chaque fonction exige le propriétaire en premier paramètre. Une lecture écrite ailleurs peut oublier l’appartenance — c’est exactement ce qui a été mesuré, et ce qui rendait `dataOwnerOf` capable de résoudre vers une organisation quittée.'
 
-const SCOPED_READ_SYNTAX = ['select', 'from', 'execute'].flatMap((method) =>
-  [
-    // `db.select(…)`, `?.` compris — la forme qu'on écrit.
-    `CallExpression[callee.type='MemberExpression'][callee.property.name='${method}']`,
-    // `db['select'](…)` — la même chose, écrite pour ne pas être vue.
-    `CallExpression[callee.type='MemberExpression'][callee.property.value='${method}']`,
-  ].map((selector) => ({ selector, message: SCOPED_READ_MESSAGE })),
-)
+const scopedReadSyntax = (methods: readonly string[]) =>
+  methods.flatMap((method) =>
+    [
+      // `db.select(…)`, `?.` compris — la forme qu'on écrit.
+      `CallExpression[callee.type='MemberExpression'][callee.property.name='${method}']`,
+      // `db['select'](…)` — la même chose, écrite pour ne pas être vue.
+      `CallExpression[callee.type='MemberExpression'][callee.property.value='${method}']`,
+    ].map((selector) => ({ selector, message: SCOPED_READ_MESSAGE })),
+  )
+
+const SCOPED_READ_SYNTAX = scopedReadSyntax(['select', 'from', 'execute'])
+
+/**
+ * Le fichier des verrous, et **l'élargissement exact** qu'il obtient (s16, F1).
+ *
+ * Fermer la course du dernier propriétaire demande de sérialiser deux retraits
+ * concurrents. `pg_advisory_xact_lock` le fait sans lire une seule table, mais
+ * s'appelle par `execute`. Plutôt que d'ouvrir `execute` à tout le module — ce
+ * qui rouvrirait la lecture non périmétrée par la porte de derrière —,
+ * `infrastructure/transaction-locks.ts` obtient `execute` et **rien d'autre** :
+ * `select` et `from` y restent refusés. La porte de lecture, elle, ne bouge pas.
+ */
+const TRANSACTION_LOCKS_FILE =
+  'packages/modules/organizations/src/infrastructure/transaction-locks.ts'
 
 const organizationPerimeter: Linter.Config[] = [
   {
     files: [sources('packages/modules/organizations/src')],
+    // `transaction-locks.ts` n'est **pas** ignoré ici : le bloc suivant le
+    // reprend en entier, et en configuration plate c'est le dernier bloc qui
+    // décide. L'ignorer en plus serait une ligne que rien ne tient — mesuré,
+    // la retirer ne fait rougir aucun cas.
     ignores: ['packages/modules/organizations/src/infrastructure/scoped-reads.ts'],
     rules: {
       // En configuration plate, le dernier bloc qui matche **remplace** la
@@ -402,6 +422,57 @@ const organizationPerimeter: Linter.Config[] = [
         ...MODULE_SYNTAX,
         ...OUTBOUND_FETCH_SYNTAX,
         ...SCOPED_READ_SYNTAX,
+      ],
+    },
+  },
+  {
+    // Le verrou : `execute` permis, la lecture toujours refusée. Les interdits
+    // communs et la porte réseau sont repris, pour la même raison qu'au-dessus.
+    files: [TRANSACTION_LOCKS_FILE],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...MODULE_SYNTAX,
+        ...OUTBOUND_FETCH_SYNTAX,
+        ...scopedReadSyntax(['select', 'from']),
+      ],
+    },
+  },
+  {
+    // **La table du module `auth` ne se lit que de deux endroits** (revue de
+    // s16, F9). L'`AGENTS.md` du module l'écrivait déjà — le schéma pour les
+    // clés étrangères, la porte de lecture pour la jointure qui donne un nom
+    // lisible à un membre —, mais aucune commande ne le tenait : un troisième
+    // fichier qui importerait `@repo/module-auth` ne faisait rougir rien. Or
+    // c'est cette borne qui rend l'absence d'énumération de comptes
+    // **structurelle** : les lectures partent d'un identifiant, jamais d'une
+    // adresse, et la surface à relire pour s'en assurer tient dans deux
+    // fichiers (`docs/security.md` §7).
+    //
+    // Le motif du socle de composants et celui de l'application sont **repris**
+    // depuis leur déclaration d'origine : en configuration plate, cette seconde
+    // déclaration de `no-restricted-imports` remplace celle de
+    // `componentBaseBoundary`. Un cas de `tests/lint-rules.test.ts` rougit si
+    // la reprise disparaît.
+    files: [sources('packages/modules/organizations/src')],
+    ignores: [
+      'packages/modules/organizations/src/schema.ts',
+      'packages/modules/organizations/src/infrastructure/scoped-reads.ts',
+    ],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            { ...APPLICATION_IMPORT_RESTRICTION },
+            { ...COMPONENT_BASE_RESTRICTION },
+            {
+              group: ['@repo/module-auth', '@repo/module-auth/**'],
+              message:
+                'Le module `organizations` n’importe `@repo/module-auth` que dans `src/schema.ts` (clés étrangères) et `src/infrastructure/scoped-reads.ts` (la jointure qui nomme un membre). Ailleurs, c’est la borne qui rend l’absence d’énumération de comptes structurelle qui saute : les lectures doivent partir d’un identifiant de compte, jamais d’une adresse (`docs/security.md` §7).',
+            },
+          ],
+        },
       ],
     },
   },
