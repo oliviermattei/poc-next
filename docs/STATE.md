@@ -6,11 +6,11 @@
 
 | Story | État |
 |---|---|
-| s01 → s12, s15, s16, s45 | **closes**, revues, correctifs appliqués |
-| s13, s14, s17 → s44, s46 | à faire — 31 stories (s13 en correction) |
+| s01 → s13, s15, s16, s45 | **closes**, revues, correctifs appliqués |
+| s14, s17 → s44, s46 | à faire — 30 stories (s17 en revue) |
 
-Tests : **1050 + 2 ignorés**, 57 parcours end-to-end, déterministes (`retries: 0`).
-ADR : **28** (026 puis 029 ; 027 appartient à s11, 028 à s13, tous deux non fusionnés). Branche : `dev`. Commits : un par story, plus `docs:` pour recherche, plan, revue.
+Tests : **1093 + 2 ignorés**, 58 parcours end-to-end, déterministes (`retries: 0`).
+ADR : **30** (026 à 029 fusionnés ; 030 appartient à s17, non fusionnée). Branche : `dev`. Commits : un par story, plus `docs:` pour recherche, plan, revue.
 
 ## Environnement (à refaire après un redémarrage de session)
 
@@ -33,7 +33,7 @@ open -a Docker && docker compose up -d                                # Postgres
 
 | Voie | Story | Worktree | Base / port |
 |---|---|---|---|
-| A | s13-two-factor | corrigée (`9362aaf`), seconde revue `major`/ship oui, **dernier tour** (garde renversée) | `s13`, port 3113 |
+| A | s13-two-factor | **fusionnée dans `dev`** (`3a6a1cc`), deux revues, `major`/ship oui | close |
 | D | s17-roles-permissions | commit `97b3e8a`, **en revue** | `s17`, port 3117 |
 | B | s16-invite-members | **fusionnée dans `dev`** (`6f14cc4`), revue `none`/ship oui | close |
 | C | s11-public-forms | **fusionnée dans `dev`** (`9cf45c2`), revue `none`/ship oui | close |
@@ -68,6 +68,14 @@ Playwright démarre son propre serveur et échoue bruyamment si le port est pris
 mesurer l'arbre d'une autre branche. Chaque voie choisit le sien par `E2E_PORT` — voir la
 colonne de la table ci-dessus. Vérifié dans les deux sens : vert port libre, refus explicite
 port occupé.
+
+## À savoir avant s14 (passkeys)
+
+La garde du second facteur énumère désormais ses **exemptions** et vaut partout ailleurs. Une
+route qui ouvre une session sans être ni couverte ni exemptée fait rougir une commande. Les
+passkeys ouvrent une session : c'est exactement le cas que ce renversement attendait. Les cinq
+exemptions actuelles sont ce qui a été **balayé** — les points d'entrée du greffon `two-factor`
+et deux appels `auth.api.*` du module —, pas un inventaire de ce que la bibliothèque expose.
 
 ## Dettes à surveiller
 
