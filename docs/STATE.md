@@ -33,7 +33,7 @@ open -a Docker && docker compose up -d                                # Postgres
 
 | Voie | Story | Worktree | Base Postgres |
 |---|---|---|---|
-| A | s10-marketing-site | worktree dédié, `feature/s10-marketing-site` | `s10` |
+| A | s10-marketing-site | worktree dédié, `feature/s10-marketing-site` — commit `aa90610`, **en revue** | `s10` |
 | B | s12-oauth-signin | worktree dédié, `feature/s12-oauth-signin` | `s12` |
 
 Chaque voie fait recherche → design → plan → exécution TDD → **un commit** sur sa branche, puis
