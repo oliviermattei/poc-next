@@ -46,6 +46,17 @@ export interface AuthFormProps {
   /** Destination après succès. Absente, le message ci-dessous s'affiche. */
   readonly redirectTo?: string
   readonly successMessageKey?: string
+  /**
+   * Où aller quand le serveur **n'a pas ouvert de session** parce qu'un second
+   * facteur est attendu (s13).
+   *
+   * Sans cette destination, la connexion d'un compte protégé serait une boucle
+   * silencieuse : la réponse est un `200`, donc le formulaire redirigerait vers
+   * le tableau de bord, qui n'a pas de session et renverrait vers `/sign-in`.
+   * Le marqueur lu ici (`twoFactor`) est celui que la **route** pose ; aucun
+   * code de la bibliothèque n'atteint ce composant.
+   */
+  readonly twoFactorRedirectTo?: string
 }
 
 /**
@@ -99,6 +110,18 @@ export function AuthForm(props: AuthFormProps) {
       setErrorKey(messageKeyFor(response.status))
 
       return
+    }
+
+    if (props.twoFactorRedirectTo !== undefined) {
+      const payload = (await response.json().catch(() => null)) as {
+        readonly twoFactor?: unknown
+      } | null
+
+      if (payload?.twoFactor === true) {
+        window.location.assign(props.twoFactorRedirectTo)
+
+        return
+      }
     }
 
     if (props.redirectTo !== undefined) {

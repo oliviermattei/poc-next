@@ -372,7 +372,7 @@ Piège : ne jamais laisser un compte sans moyen de connexion après un déliemen
 - [ ] Une fois activée, la connexion exige le code TOTP après le mot de passe
 - [ ] Dix codes de secours à usage unique sont générés à l'activation, affichés une seule fois, et chacun n'est utilisable qu'une fois
 - [ ] Un code TOTP erroné ou rejoué est refusé
-- [ ] La désactivation exige un code valide ou le mot de passe courant
+- [ ] La désactivation exige le mot de passe courant — **amendé en s13** : `disableTwoFactor` de Better Auth 1.7.2 appelle `validatePassword` avant tout et n'offre aucun crochet pour y substituer un code, si bien que la moitié « ou un code valide » demanderait de réécrire la rotation de session hors de la bibliothèque sans rien ajouter à la sécurité — le mot de passe est la preuve la plus forte des deux
 - [ ] **Module non activé** : aucune option de double authentification dans les paramètres, la connexion se termine après le mot de passe, et les tables correspondantes sont absentes d'une base vierge
 
 ### Dependencies

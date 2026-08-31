@@ -58,6 +58,32 @@ export interface AuthService {
    */
   localeOf(request: Request | null): string
   /**
+   * L'empreinte d'un code de secours saisi (s13).
+   *
+   * Sur cette surface parce que la route en a besoin **avant** de transmettre
+   * la saisie : la base ne contient que des empreintes, et la comparaison de
+   * la bibliothèque porte sur ce qu'elle reçoit. Le poivre, lui, ne quitte
+   * jamais `infrastructure/` — `presentation/` reçoit une fonction, pas une
+   * clé.
+   */
+  digestBackupCode(code: string): string
+  /**
+   * **Prend le compteur du code TOTP qui vient d'être accepté** (s13, C3).
+   *
+   * Rend `false` quand ce compteur a déjà servi : le code est un rejeu, et la
+   * route doit défaire ce que la bibliothèque a fait. Un code accepté reste
+   * sinon valable jusqu'à quatre-vingt-dix secondes, sur autant de défis
+   * neufs qu'on veut — ce que le critère 4 de la story refuse.
+   *
+   * Sur cette surface, et non dans les cas d'usage, pour la même raison que
+   * `digestBackupCode` : y répondre demande le secret du compte, chiffré par
+   * la clé de l'application, et cette clé ne quitte pas `infrastructure/`.
+   */
+  claimTotpStep(input: {
+    readonly userId: string
+    readonly code: string
+  }): Promise<boolean>
+  /**
    * Les fournisseurs externes **réellement montés** (s12).
    *
    * C'est cette liste qui décide de tout : les boutons affichés, les rappels

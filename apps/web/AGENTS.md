@@ -41,6 +41,12 @@ module (`packages/modules/<module>/src/domain`).
 - `lucide-react` pour les icônes : un seul jeu dans tout le produit, 16 px dans
   l'application. Ce n'est pas le socle de composants — celui-là ne sort pas de
   `packages/ui` ;
+- `uqr` dans **`app/account/two-factor-qr.tsx` uniquement** : il rend la
+  **matrice** d'un QR code, pas une image. C'est ce qui permet de composer le
+  `<svg>` en JSX — donc sans `dangerouslySetInnerHTML` (`docs/security.md` §4)
+  et sans style en ligne, que la politique livrée par s45 refuse. Le secret
+  TOTP ne quitte pas le processus : ni URL d'image, ni service tiers, ni appel
+  réseau ;
 - `geist` dans les deux fichiers qui rendent un **document** — `app/layout.tsx`
   et `app/global-error.tsx`, ce dernier remplaçant le premier quand la racine
   échoue. Les deux polices sont chargées par `next/font`, donc servies par

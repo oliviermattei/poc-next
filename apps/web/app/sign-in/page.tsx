@@ -85,6 +85,13 @@ export default async function SignInPage({
         ]}
         submitLabelKey="app.signIn.submit"
         redirectTo={destination}
+        // La destination est **transportée** jusqu'à l'écran de vérification :
+        // le second facteur n'est pas une escale qui fait oublier où on allait.
+        // Elle repasse par la même règle de liste blanche là-bas — cet écran
+        // n'est pas le seul à filtrer.
+        twoFactorRedirectTo={`${path('/two-factor')}?next=${encodeURIComponent(
+          safeRedirectPath(next, '/'),
+        )}`}
       />
 
       <h2>{t('app.signIn.magicLink.title')}</h2>

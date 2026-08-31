@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>s13 — Double authentification (maquette de référence)</title>
+    <!--
+      Maquette de RÉFÉRENCE, pas du code. Les tokens sont recopiés de
+      docs/design-system.md ; l'implémentation compose avec packages/ui.
+    -->
+    <style>
+      :root {
+        --background: oklch(1 0 0);
+        --foreground: oklch(0.145 0 0);
+        --card: oklch(1 0 0);
+        --card-foreground: oklch(0.145 0 0);
+        --muted: oklch(0.97 0 0);
+        --muted-foreground: oklch(0.556 0 0);
+        --primary: oklch(0.205 0 0);
+        --primary-foreground: oklch(0.985 0 0);
+        --secondary: oklch(0.97 0 0);
+        --secondary-foreground: oklch(0.205 0 0);
+        --destructive: oklch(0.577 0.245 27.325);
+        --destructive-foreground: oklch(0.985 0 0);
+        --success: oklch(0.62 0.17 149);
+        --success-foreground: oklch(0.985 0 0);
+        --warning: oklch(0.79 0.16 86);
+        --warning-foreground: oklch(0.205 0 0);
+        --border: oklch(0.922 0 0);
+        --input: oklch(0.922 0 0);
+        --ring: oklch(0.708 0 0);
+        --radius: 0.5rem;
+      }
+      .dark {
+        --background: oklch(0.145 0 0);
+        --foreground: oklch(0.985 0 0);
+        --card: oklch(0.205 0 0);
+        --card-foreground: oklch(0.985 0 0);
+        --muted: oklch(0.269 0 0);
+        --muted-foreground: oklch(0.708 0 0);
+        --primary: oklch(0.985 0 0);
+        --primary-foreground: oklch(0.205 0 0);
+        --secondary: oklch(0.269 0 0);
+        --secondary-foreground: oklch(0.985 0 0);
+        --destructive: oklch(0.704 0.191 22.216);
+        --success: oklch(0.7 0.15 149);
+        --warning: oklch(0.83 0.14 86);
+        --warning-foreground: oklch(0.145 0 0);
+        --border: oklch(1 0 0 / 10%);
+        --input: oklch(1 0 0 / 15%);
+        --ring: oklch(0.556 0 0);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--background);
+        color: var(--foreground);
+        font-family:
+          ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+        font-size: 0.875rem;
+        line-height: 1.5;
+      }
+      main {
+        max-width: 44rem;
+        margin: 0 auto;
+        padding: 2rem 1rem 4rem;
+        display: flex;
+        flex-direction: column;
+        gap: 2.5rem;
+      }
+      h1 {
+        font-size: 1.875rem;
+        font-weight: 600;
+        margin: 0;
+      }
+      h2 {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin: 0;
+      }
+      h3 {
+        font-size: 1.25rem;
+        font-weight: 600;
+        margin: 0;
+      }
+      p {
+        margin: 0;
+      }
+      .muted {
+        color: var(--muted-foreground);
+      }
+      .small {
+        font-size: 0.75rem;
+      }
+      .card {
+        background: var(--card);
+        color: var(--card-foreground);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 1.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        justify-content: space-between;
+      }
+      .stack {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+      label {
+        font-weight: 500;
+      }
+      input {
+        height: 2.5rem;
+        border: 1px solid var(--input);
+        border-radius: calc(var(--radius) - 2px);
+        background: transparent;
+        color: inherit;
+        padding: 0 0.75rem;
+        font: inherit;
+      }
+      input:focus-visible {
+        outline: 2px solid var(--ring);
+        outline-offset: 2px;
+      }
+      button {
+        height: 2.5rem;
+        padding: 0 1rem;
+        border-radius: calc(var(--radius) - 2px);
+        border: 1px solid transparent;
+        background: var(--primary);
+        color: var(--primary-foreground);
+        font: inherit;
+        font-weight: 500;
+        cursor: pointer;
+        align-self: flex-start;
+      }
+      button.outline {
+        background: transparent;
+        border-color: var(--border);
+        color: inherit;
+      }
+      button.secondary {
+        background: var(--secondary);
+        color: var(--secondary-foreground);
+      }
+      button.destructive {
+        background: var(--destructive);
+        color: var(--destructive-foreground);
+      }
+      button[disabled] {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 9999px;
+        padding: 0.125rem 0.625rem;
+        font-size: 0.75rem;
+        font-weight: 500;
+        border: 1px solid transparent;
+      }
+      .badge.success {
+        background: var(--success);
+        color: var(--success-foreground);
+      }
+      .badge.secondary {
+        background: var(--secondary);
+        color: var(--secondary-foreground);
+      }
+      .alert {
+        border: 1px solid var(--border);
+        border-radius: calc(var(--radius) - 2px);
+        padding: 0.75rem 1rem;
+      }
+      .alert.warning {
+        border-color: var(--warning);
+        color: var(--warning-foreground);
+        background: color-mix(in oklab, var(--warning) 18%, var(--card));
+      }
+      .alert.destructive {
+        border-color: var(--destructive);
+        color: var(--destructive);
+      }
+      .mono {
+        font-family: ui-monospace, SFMono-Regular, monospace;
+        background: var(--muted);
+        border: 1px solid var(--border);
+        border-radius: calc(var(--radius) - 4px);
+        padding: 0.5rem 0.75rem;
+        letter-spacing: 0.06em;
+      }
+      .codes {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.5rem;
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .qr {
+        width: 12rem;
+        max-width: 100%;
+        aspect-ratio: 1;
+        color: var(--foreground);
+        background: var(--background);
+        border: 1px solid var(--border);
+        border-radius: calc(var(--radius) - 4px);
+        padding: 0.5rem;
+      }
+      hr {
+        border: none;
+        border-top: 1px solid var(--border);
+        margin: 0;
+      }
+      .note {
+        border-left: 3px solid var(--border);
+        padding-left: 0.75rem;
+      }
+      @media (max-width: 400px) {
+        .codes {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="note small muted">
+        Référence visuelle. Les quatre états de la carte sont montrés côte à
+        côte ; dans l'application, un seul est rendu à la fois.
+      </p>
+
+      <!-- ÉCRAN 1 — /account, la carte, état « désactivée » -->
+      <section class="stack">
+        <h2>/account — carte au repos, second facteur désactivé</h2>
+        <div class="card">
+          <div class="row">
+            <div class="stack" style="gap: 0.25rem">
+              <h3>Double authentification</h3>
+              <p class="muted">
+                Un code à usage unique, en plus de votre mot de passe.
+              </p>
+            </div>
+            <span class="badge secondary">Désactivée</span>
+          </div>
+          <form method="post" class="stack">
+            <div class="field">
+              <label for="tf-pass-1">Mot de passe actuel</label>
+              <input id="tf-pass-1" type="password" autocomplete="current-password" />
+            </div>
+            <button type="submit">Activer</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ÉCRAN 1 bis — enrôlement en cours -->
+      <section class="stack">
+        <h2>/account — enrôlement en cours</h2>
+        <div class="card">
+          <div class="row">
+            <div class="stack" style="gap: 0.25rem">
+              <h3>Double authentification</h3>
+              <p class="muted">
+                Scannez ce code avec votre application d'authentification.
+              </p>
+            </div>
+            <span class="badge secondary">Désactivée</span>
+          </div>
+
+          <svg class="qr" viewBox="0 0 21 21" role="img" aria-label="Code QR d'enrôlement">
+            <rect x="0" y="0" width="7" height="7" fill="currentColor" />
+            <rect x="1" y="1" width="5" height="5" fill="var(--background)" />
+            <rect x="2" y="2" width="3" height="3" fill="currentColor" />
+            <rect x="14" y="0" width="7" height="7" fill="currentColor" />
+            <rect x="15" y="1" width="5" height="5" fill="var(--background)" />
+            <rect x="16" y="2" width="3" height="3" fill="currentColor" />
+            <rect x="0" y="14" width="7" height="7" fill="currentColor" />
+            <rect x="1" y="15" width="5" height="5" fill="var(--background)" />
+            <rect x="2" y="16" width="3" height="3" fill="currentColor" />
+            <rect x="9" y="2" width="1" height="1" fill="currentColor" />
+            <rect x="11" y="4" width="1" height="1" fill="currentColor" />
+            <rect x="9" y="6" width="1" height="1" fill="currentColor" />
+            <rect x="12" y="9" width="1" height="1" fill="currentColor" />
+            <rect x="10" y="11" width="1" height="1" fill="currentColor" />
+            <rect x="16" y="10" width="1" height="1" fill="currentColor" />
+            <rect x="18" y="12" width="1" height="1" fill="currentColor" />
+            <rect x="4" y="9" width="1" height="1" fill="currentColor" />
+            <rect x="2" y="11" width="1" height="1" fill="currentColor" />
+            <rect x="13" y="15" width="1" height="1" fill="currentColor" />
+            <rect x="15" y="17" width="1" height="1" fill="currentColor" />
+            <rect x="17" y="19" width="1" height="1" fill="currentColor" />
+          </svg>
+
+          <div class="field">
+            <p class="small muted">
+              Sans caméra, saisissez cette clé dans votre application :
+            </p>
+            <p class="mono">JBSW Y3DP EHPK 3PXP JBSW Y3DP</p>
+          </div>
+
+          <form method="post" class="stack">
+            <div class="field">
+              <label for="tf-code-1">Code à six chiffres</label>
+              <input
+                id="tf-code-1"
+                type="text"
+                inputmode="numeric"
+                autocomplete="one-time-code"
+                placeholder="000000"
+              />
+            </div>
+            <button type="submit">Confirmer</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ÉCRAN 1 ter — codes de secours, affichés une seule fois -->
+      <section class="stack">
+        <h2>/account — codes de secours, affichés une seule fois</h2>
+        <div class="card">
+          <div class="row">
+            <div class="stack" style="gap: 0.25rem">
+              <h3>Double authentification</h3>
+              <p class="muted">Vos codes de secours.</p>
+            </div>
+            <span class="badge success">Activée</span>
+          </div>
+
+          <div class="alert warning" role="status">
+            Notez ces dix codes maintenant : ils ne seront plus affichés. Chacun
+            ne sert qu'une fois.
+          </div>
+
+          <ul class="codes">
+            <li class="mono">a7k2m-9qx4z</li>
+            <li class="mono">b3n8p-1rw6y</li>
+            <li class="mono">c5h1t-7vd2s</li>
+            <li class="mono">d9j4u-3bk8f</li>
+            <li class="mono">e2l6c-5mn9g</li>
+            <li class="mono">f8r3v-2ph7t</li>
+            <li class="mono">g4w7x-8sq1d</li>
+            <li class="mono">h6y9b-4tc3n</li>
+            <li class="mono">i1z5k-6uf8m</li>
+            <li class="mono">j3a2d-9wg4r</li>
+          </ul>
+
+          <button type="button" class="outline">J'ai noté ces codes</button>
+        </div>
+      </section>
+
+      <!-- ÉCRAN 1 quater — activée -->
+      <section class="stack">
+        <h2>/account — second facteur activé</h2>
+        <div class="card">
+          <div class="row">
+            <div class="stack" style="gap: 0.25rem">
+              <h3>Double authentification</h3>
+              <p class="muted">
+                Votre compte demande un code à chaque connexion.
+              </p>
+            </div>
+            <span class="badge success">Activée</span>
+          </div>
+
+          <form method="post" class="stack">
+            <div class="field">
+              <label for="tf-pass-2">Mot de passe actuel</label>
+              <input id="tf-pass-2" type="password" autocomplete="current-password" />
+            </div>
+            <div class="row" style="justify-content: flex-start">
+              <button type="submit" class="outline">
+                Régénérer les codes de secours
+              </button>
+              <button type="submit" class="destructive">Désactiver</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- ÉCRAN 2 — /two-factor -->
+      <section class="stack">
+        <h2>/two-factor — vérification après le mot de passe</h2>
+        <div class="card">
+          <h1>Vérification en deux étapes</h1>
+          <p class="muted">
+            Saisissez le code affiché par votre application d'authentification.
+          </p>
+
+          <div class="alert destructive" role="alert">
+            Ce code n'est pas valide.
+          </div>
+
+          <form method="post" class="stack">
+            <div class="field">
+              <label for="tf-code-2">Code à six chiffres</label>
+              <input
+                id="tf-code-2"
+                type="text"
+                inputmode="numeric"
+                autocomplete="one-time-code"
+                placeholder="000000"
+              />
+            </div>
+            <button type="submit">Vérifier</button>
+          </form>
+
+          <hr />
+
+          <h3>Utiliser un code de secours</h3>
+          <p class="small muted">
+            Chacun de vos dix codes ne fonctionne qu'une fois.
+          </p>
+          <form method="post" class="stack">
+            <div class="field">
+              <label for="tf-backup">Code de secours</label>
+              <input id="tf-backup" type="text" autocomplete="off" />
+            </div>
+            <button type="submit" class="secondary">Valider ce code</button>
+          </form>
+
+          <p class="small"><a href="#">Revenir à la connexion</a></p>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

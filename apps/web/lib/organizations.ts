@@ -129,6 +129,10 @@ const APPLICATION_SEGMENTS = [
   'reset-password',
   'sign-in',
   'sign-up',
+  // L'écran de vérification du second facteur (s13). Servi à qui vient de
+  // prouver son mot de passe : une organisation qui s'appellerait `two-factor`
+  // le masquerait.
+  'two-factor',
   'verify-email',
 ] as const
 

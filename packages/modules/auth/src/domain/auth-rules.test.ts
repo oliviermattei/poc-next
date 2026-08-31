@@ -25,6 +25,12 @@ import {
   readOAuthFailureClass,
   OAUTH_UNVERIFIED_EMAIL_REFUSAL,
 } from './oauth'
+import { digestBackupCode, digestBackupCodes, isBackupCodeDigest } from './backup-code'
+import {
+  totpStepsToTry,
+  twoFactorRefusal,
+  TWO_FACTOR_REFUSAL_STATUS,
+} from './two-factor'
 
 /**
  * Les règles pures du module d'authentification, éprouvées là où elles vivent.
@@ -290,6 +296,24 @@ describe('journal des événements de sécurité', () => {
 
     expect(JSON.stringify(record)).not.toContain('abcdef0123456789abcdef')
   })
+
+  it('efface un code de second facteur, que le motif de valeur ne peut pas voir', () => {
+    // Un code de secours fait onze caractères (`XXXXX-XXXXX`) et un code TOTP
+    // six chiffres : les deux passent **sous** le seuil de seize caractères du
+    // motif de valeur. Seul le nom de clé peut les attraper, et c'est ce que
+    // s13 ajoute à la liste.
+    const record = describeSecurityEvent({
+      event: 'auth.two_factor_failed',
+      actor: { userId: 'user-1' },
+      details: { code: 'a7k2m-9qx4z', backupCode: '123456', outcome: 'refused' },
+    })
+
+    const serialized = JSON.stringify(record)
+
+    expect(serialized).not.toContain('a7k2m-9qx4z')
+    expect(serialized).not.toContain('123456')
+    expect(record.details.outcome).toBe('refused')
+  })
 })
 
 describe('jetons à usage unique', () => {
@@ -423,5 +447,158 @@ describe('reprise d’un appel sortant vers un fournisseur', () => {
     // La dispersion « à moitié » : entre la moitié et la totalité du recul.
     expect(outboundBackoffMs(2, { ...policy, random: () => 0 })).toBe(100)
     expect(outboundBackoffMs(2, { ...policy, random: () => 1 })).toBe(200)
+  })
+})
+
+describe('empreinte d’un code de secours', () => {
+  /**
+   * Un hacheur déterministe et factice : la règle éprouvée ici est
+   * l'aiguillage — hacher, ou reconnaître ce qui est déjà haché —, pas la
+   * primitive cryptographique, qui vit dans `infrastructure/`.
+   */
+  const hash = (value: string): string =>
+    [...value]
+      .reduce((sum, character) => sum + character.charCodeAt(0) * value.length, 0)
+      .toString(16)
+      .padStart(64, '0')
+
+  /** La forme que `generateBackupCodesFn` de la bibliothèque produit. */
+  const EMITTED = ['a7k2m-9qx4z', 'b3n8p-1rw6y', 'c5h1t-7vd2s']
+
+  it('ne laisse aucun code émis en clair dans ce qui est stocké', () => {
+    const stored = digestBackupCodes(JSON.stringify(EMITTED), hash)
+
+    for (const code of EMITTED) {
+      expect(stored).not.toContain(code)
+    }
+
+    expect((JSON.parse(stored) as string[]).every(isBackupCodeDigest)).toBe(true)
+  })
+
+  it('ne confond jamais un code émis avec une empreinte — le discriminant est total', () => {
+    for (const code of EMITTED) {
+      expect(isBackupCodeDigest(code)).toBe(false)
+    }
+  })
+
+  it('hache la saisie **sans condition** : une empreinte soumise comme code est hachée à son tour', () => {
+    // Le constat C1 de `docs/reviews/s13-two-factor.md` : la fonction
+    // reconnaissait une empreinte et la rendait inchangée, si bien qu'une
+    // valeur lue en base et postée sur la route valait le code lui-même. Ce
+    // qui vient du monde extérieur n'a pas le droit de se reconnaître.
+    const [emitted = ''] = EMITTED
+    const digest = digestBackupCode(emitted, hash)
+
+    expect(isBackupCodeDigest(digest)).toBe(true)
+    expect(digestBackupCode(digest, hash)).not.toBe(digest)
+  })
+
+  it('sépare les deux chemins : le magasin garde ses empreintes, la saisie non', () => {
+    // Une seule fonction pour les deux chemins ne peut pas tenir les deux
+    // propriétés à la fois — c'est la séparation qui est la règle.
+    const stored = JSON.parse(
+      digestBackupCodes(JSON.stringify(EMITTED), hash),
+    ) as readonly string[]
+    const [first = ''] = stored
+
+    expect(digestBackupCodes(JSON.stringify([first]), hash)).toBe(JSON.stringify([first]))
+    expect(digestBackupCode(first, hash)).not.toBe(first)
+  })
+
+  it('ré-encode sans hacher deux fois — c’est le cas qui casse les codes restants', () => {
+    // La bibliothèque rappelle son encodeur avec ce qu'elle vient de **lire** :
+    // après consommation d'un code, les neuf restants repassent ici sous forme
+    // d'empreintes. Les hacher une seconde fois les rendrait tous
+    // inutilisables, et rien ne le dirait avant le deuxième usage.
+    const once = digestBackupCodes(JSON.stringify(EMITTED), hash)
+
+    expect(digestBackupCodes(once, hash)).toBe(once)
+  })
+
+  it('donne deux empreintes différentes à deux codes différents', () => {
+    const [first, second] = JSON.parse(
+      digestBackupCodes(JSON.stringify(EMITTED), hash),
+    ) as readonly string[]
+
+    expect(first).not.toBe(second)
+  })
+
+  it('refuse une charge qui n’est pas une liste de codes, plutôt que de la stocker telle quelle', () => {
+    expect(() => digestBackupCodes('pas du json', hash)).toThrow()
+    expect(() => digestBackupCodes(JSON.stringify({ codes: EMITTED }), hash)).toThrow()
+    expect(() => digestBackupCodes(JSON.stringify([1, 2]), hash)).toThrow()
+  })
+})
+
+describe('compteurs TOTP à essayer', () => {
+  const PERIOD = 30
+  const stepAt = (millis: number): number => Math.floor(millis / (PERIOD * 1000))
+
+  /** Une vérification qui tombe à la toute fin d'une période : le cas qui pique. */
+  const VERIFIED_AT = 1_800_000_000_000 - (1_800_000_000_000 % (PERIOD * 1000)) + 29_999
+
+  it('couvre les trois compteurs que la bibliothèque a pu accepter, frontière de période comprise', () => {
+    // La bibliothèque vérifie à `T₁` avec une fenêtre de ±1 ; la garde place le
+    // code à `T₂ ≥ T₁`, éventuellement une période plus loin. Un compteur non
+    // couvert, c'est un code accepté que la garde ne sait pas rattacher — donc
+    // une connexion refusée, la garde étant fermée.
+    const accepted = [stepAt(VERIFIED_AT) - 1, stepAt(VERIFIED_AT), stepAt(VERIFIED_AT) + 1]
+
+    for (const gap of [0, 1, 1_000, 29_000, 29_999]) {
+      const tried = totpStepsToTry(new Date(VERIFIED_AT + gap), PERIOD)
+
+      for (const step of accepted) {
+        expect(tried, `écart ${gap} ms, compteur ${step}`).toContain(step)
+      }
+    }
+  })
+
+  it('les rend dans l’ordre croissant : à collision, c’est le plus petit qui l’emporte', () => {
+    // Deux compteurs produisant le même code sont de l'ordre de 10⁻⁶. Retenir
+    // le plus petit refuse alors un rejeu ; retenir le plus grand l'accepterait.
+    const tried = totpStepsToTry(new Date(VERIFIED_AT), PERIOD)
+
+    expect([...tried].sort((left, right) => left - right)).toEqual([...tried])
+  })
+})
+
+describe('refus d’une vérification de second facteur', () => {
+  it('rend le même statut aux deux classes : la distinction est dans la conduite à tenir, pas dans le code', () => {
+    for (const status of [400, 401, 403, 429, 500]) {
+      expect(twoFactorRefusal(status)?.status).toBe(TWO_FACTOR_REFUSAL_STATUS)
+    }
+  })
+
+  it('dit « recommencez » quand le défi est mort, « code invalide » quand il vit encore', () => {
+    // Mesuré dans `better-auth@1.7.2` : `TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE`
+    // et `TOTP_NOT_ENABLED` sortent en 400, `ACCOUNT_TEMPORARILY_LOCKED` en
+    // 429 — trois états où le défi n'est plus jouable. `INVALID_CODE` et
+    // `INVALID_TWO_FACTOR_COOKIE` sortent en 401.
+    expect(twoFactorRefusal(400)?.body.error).toBe('restart')
+    expect(twoFactorRefusal(429)?.body.error).toBe('restart')
+    expect(twoFactorRefusal(401)?.body.error).toBe('invalid')
+  })
+
+  it('ne laisse sortir aucun code de la bibliothèque', () => {
+    // Les cinq codes que le greffon peut produire. Aucun n'a le droit
+    // d'atteindre le navigateur : chacun décrit un état du compte
+    // (`docs/security.md` §7).
+    const refusals = [400, 401, 429].map((status) => JSON.stringify(twoFactorRefusal(status)))
+
+    for (const code of [
+      'INVALID_CODE',
+      'TOTP_NOT_ENABLED',
+      'INVALID_TWO_FACTOR_COOKIE',
+      'TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE',
+      'ACCOUNT_TEMPORARILY_LOCKED',
+    ]) {
+      for (const refusal of refusals) {
+        expect(refusal).not.toContain(code)
+      }
+    }
+  })
+
+  it('laisse passer une réponse qui n’est pas un refus', () => {
+    expect(twoFactorRefusal(200)).toBeNull()
   })
 })

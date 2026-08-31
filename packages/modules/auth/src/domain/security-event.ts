@@ -47,6 +47,21 @@ export type SecurityEventName =
   // doublerait chaque occurrence, et le verrouillage progressif de s28
   // compterait deux fois le même retour.
   | 'auth.oauth_refused'
+  // s13 : le second facteur. `docs/security.md` §7 demande nommément le
+  // « changement de second facteur » ; les trois autres couvrent le parcours de
+  // vérification, qui est un point d'entrée public au même titre que la
+  // connexion.
+  //
+  // `auth.two_factor_challenged` a un nom à lui, et pas `auth.sign_in_succeeded` :
+  // le mot de passe est bon, mais **aucune session n'existe** — la bibliothèque
+  // détruit celle qu'elle venait de créer. Le compter comme une connexion
+  // réussie ferait mentir le journal sur le seul point qui l'intéresse.
+  | 'auth.two_factor_enabled'
+  | 'auth.two_factor_disabled'
+  | 'auth.two_factor_challenged'
+  | 'auth.two_factor_verified'
+  | 'auth.two_factor_failed'
+  | 'auth.two_factor_backup_codes_regenerated'
 
 /** L'acteur d'un événement. `email` est accepté à l'appel, jamais journalisé. */
 export interface SecurityEventActor {
@@ -69,8 +84,15 @@ export interface SecurityEventRecord {
   readonly details: SecurityEventDetails
 }
 
-/** Noms de clé dont la valeur ne doit jamais sortir, quelle que soit sa forme. */
-const SECRET_KEY_PATTERN = /token|password|secret|cookie|hash|authorization|credential/i
+/**
+ * Noms de clé dont la valeur ne doit jamais sortir, quelle que soit sa forme.
+ *
+ * `code` y est entré avec s13, et pour une raison précise : un code TOTP fait
+ * six chiffres, un code de secours onze caractères — les deux passent **sous**
+ * le seuil de seize caractères du motif de valeur ci-dessous, qui ne peut donc
+ * pas les voir. Ici, seul le nom de clé attrape.
+ */
+const SECRET_KEY_PATTERN = /token|password|secret|cookie|hash|authorization|credential|code/i
 
 /**
  * Une valeur assez longue et assez « opaque » pour être un secret.

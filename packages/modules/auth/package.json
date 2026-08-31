@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@better-auth/utils": "0.4.2",
     "@repo/core": "workspace:*",
     "@repo/ports": "workspace:*",
     "better-auth": "1.7.2",

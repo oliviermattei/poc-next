@@ -31,6 +31,16 @@ export interface AuthPolicy {
    * requête.
    */
   readonly sessionRefreshAfterSeconds: number
+  /**
+   * Durée de vie d'un défi de second facteur, en secondes (s13).
+   *
+   * C'est le temps dont dispose quelqu'un qui vient de prouver son mot de
+   * passe pour saisir son code. Le mot de passe est **déjà** prouvé quand ce
+   * compte s'arme : une fenêtre longue rend exploitable un poste laissé
+   * ouvert, une fenêtre courte fait perdre le défi à qui cherche son
+   * téléphone.
+   */
+  readonly twoFactorChallengeTtlSeconds: number
 }
 
 /**
@@ -46,4 +56,5 @@ export const defaultAuthPolicy: AuthPolicy = {
   passwordResetTtlSeconds: 60 * 30,
   sessionTtlSeconds: 60 * 60 * 24 * 7,
   sessionRefreshAfterSeconds: 60 * 60 * 24,
+  twoFactorChallengeTtlSeconds: 60 * 5,
 }

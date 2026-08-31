@@ -4,6 +4,10 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { betterAuth } from 'better-auth/minimal'
 import { genericOAuth } from 'better-auth/plugins/generic-oauth'
 import { magicLink } from 'better-auth/plugins/magic-link'
+import { twoFactor } from 'better-auth/plugins/two-factor'
+import { createOTP } from '@better-auth/utils/otp'
+import { symmetricDecrypt } from 'better-auth/crypto'
+import { createHmac } from 'node:crypto'
 
 import { createAuthUseCases } from '../application/auth-use-cases'
 import type { AuthService } from '../application/auth-service'
@@ -20,14 +24,23 @@ import {
   type AnyOAuthProviderId,
   type OAuthProviderId,
 } from '../domain/oauth'
+import { digestBackupCode, digestBackupCodes } from '../domain/backup-code'
+import { withTwoFactorOnEverySignIn } from './two-factor-challenge'
+import {
+  TOTP_DIGITS,
+  TOTP_PERIOD_SECONDS,
+  totpStepsToTry,
+} from '../domain/two-factor'
+import { describeSecurityEvent } from '../domain/security-event'
 import { tokenIdentifier } from '../domain/one-time-token'
 import { sessionOf } from '../domain/session'
-import { authAccount, authSession, authUser, authVerification } from '../schema'
+import { authAccount, authSession, authTwoFactor, authUser, authVerification } from '../schema'
 import { consoleSecurityLog } from './console-security-log'
 import {
   createDrizzleAuthAccountRepository,
   createDrizzleAuthSessionRepository,
   createDrizzleAuthUserRepository,
+  createDrizzleTwoFactorRepository,
   createDrizzleVerificationTokenRepository,
   type AuthDatabase,
 } from './drizzle-auth-repositories'
@@ -40,6 +53,7 @@ import {
   type OAuthOutboundPolicy,
 } from './oauth-outbound'
 import { createTokenFactory } from './token-factory'
+import { withAtomicBackupCodeConsumption } from './two-factor-adapter'
 
 /**
  * **La frontière entre Better Auth et ce dépôt**, en un seul fichier.
@@ -156,6 +170,15 @@ export const AUTH_MODELS = {
   session: { modelName: 'auth_session' },
   account: { modelName: 'auth_account' },
   verification: { modelName: 'auth_verification' },
+  /**
+   * Le second facteur (s13). Il n'entre pas dans la configuration racine comme
+   * les quatre autres — c'est le greffon qui le déclare, par
+   * `schema.twoFactor.modelName`. L'option `twoFactorTable`, elle, ne
+   * renommerait que la déclaration : les trois lectures du greffon
+   * (`index.mjs`, `totp/index.mjs`, `backup-codes/index.mjs`) passent le
+   * **nom de modèle** littéral `"twoFactor"` à l'adapter, mesuré dans 1.7.2.
+   */
+  twoFactor: { modelName: 'auth_two_factor' },
 } as const
 
 /**
@@ -207,6 +230,8 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
       void task.catch(() => {})
     })
 
+  const twoFactorRepository = createDrizzleTwoFactorRepository(options.db)
+
   const dependencies: AuthDependencies = {
     users: createDrizzleAuthUserRepository(options.db),
     sessions: createDrizzleAuthSessionRepository(options.db),
@@ -231,6 +256,22 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
    */
   const readLocale = (request: Request | null | undefined): string | null =>
     request == null ? null : (options.readRequestLocale?.(request) ?? null)
+
+  /**
+   * L'empreinte d'un code de secours (s13).
+   *
+   * HMAC-SHA256 **poivré par le secret de l'application**, et non un SHA-256
+   * nu : un code de dix caractères de `a-zA-Z0-9` porte environ 59 bits
+   * d'entropie — assez pour se passer d'un dérivateur lent, pas assez pour
+   * qu'une table d'empreintes non poivrée soit sans intérêt. Le poivre ne
+   * quitte jamais le processus ; il n'est ni stocké à côté de l'empreinte, ni
+   * dérivable d'elle.
+   *
+   * `node:crypto` est ici, dans `infrastructure/`, jamais dans le `domain` —
+   * la règle qui décide *quoi* hacher y vit, la primitive est reçue.
+   */
+  const backupCodeHash = (value: string): string =>
+    createHmac('sha256', options.secret).update(value).digest('hex')
 
   /** L'identifiant sous lequel un magic link est stocké : `magic-link:<empreinte>`. */
   const magicLinkIdentifier = async (token: string): Promise<string> =>
@@ -329,7 +370,11 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
     // socle interdit qu'un secret y transite. Le désactiver explicitement vaut
     // mieux qu'hériter d'un défaut.
     telemetry: { enabled: false },
-    database: drizzleAdapter(options.db, {
+    // **La consommation d'un code de secours passe par une enveloppe** : la
+    // comparaison-et-échange de la bibliothèque n'est pas atomique sur
+    // PostgreSQL, et deux consommations simultanées du même code réussissaient
+    // toutes les deux — mesuré. Voir `infrastructure/two-factor-adapter.ts`.
+    database: withAtomicBackupCodeConsumption(options.db, drizzleAdapter(options.db, {
       provider: 'pg',
       // Les tables du **module**, indexées par le nom de modèle attendu.
       schema: {
@@ -337,11 +382,12 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
         [AUTH_MODELS.session.modelName]: authSession,
         [AUTH_MODELS.account.modelName]: authAccount,
         [AUTH_MODELS.verification.modelName]: authVerification,
+        [AUTH_MODELS.twoFactor.modelName]: authTwoFactor,
       },
       // La consommation atomique d'un jeton s'exécute dans une transaction :
       // sans cela, deux clics simultanés sur le même lien passent tous les deux.
       transaction: true,
-    }),
+    })),
     socialProviders,
     /**
      * **Où atterrit un retour en échec dont l'état n'a pas pu être lu.**
@@ -520,6 +566,64 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
           })
         },
       }),
+      /**
+       * **Le second facteur** (s13), et les quatre valeurs qui ne sont pas
+       * héritées d'un défaut.
+       *
+       * - `schema.twoFactor.modelName` — le nom de la table du module.
+       *   L'option `twoFactorTable` ne conviendrait pas : elle renomme la
+       *   *déclaration*, mais les trois lectures du greffon
+       *   (`index.mjs`, `totp/index.mjs`, `backup-codes/index.mjs`) passent le
+       *   nom de **modèle** littéral `"twoFactor"` à l'adapter (mesuré, 1.7.2) ;
+       * - `totpOptions` — six chiffres, période de trente secondes, et la
+       *   **fenêtre de vérification vaut ±1 période**. Ce n'est pas un choix
+       *   ouvert : `totp/index.mjs` appelle `.verify(code)` sans second
+       *   argument, et `@better-auth/utils@0.4.2` y met `window = 1` par
+       *   défaut. Quatre-vingt-dix secondes d'acceptation, ce que la RFC 6238
+       *   §5.2 prévoit pour absorber la dérive d'horloge d'un téléphone. Les
+       *   deux bords sont éprouvés dans `tests/auth.test.ts` ;
+       * - `backupCodeOptions.storeBackupCodes` — **le stockage haché**. Le
+       *   défaut de la bibliothèque est `'encrypted'`, donc réversible : qui
+       *   lit la base et connaît le secret retrouve dix mots de passe à usage
+       *   unique. `decrypt` est l'identité — la base contient déjà des
+       *   empreintes — et la **saisie** est hachée par la route avant
+       *   d'arriver ici, si bien que la comparaison de `verifyBackupCode`
+       *   porte empreinte contre empreinte. `docs/decisions/028-…` ;
+       * - `twoFactorCookieMaxAge` — la durée du défi, prise dans `AuthPolicy`
+       *   comme toutes les durées de vie du module, jamais écrite en dur.
+       *
+       * `skipVerificationOnEnable` reste **faux** (le défaut) : c'est lui qui
+       * rend vrai le critère « l'activation exige un code valide pour être
+       * confirmée ». Et `otpOptions` reste absent : sans `sendOTP`, le facteur
+       * par email n'est jamais proposé, et ses trois points d'entrée ne sont
+       * de toute façon pas déclarés par le module.
+       */
+      withTwoFactorOnEverySignIn(twoFactor({
+        schema: { twoFactor: AUTH_MODELS.twoFactor },
+        twoFactorCookieMaxAge: policy.twoFactorChallengeTtlSeconds,
+        totpOptions: { digits: TOTP_DIGITS, period: TOTP_PERIOD_SECONDS },
+        backupCodeOptions: {
+          amount: 10,
+          length: 10,
+          storeBackupCodes: {
+            encrypt: (payload) => Promise.resolve(digestBackupCodes(payload, backupCodeHash)),
+            decrypt: (stored) => Promise.resolve(stored),
+          },
+        },
+      }), {
+        // Le défi posé sur le magic link et sur les rappels de fournisseur est
+        // journalisé **ici** : c'est le seul point qui connaisse encore le
+        // compte, la réponse n'en portant plus rien. Les routes journalisent
+        // les leurs, celle du mot de passe comprise.
+        onChallenge: ({ userId, method }) =>
+          useCases.log(
+            describeSecurityEvent({
+              event: 'auth.two_factor_challenged',
+              actor: { userId },
+              details: { method },
+            }),
+          ),
+      }),
       ...localOAuthPlugins,
     ],
   })
@@ -570,6 +674,48 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
     },
 
     localeOf,
+
+    digestBackupCode: (code) => digestBackupCode(code, backupCodeHash),
+
+    /**
+     * **La garde de rejeu d'un code TOTP** (revue s13, C3).
+     *
+     * Appelée après que la bibliothèque a accepté le code : elle ne le vérifie
+     * pas une seconde fois, elle lui rend son **compteur**, puis prend ce
+     * compteur en base si personne ne l'a pris. Deux faits la rendent exacte :
+     *
+     * - le secret est déchiffré avec la même clé que le greffon
+     *   (`symmetricDecrypt`, `ctx.context.secretConfig` valant le secret quand
+     *   il est donné en clair, `context/create-context.mjs:80`) ;
+     * - le HOTP est calculé par **la primitive de la bibliothèque elle-même**
+     *   (`@better-auth/utils@0.4.2`, version épinglée par `better-auth@1.7.2`),
+     *   avec les mêmes `digits` et la même période. Une seconde implémentation
+     *   ici pourrait diverger, et une divergence refuserait toutes les
+     *   connexions.
+     *
+     * Aucun compteur trouvé ⇒ `false`. C'est un refus **fermé** : cela veut
+     * dire que le code n'appartient à aucune des quatre positions possibles,
+     * donc qu'un fait supposé du paquet a changé. Mieux vaut une connexion
+     * refusée qu'une garde muette.
+     */
+    claimTotpStep: async ({ userId, code }) => {
+      const stored = await twoFactorRepository.findByUserId(userId)
+
+      if (stored === null) {
+        return false
+      }
+
+      const secret = await symmetricDecrypt({ key: options.secret, data: stored.secret })
+      const otp = createOTP(secret, { digits: TOTP_DIGITS, period: TOTP_PERIOD_SECONDS })
+
+      for (const step of totpStepsToTry(now())) {
+        if ((await otp.hotp(step)) === code) {
+          return await twoFactorRepository.claimTotpStep({ userId, step })
+        }
+      }
+
+      return false
+    },
 
     changePassword: async ({ request, currentPassword, newPassword }) =>
       await auth.api.changePassword({

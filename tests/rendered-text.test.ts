@@ -579,6 +579,17 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         file: 'account/page.tsx',
         viewer: SIGNED_IN,
         refuses: null,
+        // s13. Les quatre URL des routes de second facteur, remises à la carte.
+        // Déclarées **sur cet écran** et pas globalement : ailleurs, une prop
+        // nommée `enableAction` portant une chaîne fait toujours rougir, et le
+        // garde-fou de prose reste actif ici aussi — `enableAction="Activer"`
+        // rougirait.
+        technicalProps: [
+          'enableAction',
+          'verifyAction',
+          'regenerateAction',
+          'disableAction',
+        ],
         render: async () => (await import('../apps/web/app/account/page')).default(),
       },
       {
@@ -649,6 +660,9 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         file: 'sign-in/page.tsx',
         viewer: ANONYMOUS,
         refuses: null,
+        // s13. La destination vers l'écran de vérification : un chemin monté,
+        // jamais du texte.
+        technicalProps: ['twoFactorRedirectTo'],
         render: async () =>
           (await import('../apps/web/app/sign-in/page')).default({
             searchParams: Promise.resolve({ verified: '1', email_changed: '1', reset: '1' }),
@@ -659,9 +673,23 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         file: 'sign-in/page.tsx',
         viewer: ANONYMOUS,
         refuses: null,
+        technicalProps: ['twoFactorRedirectTo'],
         render: async () =>
           (await import('../apps/web/app/sign-in/page')).default({
             searchParams: Promise.resolve({ oauth: 'denied' }),
+          }),
+      },
+      {
+        // s13. Écran **public** : on y arrive après le mot de passe, quand la
+        // bibliothèque a détruit la session et posé un cookie de défi. Il n'a
+        // donc pas de raison de refuser, quelle que soit la configuration.
+        id: 'vérification en deux étapes',
+        file: 'two-factor/page.tsx',
+        viewer: ANONYMOUS,
+        refuses: null,
+        render: async () =>
+          (await import('../apps/web/app/two-factor/page')).default({
+            searchParams: Promise.resolve({ next: '/account' }),
           }),
       },
       {

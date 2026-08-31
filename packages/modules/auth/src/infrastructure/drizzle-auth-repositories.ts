@@ -1,4 +1,4 @@
-import { and, eq, like, ne, sql } from 'drizzle-orm'
+import { and, eq, isNull, like, lt, ne, or, sql } from 'drizzle-orm'
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core'
 
 import type {
@@ -6,12 +6,13 @@ import type {
   AuthSessionRepository,
   AuthUserRecord,
   AuthUserRepository,
+  TwoFactorRepository,
   VerificationToken,
   VerificationTokenRepository,
 } from '../application/ports'
 import { canUnlinkSignInMethod } from '../domain/oauth'
 import { isTokenExpired } from '../domain/one-time-token'
-import { authAccount, authSession, authUser, authVerification } from '../schema'
+import { authAccount, authSession, authTwoFactor, authUser, authVerification } from '../schema'
 
 /**
  * Les repositories du module, sur **ses** tables.
@@ -63,11 +64,13 @@ const toRecord = (row: {
   name: string
   email: string
   emailVerified: boolean
+  twoFactorEnabled: boolean
 }): AuthUserRecord => ({
   id: row.id,
   name: row.name,
   email: row.email,
   emailVerified: row.emailVerified,
+  twoFactorEnabled: row.twoFactorEnabled,
 })
 
 export function createDrizzleAuthUserRepository(db: AuthDatabase): AuthUserRepository {
@@ -76,6 +79,7 @@ export function createDrizzleAuthUserRepository(db: AuthDatabase): AuthUserRepos
     name: authUser.name,
     email: authUser.email,
     emailVerified: authUser.emailVerified,
+    twoFactorEnabled: authUser.twoFactorEnabled,
   }
 
   return {
@@ -318,6 +322,49 @@ export function createDrizzleVerificationTokenRepository(
         .returning({ id: authVerification.id })
 
       return deleted.length
+    },
+  }
+}
+
+/**
+ * **La garde de rejeu d'un code TOTP**, côté magasin (revue s13, C3).
+ *
+ * Un pas de trente secondes n'est consommable qu'une fois par compte. La
+ * comparaison-et-échange est dans la **qualification de l'`UPDATE`**, jamais
+ * une lecture suivie d'une écriture : deux vérifications simultanées du même
+ * code, sur deux défis distincts, franchiraient sinon toutes deux une
+ * vérification préalable (`docs/reliability.md` §1). Ici, la perdante ne met
+ * à jour aucune ligne, et son appelant la refuse.
+ *
+ * `is null` fait partie de la condition : une ligne créée avant cette colonne
+ * — ou par un enrôlement qui n'a encore rien consommé — doit pouvoir prendre
+ * son premier pas.
+ */
+export function createDrizzleTwoFactorRepository(db: AuthDatabase): TwoFactorRepository {
+  return {
+    findByUserId: async (userId) => {
+      const [row] = await db
+        .select({ secret: authTwoFactor.secret, lastTotpStep: authTwoFactor.lastTotpStep })
+        .from(authTwoFactor)
+        .where(eq(authTwoFactor.userId, userId))
+        .limit(1)
+
+      return row ?? null
+    },
+
+    claimTotpStep: async ({ userId, step }) => {
+      const claimed = await db
+        .update(authTwoFactor)
+        .set({ lastTotpStep: step })
+        .where(
+          and(
+            eq(authTwoFactor.userId, userId),
+            or(isNull(authTwoFactor.lastTotpStep), lt(authTwoFactor.lastTotpStep, step)),
+          ),
+        )
+        .returning({ id: authTwoFactor.id })
+
+      return claimed.length === 1
     },
   }
 }

@@ -21,6 +21,7 @@ import { SignOutButton } from '../sign-out-button'
 import { AccountForm } from './account-form'
 import { ConnectionList, type ConnectionRow } from './connection-list'
 import { SessionList, type SessionRow } from './session-list'
+import { TwoFactorBadge, TwoFactorCard } from './two-factor-card'
 
 /**
  * Les paramètres du compte.
@@ -196,6 +197,31 @@ export default async function AccountPage() {
           <ConnectionList
             connections={connections}
             action={authRoutePath('unlinkProvider')}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('app.account.twoFactor.title')}</CardTitle>
+          <CardDescription className="flex flex-wrap items-center gap-2">
+            <span>{t('app.account.twoFactor.description')}</span>
+            <TwoFactorBadge enabled={account.twoFactorEnabled} />
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {/*
+            L'état vient du **serveur**, jamais du navigateur : c'est la même
+            lecture que celle qui décide, côté routes, si le second facteur
+            s'applique. Masquer un bouton n'a jamais été une permission
+            (`docs/security.md` §3) — les routes refusent de toute façon.
+          */}
+          <TwoFactorCard
+            enabled={account.twoFactorEnabled}
+            enableAction={authRoutePath('twoFactorEnable')}
+            verifyAction={authRoutePath('twoFactorVerify')}
+            regenerateAction={authRoutePath('twoFactorRegenerate')}
+            disableAction={authRoutePath('twoFactorDisable')}
           />
         </CardContent>
       </Card>

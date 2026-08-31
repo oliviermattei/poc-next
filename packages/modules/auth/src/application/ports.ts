@@ -19,6 +19,14 @@ export interface AuthUserRecord {
   readonly name: string
   readonly email: string
   readonly emailVerified: boolean
+  /**
+   * Le compte est-il protégé par un second facteur **confirmé** (s13) ?
+   *
+   * C'est la bibliothèque qui bascule ce champ, à la confirmation du premier
+   * code et à la désactivation. Le module ne l'écrit jamais : il le lit, pour
+   * que l'écran de compte sache quelle forme prendre.
+   */
+  readonly twoFactorEnabled: boolean
 }
 
 export interface AuthUserRepository {
@@ -141,6 +149,32 @@ export interface TokenFactory {
   generate(): string
   /** L'empreinte stockée : un vol de ces lignes-là ne rend aucun lien utilisable. */
   digest(token: string): Promise<string>
+}
+
+/**
+ * Le second facteur d'un compte, **tel que la garde de rejeu en a besoin**.
+ *
+ * Le secret sort d'ici **chiffré** : le déchiffrer demande la clé de
+ * l'application, qui n'appartient qu'à `infrastructure/`. Ce port ne sait donc
+ * pas ce qu'est un code TOTP — il sait lire une ligne et prendre un pas.
+ */
+export interface StoredTwoFactor {
+  readonly secret: string
+  readonly lastTotpStep: number | null
+}
+
+export interface TwoFactorRepository {
+  findByUserId(userId: string): Promise<StoredTwoFactor | null>
+  /**
+   * Prend le pas `step` pour ce compte, **à condition** qu'aucun pas supérieur
+   * ou égal n'ait déjà été pris. Rend `false` quand la condition tombe : le
+   * code a déjà servi.
+   *
+   * La condition est dans la requête, jamais vérifiée avant : deux
+   * vérifications concurrentes du même code se départagent ici
+   * (`docs/reliability.md` §1).
+   */
+  claimTotpStep(input: { readonly userId: string; readonly step: number }): Promise<boolean>
 }
 
 /** Journal des événements de sécurité (§7). Reçoit un enregistrement déjà filtré. */

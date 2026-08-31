@@ -8,6 +8,20 @@
       "when": 1788133370032,
       "tag": "0000_chunky_dexter_bennett",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788197326313,
+      "tag": "0001_secret_wolf_cub",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788210272371,
+      "tag": "0002_huge_stryfe",
+      "breakpoints": true
     }
   ]
 }

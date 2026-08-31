@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHmac, randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 
 import { buildRegistry, dispatchModuleRequest, MODULE_ROUTE_PREFIX } from '@repo/core'
@@ -24,6 +24,7 @@ import { AUTH_MODELS } from '@repo/module-auth'
 import { getAuthTables } from 'better-auth'
 import { appLocales } from '../config/i18n'
 import { magicLink } from 'better-auth/plugins/magic-link'
+import { twoFactor } from 'better-auth/plugins/two-factor'
 import { sql } from 'drizzle-orm'
 import { getTableConfig } from 'drizzle-orm/pg-core'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -206,6 +207,8 @@ interface CallOptions {
   readonly method?: string
   readonly body?: unknown
   readonly cookie?: string
+  /** Employé par le seul cas qui présente un jeton nu — voir `bearer`. */
+  readonly authorization?: string
 }
 
 /** Une requête telle que l'application la sert : par le répartiteur du registre. */
@@ -214,6 +217,10 @@ const call = async (path: string, options: CallOptions = {}): Promise<Response> 
 
   if (options.cookie !== undefined) {
     headers.set('cookie', options.cookie)
+  }
+
+  if (options.authorization !== undefined) {
+    headers.set('authorization', options.authorization)
   }
 
   return await dispatchModuleRequest(
@@ -331,7 +338,15 @@ describe.skipIf(!databaseReachable)('frontière — le schéma appartient au mod
     // une montée de version qui ajoute un champ fait rougir ce cas.
     const expected = getAuthTables({
       ...AUTH_MODELS,
-      plugins: [magicLink({ sendMagicLink: () => Promise.resolve() })],
+      plugins: [
+        magicLink({ sendMagicLink: () => Promise.resolve() }),
+        // s13 : le greffon ajoute une table **et** une colonne à `auth_user`.
+        // Le nom de modèle est celui que le module monte — la bibliothèque
+        // lit `schema.twoFactor.modelName`, jamais l'option `twoFactorTable`,
+        // qui ne renommerait que la déclaration et laisserait ses trois
+        // lectures sur `"twoFactor"` (mesuré dans 1.7.2).
+        twoFactor({ schema: { twoFactor: AUTH_MODELS.twoFactor } }),
+      ],
     } as never)
 
     const declaredByModelName = new Map(
@@ -679,6 +694,30 @@ describe.skipIf(!databaseReachable)('durcissement de la session', () => {
     expect((await call('/revoke-session', { body: { sessionId: 'peu-importe' } })).status).toBe(401)
     expect((await call('/change-name', { body: { name: 'Peu importe' } })).status).toBe(401)
   })
+
+  it('n’authentifie rien avec le jeton que la bibliothèque laisse dans le corps de la connexion', async () => {
+    const { email } = await aVerifiedAccount()
+    const opened = await signIn(email)
+    const payload = (await opened.json()) as { readonly token?: unknown }
+
+    // Le corps de `/sign-in/email` porte encore le jeton de session
+    // (`api/routes/sign-in.mjs`), et la route le relaie — contrairement aux
+    // cinq routes du second facteur, qui réécrivent le leur. La revue s13 (C4)
+    // le laisse **mineur** parce que rien, dans ce montage, n'accepte un jeton
+    // nu : le cookie de session est signé, et le greffon `bearer` n'est pas
+    // monté. C'était écrit en gras dans l'`AGENTS.md` du module, et **aucune
+    // commande ne le vérifiait**. Celle-ci le fait : monter `bearer` — ou
+    // livrer des jetons d'API — rend ce cas rouge, et c'est précisément le
+    // moment où il faut réécrire la réponse de `/sign-in/email`.
+    expect(typeof payload.token).toBe('string')
+
+    const bearer = `Bearer ${String(payload.token)}`
+
+    expect((await call('/change-name', { body: { name: 'Peu importe' }, authorization: bearer })).status).toBe(401)
+    expect(
+      await service.resolveSession(new Request(APP_URL, { headers: { authorization: bearer } })),
+    ).toBeNull()
+  }, 20_000)
 
   it('liste les sessions du compte, la courante en tête, sans jamais rendre de jeton', async () => {
     const { email, userId } = await aVerifiedAccount()
@@ -1239,6 +1278,25 @@ describe.skipIf(!databaseReachable)('connexion par un fournisseur externe', () =
     expect(resolved?.userId).toBe(user?.id)
   }, 30_000)
 
+  it('n’ouvre pas de session au retour du fournisseur quand le compte est protégé', async () => {
+    const enrolled = await anAccountWithTwoFactor()
+    const { back } = await signInWith({ email: enrolled.email, emailVerified: true })
+
+    // Troisième et dernière voie d'entrée de l'application. Mesurée comme les
+    // deux autres : le retour du fournisseur atteste l'adresse, il n'atteste
+    // pas le second facteur.
+    expect(await openedSession(back)).toBeNull()
+    expect(back.status).toBe(302)
+    expect(back.headers.get('location')).toContain('/two-factor')
+
+    const verified = await call('/two-factor/verify-totp', {
+      body: { code: totpAt(enrolled.totpURI, 1) },
+      cookie: cookiesOf(back),
+    })
+
+    expect(await openedSession(verified)).not.toBeNull()
+  }, 60_000)
+
   it('reconnaît le même compte de fournisseur au lieu d’en créer un second', async () => {
     const email = anOAuthEmail()
     const identity = { email, emailVerified: true, accountId: `s12-${randomUUID()}` }
@@ -1760,4 +1818,896 @@ describe.skipIf(!databaseReachable)('connexion par un fournisseur externe', () =
       expect(sessionCookie(refused)).toBeNull()
     }, 20_000)
   })
+})
+
+/**
+ * ## Le second facteur (s13)
+ *
+ * Les codes sont **calculés ici**, jamais demandés à la bibliothèque : c'est
+ * ce qui permet de choisir le compteur, donc d'éprouver les deux bords de la
+ * fenêtre de vérification sans toucher à l'horloge du processus.
+ */
+const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
+
+const base32Decode = (input: string): Buffer => {
+  let bits = 0
+  let value = 0
+  const bytes: number[] = []
+
+  for (const character of input.toUpperCase().replace(/=+$/, '')) {
+    const index = BASE32_ALPHABET.indexOf(character)
+
+    if (index < 0) {
+      throw new Error(`Caractère base32 inattendu : « ${character} »`)
+    }
+
+    value = (value << 5) | index
+    bits += 5
+
+    if (bits >= 8) {
+      bits -= 8
+      bytes.push((value >>> bits) & 0xff)
+    }
+  }
+
+  return Buffer.from(bytes)
+}
+
+/** HOTP (RFC 4226) : la primitive dont TOTP n'est que le compteur horaire. */
+const hotp = (secret: Buffer, counter: number): string => {
+  const block = Buffer.alloc(8)
+
+  block.writeBigUInt64BE(BigInt(counter))
+
+  const digest = createHmac('sha1', secret).update(block).digest()
+  const offset = (digest[digest.length - 1] ?? 0) & 0x0f
+  const truncated =
+    (((digest[offset] ?? 0) & 0x7f) << 24) |
+    (((digest[offset + 1] ?? 0) & 0xff) << 16) |
+    (((digest[offset + 2] ?? 0) & 0xff) << 8) |
+    ((digest[offset + 3] ?? 0) & 0xff)
+
+  return (truncated % 1_000_000).toString().padStart(6, '0')
+}
+
+const TOTP_PERIOD_MS = 30_000
+
+/** Le secret d'une URI `otpauth://` — celui que l'écran d'enrôlement affiche. */
+const secretOf = (totpURI: string): Buffer => {
+  const secret = new URL(totpURI).searchParams.get('secret')
+
+  if (secret === null) {
+    throw new Error('L’URI d’enrôlement ne porte pas de secret.')
+  }
+
+  return base32Decode(secret)
+}
+
+/**
+ * Le code TOTP à `offset` périodes de maintenant.
+ *
+ * Le serveur recalcule son propre compteur au moment où il vérifie : traverser
+ * une frontière de période entre les deux décalerait le résultat d'un cran, et
+ * `offset = 1` deviendrait `offset = 2`. `withinStablePeriod` écarte ce cas.
+ */
+const totpAt = (totpURI: string, offset = 0): string =>
+  hotp(secretOf(totpURI), Math.floor(Date.now() / TOTP_PERIOD_MS) + offset)
+
+/**
+ * Attend le début d'une période quand la fin est trop proche.
+ *
+ * Sans cela, le cas des bords de fenêtre serait vert quatre-vingt-dix-neuf
+ * fois sur cent — `retries: 0` est délibéré dans ce dépôt, un cas instable n'y
+ * garde rien.
+ */
+const withinStablePeriod = async (): Promise<void> => {
+  const remaining = TOTP_PERIOD_MS - (Date.now() % TOTP_PERIOD_MS)
+
+  if (remaining < 3_000) {
+    await new Promise((accept) => setTimeout(accept, remaining + 50))
+  }
+}
+
+/**
+ * La session **réellement ouverte** par une réponse — le seul juge qui compte.
+ *
+ * `sessionCookie` ne suffit pas ici : le crochet du greffon efface le cookie de
+ * session en en posant un **vide**, si bien qu'un `getSetCookie()` contient
+ * encore `session_token=` après un défi. Lire le nom dirait qu'une session a
+ * été ouverte alors qu'elle vient d'être détruite ; `cookiesOf` écarte les
+ * couples vidés, et la résolution tranche.
+ */
+const openedSession = async (response: Response): Promise<string | null> => {
+  const cookie = cookiesOf(response)
+
+  return cookie === ''
+    ? null
+    : await service.resolveSessionId(new Request(APP_URL, { headers: { cookie } }))
+}
+
+interface Enrolment {
+  readonly email: string
+  readonly userId: string
+  readonly cookie: string
+  readonly totpURI: string
+  readonly backupCodes: readonly string[]
+}
+
+/** Un compte protégé par un second facteur **confirmé**, et sa session. */
+const anAccountWithTwoFactor = async (): Promise<Enrolment> => {
+  const account = await aVerifiedAccount()
+  const opened = await signIn(account.email)
+  const firstCookie = sessionCookie(opened)?.value ?? ''
+
+  const enabled = await call('/two-factor/enable', {
+    body: { password: PASSWORD },
+    cookie: firstCookie,
+  })
+
+  expect(enabled.status).toBe(200)
+
+  const payload = (await enabled.json()) as {
+    totpURI: string
+    backupCodes: readonly string[]
+  }
+
+  await withinStablePeriod()
+
+  const confirmed = await call('/two-factor/verify-totp', {
+    body: { code: totpAt(payload.totpURI) },
+    cookie: firstCookie,
+  })
+
+  expect(confirmed.status).toBe(200)
+
+  return {
+    ...account,
+    // La confirmation **fait tourner** la session : c'est le nouveau cookie
+    // qui vaut, l'ancien vient d'être détruit.
+    cookie: sessionCookie(confirmed)?.value ?? '',
+    totpURI: payload.totpURI,
+    backupCodes: payload.backupCodes,
+  }
+}
+
+describe.skipIf(!databaseReachable)('second facteur — activation', () => {
+  it('refuse l’activation sans le mot de passe courant : une session volée ne suffit pas', async () => {
+    const account = await aVerifiedAccount()
+    const cookie = sessionCookie(await signIn(account.email))?.value ?? ''
+
+    const withoutPassword = await call('/two-factor/enable', { body: {}, cookie })
+    const withWrongPassword = await call('/two-factor/enable', {
+      body: { password: `${PASSWORD}-faux` },
+      cookie,
+    })
+
+    expect(withoutPassword.ok).toBe(false)
+    expect(withWrongPassword.ok).toBe(false)
+
+    const [row] = await connection.db
+      .select({ id: authSchema.authTwoFactor.id })
+      .from(authSchema.authTwoFactor)
+      .where(sql`user_id = ${account.userId}`)
+
+    // Le refus n'atteint pas la base : rien n'a été écrit.
+    expect(row).toBeUndefined()
+  }, 60_000)
+
+  it('rend une URI d’enrôlement et dix codes de secours, sans jamais rendre de jeton de session', async () => {
+    const account = await aVerifiedAccount()
+    const cookie = sessionCookie(await signIn(account.email))?.value ?? ''
+
+    const enabled = await call('/two-factor/enable', { body: { password: PASSWORD }, cookie })
+    const payload = (await enabled.json()) as Record<string, unknown>
+
+    expect(String(payload.totpURI)).toMatch(/^otpauth:\/\/totp\//)
+    expect(new URL(String(payload.totpURI)).searchParams.get('digits')).toBe('6')
+    expect(new URL(String(payload.totpURI)).searchParams.get('period')).toBe('30')
+    expect(payload.backupCodes).toHaveLength(10)
+
+    // La réponse de la bibliothèque porte `token` — le jeton de la session
+    // qu'elle vient de poser. Le rendre à un écran, c'est annuler `HttpOnly`
+    // (`packages/modules/auth/AGENTS.md`).
+    expect(Object.keys(payload).sort()).toEqual(['backupCodes', 'totpURI'])
+  }, 60_000)
+
+  it('ne protège la connexion qu’une fois le premier code confirmé', async () => {
+    const account = await aVerifiedAccount()
+    const cookie = sessionCookie(await signIn(account.email))?.value ?? ''
+
+    await call('/two-factor/enable', { body: { password: PASSWORD }, cookie })
+
+    // Enrôlement commencé, pas confirmé : la connexion se termine après le mot
+    // de passe, exactement comme avant.
+    expect(await openedSession(await signIn(account.email))).not.toBeNull()
+  }, 60_000)
+
+  it('active à la confirmation, et fait tourner l’identifiant de session', async () => {
+    const account = await aVerifiedAccount()
+    const opened = await signIn(account.email)
+    const cookie = sessionCookie(opened)?.value ?? ''
+    const before = await service.resolveSessionId(
+      new Request(APP_URL, { headers: { cookie } }),
+    )
+
+    const enabled = await call('/two-factor/enable', { body: { password: PASSWORD }, cookie })
+    const { totpURI } = (await enabled.json()) as { totpURI: string }
+
+    await withinStablePeriod()
+
+    const confirmed = await call('/two-factor/verify-totp', {
+      body: { code: totpAt(totpURI) },
+      cookie,
+    })
+
+    expect(confirmed.status).toBe(200)
+
+    // `docs/security.md` §2 : rotation de l'identifiant de session à
+    // l'élévation de privilège. Le cookie change, et l'ancien ne vaut plus.
+    const rotated = sessionCookie(confirmed)?.value ?? ''
+    const after = await service.resolveSessionId(
+      new Request(APP_URL, { headers: { cookie: rotated } }),
+    )
+
+    expect(after).not.toBeNull()
+    expect(after).not.toBe(before)
+    expect(
+      await service.resolveSessionId(new Request(APP_URL, { headers: { cookie } })),
+    ).toBeNull()
+
+    // Et la connexion demande désormais un second facteur : le mot de passe
+    // seul n'ouvre plus rien.
+    expect(await openedSession(await signIn(account.email))).toBeNull()
+  }, 60_000)
+
+  it('n’écrit ni le secret, ni l’URI, ni le code dans le journal de sécurité', async () => {
+    const enrolled = await anAccountWithTwoFactor()
+    const serialized = JSON.stringify(logs)
+
+    expect(serialized).not.toContain(new URL(enrolled.totpURI).searchParams.get('secret'))
+    expect(serialized).not.toContain('otpauth://')
+
+    for (const code of enrolled.backupCodes) {
+      expect(serialized).not.toContain(code)
+    }
+
+    expect(logs.map((record) => record.event)).toContain('auth.two_factor_enabled')
+  }, 60_000)
+
+  it('ne déclare pas les trois points d’entrée du greffon qu’elle n’offre pas', async () => {
+    const enrolled = await anAccountWithTwoFactor()
+
+    // Le greffon en expose sept, le module en déclare cinq. Ces trois-là
+    // étaient affirmés « 404 » par l'ADR, par l'`AGENTS.md` du module et par un
+    // commentaire — sans qu'aucune commande ne le vérifie (revue s13, C8).
+    // `get-totp-uri` est celui qui compte : il rendrait le secret d'un compte
+    // **déjà activé**, à volonté, alors que ce secret ne sort qu'une fois.
+    for (const path of [
+      '/two-factor/get-totp-uri',
+      '/two-factor/send-otp',
+      '/two-factor/verify-otp',
+    ]) {
+      const refused = await call(path, {
+        body: { password: PASSWORD, code: '000000' },
+        cookie: enrolled.cookie,
+      })
+      const body = await refused.text()
+
+      expect(refused.status, path).toBe(404)
+      expect(body, path).not.toContain('otpauth')
+      expect(body, path).not.toContain('secret')
+    }
+  }, 60_000)
+
+  it('ne laisse pas le client décider de l’émetteur affiché dans l’application d’authentification', async () => {
+    const account = await aVerifiedAccount()
+    const cookie = sessionCookie(await signIn(account.email))?.value ?? ''
+
+    // `enableTwoFactor` lit `issuer` **du corps** et le pose dans l'URI. Le
+    // corps est reconstruit par la route : ce que le client envoie n'arrive
+    // jamais.
+    const enabled = await call('/two-factor/enable', {
+      body: { password: PASSWORD, issuer: 'banque-de-la-victime', method: 'otp' },
+      cookie,
+    })
+    const { totpURI } = (await enabled.json()) as { totpURI: string }
+
+    expect(totpURI).not.toContain('banque-de-la-victime')
+  }, 60_000)
+})
+
+describe.skipIf(!databaseReachable)('second facteur — connexion', () => {
+  /** Ouvre un défi : mot de passe bon, aucune session, un cookie de défi. */
+  const aChallenge = async (email: string): Promise<string> => {
+    const response = await signIn(email)
+
+    expect(response.status).toBe(200)
+    expect(await openedSession(response)).toBeNull()
+
+    return cookiesOf(response)
+  }
+
+  /** Les sessions **réellement en base** pour ce compte : un refus n'en laisse aucune. */
+  const openSessions = async (userId: string): Promise<number> =>
+    (
+      await connection.db
+        .select({ id: authSchema.authSession.id })
+        .from(authSchema.authSession)
+        .where(sql`user_id = ${userId}`)
+    ).length
+
+  /**
+   * Oublie le dernier compteur consommé par ce compte.
+   *
+   * Employé par le **seul** cas qui mesure la fenêtre de la bibliothèque : la
+   * garde de rejeu refuse tout compteur déjà passé, si bien que `-1`, `0` et
+   * `+1` ne peuvent pas être éprouvés à la suite sur un même compte sans se
+   * refuser les uns les autres. Les deux propriétés sont distinctes — la
+   * largeur de la fenêtre, et l'unicité d'usage — et chacune a son cas.
+   */
+  const forgetLastTotpStep = async (userId: string): Promise<void> => {
+    await connection.db.execute(
+      sql`update auth_two_factor set last_totp_step = null where user_id = ${userId}`,
+    )
+  }
+
+  it('arrête la connexion après le mot de passe, sans rien dire des facteurs du compte', async () => {
+    const enrolled = await anAccountWithTwoFactor()
+
+    logs = []
+
+    const response = await signIn(enrolled.email)
+    const payload = (await response.json()) as Record<string, unknown>
+
+    expect(response.status).toBe(200)
+    expect(await openedSession(response)).toBeNull()
+
+    // Le corps de la bibliothèque porte `twoFactorMethods`, qui énumère les
+    // facteurs du compte. La réponse est réécrite : un seul champ en sort.
+    expect(payload).toEqual({ twoFactor: true })
+
+    // Le journal, lui, garde la distinction : ce n'est **pas** une connexion
+    // réussie, aucune session n'existe (`docs/security.md` §7).
+    expect(logs.map((record) => record.event)).toEqual(['auth.two_factor_challenged'])
+    expect(logs[0]?.actor).toBe(enrolled.userId)
+  }, 60_000)
+
+  it('arrête aussi le magic link : une voie sans mot de passe ne saute pas le second facteur', async () => {
+    const enrolled = await anAccountWithTwoFactor()
+
+    await call('/sign-in/magic-link', { body: { email: enrolled.email } })
+
+    logs = []
+
+    const link = await call(pathOf(lastLink('magic-link')))
+
+    // **La propriété tenue est celle-ci** : aucune session n'existe sur un
+    // compte protégé tant que le second facteur n'a pas été présenté, quelle
+    // que soit la voie. Le `matcher` du greffon ne cite que `/sign-in/email` —
+    // s'y limiter laissait le bouton voisin de `/sign-in` ignorer la
+    // protection que `/account` venait d'activer.
+    expect(await openedSession(link)).toBeNull()
+    expect(link.status).toBe(302)
+    expect(link.headers.get('location')).toContain('/two-factor')
+    expect(logs.map((record) => record.event)).toEqual(['auth.two_factor_challenged'])
+    expect(logs[0]?.actor).toBe(enrolled.userId)
+
+    // Et la voie n'est pas **fermée**, elle est ramenée au même point que le
+    // mot de passe : le défi qu'elle pose est jouable. Le compteur de
+    // l'enrôlement est consommé, d'où le pas suivant (garde de rejeu).
+    const verified = await call('/two-factor/verify-totp', {
+      body: { code: totpAt(enrolled.totpURI, 1) },
+      cookie: cookiesOf(link),
+    })
+
+    expect(await openedSession(verified)).not.toBeNull()
+  }, 90_000)
+
+  it('accepte les trois compteurs de la fenêtre, et refuse les deux qui l’encadrent', async () => {
+    const enrolled = await anAccountWithTwoFactor()
+
+    await withinStablePeriod()
+
+    // La fenêtre est **±1 période de trente secondes** :
+    // `@better-auth/utils@0.4.2` pose `window = 1` par défaut et
+    // `totp/index.mjs` appelle `.verify(code)` sans l'ouvrir. Quatre-vingt-dix
+    // secondes d'acceptation, ce que prévoit la RFC 6238 §5.2 pour la dérive
+    // d'horloge d'un téléphone.
+    for (const offset of [-1, 0, 1]) {
+      // Le compteur de l'enrôlement — et celui du tour précédent — est
+      // consommé : sans cet oubli, la garde de rejeu refuserait `-1` et `0`,
+      // et ce cas mesurerait l'unicité d'usage au lieu de la fenêtre.
+      await forgetLastTotpStep(enrolled.userId)
+
+      const cookie = await aChallenge(enrolled.email)
+      const verified = await call('/two-factor/verify-totp', {
+        body: { code: totpAt(enrolled.totpURI, offset) },
+        cookie,
+      })
+
+      expect(verified.status, `compteur ${offset}`).toBe(200)
+      expect(await openedSession(verified), `compteur ${offset}`).not.toBeNull()
+    }
+
+    for (const offset of [-2, 2]) {
+      const cookie = await aChallenge(enrolled.email)
+      const refused = await call('/two-factor/verify-totp', {
+        body: { code: totpAt(enrolled.totpURI, offset) },
+        cookie,
+      })
+
+      expect(refused.status, `compteur ${offset}`).toBe(401)
+      expect(await refused.json(), `compteur ${offset}`).toEqual({ error: 'invalid' })
+      expect(await openedSession(refused), `compteur ${offset}`).toBeNull()
+    }
+  }, 90_000)
+
+  it('ne rejoue pas un défi consommé, et ne rend jamais de jeton de session', async () => {
+    const enrolled = await anAccountWithTwoFactor()
+
+    await withinStablePeriod()
+
+    const cookie = await aChallenge(enrolled.email)
+    // Le pas suivant celui de l'enrôlement : celui-là est déjà consommé.
+    const code = totpAt(enrolled.totpURI, 1)
+    const verified = await call('/two-factor/verify-totp', { body: { code }, cookie })
+
+    expect(await verified.json()).toEqual({ status: true })
+
+    // Le même code, le même cookie : le défi a été consommé, il n'existe plus.
+    const replayed = await call('/two-factor/verify-totp', { body: { code }, cookie })
+
+    expect(replayed.status).toBe(401)
+    expect(await openedSession(replayed)).toBeNull()
+  }, 60_000)
+
+  it('refuse un code déjà consommé, même sur un défi neuf', async () => {
+    const enrolled = await anAccountWithTwoFactor()
+
+    await withinStablePeriod()
+
+    const code = totpAt(enrolled.totpURI, 1)
+    const accepted = await call('/two-factor/verify-totp', {
+      body: { code },
+      cookie: await aChallenge(enrolled.email),
+    })
+
+    expect(await openedSession(accepted)).not.toBeNull()
+
+    const before = await openSessions(enrolled.userId)
+
+    // **Critère 4 de la story** : « un code TOTP erroné ou **rejoué** est
+    // refusé ». Le défi consommé, lui, ne se rejoue pas — mais le code restait
+    // valable quatre-vingt-dix secondes sur un défi neuf, donc réutilisable par
+    // qui l'avait vu une fois.
+    const replayed = await call('/two-factor/verify-totp', {
+      body: { code },
+      cookie: await aChallenge(enrolled.email),
+    })
+
+    expect(replayed.status).toBe(401)
+
+    // **Le refus ne ment pas.** Le code présenté est juste : le refuser en
+    // disant « ce code n'est pas valide » envoie quelqu'un chercher une
+    // compromission là où il n'y en a pas — c'est le cas d'une seconde
+    // connexion dans les mêmes trente secondes, ou d'un ré-enrôlement dans la
+    // même période (revue s13, C12/C13/C14). La classe est distincte, le
+    // **statut** reste celui de tous les refus, et la distinction n'est
+    // lisible que par qui a déjà présenté le premier facteur : on n'arrive ici
+    // qu'avec un défi ouvert. Un code faux, lui, reste `invalid` — c'est le
+    // cas « détruit le défi au sixième essai » qui le mesure.
+    expect(await replayed.json()).toEqual({ error: 'used' })
+    expect(await openedSession(replayed)).toBeNull()
+
+    // Et le refus ne laisse **rien** derrière lui : la session que la
+    // bibliothèque avait créée avant que la garde ne tranche est révoquée.
+    expect(await openSessions(enrolled.userId)).toBe(before)
+
+    // **Ce qui a refusé est bien la garde**, et non le code ni le défi :
+    // le compteur oublié, le même code sur un troisième défi rouvre une
+    // session. Le pas *suivant* n'est pas éprouvé ici — il n'entre dans la
+    // fenêtre qu'à la période d'après, et un cas ne dort pas trente secondes.
+    await forgetLastTotpStep(enrolled.userId)
+
+    const again = await call('/two-factor/verify-totp', {
+      body: { code },
+      cookie: await aChallenge(enrolled.email),
+    })
+
+    expect(await openedSession(again)).not.toBeNull()
+  }, 90_000)
+
+  it('détruit le défi au sixième essai, et le dit à la personne', async () => {
+    const enrolled = await anAccountWithTwoFactor()
+    const cookie = await aChallenge(enrolled.email)
+
+    // `beginAttempt(5)` de la bibliothèque : les cinq premiers échecs
+    // comptent, le sixième trouve le compteur à cinq, **consomme le défi** et
+    // expire son cookie. Sans la seconde classe de refus, l'écran répéterait
+    // « code invalide » à quelqu'un qui n'a plus rien à valider.
+    const classes: string[] = []
+
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const refused = await call('/two-factor/verify-totp', {
+        body: { code: '000000' },
+        cookie,
+      })
+
+      expect(refused.status).toBe(401)
+      classes.push(((await refused.json()) as { error: string }).error)
+    }
+
+    expect(classes).toEqual(['invalid', 'invalid', 'invalid', 'invalid', 'invalid', 'restart'])
+
+    // Et le défi est bien mort : un code juste n'y peut plus rien.
+    await withinStablePeriod()
+
+    const afterwards = await call('/two-factor/verify-totp', {
+      body: { code: totpAt(enrolled.totpURI, 1) },
+      cookie,
+    })
+
+    expect(await openedSession(afterwards)).toBeNull()
+  }, 90_000)
+
+  /**
+   * ## Les deux exemptions, éprouvées par leur conséquence
+   *
+   * La garde vaut désormais sur **tout** chemin qui pose une session, et
+   * `infrastructure/two-factor-challenge.ts` n'énumère que les exemptions. Ces
+   * deux cas mesurent ce que l'inversion coûterait si l'une manquait : la
+   * bibliothèque fait tourner la session d'un compte **déjà authentifié** à
+   * deux endroits que le module appelle en direct, et un défi posé là
+   * déconnecterait sans raison.
+   */
+  it('ne pose pas de défi quand la bibliothèque renouvelle une session déjà ouverte', async () => {
+    const enrolled = await anAccountWithTwoFactor()
+
+    // `updateAge` vaut un jour : une session fraîche n'est pas renouvelée. La
+    // bibliothèque lit `expires_at` pour en décider
+    // (`expiresAt - expiresIn + updateAge <= now`), d'où ces cinq jours au lieu
+    // de sept — la session a « deux jours ».
+    await connection.db.execute(
+      sql`update auth_session set expires_at = now() + interval '5 days' where user_id = ${enrolled.userId}`,
+    )
+
+    logs = []
+
+    const request = (): Request => new Request(APP_URL, { headers: { cookie: enrolled.cookie } })
+
+    expect(await service.resolveSessionId(request())).not.toBeNull()
+
+    // Le renouvellement a eu lieu ; la session doit avoir **survécu**. Sans
+    // l'exemption de `/get-session`, le crochet la détruit ici : la première
+    // résolution rend encore un identifiant — le crochet passe après le
+    // handler —, et c'est la seconde qui trouve le vide.
+    expect(await openSessions(enrolled.userId)).toBe(1)
+    expect(await service.resolveSessionId(request())).not.toBeNull()
+    expect(logs).toEqual([])
+  }, 60_000)
+
+  it('ne pose pas de défi quand le changement de mot de passe fait tourner la session', async () => {
+    const enrolled = await anAccountWithTwoFactor()
+
+    logs = []
+
+    const changed = await call('/change-password', {
+      body: { currentPassword: PASSWORD, newPassword: `${PASSWORD}-s13` },
+      cookie: enrolled.cookie,
+    })
+
+    expect(changed.status).toBe(200)
+
+    // La preuve du mot de passe courant vient d'être faite : c'est une rotation,
+    // pas une connexion. La session rendue est utilisable tout de suite, et
+    // aucun défi n'est journalisé.
+    expect(await openedSession(changed)).not.toBeNull()
+    expect(await openSessions(enrolled.userId)).toBe(1)
+    expect(logs.map((record) => record.event)).not.toContain('auth.two_factor_challenged')
+  }, 60_000)
+})
+
+describe.skipIf(!databaseReachable)('second facteur — codes de secours', () => {
+  const storedCodes = async (userId: string): Promise<string> => {
+    const [row] = await connection.db
+      .select({ backupCodes: authSchema.authTwoFactor.backupCodes })
+      .from(authSchema.authTwoFactor)
+      .where(sql`user_id = ${userId}`)
+
+    return row?.backupCodes ?? ''
+  }
+
+  const aChallenge = async (email: string): Promise<string> => {
+    const response = await signIn(email)
+
+    expect(await openedSession(response)).toBeNull()
+
+    return cookiesOf(response)
+  }
+
+  it('ne stocke aucun des dix codes rendus : la base ne porte que des empreintes', async () => {
+    const enrolled = await anAccountWithTwoFactor()
+    const stored = await storedCodes(enrolled.userId)
+
+    expect(enrolled.backupCodes).toHaveLength(10)
+
+    for (const code of enrolled.backupCodes) {
+      expect(stored).not.toContain(code)
+    }
+
+    // Et ce qui est stocké est bien une liste d'empreintes, pas une chaîne
+    // chiffrée — le défaut de la bibliothèque, réversible avec le secret.
+    expect((JSON.parse(stored) as readonly string[]).every((entry) =>
+      /^sha256:[0-9a-f]{64}$/.test(entry),
+    )).toBe(true)
+  }, 60_000)
+
+  it('refuse l’empreinte lue en base, soumise telle quelle : le magasin n’est pas un jeu de codes', async () => {
+    const enrolled = await anAccountWithTwoFactor()
+    const [digest] = JSON.parse(await storedCodes(enrolled.userId)) as readonly string[]
+
+    // **La question qui décide du hachage**, et que « aucun code en clair dans
+    // la colonne » ne pose pas : ce qui est stocké est-il rejouable ? Un vol de
+    // base sans `AUTH_SECRET` rendrait sinon dix contournements du second
+    // facteur, et l'ADR 028 affirmerait le contraire de ce que le code fait.
+    const stolen = await call('/two-factor/verify-backup-code', {
+      body: { code: digest },
+      cookie: await aChallenge(enrolled.email),
+    })
+
+    expect(stolen.status).toBe(401)
+    expect(await stolen.json()).toEqual({ error: 'invalid' })
+    expect(await openedSession(stolen)).toBeNull()
+
+    // Et le refus n'a **rien consommé** : le code dont c'est l'empreinte vaut
+    // toujours. Sans cette moitié, un refus qui brûle le code passerait pour
+    // une protection.
+    const genuine = await call('/two-factor/verify-backup-code', {
+      body: { code: enrolled.backupCodes[0] ?? '' },
+      cookie: await aChallenge(enrolled.email),
+    })
+
+    expect(await openedSession(genuine)).not.toBeNull()
+  }, 90_000)
+
+  it('ouvre une session avec un code, refuse le même ensuite, et laisse les autres intacts', async () => {
+    const enrolled = await anAccountWithTwoFactor()
+    const [first, second, third] = enrolled.backupCodes as readonly string[]
+
+    const used = await call('/two-factor/verify-backup-code', {
+      body: { code: first },
+      cookie: await aChallenge(enrolled.email),
+    })
+
+    expect(used.status).toBe(200)
+    expect(await used.json()).toEqual({ status: true })
+    expect(await openedSession(used)).not.toBeNull()
+
+    const replayed = await call('/two-factor/verify-backup-code', {
+      body: { code: first },
+      cookie: await aChallenge(enrolled.email),
+    })
+
+    expect(replayed.status).toBe(401)
+    expect(await openedSession(replayed)).toBeNull()
+
+    // **Le cas qui attrape le double hachage.** Après la consommation, la
+    // bibliothèque ré-encode les neuf codes restants — qui sont déjà des
+    // empreintes. Les hacher une seconde fois les rendrait tous inutilisables,
+    // et rien ne le dirait avant ce moment précis.
+    for (const code of [second, third]) {
+      const later = await call('/two-factor/verify-backup-code', {
+        body: { code },
+        cookie: await aChallenge(enrolled.email),
+      })
+
+      expect(await openedSession(later)).not.toBeNull()
+    }
+  }, 90_000)
+
+  it('ne laisse passer qu’une seule de deux consommations simultanées du même code', async () => {
+    const enrolled = await anAccountWithTwoFactor()
+
+    // **Cinq courses indépendantes, un code chacune**, et pas une seule : la
+    // fenêtre est étroite, et un tirage unique laissait la mesure passer trois
+    // fois sur quatre alors que le défaut était bien là. Cinq codes différents
+    // ne se gênent pas entre eux — chaque course part d'un état propre.
+    for (const code of enrolled.backupCodes.slice(0, 5)) {
+      // **Deux défis distincts**, et c'est la condition du cas : deux requêtes
+      // partageant le même défi seraient départagées par la consommation du
+      // compteur de tentatives, bien avant la comparaison-et-échange sur les
+      // codes. Elles ne prouveraient donc rien de l'usage unique du code.
+      const [firstChallenge, secondChallenge] = await Promise.all([
+        aChallenge(enrolled.email),
+        aChallenge(enrolled.email),
+      ])
+
+      const [left, right] = await Promise.all([
+        call('/two-factor/verify-backup-code', { body: { code }, cookie: firstChallenge }),
+        call('/two-factor/verify-backup-code', { body: { code }, cookie: secondChallenge }),
+      ])
+
+      const opened = (
+        await Promise.all([openedSession(left), openedSession(right)])
+      ).filter((session) => session !== null)
+
+      expect(opened, `code « ${code} »`).toHaveLength(1)
+
+      // Les deux requêtes ont bien atteint la vérification : la perdante est
+      // refusée par la comparaison-et-échange (`CONFLICT`, replié sur la classe
+      // `invalid`), pas écartée avant d'avoir joué.
+      const loser = [left, right].find((response) => !response.ok)
+
+      expect(loser?.status, `code « ${code} »`).toBe(401)
+      expect(await loser?.json(), `code « ${code} »`).toEqual({ error: 'invalid' })
+    }
+  }, 120_000)
+
+  it('ne journalise pas une activation quand un code est consommé en session', async () => {
+    const enrolled = await anAccountWithTwoFactor()
+
+    logs = []
+
+    // La route est **publique** : ce chemin existe, même si l'interface ne
+    // l'offre pas. Le journaliser comme une activation ferait mentir le
+    // journal sur le seul point qui l'intéresse (revue s13, C9).
+    const used = await call('/two-factor/verify-backup-code', {
+      body: { code: enrolled.backupCodes[0] ?? '' },
+      cookie: enrolled.cookie,
+    })
+
+    expect(used.status).toBe(200)
+    expect(logs.map((record) => record.event)).toEqual(['auth.two_factor_verified'])
+  }, 60_000)
+
+  it('régénère dix codes sur preuve du mot de passe, et invalide les précédents', async () => {
+    const enrolled = await anAccountWithTwoFactor()
+    const stale = enrolled.backupCodes[0] ?? ''
+
+    const withoutPassword = await call('/two-factor/generate-backup-codes', {
+      body: {},
+      cookie: enrolled.cookie,
+    })
+
+    expect(withoutPassword.ok).toBe(false)
+
+    const regenerated = await call('/two-factor/generate-backup-codes', {
+      body: { password: PASSWORD },
+      cookie: enrolled.cookie,
+    })
+    const payload = (await regenerated.json()) as Record<string, unknown>
+
+    expect(Object.keys(payload)).toEqual(['backupCodes'])
+    expect(payload.backupCodes).toHaveLength(10)
+    expect(payload.backupCodes).not.toEqual(enrolled.backupCodes)
+
+    const stored = await storedCodes(enrolled.userId)
+
+    for (const code of payload.backupCodes as readonly string[]) {
+      expect(stored).not.toContain(code)
+    }
+
+    // L'ancien jeu ne vaut plus rien.
+    const refused = await call('/two-factor/verify-backup-code', {
+      body: { code: stale },
+      cookie: await aChallenge(enrolled.email),
+    })
+
+    expect(await openedSession(refused)).toBeNull()
+
+    // Le nouveau, si.
+    const accepted = await call('/two-factor/verify-backup-code', {
+      body: { code: (payload.backupCodes as readonly string[])[0] ?? '' },
+      cookie: await aChallenge(enrolled.email),
+    })
+
+    expect(await openedSession(accepted)).not.toBeNull()
+    expect(logs.map((record) => record.event)).toContain(
+      'auth.two_factor_backup_codes_regenerated',
+    )
+  }, 90_000)
+})
+
+describe.skipIf(!databaseReachable)('second facteur — désactivation', () => {
+  it('exige le mot de passe courant : une session volée ne retire pas le second facteur', async () => {
+    const enrolled = await anAccountWithTwoFactor()
+
+    const withoutProof = await call('/two-factor/disable', {
+      body: {},
+      cookie: enrolled.cookie,
+    })
+    const withWrongProof = await call('/two-factor/disable', {
+      body: { password: `${PASSWORD}-faux` },
+      cookie: enrolled.cookie,
+    })
+
+    // Le refus est celui du module, uniforme : la bibliothèque distingue
+    // « pas de mot de passe » de « mot de passe faux », l'appelant non.
+    for (const refused of [withoutProof, withWrongProof]) {
+      expect(refused.status).toBe(400)
+      expect(await refused.json()).toEqual({
+        error: 'invalid_request',
+        reason: expect.any(String),
+      })
+    }
+
+    // Et le journal ne raconte **pas** une désactivation qui n'a pas eu lieu :
+    // un événement de sécurité qui ment sur ce qui s'est passé est pire
+    // qu'absent (`docs/security.md` §7). C'est ce cas qui rougit si la route
+    // laisse passer la réponse de la bibliothèque au lieu de la juger.
+    expect(logs.map((record) => record.event)).not.toContain('auth.two_factor_disabled')
+
+    // Rien n'a bougé : la connexion demande toujours un second facteur.
+    expect(await openedSession(await signIn(enrolled.email))).toBeNull()
+  }, 60_000)
+
+  it('retire le second facteur, ses codes de secours, et fait tourner l’identifiant de session', async () => {
+    const enrolled = await anAccountWithTwoFactor()
+    const before = await service.resolveSessionId(
+      new Request(APP_URL, { headers: { cookie: enrolled.cookie } }),
+    )
+
+    const disabled = await call('/two-factor/disable', {
+      body: { password: PASSWORD },
+      cookie: enrolled.cookie,
+    })
+
+    expect(disabled.status).toBe(200)
+
+    // `docs/security.md` §2 : la désactivation est une élévation de privilège
+    // comme l'activation, l'identifiant de session change aux deux bouts.
+    const after = await openedSession(disabled)
+
+    expect(after).not.toBeNull()
+    expect(after).not.toBe(before)
+    expect(
+      await service.resolveSessionId(
+        new Request(APP_URL, { headers: { cookie: enrolled.cookie } }),
+      ),
+    ).toBeNull()
+
+    // La connexion se termine de nouveau après le mot de passe…
+    expect(await openedSession(await signIn(enrolled.email))).not.toBeNull()
+
+    // …et la ligne a disparu, donc les codes de secours avec elle.
+    const [row] = await connection.db
+      .select({ id: authSchema.authTwoFactor.id })
+      .from(authSchema.authTwoFactor)
+      .where(sql`user_id = ${enrolled.userId}`)
+
+    expect(row).toBeUndefined()
+    expect(logs.map((record) => record.event)).toContain('auth.two_factor_disabled')
+  }, 60_000)
+})
+
+describe.skipIf(!databaseReachable)('second facteur — aucune énumération', () => {
+  it('rend le même refus qu’un compte soit protégé, non protégé ou inexistant', async () => {
+    const protectedAccount = await anAccountWithTwoFactor()
+    const plainAccount = await aVerifiedAccount()
+
+    const responses = await Promise.all([
+      call('/sign-in/email', {
+        body: { email: protectedAccount.email, password: `${PASSWORD}-faux` },
+      }),
+      call('/sign-in/email', {
+        body: { email: plainAccount.email, password: `${PASSWORD}-faux` },
+      }),
+      call('/sign-in/email', { body: { email: anEmail(), password: PASSWORD } }),
+    ])
+
+    const observed = await Promise.all(
+      responses.map(async (response) => ({
+        status: response.status,
+        body: await response.text(),
+        session: await openedSession(response),
+      })),
+    )
+
+    // Trois états de compte, une seule réponse. La présence d'un second
+    // facteur ne se lit **pas** avant que le premier ne soit prouvé
+    // (`docs/security.md` §7).
+    expect(observed[1]).toEqual(observed[0])
+    expect(observed[2]).toEqual(observed[0])
+    expect(observed[0]?.session).toBeNull()
+  }, 90_000)
 })

@@ -171,6 +171,182 @@ qu'une clé est **refusé au démarrage** — comme le poser sous
 la règle « jamais déduit de `NODE_ENV` » reste tenue, `NODE_ENV` ne faisant que
 restreindre l'opt-in sans jamais l'armer.
 
+## Le second facteur (s13)
+
+Cinq routes déclarées, et **cinq seulement** : le greffon `two-factor` en
+expose sept. `two-factor/get-totp-uri` rendrait le secret d'un compte déjà
+activé — celui-ci ne sort qu'une fois, à l'enrôlement de son propriétaire — et
+les deux points d'entrée du facteur par email appartiennent à `otpOptions`,
+que le module ne monte pas. Non déclarés, ils répondent 404 sans atteindre la
+bibliothèque — et ce sont bien **ces trois chemins-là** qu'un cas de
+`tests/auth.test.ts` nomme et interroge, l'affirmation étant restée sans
+commande jusqu'à la revue (C8).
+
+**Les codes de secours sont hachés, et c'est un montage en deux moitiés**
+(ADR 028). Le défaut de la bibliothèque est `storeBackupCodes: 'encrypted'`,
+donc réversible avec le secret de l'application. Ici, `encrypt` remplace chaque
+code par un HMAC-SHA256 poivré (`domain/backup-code.ts`), `decrypt` est
+l'identité, et **la route hache la saisie** avant de la transmettre. Le piège
+est le ré-encodage : la bibliothèque rappelle l'encodeur avec le reste du
+tableau, qui contient déjà des empreintes — hacher deux fois rendrait les neuf
+codes restants inutilisables, sans que rien ne le dise avant le deuxième usage.
+C'est le cas « les neuf autres fonctionnent encore » qui l'attrape.
+
+**`incrementOne` de l'adapter Drizzle n'est pas atomique sur PostgreSQL, et la
+consommation d'un code en dépendait.** `@better-auth/core` le documente comme
+« the race-safe primitive for guarded state transitions » ;
+`@better-auth/drizzle-adapter@1.7.2` écrit
+`UPDATE … WHERE id IN (SELECT id FROM … WHERE <garde> LIMIT 1)`, où la garde
+est dans un sous-select que la ré-évaluation d'EvalPlanQual ne refait pas contre
+la ligne mise à jour. Mesuré : **deux consommations simultanées du même code
+réussissaient toutes les deux**, une exécution sur quatre.
+`infrastructure/two-factor-adapter.ts` enveloppe cette écriture — et elle
+seule, reconnue à sa forme entière — dans un
+`UPDATE … WHERE id = ? AND backup_codes = ?`. Le compteur d'échecs et le
+verrouillage par compte gardent le chemin de la bibliothèque. Le cas de course
+porte sur **cinq codes et dix défis distincts** : deux requêtes partageant un
+même défi seraient départagées par la consommation du compteur de tentatives,
+bien avant la comparaison-et-échange, et ne prouveraient rien.
+
+**La fenêtre de vérification vaut ±1 période de trente secondes, et ce n'est
+pas un réglage.** `totp/index.mjs` appelle `.verify(code)` sans second
+argument, et `@better-auth/utils@0.4.2` y met `window = 1`. Quatre-vingt-dix
+secondes d'acceptation, ce que la RFC 6238 §5.2 prévoit pour la dérive
+d'horloge. Les deux bords sont éprouvés — `-1`, `0`, `+1` acceptés, `-2` et
+`+2` refusés — en calculant le HOTP du compteur voulu plutôt qu'en déplaçant
+l'horloge.
+
+**La devinette est bornée par la bibliothèque, pas par un compteur d'ici.**
+`beginAttempt(5)` détruit le défi au sixième essai ; `accountLockout` (dix
+échecs consécutifs, quinze minutes) traverse les défis et les facteurs. Les
+deux sont actifs par défaut, et le premier est mesuré. **Ils ne s'arment que
+sous `isSignIn`** : le chemin `/two-factor/verify-totp` muni d'une session —
+celui de la confirmation d'enrôlement — n'a *aucun* compteur (`beginAttempt` y
+rend deux fonctions vides). Le gain y est nul aujourd'hui, puisqu'il faut déjà
+une session ; s28 ne doit pas pour autant croire les deux branches couvertes.
+La limitation **partagée entre instances** de `docs/security.md` §7 reste s28,
+que `docs/stories.md` désigne nommément : « aucun compteur local n'est écrit
+ici ».
+
+**Rien de la bibliothèque ne sort tel quel.** Ses cinq codes d'erreur
+(`INVALID_CODE`, `TOTP_NOT_ENABLED`, `INVALID_TWO_FACTOR_COOKIE`,
+`TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE`, `ACCOUNT_TEMPORARILY_LOCKED`) sont repliés
+sur **deux classes** — `invalid` quand le défi vit encore, `restart` quand il
+n'existe plus —, au **même statut**. La garde de rejeu du module en ajoute une
+**troisième**, `used`, qui ne vient pas de la bibliothèque : un compteur déjà
+pris refuse un code **juste**, et lui répondre « ce code n'est pas valide »
+faisait croire à une compromission (revue s13, C12/C13/C14 — deuxième connexion
+dans les mêmes trente secondes, ré-enrôlement dans la même période, horloge du
+serveur reculée). Le statut reste celui de tous les refus, et `used` n'est
+atteignable qu'avec un défi ouvert ou une session : pour qui n'a pas présenté le
+premier facteur, les refus restent indistinguables. **Reste dit comme un code
+faux, et ce n'est pas mesuré** : un *code de secours* déjà consommé — la
+bibliothèque rend le même `INVALID_CODE` pour un code inconnu et pour un code
+consommé, et le module ne garde pas trace des codes retirés. Et ses corps de réponse portent le `token`
+de session : la route les **réécrit**, elle ne les relaie pas. Un jeton rendu à
+un écran, c'est `HttpOnly` annulé.
+
+**La connexion a un troisième cas.** `200 + twoFactorRedirect` n'est ni un
+succès ni un échec : le mot de passe est bon, mais le crochet du greffon a
+détruit la session que la bibliothèque venait de créer. `auth.sign_in_succeeded`
+y aurait nommé `anonymous`, ce corps ne portant aucun compte ;
+`auth.two_factor_challenged` a donc son nom, et son acteur est relu par
+l'adresse — déjà validée à ce point du code.
+
+**La rotation de session est celle de la bibliothèque, aux trois moments** :
+confirmation du premier code, désactivation, et vérification à la connexion.
+C'est le principal argument pour ne pas réécrire la désactivation, et c'est ce
+qui décide de la preuve exigée : `disableTwoFactor` appelle `validatePassword`
+avant tout (`shouldRequirePassword` rend `true` dès qu'`allowPasswordless`
+n'est pas posé), sans crochet pour y substituer une autre preuve. **Le critère 5
+de `docs/stories.md` a donc été amendé** : il disait « un code valide **ou** le
+mot de passe courant », il dit désormais « le mot de passe courant ». Ce n'est
+pas une renonciation — le mot de passe est la plus forte des deux preuves, et
+l'invariant qui compte est tenu : un vol de session ne retire pas le second
+facteur. Livrer l'autre moitié voudrait dire réécrire `createSession` +
+`setSessionCookie` hors de la bibliothèque, pour un affaiblissement.
+
+Conséquence à connaître : un compte **sans mot de passe** — créé par un
+fournisseur externe seul — ne peut ni activer ni désactiver le second facteur.
+C'est s14 qui rouvrira la question.
+
+**Le second facteur vaut sur les trois voies d'entrée, pas sur une seule.**
+Le `matcher` du crochet du greffon ne cite que `/sign-in/email`,
+`/sign-in/username` et `/sign-in/phone-number` : le **magic link** et les
+**rappels de fournisseur** ouvraient donc une session sur un compte protégé
+sans demander le moindre code — les deux mesurés, et `/sign-in` propose le
+magic link juste sous le formulaire de mot de passe. Une protection qu'un
+bouton voisin ignore ne protège pas.
+`infrastructure/two-factor-challenge.ts` reprend le handler du greffon tel quel
+et **remplace son `matcher`** : `/magic-link/verify` et `/callback/:id` posent
+le même défi, et les deux routes du module redirigent vers l'écran de
+vérification au lieu de la destination demandée.
+
+**Et c'est une liste d'exemptions, pas une liste d'inclusions** (revue s13,
+C11). La première forme livrée *ajoutait* deux chemins au `matcher` : aucune
+commande ne rougissait le jour où une quatrième voie de connexion apparaissait,
+et s14 en monte une (`/passkey/verify-authentication`). Le crochet vaut donc
+partout, et `TWO_FACTOR_CHALLENGE_EXEMPT_PATHS` énumère les **cinq** chemins qui
+ont le droit de poser une session sans défi : les trois points d'entrée de
+vérification du second facteur — s'en exempter est ce qui empêche la boucle —,
+plus `/get-session` et `/change-password`, qui font tourner la session d'un
+appelant **déjà authentifié** (les deux seuls points d'entrée que le module
+appelle par `auth.api.*`). Une exemption manquante échoue *fermée* : un défi de
+trop, visible tout de suite. Une inclusion manquante échouait *ouvert*.
+
+La propriété tenue, mesurée sur les trois voies que l'application expose
+aujourd'hui, et **maintenue par la forme de la garde** plutôt que par une liste
+à mettre à jour : *aucune session n'existe sur un compte à second facteur actif
+tant que le facteur n'a pas été présenté*. La commande qui le vérifie :
+`packages/modules/auth/src/infrastructure/two-factor-challenge.test.ts` fait
+passer par la garde une **route de connexion fictive**, que rien du module ne
+cite — rendre au `matcher` une liste d'inclusions la rend rouge.
+
+Élargir le crochet plutôt que marquer la session est un choix, et il a une
+raison exécutable : la branche « session déjà ouverte » de `verifyTwoFactor`
+n'arme **ni** `beginAttempt(5)`, **ni** `accountLockout`. Laisser la session
+s'ouvrir puis exiger le code en aval aurait donc offert une devinette à six
+chiffres sans aucun compteur.
+
+**Un code TOTP ne sert qu'une fois.** La bibliothèque ne mémorise aucun
+compteur : un code accepté restait valable jusqu'à quatre-vingt-dix secondes,
+donc rejouable sur un défi neuf par qui l'avait vu une fois — le critère 4 dit
+pourtant « erroné **ou rejoué** ». La colonne `auth_two_factor.last_totp_step`
+porte le dernier pas consommé par compte, et la prise est une
+comparaison-et-échange (`where user_id = ? and (last_totp_step is null or
+last_totp_step < ?)`), jamais une lecture suivie d'une écriture. Le compteur du
+code est retrouvé avec la primitive de la bibliothèque elle-même
+(`@better-auth/utils@0.4.2`, version épinglée par `better-auth@1.7.2`, déclarée
+en dépendance directe pour cela) : une seconde implémentation du HOTP pourrait
+diverger, et une divergence refuserait toutes les connexions. Un pas déjà pris
+⇒ refus au même statut qu'un code faux, **et la session que la bibliothèque
+venait d'ouvrir est révoquée**.
+
+Conséquence à connaître pour les tests : après une confirmation ou une
+connexion, le compteur employé est brûlé. Le cas qui mesure la **fenêtre**
+(±1 période) remet donc `last_totp_step` à `null` entre ses trois bords — ce
+sont deux propriétés distinctes, et chacune a son cas.
+
+**Le jeton de session de `/sign-in/email` sort encore dans le corps de la
+réponse de la bibliothèque** (`api/routes/sign-in.mjs:364`), et la route du
+module relaie cette réponse en cas de succès — contrairement aux cinq routes du
+second facteur, qui réécrivent la leur. Ce n'est **pas** exploitable dans ce
+montage, et c'est vérifié : le cookie de session est *signé*
+(`setSessionCookie` → `ctx.setSignedCookie`), donc le jeton nu n'en forge pas
+un sans `AUTH_SECRET`, et le greffon `bearer` n'est pas monté — les seuls
+greffons présents sont `magicLink` et `twoFactor`. **Le jour où une story monte
+`bearer` ou livre des jetons d'API, ce relais devient une fuite de session :
+c'est ce fichier-ci qu'il faut relire, et la réponse de `/sign-in/email` qu'il
+faut réécrire comme les autres.**
+
+Cette condition d'escalade était écrite en gras, et **aucune commande ne la
+vérifiait** (revue s13, C4) : elle en a une désormais. `tests/auth.test.ts`,
+« n'authentifie rien avec le jeton que la bibliothèque laisse dans le corps de
+la connexion », relit le `token` du corps et le présente en `Authorization:
+Bearer` — sur une route protégée du module et au résolveur de session. Monter
+`bearer` rend ce cas rouge, ce qui est exactement le moment où ce paragraphe
+doit être relu.
+
 ## Ce que la bibliothèque fait déjà bien, et qu'il ne faut pas réécrire
 
 Mesuré dans le paquet **installé** (1.7.2), sur les quatre points regardés :
@@ -223,10 +399,9 @@ pourquoi le service de la bibliothèque est déclaré comme un **port** dans
   refus qui varie ;
 - de constante de politique en dur : longueurs de mot de passe et durées de vie
   des liens vivent dans `AuthPolicy`, injectée au point de composition ;
-- de second facteur ni de passkey : ce sont s13 et s14. Les greffons peuvent
-  être prévus, pas activés. **OAuth est livré (s12)** ; ce qui reste hors du
-  module est la liaison explicite depuis les paramètres (`/link-social`,
-  non déclarée, donc 404) ;
+- de passkey : c'est s14. **Le second facteur est livré (s13)**, voir plus bas ;
+  **OAuth est livré (s12)** ; ce qui reste hors du module est la liaison
+  explicite depuis les paramètres (`/link-social`, non déclarée, donc 404) ;
 - de **lecture d'une variable d'environnement** : les identifiants de
   fournisseur sont **reçus** du point de composition, comme la connexion et le
   mailer. Une paire incomplète a déjà arrêté le démarrage, en nommant la
@@ -241,4 +416,9 @@ pourquoi le service de la bibliothèque est déclaré comme un **port** dans
 - `tests/auth.test.ts` à la racine : tout ce qui traverse — base réelle,
   répartiteur, port `Mailer`, cookie, temps de réponse. C'est là que vivent les
   trois mesures de frontière ;
-- `e2e/auth.spec.ts` : le parcours complet dans un navigateur.
+- `e2e/auth.spec.ts` : le parcours complet dans un navigateur ;
+- `e2e/two-factor.spec.ts` (s13) : l'enrôlement, puis les deux moyens de
+  vérification. Ce qu'aucun test de nœud n'y voit — le **secret affiché à
+  l'écran** est celui qui vérifie le code, le parcours le lit dans la page au
+  lieu de le recevoir d'une API ; et le formulaire de connexion **va** à
+  l'écran de vérification au lieu du tableau de bord.

@@ -27,7 +27,12 @@
 - Verrouillage progressif sur échecs répétés, par compte **et** par adresse IP (s28).
 - Messages d'erreur indistinguables entre compte inconnu et mot de passe invalide, y compris en temps de réponse.
 - Jetons à usage unique (vérification, réinitialisation, invitation, magic link) : durée de vie courte, consommation atomique, invalidation des jetons frères à l'usage.
-- Secrets de second facteur et codes de secours stockés hachés.
+- Codes de secours stockés **hachés** ; secret de second facteur **chiffré**
+  au repos et exposé une seule fois, à l'enrôlement de son propriétaire. La
+  ligne disait « hachés » pour les deux jusqu'à s13 : un secret TOTP est
+  réversible par construction — le vérifier, c'est regénérer le code, donc
+  relire le secret. Le découpage, ce qu'il change et ce qu'il ne relâche pas :
+  **ADR 028**.
 
 ## 3. Autorisation
 

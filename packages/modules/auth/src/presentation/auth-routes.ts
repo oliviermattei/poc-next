@@ -22,6 +22,11 @@ import {
   type AnyOAuthProviderId,
 } from '../domain/oauth'
 import { safeRedirectPath } from '../domain/redirect'
+import {
+  TWO_FACTOR_REFUSAL_STATUS,
+  TWO_FACTOR_SCREEN,
+  twoFactorRefusal,
+} from '../domain/two-factor'
 
 /**
  * Les routes du module, **énumérées une par une**.
@@ -60,6 +65,17 @@ const PATHS = {
   changeEmail: '/auth/change-email',
   changeName: '/auth/change-name',
   revokeSession: '/auth/revoke-session',
+  // s13. Cinq chemins, et **cinq seulement** : le greffon en expose sept.
+  // `two-factor/get-totp-uri` rendrait le secret d'un compte déjà activé —
+  // celui-ci ne sort qu'une fois, à l'enrôlement de son propriétaire — et
+  // `two-factor/send-otp` / `two-factor/verify-otp` appartiennent au facteur
+  // par email, que le module ne monte pas. Non déclarés, ils répondent 404
+  // sans atteindre la bibliothèque.
+  twoFactorEnable: '/auth/two-factor/enable',
+  twoFactorVerify: '/auth/two-factor/verify-totp',
+  twoFactorBackupCode: '/auth/two-factor/verify-backup-code',
+  twoFactorRegenerate: '/auth/two-factor/generate-backup-codes',
+  twoFactorDisable: '/auth/two-factor/disable',
 } as const
 
 /** Le chemin public d'une route du module, préfixe de montage compris. */
@@ -217,6 +233,245 @@ const actorOfSessionSetBy = async (
   return session === null ? null : { userId: session.userId }
 }
 
+/**
+ * **Défait la session que la réponse vient d'ouvrir.**
+ *
+ * Appelé quand une vérification que la bibliothèque a acceptée est refusée
+ * *ensuite* par une règle du module — le rejeu d'un code TOTP. Ne pas recopier
+ * les cookies suffirait à ce que le navigateur n'ait rien ; laisser la ligne
+ * de session derrière serait une session que personne n'a demandée
+ * (`docs/security.md` §2 : la révocation est côté serveur, pas dans une
+ * liste).
+ */
+const revokeSessionSetBy = async (
+  auth: AuthService,
+  request: Request,
+  response: Response,
+): Promise<void> => {
+  const cookie = cookiesSetBy(response)
+
+  if (cookie === '') {
+    return
+  }
+
+  const probe = new Request(request.url, { headers: { cookie } })
+  const session = await auth.resolveSession(probe)
+  const sessionId = await auth.resolveSessionId(probe)
+
+  if (session === null || sessionId === null) {
+    return
+  }
+
+  await auth.useCases.revokeSession({ userId: session.userId, sessionId })
+}
+
+/**
+ * Cette connexion a-t-elle été **interrompue par un second facteur** ?
+ *
+ * La réponse est clonée : la lire consommerait le flux que l'appelant doit
+ * encore recevoir. Le marqueur est celui de la bibliothèque
+ * (`twoFactorRedirect`), lu **ici et nulle part ailleurs** — il ne ressort
+ * jamais tel quel.
+ */
+const isTwoFactorChallenge = async (response: Response): Promise<boolean> => {
+  // 200 pour le formulaire de mot de passe, **302 pour les deux voies qui
+  // redirigent** : le magic link et les rappels de fournisseur lancent leur
+  // redirection après avoir posé la session, et le crochet du greffon remplace
+  // le corps sans changer le statut. Se limiter à `response.ok` laissait ces
+  // deux-là passer pour des connexions abouties.
+  if (!response.ok && response.status !== 302) {
+    return false
+  }
+
+  const payload = (await response
+    .clone()
+    .json()
+    .catch(() => null)) as { readonly twoFactorRedirect?: unknown } | null
+
+  return payload?.twoFactorRedirect === true
+}
+
+/**
+ * Ce que devient une **redirection** interrompue par un second facteur.
+ *
+ * Les cookies sont recopiés — le défi vient d'être posé et la session vient
+ * d'être effacée, perdre l'un ou l'autre rendrait la vérification impossible —
+ * et la destination devient l'écran de vérification. La destination d'origine
+ * y est reportée en `?next=`, **filtrée deux fois** : une fois ici contre
+ * l'origine de la requête, une fois par l'écran (`docs/security.md` §4). Une
+ * destination hors du site ne repart donc pas d'ici.
+ */
+const twoFactorChallengeRedirect = (request: Request, response: Response): Response => {
+  const origin = new URL(request.url).origin
+  const location = response.headers.get('location') ?? ''
+  // `new URL` plutôt que `URL.parse` : ce dernier n'existe qu'à partir de
+  // Node 22, et le dépôt déclare `>=20.10.0`. Une destination illisible n'est
+  // pas une erreur ici — elle retombe sur le tableau de bord.
+  const parsed = (): URL | null => {
+    try {
+      return location === '' ? null : new URL(location, origin)
+    } catch {
+      return null
+    }
+  }
+
+  const requested = parsed()
+  const next =
+    requested !== null && requested.origin === origin
+      ? safeRedirectPath(`${requested.pathname}${requested.search}`, '/')
+      : '/'
+
+  return withCookiesOf(
+    response,
+    redirect(`${TWO_FACTOR_SCREEN}?next=${encodeURIComponent(next)}`),
+  )
+}
+
+/** Une réponse à nous, portant les cookies que la bibliothèque vient de poser. */
+const withCookiesOf = (source: Response, target: Response): Response => {
+  const headers = new Headers(target.headers)
+
+  for (const cookie of source.headers.getSetCookie()) {
+    headers.append('set-cookie', cookie)
+  }
+
+  return new Response(target.body, { status: target.status, headers })
+}
+
+/**
+ * La réponse d'une vérification de second facteur, **débarrassée de son corps**.
+ *
+ * Les cookies posés par la bibliothèque sont recopiés — c'est là que vit la
+ * session rotée, les perdre reviendrait à ne pas connecter la personne. Le
+ * corps, lui, est remplacé : celui de la bibliothèque porte le `token` de la
+ * session (`verify-two-factor.mjs`, les deux branches de `valid()`), et un
+ * jeton rendu à un écran annule `HttpOnly`.
+ */
+const withoutSessionToken = (response: Response, body: unknown): Response => {
+  const headers = new Headers({ 'content-type': 'application/json' })
+
+  for (const cookie of response.headers.getSetCookie()) {
+    headers.append('set-cookie', cookie)
+  }
+
+  return new Response(JSON.stringify(body), { status: response.status, headers })
+}
+
+/**
+ * Ce que devient une vérification de second facteur — **un seul endroit pour
+ * les deux facteurs et les deux moments**.
+ *
+ * Quatre issues, et elles ne se ressemblent pas :
+ *
+ * | Session à l'entrée | Réponse de la bibliothèque | Ce que c'est |
+ * |---|---|---|
+ * | oui | succès | une **activation** confirmée : le compte vient d'élever son privilège |
+ * | oui | refus | un code faux pendant l'enrôlement |
+ * | non | succès | une **connexion** achevée : la session n'existe qu'à partir d'ici |
+ * | non | refus | un code faux, ou un défi qui n'existe plus |
+ *
+ * Le refus est replié sur les deux classes du `domain` : aucun des cinq codes
+ * du greffon n'atteint le navigateur (`docs/security.md` §7).
+ */
+const settleTwoFactorVerification = async (input: {
+  readonly auth: AuthService
+  readonly request: Request
+  readonly response: Response
+  readonly session: { readonly userId: string } | null
+  readonly method: 'totp' | 'backup_code'
+  /** Le code saisi — seul le facteur TOTP en a besoin, pour sa garde de rejeu. */
+  readonly code: string
+}): Promise<Response> => {
+  const { auth, request, response, session, method, code } = input
+  const refusal = twoFactorRefusal(response.status)
+
+  if (refusal !== null) {
+    auth.useCases.log(
+      describeSecurityEvent({
+        event: 'auth.two_factor_failed',
+        actor: session,
+        details: { method, class: refusal.body.error },
+      }),
+    )
+
+    return Response.json(refusal.body, { status: refusal.status })
+  }
+
+  // L'acteur : la session de l'appelant s'il en avait une, sinon celle que la
+  // réponse vient de poser — jamais devinée d'un corps ni d'un nom de cookie.
+  const actor = session ?? (await actorOfSessionSetBy(auth, request, response))
+
+  // **Un code TOTP ne sert qu'une fois** (critère 4 de la story). La
+  // bibliothèque ne mémorise aucun compteur : le code qu'elle vient d'accepter
+  // reste valable jusqu'à quatre-vingt-dix secondes, donc rejouable sur un
+  // défi neuf par qui l'a vu une fois — épaule, relais d'hameçonnage, capture.
+  // Le module prend donc le compteur, et un compteur déjà pris est un refus.
+  if (method === 'totp' && actor !== null) {
+    const claimed = await auth.claimTotpStep({ userId: actor.userId, code })
+
+    if (!claimed) {
+      // La bibliothèque a déjà ouvert la session : elle est défaite ici, et
+      // ses cookies ne sont pas recopiés. Sur le chemin de l'enrôlement
+      // (session à l'entrée), il n'y a rien à défaire — la première
+      // confirmation trouve toujours le compteur libre.
+      if (session === null) {
+        await revokeSessionSetBy(auth, request, response)
+      }
+
+      auth.useCases.log(
+        describeSecurityEvent({
+          event: 'auth.two_factor_failed',
+          actor,
+          details: { method, class: 'used', reason: 'replayed_step' },
+        }),
+      )
+
+      // **Le refus dit la vérité.** Le code présenté est juste ; ce qui le
+      // refuse est son compteur, déjà pris. Le confondre avec un code faux
+      // faisait afficher « ce code n'est pas valide » à quelqu'un qui lit le
+      // bon code sur son téléphone — deuxième connexion dans les mêmes trente
+      // secondes, ré-enrôlement dans la même période, horloge reculée — et lui
+      // faisait croire à une compromission (revue s13, C12/C13/C14).
+      //
+      // Ce n'est pas un oracle pour autant : le **statut** est celui de tous
+      // les refus, et on n'atteint cette ligne qu'avec un défi ouvert ou une
+      // session — donc après avoir prouvé le premier facteur, sur son propre
+      // compte (`docs/security.md` §7).
+      return Response.json({ error: 'used' }, { status: TWO_FACTOR_REFUSAL_STATUS })
+    }
+  }
+
+  if (session !== null) {
+    // Une session à l'entrée **et le facteur d'application** : c'est
+    // l'enrôlement qui se confirme. C'est ici que le second facteur devient
+    // actif — pas à `enable`, qui n'écrit qu'un secret non vérifié —, donc
+    // c'est ici que `docs/security.md` §7 veut son « changement de second
+    // facteur ». Un **code de secours** consommé en session n'active rien : la
+    // route est publique, ce chemin existe donc, et le nommer « activation »
+    // ferait mentir le journal.
+    auth.useCases.log(
+      describeSecurityEvent({
+        event: method === 'totp' ? 'auth.two_factor_enabled' : 'auth.two_factor_verified',
+        actor: session,
+        details: { method },
+      }),
+    )
+
+    return withoutSessionToken(response, { status: true })
+  }
+
+  // Pas de session à l'entrée : c'est une connexion qui s'achève.
+  auth.useCases.log(
+    describeSecurityEvent({
+      event: 'auth.two_factor_verified',
+      actor,
+      details: { method },
+    }),
+  )
+
+  return withoutSessionToken(response, { status: true })
+}
+
 export function createAuthRoutes(service: () => AuthService): readonly ModuleRoute[] {
   const refuseInvalid = async (
     run: () => Promise<Response>,
@@ -276,6 +531,13 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
         // **Sous échéance** : c'est le seul point d'entrée du module qui
         // déclenche des appels sortants (`docs/reliability.md` §3).
         const response = await auth.handleOAuthCallback(request)
+
+        // Même règle que le magic link : le fournisseur atteste l'adresse, il
+        // n'atteste pas le second facteur (revue s13, C2).
+        if (await isTwoFactorChallenge(response)) {
+          return twoFactorChallengeRedirect(request, response)
+        }
+
         // Le retour du fournisseur est **une connexion** : §7 la veut
         // journalisée avec son acteur, comme celle par mot de passe, et son
         // échec sans acteur. Le fournisseur est le seul détail retenu — il
@@ -497,6 +759,34 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
 
           const response = await auth.handle(withBody(request, input))
 
+          // **Un troisième cas** depuis s13, et il n'est ni l'un ni l'autre :
+          // le mot de passe est bon, mais le greffon de second facteur a
+          // détruit la session que la bibliothèque venait de créer
+          // (`plugins/two-factor/index.mjs`, crochet `after` sur
+          // `/sign-in/email`). Le compter comme une connexion réussie ferait
+          // mentir le journal sur le seul point qui l'intéresse — aucune
+          // session n'existe —, et `actorOf` y trouverait `anonymous`, ce
+          // corps ne portant pas de compte.
+          if (await isTwoFactorChallenge(response)) {
+            // L'acteur est relu par son adresse, déjà validée par la
+            // bibliothèque : on n'arrive ici qu'avec le bon mot de passe.
+            const actor = await auth.useCases.identifyAccount(input.email)
+
+            auth.useCases.log(
+              describeSecurityEvent({
+                event: 'auth.two_factor_challenged',
+                actor,
+                details: { method: 'password' },
+              }),
+            )
+
+            // Les cookies sont recopiés — le défi vient d'être posé, et la
+            // session vient d'être effacée —, le corps est remplacé.
+            // `twoFactorMethods` énumère les facteurs du compte ; l'écran n'a
+            // besoin que de savoir qu'il doit en demander un.
+            return withoutSessionToken(response, { twoFactor: true })
+          }
+
           // Le **journal** garde le statut réel de la bibliothèque : c'est
           // l'exploitant qui a besoin de distinguer un mot de passe faux d'une
           // adresse non vérifiée, jamais l'appelant anonyme.
@@ -554,6 +844,16 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
       handler: async (request) => {
         const auth = service()
         const response = await auth.handle(request)
+
+        // **Le second facteur s'applique ici aussi** (revue s13, C2). Le
+        // greffon ne couvre que `/sign-in/email` ; le module étend son crochet
+        // aux deux voies qui redirigent, et la personne est envoyée à l'écran
+        // de vérification au lieu de sa destination. Le journal de ce cas est
+        // écrit là où le compte est encore connu — `infrastructure/`.
+        if (await isTwoFactorChallenge(response)) {
+          return twoFactorChallengeRedirect(request, response)
+        }
+
         // Le lien **ouvre une session** : §7 ne fait pas d'exception pour un
         // moyen de connexion sans mot de passe. La lacune est antérieure à s12,
         // et elle se ferme ici avec le même utilitaire que les rappels.
@@ -743,6 +1043,219 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
 
           return revoked ? Response.json({ status: true }) : notFound()
         }),
+    },
+    {
+      method: 'POST',
+      path: PATHS.twoFactorEnable,
+      protection: { level: 'authenticated' },
+      handler: async (request, context) => {
+        const auth = service()
+        const body = (await jsonBody(request)) as { readonly password?: unknown } | null
+
+        if (context.session === null) {
+          return badRequest('session absente')
+        }
+
+        if (typeof body?.password !== 'string' || body.password === '') {
+          return badRequest('mot de passe courant manquant')
+        }
+
+        // **Le corps est reconstruit.** Celui de la bibliothèque accepte
+        // `method` — `'otp'` activerait le second facteur *immédiatement*, sans
+        // qu'aucun code n'ait été confirmé — et `issuer`, qui décide du nom
+        // affiché par l'application d'authentification : y écrire « votre
+        // banque » est un hameçonnage à un champ.
+        const response = await auth.handle(
+          withBody(request, { password: body.password, method: 'totp' }),
+        )
+
+        if (!response.ok) {
+          // Le mot de passe est faux, ou le compte n'en a pas — un compte créé
+          // par un fournisseur externe seul n'a pas de premier facteur à
+          // renforcer. Le refus est le même dans les deux cas : c'est son
+          // propriétaire qui appelle, il n'y a rien à lui apprendre, et rien
+          // à lui distinguer non plus.
+          return badRequest('preuve refusée')
+        }
+
+        const payload = (await response.json()) as {
+          readonly totpURI?: unknown
+          readonly backupCodes?: unknown
+        }
+
+        // **La réponse est réécrite, jamais relayée.** Celle de la
+        // bibliothèque porte `method` en plus des deux champs utiles.
+        // Correction de la revue (C9) : sur le chemin TOTP elle ne porte
+        // **pas** de `token` — `enableTwoFactor` ne repose de session que sous
+        // `skipVerificationOnEnable` ou `method: 'otp'`, et le module n'active
+        // ni l'un ni l'autre. La réécriture reste la règle du module (aucun
+        // corps de bibliothèque ne sort tel quel) ; c'est sa justification qui
+        // était fausse. Deux champs sortent, et deux seulement — le secret sous
+        // forme d'URI, et les dix codes en clair, **la seule fois** où ils
+        // existent ailleurs qu'en empreinte.
+        return Response.json({
+          totpURI: payload.totpURI,
+          backupCodes: payload.backupCodes,
+        })
+      },
+    },
+    {
+      method: 'POST',
+      // **Publique**, et c'est le même point d'entrée pour deux moments : la
+      // confirmation d'un enrôlement, qui a une session, et la vérification à
+      // la connexion, qui n'en a pas encore — elle ne porte que le cookie de
+      // défi. Déclarer la route `authenticated` fermerait la seconde.
+      path: PATHS.twoFactorVerify,
+      protection: { level: 'public' },
+      handler: async (request, context) => {
+        const auth = service()
+        const body = (await jsonBody(request)) as { readonly code?: unknown } | null
+
+        if (typeof body?.code !== 'string' || body.code === '') {
+          return badRequest('code manquant')
+        }
+
+        // Corps reconstruit : `trustDevice` de la bibliothèque poserait un
+        // cookie de trente jours qui **saute** le second facteur aux
+        // connexions suivantes. Ce n'est pas ce que la story livre, et le
+        // laisser au client reviendrait à lui laisser désarmer sa propre
+        // protection depuis un poste qu'il ne maîtrise pas.
+        const response = await auth.handle(withBody(request, { code: body.code }))
+
+        return await settleTwoFactorVerification({
+          auth,
+          request,
+          response,
+          session: context.session,
+          method: 'totp',
+          code: body.code,
+        })
+      },
+    },
+    {
+      method: 'POST',
+      // Publique, pour la même raison que la vérification TOTP : c'est un
+      // moyen de **terminer une connexion**, et il n'y a pas encore de session.
+      path: PATHS.twoFactorBackupCode,
+      protection: { level: 'public' },
+      handler: async (request, context) => {
+        const auth = service()
+        const body = (await jsonBody(request)) as { readonly code?: unknown } | null
+
+        if (typeof body?.code !== 'string' || body.code === '') {
+          return badRequest('code manquant')
+        }
+
+        // **La saisie est hachée avant d'atteindre la bibliothèque.** La base
+        // ne contient que des empreintes (`domain/backup-code.ts`), et
+        // `verifyBackupCode` compare ce qu'elle reçoit à ce qu'elle lit : sans
+        // cette ligne, la comparaison porterait un code en clair contre une
+        // empreinte, et aucun code ne fonctionnerait jamais. C'est aussi ce
+        // qui rend le stockage haché possible — la bibliothèque, seule, exige
+        // un magasin réversible.
+        //
+        // `disableSession` et `trustDevice` du corps de la bibliothèque ne
+        // sont pas repris : le premier ouvrirait un chemin qui valide un code
+        // sans connecter, le second sauterait le second facteur pendant trente
+        // jours.
+        const response = await auth.handle(
+          withBody(request, { code: auth.digestBackupCode(body.code) }),
+        )
+
+        return await settleTwoFactorVerification({
+          auth,
+          request,
+          response,
+          session: context.session,
+          method: 'backup_code',
+          code: body.code,
+        })
+      },
+    },
+    {
+      method: 'POST',
+      path: PATHS.twoFactorRegenerate,
+      protection: { level: 'authenticated' },
+      handler: async (request, context) => {
+        const auth = service()
+        const body = (await jsonBody(request)) as { readonly password?: unknown } | null
+
+        if (context.session === null) {
+          return badRequest('session absente')
+        }
+
+        if (typeof body?.password !== 'string' || body.password === '') {
+          return badRequest('mot de passe courant manquant')
+        }
+
+        const response = await auth.handle(withBody(request, { password: body.password }))
+
+        if (!response.ok) {
+          return badRequest('preuve refusée')
+        }
+
+        const payload = (await response.json()) as { readonly backupCodes?: unknown }
+
+        auth.useCases.log(
+          describeSecurityEvent({
+            event: 'auth.two_factor_backup_codes_regenerated',
+            actor: context.session,
+          }),
+        )
+
+        // Les dix nouveaux codes, **et rien d'autre** : la réponse de la
+        // bibliothèque porte aussi `status`, et l'ancien jeu vient d'être
+        // remplacé en base par les empreintes de celui-ci.
+        return Response.json({ backupCodes: payload.backupCodes })
+      },
+    },
+    {
+      method: 'POST',
+      path: PATHS.twoFactorDisable,
+      protection: { level: 'authenticated' },
+      handler: async (request, context) => {
+        const auth = service()
+        const body = (await jsonBody(request)) as { readonly password?: unknown } | null
+
+        if (context.session === null) {
+          return badRequest('session absente')
+        }
+
+        // **La preuve est le mot de passe courant**, et elle n'est pas
+        // facultative : sans elle, un vol de session suffirait à retirer le
+        // second facteur, c'est-à-dire à défaire en une requête ce que la
+        // story existe pour poser.
+        //
+        // Le critère de la story dit « un code valide **ou** le mot de passe
+        // courant ». Seule la seconde moitié est livrée, et c'est mesuré, pas
+        // choisi : `disableTwoFactor` appelle `validatePassword` avant tout
+        // (`utils/password.mjs`, `shouldRequirePassword` rend `true` dès que
+        // `allowPasswordless` n'est pas posé), et aucun crochet n'y substitue
+        // une autre preuve. La reproduire ici voudrait dire réécrire la
+        // rotation de session hors de la bibliothèque — précisément ce que la
+        // frontière du module lui confie. Voir `docs/plans/s13-two-factor.md`.
+        if (typeof body?.password !== 'string' || body.password === '') {
+          return badRequest('mot de passe courant manquant')
+        }
+
+        const response = await auth.handle(withBody(request, { password: body.password }))
+
+        if (!response.ok) {
+          return badRequest('preuve refusée')
+        }
+
+        auth.useCases.log(
+          describeSecurityEvent({
+            event: 'auth.two_factor_disabled',
+            actor: context.session,
+          }),
+        )
+
+        // Les cookies sont recopiés : la bibliothèque vient de faire tourner
+        // la session, comme à l'activation. Le corps, lui, ne sort pas — il
+        // porte le jeton de cette nouvelle session.
+        return withoutSessionToken(response, { status: true })
+      },
     },
     {
       method: 'POST',

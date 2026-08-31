@@ -1,0 +1,1 @@
+ALTER TABLE "auth_two_factor" ADD COLUMN "last_totp_step" integer;

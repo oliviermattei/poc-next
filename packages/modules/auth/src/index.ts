@@ -10,7 +10,14 @@
  *   mailer.
  */
 export { authModule } from './module'
-export { authSchema, authAccount, authSession, authUser, authVerification } from './schema'
+export {
+  authSchema,
+  authAccount,
+  authSession,
+  authTwoFactor,
+  authUser,
+  authVerification,
+} from './schema'
 export { configureAuth, requireAuthService, resetAuthService } from './infrastructure/auth-runtime'
 export {
   AUTH_MODELS,
@@ -33,6 +40,9 @@ export {
   type OAuthFailureClass,
 } from './domain/oauth'
 export { safeRedirectPath } from './domain/redirect'
+export {
+  type TwoFactorFailureClass,
+} from './domain/two-factor'
 export { authRoutePath } from './presentation/auth-routes'
 export {
   AUTH_EMAIL_TEMPLATES,

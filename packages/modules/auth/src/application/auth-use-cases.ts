@@ -63,6 +63,8 @@ export interface AccountView {
   readonly name: string
   readonly email: string
   readonly emailVerified: boolean
+  /** Le second facteur est-il actif (s13) ? L'écran de compte en dépend. */
+  readonly twoFactorEnabled: boolean
 }
 
 export type VerificationOutcome =
@@ -117,6 +119,21 @@ export interface AuthUseCases {
   ): Promise<SendEmailResult>
   confirmEmailChange(token: string): Promise<EmailChangeOutcome>
   /** Le compte de l'appelant, tel qu'un écran l'affiche. */
+  /**
+   * L'acteur d'une connexion **déjà authentifiée**, à partir de son adresse
+   * (s13).
+   *
+   * Existe pour une seule raison : quand un second facteur interrompt la
+   * connexion, la bibliothèque détruit la session qu'elle venait de créer et
+   * ne rend aucun compte dans son corps de réponse. Sans cette lecture, le
+   * journal nommerait `anonymous` sur l'événement dont `docs/security.md` §7
+   * a le plus besoin — celui qui compte les défis d'un compte.
+   *
+   * Ce n'est **pas** un oracle d'énumération : le seul appelant s'exécute
+   * après que la bibliothèque a validé le mot de passe. Rien n'y mène depuis
+   * une adresse inconnue, et aucune route ne l'expose.
+   */
+  identifyAccount(email: string): Promise<{ readonly userId: string } | null>
   viewAccount(userId: string): Promise<AccountView | null>
   changeName(input: { readonly userId: string; readonly name: string }): Promise<boolean>
   /** Les sessions actives du compte, la courante en tête, sans aucun jeton. */
@@ -410,6 +427,12 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
       return { status: 'changed', userId, email }
     },
 
+    identifyAccount: async (email) => {
+      const user = await users.findByEmail(email)
+
+      return user === null ? null : { userId: user.id }
+    },
+
     viewAccount: async (userId) => {
       const user = await users.findById(userId)
 
@@ -420,6 +443,7 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
             name: user.name,
             email: user.email,
             emailVerified: user.emailVerified,
+            twoFactorEnabled: user.twoFactorEnabled,
           }
     },
 
