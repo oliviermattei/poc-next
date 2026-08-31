@@ -6,11 +6,11 @@
 
 | Story | État |
 |---|---|
-| s01 → s10, s12, s45 | **closes**, revues, correctifs appliqués |
-| s11, s13 → s44, s46 | à faire — 34 stories |
+| s01 → s10, s12, s15, s45 | **closes**, revues, correctifs appliqués |
+| s11, s13, s14, s16 → s44, s46 | à faire — 33 stories |
 
-Tests : **818 + 2 ignorés**, 46 parcours end-to-end, déterministes (`retries: 0`).
-ADR : **24**. Branche : `dev`. Commits : un par story, plus `docs:` pour recherche, plan, revue.
+Tests : **907 + 2 ignorés**, 49 parcours end-to-end, déterministes (`retries: 0`).
+ADR : **26**. Branche : `dev`. Commits : un par story, plus `docs:` pour recherche, plan, revue.
 
 ## Environnement (à refaire après un redémarrage de session)
 
@@ -35,7 +35,7 @@ open -a Docker && docker compose up -d                                # Postgres
 |---|---|---|---|
 | A | s10-marketing-site | **fusionnée dans `dev`** (`57e9658`), revue `minor`/ship oui | close |
 | C | s45-security-headers | **fusionnée dans `dev`** (`4d87bb5`), revue `major`/ship oui | close |
-| D | s15-organizations | commit `520d49b`, revue **critical**, **tour de correction** (F1 jointure d'appartenance, F2 périmètre non exécutable, F3 ADR superséquent) | `s15`, port 3115 |
+| D | s15-organizations | **fusionnée dans `dev`** (`9bb3309`), revue `none`/ship oui | close |
 | E | s13-two-factor | **à relancer** — voie tuée par une limite d'usage avant d'avoir rien écrit | `s13`, port 3113 |
 | B | s12-oauth-signin | **fusionnée dans `dev`** (`5e73810`), revue `minor`/ship oui | close |
 
@@ -63,13 +63,6 @@ Playwright démarre son propre serveur et échoue bruyamment si le port est pris
 mesurer l'arbre d'une autre branche. Chaque voie choisit le sien par `E2E_PORT` — voir la
 colonne de la table ci-dessus. Vérifié dans les deux sens : vert port libre, refus explicite
 port occupé.
-
-## À faire à la fusion de s15
-
-`dev` (s12) ajoute `apps/web/app/oauth/`, absent d'`APPLICATION_SEGMENTS` : le cas dérivé de
-`tests/organizations.test.ts` rougira — la garde fait son travail — et, non corrigé, un slug
-`oauth` passerait. `apps/web/AGENTS.md` est modifié des deux côtés dans le même paragraphe :
-conflit certain.
 
 ## Dettes à surveiller
 
