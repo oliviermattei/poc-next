@@ -29,6 +29,22 @@ open -a Docker && docker compose up -d                                # Postgres
 
 **Protocole de contexte** : les agents écrivent les rapports dans les fichiers ; je ne fais pas transiter les corps de rapport par ma conversation. Mes messages restent courts.
 
+## Voies en cours (vague parallèle, ouverte le 31/08/2026)
+
+| Voie | Story | Worktree | Base Postgres |
+|---|---|---|---|
+| A | s10-marketing-site | worktree dédié, `feature/s10-marketing-site` | `s10` |
+| B | s12-oauth-signin | worktree dédié, `feature/s12-oauth-signin` | `s12` |
+
+Chaque voie fait recherche → design → plan → exécution TDD → **un commit** sur sa branche, puis
+un `reviewer` en contexte frais écrit `docs/reviews/<id>.md` dans le worktree. Fusion dans `dev`
+**une voie à la fois**, en régénérant après coup ce qui dépend de `config/features.ts`.
+
+Fichiers chauds, à ne jamais laisser à deux voies en même temps : `config/features.ts`,
+`generated/`, `turbo.json`, `eslint.config.ts`, `pnpm-lock.yaml`, `AGENTS.md`, `docs/STATE.md`
+(celui-ci appartient à l'orchestrateur). Chaque voie a **sa propre base** : deux suites qui
+migrent dans `app` en même temps rougissent pour rien.
+
 ## Prochaine étape
 
 Le chemin critique s'arrête à s09. Ensuite **cinq voies parallèles** : s10 marketing, s12 OAuth, s13 2FA, s14 passkeys, s15 organisations. Jusqu'à trois worktrees de front (`isolation: "worktree"` sur l'outil Agent), en sérialisant ce qui touche les fichiers chauds : `config/features.ts`, `generated/`, `turbo.json`, `eslint.config.ts`, `pnpm-lock.yaml`, `AGENTS.md`.
