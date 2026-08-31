@@ -15,7 +15,12 @@ import { defineConfig, devices } from '@playwright/test'
  * l'environnement est `@repo/config`, et rien de ce fichier n'a besoin de
  * distinguer la CI du poste de développement.
  */
-const PORT = 3100
+// Le port par défaut, et le moyen d'en changer. `E2E_PORT` est la seule lecture
+// d'environnement de ce fichier, et elle ne décrit pas l'application : c'est
+// l'adresse du serveur éphémère que Playwright démarre pour lui-même. Elle
+// existe parce que plusieurs worktrees travaillent en parallèle sur cette
+// machine, et que deux suites ne peuvent pas écouter le même port.
+const PORT = Number(process.env.E2E_PORT ?? 3100)
 // `localhost` et non `127.0.0.1` : le serveur de développement de Next bloque
 // les requêtes de ressources internes venant d'une origine qu'il ne reconnaît
 // pas, et noie la sortie d'avertissements.
@@ -72,9 +77,15 @@ export default defineConfig({
       I18N_MISSING_KEY_PROBE: '1',
     },
     url: BASE_URL,
-    // En local, un serveur déjà lancé est réutilisé ; en CI rien n'écoute, donc
-    // Playwright le démarre.
-    reuseExistingServer: true,
+    // **Jamais de réutilisation.** Un serveur déjà lancé sur ce port peut être
+    // celui d'un autre worktree, donc d'une autre branche : la suite passait
+    // alors au vert en interrogeant du code qui n'est pas le sien, sans que
+    // rien ne le signale. Mesuré pendant la vague s10/s12 — 20 rouges parasites
+    // dans un sens, et un faux vert possible dans l'autre. Playwright démarre
+    // désormais son propre serveur, et échoue bruyamment si le port est pris ;
+    // `E2E_PORT` sert alors à en choisir un autre. Un harnais qui ne distingue
+    // pas « mon arbre est vert » de « j'ai mesuré autre chose » ne mesure rien.
+    reuseExistingServer: false,
     timeout: 120_000,
   },
 })
