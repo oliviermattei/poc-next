@@ -14,17 +14,20 @@ soumet chaque écriture à la configuration réelle du dépôt.
 **Ce qui est balayé**, cas par cas, et rien de plus : import statique, import de
 type, réexport, sous-chemin, import dynamique, gabarit, l'import de type en
 position d'annotation (`import('@radix-ui/…').P`) et le paquet unifié
-`radix-ui` — croisés avec les huit emplacements soumis à la garde (`apps/**`,
+`radix-ui` — croisés avec les neuf emplacements soumis à la garde (`apps/**`,
 `packages/**`, `packages/config/src`, `packages/modules/**`, `tooling/**`,
-`config/`, `scripts/`, les fichiers de premier niveau), en `.ts`, `.tsx`,
-`.mts`, `.cts`, `.mjs` et `.jsx`. La revue de s08 a mesuré que deux de ces
-emplacements pouvaient être vidés sans qu'un test ne bouge, et que l'écriture en
-position d'annotation passait partout : chaque emplacement a désormais ses cas,
-et neutraliser l'un d'eux fait rougir `pnpm test`.
+`config/`, `scripts/`, `generated/`, les fichiers de premier niveau), en `.ts`,
+`.tsx`, `.mts`, `.cts`, `.mjs` et `.jsx`. La revue de s08 a mesuré que deux de
+ces emplacements pouvaient être vidés sans qu'un test ne bouge, que l'écriture en
+position d'annotation passait partout, et que `generated/` — les barils produits
+par `pnpm db:generate`, versionnés et compilés — n'était dans aucune portée :
+chaque emplacement a désormais ses cas, et neutraliser l'un d'eux fait rougir
+`pnpm test`.
 
 **Non balayé, et connu** : un spécificateur reconstruit à l'exécution
-(`import('@radix' + '-ui/…')`), et les fichiers du harnais de test (`tests/`,
-`e2e/`, `packages/*/src/**/*.test.ts`) — exception nommée. Mesuré une écriture à
+(`import('@radix' + '-ui/…')`), les fichiers du harnais de test (`tests/`,
+`e2e/`, `packages/*/src/**/*.test.ts`) — exception nommée —, et `templates/`
+comme `docs/`, qui ne portent aucune source aujourd'hui. Mesuré une écriture à
 la fois contre la configuration réelle, le 31 août 2026.
 
 ## Les tokens

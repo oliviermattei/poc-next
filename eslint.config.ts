@@ -337,10 +337,24 @@ const componentBaseBoundary: Linter.Config[] = [
   },
   {
     // Tout ce qui n'est ni un package ni du tooling : les applications, mais
-    // aussi `config/`, `scripts/` et les fichiers de premier niveau. Ces trois
-    // derniers n'étaient dans aucune portée — un interdit qu'aucun motif ne
-    // nomme ne se distingue pas d'un oubli.
-    files: [sources('apps'), sources('config'), sources('scripts'), ROOT_SOURCES],
+    // aussi `config/`, `scripts/`, `generated/` et les fichiers de premier
+    // niveau. Ces quatre-là n'étaient dans aucune portée — un interdit qu'aucun
+    // motif ne nomme ne se distingue pas d'un oubli.
+    //
+    // `generated/` porte les barils produits par `pnpm db:generate` depuis les
+    // schémas des modules : ils sont versionnés, compilés par le `tsconfig`
+    // racine, et réécrits par `pnpm ks toggle`. Les mettre hors de portée
+    // reviendrait à parier sur ce que le gabarit de génération produit
+    // aujourd'hui — « il ne peut pas contenir de JSX » est précisément
+    // l'affirmation d'exhaustivité que le `AGENTS.md` racine interdit. Le
+    // gabarit change, la portée reste.
+    files: [
+      sources('apps'),
+      sources('config'),
+      sources('scripts'),
+      sources('generated'),
+      ROOT_SOURCES,
+    ],
     rules: {
       'no-restricted-imports': ['error', { patterns: [{ ...COMPONENT_BASE_RESTRICTION }] }],
     },
@@ -356,6 +370,7 @@ const componentBaseBoundary: Linter.Config[] = [
       sources('tooling'),
       sources('config'),
       sources('scripts'),
+      sources('generated'),
       ROOT_SOURCES,
     ],
     ignores: ['packages/ui/**', 'packages/config/src/**', 'packages/modules/**'],

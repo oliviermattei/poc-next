@@ -348,17 +348,19 @@ describe('un module ne dépend pas du package de base de données', () => {
  * **Ce qui est balayé**, cas par cas, et rien de plus : import statique, import
  * de type, réexport, sous-chemin, import dynamique, gabarit, l'import de type
  * en position d'annotation (`import('@radix-ui/…').P`) et le paquet unifié
- * `radix-ui` — croisés avec les huit emplacements ci-dessous, plus les
+ * `radix-ui` — croisés avec les neuf emplacements ci-dessous, plus les
  * extensions `.tsx`, `.mts`, `.mjs` et `.jsx`. L'écriture en position
  * d'annotation passait partout avant cette correction, module compris, alors
  * que la même était déjà fermée pour `@repo/db`.
  *
  * **Non balayé, et connu** : un spécificateur reconstruit à l'exécution
- * (`import('@radix' + '-ui/…')`), et les fichiers du harnais de test (`tests/`,
+ * (`import('@radix' + '-ui/…')`), les fichiers du harnais de test (`tests/`,
  * `e2e/`, `packages/*\/src/**\/*.test.ts`) — exception nommée, où
  * `no-restricted-imports` est éteint et qu'aucune portée `no-restricted-syntax`
- * ne vise. Mesuré une écriture à la fois contre la configuration réelle, le
- * 31 août 2026.
+ * ne vise —, et `templates/` comme `docs/`, qui ne portent aucune source
+ * aujourd'hui. `generated/` y figurait aussi jusqu'à la seconde passe de revue :
+ * il est désormais dans la portée. Mesuré une écriture à la fois contre la
+ * configuration réelle, le 31 août 2026.
  */
 describe('le socle de composants ne sort pas de packages/ui (ADR 022)', () => {
   let eslint: ESLint
@@ -384,6 +386,12 @@ describe('le socle de composants ne sort pas de packages/ui (ADR 022)', () => {
     ['la configuration du projet', 'config/probe.ts'],
     ['un script', 'scripts/probe.ts'],
     ['un fichier de premier niveau', 'probe.ts'],
+    // Le quatrième, mesuré en seconde passe : `generated/` est versionné,
+    // compilé, et réécrit par `pnpm ks toggle`. « Ces fichiers ne peuvent pas
+    // contenir de JSX » est exactement l'affirmation d'exhaustivité que
+    // `AGENTS.md` interdit — le gabarit de génération peut changer, la portée
+    // du lint ne doit pas dépendre de ce qu'il produit aujourd'hui.
+    ['un baril généré', 'generated/schema/probe.ts'],
   ] as const
 
   const WRITINGS = [
@@ -520,7 +528,7 @@ describe('le socle de composants ne sort pas de packages/ui (ADR 022)', () => {
  *
  * **Ce qui est balayé** : l'absence d'un `method` écrit en toutes lettres sur
  * un élément `<form>` en JSX — attribut manquant, étalé depuis un objet,
- * calculé, ou `undefined` —, sur les neuf emplacements ci-dessous, `.tsx` et
+ * calculé, ou `undefined` —, sur les dix emplacements ci-dessous, `.tsx` et
  * `.jsx`. **Non balayé, et connu** : un `<form>` construit par `createElement`,
  * et les fichiers du harnais de test (`tests/`, `e2e/`), qu'aucune portée ne
  * vise et qui ne livrent pas d'écran. La **valeur** n'est pas jugée :
@@ -552,6 +560,7 @@ describe('un formulaire déclare sa méthode', () => {
     ['la configuration du projet', 'config/probe.tsx'],
     ['un script', 'scripts/probe.tsx'],
     ['un fichier de premier niveau', 'probe.tsx'],
+    ['un baril généré', 'generated/probe.tsx'],
     ['un écran en `.jsx`', 'apps/web/app/probe.jsx'],
   ] as const
 

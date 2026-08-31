@@ -83,7 +83,15 @@ test('une route protégée redirige vers la connexion, puis ramène à l’URL d
   await expect(page).toHaveURL(/\/sign-in\?next=(%2F|\/)account$/)
 
   await signIn(page, email)
-  await expect(page).toHaveURL(/\/account$/)
+
+  // **L'origine fait partie de l'assertion.** Sans elle, le motif `/\/account$/`
+  // est déjà satisfait par l'URL de départ — `/sign-in?next=/account` se termine
+  // par `/account` — donc l'assertion passe *avant* la redirection et ne peut
+  // pas échouer. Mesuré en revue de s08 : neutraliser complètement la prise en
+  // compte de `?next=` laissait les vingt parcours verts. C'est le seul endroit
+  // du dépôt qui tient cette propriété ; le repli, lui, est tenu par les
+  // assertions `/localhost:\d+\/$/` des autres parcours.
+  await expect(page).toHaveURL(/localhost:\d+\/account$/)
 })
 
 test('compte inconnu, mot de passe invalide et adresse non vérifiée affichent le même message', async ({
@@ -135,8 +143,15 @@ test('compte inconnu, mot de passe invalide et adresse non vérifiée affichent 
   expect(notVerified).toBe(unknownAccount)
   expect(unknownAccount).toContain('Identifiants invalides')
 
-  // Et le refus reste un refus : la page protégée n'est pas atteinte.
-  await expect(page).toHaveURL(/\/sign-in$/)
+  // Il y avait ici un `toHaveURL(/\/sign-in$/)`, commenté « la page protégée
+  // n'est pas atteinte ». Il ne pouvait pas échouer : la page **part** de
+  // `/sign-in`, donc le motif est satisfait par l'URL de départ, avant toute
+  // navigation — la même forme que le finding M2 de la revue, en négatif. La
+  // propriété qu'il prétendait tenir est tenue ailleurs, et pour de vrai : un
+  // refus qui aurait navigué ferait déjà rougir les trois `expect(refusal)`
+  // ci-dessus, et la redirection d'une route protégée a son propre parcours
+  // (« une route protégée redirige vers la connexion »). Une assertion qui ne
+  // peut pas rougir est pire que pas d'assertion : elle occupe la place.
 })
 
 test('mot de passe oublié : le lien reçu mène à l’écran, et le nouveau mot de passe ouvre une session', async ({

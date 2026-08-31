@@ -92,7 +92,8 @@ règles que tout écran hérite d'eux :
   et `/sign-in?email=…&password=…` (revue de s08, C1). `pnpm lint` refuse
   désormais un `<form>` dont le `method` n'est pas écrit en toutes lettres —
   y compris étalé (`{...props}`), calculé ou `undefined`. La règle vise
-  `apps/**`, `packages/**`, `tooling/**`, `config/`, `scripts/` et la racine,
+  `apps/**`, `packages/**`, `tooling/**`, `config/`, `scripts/`, `generated/`
+  et la racine,
   `packages/ui` compris ; elle ne juge pas la valeur (`method="get"` reste
   légitime pour un formulaire sans secret) ;
 - **le bouton d'envoi est désactivé tant que `useHydrated()` répond `false`**
