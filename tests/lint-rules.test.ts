@@ -250,8 +250,53 @@ describe('un module ne dépend pas du package de base de données', () => {
     ['sous-chemin', "import { schema } from '@repo/db/schema'\nexport const s = schema"],
     ['require', "export const db = require('@repo/db')"],
     ['import dynamique', "export const db = await import('@repo/db')"],
+    // Un `TemplateLiteral` n'est pas un `Literal` : la première version de la
+    // règle AST, qui ne visait que `Literal`, laissait passer les deux écritures
+    // ci-dessous — prouvé par mutation en revue, sur `pnpm lint`, `tsc` et
+    // `pnpm test`. Troisième fois que ce dépôt se fait prendre par une garde
+    // plus étroite que sa description.
+    ['import dynamique en accent grave', 'export const db = await import(`@repo/db`)'],
+    ['require en accent grave', 'export const db = require(`@repo/db`)'],
+    [
+      'gabarit interpolé dont le préfixe suffit',
+      'export const db = await import(`@repo/db${suffix}`)\ndeclare const suffix: string',
+    ],
+    // Trouvées en essayant de défaire ma propre correction. La première est la
+    // plus gênante : elle est **typée**, elle compile, et elle donne au module
+    // le type qu'il cherchait sans qu'aucun `import` n'apparaisse. La seconde
+    // était déjà refusée par `@typescript-eslint/no-require-imports` — ce n'est
+    // pas la garde d'ADR 020 qui la tenait.
+    ['import de type en position d’annotation', "export type S = import('@repo/db').ModuleSchema"],
+    ['import-equals', "import db = require('@repo/db')\nexport const connection = db"],
   ])('refuse `@repo/db` dans un module — %s', async (_name, code) => {
     const ruleIds = await ruleIdsFor(code, MODULE_FILE)
+
+    expect(ruleIds.filter((id) => id.startsWith('no-restricted-'))).not.toEqual([])
+  })
+
+  // La règle visait `packages/modules/**/*.ts`. Un fichier qu'aucune
+  // configuration ne matche n'est pas « autorisé » : il n'est **pas linté du
+  // tout**, silencieusement, alors que le `tsconfig` du module l'inclut
+  // (`include: ["src"]`, toutes extensions TypeScript). Le premier composant de
+  // s08 sortait de la portée sans qu'un seul cas ne rougisse.
+  it.each([
+    [
+      'un composant, en `.tsx`',
+      'packages/modules/auth/src/presentation/probe.tsx',
+      "import { db } from '@repo/db'\nexport const Connection = () => <p>{String(db)}</p>",
+    ],
+    [
+      'un module ES, en `.mts`',
+      'packages/modules/auth/src/infrastructure/probe.mts',
+      "import { db } from '@repo/db'\nexport const connection = db",
+    ],
+    [
+      'un module CommonJS, en `.cts`',
+      'packages/modules/auth/src/infrastructure/probe.cts',
+      "import { db } from '@repo/db'\nexport const connection = db",
+    ],
+  ])('juge le fichier de module quelle que soit son extension — %s', async (_name, path, code) => {
+    const ruleIds = await ruleIdsFor(code, path)
 
     expect(ruleIds.filter((id) => id.startsWith('no-restricted-'))).not.toEqual([])
   })

@@ -49,7 +49,7 @@ const HELP = new Set(['--help', '-h'])
 export const USAGE = [
   'Usage : ks <commande> [options]',
   '',
-  '  ks list                     liste les modules, leur état et leurs requis',
+  '  ks list                     liste les modules, leur état, leurs requis et le socle',
   '  ks toggle <module>          inverse l’état d’un module dans config/features.ts',
   '',
   'Options :',

@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process'
-import { readdirSync, readFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -588,7 +589,10 @@ describe('un module ne dépend pas du package de base de données', () => {
         return sourceFiles(path)
       }
 
-      return entry.name.endsWith('.ts') ? [path] : []
+      // Les extensions que le `tsconfig` d'un module compile : la portée de ce
+      // balayage et celle de la règle du lint doivent être la même, sans quoi
+      // la garantie est fausse d'un côté (voir le cas ci-dessous).
+      return /\.(?:tsx?|mts|cts)$/.test(entry.name) ? [path] : []
     })
 
   const modules = readdirSync(MODULES_ROOT, { withFileTypes: true })
@@ -597,6 +601,35 @@ describe('un module ne dépend pas du package de base de données', () => {
 
   it('trouve les modules du dépôt, faute de quoi ce cas ne vérifierait rien', () => {
     expect(modules.length).toBeGreaterThan(0)
+  })
+
+  it('collecte toutes les extensions que le module compile, pas seulement `.ts`', () => {
+    // Le collecteur ne prenait que `.ts`, et la règle du lint ne visait que
+    // `packages/modules/**/*.ts`. Or `docs/architecture.md` place les
+    // composants React dans le `presentation/` de chaque module : le premier
+    // écran livré serait sorti du balayage **sans rien changer d'autre** —
+    // aucun cas ne serait devenu rouge, la portée aurait juste rétréci. Le
+    // dépôt n'ayant encore aucun `.tsx` de module, c'est ici, sur une
+    // arborescence fabriquée, que la portée est opposable.
+    const root = mkdtempSync(join(tmpdir(), 'balayage-module-'))
+
+    try {
+      mkdirSync(join(root, 'presentation'))
+      writeFileSync(join(root, 'contract.ts'), '')
+      writeFileSync(join(root, 'legacy.cts'), '')
+      writeFileSync(join(root, 'loader.mts'), '')
+      writeFileSync(join(root, 'presentation', 'sign-in-form.tsx'), '')
+      writeFileSync(join(root, 'presentation', 'notes.md'), '')
+
+      expect(sourceFiles(root).map((path) => path.slice(root.length + 1)).sort()).toEqual([
+        'contract.ts',
+        'legacy.cts',
+        'loader.mts',
+        join('presentation', 'sign-in-form.tsx'),
+      ])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 
   it.each(modules)('le module %s n’importe pas `@repo/db`', async (moduleId) => {

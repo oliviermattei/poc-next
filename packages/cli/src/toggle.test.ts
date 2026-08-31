@@ -50,12 +50,34 @@ const available = [
 ]
 
 describe('ks list', () => {
-  it('rend chaque module de l’annuaire, son état et ses requis', () => {
-    expect(describeModules({ available, enabled: ['socle'] })).toEqual([
-      { id: 'socle', enabled: true, requires: [], requiredBy: ['facturation'] },
-      { id: 'facturation', enabled: false, requires: ['socle'], requiredBy: ['roadmap'] },
-      { id: 'roadmap', enabled: false, requires: ['facturation'], requiredBy: [] },
+  it('rend chaque module de l’annuaire, son état, ses requis et son appartenance au socle', () => {
+    // `required` n'est pas décoratif : sans lui, un module du socle s'affiche
+    // « activé » comme les autres, et la seule façon d'apprendre qu'on ne peut
+    // pas le couper est de se faire refuser (ADR 021, ADR 013). La liste est
+    // l'endroit où la règle se lit.
+    expect(describeModules({ available, enabled: ['socle'], required: ['socle'] })).toEqual([
+      { id: 'socle', enabled: true, required: true, requires: [], requiredBy: ['facturation'] },
+      {
+        id: 'facturation',
+        enabled: false,
+        required: false,
+        requires: ['socle'],
+        requiredBy: ['roadmap'],
+      },
+      {
+        id: 'roadmap',
+        enabled: false,
+        required: false,
+        requires: ['facturation'],
+        requiredBy: [],
+      },
     ])
+  })
+
+  it('n’invente pas de socle quand le dépôt n’en déclare pas', () => {
+    expect(
+      describeModules({ available, enabled: ['socle'] }).map((summary) => summary.required),
+    ).toEqual([false, false, false])
   })
 
   it('distingue les deux états dans la sortie lue par un humain', () => {
@@ -80,6 +102,20 @@ describe('ks list', () => {
     // Le requis est nommé : sans lui, « activer facturation » échoue sans que
     // la liste ait prévenu.
     expect(fieldsOf('facturation').join(' ')).toContain('requiert : socle')
+  })
+
+  it('dit lequel appartient au socle, et ne le dit que de celui-là', () => {
+    const rendered = renderModuleList(
+      describeModules({ available, enabled: ['socle', 'facturation'], required: ['socle'] }),
+    )
+
+    const lineOf = (id: string): string =>
+      rendered.split('\n').find((line) => line.split(/\s+/)[1] === id) ?? ''
+
+    expect(lineOf('socle')).toContain('non désactivable')
+    // La marque suit le module du socle, pas ceux qui le requièrent : sans
+    // cette seconde assertion, un rendu qui l'imprimerait partout passerait.
+    expect(lineOf('facturation')).not.toContain('non désactivable')
   })
 })
 

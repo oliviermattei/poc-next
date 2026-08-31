@@ -185,8 +185,8 @@ describe('ks, lancé comme un utilisateur le lance', () => {
 
     expect(result.code).toBe(0)
     expect(JSON.parse(result.stdout)).toEqual([
-      { id: 'alpha', enabled: true, requires: [], requiredBy: [] },
-      { id: 'beta', enabled: false, requires: [], requiredBy: [] },
+      { id: 'alpha', enabled: true, required: false, requires: [], requiredBy: [] },
+      { id: 'beta', enabled: false, required: false, requires: [], requiredBy: [] },
     ])
   }, 30_000)
 
@@ -210,6 +210,16 @@ describe('ks, lancé comme un utilisateur le lance', () => {
     expect(refused.stderr).toContain('socle')
     // Et le fichier n'a pas bougé : le refus a lieu avant l'écriture.
     expect(await repo.features()).toContain("export const enabledModules = ['alpha'] as const")
+
+    // Et la liste l'annonce **avant** le refus : c'est le même `bin.ts` qui lit
+    // `requiredModules`, et l'oublier pour `list` laisserait la règle
+    // découvrable seulement en se faisant jeter.
+    const listed = await ks(['list', '--json'], repo.root)
+
+    expect(JSON.parse(listed.stdout)).toEqual([
+      { id: 'alpha', enabled: true, required: true, requires: [], requiredBy: [] },
+      { id: 'beta', enabled: false, required: false, requires: [], requiredBy: [] },
+    ])
   }, 30_000)
 
   it('affiche l’aide en code 0, et refuse une invocation inconnue en code 1', async () => {

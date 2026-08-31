@@ -114,7 +114,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     const { availableModules: available, requiredModules: required } = await loadFeatures(root)
 
     if (options.command === 'list') {
-      const summaries = await runList({ available, featuresPath })
+      const summaries = await runList({ available, required, featuresPath })
 
       console.log(options.json ? JSON.stringify(summaries, null, 2) : renderModuleList(summaries))
 

@@ -71,8 +71,17 @@ jamais `@repo/db`**. Il reçoit sa connexion de son point de composition, sous l
 forme réduite des opérations qu'il utilise. La dépendance inverse fermerait le
 cycle `@repo/db` → agrégat → module → `@repo/db`, dont la conséquence n'est pas
 une erreur de compilation mais une table lue avant d'être initialisée, à
-l'exécution. `tests/module-registry.test.ts` refuse cet import, dans les sources
-comme dans les manifestes.
+l'exécution.
+
+La règle vit dans `eslint.config.ts` (`no-restricted-syntax`, portée
+`packages/modules/**/*.{ts,tsx,mts,cts}` — les extensions que le `tsconfig` d'un
+module compile) ; `tests/lint-rules.test.ts` prouve qu'elle mord, écriture par
+écriture, et `tests/module-registry.test.ts` balaie le dépôt avec elle, sources
+et manifestes. Ce que ce balayage couvre est exactement ce que la règle voit :
+les deux portées se corrigent ensemble. Les écritures qu'elle ne voit **pas**
+sont nommées dans le commentaire d'`eslint.config.ts` — un spécificateur
+reconstruit (`'@repo/' + 'db'`, gabarit interpolé au milieu, `createRequire`
+aliasé) ; c'est ce qui a été balayé, pas une liste close.
 
 C'est aussi pourquoi les barils vivent à la racine du dépôt, seul endroit qui
 déclare déjà les packages de modules.

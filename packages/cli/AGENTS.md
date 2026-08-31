@@ -23,6 +23,14 @@ configuration candidate, attrape son refus et le traduit. Une seconde
 implémentation divergerait au premier cas limite, et c'est la validation qui
 perdrait.
 
+Le socle non désactivable (ADR 021) suit le même chemin : `bin.ts` lit
+`requiredModules` dans `config/features.ts` et le transmet — à `planToggle`, qui
+soumet la configuration candidate et refuse **avant toute écriture**, et à
+`runList`, qui l'**affiche** (`socle : non désactivable`, et `required` en
+`--json`). Les deux, pas l'un des deux : une règle qu'on ne découvre qu'en se
+faisant refuser n'est pas lisible pour l'humain qui configure ni pour l'agent qui
+lit la sortie machine (ADR 013).
+
 **4. L'ordre de `enabledModules` est canonique, et une chose ne revient pas.**
 ADR 019 : le CLI écrit toujours la liste dans l'ordre de l'annuaire. Un
 aller-retour, ce sont deux invocations séparées — à la seconde, la position

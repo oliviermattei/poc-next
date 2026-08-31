@@ -85,11 +85,17 @@ const announce = (environment: ToggleEnvironment, edit: EnabledModulesEdit): voi
 
 export async function runList(input: {
   readonly available: readonly AnyModuleDefinition[]
+  /** Le socle non désactivable, lu dans `config/features.ts` (ADR 021). */
+  readonly required?: readonly string[]
   readonly featuresPath: string
 }): Promise<readonly ModuleSummary[]> {
   const source = await readFile(input.featuresPath, 'utf8')
 
-  return describeModules({ available: input.available, enabled: readEnabledModules(source) })
+  return describeModules({
+    available: input.available,
+    enabled: readEnabledModules(source),
+    required: input.required,
+  })
 }
 
 export { renderModuleList }

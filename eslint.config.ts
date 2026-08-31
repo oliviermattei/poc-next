@@ -92,31 +92,84 @@ const configClientSurface: Linter.Config[] = [
  * C'est `no-restricted-syntax` et non `no-restricted-imports` parce que
  * `libraryConfig` occupe déjà le second sur `packages/**` : le redéfinir ici
  * remplacerait l'interdit « un package ne dépend pas d'une application » au
- * lieu de s'y ajouter. Les cinq sélecteurs couvrent l'import statique (type
- * compris), le réexport nommé, le réexport total, l'import dynamique et
- * `require` — donc les deux écritures de guillemets, par construction.
+ * lieu de s'y ajouter.
+ *
+ * **Ce qui a été balayé**, et rien de plus. Sur les écritures essayées une à
+ * une contre la règle (`tests/lint-rules.test.ts` les rejoue) :
+ *
+ * - refusées — import statique et import de type, réexport nommé, réexport
+ *   total (`export * as` compris), import d'effet de bord, sous-chemin
+ *   `@repo/db/…`, `require`, import dynamique, `import x = require(…)`, et
+ *   l'import de type en position d'annotation (`import('@repo/db').X`) ; en
+ *   guillemets simples, doubles **et en accent grave** pour les formes
+ *   dynamiques, seules où la grammaire admet un gabarit ;
+ * - **non refusées, connues** : un spécificateur que la syntaxe ne donne pas
+ *   au sélecteur — `import('@repo/' + 'db')`, `` import(`@repo/${'db'}`) ``,
+ *   un `createRequire` aliasé, un identifiant reconstruit à l'exécution.
+ *   Aucune de ces écritures ne se tape par accident et aucune ne rend un type ;
+ *   elles sont citées pour dire où s'arrête la garde, pas pour être comptées
+ *   comme couvertes.
+ *
+ * La portée est `packages/modules/**\/*.{ts,tsx,mts,cts}`, soit les extensions
+ * que le `tsconfig` d'un module compile (`include: ["src"]`). Elle s'arrêtait à
+ * `.ts`, et un fichier qu'aucune configuration ne matche n'est pas « autorisé » :
+ * il n'est **pas linté du tout**. `docs/architecture.md` place les composants
+ * React dans le `presentation/` de chaque module — le premier composant livré
+ * serait sorti de la portée sans qu'un seul cas ne rougisse. Le balayage du
+ * dépôt (`tests/module-registry.test.ts`) collecte les mêmes extensions ; les
+ * deux côtés se corrigent ensemble ou la garantie est fausse d'un côté.
  */
-const REPO_DB_SPECIFIER = 'Literal[value=/^@repo\\u002fdb($|\\u002f)/]'
+const REPO_DB_PATTERN = '/^@repo\\u002fdb($|\\u002f)/'
+
+/** Le spécificateur en littéral de chaîne : `'…'` comme `"…"`. */
+const REPO_DB_LITERAL = `Literal[value=${REPO_DB_PATTERN}]`
+
+/**
+ * Le même spécificateur en accent grave.
+ *
+ * Un `TemplateLiteral` n'est pas un `Literal` : le sélecteur précédent le
+ * laissait passer, prouvé par mutation en revue. Le motif porte sur le premier
+ * fragment brut, donc `` `@repo/db` `` comme `` `@repo/db${suffixe}` ``.
+ */
+const REPO_DB_TEMPLATE = `TemplateLiteral[quasis.0.value.raw=${REPO_DB_PATTERN}]`
 
 const MODULE_DB_MESSAGE =
   'Un module ne dépend jamais de `@repo/db` (ADR 020) : la connexion est injectée par le point de composition. La dépendance inverse ferme un cycle dont la conséquence est une table lue avant son initialisation, à l’exécution.'
 
+/**
+ * Formes où la grammaire n'admet qu'un littéral de chaîne.
+ *
+ * `TSImportType` est l'import de type en position d'annotation
+ * (`type S = import('@repo/db').ModuleSchema`) : il ne survit pas à la
+ * compilation, mais `import type … from '@repo/db'` non plus, et celui-là est
+ * refusé. Laisser passer l'un des deux ferait de l'interdit une question de
+ * mise en forme. `TSExternalModuleReference` est le `require` de
+ * `import x = require('@repo/db')`.
+ */
+const STATIC_IMPORT_FORMS = [
+  'ImportDeclaration',
+  'ExportNamedDeclaration',
+  'ExportAllDeclaration',
+  'TSImportType',
+  'TSExternalModuleReference',
+]
+
+/** Formes dynamiques : le spécificateur y est une expression, gabarit compris. */
+const DYNAMIC_IMPORT_FORMS = ['ImportExpression', 'CallExpression[callee.name=require]']
+
 const moduleDatabaseBoundary: Linter.Config[] = [
   {
-    files: ['packages/modules/**/*.ts'],
+    files: ['packages/modules/**/*.{ts,tsx,mts,cts}'],
     rules: {
       'no-restricted-syntax': [
         'error',
         ...[
-          'ImportDeclaration',
-          'ExportNamedDeclaration',
-          'ExportAllDeclaration',
-          'ImportExpression',
-          'CallExpression[callee.name=require]',
-        ].map((parent) => ({
-          selector: `${parent} > ${REPO_DB_SPECIFIER}`,
-          message: MODULE_DB_MESSAGE,
-        })),
+          ...STATIC_IMPORT_FORMS.map((parent) => `${parent} > ${REPO_DB_LITERAL}`),
+          ...DYNAMIC_IMPORT_FORMS.flatMap((parent) => [
+            `${parent} > ${REPO_DB_LITERAL}`,
+            `${parent} > ${REPO_DB_TEMPLATE}`,
+          ]),
+        ].map((selector) => ({ selector, message: MODULE_DB_MESSAGE })),
       ],
     },
   },
