@@ -34,8 +34,13 @@ open -a Docker && docker compose up -d                                # Postgres
 | Voie | Story | Worktree | Base / port |
 |---|---|---|---|
 | A | s13-two-factor | `feature/s13-two-factor` | `s13`, port 3113 |
-| B | s16-invite-members | `feature/s16-invite-members` | `s16`, port 3116 |
+| B | s16-invite-members | commit `74a73a8`, **en revue** | `s16`, port 3116 |
 | C | s11-public-forms | `feature/s11-public-forms` — **seule autorisée sur `config/features.ts` et `generated/`** | `s11`, port 3111 |
+
+**Les numéros d'ADR se réservent à l'ouverture d'une vague.** Deux voies parallèles qui
+prennent « le prochain numéro libre » prennent le même, et la fusion écrase une décision sans
+conflit visible — les fichiers portent le même nom. Vague en cours : 026 = s16, 027 = s11,
+028 = s13.
 
 **Le worktree d'un agent arrive sur une branche `worktree-agent-<id>`, pas sur `feature/<id>`** :
 la première consigne d'une voie est de la renommer (`git branch -m feature/<id>`). Sans ça la
