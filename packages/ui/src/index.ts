@@ -12,6 +12,12 @@
  */
 export { cn } from './lib/cn'
 
+export {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from './components/accordion'
 export { Alert, AlertDescription, AlertTitle, type AlertProps } from './components/alert'
 export { Badge, type BadgeProps } from './components/badge'
 export { Button, buttonVariants, type ButtonProps } from './components/button'
@@ -50,6 +56,10 @@ export {
   type LocaleOption,
   type LocaleSwitcherProps,
 } from './composed/locale-switcher'
+export {
+  MarketingSection,
+  type MarketingSectionProps,
+} from './composed/marketing-section'
 export { PageHeader, type PageHeaderProps } from './composed/page-header'
 export {
   Sidebar,

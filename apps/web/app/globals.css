@@ -11,3 +11,20 @@
 
 @source '../app';
 @source '../lib';
+
+/**
+ * Les composants des modules activés.
+ *
+ * Un module rend du balisage (s10 est le premier), et une classe qu'aucune
+ * source ne balaie ne produit **aucune règle, sans la moindre erreur** :
+ * mesuré en vérification visuelle, la grille des fonctionnalités restait sur
+ * une colonne à 1280 px et les liens du pied de page se touchaient, parce que
+ * `md:grid-cols-2` et `gap-x-6` n'existaient nulle part dans la feuille
+ * produite.
+ *
+ * Un **motif**, et non une ligne par module : sinon le prochain module livre un
+ * écran sans style et personne ne le voit. `tests/design-system.test.ts` dérive
+ * la liste des dossiers qui portent des composants et exige que chacun soit
+ * couvert par une source déclarée.
+ */
+@source '../../../packages/modules/*/src/presentation/**/*.tsx';

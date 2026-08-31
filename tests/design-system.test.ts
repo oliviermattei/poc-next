@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
@@ -25,6 +26,17 @@ import { describe, expect, it } from 'vitest'
  */
 
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url))
+
+/** Ce qui ne porte pas de composant de production : dépendances, artefacts, fixtures. */
+const IGNORED_DIRECTORIES = new Set([
+  'node_modules',
+  '.git',
+  '.next',
+  '.turbo',
+  'test-results',
+  'playwright-report',
+  'fixtures',
+])
 
 const read = (path: string): string => readFileSync(`${REPO_ROOT}${path}`, 'utf8')
 
@@ -100,6 +112,86 @@ describe('les tokens de `packages/ui` sont ceux du design system', () => {
     // variante, `dark:` suit `prefers-color-scheme` et le choix de
     // l'utilisateur reste sans effet sur tout ce que Tailwind génère.
     expect(STYLESHEET).toContain('@custom-variant dark (&:where(.dark, .dark *));')
+  })
+
+  it('balaie tout fichier qui porte des composants — sinon leurs classes n’existent pas', () => {
+    /*
+     * Tailwind v4 tourne ici en `source(none)` : rien n'est détecté
+     * automatiquement, chaque source est déclarée. Une classe employée dans un
+     * fichier qu'aucune source ne couvre ne produit aucune règle, et **rien
+     * n'échoue** — mesuré en s10, à l'œil : la grille des fonctionnalités
+     * restait sur une colonne à 1280 px et les liens du pied de page se
+     * touchaient, parce que le dossier de présentation des modules n'était
+     * couvert par aucune source.
+     *
+     * Les deux côtés sont **dérivés** : les fichiers `.tsx` du dépôt, et les
+     * motifs réellement déclarés dans les deux feuilles. Le prochain package à
+     * composants fait rougir cette ligne au lieu d'être livré sans style.
+     *
+     * Deux formes de source, et Tailwind les traite différemment — mesuré :
+     * un chemin sans motif ni extension est un **dossier**, balayé en entier ;
+     * un chemin contenant un `*` est un **motif de fichiers**, et
+     * `.../presentation` (sans `/**\/*.tsx`) ne matche alors aucun fichier.
+     */
+    const sourcePatterns = (file: string): readonly string[] => {
+      const directory = join(REPO_ROOT, file, '..')
+
+      return [...read(`/${file}`).matchAll(/@source\s+'([^']+)'/g)].map((match) =>
+        resolve(directory, match[1] ?? ''),
+      )
+    }
+
+    const escape = (value: string): string => value.replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+
+    const toRegExp = (pattern: string): RegExp => {
+      if (!pattern.includes('*')) {
+        // Un dossier : tout ce qu'il contient est balayé.
+        return new RegExp(`^${escape(pattern)}/`)
+      }
+
+      const body = escape(pattern)
+        .replaceAll('**/', '\u0000')
+        .replaceAll('**', '\u0001')
+        .replaceAll('*', '[^/]*')
+        .replaceAll('\u0000', '(?:[^/]*/)*')
+        .replaceAll('\u0001', '.*')
+
+      return new RegExp(`^${body}$`)
+    }
+
+    const patterns = [
+      ...sourcePatterns('packages/ui/src/styles.css'),
+      ...sourcePatterns('apps/web/app/globals.css'),
+    ].map(toRegExp)
+
+    const components: string[] = []
+
+    const walk = (current: string): void => {
+      for (const entry of readdirSync(current, { withFileTypes: true })) {
+        const path = join(current, entry.name)
+
+        if (entry.isDirectory()) {
+          if (!IGNORED_DIRECTORIES.has(entry.name)) {
+            walk(path)
+          }
+        } else if (entry.name.endsWith('.tsx')) {
+          components.push(path)
+        }
+      }
+    }
+
+    walk(REPO_ROOT)
+
+    // Garde contre l'inertie : un balayage qui ne trouve rien rendrait la
+    // boucle suivante vraie sur zéro fichier.
+    expect(components.length).toBeGreaterThan(15)
+
+    for (const file of components) {
+      expect(
+        patterns.some((pattern) => pattern.test(file)),
+        `${file.slice(REPO_ROOT.length)} n’est couvert par aucun @source`,
+      ).toBe(true)
+    }
   })
 
   it('n’a pas de fichier de configuration JavaScript (Tailwind v4, ADR 010)', () => {

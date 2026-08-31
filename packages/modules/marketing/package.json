@@ -1,0 +1,28 @@
+{
+  "name": "@repo/module-marketing",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./presentation": "./src/presentation/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@repo/core": "workspace:*",
+    "@repo/ui": "workspace:*",
+    "zod": "^4.5.0"
+  },
+  "peerDependencies": {
+    "react": "^19.2.0"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "workspace:*",
+    "@types/node": "^22",
+    "@types/react": "^19.2.0",
+    "react": "^19.2.0",
+    "typescript": "^7.0.2"
+  }
+}

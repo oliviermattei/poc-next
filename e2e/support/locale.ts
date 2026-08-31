@@ -1,4 +1,5 @@
 import { localeRouting } from '../../apps/web/lib/locale-routing'
+import { marketingSite } from '../../apps/web/lib/marketing'
 import { defaultLocale } from '../../config/i18n'
 
 /**
@@ -34,3 +35,16 @@ export const signInRedirectedFrom = (pathname: string): RegExp =>
   new RegExp(
     `${escape(publicPath('/sign-in'))}\\?next=(${escape(encodeURIComponent(pathname))}|${escape(pathname)})$`,
   )
+
+/**
+ * Où atterrit un visiteur **anonyme** qui suit la racine du site.
+ *
+ * Depuis s10, la racine appartient au module `marketing` : site public activé,
+ * elle sert l'accueil ; coupé, elle redirige vers la connexion (critère 6).
+ * Les parcours qui se déconnectent ou changent de langue traversent ce chemin,
+ * et leur attente est donc **dérivée** de l'état du module — comme la forme des
+ * URL l'est de `localeRouting`. Un visiteur **connecté**, lui, conserve son
+ * tableau de bord dans les deux états : les cas qui l'observent gardent `/`.
+ */
+export const anonymousLanding = (): string =>
+  marketingSite.sections.length > 0 ? '/' : '/sign-in'

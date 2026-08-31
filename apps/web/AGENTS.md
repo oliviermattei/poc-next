@@ -16,10 +16,18 @@ module (`packages/modules/<module>/src/domain`).
   `lib/mailer.ts`, qui est le point de composition du mailer ;
 - les modules du projet, **uniquement** parce que `config/features.ts` les
   référence : `@repo/module-auth`, `@repo/module-i18n`,
-  `@repo/module-demo-enabled` et `@repo/module-demo-disabled` aujourd'hui. Deux
-  fichiers font exception et importent un module directement — `lib/auth.ts`, le
-  point de composition de l'authentification, et `lib/locale-routing.ts`, celui
-  de l'i18n (voir plus bas) ;
+  `@repo/module-marketing`, `@repo/module-demo-enabled` et
+  `@repo/module-demo-disabled` aujourd'hui. Trois fichiers font exception et
+  importent un module directement — `lib/auth.ts`, le point de composition de
+  l'authentification, `lib/locale-routing.ts`, celui de l'i18n, et
+  `lib/marketing.ts`, celui du site public (voir plus bas). Les écrans du site
+  public importent en plus `@repo/module-marketing/presentation`, le second
+  point d'entrée du module : ses composants React n'ont pas leur place dans le
+  barril que lit `config/features.ts`, qu'aucun outil du dépôt ne compile en
+  JSX (**ADR 024**, la règle de tout module à composants) ;
+- `zod` pour valider les entrées de route — le paramètre `[document]` des pages
+  légales aujourd'hui. Zod à **chaque** frontière (`docs/security.md` §4), y
+  compris un segment d'URL ;
 - `next-intl` pour la résolution des chaînes — dans `i18n/request.ts`,
   `i18n/request-config.ts`, `lib/i18n.ts`, `app/api/i18n-probe/route.ts` et les
   composants qui affichent du texte. La bibliothèque est un
@@ -203,6 +211,52 @@ Le proxy ne voit pas `/api` (son `matcher` l'exclut) : les routes des modules
 n'héritent d'aucun préfixe de locale. Leur langue, elles la reçoivent du point
 de composition, qui la lit dans le cookie puis dans `Accept-Language` — par la
 même fonction que l'écran.
+
+## Le montage du site public
+
+Deux fichiers, sur le modèle exact de l'i18n :
+
+- `lib/marketing.ts` porte le **choix** — le module `marketing` est-il monté ?
+  C'est le seul fichier de l'application qui connaisse `@repo/module-marketing`,
+  et le seul qui regarde s'il est activé. Il rend un `MarketingSite` dont la
+  **forme est la même dans les deux états** : trois listes, vides quand le
+  module est coupé ;
+- `app/page.tsx`, `app/legal/[document]/page.tsx`, `app/sitemap.ts` et
+  `app/robots.ts` **lisent** ce site sans jamais nommer de module. La racine a
+  trois branches — tableau de bord pour un visiteur connecté, accueil marketing
+  pour un visiteur anonyme, redirection vers la connexion quand il n'y a pas de
+  section — et les deux dernières se départagent sur `sections.length`,
+  c'est-à-dire sur une donnée.
+
+La configuration (`config/marketing.ts`) n'est **validée que lorsque le module
+est monté** : un dépôt qui coupe le site public n'a pas à maintenir un fichier
+cohérent. Module activé, une configuration fausse arrête le démarrage en nommant
+la section fautive.
+
+`app/sitemap.ts` et `app/robots.ts` déclarent `dynamic = 'force-dynamic'`, et ce
+n'est pas une commodité : ce sont des route handlers que Next met en cache par
+défaut, donc évalués pendant `next build` — où `getEnv()` ne valide rien et où la
+CI ne pose aucune `APP_URL`. Un plan de site figé au build porterait `undefined`
+dans chacune de ses URL.
+
+**Aucune requête base de données au rendu d'une page publique.** Mesuré, pas
+supposé, et en deux moitiés (`tests/marketing.test.ts`) :
+
+- **le rendu** — l'accueil public, la redirection du site coupé, une page légale
+  et l'`AppShell` sont réellement exécutés, avec un compteur posé sur les
+  **prototypes** de `pg`. Toute connexion ouverte par n'importe quel fichier du
+  processus est donc comptée, y compris une base ouverte par un écran pour son
+  compte. Ajouter une lecture de base à l'accueil, à une page légale ou au shell
+  fait rougir cette mesure — vérifié en y ajoutant un vrai
+  `createDatabaseClient(…).pool.query('select 1')` ;
+- **la résolution de session** — le vrai service d'authentification, contre une
+  vraie base, sans cookie puis avec un cookie forgé : la signature est refusée
+  avant tout accès. C'est ce qui rend la première moitié vraie en production, où
+  `currentViewer()` n'est pas doublé.
+
+Ce que cette mesure ne couvre pas, et qui est dit plutôt que sous-entendu : un
+composant **client** exécuté dans le navigateur ne passe par aucun de ces deux
+chemins — il n'a pas d'accès à la base, par construction.
 
 ## Le montage du mailer
 

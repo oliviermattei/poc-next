@@ -56,14 +56,27 @@ valeur qui dérive ou une couleur non exposée à `@theme` fait échouer `pnpm t
 Un token qui manque n'est donc pas un oubli à combler ici — c'est un **design
 system gap**, à signaler dans la story.
 
+**`source(none)` : ce qui n'est pas déclaré n'est pas balayé, et rien n'échoue.**
+Chaque source est écrite — ici pour ce package, dans `apps/web/app/globals.css`
+pour l'application et pour les composants des modules. Une classe employée dans
+un fichier qu'aucune source ne couvre ne produit **aucune règle**, sans erreur ni
+avertissement : mesuré à l'œil en s10, la grille des fonctionnalités restait sur
+une colonne à 1280 px et les liens du pied de page se touchaient. Deux formes, et
+elles ne se valent pas — un chemin **sans motif** est un dossier balayé en
+entier, un chemin **contenant un `*`** est un motif de **fichiers**, si bien que
+`…/presentation` seul ne balaie rien là où `…/presentation/**/*.tsx` balaie.
+`tests/design-system.test.ts` dérive les deux côtés — les `.tsx` du dépôt et les
+motifs déclarés — et rougit sur un fichier non couvert.
+
 Le thème sombre est piloté par la **classe** `.dark` sur `<html>`
 (`@custom-variant dark`), jamais par `prefers-color-scheme` seul : le
 commutateur doit pouvoir contredire le système.
 
 ## Imports autorisés
 
-- `@radix-ui/react-dialog`, `@radix-ui/react-dropdown-menu`,
-  `@radix-ui/react-label`, `@radix-ui/react-separator`, `@radix-ui/react-slot` —
+- `@radix-ui/react-accordion`, `@radix-ui/react-dialog`,
+  `@radix-ui/react-dropdown-menu`, `@radix-ui/react-label`,
+  `@radix-ui/react-separator`, `@radix-ui/react-slot` —
   **ici et nulle part ailleurs** ;
 - `class-variance-authority` pour les variantes, `clsx` et `tailwind-merge` pour
   la composition de classes (`cn`) ;
@@ -97,16 +110,25 @@ vit dans `apps/web`.
 Ceux que s08 utilise réellement, et rien de plus — copier l'inventaire complet
 « pour plus tard » livrerait du code que personne n'a exercé :
 
-| Copiés | `Alert`, `Badge`, `Button`, `Card`, `DropdownMenu`, `Input`, `Label`, `Separator`, `Sheet` |
+| Copiés | `Accordion`, `Alert`, `Badge`, `Button`, `Card`, `DropdownMenu`, `Input`, `Label`, `Separator`, `Sheet` |
 | --- | --- |
-| Composés maison | `EmptyState`, `PageHeader`, `Sidebar` / `SidebarNav`, `ThemeProvider`, `ThemeToggle` |
+| Composés maison | `EmptyState`, `LocaleSwitcher`, `MarketingSection`, `PageHeader`, `Sidebar` / `SidebarNav`, `ThemeProvider`, `ThemeToggle` |
 
 Le reste de l'inventaire de `docs/design-system.md` — `Form`, `Table`,
 `DataTable`, `Tabs`, `Toaster`, `Command`, `AlertDialog`, `Avatar`, `Tooltip`,
 `Popover`, `Skeleton`, `Progress`, `ScrollArea`, `Breadcrumb`, `Pagination`,
-`Accordion`, `Checkbox`, `RadioGroup`, `Select`, `Switch`, `Textarea`,
+`Checkbox`, `RadioGroup`, `Select`, `Switch`, `Textarea`,
 `ConfirmDialog`, et les composés des stories à venir — **n'est pas encore
-copié**. C'est la liste au 31 août 2026 ; le document fait foi, pas ce tableau.
+copié**. C'est la liste au 31 août 2026, révisée par s10 ; le document fait foi,
+pas ce tableau.
+
+`Accordion` et `MarketingSection` sont arrivés avec s10 : le premier porte la
+FAQ marketing (que le document lui attribue explicitement), le second est
+l'enveloppe des sections pilotées par `config/marketing.ts`. **Aucun composant
+de pied de page n'a été ajouté** : le document n'en décrit pas, et le pied de
+page du site public est composé de `Separator`, de liens et de tokens dans la
+couche `presentation` du module `marketing`. Le manque est signalé comme
+*design system gap* dans `docs/designs/s10-marketing-site.md`, pas comblé ici.
 
 ## Sur quoi repose l'accessibilité, faute de `jsx-a11y`
 

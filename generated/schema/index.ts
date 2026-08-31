@@ -9,9 +9,11 @@ import type { ModuleSchema } from '@repo/db'
 import * as auth from './auth'
 import * as demoEnabled from './demo-enabled'
 import * as i18n from './i18n'
+import * as marketing from './marketing'
 
 export const enabledModuleSchemas = [
   { id: 'auth', schema: auth },
   { id: 'demo-enabled', schema: demoEnabled },
   { id: 'i18n', schema: i18n },
+  { id: 'marketing', schema: marketing },
 ] as const satisfies readonly ModuleSchema[]

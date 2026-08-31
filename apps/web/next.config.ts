@@ -22,6 +22,7 @@ const nextConfig: NextConfig = {
     '@repo/module-demo-disabled',
     '@repo/module-demo-enabled',
     '@repo/module-i18n',
+    '@repo/module-marketing',
   ],
   // Le pilote PostgreSQL reste externe au bundle serveur.
   serverExternalPackages: ['pg'],

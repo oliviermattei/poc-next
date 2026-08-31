@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 import { anEmail as anAddress, linkSentTo, PASSWORD, signIn, signUp } from './support/account'
-import { signInRedirectedFrom, urlOf } from './support/locale'
+import { anonymousLanding, signInRedirectedFrom, urlOf } from './support/locale'
 
 /**
  * Le parcours d'authentification, dans un vrai navigateur.
@@ -62,7 +62,9 @@ test('inscription, vérification, connexion, écran protégé, déconnexion', as
   // une garde. Une déconnexion rejouée reste sans effet supplémentaire.
   await expect(async () => {
     await page.getByRole('button', { name: 'Se déconnecter' }).click()
-    await expect(page).toHaveURL(urlOf('/'), { timeout: 2_000 })
+    // Déconnecté, l'appelant est anonyme : il atteint l'accueil public, ou
+    // l'écran de connexion si le site public est coupé. L'attente est dérivée.
+    await expect(page).toHaveURL(urlOf(anonymousLanding()), { timeout: 2_000 })
   }).toPass({ timeout: 20_000 })
 
   // La session est révoquée **côté serveur** : reposer le cookie ne la

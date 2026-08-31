@@ -3,6 +3,7 @@ import { authModule } from '@repo/module-auth'
 import { demoDisabledModule } from '@repo/module-demo-disabled'
 import { demoEnabledModule } from '@repo/module-demo-enabled'
 import { i18nModule } from '@repo/module-i18n'
+import { marketingModule } from '@repo/module-marketing'
 
 /**
  * Les modules du projet — le fichier que le propriétaire édite.
@@ -27,6 +28,7 @@ import { i18nModule } from '@repo/module-i18n'
 export const availableModules = [
   authModule,
   i18nModule,
+  marketingModule,
   demoEnabledModule,
   demoDisabledModule,
 ] as const satisfies readonly AnyModuleDefinition[]
@@ -65,5 +67,6 @@ export const requiredModules = ['auth'] as const satisfies readonly AvailableMod
 export const enabledModules = [
   'auth',
   'i18n',
+  'marketing',
   'demo-enabled',
 ] as const satisfies readonly AvailableModuleId[]

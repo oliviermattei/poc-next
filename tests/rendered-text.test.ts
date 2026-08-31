@@ -93,6 +93,18 @@ vi.mock('next/navigation', async (importOriginal) => ({
   }),
 }))
 
+/**
+ * Le plancher de marqueurs d'**un** écran rendu.
+ *
+ * Mesuré, pas choisi : l'écran le plus pauvre de la liste — le tableau de bord
+ * d'un visiteur connecté — en produit 30, shell compris, et la suite en produit
+ * 331 au total. Le plancher est multiplié par le nombre d'écrans **réellement
+ * rendus** : un écran devenu vide fait donc rougir sa propre ligne, et une
+ * configuration qui n'en rendrait plus que deux ne peut plus franchir un total
+ * figé.
+ */
+const MARKERS_PER_SCREEN = 20
+
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url))
 const SCREEN_ROOT = join(REPO_ROOT, 'apps/web/app')
 
@@ -149,6 +161,10 @@ const TECHNICAL_PROPS = new Set([
   'signInHref',
   'signOutAction',
   'size',
+  // Le slug d'un document légal : il compose son URL et ses clés de
+  // traduction, il ne s'affiche jamais. Le garde-fou de prose reste actif —
+  // `slug="Confidentialité"` rougirait.
+  'slug',
   'token',
   'type',
   'value',
@@ -348,34 +364,74 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
     }
 
     const noParams = Promise.resolve({})
+
+    /**
+     * Ce qu'un écran fait dans **cette** configuration, dérivé du site public
+     * et non concédé.
+     *
+     * Depuis s10, deux écrans peuvent légitimement refuser de rendre : la
+     * racine redirige vers la connexion quand il n'y a pas de site public, et
+     * une page légale répond 404 quand son slug n'est pas déclaré. Avaler
+     * toute exception à `digest` réglerait le problème et en créerait un autre,
+     * mesuré : une redirection **inattendue** — une racine qui redirigerait
+     * toujours — passerait alors inaperçue pour les onze écrans. L'ensemble des
+     * refus légitimes est prédictible ; il est donc prédit.
+     */
+    const { marketingSite } = await import('../apps/web/lib/marketing')
+    const LEGAL_SLUG = 'privacy'
+    const publicSite = marketingSite.sections.length > 0
+    const legalServed = marketingSite.legalDocuments.some(
+      (document) => document.slug === LEGAL_SLUG,
+    )
+
     const screens: readonly {
       readonly id: string
       readonly file: string
       readonly viewer: typeof SIGNED_IN
+      /** Le refus attendu, tel que Next le signale — `null` quand l'écran doit rendre. */
+      readonly refuses: string | null
       readonly render: () => Promise<ReactNode>
     }[] = [
       {
         id: 'accueil anonyme',
         file: 'page.tsx',
         viewer: ANONYMOUS,
+      refuses: publicSite ? null : 'NEXT_REDIRECT',
         render: async () => (await import('../apps/web/app/page')).default(),
       },
       {
         id: 'accueil connecté',
         file: 'page.tsx',
         viewer: SIGNED_IN,
+      refuses: null,
         render: async () => (await import('../apps/web/app/page')).default(),
+      },
+      {
+        // L'accueil marketing est servi par le même fichier que le tableau de
+        // bord, à un visiteur anonyme : il est donc rendu par le cas
+        // « accueil anonyme » ci-dessus. Ce qui suit est la seconde page
+        // publique de s10.
+        id: 'mentions légales',
+        file: 'legal/[document]/page.tsx',
+        viewer: ANONYMOUS,
+      refuses: legalServed ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        render: async () =>
+          (await import('../apps/web/app/legal/[document]/page')).default({
+            params: Promise.resolve({ document: 'privacy' }),
+          }),
       },
       {
         id: 'compte',
         file: 'account/page.tsx',
         viewer: SIGNED_IN,
+      refuses: null,
         render: async () => (await import('../apps/web/app/account/page')).default(),
       },
       {
         id: 'connexion',
         file: 'sign-in/page.tsx',
         viewer: ANONYMOUS,
+      refuses: null,
         render: async () =>
           (await import('../apps/web/app/sign-in/page')).default({
             searchParams: Promise.resolve({ verified: '1', email_changed: '1', reset: '1' }),
@@ -385,18 +441,21 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         id: 'inscription',
         file: 'sign-up/page.tsx',
         viewer: ANONYMOUS,
+      refuses: null,
         render: async () => (await import('../apps/web/app/sign-up/page')).default(),
       },
       {
         id: 'mot de passe oublié',
         file: 'forgot-password/page.tsx',
         viewer: ANONYMOUS,
+      refuses: null,
         render: async () => (await import('../apps/web/app/forgot-password/page')).default(),
       },
       {
         id: 'réinitialisation avec jeton',
         file: 'reset-password/page.tsx',
         viewer: ANONYMOUS,
+      refuses: null,
         render: async () =>
           (await import('../apps/web/app/reset-password/page')).default({
             searchParams: Promise.resolve({ token: 'jeton' }),
@@ -406,6 +465,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         id: 'réinitialisation sans jeton',
         file: 'reset-password/page.tsx',
         viewer: ANONYMOUS,
+      refuses: null,
         render: async () =>
           (await import('../apps/web/app/reset-password/page')).default({
             searchParams: noParams,
@@ -415,6 +475,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         id: 'vérification en attente',
         file: 'verify-email/page.tsx',
         viewer: ANONYMOUS,
+      refuses: null,
         render: async () =>
           (await import('../apps/web/app/verify-email/page')).default({
             searchParams: noParams,
@@ -424,6 +485,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         id: 'vérification expirée',
         file: 'verify-email/page.tsx',
         viewer: ANONYMOUS,
+      refuses: null,
         render: async () =>
           (await import('../apps/web/app/verify-email/page')).default({
             searchParams: Promise.resolve({ error: 'expired' }),
@@ -439,11 +501,42 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
 
     const failures: string[] = []
     let markers = 0
+    let rendered = 0
 
     for (const screen of screens) {
       viewerState.value = screen.viewer
 
-      const tree = await AppShell({ children: await screen.render() })
+      const outcome = await screen.render().then(
+        (content) => ({ content, digest: null as string | null }),
+        (error: unknown) => {
+          const digest = (error as { digest?: unknown }).digest
+
+          if (typeof digest !== 'string') {
+            throw error
+          }
+
+          return { content: null, digest }
+        },
+      )
+
+      if (screen.refuses !== null) {
+        // Un refus **attendu**, et le bon : `redirect()` et `notFound()` ne se
+        // valent pas, et un écran qui rendrait alors qu'on l'attend refusant
+        // rougit ici aussi.
+        expect(outcome.digest, `${screen.id} — refus attendu`).toContain(screen.refuses)
+        continue
+      }
+
+      // Aucun refus n'est admis pour cet écran : une redirection inattendue est
+      // exactement ce qu'un `catch` générique laissait passer.
+      expect(outcome.digest, `${screen.id} — a refusé de rendre`).toBeNull()
+
+      const content = outcome.content
+      const before = markers
+
+      rendered += 1
+
+      const tree = await AppShell({ children: content })
       const html = renderToStaticMarkup(
         createElement(NextIntlClientProvider, {
           locale: defaultLocale,
@@ -467,15 +560,20 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
 
       markers += observed.filter(({ value }) => isMarker(value.trim())).length
 
+      // Écran par écran : un rendu qui n'affiche plus rien ne peut plus se
+      // cacher derrière le total des autres.
+      expect(markers - before, `${screen.id} — marqueurs`).toBeGreaterThan(MARKERS_PER_SCREEN)
+
       failures.push(
         ...new Set(offenders(observed, rules).map((offender) => `${screen.id} — ${offender}`)),
       )
     }
 
-    // Sans cette garde, « aucune chaîne étrangère » serait vrai sur un rendu
-    // vide, c'est-à-dire sur rien : un écran qui ne rend pas, ou un catalogue
-    // pseudo-locale vide, feraient passer la ligne suivante.
-    expect(markers).toBeGreaterThan(60)
+    // Le plancher **suit le nombre d'écrans réellement rendus** : figé à 60, il
+    // laissait passer un facteur cinq de mou, et une configuration qui n'aurait
+    // plus rendu que deux écrans l'aurait encore franchi.
+    expect(rendered).toBe(screens.filter((screen) => screen.refuses === null).length)
+    expect(markers).toBeGreaterThan(rendered * MARKERS_PER_SCREEN)
     expect(failures).toEqual([])
   })
 })

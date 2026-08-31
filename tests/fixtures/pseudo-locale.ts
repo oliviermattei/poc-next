@@ -1,6 +1,7 @@
-import { unflattenMessages, type NestedMessages } from '@repo/core'
+import { unflattenMessages, type ModuleRegistry, type NestedMessages } from '@repo/core'
 
 import { requestConfigFor } from '../../apps/web/i18n/request-config'
+import { moduleRegistry } from '../../apps/web/lib/module-registry'
 import { flatMessagesFor } from '../../apps/web/lib/messages'
 
 /**
@@ -28,12 +29,25 @@ export const markerFor = (key: string): string => `${OPEN}${key}${CLOSE}`
 export const isMarker = (value: string): boolean =>
   value.startsWith(OPEN) && value.endsWith(CLOSE) && value.length > OPEN.length + CLOSE.length
 
-/** Les clés réellement livrées par l'application et ses modules activés. */
-export const catalogueKeys = (locale: string): readonly string[] =>
-  Object.keys(flatMessagesFor(locale))
+/**
+ * Les clés livrées par l'application et ses modules — **du registre qu'on lui
+ * donne**.
+ *
+ * Le registre est un paramètre, avec celui de l'application par défaut : un
+ * scénario qui rend l'écran d'un module que la configuration courante coupe a
+ * besoin du catalogue de **ce** module, sinon la traduction lève et le test
+ * n'échoue plus pour la raison qu'il porte. C'est la même raison qui fait de
+ * `flatMessagesFor` une fonction à registre depuis s09.
+ */
+export const catalogueKeys = (
+  locale: string,
+  registry: ModuleRegistry = moduleRegistry,
+): readonly string[] => Object.keys(flatMessagesFor(locale, registry))
 
-export const pseudoMessages = (locale: string): NestedMessages =>
-  unflattenMessages(Object.fromEntries(catalogueKeys(locale).map((key) => [key, markerFor(key)])))
+export const pseudoMessages = (locale: string, registry?: ModuleRegistry): NestedMessages =>
+  unflattenMessages(
+    Object.fromEntries(catalogueKeys(locale, registry).map((key) => [key, markerFor(key)])),
+  )
 
 /**
  * La configuration de rendu de la pseudo-locale : le catalogue de marqueurs,
@@ -44,7 +58,7 @@ export const pseudoMessages = (locale: string): NestedMessages =>
  * chemin de la clé. La moitié « présence » du critère 3 est donc éprouvée par
  * le rendu lui-même, sans extraction statique.
  */
-export const pseudoRequestConfig = (locale: string) => ({
+export const pseudoRequestConfig = (locale: string, registry?: ModuleRegistry) => ({
   ...requestConfigFor(locale),
-  messages: pseudoMessages(locale),
+  messages: pseudoMessages(locale, registry),
 })

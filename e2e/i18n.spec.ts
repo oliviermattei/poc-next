@@ -1,9 +1,10 @@
 import { expect, test } from '@playwright/test'
 
 import { localeRouting } from '../apps/web/lib/locale-routing'
+import { marketingSite } from '../apps/web/lib/marketing'
 import { defaultLocale } from '../config/i18n'
 import { anEmail, mailSentTo } from './support/account'
-import { urlOf } from './support/locale'
+import { anonymousLanding, urlOf } from './support/locale'
 
 /**
  * La langue, vue depuis un navigateur réellement démarré.
@@ -21,6 +22,15 @@ import { urlOf } from './support/locale'
 const OTHER_LOCALE = localeRouting.locales.find((locale) => locale !== defaultLocale)
 const servesOneLanguage = localeRouting.locales.length < 2
 
+/**
+ * La racine appartient au module `marketing` depuis s10 : coupé, elle redirige
+ * un visiteur anonyme vers la connexion (critère 6 de s10). L'attente est donc
+ * **dérivée** de l'état du module, comme la forme des URL l'est de
+ * `localeRouting` — un parcours qui recopierait l'une des deux configurations
+ * ne prouverait plus rien sur l'autre.
+ */
+const homeIsPublic = marketingSite.sections.length > 0
+
 test('les mêmes écrans sont servis, préfixe de locale ou non', async ({ page }) => {
   // Le critère qui décide de la forme de toutes les routes du dépôt : les URL
   // d'origine répondent dans les deux états. Elles redirigent vers leur forme
@@ -30,7 +40,9 @@ test('les mêmes écrans sont servis, préfixe de locale ou non', async ({ page 
     const response = await page.goto(pathname)
 
     expect(response?.status(), pathname).toBe(200)
-    await expect(page).toHaveURL(urlOf(pathname))
+    await expect(page).toHaveURL(
+      urlOf(pathname === '/' && !homeIsPublic ? '/sign-in' : pathname),
+    )
   }
 })
 
@@ -87,12 +99,21 @@ test('changer de langue traduit l’écran et persiste entre deux sessions', asy
   await page.getByRole('menuitem', { name: 'English' }).click()
 
   // Le sélecteur mène à l'accueil de la langue choisie : c'est un lien, donc il
-  // fonctionne sans JavaScript, et l'URL porte la langue.
-  await expect(page).toHaveURL(new RegExp(`localhost:\\d+\\/${OTHER_LOCALE ?? ''}$`))
+  // fonctionne sans JavaScript, et l'URL porte la langue. Depuis s10, cet
+  // accueil redirige vers la connexion quand le site public est coupé —
+  // l'attente est donc dérivée, dans la langue choisie.
+  const landing = localeRouting.publicPath(anonymousLanding(), OTHER_LOCALE ?? defaultLocale)
+
+  await expect(page).toHaveURL(new RegExp(`localhost:\\d+${landing.replace(/\//g, '\\/')}$`))
   await expect(page.locator('html')).toHaveAttribute('lang', OTHER_LOCALE ?? '')
   // Un texte que seule la version anglaise porte : « Créer un compte » et
   // « Create an account » ne peuvent pas être vrais en même temps.
-  await expect(page.getByRole('link', { name: 'Create an account' })).toBeVisible()
+  //
+  // `.first()` depuis s10 : l'accueil public répète son appel à l'action
+  // principal — une fois dans le héros, une fois en bas de page. C'est une
+  // page marketing, pas une ambiguïté à corriger ; ce qui compte reste
+  // l'absence totale de la version française, vérifiée juste après.
+  await expect(page.getByRole('link', { name: 'Create an account' }).first()).toBeVisible()
   await expect(page.getByRole('link', { name: 'Créer un compte' })).toHaveCount(0)
 
   // La persistance : une **nouvelle** page du même navigateur, sur une URL sans

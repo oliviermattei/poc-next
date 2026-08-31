@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Maquette — s10 site marketing</title>
+    <!--
+      Référence visuelle, PAS du code de production.
+      Les tokens ci-dessous sont recopiés de docs/design-system.md ; l'implémentation
+      les prend dans packages/ui/src/styles.css et compose avec les vrais composants.
+    -->
+    <style>
+      :root {
+        --background: oklch(1 0 0);
+        --foreground: oklch(0.145 0 0);
+        --card: oklch(1 0 0);
+        --card-foreground: oklch(0.145 0 0);
+        --muted: oklch(0.97 0 0);
+        --muted-foreground: oklch(0.556 0 0);
+        --primary: oklch(0.205 0 0);
+        --primary-foreground: oklch(0.985 0 0);
+        --border: oklch(0.922 0 0);
+        --ring: oklch(0.708 0 0);
+        --radius: 0.5rem;
+      }
+      .dark {
+        --background: oklch(0.145 0 0);
+        --foreground: oklch(0.985 0 0);
+        --card: oklch(0.205 0 0);
+        --card-foreground: oklch(0.985 0 0);
+        --muted: oklch(0.269 0 0);
+        --muted-foreground: oklch(0.708 0 0);
+        --primary: oklch(0.985 0 0);
+        --primary-foreground: oklch(0.205 0 0);
+        --border: oklch(1 0 0 / 10%);
+        --ring: oklch(0.556 0 0);
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--background);
+        color: var(--foreground);
+        font-family: ui-sans-serif, system-ui, sans-serif;
+        font-size: 0.875rem;
+        line-height: 1.5;
+      }
+
+      .app { display: flex; min-height: 100svh; }
+      .sidebar {
+        width: 15rem; flex-shrink: 0;
+        border-right: 1px solid var(--border);
+        padding: 0.75rem;
+      }
+      @media (max-width: 767px) { .sidebar { display: none; } }
+      .brand { font-weight: 600; padding: 0.5rem; }
+      .sidebar a {
+        display: block; padding: 0.5rem; border-radius: calc(var(--radius) - 2px);
+        color: var(--muted-foreground); text-decoration: none;
+      }
+      .sidebar a:hover { background: var(--muted); color: var(--foreground); }
+
+      .frame { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+      header {
+        display: flex; height: 3.5rem; flex-shrink: 0; align-items: center;
+        gap: 0.5rem; border-bottom: 1px solid var(--border); padding: 0 1.5rem;
+      }
+      header .spacer { margin-left: auto; }
+      main { min-width: 0; flex: 1; padding: 0 2rem; }
+      .column { margin: 0 auto; width: 100%; max-width: 56rem; min-width: 0; }
+
+      /* MarketingSection : rythme vertical py-16 / py-24 */
+      section { padding: 4rem 0; }
+      @media (min-width: 768px) { section { padding: 6rem 0; } }
+      section + section { border-top: 1px solid var(--border); }
+
+      .display { font-size: 3rem; font-weight: 600; line-height: 1.05; letter-spacing: -0.02em; margin: 0; }
+      h2 { font-size: 1.5rem; font-weight: 600; margin: 0; }
+      h3 { font-size: 1.25rem; font-weight: 600; margin: 0; }
+      .lead { font-size: 1rem; color: var(--muted-foreground); margin: 0.75rem 0 0; max-width: 42rem; }
+      .section-head { margin-bottom: 2rem; }
+
+      .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 2rem; }
+      .btn {
+        display: inline-flex; align-items: center; justify-content: center;
+        height: 2.5rem; padding: 0 1rem; border-radius: calc(var(--radius) - 2px);
+        font-weight: 500; text-decoration: none; border: 1px solid transparent;
+      }
+      .btn-default { background: var(--primary); color: var(--primary-foreground); }
+      .btn-outline { border-color: var(--border); color: var(--foreground); }
+
+      .grid { display: grid; gap: 1rem; grid-template-columns: 1fr; }
+      @media (min-width: 768px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+      @media (min-width: 1024px) { .grid-3 { grid-template-columns: repeat(3, 1fr); } }
+
+      /* Card : élévation par bordure et fond, jamais par ombre */
+      .card {
+        background: var(--card); color: var(--card-foreground);
+        border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem;
+      }
+      .card p { color: var(--muted-foreground); margin: 0.5rem 0 0; }
+      .icon { width: 20px; height: 20px; display: block; margin-bottom: 0.75rem; }
+
+      blockquote { margin: 0; font-size: 1rem; }
+      .author { margin-top: 0.75rem; color: var(--muted-foreground); font-size: 0.75rem; }
+
+      details {
+        border-bottom: 1px solid var(--border); padding: 1rem 0;
+      }
+      summary { cursor: pointer; font-weight: 500; list-style: none; }
+      summary::-webkit-details-marker { display: none; }
+      details p { color: var(--muted-foreground); margin: 0.75rem 0 0; }
+
+      footer { border-top: 1px solid var(--border); padding: 2rem 0 3rem; }
+      .footer-row { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; }
+      footer a { color: var(--muted-foreground); }
+
+      .note {
+        margin: 0 auto; max-width: 56rem; padding: 1rem 2rem;
+        color: var(--muted-foreground); font-size: 0.75rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <nav class="sidebar" aria-label="Modules">
+        <div class="brand">Killer SaaS</div>
+        <a href="#">Accueil</a>
+        <a href="#">Connexion</a>
+      </nav>
+
+      <div class="frame">
+        <header>
+          <span class="spacer"></span>
+          <button class="btn btn-outline" onclick="document.documentElement.classList.toggle('dark')">
+            Thème
+          </button>
+        </header>
+
+        <main>
+          <div class="column">
+            <!-- section « hero » -->
+            <section>
+              <h1 class="display">Le socle SaaS dont vous coupez ce que vous n’utilisez pas.</h1>
+              <p class="lead">
+                Authentification, organisations, facturation, emails : chaque module s’active ou se coupe
+                d’une ligne. Un module coupé ne laisse ni route, ni table, ni entrée de navigation.
+              </p>
+              <div class="actions">
+                <a class="btn btn-default" href="#">Créer un compte</a>
+                <a class="btn btn-outline" href="#">Se connecter</a>
+              </div>
+            </section>
+
+            <!-- section « features » -->
+            <section>
+              <div class="section-head">
+                <h2>Ce que le socle vous évite d’écrire</h2>
+                <p class="lead">Les trois mille lignes que tout projet réécrit, livrées avec leurs tests.</p>
+              </div>
+              <div class="grid grid-3">
+                <div class="card">
+                  <h3>Des modules autonomes</h3>
+                  <p>Un module déclare son schéma, ses routes, sa navigation et ses traductions. Le couper les retire tous.</p>
+                </div>
+                <div class="card">
+                  <h3>Un CLI réversible</h3>
+                  <p>Activez ou coupez un module à tout moment. La configuration est restaurée si quoi que ce soit échoue.</p>
+                </div>
+                <div class="card">
+                  <h3>Conformité par défaut</h3>
+                  <p>Limitation de débit, export de données, consentement : dans le socle, pas dans une extension payante.</p>
+                </div>
+              </div>
+            </section>
+
+            <!-- section « testimonials » -->
+            <section>
+              <div class="section-head"><h2>Ils l’ont mis en production</h2></div>
+              <div class="grid">
+                <div class="card">
+                  <blockquote>« Le premier boilerplate dont j’ai pu retirer la moitié sans rien casser. »</blockquote>
+                  <p class="author">Développeuse indépendante</p>
+                </div>
+                <div class="card">
+                  <blockquote>« Le raisonnement est versionné à côté du code. On reprend un module sans archéologie. »</blockquote>
+                  <p class="author">Directeur technique, SaaS B2B</p>
+                </div>
+              </div>
+            </section>
+
+            <!-- section « faq » — Accordion -->
+            <section>
+              <div class="section-head"><h2>Questions fréquentes</h2></div>
+              <details open>
+                <summary>Quelle est la pile technique ?</summary>
+                <p>Next.js, PostgreSQL et Drizzle, TypeScript strict. Une seule pile, assumée.</p>
+              </details>
+              <details>
+                <summary>Que devient un module désactivé ?</summary>
+                <p>Ses tables et ses données restent en place. Rien n’est supprimé : une réactivation les retrouve intactes.</p>
+              </details>
+              <details>
+                <summary>Puis-je changer l’apparence ?</summary>
+                <p>Le design system est neutre et thémable : remplacer la couleur primaire suffit à habiller un projet.</p>
+              </details>
+            </section>
+
+            <!-- section « cta » -->
+            <section>
+              <div class="section-head">
+                <h2>Commencez par ce dont vous avez besoin</h2>
+                <p class="lead">Créez un compte, coupez ce qui ne sert pas, mettez en ligne.</p>
+              </div>
+              <div class="actions"><a class="btn btn-default" href="#">Créer un compte</a></div>
+            </section>
+
+            <!-- pied de page : les liens légaux vivent ici -->
+            <footer>
+              <div class="footer-row">
+                <strong>Killer SaaS</strong>
+                <a href="#">Confidentialité</a>
+                <a href="#">Conditions d’utilisation</a>
+              </div>
+            </footer>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <p class="note">
+      Maquette de référence. Le bouton « Thème » bascule <code>.dark</code> sur <code>&lt;html&gt;</code>,
+      comme <code>next-themes</code> en production. La FAQ est ici un <code>&lt;details&gt;</code> ; en
+      production c’est l’<code>Accordion</code> de <code>packages/ui</code>.
+    </p>
+  </body>
+</html>
