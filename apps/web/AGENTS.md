@@ -21,8 +21,8 @@ module (`packages/modules/<module>/src/domain`).
   point de composition de l'authentification, et `lib/locale-routing.ts`, celui
   de l'i18n (voir plus bas) ;
 - `next-intl` pour la résolution des chaînes — dans `i18n/request.ts`,
-  `i18n/request-config.ts`, `lib/i18n.ts` et les composants qui affichent du
-  texte. La bibliothèque est un
+  `i18n/request-config.ts`, `lib/i18n.ts`, `app/api/i18n-probe/route.ts` et les
+  composants qui affichent du texte. La bibliothèque est un
   détail de ce point de composition : aucun module ne la connaît ;
 - `@repo/ui` pour **tout** ce qui s'affiche : c'est le design system, et la
   seule frontière avec le socle de composants. Un import de `@radix-ui/*` ici
@@ -47,6 +47,12 @@ point d'accès unique est `@repo/config`.
   `unreachable` et journalise la cause, jamais la chaîne de connexion ;
 - de composant copié depuis un design externe : le design system vit dans
   `packages/ui` ;
+- de **texte affiché écrit en dur**, quelle qu'en soit la forme — un littéral,
+  une variable, une clé d'objet de props, une concaténation. Tout ce qui
+  s'affiche vient d'une clé de catalogue. La règle est exécutable :
+  `tests/rendered-text.test.ts` rend chaque écran avec un catalogue dont chaque
+  valeur est un marqueur, et refuse toute chaîne qui n'en est pas un. Un écran
+  ajouté sans être rendu là fait rougir la garde de couverture du même fichier ;
 - de connaissance d'un module en particulier : aucun `if (module activé)`, aucun
   fichier de route par module, aucune entrée de navigation écrite à la main. Tout
   cela vient du registre, et c'est ce qui fait qu'un module non activé n'expose
@@ -177,6 +183,14 @@ Deux choses ne sont pas là où on les chercherait, et c'est mesuré :
   avec un catalogue amputé. La garde d'avant lisait le fichier source, et la
   revue de s09 l'a neutralisée deux fois sans la faire rougir — une garde
   textuelle ne tient pas un comportement.
+
+  Le **câblage** est une seconde question, et elle a son propre contrôle :
+  `app/api/i18n-probe/route.ts` demande une clé qu'aucun catalogue ne livre, et
+  `e2e/i18n.spec.ts` exige que la requête échoue. Ramener `i18n/request.ts` au
+  repli silencieux laissait tout le reste vert — mesuré en seconde revue de
+  s09 ; ce parcours-là rougit. La sonde est un opt-in explicite
+  (`I18N_MISSING_KEY_PROBE=1`, posé par `playwright.config.ts`) : sans le
+  drapeau elle répond 404, et `tests/i18n.test.ts` le vérifie.
 
 Le cookie de langue (`app_locale`, posé par `proxy.ts`) porte `HttpOnly`,
 `Secure` et `SameSite=Lax`. `docs/security.md` §1 ne fait pas d'exception pour

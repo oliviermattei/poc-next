@@ -8,6 +8,7 @@ export {
   EMAIL_LOCAL_CAPTURE_ENABLED,
   ENV_KEYS,
   EnvValidationError,
+  I18N_MISSING_KEY_PROBE_ENABLED,
   NEXT_BUILD_PHASE,
   assertStartupEnv,
   envSchema,

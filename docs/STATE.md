@@ -10,7 +10,7 @@
 | s09-i18n | implémentée, **en revue** |
 | s10 → s45 | à faire — 36 stories |
 
-Tests : **641 + 2 ignorés**, 26 parcours end-to-end, déterministes (`retries: 0`).
+Tests : **681 + 2 ignorés**, 27 parcours end-to-end, déterministes (`retries: 0`).
 ADR : **22**. Branche : `dev`. Commits : un par story, plus `docs:` pour recherche, plan, revue.
 
 ## Environnement (à refaire après un redémarrage de session)
@@ -52,6 +52,9 @@ Décisions structurantes déjà prises : contrat de module à 13 clés (ADR 007)
 8. Test qui **inventorie** au lieu de **vérifier** (`.env.example` comparé par noms de clés) — s06
 9. Paramètre facultatif à **repli silencieux** : l'oublier au point de composition ne fait rougir aucune commande, et la règle redevient vraie par construction (`buildRegistry({locales})`) — s09
 10. Garde qui lit le **texte** du fichier au lieu d'exécuter le comportement : `/onError:[\s\S]*?throw/` était satisfaite par le `throw` du gestionnaire suivant — s09
+11. Invariant déplacé là où un test l'atteint, mais **plus branché** : la configuration qui refuse une clé manquante était éprouvée, et ramener `apps/web/i18n/request.ts` au repli silencieux laissait six commandes vertes. Un comportement se prouve **et** son câblage — ici par une sonde exercée au navigateur — s09
+12. Scanner qui **abandonne en silence** au milieu d'un fichier : sur un délimiteur jamais refermé, `blankDelimited` blanchissait jusqu'à la fin, donc ne voyait plus rien après. Pire qu'une forme ratée, puisque c'est tout le reste qui l'est — s09
+13. **Élargir un balayage syntaxique** au lieu d'inverser le levier : deux élargissements successifs laissaient encore passer `const BADGE = 'Beta'` puis `options={{ light: 'Light' }}`. La question « cette chaîne s'affiche-t-elle ? » ne se pose pas sur une ligne de source ; elle se pose sur un rendu (`tests/rendered-text.test.ts`, catalogue pseudo-locale) — s09
 
 **Règle** : une mutation qui reste verte signifie que le test est faux, pas que le code est juste.
 

@@ -30,6 +30,12 @@ const EMAIL_FROM_PATTERN = /^(?:[^\s<>@]+@[^\s<>@]+\.[A-Za-z]{2,}|.+<[^\s<>@]+@[
  */
 export const EMAIL_LOCAL_CAPTURE_ENABLED = '1'
 
+/**
+ * La valeur qui monte la sonde de traduction manquante — même littéral, même
+ * raison que ci-dessus.
+ */
+export const I18N_MISSING_KEY_PROBE_ENABLED = '1'
+
 const envShape = {
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   DATABASE_URL: z
@@ -61,6 +67,21 @@ const envShape = {
    * refuse de démarrer.
    */
   EMAIL_LOCAL_CAPTURE: z.literal(EMAIL_LOCAL_CAPTURE_ENABLED).optional(),
+  /**
+   * Monte la **sonde de traduction manquante** (`GET /api/i18n-probe`), qui
+   * demande une clé qu'aucun catalogue ne livre.
+   *
+   * Elle existe parce qu'un critère de s09 — « une clé manquante n'est jamais
+   * remplacée par elle-même » — se prouve au bout de la chaîne ou pas du tout :
+   * la revue a mesuré qu'un test de nœud sur la configuration reste vert quand
+   * `apps/web/i18n/request.ts` cesse de la brancher. La sonde fait échouer la
+   * requête, dans le vrai serveur, et `e2e/i18n.spec.ts` l'exige.
+   *
+   * Opt-in explicite, comme la capture locale : sans ce drapeau la route répond
+   * 404, donc rien n'est exposé en production. Elle n'est activée que par
+   * `playwright.config.ts`.
+   */
+  I18N_MISSING_KEY_PROBE: z.literal(I18N_MISSING_KEY_PROBE_ENABLED).optional(),
   /**
    * Secret de signature des sessions et des jetons d'authentification.
    *

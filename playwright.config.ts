@@ -65,6 +65,11 @@ export default defineConfig({
       AUTH_SECRET: 'playwright-e2e-non-secret-0123456789abcdef',
       APP_URL: BASE_URL,
       EMAIL_LOCAL_CAPTURE: '1',
+      // Monte `GET /api/i18n-probe` : une clé absente doit faire échouer la
+      // requête, dans le vrai serveur. C'est la seule preuve que la
+      // configuration qui refuse est encore branchée par `i18n/request.ts` —
+      // un test de nœud ne voit que la configuration, pas son câblage.
+      I18N_MISSING_KEY_PROBE: '1',
     },
     url: BASE_URL,
     // En local, un serveur déjà lancé est réutilisé ; en CI rien n'écoute, donc

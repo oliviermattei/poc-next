@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -29,6 +30,14 @@ const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url))
 /* ------------------------------------------------------------------------- *
  * Le cœur de la story : détecter un texte affiché qui ne vient pas des
  * catalogues.
+ *
+ * **Ce n'est plus ce fichier qui tient le critère 3.** Il est tenu par
+ * `tests/rendered-text.test.ts`, qui rend les écrans avec un catalogue
+ * pseudo-locale et refuse tout ce qui n'en vient pas : la forme de la source y
+ * est hors sujet. Le balayage ci-dessous reste comme pré-contrôle, et parce
+ * qu'il voit ce qu'un rendu ne voit pas — une branche non prise, une surface
+ * flottante fermée. Deux revues ont mesuré qu'élargir ses mailles une fois de
+ * plus n'était pas la réponse.
  *
  * Ce n'est **pas** un inventaire des fichiers de traduction. Un inventaire
  * compare une liste à sa propre copie : il rougit sur toute addition légitime
@@ -90,17 +99,53 @@ const tsxFilesUnder = (directory: string): readonly string[] => {
 
 const RENDER_FILES = RENDER_ROOTS.flatMap(tsxFilesUnder)
 
+/** Délimiteur jamais refermé : il n'y a pas de borne, et il ne faut pas en inventer une. */
+const UNBALANCED = -1
+
 /**
  * Bornes équilibrées : l'index du délimiteur fermant qui répond à celui ouvert
- * en `start`.
+ * en `start`, ou `UNBALANCED`.
+ *
+ * **Rendre la fin du fichier faute de fermeture était un piège**, mesuré en
+ * seconde revue de s09 : `cn('after:content-["("]')` faisait blanchir tout le
+ * reste du fichier, donc le détecteur s'arrêtait de chercher en silence. Un
+ * scanner qui abandonne au milieu est pire que celui qui rate une forme : il
+ * rate tout ce qui suit, sans le dire. Les appelants traitent désormais ce cas
+ * explicitement — aucun ne blanchit.
+ *
+ * Les chaînes sont ignorées **quand on équilibre des parenthèses**, et
+ * seulement là : c'est le cas de `cn(` et `cva(`, dont les arguments sont
+ * précisément des chaînes de classes où une parenthèse isolée est légitime. Sur
+ * des accolades, l'appelant est du JSX, dont le texte porte des apostrophes
+ * (« l'espace ») qu'aucun suivi de chaîne ne saurait distinguer d'un littéral.
  */
 const balancedEnd = (source: string, start: number, open: string, close: string): number => {
+  const skipStrings = open === '('
   let depth = 0
+  let quote: string | null = null
 
   for (let index = start; index < source.length; index += 1) {
-    if (source[index] === open) {
+    const character = source[index]
+
+    if (skipStrings && quote !== null) {
+      if (character === '\\') {
+        index += 1
+      } else if (character === quote) {
+        quote = null
+      }
+
+      continue
+    }
+
+    if (skipStrings && (character === "'" || character === '"' || character === '`')) {
+      quote = character ?? null
+
+      continue
+    }
+
+    if (character === open) {
       depth += 1
-    } else if (source[index] === close) {
+    } else if (character === close) {
       depth -= 1
 
       if (depth === 0) {
@@ -109,7 +154,7 @@ const balancedEnd = (source: string, start: number, open: string, close: string)
     }
   }
 
-  return source.length - 1
+  return UNBALANCED
 }
 
 /**
@@ -125,14 +170,21 @@ const balancedEnd = (source: string, start: number, open: string, close: string)
  * Le corollaire est une règle sur le code de production : une liste de classes
  * s'écrit dans `className=`, `cn(` ou `cva(`. Écrite ailleurs — un gabarit posé
  * dans une variable —, elle sort de ces trois contextes et le détecteur la
- * prendra pour un fragment de phrase. C'est le seul faux positif connu, et il
- * se corrige en remettant les classes là où elles vont.
+ * prendra pour un fragment de phrase. C'est le faux positif connu, et il se
+ * corrige en remettant les classes là où elles vont.
+ *
+ * Un délimiteur jamais refermé ne blanchit **rien** : le passage est laissé tel
+ * quel et la recherche reprend après lui. Le pire qui puisse alors arriver est
+ * une liste de classes signalée à tort — bruyant, donc réparable. Blanchir
+ * jusqu'à la fin du fichier, comme le faisait la version précédente, éteignait
+ * le détecteur sur tout ce qui suivait, en silence.
  */
 const blankDelimited = (source: string, marker: string, open: string, close: string): string => {
   let out = source
+  let from = 0
 
   for (;;) {
-    const start = out.indexOf(marker)
+    const start = out.indexOf(marker, from)
 
     if (start === -1) {
       return out
@@ -140,7 +192,15 @@ const blankDelimited = (source: string, marker: string, open: string, close: str
 
     const index = balancedEnd(out, start + marker.length - 1, open, close)
 
+    if (index === UNBALANCED) {
+      from = start + marker.length
+
+      continue
+    }
+
+    // Le blanchiment conserve la longueur : les index restent valides.
     out = `${out.slice(0, start)}${' '.repeat(index - start + 1)}${out.slice(index + 1)}`
+    from = index + 1
   }
 }
 
@@ -209,7 +269,12 @@ const displayedInAttributes = (code: string): readonly string[] => {
         found.push(code.slice(start + 1, end))
       }
     } else if (first === '{') {
-      found.push(...literalsIn(code.slice(start + 1, balancedEnd(code, start, '{', '}'))))
+      const end = balancedEnd(code, start, '{', '}')
+
+      // Accolade jamais refermée : on lit jusqu'à la fin plutôt que de rien
+      // lire — l'extraction ne blanchit rien, elle ne peut donc pas éteindre
+      // ce qui suit.
+      found.push(...literalsIn(code.slice(start + 1, end === UNBALANCED ? undefined : end)))
     }
   }
 
@@ -217,12 +282,15 @@ const displayedInAttributes = (code: string): readonly string[] => {
 }
 
 /** Une valeur d'attribut, pour la retirer d'une région d'enfants JSX. */
-const ATTRIBUTE = /[A-Za-z-]+=(?:"[^"]*"|'[^']*'|\{)/
+const ATTRIBUTE = /[A-Za-z-]+=(?:"[^"]*"|'[^']*'|\{)/g
 
 const blankAttributes = (region: string): string => {
   let out = region
+  let from = 0
 
   for (;;) {
+    ATTRIBUTE.lastIndex = from
+
     const match = ATTRIBUTE.exec(out)
 
     if (match === null) {
@@ -233,7 +301,14 @@ const blankAttributes = (region: string): string => {
     const last = start + match[0].length - 1
     const end = out[last] === '{' ? balancedEnd(out, last, '{', '}') : last
 
+    if (end === UNBALANCED) {
+      from = last + 1
+
+      continue
+    }
+
     out = `${out.slice(0, start)}${' '.repeat(end - start + 1)}${out.slice(end + 1)}`
+    from = end + 1
   }
 }
 
@@ -259,7 +334,7 @@ const displayedInChildren = (code: string): readonly string[] => {
 
     const end = balancedEnd(code, start, '{', '}')
 
-    if (!/^\s*</.test(code.slice(end + 1))) {
+    if (end === UNBALANCED || !/^\s*</.test(code.slice(end + 1))) {
       continue
     }
 
@@ -369,10 +444,20 @@ const hardcodedIn = (source: string): readonly string[] => {
  * Les formes essayées **contre** ce filet, une à une, et qu'il doit voir.
  *
  * Ce n'est pas un inventaire des formes qui existent : c'est la liste de celles
- * qui ont été plantées et mesurées. Ce qui leur échappe encore est nommé dans
- * `docs/reviews/s09-i18n.md` — la concaténation de fragments d'un seul mot sans
- * espace mitoyenne, et un mot unique sans accent rangé dans une variable puis
- * rendu par cette variable.
+ * qui ont été plantées et mesurées.
+ *
+ * **Ce balayage n'est plus ce qui tient le critère 3.** Il reste ici comme
+ * pré-contrôle rapide, et parce qu'il voit ce qu'un rendu ne voit pas : le
+ * texte écrit dans une branche non prise et dans une surface flottante fermée —
+ * c'est ainsi que le « Fermer » de `packages/ui/src/components/sheet.tsx` a été
+ * trouvé. Ce qui lui échappe, la seconde revue de s09 l'a mesuré (chapitre
+ * « C1 — le filet élargi », `docs/reviews/s09-i18n.md`) : un mot unique sans
+ * accent rangé dans un conteneur non affiché — variable, littéral d'objet,
+ * tableau —, et la concaténation de fragments d'un seul mot sans espace
+ * mitoyenne. C'est exactement pour cela que `tests/rendered-text.test.ts` prend
+ * le problème par l'autre bout : il rend les écrans avec un catalogue
+ * pseudo-locale et refuse tout ce qui n'en vient pas, quelle que soit la forme
+ * de la source.
  */
 const PLANTED: readonly (readonly [string, string])[] = [
   ['une phrase dans un nœud JSX', 'export const A = () => <h1>Se connecter maintenant</h1>'],
@@ -409,6 +494,15 @@ const PLANTED: readonly (readonly [string, string])[] = [
     'un composant serveur',
     'export default async function Page() { return <h1>Bonjour</h1> }',
   ],
+  [
+    'une phrase située après un `cn(` dont un argument porte une parenthèse',
+    'const c = cn(\'after:content-["("]\')\nexport const R = () => <h1>Se connecter maintenant</h1>',
+  ],
+  [
+    'une phrase située après un `className={` que le comptage ne referme pas',
+    'export const S = () => <div className={`before:content-["{"]`} />\n' +
+      'export const T = () => <h1>Se connecter maintenant</h1>',
+  ],
 ]
 
 /**
@@ -429,6 +523,10 @@ const NOT_TEXT: readonly (readonly [string, string])[] = [
     'export const M = () => <div className="flex flex-wrap items-center gap-3" />',
   ],
   ['un appel à cn', "const cls = cn('flex items-center', extra)"],
+  [
+    'une classe Tailwind portant une parenthèse',
+    'const cls = cn(\'flex items-center after:content-["("]\')',
+  ],
   ['un paramètre de type', 'const f = (): Promise<Response> => fetch(url)'],
   [
     'une extension de type générique',
@@ -674,6 +772,32 @@ describe('une clé manquante est refusée, jamais remplacée par elle-même', ()
 
     expect(() => t('app.manquante')).toThrowError(/app\.manquante/)
   })
+
+  it('n’expose la sonde de clé manquante que sur un drapeau explicite', async () => {
+    // Le câblage — « cette configuration est-elle encore branchée ? » — est
+    // prouvé par `e2e/i18n.spec.ts`, sur le serveur réel : c'est le seul endroit
+    // où toute la chaîne existe. Ce qui se prouve ici est l'autre moitié : la
+    // sonde qui rend cette preuve possible **n'existe pas** sans son drapeau,
+    // donc elle n'expose rien en production.
+    const { GET } = await import('../apps/web/app/api/i18n-probe/route')
+    const before = process.env.I18N_MISSING_KEY_PROBE
+    const database = process.env.DATABASE_URL
+
+    process.env.DATABASE_URL ??= 'postgres://postgres:postgres@localhost:5432/app'
+    delete process.env.I18N_MISSING_KEY_PROBE
+
+    try {
+      expect((await GET()).status).toBe(404)
+    } finally {
+      if (before !== undefined) {
+        process.env.I18N_MISSING_KEY_PROBE = before
+      }
+
+      if (database === undefined) {
+        delete process.env.DATABASE_URL
+      }
+    }
+  })
 })
 
 /* ------------------------------------------------------------------------- *
@@ -839,6 +963,19 @@ describe('aucun cookie ne part sans les attributs du socle', () => {
       expect(cookie, cookie).toMatch(/;\s*Secure/i)
       expect(cookie, cookie).toMatch(/;\s*SameSite=/i)
     }
+  })
+
+  it('construit ce `NextRequest` avec le même `next` que le proxy consomme', () => {
+    // Le cas ci-dessus traverse une frontière de paquet : la requête est
+    // construite depuis la racine, le proxy vit dans `apps/web`. Deux copies de
+    // `next` dans le magasin — pnpm en installe une par ensemble de pairs — et
+    // ce test deviendrait faux le jour où Next ajouterait un `instanceof`.
+    // Aujourd'hui les deux résolutions désignent le même fichier ; la ligne
+    // suivante est ce qui le dira si cela change.
+    const resolveFrom = (workspace: string): string =>
+      createRequire(join(REPO_ROOT, workspace, 'package.json')).resolve('next/server')
+
+    expect(resolveFrom('apps/web')).toBe(resolveFrom('.'))
   })
 })
 

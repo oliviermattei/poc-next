@@ -45,6 +45,18 @@ test('les routes de module n’héritent d’aucun préfixe de locale', async ({
   expect(response.status()).not.toBe(404)
 })
 
+test('une clé de traduction absente fait échouer la requête', async ({ request }) => {
+  // Le critère 9, mesuré **au bout de la chaîne**. Le refus vit dans
+  // `apps/web/i18n/request-config.ts` et un test de nœud l'exécute ; ce que lui
+  // seul ne peut pas dire, c'est que `i18n/request.ts` le branche encore. La
+  // revue de s09 l'a mesuré : ramener ce fichier au repli silencieux laissait
+  // toute la suite verte. Ici, la même mutation rend 200 avec « app.probe.absent »
+  // dans le corps, et ce parcours rougit.
+  const response = await request.get('/api/i18n-probe', { failOnStatusCode: false })
+
+  expect(response.status(), await response.text()).toBe(500)
+})
+
 test('la page annonce la langue qu’elle sert', async ({ page }) => {
   await page.goto('/')
 

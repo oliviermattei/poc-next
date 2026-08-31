@@ -1,0 +1,481 @@
+import { readdirSync, statSync } from 'node:fs'
+import { join, relative } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+import { NextIntlClientProvider } from 'next-intl'
+import { createElement, isValidElement, type ReactNode } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { describe, expect, it, vi } from 'vitest'
+
+import { defaultLocale } from '../config/i18n'
+
+/* ------------------------------------------------------------------------- *
+ * Le critère 3, tenu par le rendu et non par la forme de la source.
+ *
+ * Les deux revues de s09 ont mesuré la limite d'un balayage syntaxique : élargi
+ * deux fois, il laissait encore passer `const BADGE = 'Beta'` rendu par
+ * `<p>{BADGE}</p>`, et un libellé rangé dans un littéral d'objet
+ * (`options={{ light: 'Light' }}`) — l'idiome même du dépôt. Une maille de plus
+ * n'était pas la réponse : la question « cette chaîne s'affiche-t-elle ? » ne se
+ * pose pas sur une ligne de texte.
+ *
+ * Le levier est donc inversé. Les écrans sont **rendus** avec un catalogue
+ * pseudo-locale dont chaque valeur est un marqueur dérivé de sa clé, et ce test
+ * refuse tout ce qui, dans le rendu, n'est pas un marqueur. La forme de la
+ * source disparaît de la question : variable, objet, concaténation, fonction
+ * d'aide, fichier `.ts` ou `dangerouslySetInnerHTML` produisent tous une chaîne
+ * qui n'est pas un marqueur.
+ *
+ * Ce qui est remplacé ici est la **base de données et le contexte de requête**
+ * (`lib/auth`, `lib/i18n`), jamais une règle : les écrans, les composants du
+ * design system, la navigation dérivée du registre et le traducteur de
+ * `next-intl` sont les vrais.
+ *
+ * Deux observations, parce qu'un rendu statique ne voit pas tout :
+ *
+ * 1. **le balisage produit** — nœuds de texte et attributs lus par quelqu'un ;
+ * 2. **les chaînes confiées aux composants** — l'arbre d'éléments avant
+ *    expansion. C'est ce qui attrape le texte remis à un composant du design
+ *    system dans une surface flottante (menu déroulant, panneau), que React ne
+ *    monte pas tant qu'elle est fermée.
+ *
+ * Ce que ce filet ne voit pas, et qui est tenu ailleurs : un texte écrit en dur
+ * **à l'intérieur** d'une surface flottante d'un composant de `packages/ui`
+ * (fermée, donc non rendue, et ses chaînes ne transitent par aucune prop) — le
+ * balayage syntaxique de `tests/i18n.test.ts` le voit, et c'est ainsi que le
+ * « Fermer » de `sheet.tsx` a été trouvé. Les deux moitiés ne se remplacent pas.
+ * ------------------------------------------------------------------------- */
+
+vi.mock('../apps/web/lib/auth', async () => {
+  const { authRoutePath, safeRedirectPath } = await import('@repo/module-auth')
+  const { FIXTURE_SESSIONS, viewerState } = await import('./fixtures/screen-viewer')
+
+  return {
+    authRoutePath,
+    safeRedirectPath,
+    currentViewer: () => Promise.resolve(viewerState.value),
+    currentSessions: () =>
+      Promise.resolve(viewerState.value.session === null ? [] : FIXTURE_SESSIONS),
+  }
+})
+
+vi.mock('../apps/web/lib/i18n', async () => {
+  const { createTranslator } = await import('next-intl')
+  const { localeRouting } = await import('../apps/web/lib/locale-routing')
+  const { pseudoRequestConfig } = await import('./fixtures/pseudo-locale')
+  const { defaultLocale: locale } = await import('../config/i18n')
+
+  return {
+    appIntl: () =>
+      Promise.resolve({
+        locale,
+        t: createTranslator(pseudoRequestConfig(locale)),
+        path: (pathname: string) => localeRouting.publicPath(pathname, locale),
+      }),
+  }
+})
+
+/**
+ * Le routeur, absent d'un rendu de nœud : les composants clients qui
+ * rafraîchissent l'écran après un enregistrement en demandent un. C'est du
+ * contexte de requête, comme la session — pas une règle.
+ */
+vi.mock('next/navigation', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('next/navigation')>()),
+  usePathname: () => '/',
+  useRouter: () => ({
+    refresh: () => {},
+    push: () => {},
+    replace: () => {},
+    back: () => {},
+    forward: () => {},
+    prefetch: () => {},
+  }),
+}))
+
+const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url))
+const SCREEN_ROOT = join(REPO_ROOT, 'apps/web/app')
+
+const pageFilesUnder = (directory: string): readonly string[] => {
+  const found: string[] = []
+
+  const walk = (current: string): void => {
+    for (const name of readdirSync(current)) {
+      const path = join(current, name)
+
+      if (statSync(path).isDirectory()) {
+        walk(path)
+      } else if (name === 'page.tsx') {
+        found.push(relative(SCREEN_ROOT, path))
+      }
+    }
+  }
+
+  walk(directory)
+
+  return found.sort()
+}
+
+/* ------------------------------------------------------------------------- *
+ * Ce qui est accepté dans un rendu, et pourquoi.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * Les clés de prop dont la valeur n'est, par construction, jamais affichée :
+ * une classe, une URL, un identifiant technique, un attribut de formulaire.
+ *
+ * Liste **explicite et courte**, et c'est le point : une prop inconnue portant
+ * une chaîne qui n'est pas un marqueur fait rougir. Ajouter une entrée ici est
+ * une décision, pas un réglage — c'est l'inverse d'une liste d'attributs
+ * « affichés » qu'il faut deviner et qui laisse passer tout ce qu'elle n'a pas
+ * prévu.
+ */
+const TECHNICAL_PROPS = new Set([
+  'action',
+  'accountHref',
+  'align',
+  'autoComplete',
+  'callbackURL',
+  'className',
+  'currentPath',
+  'destination',
+  'href',
+  'hrefLang',
+  'htmlFor',
+  'id',
+  'name',
+  'redirectTo',
+  'side',
+  'signInHref',
+  'signOutAction',
+  'size',
+  'token',
+  'type',
+  'value',
+  'variant',
+])
+
+/** Ces clés-là ne sont jamais soumises au garde-fou de prose : une liste de classes en contient. */
+const OPAQUE_PROPS = new Set(['className'])
+
+/**
+ * Le garde-fou des props techniques : un nom autorisé ne blanchit pas une
+ * phrase. `name="email"` passe, `name="Nom complet"` non — sans quoi la liste
+ * ci-dessus deviendrait la porte de sortie qu'elle est censée fermer.
+ */
+const PROSE = /[\u00c0-\u00ff]|\p{L}{2,}[\u0020\u00a0]+\p{L}{2,}/u
+
+/** Les attributs du balisage dont la valeur est lue par quelqu'un. */
+const DISPLAYED_ATTRIBUTES = /\s(aria-label|aria-description|alt|placeholder|title)="([^"]*)"/g
+
+const LETTERS_OR_DIGITS = /[\p{L}\p{N}]/u
+
+/** Une chaîne observée dans un rendu, et l'endroit d'où elle vient. */
+interface Verdict {
+  readonly where: string
+  readonly value: string
+}
+
+const decodeEntities = (value: string): string =>
+  value
+    .replaceAll('&amp;', '&')
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
+    .replaceAll('&quot;', '"')
+    .replaceAll('&#x27;', "'")
+
+/** Les nœuds de texte du balisage, dans l'ordre. */
+const textNodesOf = (html: string): readonly string[] =>
+  html
+    .split(/<[^>]*>/)
+    .map((chunk) => decodeEntities(chunk).trim())
+    .filter((chunk) => chunk !== '')
+
+const displayedAttributesOf = (html: string): readonly Verdict[] =>
+  [...html.matchAll(DISPLAYED_ATTRIBUTES)].map((match) => ({
+    where: `attribut ${match[1] ?? ''}`,
+    value: decodeEntities(match[2] ?? ''),
+  }))
+
+/**
+ * Les chaînes confiées aux composants, avec le nom sous lequel elles arrivent.
+ *
+ * L'arbre est parcouru **avant expansion** : ce sont les props que l'écran
+ * écrit, y compris à l'intérieur d'un objet ou d'un tableau, où le nom retenu
+ * est celui de la propriété (`options.light` est vu sous `light`). Les éléments
+ * hôtes (`div`, `p`) ne sont pas inspectés ici : leur texte et leurs attributs
+ * lus sont observés sur le balisage rendu, qui est plus fidèle.
+ */
+const propStringsOf = (node: unknown): readonly Verdict[] => {
+  const found: Verdict[] = []
+
+  const walkValue = (value: unknown, name: string, custom: boolean): void => {
+    if (typeof value === 'string') {
+      if (custom) {
+        found.push({ where: `prop ${name}`, value })
+      }
+
+      return
+    }
+
+    if (isValidElement(value) || Array.isArray(value)) {
+      // Un élément passé en prop (`icon`, `actions`) est un sous-arbre : ce sont
+      // ses propres props qui décident, pas le nom sous lequel il arrive.
+      found.push(...propStringsOf(value))
+
+      return
+    }
+
+    if (typeof value === 'object' && value !== null) {
+      for (const [key, entry] of Object.entries(value)) {
+        walkValue(entry, key, custom)
+      }
+    }
+  }
+
+  if (Array.isArray(node)) {
+    for (const entry of node) {
+      found.push(...propStringsOf(entry))
+    }
+
+    return found
+  }
+
+  if (!isValidElement(node)) {
+    return found
+  }
+
+  const custom = typeof node.type !== 'string'
+  const props = (node.props ?? {}) as Record<string, unknown>
+
+  for (const [name, value] of Object.entries(props)) {
+    // Les enfants d'un composant comptent comme le reste : un texte écrit
+    // entre ses balises est du texte confié, et il peut atterrir dans une
+    // surface flottante que le rendu statique ne monte pas.
+    walkValue(value, name, custom)
+  }
+
+  return found
+}
+
+interface AcceptanceRules {
+  readonly isMarker: (value: string) => boolean
+  readonly catalogueKeys: ReadonlySet<string>
+  readonly data: ReadonlySet<string>
+  readonly locales: readonly string[]
+}
+
+/** Ce qu'une chaîne rendue doit être pour être admise. Tout le reste est un défaut. */
+const offenders = (found: readonly Verdict[], rules: AcceptanceRules): readonly string[] =>
+  found
+    .filter(({ where, value }) => {
+      const trimmed = value.trim()
+
+      if (trimmed === '' || !LETTERS_OR_DIGITS.test(trimmed)) {
+        return false
+      }
+
+      if (rules.isMarker(trimmed)) {
+        return false
+      }
+
+      // Une clé de traduction confiée à un composant client, qui la résoudra :
+      // elle existe dans le catalogue, donc elle n'est pas du texte.
+      if (rules.catalogueKeys.has(trimmed)) {
+        return false
+      }
+
+      // Les données de la fixture : un nom, une adresse, une IP, une date
+      // formatée. Elles s'affichent et ne viennent d'aucun catalogue.
+      if (rules.data.has(trimmed)) {
+        return false
+      }
+
+      // Un code de locale (`fr`, `en`) : le sélecteur le compare et le pose en
+      // `hrefLang`, il ne l'affiche pas — c'est `i18n.locale.<code>` qui porte
+      // le libellé, et celui-là est un marqueur.
+      if (rules.locales.includes(trimmed)) {
+        return false
+      }
+
+      const name = where.startsWith('prop ') ? where.slice('prop '.length) : ''
+
+      if (OPAQUE_PROPS.has(name)) {
+        return false
+      }
+
+      return !(TECHNICAL_PROPS.has(name) && !PROSE.test(trimmed))
+    })
+    .map(({ where, value }) => `${where} : « ${value} »`)
+
+describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => {
+  it('rend chaque écran de l’application', async () => {
+    const { localeRouting } = await import('../apps/web/lib/locale-routing')
+    const { catalogueKeys, isMarker, pseudoRequestConfig } = await import(
+      './fixtures/pseudo-locale'
+    )
+    const {
+      ANONYMOUS,
+      FIXTURE_EMAIL,
+      FIXTURE_IP,
+      FIXTURE_NAME,
+      FIXTURE_SESSION_CREATED_AT,
+      FIXTURE_USER_AGENT,
+      SIGNED_IN,
+      viewerState,
+    } = await import('./fixtures/screen-viewer')
+    const { AppShell } = await import('../apps/web/app/app-shell')
+
+    const config = pseudoRequestConfig(defaultLocale)
+    const keys = new Set(catalogueKeys(defaultLocale))
+    const data = new Set([
+      FIXTURE_NAME,
+      FIXTURE_EMAIL,
+      FIXTURE_IP,
+      FIXTURE_USER_AGENT,
+      new Intl.DateTimeFormat(defaultLocale, {
+        dateStyle: 'long',
+        timeStyle: 'short',
+        timeZone: 'UTC',
+      }).format(FIXTURE_SESSION_CREATED_AT),
+    ])
+
+    const rules: AcceptanceRules = {
+      isMarker,
+      catalogueKeys: keys,
+      data,
+      locales: localeRouting.locales,
+    }
+
+    const noParams = Promise.resolve({})
+    const screens: readonly {
+      readonly id: string
+      readonly file: string
+      readonly viewer: typeof SIGNED_IN
+      readonly render: () => Promise<ReactNode>
+    }[] = [
+      {
+        id: 'accueil anonyme',
+        file: 'page.tsx',
+        viewer: ANONYMOUS,
+        render: async () => (await import('../apps/web/app/page')).default(),
+      },
+      {
+        id: 'accueil connecté',
+        file: 'page.tsx',
+        viewer: SIGNED_IN,
+        render: async () => (await import('../apps/web/app/page')).default(),
+      },
+      {
+        id: 'compte',
+        file: 'account/page.tsx',
+        viewer: SIGNED_IN,
+        render: async () => (await import('../apps/web/app/account/page')).default(),
+      },
+      {
+        id: 'connexion',
+        file: 'sign-in/page.tsx',
+        viewer: ANONYMOUS,
+        render: async () =>
+          (await import('../apps/web/app/sign-in/page')).default({
+            searchParams: Promise.resolve({ verified: '1', email_changed: '1', reset: '1' }),
+          }),
+      },
+      {
+        id: 'inscription',
+        file: 'sign-up/page.tsx',
+        viewer: ANONYMOUS,
+        render: async () => (await import('../apps/web/app/sign-up/page')).default(),
+      },
+      {
+        id: 'mot de passe oublié',
+        file: 'forgot-password/page.tsx',
+        viewer: ANONYMOUS,
+        render: async () => (await import('../apps/web/app/forgot-password/page')).default(),
+      },
+      {
+        id: 'réinitialisation avec jeton',
+        file: 'reset-password/page.tsx',
+        viewer: ANONYMOUS,
+        render: async () =>
+          (await import('../apps/web/app/reset-password/page')).default({
+            searchParams: Promise.resolve({ token: 'jeton' }),
+          }),
+      },
+      {
+        id: 'réinitialisation sans jeton',
+        file: 'reset-password/page.tsx',
+        viewer: ANONYMOUS,
+        render: async () =>
+          (await import('../apps/web/app/reset-password/page')).default({
+            searchParams: noParams,
+          }),
+      },
+      {
+        id: 'vérification en attente',
+        file: 'verify-email/page.tsx',
+        viewer: ANONYMOUS,
+        render: async () =>
+          (await import('../apps/web/app/verify-email/page')).default({
+            searchParams: noParams,
+          }),
+      },
+      {
+        id: 'vérification expirée',
+        file: 'verify-email/page.tsx',
+        viewer: ANONYMOUS,
+        render: async () =>
+          (await import('../apps/web/app/verify-email/page')).default({
+            searchParams: Promise.resolve({ error: 'expired' }),
+          }),
+      },
+    ]
+
+    // La garde contre l'inertie : un écran ajouté sans être rendu ici sortirait
+    // du filet sans que rien ne le dise.
+    expect([...new Set(screens.map((screen) => screen.file))].sort()).toEqual(
+      pageFilesUnder(SCREEN_ROOT),
+    )
+
+    const failures: string[] = []
+    let markers = 0
+
+    for (const screen of screens) {
+      viewerState.value = screen.viewer
+
+      const tree = await AppShell({ children: await screen.render() })
+      const html = renderToStaticMarkup(
+        createElement(NextIntlClientProvider, {
+          locale: defaultLocale,
+          messages: config.messages,
+          // Un fuseau explicite : sans lui, `next-intl` signale un repli
+          // d'environnement à `onError`, qui lève — la configuration de
+          // production est la même, et c'est ce que `tests/i18n.test.ts`
+          // éprouve par ailleurs.
+          timeZone: 'UTC',
+          onError: config.onError,
+          getMessageFallback: config.getMessageFallback,
+          children: tree,
+        }),
+      )
+
+      const observed = [
+        ...textNodesOf(html).map((value) => ({ where: 'texte', value })),
+        ...displayedAttributesOf(html),
+        ...propStringsOf(tree),
+      ]
+
+      markers += observed.filter(({ value }) => isMarker(value.trim())).length
+
+      failures.push(
+        ...new Set(offenders(observed, rules).map((offender) => `${screen.id} — ${offender}`)),
+      )
+    }
+
+    // Sans cette garde, « aucune chaîne étrangère » serait vrai sur un rendu
+    // vide, c'est-à-dire sur rien : un écran qui ne rend pas, ou un catalogue
+    // pseudo-locale vide, feraient passer la ligne suivante.
+    expect(markers).toBeGreaterThan(60)
+    expect(failures).toEqual([])
+  })
+})

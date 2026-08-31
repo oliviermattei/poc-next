@@ -4,6 +4,12 @@ import { defineConfig } from 'vitest/config'
 const resolveFromRoot = (path: string) => fileURLToPath(new URL(path, import.meta.url))
 
 export default defineConfig({
+  // `apps/web` compile en `jsx: "preserve"` — c'est Next qui transforme le JSX
+  // dans l'application. Vitest, lui, exécute les écrans directement : sans
+  // cette ligne il lit le `tsconfig.json` le plus proche du fichier, y trouve
+  // `preserve`, et refuse un `.tsx` comme du JavaScript invalide. La
+  // transformation est donc imposée ici, pour tous les fichiers de la suite.
+  oxc: { jsx: { runtime: 'automatic' } },
   resolve: {
     // Alias exacts, dans l'ordre : la forme préfixe ferait résoudre
     // `@repo/config/server` en `…/src/index.ts/server`.
