@@ -69,11 +69,18 @@ export interface VerificationTokenRepository {
   }): Promise<number>
 }
 
-/** Fabrique de jetons : la valeur envoyée, et l'empreinte stockée. */
+/**
+ * Fabrique de jetons : la valeur envoyée, et l'empreinte stockée.
+ *
+ * La propriété porte sur **les jetons de cette fabrique**, pas sur toute la
+ * table `auth_verification` : le lien de réinitialisation de mot de passe est
+ * émis par la bibliothèque, qui le stocke en clair. La limite est écrite, avec
+ * son arbitrage, dans `infrastructure/token-factory.ts`.
+ */
 export interface TokenFactory {
   /** Un jeton imprévisible. Ce qui part dans l'email, jamais ce qui est stocké. */
   generate(): string
-  /** L'empreinte stockée : une base volée ne rend aucun lien utilisable. */
+  /** L'empreinte stockée : un vol de ces lignes-là ne rend aucun lien utilisable. */
   digest(token: string): Promise<string>
 }
 

@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import { defaultAuthPolicy } from './auth-policy'
-import { InvalidCredentialsError, parseSignUpInput, parseSignInInput } from './credentials'
+import {
+  genericSignInRefusal,
+  InvalidCredentialsError,
+  parseSignUpInput,
+  parseSignInInput,
+  SIGN_IN_REFUSAL,
+} from './credentials'
 import { describeSecurityEvent } from './security-event'
 import { sessionOf } from './session'
 import { safeRedirectPath } from './redirect'
@@ -57,6 +63,29 @@ describe('règles d’inscription et de connexion', () => {
     // mot de passe trop court distinguerait un compte ancien d'un compte
     // récent, et le refus ne serait plus « identifiants invalides ».
     expect(parseSignInInput({ email: 'a@example.test', password: 'court' }).password).toBe('court')
+  })
+})
+
+describe('refus de connexion — le refus ne dit rien de l’état du compte', () => {
+  // La règle vit ici, et c'est la seule matrice : « compte inconnu », « mot de
+  // passe faux » et « adresse non vérifiée » sont trois états que la
+  // bibliothèque distingue par son statut et par son code. La route les
+  // ramène tous au même refus ; ses appelants prouvent qu'ils l'appellent, ils
+  // ne rejouent pas ces cas.
+  it.each([
+    ['compte inconnu ou mot de passe faux', 401],
+    ['adresse non vérifiée', 403],
+  ])('ramène %s au refus unique', (_case, status) => {
+    expect(genericSignInRefusal(status)).toEqual(SIGN_IN_REFUSAL)
+  })
+
+  it('ne masque pas ce qui ne parle pas du compte', () => {
+    // Une panne doit rester une panne : la faire passer pour un refus
+    // d'identifiants ferait mentir `docs/reliability.md` §2, et rien n'y fuit
+    // puisque le statut ne dépend d'aucun compte.
+    expect(genericSignInRefusal(500)).toBeNull()
+    expect(genericSignInRefusal(502)).toBeNull()
+    expect(genericSignInRefusal(200)).toBeNull()
   })
 })
 

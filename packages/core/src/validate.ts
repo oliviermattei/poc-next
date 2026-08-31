@@ -9,6 +9,13 @@ import type { AnyModuleDefinition } from './module'
  * construction du registre, c'est-à-dire au démarrage de l'application et dans
  * la suite de tests — jamais au premier appel d'une route.
  *
+ * Et une quatrième, qui n'est pas un graphe mais une **décision de produit** :
+ * le socle non désactivable (ADR 021). Elle est *reçue*, comme le reste de la
+ * configuration : `@repo/core` ne connaît pas l'identifiant `auth`, c'est
+ * `config/features.ts` qui déclare `requiredModules` et les trois points de
+ * composition — l'application, la génération de schéma, le CLI — qui le
+ * transmettent.
+ *
  * Chaque refus nomme les modules en cause. Un message qui dit « configuration
  * invalide » sans dire lequel oblige à relire toute la liste, et c'est
  * exactement le moment où quelqu'un désactive la validation.
@@ -54,6 +61,17 @@ function indexAvailableModules(
 export function resolveEnabledModules(configuration: {
   readonly available: readonly AnyModuleDefinition[]
   readonly enabled: readonly string[]
+  /**
+   * Le **socle non désactivable** (ADR 021) : les modules dont le retrait n'est
+   * pas une configuration valide.
+   *
+   * Facultatif, et vide par défaut, pour que les tests puissent construire un
+   * registre de deux modules d'essai sans hériter du socle du dépôt. Ce qui
+   * rend la règle exécutable est que les trois points de composition le
+   * passent — et le CLI avec eux, donc `ks toggle auth` est refusé avant
+   * d'écrire quoi que ce soit.
+   */
+  readonly required?: readonly string[]
 }): readonly AnyModuleDefinition[] {
   const byId = indexAvailableModules(configuration.available)
   const enabled = new Set(configuration.enabled)
@@ -62,6 +80,23 @@ export function resolveEnabledModules(configuration: {
     if (!byId.has(id)) {
       fail(
         `Module inconnu ${quote(id)} : aucun module de ce nom n’est déclaré dans l’annuaire de config/features.ts.`,
+      )
+    }
+  }
+
+  for (const id of configuration.required ?? []) {
+    // Un socle que l'annuaire ne connaît pas est refusé lui aussi : sans ce
+    // cas, une faute de frappe dans `requiredModules` désarmerait la règle en
+    // silence — le module nommé n'existant pas, il ne manquerait jamais.
+    if (!byId.has(id)) {
+      fail(
+        `Socle inconnu ${quote(id)} : « requiredModules » de config/features.ts nomme un module que l’annuaire ne déclare pas.`,
+      )
+    }
+
+    if (!enabled.has(id)) {
+      fail(
+        `Le module ${quote(id)} fait partie du socle et ne peut pas être désactivé : « requiredModules » de config/features.ts le déclare non désactivable.`,
       )
     }
   }

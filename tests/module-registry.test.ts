@@ -14,9 +14,10 @@ import {
   demoItemUseCases,
   InvalidDemoItemError,
 } from '@repo/module-demo-enabled'
+import { ESLint } from 'eslint'
 import { describe, expect, it } from 'vitest'
 
-import { availableModules } from '../config/features'
+import { availableModules, enabledModules, requiredModules } from '../config/features'
 
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url))
 
@@ -110,6 +111,57 @@ describe('validation de la configuration des modules', () => {
     expect(() =>
       buildRegistry({ available: [moduleFixture('a')], enabled: ['b'] }),
     ).toThrowError(/« b »/)
+  })
+
+  it('refuse une configuration qui coupe un module du socle, en le nommant', () => {
+    // Le socle n'était qu'une phrase : `config/features.ts` écrivait « le
+    // retirer ferait échouer la validation des modules qui le requièrent »,
+    // alors qu'aucun module ne déclarait `requires: ['auth']`. Rien n'empêchait
+    // donc `ks toggle auth`, et cinq parcours end-to-end tombaient dans cet
+    // état. La liste est maintenant une **entrée de la résolution**, refusée par
+    // son nom, comme un requis manquant (ADR 021).
+    expect(() =>
+      buildRegistry({
+        available: [moduleFixture('auth'), moduleFixture('demo')],
+        enabled: ['demo'],
+        required: ['auth'],
+      }),
+    ).toThrowError(/« auth »/)
+  })
+
+  it('refuse la configuration du dépôt privée de son socle', () => {
+    // Le maillon que les cas d'essai ne prouvent pas : que `config/features.ts`
+    // arme réellement la règle. Sans lui, le mécanisme serait branché et pointé
+    // sur une liste vide.
+    expect(() =>
+      buildRegistry({
+        available: [...availableModules],
+        enabled: enabledModules.filter((id) => !requiredModules.includes(id as never)),
+        required: [...requiredModules],
+      }),
+    ).toThrowError(/ne peut pas être désactivé/)
+  })
+
+  it('refuse un socle que l’annuaire ne déclare pas, plutôt que de se taire', () => {
+    // Sans ce refus, une faute de frappe dans la liste du socle la désarme en
+    // silence : le module nommé n'existe pas, donc rien ne le manque jamais.
+    expect(() =>
+      buildRegistry({
+        available: [moduleFixture('a')],
+        enabled: ['a'],
+        required: ['auht'],
+      }),
+    ).toThrowError(/« auht »/)
+  })
+
+  it('laisse passer la configuration qui contient son socle', () => {
+    expect(
+      buildRegistry({
+        available: [moduleFixture('auth'), moduleFixture('demo')],
+        enabled: ['auth', 'demo'],
+        required: ['auth'],
+      }).moduleIds,
+    ).toEqual(['auth', 'demo'])
   })
 
   it('refuse un module qui se requiert lui-même', () => {
@@ -547,15 +599,25 @@ describe('un module ne dépend pas du package de base de données', () => {
     expect(modules.length).toBeGreaterThan(0)
   })
 
-  it.each(modules)('le module %s n’importe pas `@repo/db`', (moduleId) => {
-    const offenders = sourceFiles(join(MODULES_ROOT, moduleId, 'src')).filter((file) =>
-      /from '@repo\/db'|require\('@repo\/db'\)|import\('@repo\/db'\)/.test(
-        readFileSync(file, 'utf8'),
-      ),
+  it.each(modules)('le module %s n’importe pas `@repo/db`', async (moduleId) => {
+    // Le balayage passe par **la règle du lint**, pas par une expression
+    // régulière sur le texte. La garde d'origine cherchait `from '@repo/db'` :
+    // les mêmes octets en guillemets doubles la traversaient, et la revue l'a
+    // prouvé par mutation. La règle vit dans `eslint.config.ts` et est éprouvée
+    // pour elle-même dans `tests/lint-rules.test.ts` ; ici on constate
+    // qu'aucun fichier du dépôt ne la viole.
+    const results = await new ESLint({ cwd: REPO_ROOT }).lintFiles(
+      [...sourceFiles(join(MODULES_ROOT, moduleId, 'src'))],
+    )
+
+    const offenders = results.flatMap((result) =>
+      result.messages
+        .filter((message) => (message.ruleId ?? '').startsWith('no-restricted-'))
+        .map((message) => `${result.filePath}:${String(message.line)} ${message.message}`),
     )
 
     expect(offenders).toEqual([])
-  })
+  }, 60_000)
 
   it('déclare le manifeste sans `@repo/db` non plus', () => {
     for (const moduleId of modules) {

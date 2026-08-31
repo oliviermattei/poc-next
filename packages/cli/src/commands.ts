@@ -96,10 +96,12 @@ export { renderModuleList }
 
 export async function runToggle(input: {
   readonly available: readonly AnyModuleDefinition[]
+  /** Le socle non désactivable, lu dans `config/features.ts` (ADR 021). */
+  readonly required?: readonly string[]
   readonly request: ToggleRequest
   readonly environment: ToggleEnvironment
 }): Promise<ToggleOutcome> {
-  const { available, request, environment } = input
+  const { available, required, request, environment } = input
   const enabled = readEnabledModules(await readFile(environment.featuresPath, 'utf8'))
 
   const missing =
@@ -117,7 +119,13 @@ export async function runToggle(input: {
         `Activer aussi ${missing.map(quote).join(', ')}, dont ${quote(request.moduleId)} a besoin ?`,
       )))
 
-  const plan = planToggle({ available, enabled, moduleId: request.moduleId, withRequirements })
+  const plan = planToggle({
+    available,
+    enabled,
+    required,
+    moduleId: request.moduleId,
+    withRequirements,
+  })
 
   const edit = await applyToggle({
     featuresPath: environment.featuresPath,

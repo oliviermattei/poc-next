@@ -3,7 +3,11 @@ import { fileURLToPath } from 'node:url'
 import { loadRootEnv } from '@repo/config/server'
 import { buildRegistry } from '@repo/core'
 
-import { availableModules, enabledModules } from '../../../../config/features'
+import {
+  availableModules,
+  enabledModules,
+  requiredModules,
+} from '../../../../config/features'
 import { closeDatabase, getDatabase } from '../client'
 import { planModuleMigrations, runModuleMigrations } from '../migrate'
 
@@ -28,6 +32,7 @@ loadRootEnv()
 const registry = buildRegistry({
   available: [...availableModules],
   enabled: [...enabledModules],
+  required: [...requiredModules],
 })
 
 const plan = planModuleMigrations({ modules: registry.modules, repoRoot: REPO_ROOT })

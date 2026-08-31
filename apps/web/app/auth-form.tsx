@@ -35,18 +35,20 @@ export interface AuthFormProps {
 /**
  * Le message d'un refus.
  *
- * **401 dit toujours la même chose** : compte inconnu et mot de passe invalide
- * y sont indiscernables, et le serveur rend déjà la même réponse dans les deux
- * cas (`docs/security.md` §2). Ajouter ici un « compte introuvable » rétablirait
- * l'énumération que tout le reste du parcours évite.
+ * **401 dit toujours la même chose** : compte inconnu, mot de passe invalide et
+ * adresse non vérifiée y sont indiscernables, et le serveur rend déjà la même
+ * réponse dans les trois cas (`docs/security.md` §7). Ajouter ici un « compte
+ * introuvable » — ou une branche `403` qui dirait « vérifiez votre adresse » —
+ * rétablirait dans le navigateur l'énumération que la route vient de fermer.
+ *
+ * L'invitation à vérifier son adresse est donc **constante** : elle est écrite
+ * dans le refus, quel qu'il soit, et l'écran de connexion porte le lien vers
+ * `/verify-email`, dont la route de renvoi répond la même chose que l'adresse
+ * existe ou non.
  */
 const messageFor = (status: number): string => {
   if (status === 401) {
-    return 'Identifiants invalides.'
-  }
-
-  if (status === 403) {
-    return 'Vérifiez votre adresse email avant de vous connecter. Un lien vous a été envoyé.'
+    return 'Identifiants invalides. Si votre adresse n’est pas encore vérifiée, demandez un nouveau lien.'
   }
 
   if (status === 502) {

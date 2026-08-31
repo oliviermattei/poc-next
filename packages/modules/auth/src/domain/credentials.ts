@@ -98,3 +98,48 @@ export function parseEmailInput(input: unknown): string {
     ? parsed.data.email
     : fail(parsed.error.issues.map((issue) => issue.message))
 }
+
+/** La forme d'un refus de connexion : un statut, un corps, et rien d'autre. */
+export interface SignInRefusal {
+  readonly status: number
+  readonly body: { readonly message: string; readonly code: string }
+}
+
+/**
+ * **Le** refus de connexion. Un seul, pour tous les états de compte.
+ *
+ * Il reprend mot pour mot ce que la bibliothèque rend pour « compte inconnu ou
+ * mot de passe faux », parce que c'est le refus le plus fréquent et que le
+ * changer romprait les clients existants. Ce qui compte est qu'il soit
+ * **écrit ici** : la réponse ne dépend plus de ce que la bibliothèque a décidé
+ * de dire, donc plus d'aucun état de compte.
+ */
+export const SIGN_IN_REFUSAL: SignInRefusal = {
+  status: 401,
+  body: { message: 'Invalid email or password', code: 'INVALID_EMAIL_OR_PASSWORD' },
+}
+
+/**
+ * Le refus à rendre pour un statut de la bibliothèque — `null` si sa réponse
+ * doit passer telle quelle.
+ *
+ * **Mesuré** dans `better-auth@1.7.2` (`dist/api/routes/sign-in.mjs`) : compte
+ * inconnu et mot de passe faux donnent `401 INVALID_EMAIL_OR_PASSWORD` ; une
+ * adresse non vérifiée donne `403 EMAIL_NOT_VERIFIED`, et seulement **après**
+ * que le mot de passe a été vérifié. La distinction n'est donc pas une
+ * énumération à une requête — il faut déjà connaître le mot de passe — mais
+ * elle reste un oracle : un bourrage d'identifiants apprend quels mots de passe
+ * sont bons. `docs/security.md` §7 n'admet aucune de ces deux formes, « ni par
+ * message, ni par code de statut ».
+ *
+ * Le critère « inviter à vérifier son adresse » est tenu ailleurs, et sans rien
+ * dire de personne : l'écran `/verify-email` et sa route de renvoi répondent la
+ * même chose que l'adresse existe ou non.
+ *
+ * Ce qui n'est **pas** masqué : tout ce qui ne dépend d'aucun compte, une panne
+ * en particulier. La confondre avec un refus d'identifiants ferait mentir
+ * `docs/reliability.md` §2 sans rien protéger.
+ */
+export function genericSignInRefusal(status: number): SignInRefusal | null {
+  return status === 401 || status === 403 ? SIGN_IN_REFUSAL : null
+}

@@ -128,11 +128,19 @@ test('une route protégée redirige vers la connexion, puis ramène à l’URL d
   await expect(page).toHaveURL(/\/account$/)
 })
 
-test('compte inconnu et mot de passe invalide affichent le même message', async ({ page }) => {
+test('compte inconnu, mot de passe invalide et adresse non vérifiée affichent le même message', async ({
+  page,
+}) => {
   const email = anEmail()
+  const unverified = anEmail()
 
   await signUp(page, email)
   await page.goto(await linkSentTo(email))
+
+  // Un compte inscrit dont le lien n'est **pas** suivi : c'est l'état que la
+  // bibliothèque distinguait par un `403`, jusqu'à ce que la route ramène tous
+  // les refus au même. Le formulaire n'a donc plus de branche à lui.
+  await signUp(page, unverified)
 
   await page.goto('/sign-in')
   await page.getByLabel('Adresse email', { exact: true }).fill(anEmail())
@@ -156,8 +164,21 @@ test('compte inconnu et mot de passe invalide affichent le même message', async
 
   const wrongPassword = await refusal.innerText()
 
-  expect(unknownAccount).toBe(wrongPassword)
+  await page.goto('/sign-in')
+  await page.getByLabel('Adresse email', { exact: true }).fill(unverified)
+  await page.getByLabel('Mot de passe').fill(PASSWORD)
+  await page.getByRole('button', { name: 'Se connecter' }).click()
+
+  await expect(refusal).toBeVisible()
+
+  const notVerified = await refusal.innerText()
+
+  expect(wrongPassword).toBe(unknownAccount)
+  expect(notVerified).toBe(unknownAccount)
   expect(unknownAccount).toContain('Identifiants invalides')
+
+  // Et le refus reste un refus : la page protégée n'est pas atteinte.
+  await expect(page).toHaveURL(/\/sign-in$/)
 })
 
 test('mot de passe oublié : le lien reçu mène à l’écran, et le nouveau mot de passe ouvre une session', async ({

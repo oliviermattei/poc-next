@@ -76,6 +76,8 @@ export const qualifyMessageKey = (moduleId: string, key: string): string =>
 export function buildRegistry(configuration: {
   readonly available: readonly AnyModuleDefinition[]
   readonly enabled: readonly string[]
+  /** Le socle non désactivable, transmis tel quel à la validation (ADR 021). */
+  readonly required?: readonly string[]
 }): ModuleRegistry {
   const modules = resolveEnabledModules(configuration)
 

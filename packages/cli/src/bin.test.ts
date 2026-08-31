@@ -190,6 +190,28 @@ describe('ks, lancé comme un utilisateur le lance', () => {
     ])
   }, 30_000)
 
+  it('refuse de couper un module du socle, sans rien écrire', async () => {
+    // Le bout de la chaîne : c'est `bin.ts` qui lit `requiredModules` dans
+    // `config/features.ts` et le fait suivre jusqu'à la validation. Sans cette
+    // lecture, la règle serait armée dans `@repo/core` et jamais invoquée par
+    // la commande qui peut la violer (ADR 021).
+    const repo = await temporaryRepo(NOISY_GENERATE)
+
+    await writeFile(
+      repo.featuresPath,
+      `${FEATURES}\nexport const requiredModules = ['alpha'] as const\n`,
+      'utf8',
+    )
+
+    const refused = await ks(['toggle', 'alpha'], repo.root)
+
+    expect(refused.code).toBe(1)
+    expect(refused.stderr).toContain('alpha')
+    expect(refused.stderr).toContain('socle')
+    // Et le fichier n'a pas bougé : le refus a lieu avant l'écriture.
+    expect(await repo.features()).toContain("export const enabledModules = ['alpha'] as const")
+  }, 30_000)
+
   it('affiche l’aide en code 0, et refuse une invocation inconnue en code 1', async () => {
     const repo = await temporaryRepo(NOISY_GENERATE)
     const help = await ks(['--help'], repo.root)

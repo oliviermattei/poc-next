@@ -89,13 +89,15 @@ const ask = async (question: string): Promise<boolean> => {
 
 interface FeaturesModule {
   readonly availableModules: readonly AnyModuleDefinition[]
+  /**
+   * Le socle non désactivable (ADR 021). Facultatif : un dépôt qui n'en déclare
+   * pas est valide, et le CLI n'en invente pas — il transmet ce qu'il lit.
+   */
+  readonly requiredModules?: readonly string[]
 }
 
-const loadAvailableModules = async (root: string): Promise<readonly AnyModuleDefinition[]> => {
-  const loaded = (await import(pathToFileURL(join(root, FEATURES)).href)) as FeaturesModule
-
-  return loaded.availableModules
-}
+const loadFeatures = async (root: string): Promise<FeaturesModule> =>
+  (await import(pathToFileURL(join(root, FEATURES)).href)) as FeaturesModule
 
 export async function runCli(argv: readonly string[]): Promise<number> {
   try {
@@ -109,7 +111,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
 
     const root = findRepositoryRoot(process.cwd())
     const featuresPath = join(root, FEATURES)
-    const available = await loadAvailableModules(root)
+    const { availableModules: available, requiredModules: required } = await loadFeatures(root)
 
     if (options.command === 'list') {
       const summaries = await runList({ available, featuresPath })
@@ -152,6 +154,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
 
     const outcome = await runToggle({
       available,
+      required,
       request: {
         moduleId: options.moduleId,
         interactive,

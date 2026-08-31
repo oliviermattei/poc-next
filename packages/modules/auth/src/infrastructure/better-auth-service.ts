@@ -52,6 +52,23 @@ export interface ConfigureAuthOptions {
   readonly locale?: string
   readonly log?: SecurityLog
   readonly now?: () => Date
+  /**
+   * Ce qui exécute un travail **hors du temps de réponse**.
+   *
+   * Un seul appelant aujourd'hui, et c'est une règle de sécurité :
+   * `/request-password-reset` écrit un jeton puis envoie un email quand le
+   * compte existe, et ne fait qu'une lecture factice quand il n'existe pas. Si
+   * l'envoi reste dans la réponse, la différence est l'écart de deux appels au
+   * fournisseur d'email — mesuré à 119 ms sur un mailer à 120 ms —, et
+   * l'existence du compte se lit au chronomètre (`docs/security.md` §7).
+   *
+   * Par défaut le travail part sans être attendu, et son échec est déjà
+   * journalisé par le cas d'usage (`delivery`). Un hébergeur qui gèle le
+   * processus après la réponse doit fournir le sien : `waitUntil` sur Vercel,
+   * `ctx.waitUntil` sur Cloudflare. C'est aussi ce que la suite injecte, pour
+   * savoir quand l'email a atterri.
+   */
+  readonly runInBackground?: (task: Promise<unknown>) => void
 }
 
 /**
@@ -92,6 +109,14 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
   const policy = options.policy ?? defaultAuthPolicy
   const tokenFactory = createTokenFactory()
   const now = options.now ?? (() => new Date())
+  const runInBackground =
+    options.runInBackground ??
+    ((task: Promise<unknown>) => {
+      // Le résultat de l'envoi est déjà journalisé par le cas d'usage ; ce
+      // `catch` n'est là que pour ne pas laisser un rejet non traité tomber le
+      // processus, faute d'appelant pour l'attendre.
+      void task.catch(() => {})
+    })
 
   const dependencies: AuthDependencies = {
     users: createDrizzleAuthUserRepository(options.db),
@@ -145,7 +170,15 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
       expiresIn: policy.sessionTtlSeconds,
       updateAge: policy.sessionRefreshAfterSeconds,
     },
-    advanced: { defaultCookieAttributes: SESSION_COOKIE_ATTRIBUTES },
+    advanced: {
+      defaultCookieAttributes: SESSION_COOKIE_ATTRIBUTES,
+      // Sans ce crochet, `runInBackgroundOrAwait` **attend** la promesse
+      // (`dist/context/create-context.mjs`) : l'envoi de l'email de
+      // réinitialisation entre alors dans le temps de réponse, et seul le
+      // compte existant le paie. La bibliothèque nomme elle-même cette option
+      // comme le moyen de différer une « timing-attack mitigation ».
+      backgroundTasks: { handler: runInBackground },
+    },
     emailAndPassword: {
       enabled: true,
       // Un compte non vérifié n'obtient pas de session : ni à l'inscription

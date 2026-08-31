@@ -33,6 +33,14 @@ export interface TogglePlan {
 export interface ToggleInput {
   readonly available: readonly AnyModuleDefinition[]
   readonly enabled: readonly string[]
+  /**
+   * Le socle non désactivable (ADR 021), transmis tel quel à la validation.
+   *
+   * Il n'est pas rejoué ici : le refus, sa phrase et le nom du module viennent
+   * de `resolveEnabledModules`, comme pour un requis manquant. Le CLI ne
+   * connaît pas la liste, il la fait suivre depuis `config/features.ts`.
+   */
+  readonly required?: readonly string[]
   readonly moduleId: string
   /** Autorise l'activation des requis manquants. Sans elle, le refus les nomme. */
   readonly withRequirements?: boolean
@@ -131,9 +139,10 @@ const canonicalOrder = (
 const refusalOf = (
   available: readonly AnyModuleDefinition[],
   enabled: readonly string[],
+  required: readonly string[] | undefined,
 ): string | null => {
   try {
-    resolveEnabledModules({ available, enabled })
+    resolveEnabledModules({ available, enabled, required })
 
     return null
   } catch (error) {
@@ -153,7 +162,7 @@ const refusalOf = (
  * d'entête et, à l'activation, la proposition d'activer aussi les requis.
  */
 export function planToggle(input: ToggleInput): TogglePlan {
-  const { available, enabled, moduleId } = input
+  const { available, enabled, required, moduleId } = input
 
   if (!available.some((module) => module.id === moduleId)) {
     throw new ToggleRefusedError(
@@ -166,7 +175,7 @@ export function planToggle(input: ToggleInput): TogglePlan {
       available,
       enabled.filter((id) => id !== moduleId),
     )
-    const refusal = refusalOf(available, nextEnabled)
+    const refusal = refusalOf(available, nextEnabled, required)
 
     if (refusal !== null) {
       throw new ToggleRefusedError(
@@ -180,7 +189,7 @@ export function planToggle(input: ToggleInput): TogglePlan {
   const missing = missingRequirements({ available, enabled, moduleId })
   const alsoEnabled = input.withRequirements === true ? missing : []
   const nextEnabled = canonicalOrder(available, [...enabled, ...alsoEnabled, moduleId])
-  const refusal = refusalOf(available, nextEnabled)
+  const refusal = refusalOf(available, nextEnabled, required)
 
   if (refusal !== null) {
     const hint =

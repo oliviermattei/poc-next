@@ -188,6 +188,32 @@ describe('ks toggle — activation', () => {
 })
 
 describe('ks toggle — désactivation', () => {
+  it('refuse de désactiver un module du socle, en le nommant', () => {
+    // Le socle n'était qu'une phrase de `config/features.ts` : aucun module ne
+    // déclarant `requires: ['auth']`, rien n'empêchait de le couper. Le CLI ne
+    // rejoue pas la règle, il soumet la configuration candidate à
+    // `resolveEnabledModules` — le socle voyage donc avec elle (ADR 021).
+    expect(() =>
+      planToggle({
+        available,
+        enabled: ['socle', 'facturation'],
+        required: ['socle'],
+        moduleId: 'socle',
+      }),
+    ).toThrowError(/socle et ne peut pas être désactivé/)
+  })
+
+  it('laisse basculer ce qui n’est pas du socle', () => {
+    expect(
+      planToggle({
+        available,
+        enabled: ['socle', 'facturation'],
+        required: ['socle'],
+        moduleId: 'facturation',
+      }).nextEnabled,
+    ).toEqual(['socle'])
+  })
+
   it('désactive un module dont personne d’activé ne dépend', () => {
     expect(
       planToggle({ available, enabled: ['socle', 'facturation'], moduleId: 'facturation' }),

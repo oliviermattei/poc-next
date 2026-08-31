@@ -3,6 +3,7 @@ import { getDatabase } from '@repo/db'
 import { authRoutePath, configureAuth, safeRedirectPath, type AuthService } from '@repo/module-auth'
 import type { ModuleSession } from '@repo/core'
 import { headers } from 'next/headers'
+import { after } from 'next/server'
 
 import { resolveAuthConfig } from './auth-config'
 import { createAppMailer } from './mailer'
@@ -52,6 +53,16 @@ export function appAuth(options: AppAuthOptions = {}): AuthService {
       mailer: createAppMailer(),
       secret,
       appUrl,
+      // L'envoi de l'email de réinitialisation sort du temps de réponse, sans
+      // quoi seul un compte **existant** le paie et son existence se lit au
+      // chronomètre (`docs/security.md` §7). `after` est ce qui garantit que le
+      // travail est malgré tout exécuté là où le processus est gelé dès la
+      // réponse rendue — un `void promise` y perdrait l'email.
+      runInBackground: (task) => {
+        after(async () => {
+          await task
+        })
+      },
     })
   }
 

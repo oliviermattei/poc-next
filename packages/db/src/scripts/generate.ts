@@ -5,7 +5,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { buildRegistry } from '@repo/core'
 
-import { availableModules, enabledModules } from '../../../../config/features'
+import {
+  availableModules,
+  enabledModules,
+  requiredModules,
+} from '../../../../config/features'
 import drizzleConfig from '../../drizzle.config'
 import {
   ENABLED_SCHEMAS_FILE,
@@ -43,6 +47,7 @@ const DRIZZLE_KIT = join(REPO_ROOT, 'node_modules', '.bin', 'drizzle-kit')
 const registry = buildRegistry({
   available: [...availableModules],
   enabled: [...enabledModules],
+  required: [...requiredModules],
 })
 
 // L'annuaire complet, et non les seuls modules activés : c'est ce qui permet de

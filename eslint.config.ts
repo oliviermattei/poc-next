@@ -73,6 +73,56 @@ const configClientSurface: Linter.Config[] = [
 ]
 
 /**
+ * **Un module n'importe jamais `@repo/db`** (ADR 020).
+ *
+ * `packages/db` construit son schéma relationnel depuis l'agrégat généré, qui
+ * importe les packages des modules activés. La dépendance inverse fermerait un
+ * cycle — `@repo/db` → agrégat → module → `@repo/db` — dont la conséquence
+ * n'est pas une erreur de compilation mais une table lue avant d'être
+ * initialisée, à l'exécution, dans le module le plus sensible du socle. Un
+ * module **reçoit** sa connexion de son point de composition.
+ *
+ * s07 gardait cette frontière par une expression régulière sur le texte des
+ * fichiers, qui ne reconnaissait que les guillemets simples : un
+ * `import type { ModuleSchema } from "@repo/db"` passait `pnpm test`,
+ * `pnpm lint` et `pnpm typecheck`, prouvé par mutation en revue. Même classe de
+ * défaut que la garde de s01 sur `@repo/config` : une règle qu'un guillemet
+ * défait n'est pas une règle.
+ *
+ * C'est `no-restricted-syntax` et non `no-restricted-imports` parce que
+ * `libraryConfig` occupe déjà le second sur `packages/**` : le redéfinir ici
+ * remplacerait l'interdit « un package ne dépend pas d'une application » au
+ * lieu de s'y ajouter. Les cinq sélecteurs couvrent l'import statique (type
+ * compris), le réexport nommé, le réexport total, l'import dynamique et
+ * `require` — donc les deux écritures de guillemets, par construction.
+ */
+const REPO_DB_SPECIFIER = 'Literal[value=/^@repo\\u002fdb($|\\u002f)/]'
+
+const MODULE_DB_MESSAGE =
+  'Un module ne dépend jamais de `@repo/db` (ADR 020) : la connexion est injectée par le point de composition. La dépendance inverse ferme un cycle dont la conséquence est une table lue avant son initialisation, à l’exécution.'
+
+const moduleDatabaseBoundary: Linter.Config[] = [
+  {
+    files: ['packages/modules/**/*.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...[
+          'ImportDeclaration',
+          'ExportNamedDeclaration',
+          'ExportAllDeclaration',
+          'ImportExpression',
+          'CallExpression[callee.name=require]',
+        ].map((parent) => ({
+          selector: `${parent} > ${REPO_DB_SPECIFIER}`,
+          message: MODULE_DB_MESSAGE,
+        })),
+      ],
+    },
+  },
+]
+
+/**
  * Exception nommée pour le harnais de test (finding F8 / N17 de s01).
  *
  * Les tests franchissent délibérément les frontières que ce fichier fait
@@ -113,6 +163,7 @@ const config: Linter.Config[] = [
   ...libraryConfig(['packages/**/*.ts', 'tooling/**/*.ts']),
   ...nextConfig(['apps/web/**/*.ts', 'apps/web/**/*.tsx']),
   ...configClientSurface,
+  ...moduleDatabaseBoundary,
   ...testHarnessException,
 ]
 

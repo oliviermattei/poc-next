@@ -3,6 +3,7 @@ import { MODULE_ROUTE_PREFIX, type ModuleRoute, type NavigationEntry } from '@re
 import type { AuthService } from '../application/auth-service'
 import { describeSecurityEvent } from '../domain/security-event'
 import {
+  genericSignInRefusal,
   InvalidCredentialsError,
   parseEmailInput,
   parseSignInInput,
@@ -128,14 +129,11 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
           const auth = service()
           const input = parseSignInInput(await jsonBody(request))
 
-          // Le refus de la bibliothèque est rendu **tel quel**, et c'est
-          // délibéré : compte inconnu et mot de passe faux y donnent la même
-          // réponse, au même statut, et la bibliothèque hache un mot de passe
-          // factice dans le premier cas pour que les deux durent aussi
-          // longtemps. Réécrire cette réponse ici masquerait la propriété au
-          // lieu de la vérifier ; `tests/auth.test.ts` la mesure.
           const response = await auth.handle(withBody(request, input))
 
+          // Le **journal** garde le statut réel de la bibliothèque : c'est
+          // l'exploitant qui a besoin de distinguer un mot de passe faux d'une
+          // adresse non vérifiée, jamais l'appelant anonyme.
           auth.useCases.log(
             describeSecurityEvent({
               event: response.ok ? 'auth.sign_in_succeeded' : 'auth.sign_in_failed',
@@ -144,7 +142,19 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
             }),
           )
 
-          return response
+          // Et l'appelant reçoit le refus unique du `domain`. La bibliothèque
+          // rend `401 INVALID_EMAIL_OR_PASSWORD` pour un compte inconnu comme
+          // pour un mot de passe faux — elle hache un mot de passe factice
+          // dans le premier cas pour que les deux durent aussi longtemps —,
+          // mais `403 EMAIL_NOT_VERIFIED` quand l'adresse n'est pas prouvée.
+          // Rendre sa réponse telle quelle rendait donc l'état du compte
+          // lisible dans le statut. Le refus est réécrit ici, une fois, pour
+          // tous les états.
+          const refusal = genericSignInRefusal(response.status)
+
+          return refusal === null
+            ? response
+            : Response.json(refusal.body, { status: refusal.status })
         }),
     },
     {

@@ -10,6 +10,7 @@ import {
   type DatabaseConnection,
 } from '@repo/db'
 import { createRecordingMailer, type RecordingMailer } from '@repo/mailer-testing'
+import type { Mailer } from '@repo/ports'
 import {
   authModule,
   authSchema,
@@ -61,6 +62,51 @@ let service: AuthService
 let logs: SecurityEventRecord[] = []
 
 /**
+ * Le mailer de la suite, avec un **retard réglable**.
+ *
+ * Sans lui, aucun chronomètre ne verrait la différence : la doublure
+ * d'enregistrement répond en quelques microsecondes, alors qu'un fournisseur
+ * réel met des centaines de millisecondes. Le retard n'est posé que dans le cas
+ * qui mesure, et il est rendu à zéro juste après.
+ */
+let mailerDelayMillis = 0
+
+const slowMailer: Mailer = {
+  send: async (input) => {
+    if (mailerDelayMillis > 0) {
+      await new Promise((accept) => setTimeout(accept, mailerDelayMillis))
+    }
+
+    return await mailer.send(input)
+  },
+}
+
+/**
+ * Les envois différés, retenus ici pour être attendus.
+ *
+ * En production, `runInBackground` rend la main immédiatement : c'est ce qui
+ * ferme le canal temporel de `/request-password-reset`. La suite a malgré tout
+ * besoin de savoir *quand* l'email est parti — d'où ce collecteur, et
+ * `settled()` là où l'email doit avoir atterri.
+ */
+const backgroundTasks: Promise<unknown>[] = []
+
+const settled = async (): Promise<void> => {
+  await Promise.all(backgroundTasks.splice(0))
+}
+
+/** La configuration de la suite, écrite une fois : trois cas la remontent. */
+const configureService = (): AuthService =>
+  configureAuth({
+    db: connection.db,
+    mailer: slowMailer,
+    secret: TEST_SECRET,
+    appUrl: APP_URL,
+    log: (record) => logs.push(record),
+    runInBackground: (task) => backgroundTasks.push(task),
+  })
+
+/**
  * Aucun appel réseau sortant n'est toléré pendant ces parcours.
  *
  * C'est la seconde moitié de la frontière « les emails passent par le port » :
@@ -100,13 +146,7 @@ beforeAll(async () => {
   await Promise.all([1, 2, 3, 4, 5].map(() => connection.db.execute(sql`select 1`)))
 
   mailer = createRecordingMailer()
-  service = configureAuth({
-    db: connection.db,
-    mailer,
-    secret: TEST_SECRET,
-    appUrl: APP_URL,
-    log: (record) => logs.push(record),
-  })
+  service = configureService()
 })
 
 afterAll(async () => {
@@ -126,9 +166,15 @@ beforeEach(() => {
   mailer?.reset()
   logs = []
   outboundCalls.length = 0
+  backgroundTasks.length = 0
+  mailerDelayMillis = 0
 })
 
 const anEmail = (): string => `s07-${randomUUID()}@example.test`
+
+/** La médiane d'une série de mesures : une valeur aberrante ne la déplace pas. */
+const median = (values: readonly number[]): number =>
+  [...values].sort((left, right) => left - right)[Math.floor(values.length / 2)] ?? 0
 
 interface CallOptions {
   readonly method?: string
@@ -289,6 +335,7 @@ describe.skipIf(!databaseReachable)('frontière — tout email passe par le port
 
     await call('/sign-in/magic-link', { body: { email } })
     await call('/request-password-reset', { body: { email } })
+    await settled()
 
     const templates = mailer.sent.map((sent) => sent.template)
 
@@ -359,13 +406,7 @@ describe.skipIf(!databaseReachable)('frontière — tout email passe par le port
         error: 'verification_email_not_sent',
       })
     } finally {
-      service = configureAuth({
-        db: connection.db,
-        mailer,
-        secret: TEST_SECRET,
-        appUrl: APP_URL,
-        log: (record) => logs.push(record),
-      })
+      service = configureService()
     }
   }, 30_000)
 })
@@ -379,7 +420,9 @@ describe.skipIf(!databaseReachable)('parcours d’inscription et de vérificatio
 
     const refused = await signIn(email)
 
-    expect(refused.status).toBe(403)
+    // 401 comme un compte inconnu : le refus ne dit pas que l'adresse existe
+    // mais n'est pas vérifiée. Ce qui le prouve est l'absence de session.
+    expect(refused.status).toBe(401)
     expect(sessionCookie(refused)).toBeNull()
   }, 30_000)
 
@@ -407,7 +450,7 @@ describe.skipIf(!databaseReachable)('parcours d’inscription et de vérificatio
     const response = await call('/verify-email?token=jeton-invente')
 
     expect(response.headers.get('location')).toBe('/verify-email?error=invalid_token')
-    expect((await signIn(email)).status).toBe(403)
+    expect((await signIn(email)).status).toBe(401)
   }, 30_000)
 
   it('refuse une inscription dont le mot de passe est plus court que la politique, sans rien écrire', async () => {
@@ -474,9 +517,13 @@ describe.skipIf(!databaseReachable)('connexion, magic link et réinitialisation'
     const { email } = await aVerifiedAccount()
 
     await call('/request-password-reset', { body: { email } })
+    await settled()
+
     const firstLink = lastLink('reset-password')
 
     await call('/request-password-reset', { body: { email } })
+    await settled()
+
     const secondLink = lastLink('reset-password')
 
     // Le lien mène à l'**écran** de réinitialisation, qui repasse le jeton à la
@@ -672,13 +719,25 @@ describe.skipIf(!databaseReachable)('jetons à usage unique', () => {
     const response = await call(link)
 
     expect(response.headers.get('location')).toBe('/verify-email?error=invalid_token')
-    expect((await signIn(email)).status).toBe(403)
+    expect((await signIn(email)).status).toBe(401)
   }, 30_000)
 })
 
 describe.skipIf(!databaseReachable)('indistinguabilité compte inconnu / mot de passe invalide', () => {
-  it('rend la même réponse, au même statut', async () => {
+  it('rend la même réponse, au même statut, pour les trois états de compte', async () => {
+    // Trois états, un seul refus. Le troisième est celui que la bibliothèque
+    // distinguait : mesuré à travers le répartiteur, un compte **non vérifié**
+    // répondait `403 EMAIL_NOT_VERIFIED` là où un compte inconnu répondait
+    // `401 INVALID_EMAIL_OR_PASSWORD`. Le mot de passe faux sur ce même compte
+    // non vérifié répondait déjà 401 — la bibliothèque ne vérifie l'adresse
+    // qu'**après** le mot de passe —, donc la porte n'était ouverte qu'à qui
+    // connaissait déjà le mot de passe. Elle est fermée quand même : c'est un
+    // oracle de bourrage d'identifiants, et `docs/security.md` §7 n'admet
+    // aucune distinction, « ni par message, ni par code de statut ».
     const { email } = await aVerifiedAccount()
+    const unverified = anEmail()
+
+    await call('/sign-up/email', { body: { email: unverified, password: PASSWORD } })
 
     const unknown = await call('/sign-in/email', {
       body: { email: anEmail(), password: PASSWORD },
@@ -686,10 +745,57 @@ describe.skipIf(!databaseReachable)('indistinguabilité compte inconnu / mot de 
     const wrongPassword = await call('/sign-in/email', {
       body: { email, password: `${PASSWORD}-faux` },
     })
+    const notVerified = await call('/sign-in/email', {
+      body: { email: unverified, password: PASSWORD },
+    })
 
-    expect(unknown.status).toBe(wrongPassword.status)
-    await expect(unknown.json()).resolves.toEqual(await wrongPassword.json())
+    const reference = await unknown.json()
+
+    expect([wrongPassword.status, notVerified.status]).toEqual([unknown.status, unknown.status])
+    await expect(wrongPassword.json()).resolves.toEqual(reference)
+    await expect(notVerified.json()).resolves.toEqual(reference)
+
+    // Et le refus reste un refus : aucune session n'est ouverte au passage.
+    expect(sessionCookie(notVerified)).toBeNull()
   }, 30_000)
+
+  it('répond au mot de passe oublié en un temps que le chronomètre ne distingue pas', async () => {
+    // La bibliothèque prend deux chemins sur ce point d'entrée : compte inconnu
+    // → un identifiant jeté et une lecture de vérification factice ; compte
+    // connu → l'écriture du jeton **puis l'envoi de l'email**. Sans
+    // `advanced.backgroundTasks.handler`, `runInBackgroundOrAwait` fait
+    // `await promise` (`dist/context/create-context.mjs`) : l'envoi est dans le
+    // temps de réponse, et un fournisseur réel y met des centaines de
+    // millisecondes. Le retard du mailer est donc posé ici — sans lui, la
+    // doublure répond trop vite pour que le cas prouve quoi que ce soit.
+    const { email } = await aVerifiedAccount()
+    const attempts = 5
+    const known: number[] = []
+    const unknown: number[] = []
+
+    mailerDelayMillis = 120
+
+    try {
+      for (let index = 0; index < attempts; index += 1) {
+        const startKnown = performance.now()
+        await call('/request-password-reset', { body: { email } })
+        known.push(performance.now() - startKnown)
+
+        const startUnknown = performance.now()
+        await call('/request-password-reset', { body: { email: anEmail() } })
+        unknown.push(performance.now() - startUnknown)
+      }
+    } finally {
+      mailerDelayMillis = 0
+      await settled()
+    }
+
+    const gap = Math.abs(median(known) - median(unknown))
+
+    // L'écart doit rester très en deçà du coût d'un envoi : si l'email partait
+    // encore dans la réponse, il vaudrait le retard entier.
+    expect(gap).toBeLessThan(60)
+  }, 120_000)
 
   it('répond en un temps que le chronomètre ne distingue pas', async () => {
     const { email } = await aVerifiedAccount()
@@ -708,9 +814,6 @@ describe.skipIf(!databaseReachable)('indistinguabilité compte inconnu / mot de 
       await call('/sign-in/email', { body: { email, password: `${PASSWORD}-faux` } })
       wrong.push(performance.now() - startWrong)
     }
-
-    const median = (values: number[]): number =>
-      [...values].sort((left, right) => left - right)[Math.floor(values.length / 2)] ?? 0
 
     const unknownMedian = median(unknown)
     const wrongMedian = median(wrong)
@@ -742,6 +845,7 @@ describe.skipIf(!databaseReachable)('journalisation des événements de sécurit
 
     await call('/sign-in/magic-link', { body: { email } })
     await call('/request-password-reset', { body: { email } })
+    await settled()
 
     const magicLinkUrl = lastLink('magic-link')
     const journal = JSON.stringify(logs)
@@ -768,13 +872,7 @@ describe.skipIf(!databaseReachable)('module non configuré', () => {
         ),
       ).rejects.toThrow(/configur/i)
     } finally {
-      service = configureAuth({
-        db: connection.db,
-        mailer,
-        secret: TEST_SECRET,
-        appUrl: APP_URL,
-        log: (record) => logs.push(record),
-      })
+      service = configureService()
     }
   })
 })

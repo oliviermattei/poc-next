@@ -58,7 +58,8 @@ export default async function SignInPage({
       />
 
       <p>
-        <a href="/forgot-password">Mot de passe oublié</a> · <a href="/sign-up">Créer un compte</a>
+        <a href="/forgot-password">Mot de passe oublié</a> ·{' '}
+        <a href="/verify-email">Adresse non vérifiée</a> · <a href="/sign-up">Créer un compte</a>
       </p>
     </main>
   )

@@ -1,6 +1,6 @@
 import { buildRegistry } from '@repo/core'
 
-import { availableModules, enabledModules } from '../../../config/features'
+import { availableModules, enabledModules, requiredModules } from '../../../config/features'
 
 /**
  * Le registre de l'application, construit une fois au chargement.
@@ -20,4 +20,5 @@ import { availableModules, enabledModules } from '../../../config/features'
 export const moduleRegistry = buildRegistry({
   available: [...availableModules],
   enabled: [...enabledModules],
+  required: [...requiredModules],
 })

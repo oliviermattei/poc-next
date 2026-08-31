@@ -207,6 +207,80 @@ describe('surface client de @repo/config', () => {
 })
 
 /**
+ * **Un module n'importe jamais `@repo/db`** (ADR 020), et la règle est celle du
+ * lint — pas une expression régulière.
+ *
+ * La garde livrée par s07 lisait le texte des fichiers et cherchait
+ * `from '@repo/db'` : `import type { ModuleSchema } from "@repo/db"`, en
+ * guillemets doubles, passait `pnpm test`, `pnpm lint` **et** `pnpm typecheck`,
+ * prouvé par mutation en revue. C'est la deuxième fois que ce dépôt se fait
+ * prendre par la même classe de défaut (voir la surface client de
+ * `@repo/config` ci-dessus) : une règle que la mise en forme défait n'est pas
+ * une règle.
+ *
+ * Les cas ci-dessous soumettent chaque écriture du même import à la
+ * configuration **réelle** du dépôt, sous le nom d'un fichier de module. Le
+ * dépôt lui-même est balayé ailleurs (`tests/module-registry.test.ts`), avec la
+ * même règle : ici on prouve que la règle mord, là qu'aucun fichier ne la viole.
+ */
+describe('un module ne dépend pas du package de base de données', () => {
+  const MODULE_FILE = 'packages/modules/auth/src/infrastructure/probe.ts'
+
+  let eslint: ESLint
+
+  beforeAll(() => {
+    eslint = new ESLint({ cwd: REPO_ROOT })
+  })
+
+  const ruleIdsFor = async (code: string, filePath: string): Promise<string[]> => {
+    const [result] = await eslint.lintText(code, { filePath })
+
+    return (result?.messages ?? []).map((message) => message.ruleId ?? '')
+  }
+
+  it.each([
+    ['guillemets simples', "import { db } from '@repo/db'\nexport const connection = db"],
+    ['guillemets doubles', 'import { db } from "@repo/db"\nexport const connection = db'],
+    [
+      'import de type en guillemets doubles',
+      'import type { ModuleSchema } from "@repo/db"\nexport type Schema = ModuleSchema',
+    ],
+    ['réexport', "export { db } from '@repo/db'"],
+    ['import d’effet de bord', "import '@repo/db'"],
+    ['sous-chemin', "import { schema } from '@repo/db/schema'\nexport const s = schema"],
+    ['require', "export const db = require('@repo/db')"],
+    ['import dynamique', "export const db = await import('@repo/db')"],
+  ])('refuse `@repo/db` dans un module — %s', async (_name, code) => {
+    const ruleIds = await ruleIdsFor(code, MODULE_FILE)
+
+    expect(ruleIds.filter((id) => id.startsWith('no-restricted-'))).not.toEqual([])
+  })
+
+  it('laisse le module importer ce dont il a le droit', async () => {
+    // Trop large, la règle interdirait au module son propre contrat : elle
+    // prouverait alors qu'elle est fausse, pas qu'elle marche.
+    const ruleIds = await ruleIdsFor(
+      "import { MODULE_ROUTE_PREFIX } from '@repo/core'\nexport const prefix = MODULE_ROUTE_PREFIX",
+      MODULE_FILE,
+    )
+
+    expect(ruleIds.filter((id) => id.startsWith('no-restricted-'))).toEqual([])
+  })
+
+  it('laisse le point de composition, lui, brancher la connexion', async () => {
+    // C'est tout le sens d'ADR 020 : la connexion est **injectée** par
+    // l'application. Refuser `@repo/db` partout casserait le seul endroit qui
+    // a le droit de la construire.
+    const ruleIds = await ruleIdsFor(
+      "import { db } from '@repo/db'\nexport const connection = db",
+      'apps/web/lib/probe.ts',
+    )
+
+    expect(ruleIds.filter((id) => id.startsWith('no-restricted-'))).toEqual([])
+  })
+})
+
+/**
  * Sens des dépendances entre packages et applications.
  *
  * `apps/web` dépend de `@repo/config` et `@repo/db` ; l'inverse rendrait ces
