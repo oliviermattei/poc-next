@@ -34,6 +34,8 @@ open -a Docker && docker compose up -d                                # Postgres
 | Voie | Story | Worktree | Base Postgres |
 |---|---|---|---|
 | A | s10-marketing-site | **fusionnée dans `dev`** (`57e9658`), revue `minor`/ship oui | close |
+| C | s45-security-headers | worktree dédié, `feature/s45-security-headers` | `s45`, port 3145 |
+| D | s15-organizations | worktree dédié, `feature/s15-organizations` | `s15`, port 3115 |
 | B | s12-oauth-signin | worktree dédié, `feature/s12-oauth-signin` — commit `5e49aca`, revue **critical** (appels sortants sans délai), **tour de correction** (N1 délais, N4 doublure locale en production, N7 énumération de fournisseurs, N3 mécanisme mal consigné, N2 journalisation) | `s12` |
 
 Chaque voie fait recherche → design → plan → exécution TDD → **un commit** sur sa branche, puis
@@ -45,12 +47,11 @@ Fichiers chauds, à ne jamais laisser à deux voies en même temps : `config/fea
 (celui-ci appartient à l'orchestrateur). Chaque voie a **sa propre base** : deux suites qui
 migrent dans `app` en même temps rougissent pour rien.
 
-**Le port 3100 est un fichier chaud lui aussi.** `playwright.config.ts` porte
-`reuseExistingServer: true` : lancé pendant qu'un autre worktree sert déjà le port, Playwright
-réutilise **le serveur d'une autre branche**. Mesuré en s12 : 20 rouges parasites. Le cas
-symétrique est pire — un vert obtenu contre le mauvais arbre, indistinguable d'un vrai vert.
-`lsof -i :3100` doit être vide avant chaque lancement. À fermer pour de bon : dette ouverte,
-un harnais ne doit pas pouvoir confondre « mon arbre est vert » et « j'ai mesuré autre chose ».
+**Le port des parcours est réglé (`df3bb2f`).** `reuseExistingServer` est passé à `false` :
+Playwright démarre son propre serveur et échoue bruyamment si le port est pris, au lieu de
+mesurer l'arbre d'une autre branche. Chaque voie choisit le sien par `E2E_PORT` — voir la
+colonne de la table ci-dessus. Vérifié dans les deux sens : vert port libre, refus explicite
+port occupé.
 
 ## Prochaine étape
 
