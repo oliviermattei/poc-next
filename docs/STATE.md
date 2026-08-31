@@ -35,7 +35,7 @@ open -a Docker && docker compose up -d                                # Postgres
 |---|---|---|---|
 | A | s13-two-factor | `feature/s13-two-factor` | `s13`, port 3113 |
 | B | s16-invite-members | commit `74a73a8`, **en revue** | `s16`, port 3116 |
-| C | s11-public-forms | `feature/s11-public-forms` — **seule autorisée sur `config/features.ts` et `generated/`** | `s11`, port 3111 |
+| C | s11-public-forms | commit `0911aa9`, **en revue** | `s11`, port 3111 |
 
 **Les numéros d'ADR se réservent à l'ouverture d'une vague.** Deux voies parallèles qui
 prennent « le prochain numéro libre » prennent le même, et la fusion écrase une décision sans
@@ -68,6 +68,12 @@ colonne de la table ci-dessus. Vérifié dans les deux sens : vert port libre, r
 port occupé.
 
 ## Dettes à surveiller
+
+- **La limitation de débit vit dans `marketing` (s11), pas dans le socle.** Trois documents
+  l'attribuent à s28 : la convergence est une dette écrite, et `public_form_throttle` disparaîtra
+  quand s28 posera la table du socle.
+- **`x-forwarded-for` est falsifiable** hors d'un proxy de confiance : le seau par formulaire
+  borne le coût, il ne le ferme pas. À reprendre en s28, avec la notion de proxy de confiance.
 
 - **Une exécution e2e rouge sur sept** pendant la revue de s45 : 22 parcours sur 42 en échec,
   tous fichiers confondus, jamais reproduite (six exécutions vertes ensuite, dont une à cache
