@@ -6,11 +6,11 @@
 
 | Story | État |
 |---|---|
-| s01 → s09 | **closes**, revues, correctifs appliqués |
-| s10 → s46 | à faire — 37 stories |
+| s01 → s09, s10 | **closes**, revues, correctifs appliqués |
+| s11 → s46 | à faire — 36 stories |
 
-Tests : **681 + 2 ignorés**, 27 parcours end-to-end, déterministes (`retries: 0`).
-ADR : **22**. Branche : `dev`. Commits : un par story, plus `docs:` pour recherche, plan, revue.
+Tests : **734 + 2 ignorés**, 34 parcours end-to-end, déterministes (`retries: 0`).
+ADR : **24**. Branche : `dev`. Commits : un par story, plus `docs:` pour recherche, plan, revue.
 
 ## Environnement (à refaire après un redémarrage de session)
 
@@ -33,7 +33,7 @@ open -a Docker && docker compose up -d                                # Postgres
 
 | Voie | Story | Worktree | Base Postgres |
 |---|---|---|---|
-| A | s10-marketing-site | worktree dédié, `feature/s10-marketing-site` — commit `aa90610`, revue `major`/ship oui, **tour de correction** (F1 robots.txt, F2 canonical, F3 promesse non tenue, F4 filet relâché, ADR 024) | `s10` |
+| A | s10-marketing-site | **fusionnée dans `dev`** (`57e9658`), revue `minor`/ship oui | close |
 | B | s12-oauth-signin | worktree dédié, `feature/s12-oauth-signin` — commit `5e49aca`, revue **critical** (appels sortants sans délai), **tour de correction** (N1 délais, N4 doublure locale en production, N7 énumération de fournisseurs, N3 mécanisme mal consigné, N2 journalisation) | `s12` |
 
 Chaque voie fait recherche → design → plan → exécution TDD → **un commit** sur sa branche, puis
