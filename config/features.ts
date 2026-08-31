@@ -1,4 +1,5 @@
 import type { AnyModuleDefinition, ModuleIdOf } from '@repo/core'
+import { authModule } from '@repo/module-auth'
 import { demoDisabledModule } from '@repo/module-demo-disabled'
 import { demoEnabledModule } from '@repo/module-demo-enabled'
 
@@ -23,6 +24,7 @@ import { demoEnabledModule } from '@repo/module-demo-enabled'
  * plus une configuration.
  */
 export const availableModules = [
+  authModule,
   demoEnabledModule,
   demoDisabledModule,
 ] as const satisfies readonly AnyModuleDefinition[]
@@ -33,8 +35,16 @@ export type AvailableModuleId = ModuleIdOf<typeof availableModules>
 /**
  * Les modules activés.
  *
+ * `auth` fait partie du **socle non désactivable** : sans compte, il n'y a pas
+ * de SaaS, et cinq parcours (invitations, suppression de compte, export…) en
+ * dépendent. Le CLI le liste comme les autres — le retirer ferait échouer la
+ * validation des modules qui le requièrent, pas ce fichier.
+ *
  * `demo-disabled` est volontairement absent : c'est lui qui prouve en continu
  * qu'un module non activé n'expose ni route, ni entrée de navigation, et que ni
  * sa purge ni son export ne sont appelés.
  */
-export const enabledModules = ['demo-enabled'] as const satisfies readonly AvailableModuleId[]
+export const enabledModules = [
+  'auth',
+  'demo-enabled',
+] as const satisfies readonly AvailableModuleId[]

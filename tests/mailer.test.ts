@@ -211,8 +211,19 @@ describe('sélection du mailer applicatif', () => {
     for (const entry of moduleRegistry.emails) {
       const [locale] = Object.keys(entry.template.locales)
       const template = qualifyEmailTemplateId(entry.moduleId, entry.template.id)
+      const content = entry.template.locales[locale ?? 'fr']
 
-      const result = await mailer.send({ ...send(), template, locale: locale ?? 'fr' })
+      // Les données sont dérivées du **texte déclaré**, jamais écrites ici :
+      // chaque module choisit ses variables, et le rendu refuse un envoi dont
+      // une donnée manque. Une liste figée ne vaudrait que pour le module qui
+      // l'a inspirée.
+      const data = Object.fromEntries(
+        [...`${content?.subject ?? ''} ${content?.body ?? ''}`.matchAll(/\{(\w+)\}/g)].map(
+          (match) => [match[1] ?? '', 'valeur'],
+        ),
+      )
+
+      const result = await mailer.send({ ...send(), template, locale: locale ?? 'fr', data })
 
       expect(result.ok, `le template ${template} devrait être rendable`).toBe(true)
     }

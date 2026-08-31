@@ -34,9 +34,16 @@ const protectedRoutes = moduleRegistry.routes.filter(
 
 test('la route publique d’un module activé est servie', async ({ request }) => {
   for (const route of publicRoutes) {
-    const response = await request.get(`${MODULE_ROUTE_PREFIX}${route.path}`)
+    const response = await request.get(`${MODULE_ROUTE_PREFIX}${route.path}`, {
+      maxRedirects: 0,
+    })
 
-    expect(response.status(), `${route.moduleId} ${route.path}`).toBe(200)
+    // **Joignable**, et non « 200 » : depuis s07, une route publique peut
+    // légitimement rediriger (un lien de vérification consommé) ou refuser une
+    // requête sans paramètre. Ce qui se vérifie ici est l'inverse exact du cas
+    // suivant — la route d'un module activé est montée, celle d'un module non
+    // activé n'existe pas.
+    expect(response.status(), `${route.moduleId} ${route.path}`).not.toBe(404)
   }
 })
 

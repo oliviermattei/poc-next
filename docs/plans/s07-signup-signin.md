@@ -13,16 +13,16 @@ Socles couverts : **`docs/security.md` §2 en totalité** (sessions et authentif
 
 ## Tasks (ordered)
 
-1. [ ] **Module `auth`** — package, quatre couches, `AGENTS.md`. Socle non désactivable : pas de critère « module non activé », et il faut l'écrire dans son `AGENTS.md`.
-2. [ ] **Schéma et migrations** — les tables Better Auth intégrées au **schéma du module**, jamais à la racine, générées par le baril de s04. C'est le premier module qui persiste réellement : il doit aussi résoudre `enabledModuleSchemas = []`, sinon `db.query.<table>` reste indisponible (résidu documenté en s04).
-3. [ ] **Branchement du port `Mailer`** — les hooks d'envoi de Better Auth appellent le port de s06, jamais un client interne. Deux chemins d'envoi rendraient le §5 invérifiable.
-4. [ ] **Trois templates** — vérification, magic link, réinitialisation, déclarés au contrat avec **toutes** les locales du module.
-5. [ ] **Parcours** — inscription, vérification, connexion, magic link, mot de passe oublié, déconnexion, redirection puis retour à l'URL demandée.
-6. [ ] **Durcissement de session** (§2) — rotation de l'identifiant à chaque élévation de privilège ; cookie `HttpOnly`, `Secure`, `SameSite`, jamais lisible par le JavaScript client ; révocation effective **côté serveur** ; changement de mot de passe ou d'email révoquant les autres sessions.
-7. [ ] **Jetons à usage unique** — vérification, magic link, réinitialisation : durée de vie courte, consommation atomique, invalidation des jetons frères à l'usage.
-8. [ ] **Indistinguabilité** — message identique pour compte inconnu et mot de passe invalide, **et temps de réponse indistinguable**. Le second se prouve par une mesure, pas par une lecture.
-9. [ ] **Journalisation** — événements de sécurité avec leur acteur, sans jamais journaliser un jeton, un mot de passe ni un cookie. Filtrage **prouvé par mutation**.
-10. [ ] **`resolveSession`** — brancher le crochet que s03 attend, sans que `packages/core` dépende du module `auth`.
+1. [x] **Module `auth`** — package, quatre couches, `AGENTS.md`. Socle non désactivable : pas de critère « module non activé », et il faut l'écrire dans son `AGENTS.md`.
+2. [x] **Schéma et migrations** — les tables Better Auth intégrées au **schéma du module**, jamais à la racine, générées par le baril de s04. C'est le premier module qui persiste réellement : il doit aussi résoudre `enabledModuleSchemas = []`, sinon `db.query.<table>` reste indisponible (résidu documenté en s04).
+3. [x] **Branchement du port `Mailer`** — les hooks d'envoi de Better Auth appellent le port de s06, jamais un client interne. Deux chemins d'envoi rendraient le §5 invérifiable.
+4. [x] **Trois templates** — vérification, magic link, réinitialisation, déclarés au contrat avec **toutes** les locales du module.
+5. [x] **Parcours** — inscription, vérification, connexion, magic link, mot de passe oublié, déconnexion, redirection puis retour à l'URL demandée.
+6. [x] **Durcissement de session** (§2) — rotation de l'identifiant à chaque élévation de privilège ; cookie `HttpOnly`, `Secure`, `SameSite`, jamais lisible par le JavaScript client ; révocation effective **côté serveur** ; changement de mot de passe ou d'email révoquant les autres sessions.
+7. [x] **Jetons à usage unique** — vérification, magic link, réinitialisation : durée de vie courte, consommation atomique, invalidation des jetons frères à l'usage.
+8. [x] **Indistinguabilité** — message identique pour compte inconnu et mot de passe invalide, **et temps de réponse indistinguable**. Le second se prouve par une mesure, pas par une lecture.
+9. [x] **Journalisation** — événements de sécurité avec leur acteur, sans jamais journaliser un jeton, un mot de passe ni un cookie. Filtrage **prouvé par mutation**.
+10. [x] **`resolveSession`** — brancher le crochet que s03 attend, sans que `packages/core` dépende du module `auth`.
 
 ## Run interdicts
 

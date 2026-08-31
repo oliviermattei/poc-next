@@ -61,6 +61,36 @@ const envShape = {
    * refuse de démarrer.
    */
   EMAIL_LOCAL_CAPTURE: z.literal(EMAIL_LOCAL_CAPTURE_ENABLED).optional(),
+  /**
+   * Secret de signature des sessions et des jetons d'authentification.
+   *
+   * **Optionnelle ici, obligatoire pour qui monte l'authentification** — même
+   * raison que `RESEND_API_KEY` : `pnpm db:migrate` ne signe aucun cookie et
+   * doit s'exécuter avec le seul `DATABASE_URL` (revue de s06, G3).
+   * L'exigence est portée par `apps/web/lib/auth-config.ts`, appliquée au
+   * démarrage par `apps/web/next.config.ts`.
+   *
+   * 32 caractères au minimum : c'est la longueur en dessous de laquelle une clé
+   * HMAC cesse d'être hors de portée d'une recherche exhaustive.
+   */
+  AUTH_SECRET: z.string().min(32).optional(),
+  /**
+   * URL publique de l'application.
+   *
+   * Elle n'est pas décorative : c'est elle qui construit les liens envoyés par
+   * email et qui borne les origines de confiance. La **déduire** de l'en-tête
+   * `Host` de la requête, comme le proposent la plupart des bibliothèques,
+   * laisse un attaquant faire pointer un lien de réinitialisation vers son
+   * propre domaine (`docs/security.md` §4 : aucune redirection pilotée par un
+   * paramètre non validé).
+   */
+  APP_URL: z
+    .string()
+    .min(1)
+    .refine((value) => URL.canParse(value) && /^https?:$/.test(new URL(value).protocol), {
+      message: 'must be an absolute http(s) URL (https://app.example.com)',
+    })
+    .optional(),
   /** Expéditeur. Obligatoire dès qu'une clé est configurée : voir la règle croisée. */
   EMAIL_FROM: z
     .string()

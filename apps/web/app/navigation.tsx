@@ -1,5 +1,6 @@
 import { visibleNavigation } from '@repo/core'
 
+import { currentSession } from '../lib/auth'
 import { moduleRegistry } from '../lib/module-registry'
 
 /**
@@ -12,20 +13,21 @@ import { moduleRegistry } from '../lib/module-registry'
  *
  * Le second filtre n'est pas de la même nature : `visibleNavigation` distingue
  * deux appelants d'un **même** module activé, selon la protection déclarée par
- * l'entrée (`docs/security.md` §3). Aucune session n'est résolue tant que
- * l'authentification n'existe pas (s07) : l'appel passe `null`, et seules les
- * entrées publiques s'affichent — comme le répartiteur refuse toute route non
- * publique. La règle vit dans `@repo/core`, ce composant ne la rejoue pas.
+ * l'entrée (`docs/security.md` §3). Depuis s07, la session est réelle : une
+ * entrée `authenticated` n'apparaît que pour un compte connecté, et la règle
+ * qui en décide est celle qui refuse la route correspondante. Ce composant ne
+ * la rejoue pas — il passe la session et affiche ce qu'on lui rend.
  */
 const DEFAULT_LOCALE = 'fr'
 
-export function ModuleNavigation() {
+export async function ModuleNavigation() {
   const messages = moduleRegistry.messages[DEFAULT_LOCALE] ?? {}
+  const session = await currentSession()
 
   return (
     <nav aria-label="Modules">
       <ul>
-        {visibleNavigation(moduleRegistry, null).map((entry) => (
+        {visibleNavigation(moduleRegistry, session).map((entry) => (
           <li key={`${entry.moduleId}:${entry.id}`}>
             <a href={entry.href}>{messages[entry.labelKey] ?? entry.labelKey}</a>
           </li>

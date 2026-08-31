@@ -16,6 +16,7 @@
     "@repo/db": "workspace:*",
     "@repo/emails": "workspace:*",
     "@repo/mailer-testing": "workspace:*",
+    "@repo/module-auth": "workspace:*",
     "@repo/module-demo-disabled": "workspace:*",
     "@repo/module-demo-enabled": "workspace:*",
     "@repo/ports": "workspace:*",

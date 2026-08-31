@@ -7,7 +7,11 @@ import { buildRegistry } from '@repo/core'
 
 import { availableModules, enabledModules } from '../../../../config/features'
 import drizzleConfig from '../../drizzle.config'
-import { planModuleSchemaBarrels } from '../barrel'
+import {
+  ENABLED_SCHEMAS_FILE,
+  planModuleSchemaBarrels,
+  renderEnabledSchemasIndex,
+} from '../barrel'
 import { assertNoForbiddenModuleReferences } from '../references'
 
 /**
@@ -50,7 +54,10 @@ const barrels = planModuleSchemaBarrels(registry.modules)
 
 await mkdir(GENERATED_SCHEMA_DIR, { recursive: true })
 
-const expectedFiles = new Set(barrels.map((barrel) => barrel.file))
+// L'agrégat des schémas activés fait partie des fichiers attendus : c'est lui
+// que le client Drizzle importe pour la requête relationnelle, et le supprimer
+// rendrait `db.query.<table>` indisponible.
+const expectedFiles = new Set([...barrels.map((barrel) => barrel.file), ENABLED_SCHEMAS_FILE])
 
 for (const name of await readdir(GENERATED_SCHEMA_DIR)) {
   // `.gitkeep` garde le dossier versionné quand aucun module n'est activé.
@@ -65,6 +72,12 @@ for (const name of await readdir(GENERATED_SCHEMA_DIR)) {
 for (const barrel of barrels) {
   await writeFile(join(GENERATED_SCHEMA_DIR, barrel.file), barrel.content, 'utf8')
 }
+
+await writeFile(
+  join(GENERATED_SCHEMA_DIR, ENABLED_SCHEMAS_FILE),
+  renderEnabledSchemasIndex(registry.modules),
+  'utf8',
+)
 
 /**
  * Le baril réexporte-t-il réellement les tables du contrat ?

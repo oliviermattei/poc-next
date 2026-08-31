@@ -160,6 +160,16 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     vi.stubEnv('EMAIL_LOCAL_CAPTURE', choice === 'capture' ? '1' : '')
   }
 
+  /**
+   * Même raison que `stubMailer` : la garde d'authentification lit deux
+   * variables, et un cas qui n'en déclare aucune ne passerait que sur un poste
+   * dont le `.env` les complète.
+   */
+  const stubAuth = (choice: 'configure' | 'aucun'): void => {
+    vi.stubEnv('AUTH_SECRET', choice === 'configure' ? 'x'.repeat(40) : '')
+    vi.stubEnv('APP_URL', choice === 'configure' ? 'http://localhost:3000' : '')
+  }
+
   const loadNextConfig = async () => {
     vi.resetModules()
     const { default: config } = await import('../apps/web/next.config')
@@ -175,6 +185,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
   it('refuse de démarrer sur une `DATABASE_URL` malformée, en la nommant', async () => {
     vi.stubEnv('DATABASE_URL', 'mysql://oops@localhost/x')
     stubMailer('capture')
+    stubAuth('configure')
 
     const config = await loadNextConfig()
 
@@ -186,6 +197,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     // démarrer et `/api/health` répondre 503.
     vi.stubEnv('DATABASE_URL', 'postgres://app:app@127.0.0.1:1/app')
     stubMailer('capture')
+    stubAuth('configure')
 
     const config = await loadNextConfig()
 
@@ -200,6 +212,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     // migration muni du seul `DATABASE_URL` n'a aucun mailer à choisir (G3).
     vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
     stubMailer('aucun')
+    stubAuth('configure')
 
     const config = await loadNextConfig()
 
@@ -207,9 +220,36 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     expect(() => config(DEV_SERVER_PHASE)).toThrowError(/EMAIL_LOCAL_CAPTURE/)
   })
 
+  it('refuse de démarrer sans secret de session ni URL publique, en nommant les deux variables', async () => {
+    // Même raison que le mailer, et même partage : le schéma d'environnement
+    // ne les exige de personne — `pnpm db:migrate` ne signe aucun cookie —
+    // mais cette application, qui monte l'authentification, refuse de démarrer
+    // sans avoir dit avec quoi elle signe ses sessions et où pointent les liens
+    // qu'elle envoie par email.
+    vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
+    stubMailer('capture')
+    stubAuth('aucun')
+
+    const config = await loadNextConfig()
+
+    expect(() => config(DEV_SERVER_PHASE)).toThrowError(/AUTH_SECRET/)
+    expect(() => config(DEV_SERVER_PHASE)).toThrowError(/APP_URL/)
+  })
+
+  it('ne réclame ni secret ni URL publique pendant `next build`', async () => {
+    vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
+    stubMailer('capture')
+    stubAuth('aucun')
+
+    const config = await loadNextConfig()
+
+    expect(() => config(BUILD_PHASE)).not.toThrow()
+  })
+
   it('ne réclame pas de mailer pendant `next build` : le build s’exécute sans les variables d’exécution', async () => {
     vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
     stubMailer('aucun')
+    stubAuth('aucun')
 
     const config = await loadNextConfig()
 
@@ -227,6 +267,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     try {
       vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
       stubMailer('aucun')
+      stubAuth('aucun')
       vi.stubEnv('SKIP_ENV_VALIDATION', '1')
 
       const config = await loadNextConfig()

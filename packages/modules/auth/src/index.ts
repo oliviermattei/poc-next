@@ -1,0 +1,31 @@
+/**
+ * Le module d'authentification — socle **non désactivable** du produit.
+ *
+ * Deux surfaces sortent d'ici, et elles n'ont pas le même public :
+ *
+ * - le **contrat** (`authModule`) et les **tables**, lus par
+ *   `config/features.ts` et par le baril de schéma de s04 ;
+ * - la **configuration** (`configureAuth`), appelée par le seul point de
+ *   composition de l'application, qui possède la connexion à la base et le
+ *   mailer.
+ */
+export { authModule } from './module'
+export { authSchema, authAccount, authSession, authUser, authVerification } from './schema'
+export { configureAuth, requireAuthService, resetAuthService } from './infrastructure/auth-runtime'
+export {
+  AUTH_MODELS,
+  createBetterAuthService,
+  type ConfigureAuthOptions,
+} from './infrastructure/better-auth-service'
+export {
+  createDrizzleVerificationTokenRepository,
+  type AuthDatabase,
+} from './infrastructure/drizzle-auth-repositories'
+export { AuthNotConfiguredError, type AuthService } from './application/auth-service'
+export { defaultAuthPolicy, type AuthPolicy } from './domain/auth-policy'
+export { safeRedirectPath } from './domain/redirect'
+export { authRoutePath } from './presentation/auth-routes'
+export { AUTH_EMAIL_TEMPLATES, type AuthUseCases } from './application/auth-use-cases'
+export { createTokenFactory } from './infrastructure/token-factory'
+export { describeSecurityEvent, type SecurityEventRecord } from './domain/security-event'
+export { tokenIdentifier, type TokenPurpose } from './domain/one-time-token'

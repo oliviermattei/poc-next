@@ -2,6 +2,7 @@ import { assertStartupEnv } from '@repo/config'
 import { loadRootEnv } from '@repo/config/server'
 import type { NextConfig } from 'next'
 
+import { resolveAuthConfig } from './lib/auth-config'
 import { resolveMailerConfig } from './lib/mailer-config'
 
 // Next ne lit les fichiers `.env` que dans le dossier de l'application. Le dépôt
@@ -16,6 +17,7 @@ const nextConfig: NextConfig = {
     '@repo/config',
     '@repo/core',
     '@repo/db',
+    '@repo/module-auth',
     '@repo/module-demo-disabled',
     '@repo/module-demo-enabled',
   ],
@@ -49,6 +51,10 @@ export default function config(phase: string): NextConfig {
 
   if (env !== undefined) {
     resolveMailerConfig(env)
+    // Même règle pour l'authentification : cette application refuse de démarrer
+    // sans secret de session ni URL publique, plutôt que de servir des liens de
+    // vérification qui ne mènent nulle part.
+    resolveAuthConfig(env)
   }
 
   return nextConfig

@@ -35,6 +35,16 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
     command: `pnpm --filter @repo/web exec next dev --port ${PORT}`,
+    // L'authentification exige un secret de signature et l'URL publique de
+    // l'application. Elles sont posées **ici**, et pas laissées au `.env` du
+    // poste : les liens envoyés par email doivent pointer sur le serveur que
+    // Playwright démarre, dont le port n'est pas celui du développement. Ce ne
+    // sont pas des secrets — ce serveur est éphémère et local.
+    env: {
+      AUTH_SECRET: 'playwright-e2e-non-secret-0123456789abcdef',
+      APP_URL: BASE_URL,
+      EMAIL_LOCAL_CAPTURE: '1',
+    },
     url: BASE_URL,
     // En local, un serveur déjà lancé est réutilisé ; en CI rien n'écoute, donc
     // Playwright le démarre.

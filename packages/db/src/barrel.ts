@@ -66,6 +66,67 @@ export function renderModuleSchemaBarrel(module: ModuleSchemaSource): string {
   return `${header}\n\nexport { ${exportNames.join(', ')} } from '${moduleSchemaPackage(module.id)}'\n`
 }
 
+/**
+ * Nom du fichier d'agrégat, dans le même dossier que les barils.
+ *
+ * `index.ts` : c'est lui que `packages/db/src/schema.ts` importe pour
+ * construire le schéma **relationnel** du client Drizzle. Les barils par module
+ * servent la génération des migrations, l'agrégat sert l'exécution — les deux
+ * chemins ne se remplacent pas, et le second manquait depuis s04 (résidu
+ * `enabledModuleSchemas = []`, refermé en s07).
+ */
+export const ENABLED_SCHEMAS_FILE = 'index.ts'
+
+/** Identifiant TypeScript dérivé d'un identifiant de module en `kebab-case`. */
+const identifierOf = (moduleId: string): string =>
+  moduleId.replace(/-([a-z0-9])/g, (_match, letter: string) => letter.toUpperCase())
+
+/**
+ * Rend l'agrégat des schémas des modules activés.
+ *
+ * Il réexporte les **barils**, jamais les packages de modules directement : la
+ * convention de nom de package est appliquée à un seul endroit, et l'agrégat
+ * hérite ainsi de la garantie du baril — il ne contient que les tables que le
+ * contrat déclare.
+ *
+ * L'import de type vers `@repo/db` est effacé à la compilation
+ * (`verbatimModuleSyntax`) : il n'y a donc aucun cycle à l'exécution entre le
+ * package de base de données et son agrégat.
+ */
+export function renderEnabledSchemasIndex(
+  modules: readonly ModuleSchemaSource[],
+): string {
+  const header = [
+    '// Fichier généré par `pnpm db:generate` depuis `config/features.ts`.',
+    '// Ne pas éditer à la main : la CI régénère et compare.',
+    '//',
+    "// L'agrégat des schémas des modules **activés**, tel que le client Drizzle",
+    '// le consomme pour la requête relationnelle (`db.query.<table>`). La',
+    '// génération des migrations, elle, lit les barils un par un.',
+    '',
+    "import type { ModuleSchema } from '@repo/db'",
+  ].join('\n')
+
+  const sorted = [...modules].sort((left, right) => left.id.localeCompare(right.id))
+
+  if (sorted.length === 0) {
+    return `${header}\n\nexport const enabledModuleSchemas = [] as const satisfies readonly ModuleSchema[]\n`
+  }
+
+  const imports = sorted
+    .map((module) => `import * as ${identifierOf(module.id)} from './${module.id}'`)
+    .join('\n')
+
+  const entries = sorted
+    .map((module) => `  { id: '${module.id}', schema: ${identifierOf(module.id)} },`)
+    .join('\n')
+
+  return (
+    `${header}\n${imports}\n\n` +
+    `export const enabledModuleSchemas = [\n${entries}\n] as const satisfies readonly ModuleSchema[]\n`
+  )
+}
+
 export interface ModuleSchemaBarrel {
   readonly moduleId: string
   /** Nom du fichier, relatif au dossier des barils. */

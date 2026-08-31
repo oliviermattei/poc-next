@@ -1,0 +1,8 @@
+{
+  "navigation.signIn": "Connexion",
+  "navigation.account": "Mon compte",
+  "signIn.title": "Se connecter",
+  "signUp.title": "Créer un compte",
+  "error.invalidCredentials": "Identifiants invalides.",
+  "error.emailNotVerified": "Vérifiez votre adresse email avant de vous connecter."
+}

@@ -8,9 +8,11 @@ export {
   type ModuleSchema,
 } from './schema'
 export {
+  ENABLED_SCHEMAS_FILE,
   moduleSchemaBarrelFile,
   moduleSchemaPackage,
   planModuleSchemaBarrels,
+  renderEnabledSchemasIndex,
   renderModuleSchemaBarrel,
   type ModuleSchemaBarrel,
   type ModuleSchemaSource,

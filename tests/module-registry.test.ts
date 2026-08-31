@@ -1,4 +1,6 @@
 import { execFileSync } from 'node:child_process'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
@@ -507,5 +509,61 @@ describe('la configuration des modules entre dans la clé de cache du build', ()
 
   it('hache `config/features.ts` avant de décider qu’un build est réutilisable', () => {
     expect(Object.keys(globalCacheInputs())).toContain('config/features.ts')
+  })
+})
+
+/**
+ * **Un module n'importe jamais `@repo/db`** (ADR 020).
+ *
+ * Depuis s07, `packages/db` construit son schéma relationnel depuis l'agrégat
+ * généré, qui importe les packages des modules activés. La dépendance inverse
+ * fermerait donc un cycle — `@repo/db` → agrégat → module → `@repo/db` — dont
+ * la conséquence n'est pas une erreur de compilation mais une table lue avant
+ * d'être initialisée, à l'exécution, dans le module le plus sensible du socle.
+ *
+ * Un module reçoit sa connexion de son point de composition ; il ne va pas la
+ * chercher. C'est écrit dans `packages/db/AGENTS.md`, et c'est ce cas qui le
+ * fait échouer.
+ */
+describe('un module ne dépend pas du package de base de données', () => {
+  const MODULES_ROOT = join(REPO_ROOT, 'packages', 'modules')
+
+  const sourceFiles = (directory: string): readonly string[] =>
+    readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+      const path = join(directory, entry.name)
+
+      if (entry.isDirectory()) {
+        return sourceFiles(path)
+      }
+
+      return entry.name.endsWith('.ts') ? [path] : []
+    })
+
+  const modules = readdirSync(MODULES_ROOT, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+
+  it('trouve les modules du dépôt, faute de quoi ce cas ne vérifierait rien', () => {
+    expect(modules.length).toBeGreaterThan(0)
+  })
+
+  it.each(modules)('le module %s n’importe pas `@repo/db`', (moduleId) => {
+    const offenders = sourceFiles(join(MODULES_ROOT, moduleId, 'src')).filter((file) =>
+      /from '@repo\/db'|require\('@repo\/db'\)|import\('@repo\/db'\)/.test(
+        readFileSync(file, 'utf8'),
+      ),
+    )
+
+    expect(offenders).toEqual([])
+  })
+
+  it('déclare le manifeste sans `@repo/db` non plus', () => {
+    for (const moduleId of modules) {
+      const manifest = JSON.parse(
+        readFileSync(join(MODULES_ROOT, moduleId, 'package.json'), 'utf8'),
+      ) as { dependencies?: Record<string, string> }
+
+      expect(Object.keys(manifest.dependencies ?? {})).not.toContain('@repo/db')
+    }
   })
 })

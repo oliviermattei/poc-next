@@ -1,5 +1,6 @@
 import { dispatchModuleRequest } from '@repo/core'
 
+import { resolveModuleSession } from '../../../../lib/auth'
 import { moduleRegistry } from '../../../../lib/module-registry'
 
 /**
@@ -13,16 +14,17 @@ import { moduleRegistry } from '../../../../lib/module-registry'
  * atteinte. Ici, la route d'un module non activé n'est dans aucune table : il
  * n'y a rien à atteindre.
  *
- * Aucune session n'est résolue tant que l'authentification n'existe pas (s07) :
- * le répartiteur refuse donc toute route non publique. C'est le sens fermé —
- * une route protégée n'est pas servie faute de savoir qui appelle, plutôt que
- * servie faute de vérification.
+ * La **résolution de session** vient du point de composition
+ * (`lib/auth.ts`), jamais du registre : `@repo/core` ne connaît aucun module,
+ * et le crochet `resolveSession` existe précisément pour que la dépendance
+ * aille dans ce sens. Avant s07 il n'était pas fourni, et toute route non
+ * publique répondait 401 — c'était le sens fermé, pas un oubli.
  */
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 const handle = (request: Request): Promise<Response> =>
-  dispatchModuleRequest(moduleRegistry, request)
+  dispatchModuleRequest(moduleRegistry, request, { resolveSession: resolveModuleSession })
 
 export const GET = handle
 export const POST = handle

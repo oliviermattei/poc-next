@@ -16,7 +16,8 @@ autres déjà jouées.
 `pnpm db:generate` (`src/scripts/generate.ts`) écrit les **barils** de
 `generated/schema/` — un fichier par module activé, produit depuis
 `config/features.ts`, qui réexporte à plat les tables déclarées au contrat —
-puis appelle `drizzle-kit` une fois par module. Le baril n'est pas une commodité :
+plus l'**agrégat** `generated/schema/index.ts`, puis appelle `drizzle-kit` une
+fois par module. Le baril n'est pas une commodité :
 `drizzle-kit` n'inspecte que les exports de premier niveau du fichier qu'on lui
 désigne, un schéma composé à l'exécution lui est invisible (« 0 tables »).
 
@@ -34,7 +35,7 @@ faut savoir laquelle répond à quoi :
 
 | Divergence | Attrapée par |
 |---|---|
-| Un module activé sans régénérer le baril | `pnpm test` (comparaison du dossier `generated/schema/` à sa régénération) |
+| Un module activé sans régénérer le baril ou l'agrégat | `pnpm test` (comparaison du dossier `generated/schema/` à sa régénération) |
 | Un schéma modifié sans migration correspondante | `pnpm test` (régénération **à blanc** hors de l'arbre versionné : un fichier SQL de plus fait rougir) |
 | Tout autre artefact d'outil laissé dans l'arbre | La CI seule, par « l'arbre reste propre » après `pnpm db:generate` |
 
@@ -59,14 +60,22 @@ celui de `config/features.ts`.
 composition**, pas la bibliothèque. Les fonctions de `src/` reçoivent des
 modules ; sans cela, aucun test ne pourrait en composer d'autres.
 
-Ce package ne dépend d'**aucun** package de module, et ne doit pas : l'
-`infrastructure/` d'un module dépendra de lui pour sa connexion, et la
-dépendance inverse fermerait alors un cycle. Aucun module ne dépend de
-`@repo/db` aujourd'hui — leurs repositories sont en mémoire — donc le cycle est
-**prospectif**, mais il est certain dès le premier module qui persiste. C'est
-pourquoi les barils vivent dès maintenant à la racine du dépôt, seul endroit qui
-déclare déjà les packages de modules : les y déplacer plus tard voudrait dire
-les y déplacer sous la contrainte.
+Ce package ne dépend d'aucun package de module **directement** : il importe
+`generated/schema/index.ts`, l'agrégat écrit par `pnpm db:generate` depuis
+`config/features.ts`. C'est cet agrégat qui donne au client Drizzle son schéma
+relationnel, donc `db.query.<table>` — vide jusqu'en s07, faute d'un module qui
+persiste (résidu de s04, refermé par ADR 020).
+
+La contrepartie est une règle, et elle a un sens unique : **un module n'importe
+jamais `@repo/db`**. Il reçoit sa connexion de son point de composition, sous la
+forme réduite des opérations qu'il utilise. La dépendance inverse fermerait le
+cycle `@repo/db` → agrégat → module → `@repo/db`, dont la conséquence n'est pas
+une erreur de compilation mais une table lue avant d'être initialisée, à
+l'exécution. `tests/module-registry.test.ts` refuse cet import, dans les sources
+comme dans les manifestes.
+
+C'est aussi pourquoi les barils vivent à la racine du dépôt, seul endroit qui
+déclare déjà les packages de modules.
 
 ## Ne doit jamais contenir
 

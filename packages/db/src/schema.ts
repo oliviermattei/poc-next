@@ -20,6 +20,8 @@
  * ---------------------------------------------------------------------------
  */
 
+import { enabledModuleSchemas } from '../../../generated/schema'
+
 export interface ModuleSchema<
   TSchema extends Record<string, unknown> = Record<string, unknown>,
 > {
@@ -91,23 +93,29 @@ export function composeSchema<const TModules extends readonly ModuleSchema[]>(
 /**
  * Schémas passés au client Drizzle pour la **requête relationnelle**.
  *
- * Vide, et ce n'est pas un oubli : `@repo/db` ne dépend d'aucun package de
- * module, et il ne doit pas — l'`infrastructure/` d'un module dépendra de ce
- * package pour sa connexion, et la dépendance inverse fermerait alors un cycle.
- * Aucun module ne persiste encore (les repositories de démonstration sont en
- * mémoire), donc le cycle est **prospectif** : il n'existe pas aujourd'hui, il
- * est certain dès le premier module qui persistera. Ce jour-là, c'est le point
- * de composition qui possède la configuration qui passera les schémas, comme
- * `src/scripts/migrate.ts` lui passe déjà le plan de migration.
+ * Ils viennent de `generated/schema/index.ts`, écrit par `pnpm db:generate`
+ * depuis `config/features.ts` : le même geste qui produit les barils produit
+ * l'agrégat, donc le client ne peut pas connaître d'autres tables que celles
+ * des modules activés.
  *
- * Rien de tout cela ne concerne la génération des migrations : elle lit les
- * barils de `generated/schema/`, pas cette liste.
+ * s04 avait laissé cette liste **vide**, faute d'un module qui persiste : le
+ * client se construisait alors avec un schéma relationnel vide et
+ * `db.query.<table>` n'existait pas. s07, premier module à persister, referme
+ * le résidu à l'endroit que s04 désignait — la génération.
+ *
+ * Ce package continue de ne dépendre d'**aucun** package de module : il importe
+ * un fichier généré, dont les imports sont écrits depuis la configuration. La
+ * contrepartie est une règle, et elle est vérifiée par un test
+ * (`tests/module-registry.test.ts`) : **un module n'importe jamais
+ * `@repo/db`** — il reçoit sa connexion de son point de composition. Sans
+ * cette règle, l'agrégat fermerait un cycle module → `@repo/db` → agrégat →
+ * module, et les tables seraient lues avant d'être initialisées (ADR 020).
  *
  * Volontairement sans annotation de type : annoter `readonly ModuleSchema[]`
  * élargirait chaque schéma en `Record<string, unknown>` et annulerait le typage
  * de `appSchema`.
  */
-export const enabledModuleSchemas = [] as const satisfies readonly ModuleSchema[]
+export { enabledModuleSchemas } from '../../../generated/schema'
 
 export const appSchema = composeSchema(enabledModuleSchemas)
 

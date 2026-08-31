@@ -15,8 +15,10 @@ module (`packages/modules/<module>/src/domain`).
   `@repo/mailer-testing` pour la capture locale — **uniquement** dans
   `lib/mailer.ts`, qui est le point de composition du mailer ;
 - les modules du projet, **uniquement** parce que `config/features.ts` les
-  référence : `@repo/module-demo-enabled` et `@repo/module-demo-disabled`
-  aujourd'hui. Aucun fichier de `apps/web` n'importe un module directement ;
+  référence : `@repo/module-auth`, `@repo/module-demo-enabled` et
+  `@repo/module-demo-disabled` aujourd'hui. Un seul fichier fait exception et
+  importe un module directement — `lib/auth.ts`, le point de composition de
+  l'authentification (voir plus bas) ;
 - `next`, `react`, `react-dom` ;
 - `@repo/typescript-config` pour la configuration du compilateur.
 
@@ -50,6 +52,27 @@ Deux fichiers, et deux seulement :
 
 `app/navigation.tsx` affiche `moduleRegistry.navigation` sans condition. Ajouter
 un `if` ici reviendrait à masquer une entrée au lieu de ne pas l'avoir.
+
+## Le montage de l'authentification
+
+Deux fichiers, sur le modèle exact du mailer :
+
+- `lib/auth-config.ts` porte la **règle** — `AUTH_SECRET` et `APP_URL` sont
+  exigées de ce qui monte l'authentification, et de lui seul : `pnpm db:migrate`
+  ne signe aucun cookie et doit s'exécuter avec le seul `DATABASE_URL` ;
+- `lib/auth.ts` **construit** le service : il donne au module la connexion à la
+  base, le mailer et le secret. C'est le **seul fichier de l'application** qui
+  connaisse `@repo/module-auth`, et il ne pouvait pas en aller autrement : le
+  crochet `resolveSession` que `dispatchModuleRequest` attend doit bien venir de
+  quelque part, et `@repo/core` ne peut pas dépendre d'un module sans inverser la
+  dépendance qui fait toute la modularité.
+
+`APP_URL` n'est pas décorative : c'est elle qui construit les liens envoyés par
+email. La **déduire** de l'en-tête `Host`, comme le proposent la plupart des
+bibliothèques, laisse un attaquant faire pointer un lien de réinitialisation
+vers son propre domaine.
+
+Le module reçoit sa connexion ; il n'importe jamais `@repo/db` (ADR 020).
 
 ## Le montage du mailer
 

@@ -5,12 +5,16 @@ import { fileURLToPath } from 'node:url'
 
 import { buildRegistry, resolveEnabledModules } from '@repo/core'
 import {
+  appSchema,
   assertNoForbiddenModuleReferences,
   createDatabaseClient,
+  enabledModuleSchemas,
   listDatabaseTables,
   migrationsTableFor,
   planModuleMigrations,
+  ENABLED_SCHEMAS_FILE,
   planModuleSchemaBarrels,
+  renderEnabledSchemasIndex,
   renderModuleSchemaBarrel,
   runModuleMigrations,
   type DatabaseConnection,
@@ -84,13 +88,50 @@ describe('le baril versionné correspond à `config/features.ts`', () => {
     const expected = planModuleSchemaBarrels(moduleRegistry.modules)
     const present = (await readdir(GENERATED_SCHEMA_DIR)).filter((name) => name.endsWith('.ts'))
 
-    expect(present.sort()).toEqual(expected.map((barrel) => barrel.file).sort())
+    expect(present.sort()).toEqual(
+      [...expected.map((barrel) => barrel.file), ENABLED_SCHEMAS_FILE].sort(),
+    )
 
     for (const barrel of expected) {
       await expect(readFile(join(GENERATED_SCHEMA_DIR, barrel.file), 'utf8')).resolves.toBe(
         barrel.content,
       )
     }
+  })
+
+  it('agrège les schémas des modules activés, et d’eux seuls', async () => {
+    // L'agrégat est ce que le client Drizzle consomme pour `db.query.<table>`.
+    // Versionné comme les barils, il ment de la même façon s'il n'est pas
+    // comparé à sa régénération : un module activé sans `pnpm db:generate`
+    // laisserait ses tables hors du schéma relationnel.
+    await expect(
+      readFile(join(GENERATED_SCHEMA_DIR, ENABLED_SCHEMAS_FILE), 'utf8'),
+    ).resolves.toBe(renderEnabledSchemasIndex(moduleRegistry.modules))
+  })
+
+  it('rend au client Drizzle les tables des modules activés, et aucune autre', async () => {
+    // Le résidu de s04 : `enabledModuleSchemas` était vide, donc
+    // `db.query.<table>` n'existait pour aucun module. La liste vient du
+    // registre, jamais d'une copie — elle vaut donc dans les trois états de
+    // configuration.
+    const declared = moduleRegistry.modules.flatMap((module) => Object.keys(module.schema))
+
+    expect(Object.keys(appSchema).sort()).toEqual([...declared].sort())
+
+    // Comparaison **triée** : l'agrégat est trié par identifiant, là où le
+    // registre suit l'ordre du graphe des requis. L'ordre d'un fichier
+    // versionné doit dépendre de son contenu, pas de la mise en forme de
+    // `config/features.ts` ; celui des migrations dépend du graphe. Les deux
+    // ordres sont voulus, et c'est l'ensemble des modules qui doit coïncider.
+    // L'élargissement est nécessaire, et il est sans risque : l'agrégat est un
+    // tuple littéral, donc de type `readonly []` quand aucun module n'est
+    // activé — et `never` n'a pas de propriété `id`. C'est la configuration
+    // vide qui l'exige, et elle doit rester compilable.
+    const aggregated = enabledModuleSchemas as readonly { readonly id: string }[]
+
+    expect(aggregated.map((entry) => entry.id).sort()).toEqual(
+      moduleRegistry.modules.map((module) => module.id).sort(),
+    )
   })
 })
 
