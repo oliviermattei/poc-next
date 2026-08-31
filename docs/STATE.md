@@ -7,10 +7,10 @@
 | Story | État |
 |---|---|
 | s01 → s08 | **closes**, revues, correctifs appliqués |
-| s09-i18n | en cours (implémenteur lancé) |
+| s09-i18n | implémentée, **en revue** |
 | s10 → s45 | à faire — 36 stories |
 
-Tests : **588 + 2 ignorés**, 20 parcours end-to-end, déterministes (`retries: 0`).
+Tests : **641 + 2 ignorés**, 26 parcours end-to-end, déterministes (`retries: 0`).
 ADR : **22**. Branche : `dev`. Commits : un par story, plus `docs:` pour recherche, plan, revue.
 
 ## Environnement (à refaire après un redémarrage de session)
