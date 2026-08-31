@@ -6,11 +6,11 @@
 
 | Story | État |
 |---|---|
-| s01 → s13, s15, s16, s45 | **closes**, revues, correctifs appliqués |
-| s14, s17 → s44, s46 | à faire — 30 stories (s17 en revue) |
+| s01 → s13, s15, s16, s17, s45 | **closes**, revues, correctifs appliqués |
+| s14, s18 → s44, s46 | à faire — 29 stories (s14 en cours) |
 
-Tests : **1093 + 2 ignorés**, 58 parcours end-to-end, déterministes (`retries: 0`).
-ADR : **30** (026 à 029 fusionnés ; 030 appartient à s17, non fusionnée). Branche : `dev`. Commits : un par story, plus `docs:` pour recherche, plan, revue.
+Tests : **1140 + 2 ignorés**, 59 parcours end-to-end, déterministes (`retries: 0`).
+ADR : **30** (026 à 030 fusionnés ; 031 réservé à s14). Branche : `dev`. Commits : un par story, plus `docs:` pour recherche, plan, revue.
 
 ## Environnement (à refaire après un redémarrage de session)
 
@@ -34,7 +34,7 @@ open -a Docker && docker compose up -d                                # Postgres
 | Voie | Story | Worktree | Base / port |
 |---|---|---|---|
 | A | s14-passkeys | `feature/s14-passkeys` | `s14`, port 3114 |
-| D | s17-roles-permissions | commit `97b3e8a`, revue `major`/ship oui, **tour de correction** | `s17`, port 3117 |
+| D | s17-roles-permissions | **fusionnée dans `dev`** (`2b997df`), revue `major`/ship oui | close |
 | B | s16-invite-members | **fusionnée dans `dev`** (`6f14cc4`), revue `none`/ship oui | close |
 | C | s11-public-forms | **fusionnée dans `dev`** (`9cf45c2`), revue `none`/ship oui | close |
 
@@ -76,6 +76,13 @@ route qui ouvre une session sans être ni couverte ni exemptée fait rougir une 
 passkeys ouvrent une session : c'est exactement le cas que ce renversement attendait. Les cinq
 exemptions actuelles sont ce qui a été **balayé** — les points d'entrée du greffon `two-factor`
 et deux appels `auth.api.*` du module —, pas un inventaire de ce que la bibliothèque expose.
+
+## Dette que s34 doit reprendre avant d'écrire la suppression de compte
+
+La cascade `auth_user` → `organization_member` peut produire une organisation **sans
+propriétaire** : ingouvernable à vie, et sans commande de réconciliation, ce que
+`docs/reliability.md` interdit. Inatteignable par l'API aujourd'hui. Le mécanisme exact et la
+ligne de schéma sont écrits dans `packages/modules/organizations/AGENTS.md` et l'ADR 030.
 
 ## Dettes à surveiller
 
