@@ -6,10 +6,10 @@
 
 | Story | État |
 |---|---|
-| s01 → s09, s10 | **closes**, revues, correctifs appliqués |
-| s11 → s46 | à faire — 36 stories |
+| s01 → s10, s12 | **closes**, revues, correctifs appliqués |
+| s11, s13 → s46 | à faire — 35 stories |
 
-Tests : **734 + 2 ignorés**, 34 parcours end-to-end, déterministes (`retries: 0`).
+Tests : **790 + 2 ignorés**, 39 parcours end-to-end, déterministes (`retries: 0`).
 ADR : **24**. Branche : `dev`. Commits : un par story, plus `docs:` pour recherche, plan, revue.
 
 ## Environnement (à refaire après un redémarrage de session)
@@ -36,7 +36,7 @@ open -a Docker && docker compose up -d                                # Postgres
 | A | s10-marketing-site | **fusionnée dans `dev`** (`57e9658`), revue `minor`/ship oui | close |
 | C | s45-security-headers | worktree dédié, `feature/s45-security-headers` | `s45`, port 3145 |
 | D | s15-organizations | worktree dédié, `feature/s15-organizations` | `s15`, port 3115 |
-| B | s12-oauth-signin | worktree dédié, `feature/s12-oauth-signin` — commit `5e49aca`, revue **critical** (appels sortants sans délai), **tour de correction** (N1 délais, N4 doublure locale en production, N7 énumération de fournisseurs, N3 mécanisme mal consigné, N2 journalisation) | `s12` |
+| B | s12-oauth-signin | **fusionnée dans `dev`** (`5e73810`), revue `minor`/ship oui | close |
 
 Chaque voie fait recherche → design → plan → exécution TDD → **un commit** sur sa branche, puis
 un `reviewer` en contexte frais écrit `docs/reviews/<id>.md` dans le worktree. Fusion dans `dev`
