@@ -35,7 +35,7 @@ open -a Docker && docker compose up -d                                # Postgres
 |---|---|---|---|
 | A | s10-marketing-site | **fusionnée dans `dev`** (`57e9658`), revue `minor`/ship oui | close |
 | C | s45-security-headers | commit `fed2909`, revue `major`/ship oui, **tour de correction** (404 sans nonce, justification fausse, `frame-src`, injection de journal) | `s45`, port 3145 |
-| D | s15-organizations | commit `520d49b`, **en revue** | `s15`, port 3115 |
+| D | s15-organizations | commit `520d49b`, revue **critical**, **tour de correction** (F1 jointure d'appartenance, F2 périmètre non exécutable, F3 ADR superséquent) | `s15`, port 3115 |
 | E | s13-two-factor | **à relancer** — voie tuée par une limite d'usage avant d'avoir rien écrit | `s13`, port 3113 |
 | B | s12-oauth-signin | **fusionnée dans `dev`** (`5e73810`), revue `minor`/ship oui | close |
 
@@ -63,6 +63,13 @@ Playwright démarre son propre serveur et échoue bruyamment si le port est pris
 mesurer l'arbre d'une autre branche. Chaque voie choisit le sien par `E2E_PORT` — voir la
 colonne de la table ci-dessus. Vérifié dans les deux sens : vert port libre, refus explicite
 port occupé.
+
+## À faire à la fusion de s15
+
+`dev` (s12) ajoute `apps/web/app/oauth/`, absent d'`APPLICATION_SEGMENTS` : le cas dérivé de
+`tests/organizations.test.ts` rougira — la garde fait son travail — et, non corrigé, un slug
+`oauth` passerait. `apps/web/AGENTS.md` est modifié des deux côtés dans le même paragraphe :
+conflit certain.
 
 ## Dettes à surveiller
 
