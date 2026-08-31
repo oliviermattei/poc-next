@@ -6,9 +6,8 @@
 
 | Story | État |
 |---|---|
-| s01 → s08 | **closes**, revues, correctifs appliqués |
-| s09-i18n | implémentée, **en revue** |
-| s10 → s45 | à faire — 36 stories |
+| s01 → s09 | **closes**, revues, correctifs appliqués |
+| s10 → s46 | à faire — 37 stories |
 
 Tests : **681 + 2 ignorés**, 27 parcours end-to-end, déterministes (`retries: 0`).
 ADR : **22**. Branche : `dev`. Commits : un par story, plus `docs:` pour recherche, plan, revue.
@@ -30,7 +29,7 @@ open -a Docker && docker compose up -d                                # Postgres
 
 **Protocole de contexte** : les agents écrivent les rapports dans les fichiers ; je ne fais pas transiter les corps de rapport par ma conversation. Mes messages restent courts.
 
-## Prochaine étape après s09
+## Prochaine étape
 
 Le chemin critique s'arrête à s09. Ensuite **cinq voies parallèles** : s10 marketing, s12 OAuth, s13 2FA, s14 passkeys, s15 organisations. Jusqu'à trois worktrees de front (`isolation: "worktree"` sur l'outil Agent), en sérialisant ce qui touche les fichiers chauds : `config/features.ts`, `generated/`, `turbo.json`, `eslint.config.ts`, `pnpm-lock.yaml`, `AGENTS.md`.
 
