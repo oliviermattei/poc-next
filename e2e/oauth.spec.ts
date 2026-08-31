@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { publicPath, urlOf } from './support/locale'
+import { anonymousLanding, publicPath, urlOf } from './support/locale'
 
 /**
  * La connexion par fournisseur externe, dans un vrai navigateur (s12).
@@ -168,7 +168,11 @@ test('le fournisseur n’est proposé qu’une fois, et la page de rebond ne red
   // parcours.
   await expect(page.getByRole('button', { name: LOCAL_PROVIDER_BUTTON })).toHaveCount(1)
 
-  // La destination du rebond est **revalidée** : elle arrive dans l'URL.
+  // La destination du rebond est **revalidée** : elle arrive dans l'URL. Le
+  // repli est la racine, et ce que la racine sert à un visiteur anonyme dépend
+  // du site public — l'attente est donc **dérivée**, comme celle de
+  // `e2e/auth.spec.ts` depuis s10. Écrite `urlOf('/')`, elle rougissait dès que
+  // le module `marketing` était coupé (mesuré en s11).
   await page.goto(`${publicPath('/oauth/return')}?next=${encodeURIComponent('https://evil.test')}`)
-  await expect(page).toHaveURL(urlOf('/'))
+  await expect(page).toHaveURL(urlOf(anonymousLanding()))
 })

@@ -44,3 +44,18 @@ import { moduleRegistry } from './module-registry'
 export const marketingSite: MarketingSite = moduleRegistry.moduleIds.includes(marketingModule.id)
   ? resolveMarketingSite(marketingConfiguration)
   : EMPTY_MARKETING_SITE
+
+/**
+ * Le site public a-t-il des formulaires ? **Une donnée**, lue par les écrans.
+ *
+ * C'est elle qui fait répondre 404 à `/contact` quand le module est coupé, sans
+ * qu'une ligne d'écran ne nomme un module.
+ *
+ * Ce fichier ne **construit** pas le service du module et ne dit même pas
+ * comment le construire : ce câblage-là vit dans `lib/module-services.ts`.
+ * La raison est mesurée : le harnais de parcours importe ce fichier **hors de
+ * Next** pour en dériver ses attentes (`e2e/support/locale.ts`), et y importer
+ * `lib/auth` — qui lit `next/headers` — fait échouer le chargement des
+ * parcours avant qu'aucun test ne s'exécute.
+ */
+export const marketingFormsAvailable = marketingSite.forms !== null

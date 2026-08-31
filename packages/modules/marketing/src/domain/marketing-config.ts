@@ -26,7 +26,16 @@ export const MARKETING_MODULE_ID = 'marketing' as const
  * bloc que personne n'affichera. La refuser au démarrage vaut mieux que de
  * l'ignorer en silence.
  */
-export const SECTION_KINDS = ['hero', 'features', 'testimonials', 'faq', 'cta'] as const
+export const SECTION_KINDS = [
+  'hero',
+  'features',
+  'testimonials',
+  'faq',
+  'cta',
+  // s11. Ni éléments, ni actions : cette section porte un **formulaire**, dont
+  // la destination est une route du module et non un chemin de configuration.
+  'newsletter',
+] as const
 
 export type MarketingSectionKind = (typeof SECTION_KINDS)[number]
 
@@ -82,14 +91,53 @@ const legalDocumentSchema = z.object({
   sections: z.array(identifier).readonly().default([]),
 })
 
+/**
+ * Les seuils de la limitation de débit des formulaires publics
+ * (`docs/security.md` §7 : « seuils configurables »).
+ *
+ * Entiers strictement positifs : un seuil à zéro serait un formulaire fermé
+ * qui a l'air ouvert, et une fenêtre nulle ferait une division par zéro dans le
+ * calcul de fenêtre. Les deux sont refusés en nommant la clé plutôt que d'être
+ * corrigés en silence.
+ */
+const rateLimitSchema = z.object({
+  windowSeconds: z.int().min(1),
+  maxPerClient: z.int().min(1),
+  maxPerForm: z.int().min(1),
+})
+
+/**
+ * Les formulaires publics — **le destinataire du contact est ici, pas dans le
+ * code**.
+ *
+ * C'est le piège que la story nomme : une adresse écrite en constante serait la
+ * même dans tous les projets générés depuis ce boilerplate, et un propriétaire
+ * ne pourrait la changer qu'en modifiant un module. `z.email()` refuse aussi ce
+ * qu'un `to` d'email ne doit jamais porter — un retour à la ligne, donc une
+ * injection d'en-tête (`docs/security.md` §4).
+ *
+ * `newsletterSource` alimente la colonne `source` de `public_subscription` : la
+ * table est **partagée** avec la liste d'attente de s42, qui déclarera la
+ * sienne. Deux modèles concurrents d'inscription sont exactement ce que la
+ * story interdit.
+ */
+const formsSchema = z.object({
+  contactRecipient: z.string().max(254).pipe(z.email()),
+  newsletterSource: identifier,
+  rateLimit: rateLimitSchema,
+})
+
 const configurationSchema = z.object({
   sections: z.array(sectionSchema).readonly(),
   legalDocuments: z.array(legalDocumentSchema).readonly(),
+  forms: formsSchema,
 })
 
 export type MarketingAction = z.infer<typeof actionSchema>
 export type MarketingSection = z.infer<typeof sectionSchema>
 export type MarketingLegalDocument = z.infer<typeof legalDocumentSchema>
+export type MarketingForms = z.infer<typeof formsSchema>
+export type MarketingRateLimit = z.infer<typeof rateLimitSchema>
 export type MarketingConfiguration = z.infer<typeof configurationSchema>
 
 /**

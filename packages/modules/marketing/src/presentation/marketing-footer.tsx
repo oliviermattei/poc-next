@@ -1,7 +1,7 @@
-import { Separator } from '@repo/ui'
+import { Separator, cn } from '@repo/ui'
 
-import { legalPath, type MarketingSite } from '../application/marketing-site'
-import { FOOTER_LABEL_KEY, legalTitleKey } from '../domain/message-keys'
+import { CONTACT_PATH, legalPath, type MarketingSite } from '../application/marketing-site'
+import { CONTACT_TITLE_KEY, FOOTER_LABEL_KEY, legalTitleKey } from '../domain/message-keys'
 import type { MarketingIntl } from './marketing-intl'
 
 /**
@@ -27,8 +27,38 @@ export interface MarketingFooterProps {
   readonly intl: MarketingIntl
 }
 
+/** Le style d'un lien du pied de page. Écrit une fois : deux copies divergeraient. */
+const FOOTER_LINK = cn(
+  'rounded-sm text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring',
+)
+
 export function MarketingFooter({ site, intl }: MarketingFooterProps) {
-  if (site.legalDocuments.length === 0) {
+  /**
+   * Ce que le pied de page a réellement à montrer.
+   *
+   * La condition portait sur les seuls documents légaux, si bien qu'un projet
+   * qui les retirait servait `/contact`, l'annonçait dans son plan de site, et
+   * n'y menait de nulle part (constat F9 de la revue de s11). Elle porte
+   * désormais sur les liens eux-mêmes : le pied de page disparaît quand il n'a
+   * rien à dire, pas quand une de ses deux sources est vide.
+   *
+   * Le point d'accès au contact est **ici** et non dans la navigation du shell,
+   * pour la même raison que les liens légaux : dans le shell, il survivrait à la
+   * coupure du module et mènerait à une page qui répond 404. Il suit donc
+   * `site.forms`, qui est ce que l'écran de contact suit lui aussi.
+   */
+  const links = [
+    ...site.legalDocuments.map((document) => ({
+      key: document.slug,
+      href: legalPath(document.slug),
+      label: intl.t(legalTitleKey(document.slug)),
+    })),
+    ...(site.forms === null
+      ? []
+      : [{ key: 'contact', href: CONTACT_PATH, label: intl.t(CONTACT_TITLE_KEY) }]),
+  ]
+
+  if (links.length === 0) {
     return null
   }
 
@@ -39,13 +69,9 @@ export function MarketingFooter({ site, intl }: MarketingFooterProps) {
         aria-label={intl.t(FOOTER_LABEL_KEY)}
         className="mt-6 flex min-w-0 flex-wrap gap-x-6 gap-y-2"
       >
-        {site.legalDocuments.map((document) => (
-          <a
-            key={document.slug}
-            href={intl.path(legalPath(document.slug))}
-            className="rounded-sm text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            {intl.t(legalTitleKey(document.slug))}
+        {links.map((link) => (
+          <a key={link.key} href={intl.path(link.href)} className={FOOTER_LINK}>
+            {link.label}
           </a>
         ))}
       </nav>

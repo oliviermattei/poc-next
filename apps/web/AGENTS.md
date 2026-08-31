@@ -109,8 +109,8 @@ chargement ; l'étendre à l'arbre masquerait de vrais écarts.
 
 ## Les formulaires
 
-Deux composants, `app/auth-form.tsx` et `app/account/account-form.tsx`, et deux
-règles que tout écran hérite d'eux :
+Trois composants, `app/auth-form.tsx`, `app/account/account-form.tsx` et
+`app/public-form.tsx` (s11), et deux règles que tout écran hérite d'eux :
 
 - **`method="post"` sur le `<form>`, toujours.** Sans `method`, le repli du
   navigateur est un `GET` vers l'URL courante : les champs — mot de passe
@@ -131,9 +131,41 @@ règles que tout écran hérite d'eux :
   déterministe — Playwright attend un contrôle actionnable, là où il cliquait
   dans le vide une fois sur trois.
 
+**Un bouton éteint doit dire pourquoi.** Sans JavaScript, la règle ci-dessus le
+laisse éteint pour toujours : `app/public-form.tsx` porte donc un `<noscript>`
+qui l'explique, mesuré sous le build de production (constat F5 de la revue de
+s11). Un `<noscript>` ne demande ni script en ligne ni source de politique de
+sécurité du contenu supplémentaire. Piège du harnais : les moteurs de **texte**
+et de **rôle** de Playwright ignorent le sous-arbre d'un `<noscript>` — mesuré,
+`getByText` y rend zéro alors que le bloc occupe 622 × 66 pixels. Il faut un
+sélecteur de structure (`noscript > *`), et c'est la seule exception au principe
+« on cherche par rôle et par nom accessible ».
+
 `e2e/app-shell.spec.ts` le prouve dans un contexte sans JavaScript, et **sans
 reprise** (`retries: 0`) : c'est une reprise qui avait fait passer cette fuite
 pour une instabilité de test.
+
+**Pourquoi le formulaire public vit ici et non dans son module.** Il appelle
+`fetch`, et `eslint.config.ts` refuse tout appel réseau sortant d'un module hors
+d'une porte bornée (`docs/reliability.md` §3). La règle vise des appels
+**serveur vers un tiers** ; celui-ci va du navigateur vers **notre propre
+route**. Élargir une garde de sécurité pour un cas qu'elle ne visait pas est
+précisément ce que ce dépôt refuse : le composant a donc rejoint `auth-form.tsx`,
+qui poste vers les routes du module `auth` depuis s07 pour la même raison.
+`MarketingHome` et `ContactView` le reçoivent en `ReactNode` — le module décide
+**où** il s'affiche, l'application le fournit.
+
+Il porte deux affordances de plus, propres à un formulaire **ouvert à tout
+venant** (`docs/security.md` §7) :
+
+- un **champ piège** masqué par la classe `hidden`, jamais par un attribut
+  `style` : `style-src-attr` ignore les nonces, un style en ligne serait refusé
+  en production. Rempli, la réponse est celle d'une soumission acceptée et rien
+  n'est écrit ni envoyé — un 400 qui nommerait le champ apprendrait au robot
+  lequel laisser vide ;
+- `noValidate` sur le `<form>` : la validation du navigateur masquerait le refus
+  **du serveur**, qui est la seule frontière qui compte, et rendrait le message
+  d'erreur intestable au navigateur.
 
 ## Le montage de l'authentification
 
@@ -274,8 +306,9 @@ Deux fichiers, sur le modèle exact de l'i18n :
   et le seul qui regarde s'il est activé. Il rend un `MarketingSite` dont la
   **forme est la même dans les deux états** : trois listes, vides quand le
   module est coupé ;
-- `app/page.tsx`, `app/legal/[document]/page.tsx`, `app/sitemap.ts` et
-  `app/robots.ts` **lisent** ce site sans jamais nommer de module. La racine a
+- `app/page.tsx`, `app/legal/[document]/page.tsx`, `app/contact/page.tsx`,
+  `app/sitemap.ts` et `app/robots.ts` **lisent** ce site sans jamais nommer de
+  module. La racine a
   trois branches — tableau de bord pour un visiteur connecté, accueil marketing
   pour un visiteur anonyme, redirection vers la connexion quand il n'y a pas de
   section — et les deux dernières se départagent sur `sections.length`,
@@ -291,6 +324,23 @@ n'est pas une commodité : ce sont des route handlers que Next met en cache par
 défaut, donc évalués pendant `next build` — où `getEnv()` ne valide rien et où la
 CI ne pose aucune `APP_URL`. Un plan de site figé au build porterait `undefined`
 dans chacune de ses URL.
+
+**Le service du module, lui, est câblé dans `lib/module-services.ts`** et non
+dans `lib/marketing.ts`, contrairement aux organisations. La raison est mesurée :
+le harnais de parcours importe `lib/marketing.ts` **hors de Next** pour en
+dériver ses attentes (`e2e/support/locale.ts`), et y importer `lib/auth` — qui
+lit `next/headers` — fait échouer le chargement de tous les parcours avant
+qu'aucun ne s'exécute. `lib/module-services.ts`, lui, n'est importé que par la
+route d'API. C'est là que le module reçoit sa connexion, son mailer, les langues
+servies et `emailOfScope` — la seule fonction qui relie une inscription publique
+ou un message de contact à un compte, parce que le module ne connaît pas `auth`
+et n'a pas le droit de lire ses tables.
+
+`/contact` est déclaré dans `publicPaths` : il entre donc dans le `sitemap.xml`
+et obtient son `Allow: /<langue>/contact$` **ancré** dans le `robots.txt`, sans
+qu'aucune liste ne soit recopiée. Son segment est aussi **réservé** dans
+`lib/organizations.ts` — `tests/organizations.test.ts` dérive du disque les
+segments de premier niveau et exige que chacun soit refusé à une organisation.
 
 **Aucune requête base de données au rendu d'une page publique.** Mesuré, pas
 supposé, et en deux moitiés (`tests/marketing.test.ts`) :

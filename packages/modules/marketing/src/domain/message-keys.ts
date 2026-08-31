@@ -100,12 +100,63 @@ export const legalKeys = (document: MarketingLegalDocument): readonly string[] =
   ]),
 ]
 
+/**
+ * Les textes des deux formulaires publics (s11).
+ *
+ * Ils sont **fixes**, contrairement aux clés de section : les deux formulaires
+ * existent dès que le module est activé — `config/marketing.ts` déclare
+ * obligatoirement son bloc `forms`, et l'écran de contact est servi sans qu'une
+ * section ne le demande.
+ *
+ * `newsletter` n'a pas de message « champ invalide », et c'est une propriété du
+ * produit, pas un oubli : sa route répond **la même chose** à une adresse
+ * nouvelle, déjà inscrite ou malformée (`docs/security.md` §7). Livrer ce texte
+ * reviendrait à préparer l'affichage d'un cas que le serveur ne rend jamais.
+ */
+/**
+ * Le texte de repli **sans JavaScript** — commun aux deux formulaires.
+ *
+ * L'ADR 027 tranche que ces formulaires exigent JavaScript ; elle ne tranche
+ * pas que le bouton doive rester éteint sans un mot d'explication, et c'est
+ * pourtant ce que la revue de s11 a mesuré sous le build de production
+ * (constat F5). Un `<noscript>` le dit, sans script en ligne ni source de
+ * politique de sécurité du contenu supplémentaire.
+ */
+export const FORM_NOSCRIPT_KEY = marketingKey('form.noscript')
+
+export const CONTACT_TITLE_KEY = marketingKey('contact.title')
+export const CONTACT_DESCRIPTION_KEY = marketingKey('contact.description')
+
+export const CONTACT_FORM_KEYS = {
+  name: marketingKey('contact.field.name'),
+  email: marketingKey('contact.field.email'),
+  message: marketingKey('contact.field.message'),
+  submit: marketingKey('contact.action.submit'),
+  success: marketingKey('contact.success'),
+  invalid: marketingKey('contact.error.invalid'),
+  throttled: marketingKey('contact.error.throttled'),
+  failed: marketingKey('contact.error.failed'),
+} as const
+
+export const NEWSLETTER_FORM_KEYS = {
+  email: marketingKey('newsletter.field.email'),
+  submit: marketingKey('newsletter.action.submit'),
+  success: marketingKey('newsletter.success'),
+  throttled: marketingKey('newsletter.error.throttled'),
+  failed: marketingKey('newsletter.error.failed'),
+} as const
+
 /** Les clés que toute page publique demande, quelle que soit la configuration. */
 const FIXED_KEYS: readonly string[] = [
   HOME_TITLE_KEY,
   HOME_DESCRIPTION_KEY,
   FOOTER_LABEL_KEY,
   NAVIGATION_HOME_KEY,
+  CONTACT_TITLE_KEY,
+  CONTACT_DESCRIPTION_KEY,
+  FORM_NOSCRIPT_KEY,
+  ...Object.values(CONTACT_FORM_KEYS),
+  ...Object.values(NEWSLETTER_FORM_KEYS),
 ]
 
 /**

@@ -6,6 +6,7 @@ import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 
 import { currentViewer } from '../lib/auth'
+import { NewsletterForm } from './public-form'
 import { appIntl } from '../lib/i18n'
 import { marketingSite } from '../lib/marketing'
 
@@ -56,7 +57,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function HomePage() {
   const { account } = await currentViewer()
-  const { t, path } = await appIntl()
+  const { locale, t, path } = await appIntl()
 
   if (account !== null) {
     return (
@@ -83,5 +84,11 @@ export default async function HomePage() {
     redirect(path('/sign-in'))
   }
 
-  return <MarketingHome site={marketingSite} intl={{ t, path }} />
+  return (
+    <MarketingHome
+      site={marketingSite}
+      intl={{ t, path }}
+      newsletterForm={<NewsletterForm locale={locale} />}
+    />
+  )
 }

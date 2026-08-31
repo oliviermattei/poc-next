@@ -13,6 +13,7 @@
  * Seule l'application importe ce point d'entrée ; le reste du dépôt n'en a pas
  * connaissance.
  */
+export { ContactView, type ContactViewProps } from './contact-view'
 export { LegalDocumentView, type LegalDocumentViewProps } from './legal-document'
 export { MarketingFooter, type MarketingFooterProps } from './marketing-footer'
 export { MarketingHome, type MarketingHomeProps } from './marketing-home'

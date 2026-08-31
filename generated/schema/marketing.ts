@@ -5,4 +5,4 @@
 // la seule forme que `drizzle-kit generate` sait lire (exports de premier
 // niveau uniquement).
 
-export {}
+export { contactMessage, publicFormThrottle, publicSubscription } from '@repo/module-marketing'

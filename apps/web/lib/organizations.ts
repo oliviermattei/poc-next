@@ -114,6 +114,9 @@ const ABSENT_ORGANIZATIONS: OrganizationsFeature = {
 const APPLICATION_SEGMENTS = [
   'account',
   'api',
+  // L'écran de contact du site public (s11) : un segment que l'application
+  // sert, donc un identifiant qu'aucune organisation ne peut prendre.
+  'contact',
   'forgot-password',
   // L'écran d'atterrissage d'un lien d'invitation (s16) : un écran servi par
   // l'application, donc un identifiant qu'aucune organisation ne peut prendre.

@@ -49,6 +49,7 @@ export {
   SheetTitle,
   SheetTrigger,
 } from './components/sheet'
+export { Textarea } from './components/textarea'
 
 export { EmptyState, type EmptyStateProps } from './composed/empty-state'
 export { InlineStyleNonce } from './composed/inline-style-nonce'

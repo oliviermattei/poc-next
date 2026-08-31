@@ -25,6 +25,11 @@ const validConfiguration = () => ({
     { id: 'features', kind: 'features', items: ['modules', 'toggle'] },
   ],
   legalDocuments: [{ slug: 'privacy', sections: ['data'] }],
+  forms: {
+    contactRecipient: 'bonjour@exemple.test',
+    newsletterSource: 'newsletter',
+    rateLimit: { windowSeconds: 600, maxPerClient: 5, maxPerForm: 200 },
+  },
 })
 
 describe('la configuration du site public', () => {
@@ -139,7 +144,72 @@ describe('la configuration du site public', () => {
       ],
     })
 
-    expect(site.publicPaths).toEqual(['/', '/legal/privacy', '/legal/terms'])
+    // `/contact` est une page publique du module depuis s11 : elle entre donc
+    // dans le plan de site et dans la politique des robots par le même chemin
+    // que les documents légaux, sans qu'aucune liste ne soit recopiée.
+    expect(site.publicPaths).toEqual(['/', '/contact', '/legal/privacy', '/legal/terms'])
+  })
+
+  it('rend l’adresse de contact **de la configuration**, jamais une constante', () => {
+    // Le piège nommé par la story : une adresse écrite dans le code serait la
+    // même dans tous les projets générés depuis ce boilerplate.
+    const site = resolveMarketingSite({
+      ...validConfiguration(),
+      forms: { ...validConfiguration().forms, contactRecipient: 'editeur@autre.test' },
+    })
+
+    expect(site.forms?.contactRecipient).toBe('editeur@autre.test')
+  })
+
+  it.each([
+    ['aucun bloc de formulaires', { forms: undefined }, /forms/],
+    [
+      'une adresse de contact malformée',
+      { forms: { ...validConfiguration().forms, contactRecipient: 'pas-une-adresse' } },
+      /pas-une-adresse/,
+    ],
+    [
+      'une adresse de contact porteuse d’un retour à la ligne',
+      {
+        forms: {
+          ...validConfiguration().forms,
+          contactRecipient: 'a@b.test\r\nBcc: espion@b.test',
+        },
+      },
+      /contactRecipient/,
+    ],
+    [
+      'une source d’inscription qui n’est pas un identifiant',
+      { forms: { ...validConfiguration().forms, newsletterSource: 'Newsletter 2026' } },
+      /newsletterSource/,
+    ],
+    [
+      'une fenêtre de limitation nulle',
+      {
+        forms: {
+          ...validConfiguration().forms,
+          rateLimit: { ...validConfiguration().forms.rateLimit, windowSeconds: 0 },
+        },
+      },
+      /windowSeconds/,
+    ],
+    [
+      'un seuil par appelant à zéro — ce serait un formulaire fermé',
+      {
+        forms: {
+          ...validConfiguration().forms,
+          rateLimit: { ...validConfiguration().forms.rateLimit, maxPerClient: 0 },
+        },
+      },
+      /maxPerClient/,
+    ],
+  ])('refuse %s, en la nommant', (_case, override, message) => {
+    expect(() => resolveMarketingSite({ ...validConfiguration(), ...override })).toThrowError(
+      MarketingConfigurationError,
+    )
+    expect(() => resolveMarketingSite({ ...validConfiguration(), ...override })).toThrowError(
+      message,
+    )
   })
 
   it('ne connaît qu’un document légal déclaré — tout autre slug n’existe pas', () => {
@@ -158,6 +228,12 @@ describe('le site vide — l’état « module coupé »', () => {
     expect(EMPTY_MARKETING_SITE.sections).toEqual([])
     expect(EMPTY_MARKETING_SITE.legalDocuments).toEqual([])
     expect(EMPTY_MARKETING_SITE.publicPaths).toEqual([])
+  })
+
+  it('n’expose aucun formulaire : il n’y a ni destinataire, ni source, ni seuil', () => {
+    // C'est ce `null` qui fait disparaître l'écran de contact et la section
+    // d'inscription **sans condition sur un identifiant de module**.
+    expect(EMPTY_MARKETING_SITE.forms).toBeNull()
   })
 })
 

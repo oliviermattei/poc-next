@@ -528,6 +528,14 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         file: 'page.tsx',
         viewer: ANONYMOUS,
       refuses: publicSite ? null : 'NEXT_REDIRECT',
+        // s11. Le site public porte désormais la configuration de ses
+        // formulaires : une adresse de destination et une source d'inscription.
+        // Ce ne sont pas des textes affichés — ils ne sortent jamais du serveur —
+        // mais ils traversent l'arbre dans `site`. Déclarées **sur les écrans
+        // qui rendent le site** : ailleurs, une prop de ce nom portant une
+        // chaîne fait toujours rougir, et la garde de prose reste active ici
+        // aussi (`contactRecipient="Écrivez-nous"` rougirait).
+        technicalProps: ['contactRecipient', 'newsletterSource', 'type', 'labelKey'],
         render: async () => (await import('../apps/web/app/page')).default(),
       },
       {
@@ -546,10 +554,25 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         file: 'legal/[document]/page.tsx',
         viewer: ANONYMOUS,
       refuses: legalServed ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        technicalProps: ['contactRecipient', 'newsletterSource'],
         render: async () =>
           (await import('../apps/web/app/legal/[document]/page')).default({
             params: Promise.resolve({ document: 'privacy' }),
           }),
+      },
+      {
+        // s11. Le troisième écran public : il refuse quand le module est coupé,
+        // exactement comme une page légale dont le slug n'est pas déclaré. Le
+        // refus attendu est **dérivé** de l'état du module, jamais concédé.
+        id: 'contact',
+        file: 'contact/page.tsx',
+        viewer: ANONYMOUS,
+        refuses: publicSite ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        // La route montée du formulaire et les types de champ : des valeurs
+        // techniques que l'écran écrit, jamais du texte. La garde de prose
+        // reste active — `type="Adresse email"` rougirait toujours.
+        technicalProps: ['contactRecipient', 'newsletterSource', 'type', 'labelKey'],
+        render: async () => (await import('../apps/web/app/contact/page')).default(),
       },
       {
         id: 'compte',

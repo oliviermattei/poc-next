@@ -12,6 +12,8 @@ import {
   MarketingSection,
 } from '@repo/ui'
 
+import type { ReactNode } from 'react'
+
 import type { MarketingSite } from '../application/marketing-site'
 import type { MarketingSection as SectionConfig } from '../domain/marketing-config'
 import {
@@ -43,6 +45,15 @@ import type { MarketingIntl } from './marketing-intl'
 export interface MarketingHomeProps {
   readonly site: MarketingSite
   readonly intl: MarketingIntl
+  /**
+   * Le formulaire d'inscription, **fourni par l'application**.
+   *
+   * Il est interactif, donc client, donc il appelle `fetch` — ce qu'un module
+   * n'a pas le droit de faire (`eslint.config.ts`). Ce composant décide **où**
+   * il s'affiche, c'est-à-dire à la place que `config/marketing.ts` lui donne
+   * dans l'ordre des sections ; il ne le construit pas.
+   */
+  readonly newsletterForm: ReactNode
 }
 
 function SectionActions({
@@ -66,12 +77,21 @@ function SectionActions({
 function SectionBody({
   section,
   intl,
+  newsletterForm,
 }: {
   readonly section: SectionConfig
   readonly intl: MarketingIntl
+  readonly newsletterForm: ReactNode
 }) {
   if (section.kind === 'hero' || section.kind === 'cta') {
     return <SectionActions section={section} intl={intl} />
+  }
+
+  if (section.kind === 'newsletter') {
+    // s11. La position et la présence de cette section restent décidées par
+    // `config/marketing.ts` : la retirer retire le formulaire de la page
+    // d'accueil, sans toucher à ce composant.
+    return newsletterForm
   }
 
   if (section.kind === 'features') {
@@ -120,7 +140,7 @@ function SectionBody({
   )
 }
 
-export function MarketingHome({ site, intl }: MarketingHomeProps) {
+export function MarketingHome({ site, intl, newsletterForm }: MarketingHomeProps) {
   return (
     <>
       {site.sections.map((section, index) => (
@@ -134,7 +154,7 @@ export function MarketingHome({ site, intl }: MarketingHomeProps) {
           headingLevel={index === 0 ? 1 : 2}
           display={index === 0}
         >
-          <SectionBody section={section} intl={intl} />
+          <SectionBody section={section} intl={intl} newsletterForm={newsletterForm} />
         </MarketingSection>
       ))}
       <MarketingFooter site={site} intl={intl} />

@@ -1,8 +1,13 @@
 import { defineModule, type NavigationEntry } from '@repo/core'
 
 import { MARKETING_MODULE_ID } from './domain/marketing-config'
+import { contactMessageEmail } from './emails/contact-message'
+import { newsletterConfirmationEmail } from './emails/newsletter-confirmation'
+import { requireMarketingService } from './infrastructure/marketing-runtime'
 import enMessages from './messages/en.json' with { type: 'json' }
 import frMessages from './messages/fr.json' with { type: 'json' }
+import { createPublicFormRoutes } from './presentation/public-form-routes'
+import { marketingSchema } from './schema'
 
 /**
  * L'entrée de navigation du site public.
@@ -30,36 +35,60 @@ const marketingNavigation: readonly NavigationEntry[] = [
 /**
  * Le contrat du module `marketing`, rempli — les quatorze clés.
  *
- * Ce module ne déclare **ni route, ni table, ni migration**, et c'est sa nature
- * en s10 : ce qu'il apporte, ce sont des **pages** (accueil, mentions légales),
- * que seule l'application peut servir — un `ModuleRoute` est un descripteur
- * monté sous `/api/modules/…` (ADR 017), pas un écran. Sa modularité se joue
- * donc au point de composition, `apps/web/lib/marketing.ts`, exactement comme
- * celle du module `i18n` se joue dans `apps/web/lib/locale-routing.ts`.
+ * Ce que ce module apporte d'abord, ce sont des **pages** (accueil, mentions
+ * légales, contact), que seule l'application peut servir — un `ModuleRoute` est
+ * un descripteur monté sous `/api/modules/…` (ADR 017), pas un écran. Sa
+ * modularité se joue donc au point de composition, `apps/web/lib/marketing.ts`,
+ * exactement comme celle du module `i18n` se joue dans
+ * `apps/web/lib/locale-routing.ts`.
  *
- * Le contrat n'en est pas moins rempli au complet, clés vides comprises : en
- * ajouter une plus tard rouvrirait tous les modules déjà écrits (ADR 007).
+ * **s11 lui donne ce qu'il n'avait pas** : deux tables, une migration, deux
+ * routes publiques et deux emails. Comme dans `auth` et `organizations`, les cas
+ * d'usage ne sont **pas** construits à l'import — ce fichier est chargé par
+ * `config/features.ts`, donc par `pnpm ks list` et `pnpm db:generate`, qui n'ont
+ * ni base ni mailer. Les routes, la purge et l'export reçoivent un **accès
+ * différé** au service (`requireMarketingService`), posé par le point de
+ * composition de l'application.
  *
- * Ce qui viendra, et qui n'est **pas** ici : la table des inscriptions
- * publiques et les messages de contact appartiennent à s11, la limitation de
- * débit de ces formulaires à s28. Les déclarer d'avance produirait un schéma
- * que rien n'écrit et une clé étrangère que rien ne lit.
+ * Ce qui reste dehors, et pourquoi : `contact_message`, que
+ * `docs/architecture.md` attribue à ce module, n'est pas livrée — aucun critère
+ * de s11 ne l'écrit ni ne la lit (`docs/research/s11-public-forms.md` §6.1). La
+ * limitation de débit appartient à s28 ; elle est livrée ici parce que ces deux
+ * routes sont les premiers points d'entrée publics du dépôt, et s28 devra faire
+ * converger les deux (recherche §1).
  */
 export const marketingModule = defineModule({
   id: MARKETING_MODULE_ID,
   requires: [],
-  schema: {},
-  migrations: null,
-  routes: [],
+  schema: marketingSchema,
+  migrations: 'packages/modules/marketing/migrations',
+  routes: createPublicFormRoutes(requireMarketingService),
   navigation: marketingNavigation,
   messages: { fr: frMessages, en: enMessages },
-  emails: [],
+  emails: [contactMessageEmail, newsletterConfirmationEmail],
   webhooks: [],
   jobs: [],
-  // Aucune donnée personnelle : ce module ne détient que du texte de
-  // configuration. Déclaré vide, jamais omis.
-  dataCategories: [],
-  retention: {},
-  purge: () => Promise.resolve(),
-  export: () => Promise.resolve({}),
+  /**
+   * Deux catégories, et les deux sont des données personnelles.
+   *
+   * Une **inscription** publique est une adresse email, et rien qu'elle. Un
+   * **message de contact** porte en plus un nom et un texte libre. Les deux sont
+   * **effacés**, jamais anonymisés : une inscription anonyme n'est plus une
+   * inscription, et un message de contact sans expéditeur n'a plus de réponse
+   * possible — dans les deux cas il ne resterait qu'une ligne inutile.
+   *
+   * `contact_message` a été déclarée ici parce qu'elle est livrée : la revue de
+   * s11 a montré qu'un message perdu en cas d'échec d'envoi était un message
+   * perdu (constat F8). Une donnée personnelle stockée sans purge ni export
+   * n'aurait pas dû être écrite ; ces clés existent pour cela.
+   *
+   * `public_form_throttle` n'y figure pas : sa clé est un condensat qu'aucune
+   * requête de ce module ne peut relier à un compte, et ses lignes ne survivent
+   * plus à leur fenêtre (`sweep`). C'est discutable, et c'est écrit comme tel
+   * dans `docs/research/s11-public-forms.md` §6.4.
+   */
+  dataCategories: ['subscription', 'contact-message'],
+  retention: { subscription: 'erase', 'contact-message': 'erase' },
+  purge: (scope) => requireMarketingService().useCases.purgeVisitorData(scope),
+  export: (scope) => requireMarketingService().useCases.exportVisitorData(scope),
 })

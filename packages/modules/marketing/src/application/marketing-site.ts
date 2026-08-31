@@ -1,6 +1,7 @@
 import {
   parseMarketingConfiguration,
   type MarketingConfiguration,
+  type MarketingForms,
   type MarketingLegalDocument,
   type MarketingSection,
 } from '../domain/marketing-config'
@@ -21,6 +22,14 @@ export interface MarketingSite {
   readonly legalDocuments: readonly MarketingLegalDocument[]
   /** Les chemins **internes** que le site sert publiquement, accueil en tête. */
   readonly publicPaths: readonly string[]
+  /**
+   * Les formulaires publics, ou `null` quand le module est coupé.
+   *
+   * `null` est une **donnée**, pas une condition : c'est lui qui fait
+   * disparaître l'écran de contact, la section d'inscription et le lien du pied
+   * de page, sans qu'un seul composant ne nomme un module.
+   */
+  readonly forms: MarketingForms | null
 }
 
 /** L'état « aucun site public » : celui du module coupé, écrit une fois. */
@@ -28,10 +37,21 @@ export const EMPTY_MARKETING_SITE: MarketingSite = {
   sections: [],
   legalDocuments: [],
   publicPaths: [],
+  forms: null,
 }
 
 /** Le chemin d'un document légal. Une seule écriture, lue par la page et par le plan de site. */
 export const legalPath = (slug: string): string => `/legal/${slug}`
+
+/**
+ * Le chemin de l'écran de contact.
+ *
+ * Écrit **une fois**, et lu par l'écran, par le pied de page et par
+ * `publicPaths` — donc par le plan de site et par la politique des robots. Une
+ * seconde écriture ferait une page annoncée à un endroit et interdite à
+ * l'autre : c'est le mode de panne que le correctif F1 de s10 a fermé.
+ */
+export const CONTACT_PATH = '/contact'
 
 /**
  * Valide la configuration reçue et en dérive le site.
@@ -46,7 +66,12 @@ export function resolveMarketingSite(configuration: unknown): MarketingSite {
   return {
     sections: parsed.sections,
     legalDocuments: parsed.legalDocuments,
-    publicPaths: ['/', ...parsed.legalDocuments.map((document) => legalPath(document.slug))],
+    publicPaths: [
+      '/',
+      CONTACT_PATH,
+      ...parsed.legalDocuments.map((document) => legalPath(document.slug)),
+    ],
+    forms: parsed.forms,
   }
 }
 

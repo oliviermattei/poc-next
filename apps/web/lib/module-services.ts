@@ -1,3 +1,10 @@
+import { getDatabase } from '@repo/db'
+import { provideMarketing } from '@repo/module-marketing'
+
+import { appAuth } from './auth'
+import { localeRouting } from './locale-routing'
+import { createAppMailer } from './mailer'
+import { marketingSite } from './marketing'
 import { organizations } from './organizations'
 
 /**
@@ -21,7 +28,47 @@ import { organizations } from './organizations'
  * pendant `pnpm build`, qui n'a ni `DATABASE_URL` ni raison d'en avoir une.
  * Chaque point de composition est idempotent — le second appel rend le service
  * déjà construit.
+ *
+ * **Pourquoi le site public est câblé ici et non dans `lib/marketing.ts`**,
+ * contrairement aux organisations : le harnais de parcours importe
+ * `lib/marketing.ts` **hors de Next** pour en dériver ses attentes
+ * (`e2e/support/locale.ts`). Y importer `lib/auth`, qui lit `next/headers`,
+ * fait échouer le chargement de tous les parcours avant qu'aucun ne s'exécute —
+ * mesuré. Ce fichier-ci n'est importé que par la route d'API.
  */
+const provideMarketingForms = (): void => {
+  const forms = marketingSite.forms
+
+  if (forms === null) {
+    return
+  }
+
+  provideMarketing(() => ({
+    db: getDatabase().db,
+    mailer: createAppMailer(),
+    forms,
+    locales: localeRouting.locales,
+    defaultLocale: localeRouting.defaultLocale,
+    /**
+     * Le seul endroit qui relie une inscription publique à un compte.
+     *
+     * Le module ne connaît pas `auth` et n'a pas le droit de lire ses tables :
+     * le contrat lui donne un identifiant de compte, pas une adresse. Il reçoit
+     * donc la résolution, faite ici par le service d'authentification — même
+     * patron que `reservedSlugs` pour les organisations.
+     *
+     * Périmètre organisation : `null`. Une inscription publique est faite par
+     * quelqu'un qui n'a, le plus souvent, aucun compte ; elle n'appartient à
+     * aucune organisation.
+     */
+    emailOfScope: async (scope) =>
+      scope.kind === 'organization'
+        ? null
+        : ((await appAuth().useCases.viewAccount(scope.userId))?.email ?? null),
+  }))
+}
+
 export function prepareModuleServices(): void {
   organizations.prepare()
+  provideMarketingForms()
 }

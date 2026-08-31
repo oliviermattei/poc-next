@@ -144,17 +144,26 @@ vit dans `apps/web`.
 Ceux que s08 utilise réellement, et rien de plus — copier l'inventaire complet
 « pour plus tard » livrerait du code que personne n'a exercé :
 
-| Copiés | `Accordion`, `Alert`, `Badge`, `Button`, `Card`, `DropdownMenu`, `Input`, `Label`, `Separator`, `Sheet` |
+| Copiés | `Accordion`, `Alert`, `Badge`, `Button`, `Card`, `DropdownMenu`, `Input`, `Label`, `Separator`, `Sheet`, `Textarea` |
 | --- | --- |
 | Composés maison | `EmptyState`, `LocaleSwitcher`, `MarketingSection`, `OrgSwitcher`, `PageHeader`, `Sidebar` / `SidebarNav`, `ThemeProvider`, `ThemeToggle` |
 
 Le reste de l'inventaire de `docs/design-system.md` — `Form`, `Table`,
 `DataTable`, `Tabs`, `Toaster`, `Command`, `AlertDialog`, `Avatar`, `Tooltip`,
 `Popover`, `Skeleton`, `Progress`, `ScrollArea`, `Breadcrumb`, `Pagination`,
-`Checkbox`, `RadioGroup`, `Select`, `Switch`, `Textarea`,
+`Checkbox`, `RadioGroup`, `Select`, `Switch`,
 `ConfirmDialog`, et les composés des stories à venir — **n'est pas encore
-copié**. C'est la liste au 31 août 2026, révisée par s10 ; le document fait foi,
-pas ce tableau.
+copié**. C'est la liste au 31 août 2026, révisée par s10 puis par s11 ; le
+document fait foi, pas ce tableau.
+
+`Textarea` est arrivé avec **s11** : le message du formulaire de contact. Il
+reprend les classes d'`Input` à la hauteur près (`min-h-24`, `resize-y` — un
+redimensionnement horizontal déborde la carte sous 400 px). **`Form`,
+`FormField` et `FormMessage` restent non construits** alors que le document les
+annonce : les formulaires de s07, s15 et s11 composent tous `Label`, `Input` et
+`Alert` à la main. C'est un *design system gap* ouvert, signalé dans
+`docs/designs/s11-public-forms.md` et dans `docs/STATE.md`, pas une primitive à
+inventer dans un commit de fonctionnalité.
 
 `OrgSwitcher` est arrivé avec **s15**, que le document lui attribue nommément.
 Il reprend `LocaleSwitcher` à une différence près, et elle est tranchée : les
