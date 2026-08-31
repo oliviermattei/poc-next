@@ -34,7 +34,7 @@ open -a Docker && docker compose up -d                                # Postgres
 | Voie | Story | Worktree | Base Postgres |
 |---|---|---|---|
 | A | s10-marketing-site | **fusionnée dans `dev`** (`57e9658`), revue `minor`/ship oui | close |
-| C | s45-security-headers | commit `fed2909`, **en revue** | `s45`, port 3145 |
+| C | s45-security-headers | commit `fed2909`, revue `major`/ship oui, **tour de correction** (404 sans nonce, justification fausse, `frame-src`, injection de journal) | `s45`, port 3145 |
 | D | s15-organizations | commit `520d49b`, **en revue** | `s15`, port 3115 |
 | E | s13-two-factor | **à relancer** — voie tuée par une limite d'usage avant d'avoir rien écrit | `s13`, port 3113 |
 | B | s12-oauth-signin | **fusionnée dans `dev`** (`5e73810`), revue `minor`/ship oui | close |
@@ -63,6 +63,17 @@ Playwright démarre son propre serveur et échoue bruyamment si le port est pris
 mesurer l'arbre d'une autre branche. Chaque voie choisit le sien par `E2E_PORT` — voir la
 colonne de la table ci-dessus. Vérifié dans les deux sens : vert port libre, refus explicite
 port occupé.
+
+## Dettes à surveiller
+
+- **Une exécution e2e rouge sur sept** pendant la revue de s45 : 22 parcours sur 42 en échec,
+  tous fichiers confondus, jamais reproduite (six exécutions vertes ensuite, dont une à cache
+  `.next` vide). Non attribuée à s45. `retries: 0` est délibéré : cette instabilité doit être
+  regardée aux premières exécutions de CI, pas peinte en jaune.
+- **La CI n'a jamais tourné.** `.github/workflows/ci.yml` existe, le dépôt a un `origin`, aucun
+  push n'a été fait.
+- `tests/module-migrations.test.ts` remet à zéro le journal de `demo-enabled` sur la base
+  partagée : un `pnpm db:migrate` juste après la suite rejoue cette migration.
 
 ## Prochaine étape
 
