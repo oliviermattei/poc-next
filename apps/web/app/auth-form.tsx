@@ -2,6 +2,8 @@
 
 import { useState, type FormEvent } from 'react'
 
+import { useHydrated } from './use-hydrated'
+
 /**
  * Le formulaire des écrans d'authentification.
  *
@@ -9,6 +11,13 @@ import { useState, type FormEvent } from 'react'
  * link, mot de passe oublié et réinitialisation posent la même question — un
  * corps JSON à une route du module, une redirection ou un message en retour.
  * Cinq composants recopiés divergeraient au premier message d'erreur.
+ *
+ * **`method="post"`, et le bouton désactivé tant que React n'a pas repris la
+ * main.** Un `<form>` sans `method` est un `GET` vers l'URL courante dès que le
+ * gestionnaire n'est pas encore attaché : mesuré, `/sign-in?email=…&password=…`
+ * — le mot de passe dans le journal d'accès, dans l'historique et dans le
+ * `Referer` (`docs/security.md` §5). L'attribut ferme la fuite, `useHydrated`
+ * ferme la perte silencieuse.
  *
  * Il parle aux **routes du module**, pas à une action serveur : c'est le
  * navigateur qui reçoit le `Set-Cookie` de la session, et le parcours exercé en
@@ -59,6 +68,7 @@ const messageFor = (status: number): string => {
 }
 
 export function AuthForm(props: AuthFormProps) {
+  const hydrated = useHydrated()
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
   const [pending, setPending] = useState(false)
@@ -97,7 +107,7 @@ export function AuthForm(props: AuthFormProps) {
   }
 
   return (
-    <form onSubmit={submit}>
+    <form method="post" onSubmit={submit}>
       {props.fields.map((field) => (
         <p key={field.name}>
           <label htmlFor={field.name}>{field.label}</label>{' '}
@@ -111,7 +121,7 @@ export function AuthForm(props: AuthFormProps) {
         </p>
       ))}
       {error === null ? null : <p role="alert">{error}</p>}
-      <button type="submit" disabled={pending}>
+      <button type="submit" disabled={pending || !hydrated}>
         {props.submitLabel}
       </button>
     </form>

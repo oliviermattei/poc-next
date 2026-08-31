@@ -4,6 +4,8 @@ import { Alert, Button, Input, Label } from '@repo/ui'
 import { useRouter } from 'next/navigation'
 import { useState, type FormEvent } from 'react'
 
+import { useHydrated } from '../use-hydrated'
+
 /**
  * Un formulaire de paramètres.
  *
@@ -12,6 +14,13 @@ import { useState, type FormEvent } from 'react'
  * réponse. C'est ce qui interdit un second chemin de changement de mot de passe
  * — celui de s07 est le seul, et le §2 du socle reste vérifiable à un seul
  * endroit.
+ *
+ * **`method="post"`, et le bouton désactivé tant que React n'a pas repris la
+ * main.** Sans le premier, le repli du navigateur est un `GET` vers l'URL
+ * courante et le mot de passe part dans la chaîne de requête — mesuré, revue de
+ * s08, `docs/security.md` §5. Sans le second, la soumission qui devance
+ * l'hydratation est perdue en silence. Les deux valent pour tout écran qui
+ * héritera de ce formulaire, pas seulement pour celui-ci.
  *
  * Après un succès, `router.refresh()` : les données affichées viennent du
  * serveur, donc l'écran doit les redemander plutôt que de recopier localement
@@ -59,6 +68,7 @@ export function AccountForm({
   redirectTo,
 }: AccountFormProps) {
   const router = useRouter()
+  const hydrated = useHydrated()
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
   const [pending, setPending] = useState(false)
@@ -99,7 +109,7 @@ export function AccountForm({
   }
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-4">
+    <form method="post" onSubmit={submit} className="flex flex-col gap-4">
       {fields.map((field) => (
         <div key={field.name} className="flex flex-col gap-2">
           <Label htmlFor={field.name}>{field.label}</Label>
@@ -124,7 +134,7 @@ export function AccountForm({
         </Alert>
       ) : null}
       <div>
-        <Button type="submit" pending={pending}>
+        <Button type="submit" pending={pending} disabled={!hydrated}>
           {submitLabel}
         </Button>
       </div>

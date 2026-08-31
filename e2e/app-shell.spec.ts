@@ -133,7 +133,7 @@ test('une session révoquée depuis un autre appareil est refusée par le serveu
   await signUp(page, email)
   await page.goto(await linkSentTo(email))
   await signIn(page, email)
-  await expect(page).toHaveURL(/\/account$/)
+  await expect(page).toHaveURL(/localhost:\d+\/$/)
 
   // Un second navigateur : deux sessions réelles, deux cookies distincts.
   const otherContext = await browser.newContext()
@@ -141,9 +141,9 @@ test('une session révoquée depuis un autre appareil est refusée par le serveu
 
   await other.goto('/sign-in')
   await signIn(other, email)
-  await expect(other).toHaveURL(/\/account$/)
+  await expect(other).toHaveURL(/localhost:\d+\/$/)
 
-  await page.reload()
+  await page.goto('/account')
 
   const sessions = page.getByRole('listitem').filter({ hasText: 'Révoquer' })
 
@@ -177,14 +177,16 @@ test('changer son mot de passe depuis l’écran révoque l’autre session', as
   await signUp(page, email)
   await page.goto(await linkSentTo(email))
   await signIn(page, email)
-  await expect(page).toHaveURL(/\/account$/)
+  await expect(page).toHaveURL(/localhost:\d+\/$/)
 
   const otherContext = await browser.newContext()
   const other = await otherContext.newPage()
 
   await other.goto('/sign-in')
   await signIn(other, email)
-  await expect(other).toHaveURL(/\/account$/)
+  await expect(other).toHaveURL(/localhost:\d+\/$/)
+
+  await page.goto('/account')
 
   // Un mot de passe courant faux est refusé, et rien ne change.
   await page.getByLabel('Mot de passe actuel').fill('ce-n-est-pas-le-bon')
@@ -207,6 +209,7 @@ test('changer son mot de passe depuis l’écran révoque l’autre session', as
 test('changer son nom met à jour le compte affiché', async ({ page }) => {
   await aSignedInAccount(page, 's08-profil')
 
+  await page.goto('/account')
   await page.getByLabel('Nom affiché').fill('Olivier de Test')
   await page.getByRole('button', { name: 'Enregistrer le nom' }).click()
 
@@ -215,4 +218,98 @@ test('changer son nom met à jour le compte affiché', async ({ page }) => {
   // Rechargé depuis le serveur, pas depuis l'état local du formulaire.
   await page.goto('/')
   await expect(page.getByText('Bonjour Olivier de Test')).toBeVisible()
+})
+
+/**
+ * **Le repli natif des formulaires, JavaScript indisponible.**
+ *
+ * Un `<form>` sans `method` est un `GET` vers l'URL courante : c'est le défaut
+ * du navigateur, et il s'applique chaque fois que le gestionnaire React n'est
+ * pas encore attaché — hydratation en cours, script en échec, réseau lent. Le
+ * mot de passe part alors dans la chaîne de requête, donc dans le journal
+ * d'accès, dans l'historique et dans le `Referer` des requêtes suivantes
+ * (`docs/security.md` §5). Mesuré en revue, sur les deux écrans.
+ *
+ * `retries: 0` **ici** : la même course a été rapportée « flaky » pendant toute
+ * la story. Une reprise qui transforme une fuite de secret en badge jaune est
+ * pire que pas de reprise du tout.
+ */
+test.describe('les formulaires sans JavaScript', () => {
+  test.describe.configure({ retries: 0 })
+
+  const SECRET = 'un-secret-qui-ne-doit-pas-atteindre-l-url'
+
+  /**
+   * Laisse au repli natif le temps de naviguer — s'il navigue.
+   *
+   * Sans JavaScript, la soumission implicite est immédiate : deux secondes sans
+   * navigation signifient qu'il n'y en a pas eu.
+   */
+  const urlAfterNativeSubmit = async (
+    page: import('@playwright/test').Page,
+  ): Promise<string> => {
+    await page.waitForEvent('framenavigated', { timeout: 2_000 }).catch(() => null)
+
+    return page.url()
+  }
+
+  test('aucun secret n’atteint l’URL, ni sur le compte ni à la connexion', async ({
+    page,
+    browser,
+  }) => {
+    // Le compte est créé avec JavaScript — c'est le seul chemin d'inscription.
+    // Seule la **soumission** est mesurée sans lui, avec le cookie de session.
+    await aSignedInAccount(page, 's08-sans-js')
+
+    const context = await browser.newContext({
+      javaScriptEnabled: false,
+      storageState: await page.context().storageState(),
+    })
+    const noScript = await context.newPage()
+
+    await noScript.goto('/account')
+
+    // Rien ne peut être soumis par un chemin que le composant ne contrôle pas :
+    // l'envoi n'est actif qu'une fois React aux commandes. Sans cela, la
+    // soumission qui devance l'hydratation est perdue en silence — et c'est
+    // cette course, rapportée « flaky », qui a caché la fuite pendant la story.
+    await expect(noScript.getByRole('button', { name: 'Changer le mot de passe' })).toBeDisabled()
+
+    await noScript.getByLabel('Mot de passe actuel').fill(SECRET)
+    await noScript.getByLabel('Nouveau mot de passe').fill(`${SECRET}-nouveau`)
+    // La soumission implicite : la seule qui ne demande pas de JavaScript.
+    await noScript.getByLabel('Nouveau mot de passe').press('Enter')
+
+    expect(await urlAfterNativeSubmit(noScript), 'le mot de passe est parti dans l’URL').not.toContain(
+      SECRET,
+    )
+    expect(new URL(noScript.url()).search).toBe('')
+
+    // Le mécanisme derrière l'assertion ci-dessus : le repli n'est jamais un
+    // `GET`. Si une soumission passe malgré tout, le secret est dans le corps.
+    await expect(
+      noScript.locator('form').filter({ has: noScript.getByLabel('Mot de passe actuel') }),
+    ).toHaveAttribute('method', 'post')
+
+    // Le même défaut préexiste sur l'écran de connexion de s07 : un seul
+    // correctif, deux écrans.
+    await noScript.goto('/sign-in')
+
+    await expect(noScript.getByRole('button', { name: 'Se connecter' })).toBeDisabled()
+
+    await noScript.getByLabel('Adresse email', { exact: true }).fill('victime@example.test')
+    await noScript.getByLabel('Mot de passe', { exact: true }).fill(SECRET)
+    await noScript.getByLabel('Mot de passe', { exact: true }).press('Enter')
+
+    expect(await urlAfterNativeSubmit(noScript), 'le mot de passe est parti dans l’URL').not.toContain(
+      SECRET,
+    )
+    expect(new URL(noScript.url()).search).toBe('')
+
+    await expect(
+      noScript.locator('form').filter({ has: noScript.getByLabel('Mot de passe', { exact: true }) }),
+    ).toHaveAttribute('method', 'post')
+
+    await context.close()
+  })
 })

@@ -332,19 +332,33 @@ describe('un module ne dépend pas du package de base de données', () => {
  * version stable, et il garde de l'ADR 009 la clause qui rend le choix
  * réversible : aucun module, aucune application n'importe le socle
  * directement. C'est cette clause qui borne le coût du basculement le jour où
- * Base UI se stabilise — sans elle, changer de socle redevient un refactor
+ * Base UI se stabilisera — sans elle, changer de socle redevient un refactor
  * traversant.
  *
  * Une intention ne se vérifie pas. Voici la commande qui échoue.
  *
- * **Ce qui est balayé**, cas par cas, et rien de plus : import statique et
- * import de type, réexport, import d'effet de bord, sous-chemin, import
- * dynamique — en guillemets simples et doubles. Non balayé, et connu : un
- * spécificateur reconstruit à l'exécution (`import('@radix' + '-ui/…')`), et
- * les fichiers sous l'exception nommée du harnais de test (`tests/`, `e2e/`,
- * `packages/*\/src/**\/*.test.ts`), où `no-restricted-imports` est éteint. Le
- * périmètre couvert est `apps/**`, `packages/**` et `tooling/**`, sauf
- * `packages/ui`.
+ * **Chaque site de déclaration a ses cas.** En configuration plate, la garde
+ * n'est pas déclarée une fois : elle est reprise par les quatre blocs qui
+ * occupent `no-restricted-syntax`. La revue de s08 a mesuré que deux de ces
+ * sites pouvaient être vidés sans qu'un seul test ne bouge — un seul chemin de
+ * fichier était éprouvé. Les cas ci-dessous croisent donc les sites et les
+ * écritures : `apps/**`, `packages/**`, `packages/config/src`,
+ * `packages/modules/**`, `tooling/**`.
+ *
+ * **Ce qui est balayé**, cas par cas, et rien de plus : import statique, import
+ * de type, réexport, sous-chemin, import dynamique, gabarit, l'import de type
+ * en position d'annotation (`import('@radix-ui/…').P`) et le paquet unifié
+ * `radix-ui` — croisés avec les huit emplacements ci-dessous, plus les
+ * extensions `.tsx`, `.mts`, `.mjs` et `.jsx`. L'écriture en position
+ * d'annotation passait partout avant cette correction, module compris, alors
+ * que la même était déjà fermée pour `@repo/db`.
+ *
+ * **Non balayé, et connu** : un spécificateur reconstruit à l'exécution
+ * (`import('@radix' + '-ui/…')`), et les fichiers du harnais de test (`tests/`,
+ * `e2e/`, `packages/*\/src/**\/*.test.ts`) — exception nommée, où
+ * `no-restricted-imports` est éteint et qu'aucune portée `no-restricted-syntax`
+ * ne vise. Mesuré une écriture à la fois contre la configuration réelle, le
+ * 31 août 2026.
  */
 describe('le socle de composants ne sort pas de packages/ui (ADR 022)', () => {
   let eslint: ESLint
@@ -359,45 +373,117 @@ describe('le socle de composants ne sort pas de packages/ui (ADR 022)', () => {
     return (result?.messages ?? []).map((message) => message.ruleId ?? '')
   }
 
-  it.each([
+  /** Les blocs qui déclarent la garde, par un fichier de chacun. */
+  const SITES = [
+    ['un écran de l’application', 'apps/web/app/probe.ts'],
+    ['un package', 'packages/core/src/probe.ts'],
+    ['la surface client de la configuration', 'packages/config/src/probe.ts'],
+    ['un module', 'packages/modules/auth/src/presentation/probe.ts'],
+    ['le tooling', 'tooling/eslint/probe.ts'],
+    // Ces trois-là n'étaient dans aucune portée, mesuré en revue.
+    ['la configuration du projet', 'config/probe.ts'],
+    ['un script', 'scripts/probe.ts'],
+    ['un fichier de premier niveau', 'probe.ts'],
+  ] as const
+
+  const WRITINGS = [
     [
-      'un composant de module',
-      'packages/modules/auth/src/presentation/probe.tsx',
-      "import * as Dialog from '@radix-ui/react-dialog'\nexport const P = () => <Dialog.Root />",
+      'import statique',
+      "import * as Dialog from '@radix-ui/react-dialog'\nexport const Root = Dialog.Root",
     ],
     [
-      'un écran de l’application',
-      'apps/web/app/probe.tsx',
-      'import * as Dialog from "@radix-ui/react-dialog"\nexport const P = () => <Dialog.Root />',
+      'guillemets doubles',
+      'import * as Dialog from "@radix-ui/react-dialog"\nexport const Root = Dialog.Root',
     ],
+    ['réexport', "export { Root } from '@radix-ui/react-dialog'"],
     [
-      'un sous-chemin',
-      'apps/web/app/probe.ts',
+      'sous-chemin',
       "import { Root } from '@radix-ui/react-dialog/dist/index.mjs'\nexport const R = Root",
     ],
     [
-      'un import de type',
-      'packages/core/src/probe.ts',
+      'import de type',
       "import type { DialogProps } from '@radix-ui/react-dialog'\nexport type P = DialogProps",
     ],
+    ['import dynamique', "export const load = () => import('@radix-ui/react-dialog')"],
+    ['import dynamique en accent grave', 'export const load = () => import(`@radix-ui/react-dialog`)'],
+    // Trouvée en essayant de défaire la garde : elle est **typée**, elle
+    // compile, elle donne le type Radix sans qu'aucun `import` n'apparaisse.
+    // C'est textuellement l'écriture déjà fermée pour `@repo/db`.
     [
-      'un import dynamique',
-      'packages/modules/auth/src/presentation/probe.ts',
-      "export const load = () => import('@radix-ui/react-dialog')",
+      'import de type en position d’annotation',
+      "export type P = import('@radix-ui/react-dialog').DialogProps",
     ],
-  ])('refuse Radix hors de packages/ui — %s', async (_name, path, code) => {
+    // Le paquet unifié : ce que la documentation de Radix installe aujourd'hui.
+    // Il n'est pas dans le dépôt ; sans ce motif, un `pnpm add radix-ui`
+    // contournait la garde entière.
+    ['le paquet unifié', "import { Dialog } from 'radix-ui'\nexport const D = Dialog"],
+  ] as const
+
+  it.each(
+    SITES.flatMap(([site, path]) =>
+      WRITINGS.map(([writing, code]) => [`${site} — ${writing}`, path, code] as const),
+    ),
+  )('refuse Radix hors de packages/ui — %s', async (_name, path, code) => {
     const ruleIds = await ruleIdsFor(code, path)
 
     expect(ruleIds.filter((id) => id.startsWith('no-restricted-'))).not.toEqual([])
   })
 
-  it('laisse packages/ui l’importer — c’est sa raison d’être', async () => {
+  // Un fichier qu'aucune portée ne nomme n'est pas « autorisé » : il n'est pas
+  // linté du tout. La portée de `apps/**` s'arrêtait à `*.{ts,tsx}` quand celle
+  // de `packages/**` allait jusqu'à `.mts` et `.cts` — mesuré en revue.
+  it.each([
+    [
+      'un composant d’application, en `.tsx`',
+      'apps/web/app/probe.tsx',
+      "import * as Dialog from '@radix-ui/react-dialog'\nexport const P = () => <Dialog.Root />",
+    ],
+    [
+      'un module ES d’application, en `.mts`',
+      'apps/web/lib/probe.mts',
+      "import * as Dialog from '@radix-ui/react-dialog'\nexport const Root = Dialog.Root",
+    ],
+    [
+      'un module CommonJS d’application, en `.cts`',
+      'apps/web/lib/probe.cts',
+      "export const load = () => import('@radix-ui/react-dialog')",
+    ],
+    [
+      'un composant de module, en `.tsx`',
+      'packages/modules/auth/src/presentation/probe.tsx',
+      "import * as Dialog from '@radix-ui/react-dialog'\nexport const P = () => <Dialog.Root />",
+    ],
+    // Le dépôt n'a que deux sources JavaScript, toutes deux de configuration.
+    // Une portée qui repose sur le fait qu'on n'en écrira pas d'autre n'est pas
+    // une portée : Next compile un `.mjs` d'application comme le reste.
+    [
+      'un module ES d’application, en `.mjs`',
+      'apps/web/lib/probe.mjs',
+      "import * as Dialog from '@radix-ui/react-dialog'\nexport const Root = Dialog.Root",
+    ],
+    [
+      'un composant d’application, en `.jsx`',
+      'apps/web/app/probe.jsx',
+      "export const load = () => import('@radix-ui/react-dialog')",
+    ],
+  ])('juge le fichier quelle que soit son extension — %s', async (_name, path, code) => {
+    const ruleIds = await ruleIdsFor(code, path)
+
+    expect(ruleIds.filter((id) => id.startsWith('no-restricted-'))).not.toEqual([])
+  })
+
+  it.each([
+    [
+      'import statique',
+      "import * as Dialog from '@radix-ui/react-dialog'\nexport const Root = Dialog.Root",
+    ],
+    // Le bloc qui porte la règle des formulaires vise aussi `packages/ui` :
+    // s'il y ramenait la garde de Radix, le socle ne pourrait plus exister.
+    ['import dynamique', "export const load = () => import('@radix-ui/react-dialog')"],
+  ])('laisse packages/ui l’importer — %s', async (_name, code) => {
     // Trop large, la règle interdirait au socle de composants d'exister : elle
     // prouverait qu'elle est fausse, pas qu'elle marche.
-    const ruleIds = await ruleIdsFor(
-      "import * as Dialog from '@radix-ui/react-dialog'\nexport const Root = Dialog.Root",
-      'packages/ui/src/components/sheet.tsx',
-    )
+    const ruleIds = await ruleIdsFor(code, 'packages/ui/src/components/sheet.tsx')
 
     expect(ruleIds.filter((id) => id.startsWith('no-restricted-'))).toEqual([])
   })
@@ -413,6 +499,96 @@ describe('le socle de composants ne sort pas de packages/ui (ADR 022)', () => {
     )
 
     expect(ruleIds).toContain('no-restricted-imports')
+  })
+})
+
+/**
+ * **Un `<form>` déclare toujours sa méthode** (C1 de la revue de s08).
+ *
+ * Un formulaire sans `method` est un `GET` vers l'URL courante : c'est le
+ * défaut du navigateur, et il s'applique chaque fois que le gestionnaire React
+ * n'est pas encore attaché. Mesuré en revue, sur l'écran de compte comme sur
+ * celui de connexion :
+ * `/account?currentPassword=…&newPassword=…`. Le secret atterrit alors dans le
+ * journal d'accès, dans l'historique et dans le `Referer` des requêtes
+ * suivantes — `docs/security.md` §5.
+ *
+ * La correction ne pouvait pas être « chaque écran y pense » : c'est la
+ * fondation dont quinze écrans hériteront. Voici la commande qui échoue, sur
+ * les quatre sites qui déclarent `no-restricted-syntax`, `packages/ui` compris
+ * — c'est là que vivront les composants `Form` du design system.
+ *
+ * **Ce qui est balayé** : l'absence d'un `method` écrit en toutes lettres sur
+ * un élément `<form>` en JSX — attribut manquant, étalé depuis un objet,
+ * calculé, ou `undefined` —, sur les neuf emplacements ci-dessous, `.tsx` et
+ * `.jsx`. **Non balayé, et connu** : un `<form>` construit par `createElement`,
+ * et les fichiers du harnais de test (`tests/`, `e2e/`), qu'aucune portée ne
+ * vise et qui ne livrent pas d'écran. La **valeur** n'est pas jugée :
+ * `method="get"` reste légitime pour un formulaire sans secret — la règle exige
+ * que le choix soit écrit, pas qu'il soit `post`.
+ */
+describe('un formulaire déclare sa méthode', () => {
+  let eslint: ESLint
+
+  beforeAll(() => {
+    eslint = new ESLint({ cwd: REPO_ROOT })
+  })
+
+  const ruleIdsFor = async (code: string, filePath: string): Promise<string[]> => {
+    const [result] = await eslint.lintText(code, { filePath })
+
+    return (result?.messages ?? []).map((message) => message.ruleId ?? '')
+  }
+
+  const form = (attributes: string): string =>
+    `export const P = () => (\n  <form ${attributes}>\n    <input name="password" type="password" />\n    <button type="submit">Envoyer</button>\n  </form>\n)`
+
+  const SITES = [
+    ['un écran de l’application', 'apps/web/app/probe.tsx'],
+    ['un composant du design system', 'packages/ui/src/components/probe.tsx'],
+    ['un composant de module', 'packages/modules/auth/src/presentation/probe.tsx'],
+    ['un package', 'packages/core/src/probe.tsx'],
+    ['la surface client de la configuration', 'packages/config/src/probe.tsx'],
+    ['la configuration du projet', 'config/probe.tsx'],
+    ['un script', 'scripts/probe.tsx'],
+    ['un fichier de premier niveau', 'probe.tsx'],
+    ['un écran en `.jsx`', 'apps/web/app/probe.jsx'],
+  ] as const
+
+  it.each(SITES)('refuse un formulaire sans `method` — %s', async (_name, path) => {
+    const ruleIds = await ruleIdsFor(form('onSubmit={submit}'), path)
+
+    expect(ruleIds).toContain('no-restricted-syntax')
+  })
+
+  // Trouvés en essayant de défaire la règle : trois écritures qui **ont** un
+  // `method` sans que le sélecteur puisse dire ce qu'il vaut. Les accepter
+  // ferait de la garde une formalité.
+  it.each([
+    ['un attribut étalé', '{...props}'],
+    ['une valeur calculée', 'method={methodOf(props)}'],
+    ['une valeur absente', 'method={undefined}'],
+  ])('refuse un `method` que le sélecteur ne peut pas lire — %s', async (_name, attributes) => {
+    const ruleIds = await ruleIdsFor(form(attributes), 'apps/web/app/probe.tsx')
+
+    expect(ruleIds).toContain('no-restricted-syntax')
+  })
+
+  it.each(SITES)('laisse passer un formulaire qui déclare `post` — %s', async (_name, path) => {
+    // Trop large, la règle interdirait les formulaires : elle prouverait
+    // qu'elle est fausse, pas qu'elle marche.
+    const ruleIds = await ruleIdsFor(form('method="post" onSubmit={submit}'), path)
+
+    expect(ruleIds).not.toContain('no-restricted-syntax')
+  })
+
+  it('laisse passer `method="get"` — un formulaire sans secret en a le droit', async () => {
+    // La règle exige que le choix soit écrit, pas qu'il soit `post` : une
+    // recherche en `GET` est légitime, et une garde trop large se fait
+    // désactiver au premier cas honnête.
+    const ruleIds = await ruleIdsFor(form('method="get"'), 'apps/web/app/probe.tsx')
+
+    expect(ruleIds).not.toContain('no-restricted-syntax')
   })
 })
 

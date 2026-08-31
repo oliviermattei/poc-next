@@ -79,6 +79,33 @@ le script pose la classe avant le premier rendu, donc le serveur et le client
 diffèrent par construction. Le retirer fait apparaître un avertissement à chaque
 chargement ; l'étendre à l'arbre masquerait de vrais écarts.
 
+## Les formulaires
+
+Deux composants, `app/auth-form.tsx` et `app/account/account-form.tsx`, et deux
+règles que tout écran hérite d'eux :
+
+- **`method="post"` sur le `<form>`, toujours.** Sans `method`, le repli du
+  navigateur est un `GET` vers l'URL courante : les champs — mot de passe
+  compris — partent dans la chaîne de requête, donc dans le journal d'accès,
+  l'historique et le `Referer` des requêtes suivantes (`docs/security.md` §5).
+  Mesuré sur les deux écrans, JavaScript coupé : `/account?currentPassword=…`
+  et `/sign-in?email=…&password=…` (revue de s08, C1). `pnpm lint` refuse
+  désormais un `<form>` dont le `method` n'est pas écrit en toutes lettres —
+  y compris étalé (`{...props}`), calculé ou `undefined`. La règle vise
+  `apps/**`, `packages/**`, `tooling/**`, `config/`, `scripts/` et la racine,
+  `packages/ui` compris ; elle ne juge pas la valeur (`method="get"` reste
+  légitime pour un formulaire sans secret) ;
+- **le bouton d'envoi est désactivé tant que `useHydrated()` répond `false`**
+  (`app/use-hydrated.ts`). Entre le premier octet et l'hydratation, le
+  gestionnaire React n'existe pas : un clic part par le repli natif, et l'action
+  est perdue sans que rien ne le dise. C'est aussi ce qui rend le parcours
+  déterministe — Playwright attend un contrôle actionnable, là où il cliquait
+  dans le vide une fois sur trois.
+
+`e2e/app-shell.spec.ts` le prouve dans un contexte sans JavaScript, et **sans
+reprise** (`retries: 0`) : c'est une reprise qui avait fait passer cette fuite
+pour une instabilité de test.
+
 ## Le montage de l'authentification
 
 Deux fichiers, sur le modèle exact du mailer :

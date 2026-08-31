@@ -25,12 +25,26 @@ export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
   reporter: 'list',
-  // Un parcours qui ne passe qu'au second essai est un parcours instable : une
-  // seule reprise, pour absorber le démarrage, pas pour masquer un défaut.
-  retries: 1,
+  // **Aucune reprise.** Un parcours qui ne passe qu'au second essai est un
+  // parcours instable, et la reprise ne le disait pas : elle le peignait en
+  // jaune. Mesuré en revue de s08 — le parcours qui envoyait un mot de passe
+  // dans l'URL était rapporté « flaky » deux exécutions sur trois, et la story
+  // a lu une instabilité de test là où il y avait une fuite de secret. Une
+  // politique de reprise qui transforme un défaut reproductible en badge jaune
+  // coûte plus qu'elle ne rend.
+  //
+  // Ce qui remplace la reprise : une attente d'actionnabilité côté application
+  // (`apps/web/app/use-hydrated.ts` — le bouton d'envoi n'est actif qu'une fois
+  // React aux commandes), une lecture de la boîte email ancrée dans le temps
+  // (`e2e/support/account.ts`), et un `expect(...).toPass()` **écrit dans le
+  // parcours** là où le geste est réellement rejouable, avec la raison à côté.
+  retries: 0,
   use: {
     baseURL: BASE_URL,
-    trace: 'on-first-retry',
+    // Sans reprise, « à la première reprise » ne se déclenche jamais : la trace
+    // est gardée quand le parcours échoue, ce qui est le seul moment où elle
+    // sert.
+    trace: 'retain-on-failure',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {

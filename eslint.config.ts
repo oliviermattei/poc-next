@@ -13,6 +13,30 @@ import type { Linter } from 'eslint'
  */
 const NODE_BUILTINS = builtinModules.flatMap((name) => [name, `node:${name}`])
 
+/**
+ * La portée des gardes de ce fichier, écrite **une fois**.
+ *
+ * Un fichier qu'aucune portée ne nomme n'est pas « autorisé » : il n'est pas
+ * linté du tout. Les portées divergeaient — `apps/**` en `*.{ts,tsx}`,
+ * `packages/**` en `*.{ts,tsx,mts,cts}` — et un `.mts` d'application passait
+ * sous toutes les gardes, mesuré en revue de s08. Une seule liste, partagée,
+ * pour que l'écart ne se recrée pas.
+ *
+ * Elle couvre les extensions TypeScript **et** JavaScript. Le dépôt ne compte
+ * que deux sources JavaScript au 31 août 2026 — `apps/web/postcss.config.mjs`
+ * et `packages/cli/bin/ks.mjs` — mais un `.mjs` d'application important Radix
+ * passait toutes les gardes, mesuré. Une portée qui dépend du fait qu'on
+ * n'écrit pas de JavaScript n'est pas une portée. Elle est donc plus large que
+ * ce que les `tsconfig` compilent, et c'est voulu : le balayage du dépôt
+ * (`tests/module-registry.test.ts`) reste, lui, aligné sur le compilateur.
+ */
+const SOURCE_EXTENSIONS = '{ts,tsx,mts,cts,js,jsx,mjs,cjs}'
+
+const sources = (directory: string): string => `${directory}/**/*.${SOURCE_EXTENSIONS}`
+
+/** Les fichiers de premier niveau : configuration du dépôt, scripts isolés. */
+const ROOT_SOURCES = `*.${SOURCE_EXTENSIONS}`
+
 /** Sélecteur esquery couvrant `require('fs')` et `import('node:fs')`. */
 const nodeBuiltinLiteral = (): string => {
   const alternatives = builtinModules.map((name) => name.replaceAll('/', '\\u002f')).join('|')
@@ -35,7 +59,11 @@ const nodeBuiltinLiteral = (): string => {
  * remplace les options de la première, elle ne s'y ajoute pas.
  */
 const COMPONENT_BASE_RESTRICTION = {
-  group: ['@radix-ui/*', '@radix-ui/*/**'],
+  // `radix-ui` — le paquet unifié, celui que la documentation de Radix installe
+  // aujourd'hui — est visé au même titre que les paquets par composant. Il
+  // n'est pas installé ici ; ne pas le nommer laissait la garde entière
+  // contournable par un `pnpm add radix-ui`.
+  group: ['@radix-ui/*', '@radix-ui/*/**', 'radix-ui', 'radix-ui/**'],
   message:
     'Le socle de composants ne sort pas de `packages/ui` (ADR 022) : un module ou un écran compose avec `@repo/ui`. C’est cette frontière qui garde le passage à Base UI, quand il aura une version stable, à un coût borné.',
 } as const
@@ -71,14 +99,57 @@ const DYNAMIC_IMPORT_FORMS = ['ImportExpression', 'CallExpression[callee.name=re
  * par le chemin le plus probable. D'où ces sélecteurs, sur le modèle de la garde
  * d'ADR 020, repris par chaque bloc qui déclare `no-restricted-syntax`.
  */
-const RADIX_PATTERN = '/^@radix-ui\\u002f/'
+const RADIX_PATTERN = '/^(@radix-ui\\u002f|radix-ui($|\\u002f))/'
 
-const COMPONENT_BASE_SYNTAX = DYNAMIC_IMPORT_FORMS.flatMap((parent) =>
-  [
+const COMPONENT_BASE_SYNTAX = [
+  // Les deux formes statiques que `no-restricted-imports` ne voit pas.
+  // `export type P = import('@radix-ui/react-dialog').DialogProps` passait
+  // **partout**, module compris — mesuré en revue. Elle est typée, elle
+  // compile, elle donne le type du socle sans qu'aucun `import` n'apparaisse :
+  // c'est exactement l'argument qui l'avait fait fermer pour `@repo/db`, et la
+  // laisser ouverte ici faisait de l'interdit une question de mise en forme.
+  ...['TSImportType', 'TSExternalModuleReference'].map(
+    (parent) => `${parent} > Literal[value=${RADIX_PATTERN}]`,
+  ),
+  ...DYNAMIC_IMPORT_FORMS.flatMap((parent) => [
     `${parent} > Literal[value=${RADIX_PATTERN}]`,
     `${parent} > TemplateLiteral[quasis.0.value.raw=${RADIX_PATTERN}]`,
-  ].map((selector) => ({ selector, message: COMPONENT_BASE_RESTRICTION.message })),
-)
+  ]),
+].map((selector) => ({ selector, message: COMPONENT_BASE_RESTRICTION.message }))
+
+/**
+ * **Un `<form>` déclare toujours sa méthode** (C1 de la revue de s08).
+ *
+ * Un formulaire sans `method` est un `GET` vers l'URL courante : c'est le
+ * défaut du navigateur, et il s'applique chaque fois que le gestionnaire React
+ * n'est pas encore attaché — hydratation en cours, script en échec, réseau
+ * lent. Mesuré, JavaScript coupé, sur les deux écrans du dépôt :
+ * `/account?currentPassword=…&newPassword=…` et `/sign-in?email=…&password=…`.
+ * Le secret atterrit alors dans le journal d'accès du serveur, dans
+ * l'historique du navigateur et dans le `Referer` des requêtes suivantes —
+ * `docs/security.md` §5.
+ *
+ * La règle ne juge pas la **valeur** : `method="get"` reste légitime pour un
+ * formulaire qui ne porte pas de secret. Elle exige que le choix soit **écrit
+ * sur place**, en toutes lettres, là où le repli se paie. Ce qu'elle refuse
+ * donc aussi, et c'est délibéré : un `method` étalé depuis un objet
+ * (`<form {...props}>`) et un `method` calculé (`<form method={m}>`,
+ * `<form method={undefined}>`) — le sélecteur ne peut pas lire ce qu'ils
+ * valent, et une garde qui accepte ce qu'elle ne peut pas vérifier n'est pas
+ * une garde. Un composant qui aurait besoin d'une méthode variable est une
+ * décision, pas un détail d'écriture.
+ *
+ * Repris par chaque bloc qui déclare `no-restricted-syntax`, `packages/ui`
+ * compris : c'est là que vivront les composants `Form` du design system.
+ */
+const FORM_METHOD_SYNTAX = [
+  {
+    selector:
+      "JSXOpeningElement[name.name='form']:not(:has(JSXAttribute[name.name='method'][value.type='Literal']))",
+    message:
+      'Un `<form>` déclare sa méthode : sans `method`, le repli du navigateur est un `GET` vers l’URL courante, et les champs — mot de passe compris — partent dans la chaîne de requête (docs/security.md §5). `method="post"` pour tout formulaire qui envoie quelque chose.',
+  },
+]
 
 /**
  * Surface client de `@repo/config` (finding N13 de s01).
@@ -97,7 +168,7 @@ const COMPONENT_BASE_SYNTAX = DYNAMIC_IMPORT_FORMS.flatMap((parent) =>
  */
 const configClientSurface: Linter.Config[] = [
   {
-    files: ['packages/config/src/**/*.ts'],
+    files: [sources('packages/config/src')],
     ignores: ['packages/config/src/dotenv.ts', 'packages/config/src/server.ts'],
     rules: {
       'no-restricted-imports': [
@@ -137,6 +208,7 @@ const configClientSurface: Linter.Config[] = [
         // Même raison que pour les motifs d'import ci-dessus : ce bloc remplace
         // les options des précédents pour les fichiers qu'il vise.
         ...COMPONENT_BASE_SYNTAX,
+        ...FORM_METHOD_SYNTAX,
       ],
     },
   },
@@ -180,14 +252,15 @@ const configClientSurface: Linter.Config[] = [
  *   elles sont citées pour dire où s'arrête la garde, pas pour être comptées
  *   comme couvertes.
  *
- * La portée est `packages/modules/**\/*.{ts,tsx,mts,cts}`, soit les extensions
- * que le `tsconfig` d'un module compile (`include: ["src"]`). Elle s'arrêtait à
- * `.ts`, et un fichier qu'aucune configuration ne matche n'est pas « autorisé » :
- * il n'est **pas linté du tout**. `docs/architecture.md` place les composants
- * React dans le `presentation/` de chaque module — le premier composant livré
- * serait sorti de la portée sans qu'un seul cas ne rougisse. Le balayage du
- * dépôt (`tests/module-registry.test.ts`) collecte les mêmes extensions ; les
- * deux côtés se corrigent ensemble ou la garantie est fausse d'un côté.
+ * La portée est celle de `sources()`, partagée par toutes les gardes de ce
+ * fichier. Elle s'arrêtait à `.ts`, et un fichier qu'aucune configuration ne
+ * matche n'est pas « autorisé » : il n'est **pas linté du tout**.
+ * `docs/architecture.md` place les composants React dans le `presentation/` de
+ * chaque module — le premier composant livré serait sorti de la portée sans
+ * qu'un seul cas ne rougisse. Elle est aujourd'hui **plus large** que le
+ * balayage du dépôt (`tests/module-registry.test.ts`), qui suit ce que le
+ * `tsconfig` d'un module compile : c'est le lint qui garde, le balayage qui
+ * confirme — l'inverse serait faux.
  */
 const REPO_DB_PATTERN = '/^@repo\\u002fdb($|\\u002f)/'
 
@@ -208,7 +281,7 @@ const MODULE_DB_MESSAGE =
 
 const moduleDatabaseBoundary: Linter.Config[] = [
   {
-    files: ['packages/modules/**/*.{ts,tsx,mts,cts}'],
+    files: [sources('packages/modules')],
     rules: {
       'no-restricted-syntax': [
         'error',
@@ -224,6 +297,7 @@ const moduleDatabaseBoundary: Linter.Config[] = [
         // les séparer en deux blocs sur les mêmes fichiers ferait disparaître le
         // premier.
         ...COMPONENT_BASE_SYNTAX,
+        ...FORM_METHOD_SYNTAX,
       ],
     },
   },
@@ -250,7 +324,7 @@ const moduleDatabaseBoundary: Linter.Config[] = [
  */
 const componentBaseBoundary: Linter.Config[] = [
   {
-    files: ['packages/**/*.{ts,tsx,mts,cts}', 'tooling/**/*.ts'],
+    files: [sources('packages'), sources('tooling')],
     ignores: ['packages/ui/**'],
     rules: {
       'no-restricted-imports': [
@@ -262,7 +336,11 @@ const componentBaseBoundary: Linter.Config[] = [
     },
   },
   {
-    files: ['apps/**/*.{ts,tsx}'],
+    // Tout ce qui n'est ni un package ni du tooling : les applications, mais
+    // aussi `config/`, `scripts/` et les fichiers de premier niveau. Ces trois
+    // derniers n'étaient dans aucune portée — un interdit qu'aucun motif ne
+    // nomme ne se distingue pas d'un oubli.
+    files: [sources('apps'), sources('config'), sources('scripts'), ROOT_SOURCES],
     rules: {
       'no-restricted-imports': ['error', { patterns: [{ ...COMPONENT_BASE_RESTRICTION }] }],
     },
@@ -272,9 +350,26 @@ const componentBaseBoundary: Linter.Config[] = [
     // blocs qui l'occupent déjà — `packages/config/src` et
     // `packages/modules/**` — portent les mêmes sélecteurs chez eux ; les
     // exclure ici est ce qui les empêche d'être écrasés.
-    files: ['apps/**/*.{ts,tsx}', 'packages/**/*.{ts,tsx,mts,cts}', 'tooling/**/*.ts'],
+    files: [
+      sources('apps'),
+      sources('packages'),
+      sources('tooling'),
+      sources('config'),
+      sources('scripts'),
+      ROOT_SOURCES,
+    ],
     ignores: ['packages/ui/**', 'packages/config/src/**', 'packages/modules/**'],
-    rules: { 'no-restricted-syntax': ['error', ...COMPONENT_BASE_SYNTAX] },
+    rules: {
+      'no-restricted-syntax': ['error', ...COMPONENT_BASE_SYNTAX, ...FORM_METHOD_SYNTAX],
+    },
+  },
+  {
+    // `packages/ui` est le seul endroit du dépôt sans interdit de socle — c'est
+    // sa raison d'être — donc le seul qu'aucun bloc `no-restricted-syntax` ne
+    // visait. Il lui faut le sien : les composants `Form` du design system y
+    // vivront, et c'est le formulaire de quinze écrans qui se décide là.
+    files: [sources('packages/ui')],
+    rules: { 'no-restricted-syntax': ['error', ...FORM_METHOD_SYNTAX] },
   },
 ]
 
@@ -318,11 +413,10 @@ const config: Linter.Config[] = [
   boundariesConfig,
   // `.tsx` compris : s08 apporte les premiers composants React de package, et
   // un fichier qu'aucune portée ne nomme n'est pas « autorisé » — il n'est pas
-  // linté du tout. La portée suit celle des `tsconfig` de packages
-  // (`include: ["src"]`, toutes extensions TypeScript), comme la garde d'ADR
-  // 020 plus bas. `tooling/` reste en `.ts` : il n'y a pas de composant dans
-  // de la configuration.
-  ...libraryConfig(['packages/**/*.{ts,tsx,mts,cts}', 'tooling/**/*.ts']),
+  // linté du tout. La portée est celle de `sources()`, partagée par toutes les
+  // gardes de ce fichier : une seule liste d'extensions, pour que la divergence
+  // mesurée en revue de s08 (`apps/**` en `*.{ts,tsx}`) ne se recrée pas.
+  ...libraryConfig([sources('packages'), sources('tooling')]),
   ...nextConfig(['apps/web/**/*.ts', 'apps/web/**/*.tsx']),
   // Après `libraryConfig`, dont il reprend le motif ; avant
   // `configClientSurface`, qui reprend les deux. L'ordre **est** la règle : le

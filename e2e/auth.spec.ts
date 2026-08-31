@@ -1,8 +1,6 @@
-import { readdir, readFile } from 'node:fs/promises'
-import { fileURLToPath } from 'node:url'
-import { randomUUID } from 'node:crypto'
+import { expect, test } from '@playwright/test'
 
-import { expect, test, type Page } from '@playwright/test'
+import { anEmail as anAddress, linkSentTo, PASSWORD, signIn, signUp } from './support/account'
 
 /**
  * Le parcours d'authentification, dans un vrai navigateur.
@@ -16,59 +14,15 @@ import { expect, test, type Page } from '@playwright/test'
  * Les emails sont lus dans la **capture locale** (`docs/reliability.md` §2) :
  * l'application démarrée par Playwright écrit ses emails dans `apps/web/.mail`
  * au lieu de les envoyer. C'est le même chemin qu'en développement.
+ *
+ * Les gestes communs — inscrire, lire la boîte, se connecter — viennent de
+ * `support/account.ts`. Ils y ont été extraits par s08 ; ce fichier en gardait
+ * une copie, et les deux ont divergé : la copie lisait « le dernier email
+ * écrit » sans condition d'ordre, ce qui rendait le parcours « mot de passe
+ * oublié » instable. Une seule lecture de la boîte, donc, corrigée une fois.
  */
 
-const MAIL_DIRECTORY = fileURLToPath(new URL('../apps/web/.mail', import.meta.url))
-const LINK_PATTERN = /http:\/\/localhost:\d+\/[^\s"<]+/g
-const PASSWORD = 'mot-de-passe-de-test-e2e'
-
-const anEmail = (): string => `s07-e2e-${randomUUID()}@example.test`
-
-/** Le lien contenu dans le dernier email capturé pour ce destinataire. */
-const linkSentTo = async (email: string): Promise<string> => {
-  const deadline = Date.now() + 10_000
-
-  while (Date.now() < deadline) {
-    const files = await readdir(MAIL_DIRECTORY).catch(() => [] as string[])
-    // Du plus récent au plus ancien : le nom du fichier de capture commence par
-    // l'horodatage de l'envoi, et un même destinataire reçoit plusieurs emails
-    // au cours d'un parcours. Prendre « un fichier qui le mentionne » rendrait
-    // le cas dépendant de l'ordre de lecture du dossier.
-    const contents = await Promise.all(
-      files
-        .filter((name) => name.endsWith('.html'))
-        .sort((left, right) => right.localeCompare(left))
-        .map(async (name) => await readFile(`${MAIL_DIRECTORY}/${name}`, 'utf8')),
-    )
-
-    const match = contents
-      .find((content) => content.includes(email))
-      ?.match(LINK_PATTERN)
-      ?.at(-1)
-
-    if (match !== undefined) {
-      return match.replaceAll('&amp;', '&')
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 200))
-  }
-
-  throw new Error(`Aucun email capturé pour ${email} dans ${MAIL_DIRECTORY}.`)
-}
-
-const signUp = async (page: Page, email: string): Promise<void> => {
-  await page.goto('/sign-up')
-  await page.getByLabel('Adresse email').fill(email)
-  await page.getByLabel('Mot de passe').fill(PASSWORD)
-  await page.getByRole('button', { name: 'Créer le compte' }).click()
-  await expect(page.getByRole('status')).toContainText('Vérifiez votre boîte email')
-}
-
-const signIn = async (page: Page, email: string): Promise<void> => {
-  await page.getByLabel('Adresse email', { exact: true }).fill(email)
-  await page.getByLabel('Mot de passe').fill(PASSWORD)
-  await page.getByRole('button', { name: 'Se connecter' }).click()
-}
+const anEmail = (): string => anAddress('s07-e2e')
 
 test('inscription, vérification, connexion, écran protégé, déconnexion', async ({ page, context }) => {
   const email = anEmail()
@@ -80,8 +34,12 @@ test('inscription, vérification, connexion, écran protégé, déconnexion', as
   await expect(page).toHaveURL(/\/sign-in\?verified=1$/)
   await expect(page.getByRole('status')).toContainText('vérifiée')
 
+  // La connexion aboutit au **tableau de bord** : c'est le critère 1 de s08.
+  // s07 repliait sur `/account`, faute de tableau de bord à atteindre.
   await signIn(page, email)
-  await expect(page).toHaveURL(/\/account$/)
+  await expect(page).toHaveURL(/localhost:\d+\/$/)
+
+  await page.goto('/account')
   await expect(page.getByRole('heading', { name: 'Mon compte' })).toBeVisible()
 
   // Le cookie de session, tel que le navigateur le stocke.
@@ -192,13 +150,18 @@ test('mot de passe oublié : le lien reçu mène à l’écran, et le nouveau mo
 
   await page.goto('/forgot-password')
   await page.getByLabel('Adresse email').fill(email)
+
+  // L'instant de la demande : le lien attendu est celui d'**après**, jamais
+  // celui de la vérification, déjà consommé plus haut.
+  const requestedAt = Date.now()
+
   await page.getByRole('button', { name: 'Recevoir un lien' }).click()
   await expect(page.getByRole('status')).toBeVisible()
 
   // Le lien est **suivi**, pas seulement lu : c'est ce qui attrape un lien
   // mort, et c'est ainsi qu'on a vu que celui de la bibliothèque pointait sur
   // une route qu'aucun module ne déclare.
-  await page.goto(await linkSentTo(email))
+  await page.goto(await linkSentTo(email, { since: requestedAt }))
   await expect(page.getByRole('heading', { name: 'Réinitialiser le mot de passe' })).toBeVisible()
 
   await page.getByLabel('Nouveau mot de passe').fill(newPassword)
@@ -208,7 +171,7 @@ test('mot de passe oublié : le lien reçu mène à l’écran, et le nouveau mo
   await page.getByLabel('Adresse email', { exact: true }).fill(email)
   await page.getByLabel('Mot de passe').fill(newPassword)
   await page.getByRole('button', { name: 'Se connecter' }).click()
-  await expect(page).toHaveURL(/\/account$/)
+  await expect(page).toHaveURL(/localhost:\d+\/$/)
 })
 
 test('la navigation montre « Mon compte » une fois connecté, jamais avant', async ({ page }) => {
@@ -224,7 +187,7 @@ test('la navigation montre « Mon compte » une fois connecté, jamais avant', a
 
   await page.goto('/sign-in')
   await signIn(page, email)
-  await expect(page).toHaveURL(/\/account$/)
+  await expect(page).toHaveURL(/localhost:\d+\/$/)
 
   await expect(navigation.getByRole('link', { name: 'Mon compte' })).toHaveCount(1)
 })

@@ -8,8 +8,24 @@ la source.
 aucun écran n'importe Radix : ils composent avec le baril `@repo/ui`. C'est cette
 frontière qui garde le passage à Base UI — le jour où il publiera une version
 stable — à un coût borné plutôt qu'à un refactor traversant. Ce n'est pas une
-intention : `pnpm lint` refuse `@radix-ui/*` partout ailleurs, y compris en
-import dynamique, et `tests/lint-rules.test.ts` rejoue chaque écriture.
+intention : `pnpm lint` refuse `@radix-ui/*` ailleurs, et `tests/lint-rules.test.ts`
+soumet chaque écriture à la configuration réelle du dépôt.
+
+**Ce qui est balayé**, cas par cas, et rien de plus : import statique, import de
+type, réexport, sous-chemin, import dynamique, gabarit, l'import de type en
+position d'annotation (`import('@radix-ui/…').P`) et le paquet unifié
+`radix-ui` — croisés avec les huit emplacements soumis à la garde (`apps/**`,
+`packages/**`, `packages/config/src`, `packages/modules/**`, `tooling/**`,
+`config/`, `scripts/`, les fichiers de premier niveau), en `.ts`, `.tsx`,
+`.mts`, `.cts`, `.mjs` et `.jsx`. La revue de s08 a mesuré que deux de ces
+emplacements pouvaient être vidés sans qu'un test ne bouge, et que l'écriture en
+position d'annotation passait partout : chaque emplacement a désormais ses cas,
+et neutraliser l'un d'eux fait rougir `pnpm test`.
+
+**Non balayé, et connu** : un spécificateur reconstruit à l'exécution
+(`import('@radix' + '-ui/…')`), et les fichiers du harnais de test (`tests/`,
+`e2e/`, `packages/*/src/**/*.test.ts`) — exception nommée. Mesuré une écriture à
+la fois contre la configuration réelle, le 31 août 2026.
 
 ## Les tokens
 
@@ -108,7 +124,9 @@ alternatif d'une image, et tout écran qu'aucun parcours ne visite.
 
 - `tests/design-system.test.ts` à la racine : les tokens contre le document qui
   fait autorité ;
-- `tests/lint-rules.test.ts` : la frontière avec Radix ;
+- `tests/lint-rules.test.ts` : la frontière avec Radix, et la règle qui exige un
+  `method` sur tout `<form>` — elle vise aussi ce package, où vivront les
+  composants `Form` du design system (revue de s08, C1) ;
 - `e2e/app-shell.spec.ts` : le thème, la navigation et le rendu sous 400 px dans
   un vrai navigateur.
 
