@@ -407,5 +407,370 @@ statut et par message. Sur la story qui pose l'authentification d'un
 boilerplate, cette porte-là doit être fermée ou l'arbitrage consigné avant de
 livrer.
 
-Max severity: critical
-Ship allowed: no
+Verdict de cette première passe : **gravité maximale `critical`, livraison
+refusée** (C1). Le verdict qui fait foi pour la porte de livraison est celui de
+la seconde passe, en fin de fichier.
+
+---
+
+# Seconde passe — commit correctif `7ced9c6`
+
+Contexte frais, dépôt jamais vu, première passe lue mais non rejouée. Diff jugé :
+`git diff 8d3706a..7ced9c6` (27 fichiers, +748/−90). Périmètre assigné : C1, M1,
+M2, M3, M4 de la première passe, plus les écarts déclarés.
+
+## 1. Commandes exécutées moi-même
+
+| Commande | État livré | Tous modules | Socle seul (`enabledModules = ['auth']`) |
+|---|---|---|---|
+| `pnpm typecheck` | 12 vertes (relancé `--force`) | 12 vertes | 12 vertes |
+| `pnpm lint` | vert | vert | vert |
+| `pnpm test` | **438 passés / 2 ignorés** (21 fichiers, 1 ignoré) | 438 / 2 | 438 / 2 |
+| `pnpm test:e2e` | **11 passés** | 10 passés / **1 rouge** — `modules.spec.ts:55`, trou s03 connu, hors périmètre | **11 passés** |
+| `pnpm build` | vert | vert | vert |
+| `pnpm run audit` | vert (1 avis, aucun au seuil « élevé » non couvert) | vert | — |
+| `pnpm db:generate` / `db:migrate` | verts | verts | verts |
+
+Les trois états ont été obtenus en éditant `config/features.ts` puis en
+relançant `pnpm db:generate`. L'arbre a été restauré et vérifié
+(`git diff --exit-code`, `git status --porcelain` vide) avant la rédaction, y
+compris les barils générés ; les comptes de sonde (`zzprobe-%`) ont été effacés
+de `auth_user` et `auth_verification`.
+
+**Le troisième état d'ADR 021 est vert, mesuré** : configuration réduite au
+socle, 438 tests, **11 parcours Playwright**, lint, typecheck, build, génération
+et migrations. L'ADR ne se contente pas de redéfinir les trois états, il en
+livre un qui passe.
+
+## 2. C1 — refermé, et le raffinement de l'implémenteur est exact
+
+**Les trois cas, re-mesurés moi-même**, d'abord contre la bibliothèque
+(`service.handle`, avant réécriture), puis à travers le répartiteur :
+
+```
+BIBLIOTHÈQUE  compte inconnu                    → 401 {"message":"Invalid email or password","code":"INVALID_EMAIL_OR_PASSWORD"}
+              mot de passe faux / non vérifié   → 401 {"message":"Invalid email or password","code":"INVALID_EMAIL_OR_PASSWORD"}
+              bon mot de passe / non vérifié    → 403 {"message":"Email not verified","code":"EMAIL_NOT_VERIFIED"}
+
+ROUTE         les trois                         → 401 {"message":"Invalid email or password","code":"INVALID_EMAIL_OR_PASSWORD"}
+                                                  en-têtes identiques : [["content-type","application/json"]]
+```
+
+La cause est bien où l'implémenteur la situe : `better-auth@1.7.2`,
+`dist/api/routes/sign-in.mjs`, la branche
+`if (requireEmailVerification && !user.emailVerified)` est **après**
+`await ctx.context.password.verify(...)` — j'ai lu les lignes. **La première
+passe a donc énoncé C1 plus largement que les faits** : ce n'était pas une
+énumération anonyme en une requête, mais un **oracle de bourrage
+d'identifiants**, atteignable seulement en connaissant déjà le mot de passe. Le
+correctif ferme la porte quand même, et le commentaire de
+`domain/credentials.ts` écrit la nuance au lieu de la gommer. C'est la bonne
+manière de corriger un constat surestimé.
+
+**Le 5xx passe bien.** `genericSignInRefusal` ne réécrit que 401 et 403 ; tout
+le reste — 200, 400, 500, 502 — traverse tel quel, et une panne reste une panne
+(`docs/reliability.md` §2). Deux mutations le prouvent dans les deux sens :
+
+| Invariant neutralisé | Rouges |
+|---|---|
+| `genericSignInRefusal` rend toujours `null` (la réponse de la bibliothèque repasse) | **6** — dont les trois cas d'intégration, le parcours e2e des trois états, et la matrice unitaire |
+| `genericSignInRefusal` élargi à `status >= 400` (une panne déguisée en refus) | **1** — `ne masque pas ce qui ne parle pas du compte` |
+
+Le journal, lui, garde le statut réel de la bibliothèque : la ligne
+`auth.useCases.log(...)` est **avant** la réécriture. Vérifié dans le fichier.
+
+Le chemin de compensation nommé par le correctif tient : la route publique
+`/auth/send-verification-email` appelle `useCases.sendVerificationEmail` **sans
+brancher sur l'existence du compte** — un jeton est émis et un email part dans
+tous les cas. Réponse, statut et temps sont donc indistinguables par
+construction, et pas par accident.
+
+## 3. M1 — refermé, chiffres à l'appui
+
+`advanced.backgroundTasks.handler` existe réellement :
+`dist/context/create-context.mjs:211-221` — sans lui, `runInBackgroundOrAwait`
+fait `await promise`. `after` est bien exporté par `next@16.3.3`
+(`next/server.d.ts:21 → export { after } from 'next/dist/server/after'`).
+
+Écart re-mesuré moi-même, mailer retardé à 120 ms, médiane sur 5 essais :
+
+| État | Écart connu / inconnu |
+|---|---|
+| Livré | **0,19 ms** |
+| `backgroundTasks: { handler }` retiré (mutation) | **119,29 ms** — soit exactement le retard du mailer, et exactement le chiffre annoncé |
+
+La mutation fait rougir **1** cas, et c'est le bon. **L'email différé atterrit
+vraiment** : le parcours Playwright `mot de passe oublié` passe par le vrai
+serveur Next, attend jusqu'à 10 s la capture locale, lit le lien et s'en sert
+pour changer le mot de passe — il est vert dans les trois états de
+configuration. Ce n'est pas la doublure de la suite qui le prouve, c'est
+l'application.
+
+Le crochet est global à la bibliothèque, pas au seul mot de passe oublié : j'ai
+balayé les vingt appels à `runInBackgroundOrAwait` dans `dist`. Sur les douze
+routes déclarées par le module, **un seul** est atteignable
+(`password.mjs:83`) — `sign-in.mjs:346` exige `emailVerification.sendOnSignIn`,
+non configuré ; `sign-up.mjs:254` exige `emailVerification.sendVerificationEmail`,
+non configuré (le module envoie lui-même) ; `update-user.mjs:482` n'est pas
+déclarée, `/change-email` étant servie par le module. L'affirmation « un seul
+appelant aujourd'hui » du `AGENTS.md` est donc juste, sur ces vingt sites.
+
+## 4. M2 — la garde mord enfin, mais elle a deux nouveaux trous
+
+**La sonde de la première passe est refermée.**
+`import type { ModuleSchema } from "@repo/db"` en guillemets doubles, dans
+`packages/modules/auth/src/infrastructure/` : `pnpm lint` **rouge** (message
+nommant l'ADR 020), `tests/module-registry.test.ts` **rouge**. Le passage d'une
+expression régulière à un sélecteur AST était la bonne décision, et l'insistance
+sur `no-restricted-syntax` plutôt que `no-restricted-imports` est justifiée —
+`libraryConfig` occupe déjà le second sur `packages/**`, le redéfinir
+l'écraserait. J'ai vérifié.
+
+**Mais j'ai défait la nouvelle garde, deux fois.** Sondes posées dans le module
+`auth`, chacune vérifiée sur `pnpm lint`, `tsc --noEmit` du package, et
+`pnpm test` :
+
+| Sonde | `pnpm lint` | `tsc --noEmit` | `tests/module-registry.test.ts` |
+|---|---|---|---|
+| `import type { ModuleSchema } from "@repo/db"` (guillemets doubles, `.ts`) | **rouge** | — | **rouge** |
+| ``export const load = async () => await import(`@repo/db`)`` (littéral gabarit, `.ts`) | **vert** | **vert** | **vert** |
+| `import { getDatabase } from "@repo/db"` dans un fichier **`.tsx`** du module | **vert** | **vert** | **vert** |
+
+- Le sélecteur est `ImportExpression > Literal[value=/…/]`. Un
+  `TemplateLiteral` n'est pas un `Literal` : l'import dynamique en accents
+  graves traverse. Le commentaire d'`eslint.config.ts` revendique pourtant que
+  les cinq sélecteurs couvrent « l'import dynamique », sans réserve — c'est
+  précisément la revendication d'exhaustivité que `AGENTS.md` interdit
+  (« Never claim exhaustiveness […] say what was swept »). `require` en accents
+  graves, lui, est rattrapé par `@typescript-eslint/no-require-imports` ; ce
+  n'est pas la garde d'ADR 020 qui le tient.
+- La portée est `packages/modules/**/*.ts`, qui **ne couvre pas `.tsx`**, et le
+  balayage de `tests/module-registry.test.ts` ne collecte que `.ts`
+  (`entry.name.endsWith('.ts')`). Or `docs/architecture.md` place les composants
+  React dans le `presentation/` de chaque module : le premier module qui livrera
+  un composant sortira du périmètre de la règle **en silence**. Aucun module
+  n'en a aujourd'hui — c'est pour ça que le trou est invisible, pas pour ça
+  qu'il n'existe pas. (Contexte, hors périmètre de ce correctif : les règles de
+  frontières de couches et `libraryConfig` visent elles aussi `packages/**/*.ts`
+  et manqueront le même fichier.)
+
+Deux autres contournements existent — `import('@repo/' + 'db')` et un
+`createRequire` aliasé — mais ils ne se tapent pas par accident et ne rendent
+rien de typé ; je les cite pour dire ce qui a été balayé, pas pour les compter.
+
+Ce constat vaut ce que valait M2 : la règle est **exécutable dans sa forme
+courante et sur les fichiers `.ts`**, et la formulation du commentaire promet
+plus. **major** — cadré, non silencieusement corrupteur, et le cas le plus
+plausible (le guillemet) est fermé.
+
+## 5. M3 — c'est devenu une règle, et elle refuse par le nom
+
+Tentatives de couper `auth`, toutes celles que j'ai trouvées :
+
+| Geste | Résultat |
+|---|---|
+| `pnpm ks toggle auth` | **refusé**, code 1, nomme « auth » et « socle » |
+| `npx ks toggle auth --json` | refusé, code 1, message sur `stderr` |
+| `npx ks toggle auth --with-requires` | refusé |
+| `npx ks toggle auth --apply-migrations` | refusé |
+| après chacun : `git status` | `config/features.ts` **intact** — le refus précède l'écriture |
+| `config/features.ts` édité à la main, puis `pnpm db:generate` | **échoue**, `ModuleConfigurationError`, nomme « auth » |
+| idem, `pnpm db:migrate` | **échoue**, même message |
+| idem, `pnpm build` | **échoue** à la collecte de `/` et `/sign-in`, même message |
+
+Trois points de composition en production (`apps/web/lib/module-registry.ts`,
+`packages/db/src/scripts/generate.ts`, `.../migrate.ts`) — j'ai balayé le dépôt
+pour `buildRegistry(` et `resolveEnabledModules(` : ce sont les seuls hors
+tests, et les trois passent `required`. Le CLI est le quatrième.
+
+Mutations :
+
+| Invariant neutralisé | Rouges |
+|---|---|
+| Boucle `for (const id of configuration.required ?? [])` rendue inerte (`validate.ts`) | **5** |
+| `requiredModules = []` dans `config/features.ts` | **1** — `refuse la configuration du dépôt privée de son socle` ; et `ks toggle auth` **réussit** alors, ce qui prouve que c'est bien cette liste qui arme la règle |
+
+Le maillon que la première passe réclamait — « que `config/features.ts` arme
+réellement la règle » — est donc lui-même testé. Le refus d'un socle absent de
+l'annuaire (`required: ['auht']`) est un bon réflexe : sans lui une faute de
+frappe désarmerait tout en silence.
+
+## 6. M4 — la limite est vraie, écrite au bon endroit, et l'arbitrage tient
+
+Vérifié dans le paquet installé, pas dans la documentation :
+
+- `dist/api/routes/password.mjs:75-79` — `const verificationToken = generateId(24)`
+  puis `identifier: \`reset-password:${verificationToken}\``, `value: user.user.id`.
+  Le jeton est bien stocké **en clair**, et c'est le même que celui de l'URL
+  (ligne 82). La propriété inverse, telle qu'elle était écrite, était fausse ;
+  elle est maintenant bornée aux jetons de la fabrique, et la limite est écrite
+  **là où la propriété était affirmée**.
+- `generateId(24)` = `createRandomStringGenerator('a-z','A-Z','0-9')(24)`, soit
+  ~142 bits : rien à deviner, le risque est bien un accès en lecture à la base
+  et rien d'autre.
+- TTL réellement câblé : `resetPasswordTokenExpiresIn: policy.passwordResetTtlSeconds`,
+  et `passwordResetTtlSeconds: 60 * 30` dans `domain/auth-policy.ts`.
+
+L'arbitrage — accepté, borné par 30 minutes, usage unique, invalidation des
+frères, et « à reprendre » nommément — est proportionné. **Je ne l'escalade
+pas** : la propriété n'est plus affirmée à tort, et la conséquence exacte est
+écrite. Une réserve tout de même, en m3 ci-dessous.
+
+## 7. Les écarts déclarés, jugés
+
+- **Le CLI touché malgré le DO-NOT (~20 lignes).** Justifié, et je l'ai vérifié
+  plutôt que cru : sans le fil `required` de `bin.ts` jusqu'à `planToggle`, la
+  règle était armée dans `@repo/core` et jamais atteinte par la commande qui
+  peut la violer — `ks toggle auth` aurait écrit le fichier, puis échoué plus
+  loin à la régénération, avec un message qui ne parle pas du socle. Le
+  changement est additif (`required?` facultatif partout), le CLI ne rejoue pas
+  la règle mais soumet la configuration candidate à la validation, et le refus
+  précède l'écriture — mesuré. **Acceptable.**
+- **`config/features.ts` édité.** C'est le fichier que le propriétaire du projet
+  édite, et le seul endroit correct pour une décision de produit. ADR 021 rejette
+  les quatre alternatives pour des raisons que j'ai pu contrôler : j'ai confirmé
+  qu'**aucun module ne déclare `requires: ['auth']`**, donc l'option « déclarer
+  le requis » ne protégeait rien dans l'état livré. **Acceptable.**
+- **`apps/web/lib/auth.ts` branché sur `after` sans qu'on le demande.** Bonne
+  API, bon endroit (le seul fichier de l'application qui connaît le module), et
+  le résultat est prouvé par le parcours navigateur. **Acceptable.**
+- **Garde régulière remplacée plutôt que réparée.** Le principe est le bon — le
+  dépôt s'est fait prendre deux fois par des gardes textuelles. L'exécution est
+  incomplète : voir §4. **Acceptable dans le principe, incomplet dans le fait.**
+- **`tests/auth.test.ts` : mailer retardable et collecteur de tâches.** Les deux
+  sont nécessaires — sans retard le chronomètre ne voit rien, sans collecteur la
+  suite ne sait pas quand l'email est parti. Le collecteur n'introduit pas de
+  course : j'ai vérifié que **les six** appels à `/request-password-reset` du
+  fichier sont chacun suivis d'un `settled()`. **Acceptable.**
+- **DoD du plan.** « verts dans les trois états de configuration » est
+  redéfinie par ADR 021 (livré / tous modules / socle seul) et non annotée dans
+  `docs/plans/s07-signup-signin.md`. L'ADR l'écrit, et j'ai éprouvé les trois
+  états ; c'est une dérive de documentation, pas de code (m4).
+
+## 8. Constats de cette passe
+
+### MAJOR
+
+**N1 — La garde d'ADR 020 est défaite par un accent grave, et ignore `.tsx`.**
+Détail et mesures en §4. Deux sorties, aucune coûteuse : ajouter les sélecteurs
+`ImportExpression > TemplateLiteral[quasis.0.value.raw=…]` (et le réexport
+équivalent), et élargir la portée à `packages/modules/**/*.{ts,tsx}` **des deux
+côtés** — la règle d'`eslint.config.ts` et le collecteur `sourceFiles` de
+`tests/module-registry.test.ts`. Corriger aussi la phrase du commentaire, qui
+revendique une couverture de « l'import dynamique » qu'elle n'a pas.
+
+### MINOR
+
+- **m1 — `ks list` ne dit pas qui est socle.** `auth` s'y affiche « activé »
+  comme les autres ; la colonne existe déjà pour « requis par ». Un utilisateur
+  découvre la règle en se faisant refuser, alors que la liste est l'endroit où
+  la lire. ADR 021 annonce un mécanisme générique : la prochaine entrée héritera
+  du même angle mort.
+- **m2 — `FAILED_TO_CREATE_SESSION` devient `INVALID_EMAIL_OR_PASSWORD`.** La
+  bibliothèque rend déjà cet échec en 401, donc la réécriture ne change pas le
+  statut ; mais le journal n'enregistre que `status`, et un échec de création de
+  session y est désormais indiscernable d'un mauvais mot de passe pour
+  l'exploitant. Étroit, et sans conséquence pour l'appelant.
+- **m3 — Une revendication d'exhaustivité de trop dans `token-factory.ts`.**
+  « vérifié : `storeToken` n'existe que dans le greffon magic-link » est faux :
+  `dist/plugins/one-time-token/index.mjs:12-17` l'expose aussi. Aucun des deux
+  n'est sur le chemin de la réinitialisation, donc la conclusion tient — mais
+  c'est la formulation que `AGENTS.md` interdit nommément, dans le fichier même
+  qui corrige une affirmation trop large. Écrire « sur les greffons balayés,
+  `storeToken` apparaît dans magic-link et one-time-token, et sur aucun chemin
+  de `emailAndPassword` ».
+- **m4 — La DoD du plan n'a pas suivi ADR 021.** Voir §7. `AGENTS.md` :
+  « Docs ship with the code that changes them ».
+- **m5 — ADR 020 pointe vers l'ancien domicile de la règle.** Sa ligne 19 dit
+  que `tests/module-registry.test.ts` refuse l'import ; la règle vit désormais
+  dans `eslint.config.ts` et le test délègue. Les ADR sont immuables, donc c'est
+  inhérent — mais `packages/db/AGENTS.md` est l'endroit vivant où le redresser.
+- **m6 — Un 500 s'affiche « Demande invalide ».** `messageFor` d'`auth-form.tsx`
+  n'a de branche que pour 401 et 502 ; une panne serveur atterrit dans le défaut
+  « Vérifiez les informations saisies », qui accuse l'utilisateur. Forme
+  préexistante, mais c'est ce commit qui fait du passage des 5xx une propriété
+  revendiquée.
+
+Les constats de la première passe non assignés à ce correctif (m1 à m10) n'ont
+pas été rejugés et restent ouverts.
+
+## 9. Mutations pratiquées (et restaurées)
+
+Chaque mutation a été défaite et l'arbre vérifié (`git diff --exit-code` et
+`git status --porcelain` vide). Aucune mutation dans `node_modules` cette
+passe : les affirmations sur la bibliothèque viennent de la lecture de `dist` et
+d'une sonde exécutée contre le vrai service.
+
+| Invariant neutralisé | Où | Rouges |
+|---|---|---|
+| `genericSignInRefusal` → toujours `null` | `domain/credentials.ts` | **6** |
+| `genericSignInRefusal` → `status >= 400` | `domain/credentials.ts` | **1** (le cas « ne masque pas une panne ») |
+| `backgroundTasks: { handler }` retiré | `better-auth-service.ts` | **1** — écart remonté à 119,29 ms |
+| Validation du socle rendue inerte | `packages/core/src/validate.ts` | **5** |
+| `requiredModules = []` | `config/features.ts` | **1**, et `ks toggle auth` réussit alors |
+| Import `"@repo/db"` guillemets doubles | module `.ts` | **rouge** (lint + suite) — sonde de la 1re passe refermée |
+| Import dynamique `` `@repo/db` `` en accents graves | module `.ts` | **0** → constat N1 |
+| Import `"@repo/db"` dans un fichier `.tsx` | module `.tsx` | **0** → constat N1 |
+| Seuil du chronomètre abaissé à 0 (pour lire l'écart livré) | `tests/auth.test.ts` | écart mesuré : **0,19 ms** |
+
+Aucun test décoratif dans ce diff : les treize cas ajoutés portent tous une
+assertion de comportement, et les deux cas négatifs de `tests/lint-rules.test.ts`
+(le module a le droit d'importer `@repo/core`, le point de composition a le
+droit d'importer `@repo/db`) empêchent la règle d'être vraie pour la mauvaise
+raison. Le cas de `bin.test.ts` va jusqu'au binaire et vérifie que le fichier
+n'a pas bougé — c'est la bonne forme.
+
+## 10. Ce que je n'ai **pas** pu vérifier
+
+Cette liste dit ce qui a été balayé, pas ce qui existe.
+
+- **Un vrai fournisseur d'email.** Le 0,19 ms est mesuré avec un mailer
+  artificiellement retardé de 120 ms, en local, un client à la fois. L'écart
+  sous latence réseau réelle et sous charge n'est pas mesuré.
+  *Geste humain* : une passe avec une clé de test Resend, chronomètre sur
+  `/auth/request-password-reset`, adresse connue puis inconnue, plusieurs
+  clients en parallèle.
+- **`after` sur un vrai hébergeur.** Tout a tourné contre le serveur Next local
+  piloté par Playwright. C'est précisément le cas « le processus gèle dès la
+  réponse rendue » que `after` est censé couvrir qui n'est pas éprouvé.
+  *Geste humain* : déployer une préversion (Vercel), demander une
+  réinitialisation, vérifier que l'email arrive **et** chronométrer connu contre
+  inconnu sur l'URL déployée.
+- **Le rendu des écrans.** Aucun navigateur piloté à la main. La nouvelle phrase
+  de refus et le lien « Adresse non vérifiée » de `/sign-in` ne sont vérifiés
+  que par leurs rôles ARIA et leur texte dans Playwright.
+  *Geste humain* : ouvrir `/sign-in`, se tromper de mot de passe, lire ce que
+  voit l'utilisateur, suivre le lien jusqu'au renvoi d'un lien de vérification.
+- **Le trou `.tsx` en conditions réelles.** Démontré avec un fichier synthétique
+  que j'ai supprimé ; aucun module ne livre de composant aujourd'hui. La
+  conséquence est future, pas actuelle.
+- **`e2e/modules.spec.ts:55` dans l'état « tous modules ».** Rouge, annoncé
+  pré-existant à s03 et hors périmètre ; je l'ai constaté, pas instruit.
+- **Tout ce que la première passe n'a pas pu vérifier** reste non vérifié :
+  lien ouvert depuis un vrai webmail (`SameSite=Strict`), contenu de la trace de
+  build, durée de vie des sessions, verrouillage progressif et limitation de
+  débit (s28), en-têtes et CSP du §1.
+
+## 11. Conclusion
+
+Les cinq constats assignés ont été traités, et quatre le sont complètement.
+C1 est fermé et, mieux, **corrigé dans son énoncé** : la mesure de
+l'implémenteur est exacte, la mienne la confirme, et le code écrit la nuance au
+lieu de la gommer. M1 est fermé avec un chiffre avant et un chiffre après, et
+l'email différé atterrit vraiment — le parcours navigateur le prouve, pas la
+doublure. M3 n'est plus une phrase : couper `auth` est refusé par son nom au
+CLI, à la génération, aux migrations et au démarrage, et le troisième état de
+configuration que l'ADR annonce est vert. M4 dit désormais la vérité là où elle
+était fausse, avec un arbitrage borné et daté d'un « à reprendre ».
+
+Reste M2, à moitié. Le guillemet qui défaisait la règle ne la défait plus ; un
+accent grave la défait encore, et un fichier `.tsx` sort de sa portée sans un
+bruit. Ce n'est pas un défaut de raisonnement — le passage à l'AST était le bon
+geste — c'est une couverture plus étroite que la phrase qui la décrit, dans un
+dépôt dont le `AGENTS.md` dit à haute voix que c'est la faute qui s'y répète.
+Rien ne s'exécute mal aujourd'hui, aucun module ne viole la frontière, et la
+correction tient en deux lignes de sélecteur et une extension de glob : ça se
+livre, et ça se ferme au cycle suivant.
+
+Max severity: major
+Ship allowed: yes

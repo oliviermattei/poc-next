@@ -51,4 +51,6 @@ Unitaire : jetons à usage unique et invalidation des frères, politique de sess
 
 ## Definition of Done
 
-Les treize critères satisfaits, chacun couvert par un test ou une recette manuelle tracée. §2 de `docs/security.md` intégralement couverte. `typecheck`, `lint`, `test`, `test:e2e`, `build`, `run audit` verts dans les trois états de configuration. Aucun interdit violé. Un commit sur `dev`. Revue en contexte frais passée.
+Les treize critères satisfaits, chacun couvert par un test ou une recette manuelle tracée. §2 de `docs/security.md` intégralement couverte. `typecheck`, `lint`, `test`, `test:e2e`, `build`, `run audit` verts dans les états de configuration valides.
+
+> **Amendement (ADR 021).** Cette ligne disait « dans les trois états de configuration », dont l'état « `auth` désactivé ». Cet état n'existe plus : `auth` fait partie du socle, et le désactiver est désormais **refusé par nom** à quatre endroits. Les états valides sont : socle seul, socle + démonstration, tous modules. Aucun interdit violé. Un commit sur `dev`. Revue en contexte frais passée.
