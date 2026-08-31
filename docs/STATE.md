@@ -6,10 +6,10 @@
 
 | Story | État |
 |---|---|
-| s01 → s10, s12 | **closes**, revues, correctifs appliqués |
-| s11, s13 → s46 | à faire — 35 stories |
+| s01 → s10, s12, s45 | **closes**, revues, correctifs appliqués |
+| s11, s13 → s44, s46 | à faire — 34 stories |
 
-Tests : **790 + 2 ignorés**, 39 parcours end-to-end, déterministes (`retries: 0`).
+Tests : **818 + 2 ignorés**, 46 parcours end-to-end, déterministes (`retries: 0`).
 ADR : **24**. Branche : `dev`. Commits : un par story, plus `docs:` pour recherche, plan, revue.
 
 ## Environnement (à refaire après un redémarrage de session)
@@ -34,7 +34,7 @@ open -a Docker && docker compose up -d                                # Postgres
 | Voie | Story | Worktree | Base Postgres |
 |---|---|---|---|
 | A | s10-marketing-site | **fusionnée dans `dev`** (`57e9658`), revue `minor`/ship oui | close |
-| C | s45-security-headers | commit `fed2909`, revue `major`/ship oui, **tour de correction** (404 sans nonce, justification fausse, `frame-src`, injection de journal) | `s45`, port 3145 |
+| C | s45-security-headers | **fusionnée dans `dev`** (`4d87bb5`), revue `major`/ship oui | close |
 | D | s15-organizations | commit `520d49b`, revue **critical**, **tour de correction** (F1 jointure d'appartenance, F2 périmètre non exécutable, F3 ADR superséquent) | `s15`, port 3115 |
 | E | s13-two-factor | **à relancer** — voie tuée par une limite d'usage avant d'avoir rien écrit | `s13`, port 3113 |
 | B | s12-oauth-signin | **fusionnée dans `dev`** (`5e73810`), revue `minor`/ship oui | close |
