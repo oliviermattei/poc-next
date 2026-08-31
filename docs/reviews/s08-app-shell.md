@@ -414,5 +414,307 @@ Menée moi-même, application réellement démarrée, compte créé et vérifié
   Deux modules seulement existent ; le débordement vertical de la colonne
   latérale n'a jamais été atteint.
 
-Max severity: critical
-Ship allowed: no
+**Verdict de la première passe** : sévérité maximale **critique**, ship
+**refusé**. (Écrit ici en prose : le fichier ne porte qu'un seul couple de lignes
+de verdict, celui de la passe en cours, tout en bas.)
+
+---
+
+# Seconde passe — revue ciblée du commit de correction
+
+Contexte : contexte frais, aucune connaissance du dépôt avant cette passe.
+Périmètre jugé : `git diff 4e0cd63..ae792da` **seulement** — le commit de
+correction. La première passe n'est pas rejugée. Répertoire
+`/Users/olivier/www/boilerplate`, branche `dev`, Postgres
+`boilerplate-postgres-1` en marche.
+
+## Ce que j'ai exécuté moi-même
+
+| Commande | Résultat mesuré |
+|---|---|
+| `pnpm test` | **577 passés, 2 ignorés** (23 fichiers passés, 1 ignoré) — l'attendu |
+| `pnpm lint` | `ESLint: No issues found` |
+| `pnpm typecheck --force` | 13 tâches, 0 erreur (cache vidé) |
+| `pnpm build --force` | `Compiled successfully`, 1 tâche |
+| `pnpm run audit` | 1 avis, aucun au seuil « élevé » non couvert |
+| `pnpm test:e2e` | **20 parcours**, **9 exécutions** dont une à serveur froid (`.next/cache` supprimé, port 3100 tué) : `20 passed` **neuf fois sur neuf**, zéro `flaky`, `retries: 0` |
+| Second état de configuration | `pnpm ks toggle demo-enabled` puis `test` (577/2), `lint`, `typecheck --force`, `build --force`, `test:e2e` (20), `audit` : tout vert. Configuration restaurée, `git diff --exit-code` propre |
+
+Vérification navigateur menée moi-même : bureau 1280 px et 380 px, en clair et
+en sombre, `/` et `/account`, plus `/sign-in` servi **sans JavaScript**.
+Captures éphémères, hors du dépôt, supprimées.
+
+## 1. C1 — la fuite est fermée, et chaque couche mord séparément
+
+Les trois couches annoncées existent et je les ai ouvertes une à une :
+`method="post"` sur `apps/web/app/auth-form.tsx:110` et
+`apps/web/app/account/account-form.tsx:112` ; `useHydrated()`
+(`apps/web/app/use-hydrated.ts`, `useSyncExternalStore(subscribe, () => true,
+() => false)` — la troisième position est bien `getServerSnapshot`, la signature
+existe telle quelle en React 19) ; et le sélecteur `FORM_METHOD_SYNTAX` de
+`eslint.config.ts:145`.
+
+**La soumission qui devance l'hydratation est devenue impossible, pas
+silencieuse.** Le bouton d'envoi est rendu **désactivé par le serveur**
+(`getServerSnapshot` répond `false`), et la soumission implicite d'un formulaire
+dont le bouton d'envoi par défaut est désactivé n'a pas lieu — je l'ai constaté
+dans le navigateur, JavaScript coupé, sur les deux écrans : `Entrée` dans le
+champ « Nouveau mot de passe » ne produit aucune navigation. Le
+`<Button disabled>` de `packages/ui` transmet bien l'état
+(`disabled={disabled === true || pending}`, `disabled` déstructuré donc non
+réécrasé par `{...props}`).
+
+**Le parcours n'est pas décoratif — il reproduit la fuite d'origine.** En
+neutralisant les deux couches sur les deux formulaires **et** les deux
+assertions `toBeDisabled()`, le parcours rougit sur l'assertion d'URL avec
+exactement la chaîne rapportée par la première passe :
+
+```
+Received string: "http://localhost:3100/account?currentPassword=un-secret-qui-ne-doit-pas-atteindre-l-url&newPassword=…"
+```
+
+Chaque couche est ensuite épinglée **séparément** : `method="post"` seul rend le
+parcours vert (l'attribut suffit à fermer la fuite d'URL) ; la garde
+d'hydratation seule laisse rougir `toHaveAttribute('method', 'post')`.
+
+**La règle de lint refuse ce qu'elle annonce refuser**, mesuré une écriture à la
+fois contre la configuration réelle : `method` absent, `{...props}`,
+`method={m}`, `method={undefined}` et même `method={"post"}` sont refusés ;
+`method="post"` et `method="get"` passent. Elle vise bien `apps/**`,
+`packages/**` (`packages/ui` compris), `packages/modules/**`,
+`packages/config/src`, `tooling/**`, `config/`, `scripts/` et la racine — les
+huit emplacements vérifiés un par un, plus `.jsx`.
+
+C1 est fermé.
+
+## 2. `retries: 0` — déterminisme confirmé sur cette machine
+
+Neuf exécutions complètes, dont une à serveur froid : `20 passed` à chaque fois,
+aucun `flaky`. `trace: 'retain-on-failure'` est la bonne valeur une fois la
+reprise supprimée (« à la première reprise » ne se déclencherait plus jamais).
+
+La lecture de la boîte email est correctement ancrée : `sentAt()` lit
+`/^local-(\d+)-/`, et le nom de fichier produit par
+`packages/mailer-testing/src/local-capture-mailer.ts:47` est bien
+`` `local-${Date.now()}-${counter}` `` — le motif correspond au format réel, pas
+à un format supposé. Le mécanisme décrit est exact : l'email de réinitialisation
+part par `after()` (`apps/web/lib/auth.ts:68`), donc **après** la réponse, et une
+lecture sans borne temporelle pouvait rendre le lien de vérification précédent,
+déjà consommé.
+
+**Ce que je n'ai pas réussi à prouver** : en retirant le filtre `since`, cinq
+exécutions consécutives du parcours restent vertes. La course n'est pas
+reproductible à la demande ici. La correction est donc justifiée par le
+mécanisme, lu dans le code, et non par une mesure de ma main.
+
+## 3. M1 — la garde tient, y compris contre mes propres tentatives
+
+**Les quatre sites de déclaration mordent désormais.** Les deux mutations que la
+première passe avait laissées vertes (F et H) rougissent :
+
+| # | Neutralisation dans `eslint.config.ts` | Rouge |
+|---|---|---|
+| N1 | bloc `packages/ui` privé de `FORM_METHOD_SYNTAX` | **1** |
+| N2 | bloc `apps`+`packages`+`tooling`+`config`+`scripts`+racine privé de `COMPONENT_BASE_SYNTAX` (ex-F, **vert** en 1ʳᵉ passe) | **20** |
+| N3 | `packages/config/src` privé de `COMPONENT_BASE_SYNTAX` (ex-H, **vert** en 1ʳᵉ passe) | **3** |
+| N4 | `radix-ui` unifié retiré du `group` et de `RADIX_PATTERN` | **8** |
+| N5 | `TSImportType` retiré de `COMPONENT_BASE_SYNTAX` (le trou de M1) | **8** |
+| N6 | `packages/modules` privé de `FORM_METHOD_SYNTAX` | **1** |
+| N7 | `packages/config/src` privé de `FORM_METHOD_SYNTAX` | **1** |
+| N8 | `SOURCE_EXTENSIONS` ramené à `{ts,tsx}` | **7** |
+| N9 | `config/`, `scripts/` et la racine retirés de la portée d'import | **18** |
+
+Toutes restaurées, `git diff --exit-code` propre après chacune.
+
+**J'ai essayé de défaire la garde à mon tour**, 36 écritures soumises à la
+configuration réelle. Refusées, entre autres : import d'effet de bord,
+`export *`, `export * as`, `import x = require`, `require`, gabarit avec
+expression (`` import(`@radix-ui/${n}`) ``, `` import(`radix-ui/${n}`) ``),
+sous-chemin profond du paquet unifié, `typeof import('radix-ui')`, position
+d'annotation dans un `.d.ts`, `.jsx`, `.cjs`, et le paquet unifié `radix-ui`
+partout — celui-là est bien fermé, `pnpm add radix-ui` ne contourne plus rien.
+
+**Ce qui passe encore**, et que la documentation nomme honnêtement : un
+spécificateur reconstruit à l'exécution, et le harnais de test (`tests/`,
+`e2e/`, `packages/*/src/**/*.test.ts`). J'ai vérifié la liste : elle est exacte,
+à une omission près (voir **m3**). `packages/ui/AGENTS.md` a réellement été
+réécrit — la phrase « rejoue **chaque** écriture » a disparu au profit de « Ce
+qui est balayé … Non balayé, et connu … Mesuré une écriture à la fois … le
+31 août 2026 ». C'est la forme que le `AGENTS.md` racine demande.
+
+## 4. m3 — le comportement est juste, l'assertion qui le porte ne peut pas échouer
+
+**Le comportement, mesuré dans le navigateur** : depuis `/account` anonyme →
+`/sign-in?next=/account` → connexion → `http://localhost:3100/account`. Le
+`?next=` est respecté, et le repli est bien le tableau de bord.
+
+**Mais l'assertion qui en est le critère est vide.** Voir le finding **M2** :
+neutraliser complètement la prise en compte de `?next=` laisse **les 20
+parcours verts**.
+
+En sens inverse, le repli vers le tableau de bord, lui, est solidement tenu :
+ramener `safeRedirectPath(next, '/')` à `'/account'` fait rougir **9 parcours**.
+
+## 5. m8 — le fait est corrigé, et je l'ai revérifié à la source
+
+`git show 662f671^:packages/modules/auth/src/application/ports.ts` :
+`AuthSessionRepository` ne portait bien que `countForUser` et
+`revokeAllForUser`. La note ajoutée dans `docs/research/s08-app-shell.md` dit
+vrai et indique la commande qui le prouve.
+
+## Findings de cette passe
+
+### M2 — major — L'assertion « ramène à l'URL demandée » est satisfaite par l'URL de départ
+
+`e2e/auth.spec.ts:86` : `await expect(page).toHaveURL(/\/account$/)`, exécutée
+juste après le clic de connexion. À cet instant la page est encore sur
+`http://localhost:3100/sign-in?next=/account` — **qui se termine par
+`/account`**. L'assertion est donc satisfaite avant même la redirection, et ne
+peut pas échouer.
+
+Mesuré par neutralisation : remplacer `safeRedirectPath(next, '/')` par
+`safeRedirectPath(null, '/')` dans `apps/web/app/sign-in/page.tsx` — la
+connexion ignore alors totalement `?next=` et atterrit sur `/` — laisse
+`pnpm test:e2e` à **20 passés**, sur deux exécutions dont une à serveur froid.
+Sonde ad hoc sous mutation : `URL apres signIn: http://localhost:3100/`. Sonde
+sur le code réel : `http://localhost:3100/account`.
+
+Le message de commit affirme « `?next=` reste respecté ». C'est vrai dans le
+code — et rien ne le tient. La forme de l'assertion préexiste à s07, mais c'est
+**ce commit** qui la rend porteuse : tant que le repli valait `/account`, elle
+décrivait le comportement par accident. Depuis que le repli vaut `/`, la prise
+en compte de `?next=` est la seule chose qui rende sa promesse vraie, et elle
+n'est vérifiée par aucune commande. `AGENTS.md` racine : « A green mutation
+means the test is wrong, not that the code is right. »
+
+Correctif attendu : une assertion qui distingue les deux URL — par exemple
+`toHaveURL(/localhost:\d+\/account$/)`, qui rougit sous la mutation ci-dessus.
+
+### m1 — minor — L'assertion la plus forte du parcours sans JavaScript est bornée dans le temps
+
+`e2e/app-shell.spec.ts` : `urlAfterNativeSubmit()` attend `framenavigated` au
+plus **2 secondes**, puis rend `page.url()`. Sur une machine assez lente pour
+qu'un `GET` natif dépasse ce délai, l'assertion « aucun secret dans l'URL »
+devient silencieusement un test à vide, et seule
+`toHaveAttribute('method', 'post')` — retentée par Playwright, donc
+déterministe — continuerait de mordre. Sous `retries: 0` en CI, c'est un risque
+de faux négatif, pas de clignotement. Accessoirement, ces deux attentes coûtent
+4 secondes par exécution sur le chemin nominal.
+
+### m2 — minor — La règle de lint ne juge pas la valeur, donc `method="get"` sur un champ mot de passe passe
+
+C'est un choix écrit et défendu (`eslint.config.ts:132`), et je l'accepte : le
+sélecteur ne peut pas savoir ce que porte le formulaire. Mais il faut le dire
+tel quel — la règle garantit qu'un choix a été **écrit**, pas qu'il soit sûr. La
+classe de défaut de C1 n'est refermée mécaniquement que sur les deux écrans que
+le parcours sans JavaScript visite ; le quinzième écran héritera de la règle,
+pas du parcours.
+
+### m3 — minor — `generated/` n'est dans aucune portée, et n'est pas dans la liste des trous connus
+
+Mesuré : dans `generated/schema/probe.ts` comme dans `generated/probe.tsx`, un
+`import * as D from '@radix-ui/react-dialog'`, un `import { Dialog } from
+'radix-ui'` et un `<form onSubmit>` sans `method` passent tous `pnpm lint`. Ces
+fichiers sont versionnés (`pnpm ks toggle` les modifie) et compilés. Les listes
+« Non balayé, et connu » de `packages/ui/AGENTS.md` et de
+`tests/lint-rules.test.ts` ne citent que le spécificateur reconstruit à
+l'exécution et le harnais de test. Le prochain agent lira donc une liste de
+trous comme complète alors qu'il en manque un — c'est précisément le travers que
+le `AGENTS.md` racine dit avoir déjà attrapé trois fois. Soit `generated/` entre
+dans `sources()`, soit il entre dans la liste. (`templates/` et `docs/` sont
+également hors portée mais ne contiennent aucun code aujourd'hui ; `.mts`/`.cts`
+d'application ne peuvent pas porter de JSX, ce n'est donc pas un trou.)
+
+### m4 — minor — Le `AGENTS.md` racine ne connaît pas la nouvelle règle
+
+La ligne `pnpm lint` du tableau des commandes dit encore qu'elle échoue sur
+« un import qui traverse une couche interdite, une règle de style », et la liste
+« Rules that bite » ne mentionne pas le `method` obligatoire. C'est pourtant une
+règle transversale qui fait échouer `pnpm lint` dans neuf emplacements. Elle est
+bien documentée dans `apps/web/AGENTS.md`, `packages/ui/AGENTS.md` et
+`eslint.config.ts` — il manque la ligne à l'endroit où un agent cherche les
+règles du dépôt. « Docs ship with the code that changes them. »
+
+### m5 — minor — Le bouton désactivé avant hydratation n'est expliqué nulle part à l'utilisateur
+
+Effet annoncé, et je le confirme à l'écran : le HTML servi porte
+`disabled`, donc `disabled:opacity-50` du `Button`, sur **chaque** formulaire.
+Sur cette machine c'est un demi-ton fugace ; sans JavaScript, c'est définitif et
+muet — ni `<noscript>`, ni texte. Mon jugement : ce n'est **pas** une régression
+déguisée. Ce qu'il remplace est pire (un rechargement qui jetait la saisie), et
+les formulaires étaient déjà inutilisables sans JavaScript puisqu'ils passent
+par `fetch`. Mais c'est une affordance que quinze écrans vont hériter sans
+qu'aucun document de design ne la nomme : à inscrire dans le design system, pas
+à laisser se propager en silence.
+
+### m6 — minor — Départage à la milliseconde dans `linkSentTo`
+
+`e2e/support/account.ts:57` : `sentAt(right) - sentAt(left) ||
+right.localeCompare(left)`. Le compteur n'est pas complété de zéros, donc à
+l'intérieur d'une même milliseconde `local-…-9` passe avant `local-…-10`. Il
+faudrait deux emails au même destinataire dans la même milliseconde pour que ça
+compte : pratiquement inatteignable, noté pour l'exhaustivité du balayage, pas
+comme un défaut à corriger.
+
+## Écarts annoncés — jugement
+
+- **Déduplication de la lecture de boîte email** (~35 lignes retirées de
+  `e2e/auth.spec.ts`) : **accepté, et c'était nécessaire.** La divergence entre
+  les deux copies était réelle. Les cinq symboles importés existent bien dans
+  `e2e/support/account.ts`, et le fichier n'est pas collecté par Playwright
+  (`testMatch` ne prend que `*.spec.ts`).
+- **Règle plus stricte que « il y a un `method` »** : **accepté.** Une garde qui
+  accepte ce qu'elle ne peut pas lire n'est pas une garde, et le refus est
+  documenté à trois endroits. Conséquence assumée et vérifiée : un futur
+  composant `Form` du design system écrit `<form {...props}>` sera refusé — c'est
+  le déclencheur voulu, pas un accident. Voir m2 pour ce que la règle ne promet
+  pas.
+- **Portée élargie au-delà des deux cas de la revue** : **accepté**, et
+  désormais tenue par des tests (N8, N9 : 7 et 18 rouges). La portée unique
+  `sources()` supprime la divergence `apps/**` / `packages/**` qui était la cause
+  racine.
+- **`AGENTS.md` d'`apps/web` et de `packages/ui` modifiés** : **accepté.** J'ai
+  vérifié chaque affirmation de portée par sonde ; toutes sont exactes. Une seule
+  omission, m3.
+- **Garde d'hydratation non appliquée à `SignOutButton` ni aux boutons de
+  révocation** : **correct.** Je les ai ouverts : ni l'un ni les autres ne sont
+  dans un `<form>` (`sign-out-button.tsx`, `account/session-list.tsx` — des
+  `<Button type="button" onClick>`). Avant hydratation, un clic est un
+  non-événement : aucune navigation, aucun champ, aucune fuite. Les seuls
+  `<form>` du dépôt sont les deux corrigés — balayé sur `apps`, `packages`,
+  `config`, `scripts`, `tests`, `e2e`.
+
+## Ce que je n'ai pas pu vérifier
+
+- **Le comportement en CI à `retries: 0`.** Neuf exécutions vertes sur un poste
+  chaud ne disent rien d'un runner GitHub chargé, où les courses se réveillent.
+  C'est précisément là que la politique se juge. Geste humain : regarder les cinq
+  prochaines exécutions de CI, et lire un rouge comme un défaut réel avant même
+  d'envisager de remettre une reprise.
+- **La fenêtre d'hydratation réelle**, entre « pas de script » et « script
+  chargé ». Je n'ai mesuré que les deux extrêmes. Geste humain : DevTools, réseau
+  « Slow 4G » et CPU ×6 sur `/account`, cliquer le bouton pendant le demi-ton.
+- **Le mode production servi.** Tout vient de `next dev`
+  (`playwright.config.ts`), y compris mes captures — l'indicateur de
+  développement de Next y figure. La durée du bouton désactivé n'est pas la même
+  sous `next start`. Geste humain : `pnpm build && next start`, une passe
+  visuelle et un clic pendant le chargement.
+- **Un autre navigateur que Chromium.** La seconde couche de C1 repose
+  entièrement sur « la soumission implicite n'a pas lieu quand le bouton d'envoi
+  par défaut est désactivé ». C'est le comportement spécifié, et Chromium le
+  respecte — mesuré. Safari et Firefox ne l'ont pas été. Geste humain : les deux,
+  JavaScript coupé, `Entrée` dans le champ mot de passe de `/account`.
+- **La reproduction de l'instabilité d'origine.** Cinq exécutions sans le filtre
+  `since` restent vertes ici : je ne peux pas confirmer par la mesure que c'était
+  bien la cause, seulement par la lecture du code.
+- **Le respect de `?next=` dans la durée.** Je l'ai constaté par une sonde
+  jetable ; aucun test du dépôt ne le tient (finding M2).
+- **Lecteurs d'écran, contraste WCAG, clavier de bout en bout, CSP, appareil
+  mobile réel** : inchangés depuis la première passe, toujours non vérifiés. Le
+  bouton d'envoi désactivé au premier octet s'ajoute désormais à la liste de ce
+  qui se juge à l'oreille.
+
+---
+
+Max severity: major
+Ship allowed: yes

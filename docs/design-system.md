@@ -158,6 +158,15 @@ Exception de sécurité : sur les écrans d'authentification, un identifiant inc
 - **Accès refusé** : une ressource d'une autre organisation renvoie **404**, jamais 403 — l'interface ne doit pas trahir son existence (s15).
 - **Réservé à une offre** : l'action reste visible mais mène à une invitation à souscrire, plutôt que de disparaître (s21). Masquer une fonctionnalité payante empêche de la vendre.
 
+### Avant l'hydratation
+
+Un formulaire React sans `method` retombe sur le `GET` par défaut du navigateur tant que React n'a pas pris la main — ce qui met les champs, mots de passe compris, dans l'URL. Deux affordances en découlent, héritées par tout écran portant un formulaire :
+
+- le `<form>` déclare **toujours** `method="post"`, écrit en toutes lettres (une règle de lint le refuse autrement) ;
+- le bouton de soumission est **désactivé jusqu'à l'hydratation**. Sans JavaScript il le reste : ces formulaires n'ont jamais fonctionné sans lui, et il vaut mieux le dire que perdre la saisie en silence.
+
+Conséquence visible : un bref état grisé au premier rendu. C'est voulu, et c'est le prix de ne pas divulguer un secret par l'URL.
+
 ### Feedback
 `Toaster` pour l'asynchrone (enregistré, invitation envoyée, export prêt). `Alert` en ligne pour ce qui persiste (période d'essai qui s'achève, paiement en retard, email non vérifié). Confirmation par `ConfirmDialog` pour toute action irréversible, avec saisie du nom ou de l'email pour une suppression de compte ou d'organisation.
 

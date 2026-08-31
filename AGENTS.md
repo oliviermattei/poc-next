@@ -158,7 +158,7 @@ Full detail in `docs/architecture.md`; each structural decision has an ADR in `d
 
 **Naming** — files `kebab-case`, types and components `PascalCase`, functions and variables `camelCase`, tables and columns `snake_case`.
 
-**Rules that bite** — Zod at every boundary (env, routes, webhooks, config); no direct `process.env` outside the config module; `drizzle-kit generate` only, never `push` in production; migrations backward-compatible with the version still online; a foreign key toward another module only if that module is a declared `requires` (ADR 018); 404 rather than 403 on another organization's resource; identical error message for unknown account and wrong password; permissions checked server-side.
+**Rules that bite** — every `<form>` declares `method` as a written literal (a React form without it falls back to a browser GET before hydration and puts secrets in the URL — measured in s08); Zod at every boundary (env, routes, webhooks, config); no direct `process.env` outside the config module; `drizzle-kit generate` only, never `push` in production; migrations backward-compatible with the version still online; a foreign key toward another module only if that module is a declared `requires` (ADR 018); 404 rather than 403 on another organization's resource; identical error message for unknown account and wrong password; permissions checked server-side.
 
 **Third-party integrations, two regimes, never mixed** — in CI: recording doubles for outbound calls, replay of recorded webhook events for inbound ones, both blocking. Outside CI, on an explicit command: real test keys, run before every ship.
 
