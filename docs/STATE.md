@@ -36,12 +36,18 @@ open -a Docker && docker compose up -d                                # Postgres
 | A | s10-marketing-site | **fusionnée dans `dev`** (`57e9658`), revue `minor`/ship oui | close |
 | C | s45-security-headers | commit `fed2909`, **en revue** | `s45`, port 3145 |
 | D | s15-organizations | worktree dédié, `feature/s15-organizations` | `s15`, port 3115 |
-| E | s13-two-factor | worktree dédié, `feature/s13-two-factor` | `s13`, port 3113 |
+| E | s13-two-factor | **à relancer** — voie tuée par une limite d'usage avant d'avoir rien écrit | `s13`, port 3113 |
 | B | s12-oauth-signin | **fusionnée dans `dev`** (`5e73810`), revue `minor`/ship oui | close |
 
 **Le worktree d'un agent arrive sur une branche `worktree-agent-<id>`, pas sur `feature/<id>`** :
 la première consigne d'une voie est de la renommer (`git branch -m feature/<id>`). Sans ça la
 story se fait sur un nom hors convention, et la fusion ne retrouve rien.
+
+**Une mutation se restaure juste après avoir été mesurée, jamais en fin de campagne.** Le
+31/08/2026, une limite d'usage a tué trois agents d'un coup ; le relecteur de s45 est mort avec
+`headers.set(NONCE_HEADER, 'TEHMUTANT')` encore en place dans `apps/web/proxy.ts`. Une mutation
+oubliée dans un arbre est indiscernable d'un défaut réel pour qui passe après. Après toute
+interruption d'agent : `git status` du worktree **avant** de conclure quoi que ce soit.
 
 Chaque voie fait recherche → design → plan → exécution TDD → **un commit** sur sa branche, puis
 un `reviewer` en contexte frais écrit `docs/reviews/<id>.md` dans le worktree. Fusion dans `dev`
