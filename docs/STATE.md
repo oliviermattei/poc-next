@@ -6,11 +6,11 @@
 
 | Story | État |
 |---|---|
-| s01 → s10, s12, s15, s45 | **closes**, revues, correctifs appliqués |
-| s11, s13, s14, s16 → s44, s46 | à faire — 33 stories |
+| s01 → s10, s12, s15, s16, s45 | **closes**, revues, correctifs appliqués |
+| s13, s14, s17 → s44, s46 | à faire — 32 stories (s11 et s13 en correction) |
 
-Tests : **907 + 2 ignorés**, 49 parcours end-to-end, déterministes (`retries: 0`).
-ADR : **26**. Branche : `dev`. Commits : un par story, plus `docs:` pour recherche, plan, revue.
+Tests : **977 + 2 ignorés**, 52 parcours end-to-end, déterministes (`retries: 0`).
+ADR : **28** (026 puis 029 ; 027 appartient à s11, 028 à s13, tous deux non fusionnés). Branche : `dev`. Commits : un par story, plus `docs:` pour recherche, plan, revue.
 
 ## Environnement (à refaire après un redémarrage de session)
 
@@ -34,13 +34,14 @@ open -a Docker && docker compose up -d                                # Postgres
 | Voie | Story | Worktree | Base / port |
 |---|---|---|---|
 | A | s13-two-factor | commit `bc02ef8`, **en revue** | `s13`, port 3113 |
-| B | s16-invite-members | commit `74a73a8`, **en revue** | `s16`, port 3116 |
+| B | s16-invite-members | **fusionnée dans `dev`** (`6f14cc4`), revue `none`/ship oui | close |
 | C | s11-public-forms | commit `0911aa9`, **en revue** | `s11`, port 3111 |
 
 **Les numéros d'ADR se réservent à l'ouverture d'une vague.** Deux voies parallèles qui
 prennent « le prochain numéro libre » prennent le même, et la fusion écrase une décision sans
-conflit visible — les fichiers portent le même nom. Vague en cours : 026 = s16, 027 = s11,
-028 = s13.
+conflit visible — les fichiers portent le même nom. Vague en cours : 026 et **029** = s16, 027 = s11, 028 = s13. s16 avait pris 027 à sa reprise
+après coupure : deux ADR de même numéro ne produisent **aucun** conflit de fusion, les fichiers
+portant des noms différents — la numérotation ment en silence. Renumérotation avant fusion.
 
 **Le worktree d'un agent arrive sur une branche `worktree-agent-<id>`, pas sur `feature/<id>`** :
 la première consigne d'une voie est de la renommer (`git branch -m feature/<id>`). Sans ça la
