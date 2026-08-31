@@ -1217,3 +1217,27 @@ s08-app-shell, s10-marketing-site
 **Aucune des quatre cibles ne documente de politique de sécurité du contenu** — angle du PRD, section 1 de `docs/security.md`.
 Piège principal : Next injecte des scripts en ligne pour l'hydratation. Le nonce doit être généré par requête dans le middleware et propagé, ce qui interdit la mise en cache statique des pages concernées — c'est le compromis à documenter, pas à contourner en autorisant `unsafe-inline`.
 Piège : les scripts d'analyse de s39 et le captcha de s28 sont des sources tierces. Elles se déclarent dans la configuration unique, et leur chargement reste soumis au consentement de s36.
+
+---
+
+## Story s46-auth-screens-design — Habiller les écrans d'authentification
+**As a** Visiteur **I want** des écrans d'inscription et de connexion cohérents avec le reste du produit **so that** ma première impression ne soit pas celle d'un prototype.
+
+### Complexity
+2
+
+### Acceptance criteria
+- [ ] Les cinq écrans (`/sign-in`, `/sign-up`, `/forgot-password`, `/reset-password`, `/verify-email`) utilisent les composants de `packages/ui`, sans balise de formulaire nue
+- [ ] Ils respectent `docs/design-system.md` : tokens, typographie, rayon, densité — aucun composant ni token inventé
+- [ ] Les deux affordances d'hydratation s'appliquent : `method="post"` littéral, bouton désactivé jusqu'à l'hydratation
+- [ ] Aucune chaîne en dur : tout passe par les catalogues (le test de s09 doit mordre)
+- [ ] Rendus corrects en clair et en sombre, dans les deux locales, jusqu'à 380 px sans débordement horizontal
+- [ ] Les parcours end-to-end de s07 restent verts sans réécriture de leurs assertions
+
+### Dependencies
+s08-app-shell, s09-i18n
+
+### Agentic notes
+Constaté en revue de s09 : les cinq écrans rendent des `<form>`, `<input>` et `<button>` bruts, `<h1>` à 14 px, en build de production, dans les deux langues et les deux thèmes. Antérieur à s09, hors de son périmètre, jamais couvert par une story — s08 n'a habillé que le shell et le compte.
+Ce sont **les premiers écrans qu'un acheteur voit**. Le PRD vend un boilerplate prêt à l'emploi ; un tunnel d'authentification non stylé contredit la promesse avant toute autre considération.
+Piège : ne pas modifier le comportement. Les parcours de s07 asservissent des rôles ARIA et des textes ; les traduire en composants du design system doit préserver les rôles, sinon les assertions rougissent et on croira à une régression fonctionnelle.
