@@ -34,7 +34,7 @@ open -a Docker && docker compose up -d                                # Postgres
 | Voie | Story | Worktree | Base Postgres |
 |---|---|---|---|
 | A | s10-marketing-site | worktree dédié, `feature/s10-marketing-site` — commit `aa90610`, **en revue** | `s10` |
-| B | s12-oauth-signin | worktree dédié, `feature/s12-oauth-signin` | `s12` |
+| B | s12-oauth-signin | worktree dédié, `feature/s12-oauth-signin` — commit `5e49aca`, **en revue** | `s12` |
 
 Chaque voie fait recherche → design → plan → exécution TDD → **un commit** sur sa branche, puis
 un `reviewer` en contexte frais écrit `docs/reviews/<id>.md` dans le worktree. Fusion dans `dev`
@@ -44,6 +44,13 @@ Fichiers chauds, à ne jamais laisser à deux voies en même temps : `config/fea
 `generated/`, `turbo.json`, `eslint.config.ts`, `pnpm-lock.yaml`, `AGENTS.md`, `docs/STATE.md`
 (celui-ci appartient à l'orchestrateur). Chaque voie a **sa propre base** : deux suites qui
 migrent dans `app` en même temps rougissent pour rien.
+
+**Le port 3100 est un fichier chaud lui aussi.** `playwright.config.ts` porte
+`reuseExistingServer: true` : lancé pendant qu'un autre worktree sert déjà le port, Playwright
+réutilise **le serveur d'une autre branche**. Mesuré en s12 : 20 rouges parasites. Le cas
+symétrique est pire — un vert obtenu contre le mauvais arbre, indistinguable d'un vrai vert.
+`lsof -i :3100` doit être vide avant chaque lancement. À fermer pour de bon : dette ouverte,
+un harnais ne doit pas pouvoir confondre « mon arbre est vert » et « j'ai mesuré autre chose ».
 
 ## Prochaine étape
 
