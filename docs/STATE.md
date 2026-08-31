@@ -35,7 +35,7 @@ open -a Docker && docker compose up -d                                # Postgres
 |---|---|---|---|
 | A | s10-marketing-site | **fusionnée dans `dev`** (`57e9658`), revue `minor`/ship oui | close |
 | C | s45-security-headers | commit `fed2909`, **en revue** | `s45`, port 3145 |
-| D | s15-organizations | worktree dédié, `feature/s15-organizations` | `s15`, port 3115 |
+| D | s15-organizations | commit `520d49b`, **en revue** | `s15`, port 3115 |
 | E | s13-two-factor | **à relancer** — voie tuée par une limite d'usage avant d'avoir rien écrit | `s13`, port 3113 |
 | B | s12-oauth-signin | **fusionnée dans `dev`** (`5e73810`), revue `minor`/ship oui | close |
 
