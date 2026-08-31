@@ -75,6 +75,13 @@ export default defineConfig({
       // configuration qui refuse est encore branchée par `i18n/request.ts` —
       // un test de nœud ne voit que la configuration, pas son câblage.
       I18N_MISSING_KEY_PROBE: '1',
+      // Monte le **fournisseur OAuth de développement** (s12) : c'est ce qui
+      // rend le parcours de connexion externe exerçable sans aucune clé de
+      // fournisseur, et c'est aussi la démonstration du mode local — un opt-in
+      // explicite, jamais déduit de `NODE_ENV`. Aucun identifiant Google ou
+      // GitHub n'est posé ici : les deux ensemble seraient refusés au
+      // démarrage.
+      OAUTH_LOCAL_PROVIDER: '1',
     },
     url: BASE_URL,
     // **Jamais de réutilisation.** Un serveur déjà lancé sur ce port peut être

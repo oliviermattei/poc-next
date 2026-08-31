@@ -3,10 +3,13 @@ import { getDatabase } from '@repo/db'
 import {
   authRoutePath,
   configureAuth,
+  readOAuthFailureClass,
   safeRedirectPath,
   type AccountView,
+  type AnyOAuthProviderId,
   type AuthService,
   type DescribedSession,
+  type DescribedSignInMethod,
 } from '@repo/module-auth'
 import type { ModuleSession } from '@repo/core'
 import { headers } from 'next/headers'
@@ -15,6 +18,7 @@ import { after } from 'next/server'
 import { resolveAuthConfig } from './auth-config'
 import { LOCALE_COOKIE, localeRouting } from './locale-routing'
 import { createAppMailer } from './mailer'
+import { resolveOAuthConfig } from './oauth-config'
 
 /**
  * Le point de composition de l'authentification.
@@ -44,7 +48,7 @@ import { createAppMailer } from './mailer'
  * routes et la règle de destination de retour. Réexportés d'ici, pour que
  * l'exception « un seul fichier importe un module » reste vraie.
  */
-export { authRoutePath, safeRedirectPath }
+export { authRoutePath, readOAuthFailureClass, safeRedirectPath }
 
 /**
  * La langue d'une requête entrante, telle que le module d'authentification la
@@ -77,13 +81,20 @@ let service: AuthService | null = null
 
 export function appAuth(options: AppAuthOptions = {}): AuthService {
   if (service === null) {
-    const { secret, appUrl } = resolveAuthConfig(options.env ?? getEnv())
+    const env = options.env ?? getEnv()
+    const { secret, appUrl } = resolveAuthConfig(env)
 
     service = configureAuth({
       db: getDatabase().db,
       mailer: createAppMailer(),
       secret,
       appUrl,
+      // Les fournisseurs externes, **décidés par la configuration** et jamais
+      // par le module : il ne lit aucune variable d'environnement, et une paire
+      // incomplète a déjà arrêté le démarrage en nommant la variable absente.
+      // Aucun fournisseur configuré est un état valide : il n'y a alors ni
+      // bouton, ni route de rappel joignable.
+      oauth: resolveOAuthConfig(env),
       // La langue des emails, transmise comme le reste : le module ne connaît
       // ni `config/i18n.ts`, ni le module `i18n`, ni le nom du cookie. Il reçoit
       // les locales servies, celle par défaut, et **comment** lire la langue
@@ -168,6 +179,26 @@ export async function currentViewer(): Promise<Viewer> {
     session,
     account: session === null ? null : await auth.useCases.viewAccount(session.userId),
   }
+}
+
+/**
+ * Les fournisseurs externes **montés**, pour les écrans qui affichent un bouton.
+ *
+ * La liste vient du service, donc de la configuration : un écran n'a aucune
+ * branche sur « OAuth est-il activé ? », il rend une liste qui peut être vide.
+ * C'est la même forme que la navigation dérivée du registre — pas de condition
+ * dans un composant.
+ */
+export function oauthProviders(): readonly AnyOAuthProviderId[] {
+  return appAuth().oauthProviders
+}
+
+/** Les moyens de connexion de l'appelant, sans jeton ni empreinte. */
+export async function currentSignInMethods(): Promise<readonly DescribedSignInMethod[]> {
+  const auth = appAuth()
+  const session = await auth.resolveSession(await incomingRequest())
+
+  return session === null ? [] : await auth.useCases.listSignInMethods(session.userId)
 }
 
 /** Les sessions actives de l'appelant, la sienne en tête. Aucun jeton n'en sort. */

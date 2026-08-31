@@ -64,6 +64,43 @@ export interface AuthSessionRepository {
   }): Promise<boolean>
 }
 
+/**
+ * Un **moyen de connexion** d'un compte, tel que la base le garde.
+ *
+ * La bibliothèque range l'empreinte du mot de passe et les comptes de
+ * fournisseur dans la même table, sous des `providerId` différents
+ * (`credential`, `github`…). Ce type est ce qui en **sort** : ni jeton d'accès,
+ * ni jeton de rafraîchissement, ni empreinte — les colonnes sont énumérées dans
+ * le repository, comme pour les sessions.
+ */
+export interface SignInMethodRecord {
+  readonly id: string
+  readonly providerId: string
+  readonly createdAt: Date
+}
+
+/** Ce que rend un déliement. Trois issues, et l'appelant les traduit. */
+export type UnlinkOutcome = 'unlinked' | 'not_found' | 'last-method'
+
+export interface AuthAccountRepository {
+  listForUser(userId: string): Promise<readonly SignInMethodRecord[]>
+  /**
+   * Retire un moyen de connexion, **à condition** qu'il appartienne à ce compte
+   * et qu'il en reste un autre.
+   *
+   * Les deux conditions sont tenues **dans la même transaction, sur des lignes
+   * verrouillées** : compter puis supprimer — ce que fait la bibliothèque —
+   * laisse deux déliements simultanés observer « il en reste deux » et retirer
+   * chacun le sien (`docs/reliability.md` §1 : « jamais une simple vérification
+   * préalable »). Le propriétaire est dans la condition, jamais vérifié avant :
+   * l'appelant ne peut pas distinguer « pas à vous » de « n'existe pas ».
+   */
+  unlinkForUser(input: {
+    readonly userId: string
+    readonly accountId: string
+  }): Promise<UnlinkOutcome>
+}
+
 export interface VerificationToken {
   readonly identifier: string
   readonly value: string
@@ -112,6 +149,7 @@ export type SecurityLog = (record: SecurityEventRecord) => void
 export interface AuthDependencies {
   readonly users: AuthUserRepository
   readonly sessions: AuthSessionRepository
+  readonly accounts: AuthAccountRepository
   readonly tokens: VerificationTokenRepository
   readonly tokenFactory: TokenFactory
   readonly mailer: Mailer

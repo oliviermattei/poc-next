@@ -45,6 +45,32 @@ describe('validation de l’environnement', () => {
     expect(() => parseEnv({ DATABASE_URL, EMAIL_LOCAL_CAPTURE: '1' })).not.toThrow()
   })
 
+  it('refuse un identifiant de fournisseur OAuth sans son secret, en nommant l’absente', () => {
+    // La bibliothèque d'authentification, elle, se contenterait d'un
+    // avertissement dans le journal : l'échec n'apparaîtrait qu'au premier clic.
+    expect(() => parseEnv({ DATABASE_URL, GOOGLE_CLIENT_ID: 'id' })).toThrowError(
+      /GOOGLE_CLIENT_SECRET/,
+    )
+    expect(() => parseEnv({ DATABASE_URL, GITHUB_CLIENT_SECRET: 'secret' })).toThrowError(
+      /GITHUB_CLIENT_ID/,
+    )
+  })
+
+  it('refuse le fournisseur local et une clé de fournisseur ensemble : même ambiguïté', () => {
+    expect(() =>
+      parseEnv({
+        DATABASE_URL,
+        GITHUB_CLIENT_ID: 'id',
+        GITHUB_CLIENT_SECRET: 'secret',
+        OAUTH_LOCAL_PROVIDER: '1',
+      }),
+    ).toThrowError(/OAUTH_LOCAL_PROVIDER/)
+  })
+
+  it('n’impose aucun fournisseur : sans variable, il n’y a simplement pas de bouton', () => {
+    expect(() => parseEnv({ DATABASE_URL })).not.toThrow()
+  })
+
   it('refuse une clé d’email et la capture locale ensemble : le choix serait ambigu', () => {
     expect(() =>
       parseEnv({

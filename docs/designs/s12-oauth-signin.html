@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>s12 — connexion par fournisseur (maquette de référence)</title>
+    <!--
+      Maquette de référence, pas du code à copier : l'implémentation utilise les
+      composants réels de `packages/ui`. Les valeurs ci-dessous sont les tokens
+      de `docs/design-system.md`, recopiés pour que la page soit lisible seule.
+    -->
+    <style>
+      :root {
+        --background: oklch(1 0 0);
+        --foreground: oklch(0.145 0 0);
+        --card: oklch(1 0 0);
+        --muted-foreground: oklch(0.556 0 0);
+        --border: oklch(0.922 0 0);
+        --input: oklch(0.922 0 0);
+        --primary: oklch(0.205 0 0);
+        --primary-foreground: oklch(0.985 0 0);
+        --secondary: oklch(0.97 0 0);
+        --secondary-foreground: oklch(0.205 0 0);
+        --destructive: oklch(0.577 0.245 27.325);
+        --accent: oklch(0.97 0 0);
+        --radius: 0.5rem;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 2rem 1rem;
+        background: var(--background);
+        color: var(--foreground);
+        font: 400 0.875rem/1.5 ui-sans-serif, system-ui, sans-serif;
+      }
+      .grid { display: grid; gap: 2rem; max-width: 64rem; margin: 0 auto; grid-template-columns: 1fr; }
+      @media (min-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
+      h1 { font-size: 1.875rem; font-weight: 600; margin: 0 0 1rem; }
+      h2 { font-size: 1.5rem; font-weight: 600; margin: 1.5rem 0 0.75rem; }
+      h3 { font-size: 1.25rem; font-weight: 600; margin: 0 0 0.25rem; }
+      .card { border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); padding: 1.25rem; }
+      .muted { color: var(--muted-foreground); font-size: 0.75rem; }
+      .stack { display: flex; flex-direction: column; gap: 0.75rem; }
+      .btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+        height: 2.5rem; padding: 0 1rem; border-radius: calc(var(--radius) - 2px);
+        font-size: 0.875rem; font-weight: 500; cursor: pointer; border: 1px solid transparent;
+      }
+      .btn-primary { background: var(--primary); color: var(--primary-foreground); }
+      .btn-outline { background: var(--background); border-color: var(--input); color: var(--foreground); }
+      .btn-block { width: 100%; }
+      .sep { display: flex; align-items: center; gap: 0.75rem; margin: 1rem 0; color: var(--muted-foreground); font-size: 0.75rem; }
+      .sep::before, .sep::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+      .field { display: flex; flex-direction: column; gap: 0.375rem; margin-bottom: 0.75rem; }
+      .field input { height: 2.5rem; border: 1px solid var(--input); border-radius: calc(var(--radius) - 2px); padding: 0 0.75rem; background: var(--background); }
+      .alert { border-radius: var(--radius); border: 1px solid; padding: 0.75rem 1rem; font-size: 0.875rem; }
+      .alert-destructive { border-color: color-mix(in oklab, var(--destructive) 50%, transparent); background: color-mix(in oklab, var(--destructive) 10%, transparent); color: var(--destructive); }
+      .row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; justify-content: space-between; border-top: 1px solid var(--border); padding: 0.75rem 0; }
+      .row:first-of-type { border-top: 0; }
+      .badge { display: inline-flex; align-items: center; height: 1.375rem; padding: 0 0.5rem; border-radius: 9999px; background: var(--secondary); color: var(--secondary-foreground); font-size: 0.75rem; font-weight: 500; }
+    </style>
+  </head>
+  <body>
+    <div class="grid">
+      <section>
+        <h1>Connexion</h1>
+
+        <div class="card">
+          <div class="alert alert-destructive" role="alert" style="margin-bottom: 1rem">
+            Connexion par ce fournisseur impossible. Connectez-vous avec votre mot de passe
+            ou demandez un lien de connexion.
+          </div>
+
+          <div class="stack">
+            <button class="btn btn-outline btn-block" type="submit">Continuer avec Google</button>
+            <button class="btn btn-outline btn-block" type="submit">Continuer avec GitHub</button>
+          </div>
+
+          <div class="sep">ou</div>
+
+          <div class="field">
+            <label for="email">Adresse email</label>
+            <input id="email" type="email" />
+          </div>
+          <div class="field">
+            <label for="password">Mot de passe</label>
+            <input id="password" type="password" />
+          </div>
+          <button class="btn btn-primary btn-block" type="submit">Se connecter</button>
+        </div>
+
+        <p class="muted" style="margin-top: 0.75rem">
+          Aucun fournisseur configuré : ce bloc et son séparateur n'existent pas — il n'y a
+          rien à masquer.
+        </p>
+
+        <h2>Retour du fournisseur</h2>
+        <div class="card">
+          <h3>Connexion en cours…</h3>
+          <p class="muted">
+            Cette page rebondit d'elle-même vers votre destination. Elle existe parce que le
+            cookie de session est <code>SameSite=Strict</code> : il ne repart pas sur la fin
+            d'une navigation venue d'un autre site.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <h1>Mon compte</h1>
+
+        <div class="card">
+          <h3>Connexions externes</h3>
+          <p class="muted" style="margin-bottom: 0.75rem">
+            Les moyens de connexion rattachés à ce compte.
+          </p>
+
+          <div class="row">
+            <span><span class="badge">Mot de passe</span></span>
+            <span class="muted">Ajouté le 12 mars 2026 à 09:14</span>
+            <button class="btn btn-outline" type="submit">Délier</button>
+          </div>
+          <div class="row">
+            <span><span class="badge">Google</span></span>
+            <span class="muted">Ajouté le 3 avril 2026 à 18:02</span>
+            <button class="btn btn-outline" type="submit">Délier</button>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top: 1rem">
+          <h3>Connexions externes — dernier moyen</h3>
+          <div class="row">
+            <span><span class="badge">GitHub</span></span>
+            <span class="muted">Ajouté le 3 avril 2026 à 18:02</span>
+            <span class="muted">C'est votre dernier moyen de connexion.</span>
+          </div>
+          <p class="muted">
+            L'action n'est pas proposée, mais c'est le serveur qui refuse : masquer n'est
+            jamais une permission.
+          </p>
+        </div>
+      </section>
+    </div>
+  </body>
+</html>

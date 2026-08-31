@@ -47,15 +47,26 @@ import { defaultLocale } from '../config/i18n'
  * ------------------------------------------------------------------------- */
 
 vi.mock('../apps/web/lib/auth', async () => {
-  const { authRoutePath, safeRedirectPath } = await import('@repo/module-auth')
-  const { FIXTURE_SESSIONS, viewerState } = await import('./fixtures/screen-viewer')
+  const { authRoutePath, readOAuthFailureClass, safeRedirectPath } = await import(
+    '@repo/module-auth'
+  )
+  const { FIXTURE_SESSIONS, FIXTURE_SIGN_IN_METHODS, viewerState } = await import(
+    './fixtures/screen-viewer'
+  )
 
   return {
     authRoutePath,
+    readOAuthFailureClass,
     safeRedirectPath,
     currentViewer: () => Promise.resolve(viewerState.value),
     currentSessions: () =>
       Promise.resolve(viewerState.value.session === null ? [] : FIXTURE_SESSIONS),
+    currentSignInMethods: () =>
+      Promise.resolve(viewerState.value.session === null ? [] : FIXTURE_SIGN_IN_METHODS),
+    // Les deux fournisseurs réels **et** celui de développement : les trois
+    // libellés passent ainsi sous le filet, dans la configuration la plus
+    // fournie. Aucun fournisseur configuré ne rendrait rien du tout.
+    oauthProviders: () => ['google', 'github', 'local'],
   }
 })
 
@@ -157,6 +168,11 @@ const TECHNICAL_PROPS = new Set([
   'id',
   'name',
   'redirectTo',
+  // Le rôle ARIA confié à un composant du design system — `Alert` le demande
+  // explicitement à son appelant (« role="alert" pour un refus »). Le
+  // vocabulaire est clos et technique ; le garde-fou `PROSE` refuse quand même
+  // une phrase déguisée en rôle.
+  'role',
   'side',
   'signInHref',
   'signOutAction',
@@ -403,7 +419,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         id: 'accueil connecté',
         file: 'page.tsx',
         viewer: SIGNED_IN,
-      refuses: null,
+        refuses: null,
         render: async () => (await import('../apps/web/app/page')).default(),
       },
       {
@@ -424,38 +440,58 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         id: 'compte',
         file: 'account/page.tsx',
         viewer: SIGNED_IN,
-      refuses: null,
+        refuses: null,
         render: async () => (await import('../apps/web/app/account/page')).default(),
       },
       {
         id: 'connexion',
         file: 'sign-in/page.tsx',
         viewer: ANONYMOUS,
-      refuses: null,
+        refuses: null,
         render: async () =>
           (await import('../apps/web/app/sign-in/page')).default({
             searchParams: Promise.resolve({ verified: '1', email_changed: '1', reset: '1' }),
           }),
       },
       {
+        id: 'connexion après un refus de fournisseur',
+        file: 'sign-in/page.tsx',
+        viewer: ANONYMOUS,
+        refuses: null,
+        render: async () =>
+          (await import('../apps/web/app/sign-in/page')).default({
+            searchParams: Promise.resolve({ oauth: 'denied' }),
+          }),
+      },
+      {
+        id: 'retour de fournisseur',
+        file: 'oauth/return/page.tsx',
+        viewer: ANONYMOUS,
+        refuses: null,
+        render: async () =>
+          (await import('../apps/web/app/oauth/return/page')).default({
+            searchParams: Promise.resolve({ next: '/account' }),
+          }),
+      },
+      {
         id: 'inscription',
         file: 'sign-up/page.tsx',
         viewer: ANONYMOUS,
-      refuses: null,
+        refuses: null,
         render: async () => (await import('../apps/web/app/sign-up/page')).default(),
       },
       {
         id: 'mot de passe oublié',
         file: 'forgot-password/page.tsx',
         viewer: ANONYMOUS,
-      refuses: null,
+        refuses: null,
         render: async () => (await import('../apps/web/app/forgot-password/page')).default(),
       },
       {
         id: 'réinitialisation avec jeton',
         file: 'reset-password/page.tsx',
         viewer: ANONYMOUS,
-      refuses: null,
+        refuses: null,
         render: async () =>
           (await import('../apps/web/app/reset-password/page')).default({
             searchParams: Promise.resolve({ token: 'jeton' }),
@@ -465,7 +501,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         id: 'réinitialisation sans jeton',
         file: 'reset-password/page.tsx',
         viewer: ANONYMOUS,
-      refuses: null,
+        refuses: null,
         render: async () =>
           (await import('../apps/web/app/reset-password/page')).default({
             searchParams: noParams,
@@ -475,7 +511,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         id: 'vérification en attente',
         file: 'verify-email/page.tsx',
         viewer: ANONYMOUS,
-      refuses: null,
+        refuses: null,
         render: async () =>
           (await import('../apps/web/app/verify-email/page')).default({
             searchParams: noParams,
@@ -485,7 +521,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         id: 'vérification expirée',
         file: 'verify-email/page.tsx',
         viewer: ANONYMOUS,
-      refuses: null,
+        refuses: null,
         render: async () =>
           (await import('../apps/web/app/verify-email/page')).default({
             searchParams: Promise.resolve({ error: 'expired' }),

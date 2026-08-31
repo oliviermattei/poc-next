@@ -33,6 +33,20 @@ export type SecurityEventName =
   // pouvoir le détecter. La réponse rendue à l'appelant, elle, ne distingue
   // rien.
   | 'auth.session_revocation_refused'
+  // s12 : le retrait d'un moyen de connexion, et son refus. Le second couvre
+  // les deux issues que l'appelant ne distingue pas dans le détail — un moyen
+  // qui n'est pas le sien, et le dernier moyen du compte.
+  | 'auth.provider_unlinked'
+  | 'auth.provider_unlink_refused'
+  // s12 : un parcours par fournisseur **refusé**, au départ comme au retour —
+  // fournisseur qu'on ne sert pas, autorisation refusée par la personne, ou
+  // échec replié sur la classe générique.
+  //
+  // Un nom à lui, et non `auth.sign_in_failed`, parce qu'un retour refusé
+  // journalise déjà l'échec de connexion au rappel : les compter tous les deux
+  // doublerait chaque occurrence, et le verrouillage progressif de s28
+  // compterait deux fois le même retour.
+  | 'auth.oauth_refused'
 
 /** L'acteur d'un événement. `email` est accepté à l'appel, jamais journalisé. */
 export interface SecurityEventActor {

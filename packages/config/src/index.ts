@@ -10,6 +10,7 @@ export {
   EnvValidationError,
   I18N_MISSING_KEY_PROBE_ENABLED,
   NEXT_BUILD_PHASE,
+  OAUTH_LOCAL_PROVIDER_ENABLED,
   assertStartupEnv,
   envSchema,
   getEnv,

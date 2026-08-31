@@ -10,10 +10,16 @@ import {
 } from '@repo/ui'
 import { redirect } from 'next/navigation'
 
-import { authRoutePath, currentSessions, currentViewer } from '../../lib/auth'
+import {
+  authRoutePath,
+  currentSessions,
+  currentSignInMethods,
+  currentViewer,
+} from '../../lib/auth'
 import { appIntl } from '../../lib/i18n'
 import { SignOutButton } from '../sign-out-button'
 import { AccountForm } from './account-form'
+import { ConnectionList, type ConnectionRow } from './connection-list'
 import { SessionList, type SessionRow } from './session-list'
 
 /**
@@ -74,6 +80,15 @@ export default async function AccountPage() {
   }
 
   const dateFormat = dateFormatFor(locale)
+  // Les dates sont formatées **par le serveur**, dans la locale servie : les
+  // formater dans le composant client les rendrait dans le fuseau du
+  // navigateur, ce que React signale comme un écart d'hydratation.
+  const connections: readonly ConnectionRow[] = (await currentSignInMethods()).map((method) => ({
+    id: method.id,
+    providerId: method.providerId,
+    addedAt: dateFormat.format(method.createdAt),
+    removable: method.removable,
+  }))
   const sessions: readonly SessionRow[] = (await currentSessions()).map((active) => ({
     id: active.id,
     createdAt: dateFormat.format(active.createdAt),
@@ -168,6 +183,19 @@ export default async function AccountPage() {
             ]}
             submitLabelKey="app.account.password.submit"
             successMessageKey="app.account.password.done"
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('app.account.connections.title')}</CardTitle>
+          <CardDescription>{t('app.account.connections.description')}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ConnectionList
+            connections={connections}
+            action={authRoutePath('unlinkProvider')}
           />
         </CardContent>
       </Card>

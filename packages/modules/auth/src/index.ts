@@ -23,12 +23,22 @@ export {
 } from './infrastructure/drizzle-auth-repositories'
 export { AuthNotConfiguredError, type AuthService } from './application/auth-service'
 export { defaultAuthPolicy, type AuthPolicy } from './domain/auth-policy'
+export {
+  LOCAL_OAUTH_PROVIDER_ID,
+  OAUTH_PROVIDERS,
+  OAUTH_RETURN_SCREEN,
+  oauthFailureClass,
+  readOAuthFailureClass,
+  type AnyOAuthProviderId,
+  type OAuthFailureClass,
+} from './domain/oauth'
 export { safeRedirectPath } from './domain/redirect'
 export { authRoutePath } from './presentation/auth-routes'
 export {
   AUTH_EMAIL_TEMPLATES,
   type AccountView,
   type AuthUseCases,
+  type DescribedSignInMethod,
 } from './application/auth-use-cases'
 export type { DescribedSession } from './domain/session'
 export { createTokenFactory } from './infrastructure/token-factory'

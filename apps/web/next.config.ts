@@ -5,6 +5,7 @@ import createNextIntlPlugin from 'next-intl/plugin'
 
 import { resolveAuthConfig } from './lib/auth-config'
 import { resolveMailerConfig } from './lib/mailer-config'
+import { resolveOAuthConfig } from './lib/oauth-config'
 
 // Next ne lit les fichiers `.env` que dans le dossier de l'application. Le dépôt
 // n'en a qu'un, à la racine — celui que `.env.example` demande de copier. Sans
@@ -66,6 +67,11 @@ export default function config(phase: string): NextConfig {
     // sans secret de session ni URL publique, plutôt que de servir des liens de
     // vérification qui ne mènent nulle part.
     resolveAuthConfig(env)
+    // Et pour les fournisseurs externes : **aucun** est un état valide — les
+    // boutons disparaissent —, mais une paire à moitié renseignée arrête le
+    // démarrage en nommant la variable absente, plutôt que d'échouer au premier
+    // clic en production (`docs/security.md` §5).
+    resolveOAuthConfig(env)
   }
 
   return withNextIntl(nextConfig)

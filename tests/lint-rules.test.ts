@@ -712,3 +712,80 @@ describe('portée de l’exception du harnais de test', () => {
     expect(await boundariesSeverity('packages/modules/orders/src/domain/order.test.ts')).toBe(2)
   })
 })
+
+/**
+ * **Un appel réseau sortant d'un module passe par la porte bornée** (s12,
+ * `docs/reliability.md` §3 : « tout appel réseau sortant porte un délai
+ * d'attente explicite »).
+ *
+ * La règle existe parce que la conformité d'aujourd'hui ne dit rien de demain :
+ * les deux bornes posées par s12 couvrent les appels **connus** — les deux
+ * lectures de profil GitHub par leur crochet, et le reste par l'échéance du
+ * rappel. Un appel sortant écrit plus tard, ailleurs dans le module, hériterait
+ * de la seconde sans que personne ne le remarque, et n'aurait ni reprise, ni
+ * délai propre. « Quelle commande échoue si je casse ça ? » : celle-ci,
+ * `pnpm lint`.
+ *
+ * La porte est `infrastructure/oauth-outbound.ts`, et elle est la seule.
+ */
+describe('un module n’appelle pas le réseau à main nue', () => {
+  const MODULE_FILE = 'packages/modules/auth/src/infrastructure/probe.ts'
+  const GATE_FILE = 'packages/modules/auth/src/infrastructure/oauth-outbound.ts'
+
+  let eslint: ESLint
+
+  beforeAll(() => {
+    eslint = new ESLint({ cwd: REPO_ROOT })
+  })
+
+  const ruleIdsFor = async (code: string, filePath: string): Promise<string[]> => {
+    const [result] = await eslint.lintText(code, { filePath })
+
+    return (result?.messages ?? []).map((message) => message.ruleId ?? '')
+  }
+
+  it.each([
+    ['appel nu', "export const profil = async () => await fetch('https://api.example.test/user')"],
+    [
+      'par `globalThis`',
+      "export const profil = async () => await globalThis.fetch('https://api.example.test/user')",
+    ],
+    [
+      'dans la présentation',
+      "export const profil = async () => await fetch('https://api.example.test/user')",
+    ],
+  ])('refuse `fetch` dans un module — %s', async (_name, code) => {
+    const ruleIds = await ruleIdsFor(code, MODULE_FILE)
+
+    expect(ruleIds.filter((id) => id.startsWith('no-restricted-'))).not.toEqual([])
+  })
+
+  it('laisse la porte bornée appeler le réseau : c’est sa raison d’être', async () => {
+    const ruleIds = await ruleIdsFor(
+      "export const call = async (url: string) => await fetch(url, { signal: AbortSignal.timeout(1) })",
+      GATE_FILE,
+    )
+
+    expect(ruleIds.filter((id) => id.startsWith('no-restricted-'))).toEqual([])
+  })
+
+  it('n’interdit pas un appel qui passe par la porte', async () => {
+    // Trop large, la règle refuserait l'usage même qu'elle impose : elle
+    // prouverait qu'elle est fausse, pas qu'elle marche.
+    const ruleIds = await ruleIdsFor(
+      "declare const boundedFetch: (url: string) => Promise<Response | null>\nexport const profil = async () => await boundedFetch('https://api.example.test/user')",
+      MODULE_FILE,
+    )
+
+    expect(ruleIds.filter((id) => id.startsWith('no-restricted-'))).toEqual([])
+  })
+
+  it('laisse l’application, elle, appeler le réseau', async () => {
+    const ruleIds = await ruleIdsFor(
+      "export const ping = async () => await fetch('https://api.example.test/')",
+      'apps/web/lib/probe.ts',
+    )
+
+    expect(ruleIds.filter((id) => id.startsWith('no-restricted-'))).toEqual([])
+  })
+})

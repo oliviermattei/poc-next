@@ -145,6 +145,43 @@ email. La **déduire** de l'en-tête `Host`, comme le proposent la plupart des
 bibliothèques, laisse un attaquant faire pointer un lien de réinitialisation
 vers son propre domaine.
 
+Un troisième fichier depuis s12 : `lib/oauth-config.ts` porte la **règle des
+fournisseurs externes**, sur le même modèle. Trois états, et il faut en choisir
+un :
+
+| Configuration | Ce qui se passe |
+|---|---|
+| une paire complète (`GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET`, idem GitHub) | le bouton correspondant s'affiche, la boucle OAuth est réelle |
+| `OAUTH_LOCAL_PROVIDER=1`, aucune clé | un fournisseur de développement est monté, sans réseau ni clé |
+| rien | aucun bouton, aucune session possible par fournisseur, l'application démarre |
+| une paire **incomplète** | **le démarrage échoue en nommant la variable absente** |
+| le drapeau **et** une clé | refusé : le choix serait implicite, comme pour la capture locale des emails |
+| le drapeau **et** `NODE_ENV=production` | **refusé au démarrage, en nommant la variable** |
+
+Le mode local est un **opt-in de développement**, jamais un repli : il ouvre
+toujours la même adresse de test, il porte son propre identifiant de
+fournisseur, et il n'emprunte l'identité ni de Google ni de GitHub. C'est lui
+que `playwright.config.ts` pose, et c'est ce qui rend le parcours de connexion
+externe exerçable sans aucune clé.
+
+La dernière ligne du tableau est une **défense en profondeur**, et pas une
+formalité : ce fournisseur ouvre une session sur une adresse fixe **sans mot de
+passe**, pour n'importe quel visiteur. Posé seul sur un déploiement de
+production — une variable copiée d'un `.env` de poste suffit —, il donnait un
+bouton « Continuer avec Fournisseur local » à un anonyme. La règle du socle
+« jamais déduit de `NODE_ENV` » reste tenue : le drapeau demeure l'unique
+opt-in, `NODE_ENV` ne l'active jamais, il le **restreint**.
+
+Deux écrans en héritent, et une page technique : les boutons
+(`app/oauth-buttons.tsx`, un `<form method="post">` par fournisseur, sans
+JavaScript — ces formulaires n'envoient aucun secret), la carte « Connexions
+externes » de `/account`, et `app/oauth/return/page.tsx`, le **rebond** du
+retour. Ce dernier n'est pas décoratif : le cookie de session est
+`SameSite=Strict`, et il ne repart pas sur la fin d'une chaîne de navigation
+venue du fournisseur — sans rebond same-site, l'utilisateur atterrit déconnecté
+alors que sa session existe. Mesuré dans `e2e/oauth.spec.ts` : retirer le rebond
+fait rougir exactement ce parcours-là, et aucun test de nœud ne le voit.
+
 Le module reçoit sa connexion ; il n'importe jamais `@repo/db` (ADR 020).
 
 ## Le montage de l'i18n

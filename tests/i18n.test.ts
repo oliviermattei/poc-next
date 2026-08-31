@@ -1016,6 +1016,10 @@ const authUseCasesWith = (mailer: ReturnType<typeof createRecordingMailer>) =>
       revokeAllForUser: () => Promise.resolve(0),
       revokeForUser: () => Promise.resolve(false),
     },
+    accounts: {
+      listForUser: () => Promise.resolve([]),
+      unlinkForUser: () => Promise.resolve('not_found' as const),
+    },
     tokens: {
       create: () => Promise.resolve(),
       consume: () => Promise.resolve(null),

@@ -13,6 +13,18 @@ import { describeSecurityEvent } from './security-event'
 import { describeSessions, sessionOf } from './session'
 import { safeRedirectPath } from './redirect'
 import { isTokenExpired, tokenIdentifier } from './one-time-token'
+import {
+  classifyOutboundStatus,
+  isTransientOutboundFailure,
+  outboundBackoffMs,
+} from './outbound'
+import {
+  canUnlinkSignInMethod,
+  oauthFailureClass,
+  oauthProvisioningRefusal,
+  readOAuthFailureClass,
+  OAUTH_UNVERIFIED_EMAIL_REFUSAL,
+} from './oauth'
 
 /**
  * Les règles pures du module d'authentification, éprouvées là où elles vivent.
@@ -293,5 +305,123 @@ describe('jetons à usage unique', () => {
 
     expect(isTokenExpired(expiry, new Date('2026-01-01T00:00:00.000Z'))).toBe(true)
     expect(isTokenExpired(expiry, new Date('2025-12-31T23:59:59.999Z'))).toBe(false)
+  })
+})
+
+describe('provisionnement par un fournisseur OAuth', () => {
+  it('refuse une identité dont le fournisseur n’atteste pas l’adresse, à la création', () => {
+    expect(
+      oauthProvisioningRefusal({
+        method: 'oauth',
+        action: 'create-user',
+        providerAssertsEmail: false,
+      }),
+    ).toBe(OAUTH_UNVERIFIED_EMAIL_REFUSAL)
+  })
+
+  it('refuse aussi à la liaison et au retour d’un compte déjà lié', () => {
+    for (const action of ['link-account', 'sign-in'] as const) {
+      expect(
+        oauthProvisioningRefusal({ method: 'oauth', action, providerAssertsEmail: false }),
+      ).toBe(OAUTH_UNVERIFIED_EMAIL_REFUSAL)
+    }
+  })
+
+  it('accepte une identité attestée', () => {
+    expect(
+      oauthProvisioningRefusal({
+        method: 'oauth',
+        action: 'create-user',
+        providerAssertsEmail: true,
+      }),
+    ).toBeNull()
+  })
+
+  it('ne juge pas ce qui ne vient pas d’un fournisseur : le mot de passe a ses propres règles', () => {
+    expect(
+      oauthProvisioningRefusal({
+        method: 'email-password',
+        action: 'create-user',
+        providerAssertsEmail: false,
+      }),
+    ).toBeNull()
+  })
+})
+
+describe('classe d’un retour OAuth en échec', () => {
+  it('distingue le refus d’autorisation de l’utilisateur', () => {
+    expect(oauthFailureClass('access_denied')).toBe('denied')
+  })
+
+  it('replie tout le reste sur un échec unique — un code qui nomme l’état du compte n’en sort pas', () => {
+    for (const code of [
+      'account_not_linked',
+      'email_not_found',
+      'state_mismatch',
+      'provider_not_found',
+      'unable_to_create_user',
+      '',
+      null,
+    ]) {
+      expect(oauthFailureClass(code)).toBe('failed')
+    }
+  })
+})
+
+describe('classe relue d’un paramètre d’URL', () => {
+  it('accepte les deux classes, et rien d’autre — un code de fournisseur n’en est pas une', () => {
+    expect(readOAuthFailureClass('denied')).toBe('denied')
+    expect(readOAuthFailureClass('failed')).toBe('failed')
+
+    for (const value of ['access_denied', 'account_not_linked', '', null, undefined, 42]) {
+      expect(readOAuthFailureClass(value)).toBe('failed')
+    }
+  })
+})
+
+describe('déliement d’un moyen de connexion', () => {
+  it('refuse de retirer le dernier moyen de connexion', () => {
+    expect(canUnlinkSignInMethod(1)).toBe(false)
+  })
+
+  it('accepte tant qu’il en reste un autre', () => {
+    expect(canUnlinkSignInMethod(2)).toBe(true)
+  })
+})
+
+describe('reprise d’un appel sortant vers un fournisseur', () => {
+  it('ne rejoue que les échecs transitoires : rejouer une erreur de requête est un défaut', () => {
+    // Transitoires : le fournisseur peut se relever tout seul.
+    expect(isTransientOutboundFailure('timeout')).toBe(true)
+    expect(isTransientOutboundFailure('network')).toBe(true)
+    expect(isTransientOutboundFailure(classifyOutboundStatus(500))).toBe(true)
+    expect(isTransientOutboundFailure(classifyOutboundStatus(502))).toBe(true)
+    expect(isTransientOutboundFailure(classifyOutboundStatus(429))).toBe(true)
+
+    // Définitifs : la requête est fautive ou le jeton ne vaut rien. La rejouer
+    // ne fera que la refaire refuser trois fois (`docs/reliability.md` §3).
+    expect(isTransientOutboundFailure(classifyOutboundStatus(400))).toBe(false)
+    expect(isTransientOutboundFailure(classifyOutboundStatus(401))).toBe(false)
+    expect(isTransientOutboundFailure(classifyOutboundStatus(403))).toBe(false)
+    expect(isTransientOutboundFailure(classifyOutboundStatus(404))).toBe(false)
+  })
+
+  it('recule exponentiellement, disperse l’attente, et la plafonne', () => {
+    const policy = { baseMs: 100, maxMs: 400, random: () => 1 }
+
+    expect(outboundBackoffMs(1, policy)).toBe(100)
+    expect(outboundBackoffMs(2, policy)).toBe(200)
+    expect(outboundBackoffMs(3, policy)).toBe(400)
+    // Le plafond tient : sans lui, la dixième reprise attendrait cinquante
+    // secondes dans le temps de réponse d'un rappel.
+    expect(outboundBackoffMs(10, policy)).toBe(400)
+  })
+
+  it('tire l’attente dans la moitié haute du recul : jamais une reprise immédiate', () => {
+    const policy = { baseMs: 100, maxMs: 400 }
+
+    // La dispersion « à moitié » : entre la moitié et la totalité du recul.
+    expect(outboundBackoffMs(2, { ...policy, random: () => 0 })).toBe(100)
+    expect(outboundBackoffMs(2, { ...policy, random: () => 1 })).toBe(200)
   })
 })

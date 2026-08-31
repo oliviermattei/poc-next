@@ -2,14 +2,16 @@ import { and, eq, like, ne, sql } from 'drizzle-orm'
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core'
 
 import type {
+  AuthAccountRepository,
   AuthSessionRepository,
   AuthUserRecord,
   AuthUserRepository,
   VerificationToken,
   VerificationTokenRepository,
 } from '../application/ports'
+import { canUnlinkSignInMethod } from '../domain/oauth'
 import { isTokenExpired } from '../domain/one-time-token'
-import { authSession, authUser, authVerification } from '../schema'
+import { authAccount, authSession, authUser, authVerification } from '../schema'
 
 /**
  * Les repositories du module, sur **ses** tables.
@@ -28,7 +30,27 @@ import { authSession, authUser, authVerification } from '../schema'
 export type AuthDatabase = Pick<
   PgDatabase<PgQueryResultHKT>,
   'select' | 'insert' | 'update' | 'delete'
->
+> &
+  AuthTransactions
+
+/**
+ * La transaction, **déclarée ici plutôt que reprise de Drizzle**.
+ *
+ * `Pick<PgDatabase, 'transaction'>` ne marche pas : la signature de Drizzle
+ * porte le schéma relationnel **dans le type du paramètre** de son rappel, si
+ * bien qu'une connexion construite avec les tables de trois modules n'est plus
+ * assignable — mesuré, c'est l'erreur que rendait `pnpm typecheck`. La
+ * déclarer en méthode, et faire recevoir au rappel les quatre opérations que ce
+ * module utilise, dit exactement ce dont il a besoin : un module n'a pas à
+ * connaître les tables des autres pour ouvrir une transaction.
+ */
+export interface AuthTransactions {
+  transaction<TResult>(
+    run: (
+      transaction: Pick<PgDatabase<PgQueryResultHKT>, 'select' | 'insert' | 'update' | 'delete'>,
+    ) => Promise<TResult>,
+  ): Promise<TResult>
+}
 
 /** Violation d'unicité PostgreSQL : c'est ainsi qu'une adresse déjà prise se dit. */
 const UNIQUE_VIOLATION = '23505'
@@ -174,6 +196,61 @@ export function createDrizzleAuthSessionRepository(db: AuthDatabase): AuthSessio
         .returning({ id: authSession.id })
 
       return deleted.length
+    },
+  }
+}
+
+export function createDrizzleAuthAccountRepository(db: AuthDatabase): AuthAccountRepository {
+  return {
+    listForUser: async (userId) => {
+      // Les colonnes sont **énumérées**, comme pour les sessions : un `select()`
+      // nu ramènerait l'empreinte du mot de passe et les jetons du fournisseur,
+      // qu'il faudrait ensuite penser à retirer.
+      return await db
+        .select({
+          id: authAccount.id,
+          providerId: authAccount.providerId,
+          createdAt: authAccount.createdAt,
+        })
+        .from(authAccount)
+        .where(eq(authAccount.userId, userId))
+    },
+
+    unlinkForUser: async ({ userId, accountId }) => {
+      /**
+       * **Une transaction, et un verrou sur les moyens du compte.**
+       *
+       * `SELECT … FOR UPDATE` verrouille toutes les lignes du compte, dans le
+       * même ordre pour tout le monde : un second déliement simultané attend,
+       * puis relit — et PostgreSQL réévalue sa condition après le verrou, donc
+       * il voit le moyen déjà retiré. Sans ce verrou, les deux requêtes lisent
+       * « il en reste deux » et le compte se retrouve sans aucun moyen de
+       * connexion. Mesuré : le cas de concurrence est rouge sans lui.
+       */
+      return await db.transaction(async (transaction) => {
+        const rows = await transaction
+          .select({ id: authAccount.id })
+          .from(authAccount)
+          .where(eq(authAccount.userId, userId))
+          .for('update')
+
+        if (!rows.some((row) => row.id === accountId)) {
+          // Ni « pas à vous », ni « n'existe pas » : la même réponse pour les
+          // deux (`docs/security.md` §3).
+          return 'not_found'
+        }
+
+        if (!canUnlinkSignInMethod(rows.length)) {
+          return 'last-method'
+        }
+
+        const deleted = await transaction
+          .delete(authAccount)
+          .where(and(eq(authAccount.id, accountId), eq(authAccount.userId, userId)))
+          .returning({ id: authAccount.id })
+
+        return deleted.length > 0 ? 'unlinked' : 'not_found'
+      })
     },
   }
 }

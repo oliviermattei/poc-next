@@ -2,22 +2,43 @@ import { MODULE_ROUTE_PREFIX, resolveLocale } from '@repo/core'
 import type { Mailer } from '@repo/ports'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { betterAuth } from 'better-auth/minimal'
+import { genericOAuth } from 'better-auth/plugins/generic-oauth'
 import { magicLink } from 'better-auth/plugins/magic-link'
 
 import { createAuthUseCases } from '../application/auth-use-cases'
 import type { AuthService } from '../application/auth-service'
 import type { AuthDependencies, SecurityLog } from '../application/ports'
 import { defaultAuthPolicy, type AuthPolicy } from '../domain/auth-policy'
+import {
+  LOCAL_OAUTH_ACCOUNT_ID,
+  LOCAL_OAUTH_AUTHORIZE_PATH,
+  LOCAL_OAUTH_EMAIL,
+  LOCAL_OAUTH_PROVIDER_ID,
+  OAUTH_ERROR_PATH,
+  OAUTH_PROVIDER_TIMEOUT_REFUSAL,
+  oauthProvisioningRefusal,
+  type AnyOAuthProviderId,
+  type OAuthProviderId,
+} from '../domain/oauth'
 import { tokenIdentifier } from '../domain/one-time-token'
 import { sessionOf } from '../domain/session'
 import { authAccount, authSession, authUser, authVerification } from '../schema'
 import { consoleSecurityLog } from './console-security-log'
 import {
+  createDrizzleAuthAccountRepository,
   createDrizzleAuthSessionRepository,
   createDrizzleAuthUserRepository,
   createDrizzleVerificationTokenRepository,
   type AuthDatabase,
 } from './drizzle-auth-repositories'
+import { createGithubUserInfo } from './github-user-info'
+import {
+  createBoundedOAuthFetch,
+  DEFAULT_OAUTH_CALLBACK_DEADLINE_MS,
+  OUTBOUND_TIMED_OUT,
+  withDeadline,
+  type OAuthOutboundPolicy,
+} from './oauth-outbound'
 import { createTokenFactory } from './token-factory'
 
 /**
@@ -79,6 +100,47 @@ export interface ConfigureAuthOptions {
    * savoir quand l'email a atterri.
    */
   readonly runInBackground?: (task: Promise<unknown>) => void
+  /**
+   * Les fournisseurs externes, **reçus** (s12).
+   *
+   * Le module ne lit aucune variable d'environnement : c'est le point de
+   * composition qui décide qu'un fournisseur est configuré, et qui refuse au
+   * démarrage une paire incomplète. Absent, il n'y a pas de fournisseur — donc
+   * pas de bouton, pas de rappel joignable, et l'application fonctionne
+   * (`docs/reliability.md` §2).
+   */
+  readonly oauth?: OAuthConfiguration
+}
+
+/** Un fournisseur réel et ses identifiants. Les deux, ou rien. */
+export interface OAuthProviderCredentials {
+  readonly id: OAuthProviderId
+  readonly clientId: string
+  readonly clientSecret: string
+}
+
+export interface OAuthConfiguration {
+  readonly providers?: readonly OAuthProviderCredentials[]
+  /**
+   * Monte le **fournisseur de développement**, sans aucune clé.
+   *
+   * C'est l'opt-in explicite du socle (`AGENTS.md` : « Every port must be
+   * usable locally with no provider key — through an explicit local mode »),
+   * sur le modèle d'`EMAIL_LOCAL_CAPTURE`. Il porte son propre identifiant, il
+   * ouvre toujours la même adresse, et il n'emprunte l'identité d'aucun
+   * fournisseur réel.
+   */
+  readonly localProvider?: boolean
+  /**
+   * Ce qui borne les appels sortants vers les fournisseurs
+   * (`docs/reliability.md` §3).
+   *
+   * Absente, la politique par défaut s'applique — elle est écrite dans
+   * `infrastructure/oauth-outbound.ts`, pas ici. Le point de composition n'a
+   * rien à décider ; ce qui la reçoit est la suite, qui doit pouvoir mesurer un
+   * recul sans attendre des secondes.
+   */
+  readonly outbound?: OAuthOutboundPolicy
 }
 
 /**
@@ -148,6 +210,7 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
   const dependencies: AuthDependencies = {
     users: createDrizzleAuthUserRepository(options.db),
     sessions: createDrizzleAuthSessionRepository(options.db),
+    accounts: createDrizzleAuthAccountRepository(options.db),
     tokens: createDrizzleVerificationTokenRepository(options.db, now),
     tokenFactory,
     mailer: options.mailer,
@@ -172,6 +235,87 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
   /** L'identifiant sous lequel un magic link est stocké : `magic-link:<empreinte>`. */
   const magicLinkIdentifier = async (token: string): Promise<string> =>
     tokenIdentifier('magic-link', await tokenFactory.digest(token))
+
+  /**
+   * Les fournisseurs réels, indexés par leur identifiant.
+   *
+   * La bibliothèque n'échoue **pas** sur un `clientId` absent : elle se contente
+   * d'un avertissement dans le journal (`context/create-context.mjs`). C'est
+   * donc le point de composition qui refuse une paire incomplète, au démarrage
+   * et en nommant la variable — ici, un fournisseur présent est un fournisseur
+   * complet.
+   */
+  /**
+   * **Tout appel sortant du module passe par là** (`docs/reliability.md` §3) :
+   * un délai explicite, des reprises qui reculent avec dispersion et plafond,
+   * et uniquement sur les échecs transitoires.
+   */
+  const boundedFetch = createBoundedOAuthFetch(options.oauth?.outbound ?? {})
+
+  /**
+   * Les crochets qui **reprennent** les appels de profil d'un fournisseur.
+   *
+   * Un seul aujourd'hui, et l'absence des autres est mesurée, pas oubliée :
+   * GitHub lit `options.getUserInfo` avant ses deux `betterFetch`, donc les deux
+   * y passent ; Google, lui, dérive `emailVerified` d'une claim d'ID token
+   * vérifiée contre le JWKS du fournisseur (`jose`, `createRemoteJWKSet`) —
+   * reprendre son `getUserInfo` reviendrait à réécrire une vérification de
+   * signature, ce qui coûterait bien plus qu'il ne rapporte. Ses appels sont
+   * bornés par l'échéance du gestionnaire, ci-dessous.
+   */
+  const providerHooks: Partial<Record<OAuthProviderId, Record<string, unknown>>> = {
+    github: { getUserInfo: createGithubUserInfo(boundedFetch) },
+  }
+
+  const socialProviders: Partial<
+    Record<OAuthProviderId, { readonly clientId: string; readonly clientSecret: string }>
+  > = {}
+
+  for (const provider of options.oauth?.providers ?? []) {
+    socialProviders[provider.id] = {
+      clientId: provider.clientId,
+      clientSecret: provider.clientSecret,
+      ...providerHooks[provider.id],
+    }
+  }
+
+  const localProviderEnabled = options.oauth?.localProvider === true
+  const callbackDeadlineMs =
+    options.oauth?.outbound?.callbackDeadlineMs ?? DEFAULT_OAUTH_CALLBACK_DEADLINE_MS
+
+  /**
+   * Le fournisseur de **développement**, monté par le drapeau explicite.
+   *
+   * `genericOAuth` de 1.7.2 passe par les points d'entrée standard
+   * (`/sign-in/social`, `/callback/:id`) : il n'ajoute aucune route à la
+   * bibliothèque. Ses deux crochets remplacent les **appels réseau** — il n'y a
+   * donc ni point de terminaison de jeton ni `userinfo` à héberger, et la seule
+   * URL réellement visitée par le navigateur est l'autorisation, servie par le
+   * module.
+   */
+  const localOAuthPlugins = localProviderEnabled
+    ? [
+        genericOAuth({
+          config: [
+            {
+              providerId: LOCAL_OAUTH_PROVIDER_ID,
+              clientId: LOCAL_OAUTH_PROVIDER_ID,
+              authorizationUrl: `${options.appUrl}${MODULE_ROUTE_PREFIX}${LOCAL_OAUTH_AUTHORIZE_PATH}`,
+              getToken: async () => await Promise.resolve({ accessToken: LOCAL_OAUTH_ACCOUNT_ID }),
+              getUserInfo: async () =>
+                await Promise.resolve({
+                  id: LOCAL_OAUTH_ACCOUNT_ID,
+                  email: LOCAL_OAUTH_EMAIL,
+                  name: LOCAL_OAUTH_EMAIL,
+                  // Le fournisseur de développement atteste son adresse : elle
+                  // est réservée aux tests et n'appartient à personne.
+                  emailVerified: true,
+                }),
+            },
+          ],
+        }),
+      ]
+    : []
 
   const auth = betterAuth({
     appName: 'killer-saas',
@@ -198,8 +342,87 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
       // sans cela, deux clics simultanés sur le même lien passent tous les deux.
       transaction: true,
     }),
-    user: AUTH_MODELS.user,
-    account: AUTH_MODELS.account,
+    socialProviders,
+    /**
+     * **Où atterrit un retour en échec dont l'état n'a pas pu être lu.**
+     *
+     * Sans cela, la bibliothèque redirige vers `${baseURL}/error` — une page
+     * qui n'existe pas ici — avec le code d'erreur dans l'URL. La route du
+     * module replie ce code sur l'une des deux classes que le visiteur a le
+     * droit de connaître (`docs/security.md` §7).
+     */
+    onAPIError: { errorURL: `${MODULE_ROUTE_PREFIX}${OAUTH_ERROR_PATH}` },
+    user: {
+      ...AUTH_MODELS.user,
+      /**
+       * **La moitié « fournisseur » de la double preuve**, branchée au seul
+       * endroit qui voit les trois actions — création, liaison, retour d'un
+       * compte déjà lié (`db/internal-adapter.mjs`, `oauth2/link-account.mjs`).
+       *
+       * Le crochet échoue fermé : la bibliothèque traite une exception comme un
+       * refus. La règle, elle, vit dans le `domain` et n'y est écrite qu'une
+       * fois.
+       */
+      validateUserInfo: ({ user, source }) => {
+        const refusal = oauthProvisioningRefusal({
+          method: source.method,
+          action: source.action,
+          providerAssertsEmail: user.emailVerified === true,
+        })
+
+        return refusal === null ? undefined : { error: refusal }
+      },
+    },
+    account: {
+      ...AUTH_MODELS.account,
+      /**
+       * **La liaison de compte, épinglée** — et non laissée aux défauts.
+       *
+       * Les trois lignes disent la même chose sous trois angles : une adresse
+       * ne prouve la propriété d'un compte que si **deux** parties l'attestent.
+       *
+       * - `trustedProviders: []` — aucun fournisseur n'est cru sur parole.
+       *   Ajouter un identifiant ici ferait sauter l'exigence
+       *   `email_verified` **de ce fournisseur** (`oauth2/link-account.mjs`) ;
+       * - `requireLocalEmailVerified` — un compte mot de passe **non vérifié**
+       *   ne peut pas capter une identité de fournisseur. C'est la défense
+       *   contre le pré-enregistrement : l'attaquant qui inscrit l'adresse de
+       *   la victime avant elle n'obtient rien ;
+       * - `allowDifferentEmails: false` — une liaison ne rapproche que deux
+       *   fois la même adresse.
+       *
+       * Les défauts de la bibliothèque coïncident aujourd'hui avec ces trois
+       * valeurs, et `requireLocalEmailVerified` y est même annoncé comme
+       * bientôt inconditionnel. Un défaut qu'aucun test ne tient est un défaut
+       * qui change à la prochaine montée de version : ils sont donc écrits.
+       *
+       * **Ce qui mord, mesuré ligne par ligne** — et les deux lignes vertes ne
+       * le sont **pas pour la même raison**. La version précédente de ce
+       * commentaire les attribuait toutes deux au crochet « qui refuse plus
+       * tôt » : relu dans le paquet installé, c'est faux dans les deux cas.
+       *
+       * - `requireLocalEmailVerified: false` fait rougir 1 cas — le
+       *   pré-enregistrement ;
+       * - `trustedProviders: ['github']` n'en fait rougir aucun **seul**, mais
+       *   sa porte s'évalue **avant** le crochet, pas après : dans
+       *   `oauth2/link-account.mjs`, la condition de refus est ligne ~83 et
+       *   `assertValidUserInfo` ligne ~92. Ce sont deux filets indépendants,
+       *   chacun suffisant ; les neutraliser **ensemble** fait rougir 2 cas ;
+       * - `allowDifferentEmails: true` n'en fait rougir aucun parce que la
+       *   valeur n'est lue que par `api/routes/callback.mjs:177` (branche
+       *   `link` de l'état) et `api/routes/account.mjs:213` (`/link-social`) —
+       *   le parcours de liaison explicite, que ce module **ne déclare pas**.
+       *   Le chemin est injoignable ; le crochet, lui, ne voit jamais ce cas.
+       *   La ligne reste écrite comme interdit lisible, et la story qui
+       *   déclarera `/link-social` devra la couvrir par un test.
+       */
+      accountLinking: {
+        enabled: true,
+        trustedProviders: [],
+        requireLocalEmailVerified: true,
+        allowDifferentEmails: false,
+      },
+    },
     verification: AUTH_MODELS.verification,
     session: {
       ...AUTH_MODELS.session,
@@ -208,6 +431,27 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
     },
     advanced: {
       defaultCookieAttributes: SESSION_COOKIE_ATTRIBUTES,
+      /**
+       * **Le cookie d'état de la boucle OAuth**, et la seule exception au
+       * `SameSite=Strict` du socle.
+       *
+       * Il est posé au départ, et **relu au retour du fournisseur** — une
+       * navigation inter-sites. `Strict` l'empêcherait de partir, l'état ne
+       * pourrait pas être comparé, et **toute** connexion par fournisseur
+       * échouerait en `state_security_mismatch` : un refus qui ressemble à une
+       * attaque alors que c'est la configuration.
+       *
+       * `docs/security.md` §1 le permet nommément : « `SameSite=Lax` au
+       * minimum ; `SameSite=Strict` **pour la session** ». La session, elle, ne
+       * bouge pas. Ce cookie ne porte aucun privilège : il ne vaut que dix
+       * minutes, il est signé, il est consommé au retour, et le vérificateur
+       * PKCE qu'il accompagne n'a jamais quitté le serveur.
+       *
+       * Les attributs de `defaultCookieAttributes` sont conservés — `httpOnly`,
+       * `secure`, `path` — parce que la bibliothèque les applique avant
+       * celui-ci (`cookies/index.mjs`) : seule la valeur nommée est remplacée.
+       */
+      cookies: { state: { attributes: { sameSite: 'lax' } } },
       // Sans ce crochet, `runInBackgroundOrAwait` **attend** la promesse
       // (`dist/context/create-context.mjs`) : l'envoi de l'email de
       // réinitialisation entre alors dans le temps de réponse, et seul le
@@ -276,14 +520,54 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
           })
         },
       }),
+      ...localOAuthPlugins,
     ],
   })
+
+  /** Les fournisseurs réellement montés, dans l'ordre déclaré. */
+  const configuredProviders = (options.oauth?.providers ?? []).map(
+    (provider): AnyOAuthProviderId => provider.id,
+  )
+  const oauthProviders: readonly AnyOAuthProviderId[] = localProviderEnabled
+    ? [...configuredProviders, LOCAL_OAUTH_PROVIDER_ID]
+    : configuredProviders
 
   return {
     policy,
     useCases,
+    oauthProviders,
 
     handle: (request) => auth.handler(request),
+
+    /**
+     * **Le rappel du fournisseur, sous échéance** (`docs/reliability.md` §3).
+     *
+     * C'est la seconde borne, et elle couvre ce que le module ne peut pas
+     * borner appel par appel : l'échange de code de GitHub — dont
+     * `validateAuthorizationCode` ne lit aucun crochet d'options — et la
+     * vérification d'ID token de Google, faite par `jose` avec son propre
+     * `fetch`. Sans elle, un point de terminaison qui pend tient la requête du
+     * visiteur ouverte sans limite.
+     *
+     * L'échéance dépassée rend le **refus générique du module**, pas une
+     * exception : le visiteur retombe sur `/sign-in?oauth=failed` comme pour
+     * n'importe quel autre échec, et le code d'attente ne lui apprend rien
+     * (`docs/security.md` §7).
+     */
+    handleOAuthCallback: async (request) => {
+      const outcome = await withDeadline(auth.handler(request), callbackDeadlineMs)
+
+      if (outcome !== OUTBOUND_TIMED_OUT) {
+        return outcome
+      }
+
+      return new Response(null, {
+        status: 302,
+        headers: {
+          location: `${MODULE_ROUTE_PREFIX}${OAUTH_ERROR_PATH}?error=${OAUTH_PROVIDER_TIMEOUT_REFUSAL}`,
+        },
+      })
+    },
 
     localeOf,
 

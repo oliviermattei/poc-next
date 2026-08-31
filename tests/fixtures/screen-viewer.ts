@@ -1,4 +1,4 @@
-import type { DescribedSession } from '@repo/module-auth'
+import type { DescribedSession, DescribedSignInMethod } from '@repo/module-auth'
 
 /**
  * L'appelant que voient les écrans pendant le rendu de `tests/rendered-text.test.ts`.
@@ -46,6 +46,28 @@ export const FIXTURE_SESSIONS: readonly DescribedSession[] = [
     ipAddress: FIXTURE_IP,
     userAgent: FIXTURE_USER_AGENT,
     current: true,
+  },
+]
+
+/**
+ * Les moyens de connexion affichés par l'écran de compte (s12).
+ *
+ * Deux, dont un déliable : la carte rend alors **les deux formes** — l'action
+ * de déliement et la mention du dernier moyen —, si bien qu'aucune des deux
+ * n'échappe au filet des textes rendus.
+ */
+export const FIXTURE_SIGN_IN_METHODS: readonly DescribedSignInMethod[] = [
+  {
+    id: 'acc_1',
+    providerId: 'credential',
+    createdAt: FIXTURE_SESSION_CREATED_AT,
+    removable: true,
+  },
+  {
+    id: 'acc_2',
+    providerId: 'github',
+    createdAt: FIXTURE_SESSION_CREATED_AT,
+    removable: false,
   },
 ]
 

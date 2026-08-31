@@ -1,6 +1,7 @@
 import type { ModuleSession } from '@repo/core'
 
 import type { AuthPolicy } from '../domain/auth-policy'
+import type { AnyOAuthProviderId } from '../domain/oauth'
 import type { AuthUseCases } from './auth-use-cases'
 
 /**
@@ -22,6 +23,16 @@ import type { AuthUseCases } from './auth-use-cases'
  */
 export interface AuthService {
   handle(request: Request): Promise<Response>
+  /**
+   * Le rappel d'un fournisseur externe, **sous échéance**.
+   *
+   * Distinct de `handle` parce que c'est le seul point d'entrée du module qui
+   * déclenche des appels réseau sortants, et que `docs/reliability.md` §3 ne
+   * souffre pas d'exception : « tout appel réseau sortant porte un délai
+   * d'attente explicite ». L'échéance dépassée rend le refus générique du
+   * module, jamais une exception.
+   */
+  handleOAuthCallback(request: Request): Promise<Response>
   changePassword(input: {
     readonly request: Request
     readonly currentPassword: string
@@ -46,6 +57,15 @@ export interface AuthService {
    * est la même dans les deux cas, et c'est celle de `@repo/core`.
    */
   localeOf(request: Request | null): string
+  /**
+   * Les fournisseurs externes **réellement montés** (s12).
+   *
+   * C'est cette liste qui décide de tout : les boutons affichés, les rappels
+   * joignables, et le refus d'un fournisseur qu'on ne connaît pas. Le module ne
+   * lit aucune variable d'environnement — il reçoit cette liste du point de
+   * composition, qui est le seul à savoir ce qui est configuré.
+   */
+  readonly oauthProviders: readonly AnyOAuthProviderId[]
   readonly useCases: AuthUseCases
   readonly policy: AuthPolicy
 }

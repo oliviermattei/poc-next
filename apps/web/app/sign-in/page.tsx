@@ -1,6 +1,9 @@
-import { authRoutePath, safeRedirectPath } from '../../lib/auth'
+import { Alert } from '@repo/ui'
+
+import { authRoutePath, readOAuthFailureClass, safeRedirectPath } from '../../lib/auth'
 import { appIntl } from '../../lib/i18n'
 import { AuthForm } from '../auth-form'
+import { OAuthProviderButtons } from '../oauth-buttons'
 
 /**
  * L'écran de connexion.
@@ -18,6 +21,16 @@ import { AuthForm } from '../auth-form'
  * ci-dessus redevient vrai. Une demande explicite (`?next=/account`) reste
  * respectée : c'est le repli qui change, pas la règle.
  */
+/**
+ * Les deux seuls messages qu'un retour de fournisseur en échec peut produire,
+ * **par clé entière** : une clé composée échapperait au contrôle d'existence
+ * des clés dans chaque locale (s09).
+ */
+const OAUTH_ERROR_KEYS = {
+  denied: 'app.auth.oauth.error.denied',
+  failed: 'app.auth.oauth.error.failed',
+} as const
+
 export default async function SignInPage({
   searchParams,
 }: {
@@ -27,6 +40,12 @@ export default async function SignInPage({
   const { t, path } = await appIntl()
   const next = typeof params.next === 'string' ? params.next : null
   const destination = path(safeRedirectPath(next, '/'))
+  // La classe d'un refus est **relue**, jamais recalculée : la route a déjà
+  // replié tous les codes de la bibliothèque avant que le navigateur ne voie
+  // l'URL. Un paramètre inventé (`?oauth=account_not_linked`) retombe donc sur
+  // l'échec générique, au lieu de renseigner un visiteur sur l'existence d'un
+  // compte (`docs/security.md` §7).
+  const oauthFailure = params.oauth === undefined ? null : readOAuthFailureClass(params.oauth)
 
   return (
     <main>
@@ -37,6 +56,21 @@ export default async function SignInPage({
         <p role="status">{t('app.signIn.emailChanged')}</p>
       )}
       {params.reset === undefined ? null : <p role="status">{t('app.signIn.reset')}</p>}
+
+      {/*
+        Le refus d'un retour de fournisseur, en **deux messages et pas plus**.
+        La classe vient de la règle du module — la même que la route applique —,
+        si bien qu'un paramètre inventé (`?oauth=account_not_linked`) retombe sur
+        l'échec générique au lieu de renseigner un visiteur sur l'existence d'un
+        compte (`docs/security.md` §7).
+      */}
+      {oauthFailure === null ? null : (
+        <Alert variant="destructive" role="alert">
+          {t(OAUTH_ERROR_KEYS[oauthFailure])}
+        </Alert>
+      )}
+
+      <OAuthProviderButtons next={next === null ? undefined : safeRedirectPath(next, '/')} />
 
       <AuthForm
         action={authRoutePath('signIn')}

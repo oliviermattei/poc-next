@@ -1,6 +1,7 @@
 import { MODULE_ROUTE_PREFIX, type ModuleExportPayload, type ModuleScope } from '@repo/core'
 import type { SendEmailResult } from '@repo/ports'
 
+import { canUnlinkSignInMethod } from '../domain/oauth'
 import { describeSecurityEvent } from '../domain/security-event'
 import { describeSessions, type DescribedSession } from '../domain/session'
 import {
@@ -8,7 +9,22 @@ import {
   tokenIdentifierPrefix,
   type TokenPurpose,
 } from '../domain/one-time-token'
-import type { AuthDependencies } from './ports'
+import type { AuthDependencies, UnlinkOutcome } from './ports'
+
+/**
+ * Un moyen de connexion, tel qu'un écran de paramètres l'affiche.
+ *
+ * `removable` est **la règle, pas une décoration** : elle dit ce que le serveur
+ * accepterait. L'écran s'en sert pour ne pas proposer ce qui sera refusé —
+ * masquer n'a jamais été une permission (`docs/security.md` §3), et c'est le
+ * repository qui refuse, dans la même transaction que la suppression.
+ */
+export interface DescribedSignInMethod {
+  readonly id: string
+  readonly providerId: string
+  readonly createdAt: Date
+  readonly removable: boolean
+}
 
 /**
  * Les cas d'usage du module.
@@ -113,6 +129,13 @@ export interface AuthUseCases {
     readonly userId: string
     readonly sessionId: string
   }): Promise<boolean>
+  /** Les moyens de connexion du compte, sans jeton ni empreinte (s12). */
+  listSignInMethods(userId: string): Promise<readonly DescribedSignInMethod[]>
+  /** Retire un moyen de connexion **du compte appelant**, jamais le dernier. */
+  unlinkSignInMethod(input: {
+    readonly userId: string
+    readonly accountId: string
+  }): Promise<UnlinkOutcome>
   purgeAccount(scope: ModuleScope): Promise<void>
   exportAccount(scope: ModuleScope): Promise<ModuleExportPayload>
   log: AuthDependencies['log']
@@ -125,6 +148,7 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
   const {
     users,
     sessions,
+    accounts,
     tokens,
     tokenFactory,
     mailer,
@@ -403,6 +427,31 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
 
     listSessions: async ({ userId, currentSessionId }) =>
       describeSessions(await sessions.listForUser(userId), currentSessionId),
+
+    listSignInMethods: async (userId) => {
+      const methods = await accounts.listForUser(userId)
+      // La règle est **une seule** : celle du `domain`. L'écran la reçoit déjà
+      // appliquée, il ne la rejoue pas — et le repository la réapplique sous
+      // verrou au moment de supprimer.
+      const removable = canUnlinkSignInMethod(methods.length)
+
+      return methods.map((method) => ({ ...method, removable }))
+    },
+
+    unlinkSignInMethod: async ({ userId, accountId }) => {
+      const outcome = await accounts.unlinkForUser({ userId, accountId })
+
+      log(
+        describeSecurityEvent({
+          event:
+            outcome === 'unlinked' ? 'auth.provider_unlinked' : 'auth.provider_unlink_refused',
+          actor: { userId },
+          details: { outcome },
+        }),
+      )
+
+      return outcome
+    },
 
     revokeSession: async ({ userId, sessionId }) => {
       // La révocation est **une suppression de ligne**, portée par le

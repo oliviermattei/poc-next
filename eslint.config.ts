@@ -279,27 +279,65 @@ const REPO_DB_TEMPLATE = `TemplateLiteral[quasis.0.value.raw=${REPO_DB_PATTERN}]
 const MODULE_DB_MESSAGE =
   'Un module ne dépend jamais de `@repo/db` (ADR 020) : la connexion est injectée par le point de composition. La dépendance inverse ferme un cycle dont la conséquence est une table lue avant son initialisation, à l’exécution.'
 
+/**
+ * **La porte réseau d'un module** (s12, `docs/reliability.md` §3).
+ *
+ * « Tout appel réseau sortant porte un délai d'attente explicite. Aucun appel
+ * sans délai. » Le délai, les reprises et leur recul vivent en un seul endroit
+ * par module — `infrastructure/oauth-outbound.ts` pour `auth` —, et cette règle
+ * est ce qui empêche le prochain appel sortant d'être écrit à côté. Sans elle,
+ * la conformité mesurée aujourd'hui ne dirait rien de demain : c'est
+ * exactement le constat qui a bloqué la revue de s12.
+ */
+const OUTBOUND_FETCH_MESSAGE =
+  'Un appel réseau sortant d’un module passe par sa porte bornée (`infrastructure/oauth-outbound.ts`) : `docs/reliability.md` §3 exige un délai d’attente explicite, et des reprises en recul exponentiel avec dispersion et plafond, sur les seules erreurs transitoires. `@better-fetch/fetch` comme `fetch` n’en arment aucun par défaut.'
+
+const OUTBOUND_FETCH_SYNTAX = [
+  // `fetch(…)` nu.
+  { selector: "CallExpression[callee.type='Identifier'][callee.name='fetch']" },
+  // `globalThis.fetch(…)`, `window.fetch(…)`, et toute autre écriture qui passe
+  // par une propriété : le sélecteur porte sur le nom appelé, pas sur l'objet.
+  { selector: "CallExpression[callee.type='MemberExpression'][callee.property.name='fetch']" },
+].map((entry) => ({ ...entry, message: OUTBOUND_FETCH_MESSAGE }))
+
+/**
+ * Les interdits communs à tous les fichiers d'un module.
+ *
+ * Extraits parce qu'ils sont déclarés **deux fois** : une fois pour le module
+ * entier, une fois pour la porte réseau, qui les garde tous sauf le sien. En
+ * configuration plate, le dernier bloc qui matche remplace la valeur de
+ * `no-restricted-syntax` — les recopier serait le moyen le plus sûr d'en perdre
+ * un au prochain ajout.
+ */
+const MODULE_SYNTAX = [
+  ...[
+    ...STATIC_IMPORT_FORMS.map((parent) => `${parent} > ${REPO_DB_LITERAL}`),
+    ...DYNAMIC_IMPORT_FORMS.flatMap((parent) => [
+      `${parent} > ${REPO_DB_LITERAL}`,
+      `${parent} > ${REPO_DB_TEMPLATE}`,
+    ]),
+  ].map((selector) => ({ selector, message: MODULE_DB_MESSAGE })),
+  // Un module n'importe pas non plus le socle de composants (ADR 022).
+  // Les trois interdits partagent ce bloc parce qu'ils partagent la règle :
+  // les séparer en trois blocs sur les mêmes fichiers ferait disparaître les
+  // deux premiers.
+  ...COMPONENT_BASE_SYNTAX,
+  ...FORM_METHOD_SYNTAX,
+]
+
 const moduleDatabaseBoundary: Linter.Config[] = [
   {
     files: [sources('packages/modules')],
     rules: {
-      'no-restricted-syntax': [
-        'error',
-        ...[
-          ...STATIC_IMPORT_FORMS.map((parent) => `${parent} > ${REPO_DB_LITERAL}`),
-          ...DYNAMIC_IMPORT_FORMS.flatMap((parent) => [
-            `${parent} > ${REPO_DB_LITERAL}`,
-            `${parent} > ${REPO_DB_TEMPLATE}`,
-          ]),
-        ].map((selector) => ({ selector, message: MODULE_DB_MESSAGE })),
-        // Un module n'importe pas non plus le socle de composants (ADR 022).
-        // Les deux interdits partagent ce bloc parce qu'ils partagent la règle :
-        // les séparer en deux blocs sur les mêmes fichiers ferait disparaître le
-        // premier.
-        ...COMPONENT_BASE_SYNTAX,
-        ...FORM_METHOD_SYNTAX,
-      ],
+      'no-restricted-syntax': ['error', ...MODULE_SYNTAX, ...OUTBOUND_FETCH_SYNTAX],
     },
+  },
+  {
+    // La porte, et elle seule : c'est le fichier dont le métier est d'appeler
+    // le réseau, sous délai et sous reprise. Il garde tous les autres
+    // interdits du module.
+    files: ['packages/modules/*/src/infrastructure/oauth-outbound.ts'],
+    rules: { 'no-restricted-syntax': ['error', ...MODULE_SYNTAX] },
   },
 ]
 

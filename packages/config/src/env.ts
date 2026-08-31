@@ -36,6 +36,12 @@ export const EMAIL_LOCAL_CAPTURE_ENABLED = '1'
  */
 export const I18N_MISSING_KEY_PROBE_ENABLED = '1'
 
+/**
+ * La valeur qui monte le **fournisseur OAuth de développement** — même
+ * littéral, même raison : une seule orthographe pour un seul choix.
+ */
+export const OAUTH_LOCAL_PROVIDER_ENABLED = '1'
+
 const envShape = {
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   DATABASE_URL: z
@@ -112,6 +118,34 @@ const envShape = {
       message: 'must be an absolute http(s) URL (https://app.example.com)',
     })
     .optional(),
+  /**
+   * Identifiants des fournisseurs OAuth (s12), **optionnels par paire**.
+   *
+   * Optionnels parce qu'un projet peut ne proposer aucune connexion externe :
+   * les boutons disparaissent alors, et l'application fonctionne
+   * (`docs/reliability.md` §2). Ce qui n'est pas optionnel, c'est la
+   * **cohérence** : un identifiant sans son secret est refusé par la règle
+   * croisée ci-dessous, parce que la bibliothèque, elle, se contenterait d'un
+   * avertissement dans le journal et n'échouerait qu'au premier clic.
+   */
+  GOOGLE_CLIENT_ID: z.string().min(1).optional(),
+  GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
+  GITHUB_CLIENT_ID: z.string().min(1).optional(),
+  GITHUB_CLIENT_SECRET: z.string().min(1).optional(),
+  /**
+   * Monte le **fournisseur OAuth de développement**, sans aucune clé.
+   *
+   * Opt-in explicite, comme la capture locale des emails, et jamais déduit de
+   * `NODE_ENV` : il ouvre toujours la même adresse de test, et il porte son
+   * propre identifiant — il n'emprunte l'identité d'aucun fournisseur réel.
+   * Posé en même temps qu'une clé, il est refusé : le choix serait implicite.
+   *
+   * Il ouvre une session **sans mot de passe** à qui clique sur le bouton :
+   * `apps/web/lib/oauth-config.ts` le refuse donc aussi sous
+   * `NODE_ENV=production`, au démarrage et en nommant la variable. `NODE_ENV`
+   * ne l'active jamais — il ne fait que restreindre l'opt-in.
+   */
+  OAUTH_LOCAL_PROVIDER: z.literal(OAUTH_LOCAL_PROVIDER_ENABLED).optional(),
   /** Expéditeur. Obligatoire dès qu'une clé est configurée : voir la règle croisée. */
   EMAIL_FROM: z
     .string()
@@ -150,6 +184,42 @@ export const envSchema = z.object(envShape).superRefine((value, ctx) => {
       code: 'custom',
       path: ['EMAIL_LOCAL_CAPTURE'],
       message: 'cannot be enabled while RESEND_API_KEY is set: choose one',
+    })
+  }
+
+  // Les fournisseurs OAuth : chaque identifiant va avec son secret, et
+  // l'absente est **nommée**. La bibliothèque n'échouerait qu'au premier clic,
+  // en production, sur un journal que personne ne lit.
+  const oauthPairs = [
+    { id: 'GOOGLE_CLIENT_ID', secret: 'GOOGLE_CLIENT_SECRET' },
+    { id: 'GITHUB_CLIENT_ID', secret: 'GITHUB_CLIENT_SECRET' },
+  ] as const
+
+  let anyOAuthKey = false
+
+  for (const pair of oauthPairs) {
+    const id = value[pair.id]
+    const secret = value[pair.secret]
+
+    anyOAuthKey = anyOAuthKey || id !== undefined || secret !== undefined
+
+    if (id !== undefined && secret === undefined) {
+      ctx.addIssue({ code: 'custom', path: [pair.secret], message: `is required when ${pair.id} is set` })
+    }
+
+    if (secret !== undefined && id === undefined) {
+      ctx.addIssue({ code: 'custom', path: [pair.id], message: `is required when ${pair.secret} is set` })
+    }
+  }
+
+  // Même règle que la capture locale des emails : le mode local est un choix,
+  // pas un repli. Les deux à la fois, et plus personne ne sait si le bouton
+  // parle au vrai fournisseur.
+  if (anyOAuthKey && value.OAUTH_LOCAL_PROVIDER === OAUTH_LOCAL_PROVIDER_ENABLED) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['OAUTH_LOCAL_PROVIDER'],
+      message: 'cannot be enabled while a provider client id or secret is set: choose one',
     })
   }
 })
