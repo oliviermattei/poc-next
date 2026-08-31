@@ -26,6 +26,13 @@ export type SecurityEventName =
   | 'auth.password_reset_requested'
   | 'auth.password_reset_succeeded'
   | 'auth.password_changed'
+  | 'auth.profile_changed'
+  | 'auth.session_revoked'
+  // Une demande de révocation qui ne correspond à aucune session **du compte**.
+  // Journalisée : c'est le signal d'un identifiant deviné, et §7 demande de
+  // pouvoir le détecter. La réponse rendue à l'appelant, elle, ne distingue
+  // rien.
+  | 'auth.session_revocation_refused'
 
 /** L'acteur d'un événement. `email` est accepté à l'appel, jamais journalisé. */
 export interface SecurityEventActor {

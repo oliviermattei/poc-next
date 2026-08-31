@@ -4,12 +4,13 @@ import { defaultAuthPolicy } from './auth-policy'
 import {
   genericSignInRefusal,
   InvalidCredentialsError,
+  parseDisplayName,
   parseSignUpInput,
   parseSignInInput,
   SIGN_IN_REFUSAL,
 } from './credentials'
 import { describeSecurityEvent } from './security-event'
-import { sessionOf } from './session'
+import { describeSessions, sessionOf } from './session'
 import { safeRedirectPath } from './redirect'
 import { isTokenExpired, tokenIdentifier } from './one-time-token'
 
@@ -140,6 +141,81 @@ describe('session dérivée du compte', () => {
 
   it('refuse la session d’un compte sans identifiant', () => {
     expect(sessionOf({ ...account, userId: '' })).toBeNull()
+  })
+})
+
+describe('nom affiché', () => {
+  it('retire les espaces de bordure', () => {
+    expect(parseDisplayName({ name: '  Olivier  ' })).toBe('Olivier')
+  })
+
+  it('refuse un nom vide, qui rendrait le compte anonyme dans l’interface', () => {
+    expect(() => parseDisplayName({ name: '   ' })).toThrow(InvalidCredentialsError)
+  })
+
+  it('refuse un nom plus long que ce que la colonne et l’écran acceptent', () => {
+    expect(() => parseDisplayName({ name: 'a'.repeat(101) })).toThrow(InvalidCredentialsError)
+  })
+
+  it('refuse ce qui n’est pas une chaîne', () => {
+    expect(() => parseDisplayName({ name: 42 })).toThrow(InvalidCredentialsError)
+  })
+})
+
+describe('liste des sessions actives', () => {
+  const record = (id: string, createdAt: string) => ({
+    id,
+    createdAt: new Date(createdAt),
+    expiresAt: new Date('2030-01-01T00:00:00Z'),
+    ipAddress: '203.0.113.7',
+    userAgent: 'Firefox',
+  })
+
+  it('marque la session courante, et elle seule', () => {
+    const described = describeSessions(
+      [record('a', '2026-01-01T00:00:00Z'), record('b', '2026-01-02T00:00:00Z')],
+      'b',
+    )
+
+    expect(described.map((session) => [session.id, session.current])).toEqual([
+      ['b', true],
+      ['a', false],
+    ])
+  })
+
+  it('présente la session courante en tête, puis les plus récentes', () => {
+    const described = describeSessions(
+      [
+        record('vieille', '2026-01-01T00:00:00Z'),
+        record('récente', '2026-03-01T00:00:00Z'),
+        record('courante', '2026-02-01T00:00:00Z'),
+      ],
+      'courante',
+    )
+
+    expect(described.map((session) => session.id)).toEqual(['courante', 'récente', 'vieille'])
+  })
+
+  it('n’expose aucun jeton de session', () => {
+    // Le jeton est ce que le cookie porte : le rendre à un écran reviendrait à
+    // écrire dans le HTML de quoi rejouer la session — ce que `HttpOnly`
+    // existe précisément pour empêcher (`docs/security.md` §2).
+    const described = describeSessions(
+      [{ ...record('a', '2026-01-01T00:00:00Z'), token: 'un-jeton-de-session' } as never],
+      'a',
+    )
+
+    expect(JSON.stringify(described)).not.toContain('un-jeton-de-session')
+  })
+
+  it('accepte une session sans agent ni adresse — la colonne est nullable', () => {
+    const [described] = describeSessions(
+      [{ ...record('a', '2026-01-01T00:00:00Z'), ipAddress: null, userAgent: null }],
+      null,
+    )
+
+    expect(described?.ipAddress).toBeNull()
+    expect(described?.current).toBe(false)
   })
 })
 

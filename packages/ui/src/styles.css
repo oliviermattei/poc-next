@@ -1,0 +1,175 @@
+/**
+ * Les tokens du design system — `docs/design-system.md` fait autorité, et ce
+ * fichier en est la transcription, token par token.
+ *
+ * Tailwind v4 : **pas de `tailwind.config.js`** (ADR 010). La configuration est
+ * en CSS, le point d'entrée est `@import "tailwindcss"`, et les tokens sont des
+ * variables CSS exposées à Tailwind par `@theme inline`. Toute recette
+ * antérieure à la v4 est inapplicable ici.
+ *
+ * `inline` n'est pas décoratif : sans lui, Tailwind fige la valeur des tokens à
+ * la compilation, et `.dark` ne changerait plus rien aux utilitaires. Avec, les
+ * utilitaires pointent sur la variable, que le thème redéfinit.
+ *
+ * `source(none)` coupe la détection automatique de contenu, et chaque source est
+ * déclarée : dans un monorepo, la racine détectée dépend du répertoire d'appel,
+ * et une classe utilisée dans un package qu'on n'a pas scanné ne produit aucune
+ * règle — sans la moindre erreur. Ce qui est balayé est écrit, ici et dans le
+ * fichier de l'application.
+ */
+@import 'tailwindcss' source(none);
+
+@source './';
+
+/**
+ * Le thème sombre est piloté par la **classe** `.dark` sur `<html>`, jamais par
+ * `prefers-color-scheme` seul : le commutateur de s08 doit pouvoir contredire le
+ * système, et le choix persiste entre deux sessions. Sans cette ligne, la
+ * variante `dark:` de Tailwind v4 suit la préférence du système et le
+ * commutateur ne peut plus rien contre elle.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  /* Surfaces et texte — échelle neutre */
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+
+  /* Primaire — LE token que chaque projet remplace */
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+
+  /* Sémantiques — états métier, jamais décoratives */
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --success: oklch(0.62 0.17 149);
+  --success-foreground: oklch(0.985 0 0);
+  --warning: oklch(0.79 0.16 86);
+  --warning-foreground: oklch(0.205 0 0);
+  --info: oklch(0.62 0.16 250);
+  --info-foreground: oklch(0.985 0 0);
+
+  /* Bordures et focus */
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+
+  --radius: 0.5rem;
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+
+  --primary: oklch(0.985 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.985 0 0);
+  --success: oklch(0.70 0.15 149);
+  --success-foreground: oklch(0.145 0 0);
+  --warning: oklch(0.83 0.14 86);
+  --warning-foreground: oklch(0.145 0 0);
+  --info: oklch(0.70 0.14 250);
+  --info-foreground: oklch(0.145 0 0);
+
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+}
+
+/**
+ * Ce que Tailwind expose comme utilitaires.
+ *
+ * Une couleur absente d'ici n'a pas d'utilitaire : c'est ce qui rend
+ * `bg-zinc-800` inutile et `bg-background` obligatoire. L'échelle de taille de
+ * texte du design system est **celle de Tailwind** — `display` = `text-5xl`,
+ * `h1` = `text-3xl`, `h2` = `text-2xl`, `h3` = `text-xl`, `body` = `text-sm`,
+ * `body-lg` = `text-base`, `small` = `text-xs` —, donc aucun token de taille
+ * n'est redéclaré : en inventer un ferait diverger le système de son socle.
+ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Dérivés du rayon, tels que le design system les fixe. */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /**
+   * Les deux familles de `next/font`. Les variables sont posées sur `<html>`
+   * par l'application : aucune requête vers un domaine externe, donc aucun
+   * script tiers à déclarer au registre de consentement (s36).
+   */
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@layer base {
+  /**
+   * La bordure par défaut est celle du token : l'élévation du système se fait
+   * par bordure et par fond, jamais par ombre portée sur une surface statique.
+   */
+  *,
+  ::after,
+  ::before {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+    /* `body` du design system : 0,875rem / 400. */
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+}

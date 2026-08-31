@@ -1,5 +1,6 @@
 'use client'
 
+import { Button } from '@repo/ui'
 import { useState } from 'react'
 
 /**
@@ -7,19 +8,34 @@ import { useState } from 'react'
  *
  * Un `POST`, jamais un lien : une déconnexion en `GET` se déclenche depuis une
  * image distante, et le préchargement d'un navigateur suffit à la provoquer.
+ *
+ * L'appel vit ici, **une seule fois**, et le menu de compte l'appelle comme le
+ * bouton : deux implémentations divergeraient au premier changement de route.
  */
+export async function signOut(action: string): Promise<void> {
+  await fetch(action, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{}',
+  })
+  window.location.assign('/')
+}
+
 export function SignOutButton({ action }: { readonly action: string }) {
   const [pending, setPending] = useState(false)
 
-  const signOut = async (): Promise<void> => {
-    setPending(true)
-    await fetch(action, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
-    window.location.assign('/')
-  }
-
   return (
-    <button type="button" onClick={signOut} disabled={pending}>
+    <Button
+      type="button"
+      variant="outline"
+      pending={pending}
+      onClick={() => {
+        setPending(true)
+
+        void signOut(action)
+      }}
+    >
       Se déconnecter
-    </button>
+    </Button>
   )
 }

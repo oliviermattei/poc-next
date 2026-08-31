@@ -2,6 +2,7 @@ import type { Mailer, SendEmailResult } from '@repo/ports'
 
 import type { AuthPolicy } from '../domain/auth-policy'
 import type { SecurityEventRecord } from '../domain/security-event'
+import type { StoredSession } from '../domain/session'
 
 /**
  * Les **ports** du module (ADR 006) : ce dont les cas d'usage ont besoin, dit
@@ -15,6 +16,7 @@ import type { SecurityEventRecord } from '../domain/security-event'
 /** Ce que le module sait d'un compte, et rien de plus. */
 export interface AuthUserRecord {
   readonly id: string
+  readonly name: string
   readonly email: string
   readonly emailVerified: boolean
 }
@@ -26,6 +28,8 @@ export interface AuthUserRepository {
   markEmailVerified(userId: string): Promise<boolean>
   /** Remplace l'email et le marque vérifié. Rend `false` si l'adresse est déjà prise. */
   changeEmail(userId: string, email: string): Promise<boolean>
+  /** Remplace le nom affiché. Rend `false` si aucun compte ne correspond. */
+  changeName(userId: string, name: string): Promise<boolean>
   /**
    * Efface le compte. Les sessions et les identifiants suivent par cascade :
    * la contrainte de la base est ce qui garantit qu'aucun reste n'échappe à la
@@ -38,8 +42,26 @@ export interface AuthUserRepository {
 export interface AuthSessionRepository {
   /** Sessions actives d'un compte : c'est la vérification **côté serveur** de la révocation. */
   countForUser(userId: string): Promise<number>
+  /**
+   * Les sessions du compte, **sans leur jeton** : ce que le magasin en dit se
+   * limite à ce qu'un écran a le droit d'afficher.
+   */
+  listForUser(userId: string): Promise<readonly StoredSession[]>
   /** Révoque toutes les sessions du compte. Rend le nombre de sessions supprimées. */
   revokeAllForUser(userId: string): Promise<number>
+  /**
+   * Révoque **une** session, à condition qu'elle appartienne à ce compte.
+   *
+   * Le compte fait partie de la condition, il n'est pas vérifié avant :
+   * l'autorisation est dans la requête elle-même. Une vérification préalable
+   * suivie d'une suppression laisserait la fenêtre où l'on supprime la session
+   * d'autrui (`docs/security.md` §3). Rend `false` quand rien ne correspond —
+   * l'appelant ne peut donc pas distinguer « pas à vous » de « n'existe pas ».
+   */
+  revokeForUser(input: {
+    readonly userId: string
+    readonly sessionId: string
+  }): Promise<boolean>
 }
 
 export interface VerificationToken {

@@ -5,6 +5,7 @@ import { describeSecurityEvent } from '../domain/security-event'
 import {
   genericSignInRefusal,
   InvalidCredentialsError,
+  parseDisplayName,
   parseEmailInput,
   parseSignInInput,
   parseSignUpInput,
@@ -42,6 +43,8 @@ const PATHS = {
   signOut: '/auth/sign-out',
   changePassword: '/auth/change-password',
   changeEmail: '/auth/change-email',
+  changeName: '/auth/change-name',
+  revokeSession: '/auth/revoke-session',
 } as const
 
 /** Le chemin public d'une route du module, préfixe de montage compris. */
@@ -50,6 +53,16 @@ export const authRoutePath = (path: keyof typeof PATHS): string =>
 
 const badRequest = (reason: string): Response =>
   Response.json({ error: 'invalid_request', reason }, { status: 400 })
+
+/**
+ * Ce que rend une session qui n'est pas celle de l'appelant.
+ *
+ * **404, jamais 403** (`docs/security.md` §3) : un 403 confirmerait que cet
+ * identifiant de session existe. La réponse est donc la même que pour un
+ * identifiant inventé, et c'est le journal — pas l'appelant — qui garde la
+ * différence.
+ */
+const notFound = (): Response => Response.json({ error: 'not_found' }, { status: 404 })
 
 /** Une redirection de navigateur : c'est ce qu'un lien cliqué dans un email attend. */
 const redirect = (location: string): Response =>
@@ -297,6 +310,65 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
             currentPassword: body.currentPassword,
             newPassword: password,
           })
+        }),
+    },
+    {
+      method: 'POST',
+      path: PATHS.changeName,
+      protection: { level: 'authenticated' },
+      handler: async (request, context) =>
+        await refuseInvalid(async () => {
+          const auth = service()
+          const name = parseDisplayName(await jsonBody(request))
+
+          if (context.session === null) {
+            return badRequest('session absente')
+          }
+
+          // Le compte modifié est **celui de la session**, jamais un
+          // identifiant reçu du client : le seul moyen de changer le nom d'un
+          // autre serait d'ouvrir sa session.
+          const changed = await auth.useCases.changeName({
+            userId: context.session.userId,
+            name,
+          })
+
+          if (changed) {
+            auth.useCases.log(
+              describeSecurityEvent({
+                event: 'auth.profile_changed',
+                actor: { userId: context.session.userId },
+                details: { field: 'name' },
+              }),
+            )
+          }
+
+          return changed ? Response.json({ status: true }) : notFound()
+        }),
+    },
+    {
+      method: 'POST',
+      path: PATHS.revokeSession,
+      protection: { level: 'authenticated' },
+      handler: async (request, context) =>
+        await refuseInvalid(async () => {
+          const auth = service()
+          const body = (await jsonBody(request)) as { readonly sessionId?: unknown }
+
+          if (context.session === null) {
+            return badRequest('session absente')
+          }
+
+          if (typeof body?.sessionId !== 'string' || body.sessionId === '') {
+            return badRequest('session à révoquer manquante')
+          }
+
+          const revoked = await auth.useCases.revokeSession({
+            userId: context.session.userId,
+            sessionId: body.sessionId,
+          })
+
+          return revoked ? Response.json({ status: true }) : notFound()
         }),
     },
     {

@@ -326,6 +326,97 @@ describe('un module ne dépend pas du package de base de données', () => {
 })
 
 /**
+ * **`packages/ui` est la seule frontière avec le socle de composants** (ADR 022).
+ *
+ * L'ADR 022 remplace Base UI par Radix parce que Base UI n'a jamais publié de
+ * version stable, et il garde de l'ADR 009 la clause qui rend le choix
+ * réversible : aucun module, aucune application n'importe le socle
+ * directement. C'est cette clause qui borne le coût du basculement le jour où
+ * Base UI se stabilise — sans elle, changer de socle redevient un refactor
+ * traversant.
+ *
+ * Une intention ne se vérifie pas. Voici la commande qui échoue.
+ *
+ * **Ce qui est balayé**, cas par cas, et rien de plus : import statique et
+ * import de type, réexport, import d'effet de bord, sous-chemin, import
+ * dynamique — en guillemets simples et doubles. Non balayé, et connu : un
+ * spécificateur reconstruit à l'exécution (`import('@radix' + '-ui/…')`), et
+ * les fichiers sous l'exception nommée du harnais de test (`tests/`, `e2e/`,
+ * `packages/*\/src/**\/*.test.ts`), où `no-restricted-imports` est éteint. Le
+ * périmètre couvert est `apps/**`, `packages/**` et `tooling/**`, sauf
+ * `packages/ui`.
+ */
+describe('le socle de composants ne sort pas de packages/ui (ADR 022)', () => {
+  let eslint: ESLint
+
+  beforeAll(() => {
+    eslint = new ESLint({ cwd: REPO_ROOT })
+  })
+
+  const ruleIdsFor = async (code: string, filePath: string): Promise<string[]> => {
+    const [result] = await eslint.lintText(code, { filePath })
+
+    return (result?.messages ?? []).map((message) => message.ruleId ?? '')
+  }
+
+  it.each([
+    [
+      'un composant de module',
+      'packages/modules/auth/src/presentation/probe.tsx',
+      "import * as Dialog from '@radix-ui/react-dialog'\nexport const P = () => <Dialog.Root />",
+    ],
+    [
+      'un écran de l’application',
+      'apps/web/app/probe.tsx',
+      'import * as Dialog from "@radix-ui/react-dialog"\nexport const P = () => <Dialog.Root />',
+    ],
+    [
+      'un sous-chemin',
+      'apps/web/app/probe.ts',
+      "import { Root } from '@radix-ui/react-dialog/dist/index.mjs'\nexport const R = Root",
+    ],
+    [
+      'un import de type',
+      'packages/core/src/probe.ts',
+      "import type { DialogProps } from '@radix-ui/react-dialog'\nexport type P = DialogProps",
+    ],
+    [
+      'un import dynamique',
+      'packages/modules/auth/src/presentation/probe.ts',
+      "export const load = () => import('@radix-ui/react-dialog')",
+    ],
+  ])('refuse Radix hors de packages/ui — %s', async (_name, path, code) => {
+    const ruleIds = await ruleIdsFor(code, path)
+
+    expect(ruleIds.filter((id) => id.startsWith('no-restricted-'))).not.toEqual([])
+  })
+
+  it('laisse packages/ui l’importer — c’est sa raison d’être', async () => {
+    // Trop large, la règle interdirait au socle de composants d'exister : elle
+    // prouverait qu'elle est fausse, pas qu'elle marche.
+    const ruleIds = await ruleIdsFor(
+      "import * as Dialog from '@radix-ui/react-dialog'\nexport const Root = Dialog.Root",
+      'packages/ui/src/components/sheet.tsx',
+    )
+
+    expect(ruleIds.filter((id) => id.startsWith('no-restricted-'))).toEqual([])
+  })
+
+  it('garde l’interdit d’importer une application, là où il portait déjà', async () => {
+    // La garde de Radix redéfinit `no-restricted-imports` sur `packages/**` :
+    // en configuration plate, une seconde déclaration **remplace** les options
+    // de la première. Sans ce cas, ajouter Radix aurait effacé en silence
+    // l'interdit de `libraryConfig` sur tous les packages.
+    const ruleIds = await ruleIdsFor(
+      "import { GET } from '@repo/web'\nexport const handler = GET",
+      'packages/core/src/probe.ts',
+    )
+
+    expect(ruleIds).toContain('no-restricted-imports')
+  })
+})
+
+/**
  * Sens des dépendances entre packages et applications.
  *
  * `apps/web` dépend de `@repo/config` et `@repo/db` ; l'inverse rendrait ces
@@ -361,6 +452,33 @@ describe('un package ne dépend pas d’une application', () => {
     )
 
     expect(ruleIds).not.toContain('no-restricted-imports')
+  })
+
+  /**
+   * **Le même interdit, dans un composant.**
+   *
+   * La portée s'arrêtait à `packages/**\/*.ts`. Un `.tsx` de package n'était
+   * pas « autorisé » : aucune configuration ne le matchait, donc ESLint ne le
+   * lintait **pas du tout** — zéro message, quoi qu'on y écrive. s08 apporte
+   * les premiers composants React de package (`packages/ui`, puis le
+   * `presentation/` d'un module) : sans cette extension, la règle serait morte
+   * en silence le jour même où elle devient utile. Signalé par l'implémenteur
+   * de s07, mesuré ici avant d'être corrigé.
+   *
+   * Ce qui a été mesuré, et rien de plus : les règles de `baseConfig`
+   * atteignaient déjà les `.tsx` (le preset `typescript-eslint` porte ses
+   * propres `files`), une variable inutilisée y était bien signalée. Ce sont
+   * les blocs dont la portée est écrite en `.ts` — `libraryConfig` ici — qui
+   * s'arrêtaient à la porte.
+   */
+  it('juge un composant de package, en `.tsx`', async () => {
+    const ruleIds = await ruleIdsFor(
+      "import { HomePage } from '../../../apps/web/app/page'\n" +
+        'export const Probe = () => <p>{String(HomePage)}</p>',
+      'packages/ui/src/probe.tsx',
+    )
+
+    expect(ruleIds).toContain('no-restricted-imports')
   })
 })
 

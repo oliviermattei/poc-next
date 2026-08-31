@@ -13,16 +13,16 @@ Socles couverts : **`docs/security.md` §2** (les écrans de sécurité consomme
 
 ## Tasks (ordered)
 
-1. [ ] **Étendre le lint de couches aux `.tsx` — avant tout composant.** `boundariesConfig` et `libraryConfig` visent `packages/**/*.ts` ; s08 apporte les premiers composants React de module. Si l'ordre s'inverse, la règle meurt en silence le jour même où elle devient utile. Prouver par une violation réelle dans un `.tsx`.
-2. [ ] **`packages/ui`** — package, `AGENTS.md` (seule frontière avec Radix, aucun module ne l'importe directement), configuration TypeScript.
-3. [ ] **Tokens et CSS racine** — `@import "tailwindcss"` et `@theme` portant **exactement** les tokens de `docs/design-system.md` : échelle neutre, primaire, sémantiques, bordures, rayon. Pas de `tailwind.config.js` (Tailwind v4, ADR 010).
-4. [ ] **Typographie** — Geist Sans et Mono par `next/font`, aucune requête externe : une police servie par un CDN deviendrait un script tiers soumis au consentement de s36.
-5. [ ] **Composants** — copier depuis shadcn/ui sur Radix les primitives que le design system nomme et que cette story utilise réellement. Ne pas copier l'inventaire entier « pour plus tard ».
-6. [ ] **Thème** — clair/sombre par **classe** sur `<html>` (`next-themes`), jamais par `prefers-color-scheme` seul : le commutateur doit pouvoir contredire le système, et le choix persiste. Pas de clignotement au premier rendu.
-7. [ ] **Shell** — navigation latérale alimentée par `visibleNavigation(registry, session)` de s03, **sans une seule condition dans le composant** ; menu de compte ; `Sheet` sous `md`.
-8. [ ] **Paramètres du compte** — profil (nom, email avec revérification), sécurité (mot de passe courant exigé), sessions actives avec révocation individuelle. **Consommer les cas d'usage de s07**, ne rien réécrire.
-9. [ ] **Responsive** — utilisable sous 400 px sans débordement horizontal, vérifié à cette largeur.
-10. [ ] **Accessibilité** — trancher `jsx-a11y` : rétablir s'il existe une version compatible ESLint 10, sinon écrire ce sur quoi l'accessibilité repose (primitives Radix, tests de rôles et de navigation au clavier) dans `packages/ui/AGENTS.md`.
+1. [x] **Étendre le lint de couches aux `.tsx` — avant tout composant.** `boundariesConfig` et `libraryConfig` visent `packages/**/*.ts` ; s08 apporte les premiers composants React de module. Si l'ordre s'inverse, la règle meurt en silence le jour même où elle devient utile. Prouver par une violation réelle dans un `.tsx`.
+2. [x] **`packages/ui`** — package, `AGENTS.md` (seule frontière avec Radix, aucun module ne l'importe directement), configuration TypeScript.
+3. [x] **Tokens et CSS racine** — `@import "tailwindcss"` et `@theme` portant **exactement** les tokens de `docs/design-system.md` : échelle neutre, primaire, sémantiques, bordures, rayon. Pas de `tailwind.config.js` (Tailwind v4, ADR 010).
+4. [x] **Typographie** — Geist Sans et Mono par `next/font`, aucune requête externe : une police servie par un CDN deviendrait un script tiers soumis au consentement de s36.
+5. [x] **Composants** — copier depuis shadcn/ui sur Radix les primitives que le design system nomme et que cette story utilise réellement. Ne pas copier l'inventaire entier « pour plus tard ».
+6. [x] **Thème** — clair/sombre par **classe** sur `<html>` (`next-themes`), jamais par `prefers-color-scheme` seul : le commutateur doit pouvoir contredire le système, et le choix persiste. Pas de clignotement au premier rendu.
+7. [x] **Shell** — navigation latérale alimentée par `visibleNavigation(registry, session)` de s03, **sans une seule condition dans le composant** ; menu de compte ; `Sheet` sous `md`.
+8. [x] **Paramètres du compte** — profil (nom, email avec revérification), sécurité (mot de passe courant exigé), sessions actives avec révocation individuelle. **Consommer les cas d'usage de s07**, ne rien réécrire.
+9. [x] **Responsive** — utilisable sous 400 px sans débordement horizontal, vérifié à cette largeur.
+10. [x] **Accessibilité** — trancher `jsx-a11y` : rétablir s'il existe une version compatible ESLint 10, sinon écrire ce sur quoi l'accessibilité repose (primitives Radix, tests de rôles et de navigation au clavier) dans `packages/ui/AGENTS.md`.
 
 ## Run interdicts
 

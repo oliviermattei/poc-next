@@ -2,6 +2,7 @@ import { MODULE_ROUTE_PREFIX, type ModuleExportPayload, type ModuleScope } from 
 import type { SendEmailResult } from '@repo/ports'
 
 import { describeSecurityEvent } from '../domain/security-event'
+import { describeSessions, type DescribedSession } from '../domain/session'
 import {
   tokenIdentifier,
   tokenIdentifierPrefix,
@@ -40,6 +41,14 @@ export type EmailChangeOutcome =
   | { readonly status: 'changed'; readonly userId: string; readonly email: string }
   | { readonly status: 'invalid' }
 
+/** Ce qu'un écran de paramètres a le droit de connaître du compte. */
+export interface AccountView {
+  readonly userId: string
+  readonly name: string
+  readonly email: string
+  readonly emailVerified: boolean
+}
+
 export type VerificationOutcome =
   | { readonly status: 'verified'; readonly userId: string }
   | { readonly status: 'invalid' }
@@ -69,6 +78,19 @@ export interface AuthUseCases {
     readonly newEmail: string
   }): Promise<SendEmailResult>
   confirmEmailChange(token: string): Promise<EmailChangeOutcome>
+  /** Le compte de l'appelant, tel qu'un écran l'affiche. */
+  viewAccount(userId: string): Promise<AccountView | null>
+  changeName(input: { readonly userId: string; readonly name: string }): Promise<boolean>
+  /** Les sessions actives du compte, la courante en tête, sans aucun jeton. */
+  listSessions(input: {
+    readonly userId: string
+    readonly currentSessionId: string | null
+  }): Promise<readonly DescribedSession[]>
+  /** Révoque une session **du compte appelant**. `false` quand elle n'est pas à lui. */
+  revokeSession(input: {
+    readonly userId: string
+    readonly sessionId: string
+  }): Promise<boolean>
   purgeAccount(scope: ModuleScope): Promise<void>
   exportAccount(scope: ModuleScope): Promise<ModuleExportPayload>
   log: AuthDependencies['log']
@@ -322,6 +344,41 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
       )
 
       return { status: 'changed', userId, email }
+    },
+
+    viewAccount: async (userId) => {
+      const user = await users.findById(userId)
+
+      return user === null
+        ? null
+        : {
+            userId: user.id,
+            name: user.name,
+            email: user.email,
+            emailVerified: user.emailVerified,
+          }
+    },
+
+    changeName: async ({ userId, name }) => await users.changeName(userId, name),
+
+    listSessions: async ({ userId, currentSessionId }) =>
+      describeSessions(await sessions.listForUser(userId), currentSessionId),
+
+    revokeSession: async ({ userId, sessionId }) => {
+      // La révocation est **une suppression de ligne**, portée par le
+      // repository avec le propriétaire dans la condition : ce cas d'usage ne
+      // relit pas la session pour vérifier à qui elle est, il demande une
+      // suppression qui ne peut pas toucher celle d'un autre.
+      const revoked = await sessions.revokeForUser({ userId, sessionId })
+
+      log(
+        describeSecurityEvent({
+          event: revoked ? 'auth.session_revoked' : 'auth.session_revocation_refused',
+          actor: { userId },
+        }),
+      )
+
+      return revoked
     },
 
     /**

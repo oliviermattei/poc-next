@@ -45,6 +45,23 @@ Deux conséquences qu'il ne faut pas défaire :
   y est imposé : laisser le client le fournir reviendrait à lui laisser décider
   si ses autres sessions survivent à un changement de mot de passe.
 
+## Le compte agit sur lui-même, jamais sur un autre (s08)
+
+`change-name` et `revoke-session` prennent le compte dans **la session**, jamais
+dans le corps de la requête. La révocation individuelle porte le propriétaire
+dans sa condition SQL (`id = ? and user_id = ?`), en un seul ordre : il n'existe
+pas d'instant où la session d'autrui est trouvée puis supprimée. Une session qui
+n'est pas celle de l'appelant répond **404, jamais 403** — un 403 confirmerait
+que cet identifiant existe (`docs/security.md` §3).
+
+Les deux cas de `tests/auth.test.ts` envoient un `userId` dans le corps :
+c'est ce champ qui fait rougir la suite si une route se met à lire le compte
+ailleurs que dans la session. Sans lui, la mutation passait au vert — mesuré.
+
+La liste des sessions ne rend **aucun jeton** : les colonnes sont énumérées
+dans le repository, et `describeSessions` recopie champ par champ plutôt que
+d'étaler la ligne. Un jeton rendu à un écran, c'est `HttpOnly` annulé.
+
 ## Ce que la bibliothèque fait déjà bien, et qu'il ne faut pas réécrire
 
 Mesuré dans le paquet **installé** (1.7.2), sur les quatre points regardés :

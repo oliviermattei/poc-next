@@ -650,7 +650,129 @@ describe.skipIf(!databaseReachable)('durcissement de la session', () => {
   it('refuse une route protégée sans session, sans atteindre la bibliothèque', async () => {
     expect((await call('/sign-out', { method: 'POST', body: {} })).status).toBe(401)
     expect((await call('/change-password', { body: {} })).status).toBe(401)
+    expect((await call('/revoke-session', { body: { sessionId: 'peu-importe' } })).status).toBe(401)
+    expect((await call('/change-name', { body: { name: 'Peu importe' } })).status).toBe(401)
   })
+
+  it('liste les sessions du compte, la courante en tête, sans jamais rendre de jeton', async () => {
+    const { email, userId } = await aVerifiedAccount()
+
+    await signIn(email)
+
+    const current = sessionCookie(await signIn(email))
+    const currentSessionId = await service.resolveSessionId(
+      new Request(APP_URL, { headers: { cookie: current?.value ?? '' } }),
+    )
+
+    const listed = await service.useCases.listSessions({ userId, currentSessionId })
+
+    expect(listed).toHaveLength(2)
+    expect(listed[0]?.id).toBe(currentSessionId)
+    expect(listed.filter((session) => session.current)).toHaveLength(1)
+
+    // Le jeton de session est ce que le cookie porte : le rendre à un écran
+    // reviendrait à écrire dans le HTML de quoi rejouer la session.
+    const [token] = await connection.db
+      .select({ token: authSchema.authSession.token })
+      .from(authSchema.authSession)
+      .where(sql`user_id = ${userId}`)
+
+    expect(token?.token).toBeTruthy()
+    expect(JSON.stringify(listed)).not.toContain(token?.token ?? 'jeton-introuvable')
+  }, 30_000)
+
+  it('révoque une session individuellement, et le serveur la refuse ensuite', async () => {
+    const { email, userId } = await aVerifiedAccount()
+    const other = sessionCookie(await signIn(email))
+    const current = sessionCookie(await signIn(email))
+
+    const otherSessionId = await service.resolveSessionId(
+      new Request(APP_URL, { headers: { cookie: other?.value ?? '' } }),
+    )
+
+    const response = await call('/revoke-session', {
+      body: { sessionId: otherSessionId },
+      cookie: current?.value,
+    })
+
+    expect(response.status).toBe(200)
+
+    // Côté serveur, pas dans une liste : la ligne n'existe plus.
+    expect(
+      (await call('/sign-out', { method: 'POST', body: {}, cookie: other?.value })).status,
+    ).toBe(401)
+
+    // Et la session qui a demandé la révocation, elle, survit : révoquer une
+    // session ne doit pas déconnecter tout le compte.
+    const [remaining] = await connection.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(authSchema.authSession)
+      .where(sql`user_id = ${userId}`)
+
+    expect(Number(remaining?.count ?? -1)).toBe(1)
+  }, 30_000)
+
+  it('refuse de révoquer la session d’un autre compte — 404, et rien n’est supprimé', async () => {
+    // `docs/security.md` §3 : la ressource d'autrui répond **404**, jamais 403.
+    // Un 403 confirmerait que cet identifiant de session existe.
+    const victim = await aVerifiedAccount()
+    const attacker = await aVerifiedAccount()
+
+    const victimCookie = sessionCookie(await signIn(victim.email))
+    const attackerCookie = sessionCookie(await signIn(attacker.email))
+
+    const victimSessionId = await service.resolveSessionId(
+      new Request(APP_URL, { headers: { cookie: victimCookie?.value ?? '' } }),
+    )
+
+    // Le corps porte **aussi** le compte visé : c'est l'écriture qu'un
+    // attaquant essaie en premier, et la seule qui distingue « la route ignore
+    // ce que le client prétend être » de « le client n'a rien prétendu ».
+    // Sans ce champ, remplacer `context.session.userId` par un identifiant reçu
+    // du corps laissait la suite entièrement verte — mutation jouée, mesurée.
+    const response = await call('/revoke-session', {
+      body: { sessionId: victimSessionId, userId: victim.userId },
+      cookie: attackerCookie?.value,
+    })
+
+    expect(response.status).toBe(404)
+
+    // La session visée est intacte : le refus n'a rien supprimé au passage.
+    const [remaining] = await connection.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(authSchema.authSession)
+      .where(sql`user_id = ${victim.userId}`)
+
+    expect(Number(remaining?.count ?? -1)).toBe(1)
+  }, 30_000)
+
+  it('change le nom affiché du compte, et refuse un nom vide sans rien écrire', async () => {
+    const { email, userId } = await aVerifiedAccount()
+    const cookie = sessionCookie(await signIn(email))
+
+    // Le corps porte un compte que l'appelant n'est pas : la route doit
+    // l'ignorer. Le lire ferait échouer ce cas en 404 — c'est ce qui distingue
+    // « le compte vient de la session » d'un simple silence.
+    expect(
+      (
+        await call('/change-name', {
+          body: { name: '  Olivier  ', userId: 'un-compte-qui-n-est-pas-le-mien' },
+          cookie: cookie?.value,
+        })
+      ).status,
+    ).toBe(200)
+
+    const account = await service.useCases.viewAccount(userId)
+
+    expect(account?.name).toBe('Olivier')
+
+    // Un seul témoin de refus : la règle du `domain` est éprouvée chez elle,
+    // la route prouve seulement qu'elle l'appelle.
+    expect((await call('/change-name', { body: { name: '   ' }, cookie: cookie?.value })).status).toBe(
+      400,
+    )
+    expect((await service.useCases.viewAccount(userId))?.name).toBe('Olivier')
+  }, 30_000)
 
   it('vaut vérification pour le magic link, et efface ce que le compte avait accumulé avant la preuve', async () => {
     // Comportement de la bibliothèque, mesuré et épinglé ici parce qu'il

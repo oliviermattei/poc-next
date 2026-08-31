@@ -251,6 +251,12 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
         asResponse: true,
       }),
 
+    resolveSessionId: async (request) => {
+      const session = await auth.api.getSession({ headers: request.headers })
+
+      return session === null ? null : session.session.id
+    },
+
     resolveSession: async (request) => {
       const session = await auth.api.getSession({ headers: request.headers })
 

@@ -28,6 +28,16 @@ export interface AuthService {
     readonly newPassword: string
   }): Promise<Response>
   resolveSession(request: Request): Promise<ModuleSession | null>
+  /**
+   * L'identifiant de la session de l'appelant, quand il en a une.
+   *
+   * Distinct de `resolveSession` : `ModuleSession` est le contrat du registre,
+   * commun à tous les modules, et il ne porte que ce dont l'autorisation a
+   * besoin — un compte et des rôles. Y ajouter un identifiant de session
+   * rouvrirait le contrat de module pour un besoin d'un seul écran : savoir
+   * laquelle, dans la liste, est celle qu'on utilise en ce moment.
+   */
+  resolveSessionId(request: Request): Promise<string | null>
   readonly useCases: AuthUseCases
   readonly policy: AuthPolicy
 }

@@ -38,13 +38,20 @@ const isUniqueViolation = (error: unknown): boolean =>
 
 const toRecord = (row: {
   id: string
+  name: string
   email: string
   emailVerified: boolean
-}): AuthUserRecord => ({ id: row.id, email: row.email, emailVerified: row.emailVerified })
+}): AuthUserRecord => ({
+  id: row.id,
+  name: row.name,
+  email: row.email,
+  emailVerified: row.emailVerified,
+})
 
 export function createDrizzleAuthUserRepository(db: AuthDatabase): AuthUserRepository {
   const columns = {
     id: authUser.id,
+    name: authUser.name,
     email: authUser.email,
     emailVerified: authUser.emailVerified,
   }
@@ -97,6 +104,16 @@ export function createDrizzleAuthUserRepository(db: AuthDatabase): AuthUserRepos
       }
     },
 
+    changeName: async (userId, name) => {
+      const updated = await db
+        .update(authUser)
+        .set({ name, updatedAt: new Date() })
+        .where(eq(authUser.id, userId))
+        .returning({ id: authUser.id })
+
+      return updated.length > 0
+    },
+
     deleteById: async (userId) => {
       const deleted = await db
         .delete(authUser)
@@ -117,6 +134,34 @@ export function createDrizzleAuthSessionRepository(db: AuthDatabase): AuthSessio
         .where(eq(authSession.userId, userId))
 
       return Number(row?.count ?? 0)
+    },
+
+    listForUser: async (userId) => {
+      // Les colonnes sont **énumérées** : un `select()` nu ramènerait le jeton
+      // de session, que le `domain` retirerait ensuite — une garde de plus à
+      // ne pas oublier, au lieu d'une donnée qui ne sort jamais de la base.
+      return await db
+        .select({
+          id: authSession.id,
+          createdAt: authSession.createdAt,
+          expiresAt: authSession.expiresAt,
+          ipAddress: authSession.ipAddress,
+          userAgent: authSession.userAgent,
+        })
+        .from(authSession)
+        .where(eq(authSession.userId, userId))
+    },
+
+    revokeForUser: async ({ userId, sessionId }) => {
+      // **Un seul ordre SQL**, et le propriétaire est dans la condition : c'est
+      // ce qui rend impossible de révoquer la session d'un autre compte, y
+      // compris en devinant un identifiant.
+      const deleted = await db
+        .delete(authSession)
+        .where(and(eq(authSession.id, sessionId), eq(authSession.userId, userId)))
+        .returning({ id: authSession.id })
+
+      return deleted.length > 0
     },
 
     revokeAllForUser: async (userId) => {

@@ -19,6 +19,15 @@ module (`packages/modules/<module>/src/domain`).
   `@repo/module-demo-disabled` aujourd'hui. Un seul fichier fait exception et
   importe un module directement — `lib/auth.ts`, le point de composition de
   l'authentification (voir plus bas) ;
+- `@repo/ui` pour **tout** ce qui s'affiche : c'est le design system, et la
+  seule frontière avec le socle de composants. Un import de `@radix-ui/*` ici
+  est refusé par `pnpm lint` (ADR 022) ;
+- `lucide-react` pour les icônes : un seul jeu dans tout le produit, 16 px dans
+  l'application. Ce n'est pas le socle de composants — celui-là ne sort pas de
+  `packages/ui` ;
+- `geist` dans `app/layout.tsx` uniquement : les deux polices, chargées par
+  `next/font`, donc servies par l'application. Une police servie par un domaine
+  externe serait un script tiers, soumis au consentement de s36 ;
 - `next`, `react`, `react-dom` ;
 - `@repo/typescript-config` pour la configuration du compilateur.
 
@@ -50,8 +59,25 @@ Deux fichiers, et deux seulement :
   une route exposée ; ici la route d'un module non activé n'est dans aucune
   table.
 
-`app/navigation.tsx` affiche `moduleRegistry.navigation` sans condition. Ajouter
-un `if` ici reviendrait à masquer une entrée au lieu de ne pas l'avoir.
+La navigation du shell vient de `lib/navigation.ts` — `visibleNavigation`
+(s03), traduite, **sans une seule condition**. Ajouter un `if` sur un
+identifiant de module reviendrait à masquer une entrée au lieu de ne pas
+l'avoir, et le composant qui l'affiche (`app/app-navigation.tsx`) ne sait même
+pas ce qu'est un module : il reçoit des entrées.
+
+## Le shell
+
+`app/layout.tsx` pose les polices, le thème et `app/app-shell.tsx`, qui entoure
+**tous** les écrans — authentification comprise. Le shell résout l'appelant une
+seule fois (`currentViewer`) et en tire deux choses : les entrées de navigation
+et le menu de compte. Un visiteur anonyme n'a pas de menu de compte parce qu'il
+n'est **pas rendu**, jamais parce qu'il serait masqué.
+
+Le thème est piloté par la classe `.dark` sur `<html>` (`next-themes`), et
+`suppressHydrationWarning` sur cet élément est ce qui rend l'écart attendu :
+le script pose la classe avant le premier rendu, donc le serveur et le client
+diffèrent par construction. Le retirer fait apparaître un avertissement à chaque
+chargement ; l'étendre à l'arbre masquerait de vrais écarts.
 
 ## Le montage de l'authentification
 

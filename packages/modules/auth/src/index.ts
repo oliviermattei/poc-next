@@ -25,7 +25,12 @@ export { AuthNotConfiguredError, type AuthService } from './application/auth-ser
 export { defaultAuthPolicy, type AuthPolicy } from './domain/auth-policy'
 export { safeRedirectPath } from './domain/redirect'
 export { authRoutePath } from './presentation/auth-routes'
-export { AUTH_EMAIL_TEMPLATES, type AuthUseCases } from './application/auth-use-cases'
+export {
+  AUTH_EMAIL_TEMPLATES,
+  type AccountView,
+  type AuthUseCases,
+} from './application/auth-use-cases'
+export type { DescribedSession } from './domain/session'
 export { createTokenFactory } from './infrastructure/token-factory'
 export { describeSecurityEvent, type SecurityEventRecord } from './domain/security-event'
 export { tokenIdentifier, type TokenPurpose } from './domain/one-time-token'

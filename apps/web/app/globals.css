@@ -1,0 +1,13 @@
+/**
+ * La feuille de style de l'application.
+ *
+ * Elle **importe le design system** — tokens, thème sombre, base — et déclare
+ * ce que Tailwind doit balayer côté application. `packages/ui` déclare le sien
+ * de son côté : chaque paquet dit quelles sources lui appartiennent, ce qui
+ * rend le balayage indépendant du répertoire depuis lequel on lance la
+ * commande.
+ */
+@import '@repo/ui/styles.css';
+
+@source '../app';
+@source '../lib';

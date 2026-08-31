@@ -1,6 +1,13 @@
 import { type Env, getEnv } from '@repo/config'
 import { getDatabase } from '@repo/db'
-import { authRoutePath, configureAuth, safeRedirectPath, type AuthService } from '@repo/module-auth'
+import {
+  authRoutePath,
+  configureAuth,
+  safeRedirectPath,
+  type AccountView,
+  type AuthService,
+  type DescribedSession,
+} from '@repo/module-auth'
 import type { ModuleSession } from '@repo/core'
 import { headers } from 'next/headers'
 import { after } from 'next/server'
@@ -86,10 +93,62 @@ export const resolveModuleSession = (request: Request): Promise<ModuleSession | 
  * une seconde lecture du cookie, ailleurs, serait une seconde vérité.
  */
 export async function currentSession(): Promise<ModuleSession | null> {
-  const requestHeaders = await headers()
-  const auth = appAuth()
+  return await appAuth().resolveSession(await incomingRequest())
+}
 
-  return await auth.resolveSession(
-    new Request(new URL('/', resolveAuthConfig(getEnv()).appUrl), { headers: requestHeaders }),
-  )
+/**
+ * La requête en cours, reconstruite pour le module.
+ *
+ * Les écrans n'ont pas de `Request` sous la main : Next leur donne les
+ * en-têtes. Tout ce qui suit passe par le **même** service que les routes — une
+ * seconde lecture du cookie, ailleurs, serait une seconde vérité.
+ */
+async function incomingRequest(): Promise<Request> {
+  return new Request(new URL('/', resolveAuthConfig(getEnv()).appUrl), {
+    headers: await headers(),
+  })
+}
+
+/** Ce que le shell a besoin de savoir de l'appelant, en une seule résolution. */
+export interface Viewer {
+  readonly session: ModuleSession | null
+  readonly account: AccountView | null
+}
+
+/**
+ * L'appelant, vu par un composant serveur : sa session **et** son compte.
+ *
+ * Les deux ensemble, parce que le shell a besoin des deux et qu'une seconde
+ * résolution serait une seconde lecture du cookie. La session reste celle que
+ * le module rend — elle n'est jamais reconstruite à partir du compte, sans quoi
+ * les rôles de s17 disparaîtraient en silence dans la navigation.
+ *
+ * Le compte lu est **celui de la session**, jamais un identifiant reçu d'un
+ * paramètre : aucun chemin n'affiche le compte d'un autre (`docs/security.md`
+ * §3).
+ */
+export async function currentViewer(): Promise<Viewer> {
+  const auth = appAuth()
+  const session = await auth.resolveSession(await incomingRequest())
+
+  return {
+    session,
+    account: session === null ? null : await auth.useCases.viewAccount(session.userId),
+  }
+}
+
+/** Les sessions actives de l'appelant, la sienne en tête. Aucun jeton n'en sort. */
+export async function currentSessions(): Promise<readonly DescribedSession[]> {
+  const auth = appAuth()
+  const request = await incomingRequest()
+  const session = await auth.resolveSession(request)
+
+  if (session === null) {
+    return []
+  }
+
+  return await auth.useCases.listSessions({
+    userId: session.userId,
+    currentSessionId: await auth.resolveSessionId(request),
+  })
 }

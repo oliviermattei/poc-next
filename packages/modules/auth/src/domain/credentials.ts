@@ -99,6 +99,39 @@ export function parseEmailInput(input: unknown): string {
     : fail(parsed.error.issues.map((issue) => issue.message))
 }
 
+/**
+ * La longueur maximale d'un nom affiché.
+ *
+ * Elle n'est pas dans `AuthPolicy` — cette politique porte les règles que
+ * l'exploitant peut vouloir durcir (mots de passe, durées de vie des liens),
+ * pas les bornes de forme d'un champ de texte.
+ */
+const DISPLAY_NAME_MAX_LENGTH = 100
+
+/**
+ * Valide un nom affiché.
+ *
+ * Les espaces de bordure sont retirés : un nom fait d'espaces afficherait un
+ * compte anonyme dans le menu et dans la liste des membres, et c'est ce que la
+ * borne basse refuse — un champ « obligatoire » que trois espaces satisfont
+ * n'est pas obligatoire.
+ */
+export function parseDisplayName(input: unknown): string {
+  const parsed = z
+    .object({
+      name: z
+        .string({ error: 'le nom doit être une chaîne de caractères' })
+        .trim()
+        .min(1, { message: 'le nom ne peut pas être vide' })
+        .max(DISPLAY_NAME_MAX_LENGTH, {
+          message: `le nom ne peut pas dépasser ${DISPLAY_NAME_MAX_LENGTH} caractères`,
+        }),
+    })
+    .safeParse(input)
+
+  return parsed.success ? parsed.data.name : fail(parsed.error.issues.map((issue) => issue.message))
+}
+
 /** La forme d'un refus de connexion : un statut, un corps, et rien d'autre. */
 export interface SignInRefusal {
   readonly status: number

@@ -3,7 +3,13 @@
   "compilerOptions": {
     "types": [
       "node"
-    ]
+    ],
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ES2022"
+    ],
+    "jsx": "react-jsx"
   },
   "include": [
     "config",
