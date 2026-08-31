@@ -33,13 +33,14 @@ open -a Docker && docker compose up -d                                # Postgres
 
 | Voie | Story | Worktree | Base / port |
 |---|---|---|---|
-| A | s13-two-factor | commit `bc02ef8`, **en revue** | `s13`, port 3113 |
+| A | s13-two-factor | commit `bc02ef8`, revue **critical**, **tour de correction** | `s13`, port 3113 |
+| D | s17-roles-permissions | `feature/s17-roles-permissions` | `s17`, port 3117 |
 | B | s16-invite-members | **fusionnée dans `dev`** (`6f14cc4`), revue `none`/ship oui | close |
 | C | s11-public-forms | **fusionnée dans `dev`** (`9cf45c2`), revue `none`/ship oui | close |
 
 **Les numéros d'ADR se réservent à l'ouverture d'une vague.** Deux voies parallèles qui
 prennent « le prochain numéro libre » prennent le même, et la fusion écrase une décision sans
-conflit visible — les fichiers portent le même nom. Vague en cours : 026 et **029** = s16, 027 = s11, 028 = s13. s16 avait pris 027 à sa reprise
+conflit visible — les fichiers portent le même nom. Vague en cours : 026 et **029** = s16, 027 = s11, 028 = s13, **030 = s17**. s16 avait pris 027 à sa reprise
 après coupure : deux ADR de même numéro ne produisent **aucun** conflit de fusion, les fichiers
 portant des noms différents — la numérotation ment en silence. Renumérotation avant fusion.
 
