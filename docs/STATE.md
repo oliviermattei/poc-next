@@ -6,10 +6,10 @@
 
 | Story | État |
 |---|---|
-| s01 → s10, s12, s15, s16, s45 | **closes**, revues, correctifs appliqués |
-| s13, s14, s17 → s44, s46 | à faire — 32 stories (s11 et s13 en correction) |
+| s01 → s12, s15, s16, s45 | **closes**, revues, correctifs appliqués |
+| s13, s14, s17 → s44, s46 | à faire — 31 stories (s13 en correction) |
 
-Tests : **977 + 2 ignorés**, 52 parcours end-to-end, déterministes (`retries: 0`).
+Tests : **1050 + 2 ignorés**, 57 parcours end-to-end, déterministes (`retries: 0`).
 ADR : **28** (026 puis 029 ; 027 appartient à s11, 028 à s13, tous deux non fusionnés). Branche : `dev`. Commits : un par story, plus `docs:` pour recherche, plan, revue.
 
 ## Environnement (à refaire après un redémarrage de session)
@@ -35,7 +35,7 @@ open -a Docker && docker compose up -d                                # Postgres
 |---|---|---|---|
 | A | s13-two-factor | commit `bc02ef8`, **en revue** | `s13`, port 3113 |
 | B | s16-invite-members | **fusionnée dans `dev`** (`6f14cc4`), revue `none`/ship oui | close |
-| C | s11-public-forms | commit `0911aa9`, **en revue** | `s11`, port 3111 |
+| C | s11-public-forms | **fusionnée dans `dev`** (`9cf45c2`), revue `none`/ship oui | close |
 
 **Les numéros d'ADR se réservent à l'ouverture d'une vague.** Deux voies parallèles qui
 prennent « le prochain numéro libre » prennent le même, et la fusion écrase une décision sans
@@ -70,11 +70,15 @@ port occupé.
 
 ## Dettes à surveiller
 
-- **La limitation de débit vit dans `marketing` (s11), pas dans le socle.** Trois documents
-  l'attribuent à s28 : la convergence est une dette écrite, et `public_form_throttle` disparaîtra
-  quand s28 posera la table du socle.
-- **`x-forwarded-for` est falsifiable** hors d'un proxy de confiance : le seau par formulaire
-  borne le coût, il ne le ferme pas. À reprendre en s28, avec la notion de proxy de confiance.
+- **Ce que s28 doit reprendre, et pourquoi c'est là.** La limitation de débit vit dans
+  `marketing` (s11) alors que `docs/stories.md`, `docs/architecture.md` et `docs/security.md` §7
+  l'attribuent au socle : ces trois textes sont **faux** aujourd'hui, à corriger avec s28.
+  L'identifiant d'appelant (`x-forwarded-for`) est falsifiable, et la pile n'offre aucune adresse
+  de pair : un identifiant sûr demande un nombre de sauts de proxy de confiance, qui appartient
+  à s28. Conséquence assumée en attendant, écrite dans `packages/modules/marketing/AGENTS.md` :
+  le seau dégrade au lieu de refuser, donc il ne borne plus le **nombre de lignes** écrites sous
+  un en-tête qui tourne. L'ancienne forme convertissait ce risque en certitude d'indisponibilité
+  pour les visiteurs légitimes — c'est l'échange que la revue a imposé.
 
 - **Une exécution e2e rouge sur sept** pendant la revue de s45 : 22 parcours sur 42 en échec,
   tous fichiers confondus, jamais reproduite (six exécutions vertes ensuite, dont une à cache
