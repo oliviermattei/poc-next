@@ -11,6 +11,7 @@ import {
   type ContentSecurityPolicySources,
 } from '../apps/web/lib/security-headers'
 import { GET, POST } from '../apps/web/app/api/csp-report/route'
+import { localeRouting } from '../apps/web/lib/locale-routing'
 import { proxy } from '../apps/web/proxy'
 // Le design system par son chemin de source : `@repo/ui` n'est pas une
 // dépendance de la racine, et l'y ajouter pour un test aurait fait entrer React
@@ -517,6 +518,21 @@ describe('les en-têtes réellement servis', () => {
 
     // Et il continue de s'appliquer là où il s'appliquait : une page sans
     // préfixe est redirigée vers sa forme canonique.
-    expect(responseFor('/sign-in').headers.get('location')).toContain('/fr/sign-in')
+    //
+    // L'attente est **dérivée** de la configuration, et pas écrite en dur :
+    // sans le module `i18n`, aucun préfixe n'existe, et cette page est alors
+    // servie telle quelle. Écrire `/fr/sign-in` en constante faisait rougir la
+    // configuration « socle » pour une raison qui n'était pas un défaut — et
+    // masquait, à l'inverse, qu'on ne vérifiait rien du cas sans préfixe.
+    const canonical = responseFor('/sign-in')
+
+    if (localeRouting.prefixed) {
+      expect(canonical.headers.get('location')).toContain(
+        `/${localeRouting.defaultLocale}/sign-in`,
+      )
+    } else {
+      expect(canonical.headers.get('location')).toBeNull()
+      expect(canonical.status).toBe(200)
+    }
   })
 })

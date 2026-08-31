@@ -162,7 +162,14 @@ vi.mock('next/navigation', async (importOriginal) => ({
  * configuration qui n'en rendrait plus que deux ne peut plus franchir un total
  * figé.
  */
-const MARKERS_PER_SCREEN = 20
+const markersPerScreen = (prefixed: boolean): number => (prefixed ? 20 : 19)
+// Le plancher **dérive de la configuration**, il n'est pas écrit en dur : le
+// sélecteur de langue du shell disparaît quand le module `i18n` est coupé, et
+// chaque écran rend alors un marqueur de moins. Mesuré dans les deux états.
+// Figé à 20, il faisait rougir la configuration « socle » pour une raison qui
+// n'était pas un défaut ; abaissé à 19 pour tout le monde, il affaiblissait la
+// configuration complète. C'est la même distinction qu'ailleurs dans ce dépôt :
+// une attente dérivée est légitime, une attente relâchée ne l'est pas.
 
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url))
 const SCREEN_ROOT = join(REPO_ROOT, 'apps/web/app')
@@ -680,6 +687,9 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
 
     const failures: string[] = []
     let markers = 0
+    const { localeRouting: routing } = await import('../apps/web/lib/locale-routing')
+    const MARKERS_PER_SCREEN = markersPerScreen(routing.prefixed)
+
     let rendered = 0
     let floors = 0
 

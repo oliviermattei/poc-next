@@ -14,8 +14,20 @@ concurrency:
 
 jobs:
   quality:
-    name: Typage, lint, tests, build
+    name: Typage, lint, tests, build (modules ${{ matrix.modules }})
     runs-on: ubuntu-latest
+
+    # **Deux configurations, et pas une.** Un module optionnel se coupe, et le
+    # dépôt promet qu'un module coupé ne laisse aucune trace : pas de route, pas
+    # d'entrée de navigation, pas de migration sur une base fraîche. Une CI qui
+    # ne joue qu'une configuration ne vérifie jamais cette moitié-là — et trois
+    # revues de suite (s10, s15, s11) ont trouvé des gardes qui ne mordent que
+    # dans l'état que la CI ne jouait pas. Une garde qui ne s'exécute jamais
+    # dans la configuration où elle mord est de la documentation.
+    strategy:
+      fail-fast: false
+      matrix:
+        modules: [tous, socle]
 
     services:
       # La même image que `docker-compose.yml`, pour que la CI éprouve ce que le
@@ -67,6 +79,20 @@ jobs:
       - name: Installer les dépendances
         run: pnpm install --frozen-lockfile
 
+      # La configuration « socle » : tout ce qui est optionnel est coupé. Le CLI
+      # refuse une coupure qui casserait un requis, donc l'ordre compte et
+      # l'échec de cette étape est un vrai constat.
+      - name: Couper les modules optionnels
+        if: matrix.modules == 'socle'
+        run: pnpm ks toggle marketing && pnpm ks toggle organizations && pnpm ks toggle i18n
+
+      # Couper un module réécrit `config/features.ts` et `generated/` : c'est
+      # attendu. Le contrôle de fin de job compare donc à **cet** état, et non à
+      # l'arbre vierge, sans quoi il rougirait pour la commande qu'on vient
+      # d'exécuter exprès.
+      - name: Photographier l'arbre après configuration
+        run: git status --porcelain > /tmp/arbre-attendu.txt
+
       - name: Typage
         run: pnpm typecheck
 
@@ -116,9 +142,9 @@ jobs:
       # position unique en fin de job ne coûte donc pas l'attribution.
       - name: L'arbre reste propre après le build et les parcours
         run: |
-          if [ -n "$(git status --porcelain)" ]; then
-            echo "Une commande a modifié des fichiers versionnés :"
-            git status --porcelain
+          git status --porcelain > /tmp/arbre-constate.txt
+          if ! diff -u /tmp/arbre-attendu.txt /tmp/arbre-constate.txt; then
+            echo "Une commande a modifié des fichiers versionnés au-delà de la configuration demandée :"
             git diff
             exit 1
           fi
@@ -132,7 +158,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.modules }}
           path: playwright-report/
           retention-days: 7
 
