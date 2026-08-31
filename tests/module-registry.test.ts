@@ -111,8 +111,30 @@ describe('validation de la configuration des modules', () => {
     // couvre l'autre porte — une configuration construite dynamiquement, ou du
     // JavaScript qui ignore les types.
     expect(() =>
-      buildRegistry({ available: [moduleFixture('a')], enabled: ['b'] }),
+      buildRegistry({ available: [moduleFixture('a')], enabled: ['b'], locales: ['fr'] }),
     ).toThrowError(/« b »/)
+  })
+
+  it('refuse un point de composition qui ne déclare pas les locales du projet', () => {
+    // La faille mesurée en revue de s06 : la référence était les locales du
+    // **module**, si bien qu'un module ne livrant que `fr` passait alors que le
+    // projet sert `fr` et `en`. La tâche 2 de s09 l'a fermée en faisant
+    // recevoir les locales de l'application — mais le paramètre était
+    // facultatif, avec un repli silencieux sur celles du module : retirer
+    // `locales` du point de composition de l'application laissait la suite
+    // entièrement verte.
+    //
+    // Le compilateur refuse désormais l'omission. Cette garde couvre l'autre
+    // porte, la même que pour un identifiant inconnu : une configuration
+    // construite dynamiquement, ou du JavaScript qui ignore les types.
+    const composeWithoutLocales = buildRegistry as unknown as (configuration: {
+      available: readonly AnyModuleDefinition[]
+      enabled: readonly string[]
+    }) => unknown
+
+    expect(() =>
+      composeWithoutLocales({ available: [moduleFixture('a')], enabled: ['a'] }),
+    ).toThrowError(/locales/)
   })
 
   it('refuse une configuration qui coupe un module du socle, en le nommant', () => {
@@ -127,6 +149,7 @@ describe('validation de la configuration des modules', () => {
         available: [moduleFixture('auth'), moduleFixture('demo')],
         enabled: ['demo'],
         required: ['auth'],
+        locales: ['fr'],
       }),
     ).toThrowError(/« auth »/)
   })
@@ -140,6 +163,7 @@ describe('validation de la configuration des modules', () => {
         available: [...availableModules],
         enabled: enabledModules.filter((id) => !requiredModules.includes(id as never)),
         required: [...requiredModules],
+        locales: [...appLocales],
       }),
     ).toThrowError(/ne peut pas être désactivé/)
   })
@@ -152,6 +176,7 @@ describe('validation de la configuration des modules', () => {
         available: [moduleFixture('a')],
         enabled: ['a'],
         required: ['auht'],
+        locales: ['fr'],
       }),
     ).toThrowError(/« auht »/)
   })
@@ -162,6 +187,7 @@ describe('validation de la configuration des modules', () => {
         available: [moduleFixture('auth'), moduleFixture('demo')],
         enabled: ['auth', 'demo'],
         required: ['auth'],
+        locales: ['fr'],
       }).moduleIds,
     ).toEqual(['auth', 'demo'])
   })
@@ -171,6 +197,7 @@ describe('validation de la configuration des modules', () => {
       buildRegistry({
         available: [moduleFixture('a', { requires: ['a'] })],
         enabled: ['a'],
+        locales: ['fr'],
       }),
     ).toThrowError(/« a » se requiert lui-même/)
   })
@@ -180,6 +207,7 @@ describe('validation de la configuration des modules', () => {
       buildRegistry({
         available: [moduleFixture('a', { requires: ['b'] }), moduleFixture('b')],
         enabled: ['a'],
+        locales: ['fr'],
       })
 
     expect(registry).toThrowError(/« a »/)
@@ -191,6 +219,7 @@ describe('validation de la configuration des modules', () => {
       buildRegistry({
         available: [moduleFixture('a', { requires: ['fantome'] })],
         enabled: ['a'],
+        locales: ['fr'],
       }),
     ).toThrowError(/« fantome ».*n’existe pas/)
   })
@@ -203,6 +232,7 @@ describe('validation de la configuration des modules', () => {
           moduleFixture('b', { requires: ['a'] }),
         ],
         enabled: ['a', 'b'],
+        locales: ['fr'],
       })
 
     expect(registry).toThrowError(/Cycle/)
@@ -214,6 +244,7 @@ describe('validation de la configuration des modules', () => {
       buildRegistry({
         available: [moduleFixture('a'), moduleFixture('a')],
         enabled: ['a'],
+        locales: ['fr'],
       }),
     ).toThrowError(/« a » est déclaré deux fois/)
   })
@@ -229,6 +260,7 @@ describe('validation de la configuration des modules', () => {
           }),
         ],
         enabled: ['a'],
+        locales: ['fr', 'en'],
       }),
     ).toThrowError(/« welcome ».*« en »/)
   })
@@ -308,6 +340,7 @@ describe('validation de la configuration des modules', () => {
           moduleFixture('b', { routes: [route] }),
         ],
         enabled: ['a', 'b'],
+        locales: ['fr'],
       }),
     ).toThrowError(/GET \/collision.*« a ».*« b »/)
   })
@@ -330,6 +363,7 @@ describe('validation de la configuration des modules', () => {
           }),
         ],
         enabled: ['a'],
+        locales: ['fr', 'en'],
       }),
     ).toThrowError(/« nav\.a ».*« en »/)
   })
@@ -341,6 +375,7 @@ describe('construction du registre', () => {
     const registry = buildRegistry({
       available: [moduleFixture('b', { requires: ['a'] }), moduleFixture('a')],
       enabled: ['b', 'a'],
+      locales: ['fr'],
     })
 
     expect(registry.moduleIds).toEqual(['a', 'b'])
@@ -350,6 +385,7 @@ describe('construction du registre', () => {
     const registry = buildRegistry({
       available: [...availableModules],
       enabled: ['demo-enabled'],
+      locales: [...appLocales],
     })
 
     const owners = [
@@ -373,6 +409,7 @@ describe('construction du registre', () => {
     const registry = buildRegistry({
       available: [moduleFixture('a', { jobs: [job] }), moduleFixture('b', { jobs: [job] })],
       enabled: ['a'],
+      locales: ['fr'],
     })
 
     expect(registry.jobs.map((entry) => entry.moduleId)).toEqual(['a'])
@@ -383,6 +420,7 @@ describe('construction du registre', () => {
     const registry = buildRegistry({
       available: [...availableModules],
       enabled: ['demo-enabled'],
+      locales: [...appLocales],
     })
 
     // Sans préfixe, deux modules qui nomment leur clé `navigation.items`
@@ -413,6 +451,8 @@ describe('construction du registre', () => {
           navigation: [entry('tot', 10)],
         }),
       ],
+      // Les modules d'essai ne déclarent que le français.
+      locales: ['fr'],
       enabled: ['z', 'a'],
     })
 
@@ -427,6 +467,7 @@ describe('construction du registre', () => {
 const demoRegistry = buildRegistry({
   available: [...availableModules],
   enabled: ['demo-enabled'],
+  locales: [...appLocales],
 })
 
 const requestTo = (path: string, init?: RequestInit): Request =>

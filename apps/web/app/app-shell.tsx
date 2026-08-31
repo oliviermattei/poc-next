@@ -54,6 +54,7 @@ export async function AppShell({ children }: { readonly children: ReactNode }) {
             items={items}
             label={t('app.shell.navigation')}
             openLabel={t('app.shell.openNavigation')}
+            closeLabel={t('app.shell.closeNavigation')}
             title={t('app.name')}
           />
           <a

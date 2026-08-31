@@ -92,6 +92,19 @@ test('changer de langue traduit l’écran et persiste entre deux sessions', asy
 
   await expect(revisit).toHaveURL(/\/en\/sign-in$/)
   await expect(revisit.getByRole('heading', { name: 'Sign in', level: 1 })).toBeVisible()
+
+  // Le cookie tel que le **navigateur** le stocke, et non tel que le proxy
+  // prétend l'écrire : `docs/security.md` §1 vaut pour tout cookie, pas pour
+  // le seul cookie de session. Même geste que `e2e/auth.spec.ts` sur la
+  // session, sur le premier cookie hors session du dépôt.
+  const cookie = (await context.cookies()).find((candidate) => candidate.name === 'app_locale')
+
+  expect(cookie?.httpOnly).toBe(true)
+  expect(cookie?.secure).toBe(true)
+  expect(cookie?.sameSite).toBe('Lax')
+
+  // Et ce que le JavaScript de la page en voit : rien.
+  await expect(revisit.evaluate<string>('document.cookie')).resolves.not.toContain('app_locale')
 })
 
 test('l’email part dans la langue du destinataire, et non dans celle du site', async ({

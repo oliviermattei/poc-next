@@ -45,11 +45,13 @@ Décisions structurantes déjà prises : contrat de module à 13 clés (ADR 007)
 1. Test vert par accident (suppression no-op + ajout no-op) — s05
 2. Garde `catch` trop large transformant une restauration en suppression — s05
 3. Postcondition traversée par la récupération d'erreur de TypeScript — s05
-4. Garde textuelle contournée par un guillemet, un accent grave, une extension, un paquet unifié — s07, s08
+4. Garde textuelle contournée par un guillemet, un accent grave, une extension, un paquet unifié — s07, s08, **s09** (le détecteur de texte en dur ne lisait pas les littéraux gabarit ; corrigé, il a trouvé un « Fermer » écrit en dur dans `packages/ui`)
 5. Configuration plate ESLint qui **remplace** les options : ajouter une garde en efface une autre — s08
 6. `retries: 1` transformant une fuite de secret reproductible en badge jaune — s08
 7. Assertion qui ne peut pas échouer (URL pré-redirection satisfaisant déjà le motif) — s08
 8. Test qui **inventorie** au lieu de **vérifier** (`.env.example` comparé par noms de clés) — s06
+9. Paramètre facultatif à **repli silencieux** : l'oublier au point de composition ne fait rougir aucune commande, et la règle redevient vraie par construction (`buildRegistry({locales})`) — s09
+10. Garde qui lit le **texte** du fichier au lieu d'exécuter le comportement : `/onError:[\s\S]*?throw/` était satisfaite par le `throw` du gestionnaire suivant — s09
 
 **Règle** : une mutation qui reste verte signifie que le test est faux, pas que le code est juste.
 

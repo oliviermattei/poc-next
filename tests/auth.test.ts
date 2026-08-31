@@ -21,6 +21,7 @@ import {
 } from '@repo/module-auth'
 import { AUTH_MODELS } from '@repo/module-auth'
 import { getAuthTables } from 'better-auth'
+import { appLocales } from '../config/i18n'
 import { magicLink } from 'better-auth/plugins/magic-link'
 import { sql } from 'drizzle-orm'
 import { getTableConfig } from 'drizzle-orm/pg-core'
@@ -54,7 +55,7 @@ const PASSWORD = 'mot-de-passe-de-test-1'
 const databaseReachable = await isDatabaseReachable()
 
 /** Le registre du module seul : la modularité ne dépend pas de la configuration du dépôt. */
-const registry = buildRegistry({ available: [authModule], enabled: ['auth'] })
+const registry = buildRegistry({ available: [authModule], enabled: ['auth'], locales: [...appLocales] })
 
 let connection: DatabaseConnection
 let mailer: RecordingMailer

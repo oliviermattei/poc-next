@@ -53,6 +53,9 @@ const registry = buildRegistry({
     ]),
   ],
   enabled: ['m'],
+  // Le module d'essai ne déclare que le français : c'est contre l'ensemble
+  // reçu, et non contre le sien, que sa complétude est jugée.
+  locales: ['fr'],
 })
 
 const visibleIds = (session: ModuleSession | null): readonly string[] =>

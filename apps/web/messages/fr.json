@@ -4,6 +4,7 @@
   "app.metadata.description": "Le socle applicatif et ses modules activés.",
   "app.shell.navigation": "Modules",
   "app.shell.openNavigation": "Ouvrir la navigation",
+  "app.shell.closeNavigation": "Fermer la navigation",
   "app.shell.theme.label": "Thème",
   "app.shell.theme.light": "Clair",
   "app.shell.theme.dark": "Sombre",

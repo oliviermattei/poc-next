@@ -16,6 +16,17 @@ tenues par le compilateur, les suivantes à la construction du registre :
 | Un template d'email sans version dans une locale livrée est refusé | le **compilateur** (`emails[].locales` est indexé par les locales de `messages`) | `pnpm typecheck` |
 | Requis manquant, cycle, auto-référence, identifiant en double | `resolveEnabledModules`, à la construction du registre | `pnpm test`, et le démarrage de l'application |
 | Template d'email incomplet, clé de navigation sans traduction, collision de route entre deux modules | `assertDeclarationsAreComplete`, à la construction du registre | `pnpm test`, et le démarrage de l'application |
+| Un point de composition qui ne déclare pas les locales de l'application | le **compilateur** (`buildRegistry` exige `locales`), et un refus à l'exécution pour l'appelant qui ignore les types | `pnpm typecheck`, `pnpm test` |
+
+`locales` est **obligatoire** dans `buildRegistry`, et ce n'est pas du confort :
+c'est contre les locales de l'**application** — jamais celles du module — qu'un
+template d'email ou un libellé de navigation incomplet est refusé (faille
+mesurée en revue de s06). Tant que le paramètre était facultatif, l'oublier
+ramenait silencieusement la référence au module, c'est-à-dire à une règle vraie
+par construction qui ne refuse jamais rien : la revue de s09 a retiré `locales`
+du point de composition de l'application sans faire rougir une seule commande.
+Un registre d'essai déclare donc explicitement les locales contre lesquelles il
+veut être jugé.
 
 Les garanties de typage ne doivent **jamais** être dégradées en vérification
 d'exécution : une contrainte portée par le compilateur ne se contourne pas, une

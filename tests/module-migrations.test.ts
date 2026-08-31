@@ -26,6 +26,7 @@ import { pgTable, text, type AnyPgColumn } from 'drizzle-orm/pg-core'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { availableModules, enabledModules } from '../config/features'
+import { appLocales } from '../config/i18n'
 import drizzleConfig from '../packages/db/drizzle.config'
 import { databaseUrl, isDatabaseReachable } from './fixtures/database'
 
@@ -38,6 +39,7 @@ const DRIZZLE_KIT = join(REPO_ROOT, 'node_modules', '.bin', 'drizzle-kit')
 const moduleRegistry = buildRegistry({
   available: [...availableModules],
   enabled: [...enabledModules],
+  locales: [...appLocales],
 })
 
 /**

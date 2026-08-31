@@ -21,7 +21,8 @@ module (`packages/modules/<module>/src/domain`).
   point de composition de l'authentification, et `lib/locale-routing.ts`, celui
   de l'i18n (voir plus bas) ;
 - `next-intl` pour la résolution des chaînes — dans `i18n/request.ts`,
-  `lib/i18n.ts` et les composants qui affichent du texte. La bibliothèque est un
+  `i18n/request-config.ts`, `lib/i18n.ts` et les composants qui affichent du
+  texte. La bibliothèque est un
   détail de ce point de composition : aucun module ne la connaît ;
 - `@repo/ui` pour **tout** ce qui s'affiche : c'est le design system, et la
   seule frontière avec le socle de composants. Un import de `@radix-ui/*` ici
@@ -169,8 +170,20 @@ Deux choses ne sont pas là où on les chercherait, et c'est mesuré :
   `createNextIntlPlugin` ne fait qu'aliaser `next-intl/config` vers
   `i18n/request.ts` ;
 - **une clé de traduction manquante lève.** `onError` et `getMessageFallback`
-  de `i18n/request.ts` refusent tous deux le repli sur le chemin de la clé :
-  un écran affichant « app.account.title » ne rougirait nulle part.
+  de `i18n/request-config.ts` refusent tous deux le repli sur le chemin de la
+  clé : un écran affichant « app.account.title » ne rougirait nulle part. La
+  configuration vit dans un fichier séparé de `i18n/request.ts` pour une raison
+  de preuve : `tests/i18n.test.ts` la passe au vrai traducteur de `next-intl`
+  avec un catalogue amputé. La garde d'avant lisait le fichier source, et la
+  revue de s09 l'a neutralisée deux fois sans la faire rougir — une garde
+  textuelle ne tient pas un comportement.
+
+Le cookie de langue (`app_locale`, posé par `proxy.ts`) porte `HttpOnly`,
+`Secure` et `SameSite=Lax`. `docs/security.md` §1 ne fait pas d'exception pour
+un cookie sans privilège, et c'est le premier cookie hors session du dépôt :
+`tests/i18n.test.ts` contrôle les en-têtes `Set-Cookie` que le proxy laisse
+partir, `e2e/i18n.spec.ts` les contrôle tels que le navigateur les stocke. Un
+cookie lu par du JavaScript de page demanderait une story, pas une exception.
 
 Le proxy ne voit pas `/api` (son `matcher` l'exclut) : les routes des modules
 n'héritent d'aucun préfixe de locale. Leur langue, elles la reçoivent du point

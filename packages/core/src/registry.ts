@@ -83,8 +83,15 @@ export function buildRegistry(configuration: {
    * socle : `@repo/core` ne les lit pas, il les reçoit. C'est contre cet
    * ensemble — et non contre les locales du module — que les templates d'email
    * et les libellés de navigation sont contrôlés.
+   *
+   * **Obligatoire**, et le mot compte : facultatif, il retombait en silence sur
+   * les locales du module, c'est-à-dire exactement sur la faille de s06 que ce
+   * paramètre existe pour fermer. Un point de composition qui l'oubliait ne
+   * faisait rougir aucune commande (revue de s09). Le compilateur refuse
+   * désormais l'omission, et `buildRegistry` la refuse aussi à l'exécution,
+   * pour la porte que le compilateur ne garde pas.
    */
-  readonly locales?: readonly string[]
+  readonly locales: readonly string[]
 }): ModuleRegistry {
   const modules = resolveEnabledModules(configuration)
 

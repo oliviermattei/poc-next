@@ -1,7 +1,7 @@
 import { getRequestConfig } from 'next-intl/server'
 
 import { currentLocale } from '../lib/current-locale'
-import { messagesFor } from '../lib/messages'
+import { requestConfigFor } from './request-config'
 
 /**
  * La configuration de requête de `next-intl`.
@@ -15,29 +15,8 @@ import { messagesFor } from '../lib/messages'
  * intacte, `/api/modules/…` compris, et les **mêmes URL** répondent que le
  * module `i18n` soit activé ou non.
  *
- * Deux refus, et ce sont des critères :
- *
- * - `onError` **lève** au lieu de journaliser. Une clé manquante est un défaut
- *   du code, pas un aléa d'exécution ;
- * - `getMessageFallback` **lève** aussi. C'est le repli que le critère
- *   interdit : `next-intl` rendrait sinon le chemin de la clé, si bien qu'un
- *   écran afficherait « app.account.title » sans que rien ne rougisse. Le
- *   silence est exactement ce qu'on ne veut pas.
+ * Ce fichier ne fait plus que deux choses : lire la locale de la requête, et
+ * demander la configuration. Le refus d'une clé manquante vit dans
+ * `request-config.ts`, où un test l'exécute au lieu de le lire.
  */
-export default getRequestConfig(async () => {
-  const locale = await currentLocale()
-
-  return {
-    locale,
-    messages: messagesFor(locale),
-    onError: (error) => {
-      throw error
-    },
-    getMessageFallback: ({ key, namespace }) => {
-      throw new Error(
-        `Traduction manquante : « ${[namespace, key].filter(Boolean).join('.')} ». ` +
-          'Toute chaîne affichée vient des catalogues ; aucune ne se replie sur sa clé.',
-      )
-    },
-  }
-})
+export default getRequestConfig(async () => requestConfigFor(await currentLocale()))

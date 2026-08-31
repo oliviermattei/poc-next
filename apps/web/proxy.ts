@@ -63,13 +63,18 @@ export function proxy(request: NextRequest): NextResponse {
 
   if (internal !== pathname && cookieLocale !== locale) {
     // Un an, pour que le choix survive à la fermeture du navigateur (critère 2).
-    // `SameSite=Lax` : le cookie doit survivre à un lien entrant. Il ne porte
-    // aucun secret — une préférence d'affichage —, et `Secure` est posé partout
-    // comme pour la session (`docs/security.md` §2) ; les navigateurs traitent
-    // `localhost` comme une origine sûre.
+    // `SameSite=Lax` : le cookie doit survivre à un lien entrant. `Secure` est
+    // posé partout comme pour la session (`docs/security.md` §2) ; les
+    // navigateurs traitent `localhost` comme une origine sûre.
+    //
+    // `HttpOnly` bien que ce cookie ne porte aucun secret : le §1 du socle ne
+    // pose aucune condition, et c'est le premier cookie hors session du dépôt —
+    // celui qui fixe le précédent des suivants. Rien côté client ne le lit :
+    // le sélecteur est une liste de liens, et c'est ce proxy qui écrit.
     response.cookies.set(LOCALE_COOKIE, locale, {
       path: '/',
       maxAge: LOCALE_COOKIE_MAX_AGE,
+      httpOnly: true,
       sameSite: 'lax',
       secure: true,
     })

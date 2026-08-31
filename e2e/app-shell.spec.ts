@@ -105,6 +105,11 @@ test.describe('sous 400 px', () => {
 
     await expect(navigation).toHaveCount(1)
     await expect(navigation.getByRole('link', { name: 'Connexion' })).toBeVisible()
+
+    // Le bouton de fermeture porte un nom accessible **traduit** : c'est le
+    // seul texte que la primitive `Sheet` affiche, et il était écrit en dur en
+    // français dans `packages/ui` jusqu'à la revue de s09.
+    await expect(page.getByRole('button', { name: 'Fermer la navigation' })).toBeVisible()
   })
 })
 

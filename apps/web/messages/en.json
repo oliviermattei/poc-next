@@ -4,6 +4,7 @@
   "app.metadata.description": "The application core and its enabled modules.",
   "app.shell.navigation": "Modules",
   "app.shell.openNavigation": "Open navigation",
+  "app.shell.closeNavigation": "Close navigation",
   "app.shell.theme.label": "Theme",
   "app.shell.theme.light": "Light",
   "app.shell.theme.dark": "Dark",

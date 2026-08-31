@@ -30,6 +30,19 @@ chaque emplacement a désormais ses cas, et neutraliser l'un d'eux fait rougir
 comme `docs/`, qui ne portent aucune source aujourd'hui. Mesuré une écriture à
 la fois contre la configuration réelle, le 31 août 2026.
 
+## Aucun texte, jamais
+
+Ce package ne connaît ni catalogue, ni locale, ni `next-intl`. **Tout texte
+affiché arrive en prop**, déjà traduit par l'appelant : `label`, `openLabel`,
+`closeLabel`, `options`. Un composant qui écrit un mot en dur le rend dans une
+seule langue, y compris dans les projets qui n'ont pas activé le module `i18n`.
+
+Ce n'est pas une intention : `tests/i18n.test.ts` balaie les `.tsx` de
+`packages/ui/src` comme ceux de `apps/web/app`, et **un mot suffit** dans une
+position affichée. Le « Fermer » du bouton de fermeture de `Sheet` a vécu ici
+jusqu'à la revue de s09, invisible parce que le détecteur d'alors demandait deux
+mots ou un accent.
+
 ## Les tokens
 
 Tailwind v4 : **pas de `tailwind.config.js`** (ADR 010). Tout est dans

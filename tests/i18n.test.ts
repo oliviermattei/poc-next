@@ -10,12 +10,17 @@ import {
 } from '@repo/core'
 import { localePrefixRouting } from '@repo/module-i18n'
 import { createRecordingMailer } from '@repo/mailer-testing'
+import { createFormatter, createTranslator } from 'next-intl'
+import { NextRequest } from 'next/server'
 import { describe, expect, it } from 'vitest'
 
 import { createAuthUseCases } from '../packages/modules/auth/src/application/auth-use-cases'
 import type { AuthDependencies } from '../packages/modules/auth/src/application/ports'
 import { defaultAuthPolicy } from '../packages/modules/auth/src/domain/auth-policy'
+import { LOCALE_COOKIE, localeRouting } from '../apps/web/lib/locale-routing'
 import { flatMessagesFor } from '../apps/web/lib/messages'
+import { requestConfigFor } from '../apps/web/i18n/request-config'
+import { proxy } from '../apps/web/proxy'
 import { availableModules, enabledModules, requiredModules } from '../config/features'
 import { appLocales, defaultLocale } from '../config/i18n'
 
@@ -45,11 +50,17 @@ const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url))
 /**
  * La **surface de rendu** balayée, et rien d'autre.
  *
- * Ce sont les fichiers `.tsx` : ceux qui produisent du balisage. Un `.ts`
- * n'affiche rien — ses chaînes sont des messages de journal, des raisons
- * d'erreur JSON ou des textes d'email déclarés au contrat, et chacun a sa
- * propre garde. Le jour où un module apportera ses écrans, son dossier
- * `presentation` est déjà dans la portée.
+ * Ce sont les fichiers `.tsx` : ceux qui produisent du balisage — 30 dans le
+ * dépôt au moment de cette mesure. Le jour où un module apportera ses écrans,
+ * son dossier `presentation` est déjà dans la portée.
+ *
+ * Les `.ts` ne sont **pas** balayés, et ce n'est pas parce qu'ils n'affichent
+ * rien : `apps/web/lib/navigation.ts` calcule des libellés. C'est parce que le
+ * texte qu'ils portent est tenu ailleurs — `tests/app-shell.test.ts` rougit sur
+ * un libellé de navigation écrit en dur, `assertDeclarationsAreComplete` refuse
+ * une entrée non traduite, et les textes d'email sont déclarés au contrat de
+ * module. Ce filet ne dit donc rien des `.ts` : c'est une limite, pas une
+ * garantie.
  */
 const RENDER_ROOTS = ['apps/web/app', 'packages/ui/src', 'packages/modules'] as const
 
@@ -80,14 +91,42 @@ const tsxFilesUnder = (directory: string): readonly string[] => {
 const RENDER_FILES = RENDER_ROOTS.flatMap(tsxFilesUnder)
 
 /**
+ * Bornes équilibrées : l'index du délimiteur fermant qui répond à celui ouvert
+ * en `start`.
+ */
+const balancedEnd = (source: string, start: number, open: string, close: string): number => {
+  let depth = 0
+
+  for (let index = start; index < source.length; index += 1) {
+    if (source[index] === open) {
+      depth += 1
+    } else if (source[index] === close) {
+      depth -= 1
+
+      if (depth === 0) {
+        return index
+      }
+    }
+  }
+
+  return source.length - 1
+}
+
+/**
  * Blanchit le contenu délimité qui suit un marqueur, parenthèses ou accolades
  * équilibrées comprises.
  *
- * Deux contextes seulement sont blanchis, et ils sont nommés : les arguments de
- * `cva(` et la valeur de `className=`. Ce sont les deux endroits où une chaîne
- * de classes Tailwind ressemble à une phrase (« border-border bg-card text-… »).
- * Ce ne sont pas des endroits où du texte de produit peut se cacher : une copie
- * écrite dans un `className` ne s'afficherait pas.
+ * Trois contextes seulement sont blanchis, et ils sont nommés : les arguments
+ * de `cva(`, ceux de `cn(` et la valeur de `className=`. Ce sont les endroits
+ * où une chaîne de classes Tailwind ressemble à une phrase (« border-border
+ * bg-card text-… »). Ce ne sont pas des endroits où du texte de produit peut se
+ * cacher : une copie écrite dans un `className` ne s'afficherait pas.
+ *
+ * Le corollaire est une règle sur le code de production : une liste de classes
+ * s'écrit dans `className=`, `cn(` ou `cva(`. Écrite ailleurs — un gabarit posé
+ * dans une variable —, elle sort de ces trois contextes et le détecteur la
+ * prendra pour un fragment de phrase. C'est le seul faux positif connu, et il
+ * se corrige en remettant les classes là où elles vont.
  */
 const blankDelimited = (source: string, marker: string, open: string, close: string): string => {
   let out = source
@@ -99,63 +138,324 @@ const blankDelimited = (source: string, marker: string, open: string, close: str
       return out
     }
 
-    let depth = 0
-    let index = start + marker.length - 1
-
-    for (; index < out.length; index += 1) {
-      if (out[index] === open) {
-        depth += 1
-      } else if (out[index] === close) {
-        depth -= 1
-
-        if (depth === 0) {
-          break
-        }
-      }
-    }
+    const index = balancedEnd(out, start + marker.length - 1, open, close)
 
     out = `${out.slice(0, start)}${' '.repeat(index - start + 1)}${out.slice(index + 1)}`
   }
 }
 
-/**
- * Une chaîne « de prose » : un caractère accentué, ou deux mots d'au moins deux
- * lettres séparés par une espace.
- *
- * Volontairement large. Un faux positif se corrige en passant la chaîne par le
- * catalogue — c'est-à-dire en faisant ce que la règle demande. Un faux négatif,
- * lui, serait un texte en dur que personne ne voit.
- */
-const PROSE = /[À-ÿ]|(?:\p{L}{2,}[\u0020\u00a0]+\p{L}{2,})/u
-
-/** Les directives de module ne sont pas du texte affiché. */
-const DIRECTIVE = /^use (client|server)$/
-
 const neutralise = (source: string): string => {
   let out = source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:'"])\/\/[^\n]*/g, '$1')
 
   out = blankDelimited(out, 'cva(', '(', ')')
+  out = blankDelimited(out, 'cn(', '(', ')')
   out = blankDelimited(out, 'className={', '{', '}')
 
   return out.replace(/className="[^"]*"/g, 'className=""')
 }
 
-/** Les littéraux et les nœuds de texte JSX d'un fichier, commentaires exclus. */
+/* ------------------------------------------------------------------------- *
+ * L'extraction, en quatre familles.
+ *
+ * La revue de s09 a mesuré que la première version n'extrayait que les
+ * littéraux entre apostrophes ou guillemets et les nœuds de texte JSX sans
+ * accolade : un littéral gabarit (`` `Bonjour ${nom}` ``) et une phrase
+ * concaténée passaient au vert. C'est le mode d'échec n°4 du catalogue de
+ * `docs/STATE.md` — « garde textuelle contournée par un accent grave ».
+ * ------------------------------------------------------------------------- */
+
+/** Un littéral entre apostrophes ou guillemets. */
+const QUOTED = /(['"])((?:(?!\1)[^\\\n]|\\.)*)\1/g
+/** Un littéral gabarit, accent grave compris — l'oubli mesuré en revue. */
+const TEMPLATE = /`((?:[^`\\]|\\.)*)`/g
+
+/** Les morceaux statiques d'un gabarit : ce qui reste hors des `${…}`. */
+const staticSegmentsOf = (raw: string): readonly string[] => raw.split(/\$\{[^`]*?\}/g)
+
+const literalsIn = (code: string): readonly string[] => {
+  const found: string[] = []
+
+  for (const match of code.matchAll(QUOTED)) {
+    found.push(match[2] ?? '')
+  }
+
+  for (const match of code.matchAll(TEMPLATE)) {
+    found.push(...staticSegmentsOf(match[1] ?? ''))
+  }
+
+  return found
+}
+
+/**
+ * Les attributs dont la valeur est **lue par quelqu'un** : le nom accessible
+ * d'un contrôle, une infobulle, un texte de remplacement, un libellé passé en
+ * prop. Le suffixe plutôt que le nom exact, sans quoi `openLabel=` échapperait
+ * à `label=`.
+ */
+const DISPLAY_ATTRIBUTE =
+  /[\s{]([A-Za-z-]*(?:label|title|description|placeholder|alt|caption|heading|tooltip|message))=/gi
+
+const displayedInAttributes = (code: string): readonly string[] => {
+  const found: string[] = []
+
+  for (const match of code.matchAll(DISPLAY_ATTRIBUTE)) {
+    const start = (match.index ?? 0) + match[0].length
+    const first = code[start]
+
+    if (first === '"' || first === "'") {
+      const end = code.indexOf(first, start + 1)
+
+      if (end !== -1) {
+        found.push(code.slice(start + 1, end))
+      }
+    } else if (first === '{') {
+      found.push(...literalsIn(code.slice(start + 1, balancedEnd(code, start, '{', '}'))))
+    }
+  }
+
+  return found
+}
+
+/** Une valeur d'attribut, pour la retirer d'une région d'enfants JSX. */
+const ATTRIBUTE = /[A-Za-z-]+=(?:"[^"]*"|'[^']*'|\{)/
+
+const blankAttributes = (region: string): string => {
+  let out = region
+
+  for (;;) {
+    const match = ATTRIBUTE.exec(out)
+
+    if (match === null) {
+      return out
+    }
+
+    const start = match.index
+    const last = start + match[0].length - 1
+    const end = out[last] === '{' ? balancedEnd(out, last, '{', '}') : last
+
+    out = `${out.slice(0, start)}${' '.repeat(end - start + 1)}${out.slice(end + 1)}`
+  }
+}
+
+/**
+ * Les enfants d'un élément JSX : une accolade ouverte juste après un `>`, et
+ * refermée juste avant une balise.
+ *
+ * `[^=]>` écarte le corps d'une fonction fléchée (`=> {`), et l'exigence d'une
+ * balise derrière écarte le corps d'une fonction dont le type de retour est
+ * générique (`): Promise<void> {`) — les deux faux positifs mesurés sur le
+ * dépôt. Les valeurs d'attribut portées par un enfant JSX sont blanchies : elles
+ * relèvent de la famille précédente, qui sait lesquelles sont affichées.
+ */
+const displayedInChildren = (code: string): readonly string[] => {
+  const found: string[] = []
+
+  for (const match of code.matchAll(/[^=]>\s*\{/g)) {
+    const start = code.indexOf('{', match.index ?? 0)
+
+    if (start === -1) {
+      continue
+    }
+
+    const end = balancedEnd(code, start, '{', '}')
+
+    if (!/^\s*</.test(code.slice(end + 1))) {
+      continue
+    }
+
+    found.push(...literalsIn(blankAttributes(code.slice(start + 1, end))))
+  }
+
+  return found
+}
+
+/** Ni accolade ni ponctuation de code : ce qui écarte `Promise<Response>`. */
+const CODE_FREE = '[^<>{}();=|&$#@\\\\/*+\\[\\]`]'
+
+/**
+ * Le texte écrit directement dans le balisage — y compris **collé à une
+ * expression**, que l'ancienne version rejetait en bloc dès qu'une accolade
+ * apparaissait : `<p>Bonjour {nom}, bienvenue</p>` ne laissait rien voir.
+ */
+const displayedAsText = (code: string): readonly string[] => {
+  const found: string[] = []
+
+  for (const match of code.matchAll(new RegExp(`>(${CODE_FREE}+)<`, 'g'))) {
+    found.push(match[1] ?? '')
+  }
+
+  for (const match of code.matchAll(new RegExp(`>(${CODE_FREE}*)\\{`, 'g'))) {
+    found.push(match[1] ?? '')
+  }
+
+  for (const match of code.matchAll(new RegExp(`\\}(${CODE_FREE}*)</`, 'g'))) {
+    found.push(match[1] ?? '')
+  }
+
+  return found
+}
+
+/* ------------------------------------------------------------------------- *
+ * Le jugement, en deux niveaux — parce que le contexte décide de ce qu'un mot
+ * unique veut dire.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * De la prose, où qu'elle soit : un caractère accentué, deux mots séparés par
+ * une espace, ou **un fragment** — un mot bordé d'une espace, ce qu'un morceau
+ * de phrase concaténé porte toujours et qu'un identifiant ne porte jamais.
+ *
+ * Le fragment est ce qui manquait : `'Bonjour ' + nom` n'a ni accent ni deux
+ * mots, et passait.
+ */
+const PROSE = /[À-ÿ]|(?:\p{L}{2,}[\u0020\u00a0]+\p{L}{2,})/u
+const WORD = /\p{L}{2,}/u
+const FRAGMENT = /^\s|\s$/
+
+const isProse = (value: string): boolean =>
+  PROSE.test(value) || (WORD.test(value) && FRAGMENT.test(value))
+
+/** Un identifiant à bosse : `ComponentProps`, `VariantProps`. Pas un mot. */
+const IDENTIFIER = /^[\s,.:;]*[A-Za-z_$][A-Za-z0-9_$]*\s*$/
+const CAMEL_HUMP = /\p{Ll}\p{Lu}/u
+/** Un morceau d'URL ou de requête : `?reset=1`. */
+const URLISH = /[=&]|^\s*[?#/]/
+
+/**
+ * Dans une position **affichée** — nœud de texte, enfant, attribut lu —, un
+ * seul mot suffit : « Fermer » est du texte, et c'en était un dans
+ * `packages/ui/src/components/sheet.tsx` jusqu'à cette revue.
+ */
+const isDisplayedProse = (value: string): boolean =>
+  isProse(value) ||
+  (WORD.test(value) && !URLISH.test(value) && !(IDENTIFIER.test(value) && CAMEL_HUMP.test(value)))
+
+/** Les directives de module ne sont pas du texte affiché. */
+const DIRECTIVE = /^use (client|server)$/
+
+/** Toutes les chaînes qu'un fichier écrit, quelle que soit leur forme. */
 const displayedStringsOf = (source: string): readonly string[] => {
   const code = neutralise(source)
-  const literals = [...code.matchAll(/(['"])((?:(?!\1)[^\\\n]|\\.)*)\1/g)].map(
-    (match) => match[2] ?? '',
-  )
-  // Un nœud de texte JSX : entre un `>` fermant et un `<` ouvrant, sans
-  // accolade ni ponctuation de code — ce qui écarte les paramètres de type
-  // (`Promise<Response>`) sans écarter « Se connecter ».
-  const jsxText = [...code.matchAll(/>([^<>{}();=]+)</g)].map((match) => (match[1] ?? '').trim())
 
-  return [...new Set([...literals, ...jsxText])]
+  return [
+    ...new Set([
+      ...literalsIn(code),
+      ...displayedInAttributes(code),
+      ...displayedInChildren(code),
+      ...displayedAsText(code).map((value) => value.trim()),
+    ]),
+  ]
 }
 
 /** Ce qui ressemble à une clé de traduction : `module.chemin.de.clé`. */
 const KEY_PATTERN = /^[a-z][a-zA-Z0-9-]*(?:\.[a-zA-Z0-9]+)+$/
+
+/** Le texte affiché qu'un fichier écrit en dur, dans toutes les formes balayées. */
+const hardcodedIn = (source: string): readonly string[] => {
+  const code = neutralise(source)
+  const suspects = [
+    ...literalsIn(code).filter(isProse),
+    ...displayedInAttributes(code).filter(isDisplayedProse),
+    ...displayedInChildren(code).filter(isDisplayedProse),
+    ...displayedAsText(code).filter(isDisplayedProse),
+  ]
+
+  return [...new Set(suspects)].filter(
+    (value) => !DIRECTIVE.test(value.trim()) && !KEY_PATTERN.test(value.trim()),
+  )
+}
+
+/**
+ * Les formes essayées **contre** ce filet, une à une, et qu'il doit voir.
+ *
+ * Ce n'est pas un inventaire des formes qui existent : c'est la liste de celles
+ * qui ont été plantées et mesurées. Ce qui leur échappe encore est nommé dans
+ * `docs/reviews/s09-i18n.md` — la concaténation de fragments d'un seul mot sans
+ * espace mitoyenne, et un mot unique sans accent rangé dans une variable puis
+ * rendu par cette variable.
+ */
+const PLANTED: readonly (readonly [string, string])[] = [
+  ['une phrase dans un nœud JSX', 'export const A = () => <h1>Se connecter maintenant</h1>'],
+  ['un attribut accessible', 'export const B = () => <button aria-label="Fermer le panneau" />'],
+  ['un littéral simple', "const message = 'Votre compte a été supprimé'"],
+  [
+    'un littéral gabarit interpolé',
+    'export const C = () => <h2>{`Bienvenue sur votre espace ${account.name}`}</h2>',
+  ],
+  [
+    'une phrase concaténée dans un attribut',
+    "export const D = () => <p title={'Bonjour ' + account.name} />",
+  ],
+  [
+    'un texte JSX coupé par une expression',
+    'export const E = () => <p>Bonjour {name}, bienvenue</p>',
+  ],
+  ['un seul mot dans un nœud JSX', 'export const F = () => <h1>Bonjour</h1>'],
+  ['un seul mot en placeholder', 'export const G = () => <input placeholder="Rechercher" />'],
+  ['un seul mot dans une prop de libellé', 'export const H = () => <Nav openLabel="Ouvrir" />'],
+  ['un seul mot dans une prop de description', 'export const I = () => <Card description="Compte" />'],
+  ['un gabarit assemblé dans une fonction', 'const greet = (name: string) => `Bonjour ${name}`'],
+  ['un fragment poussé dans un tableau', "const parts = ['Bonjour ', name].join('')"],
+  ['un littéral rendu tel quel entre accolades', "export const J = () => <h2>{'Bienvenue'}</h2>"],
+  [
+    'un mot choisi par un ternaire entre accolades',
+    "export const K = () => <p>{ok ? 'Actif' : 'Inactif'}</p>",
+  ],
+  [
+    'un texte passé à une fonction dans les enfants',
+    'export const L = () => <p>{format(\'Bonjour\')}</p>',
+  ],
+  [
+    'un composant serveur',
+    'export default async function Page() { return <h1>Bonjour</h1> }',
+  ],
+]
+
+/**
+ * Ce que le détecteur ne doit **pas** prendre pour du texte.
+ *
+ * Chaque ligne est un faux positif réellement rencontré en élargissant les
+ * mailles ci-dessus, sur les 30 fichiers `.tsx` du dépôt : un paramètre de type
+ * générique, une destructuration suivie d'une annotation, une valeur d'attribut
+ * technique portée par un enfant JSX, un fragment d'URL.
+ */
+const NOT_TEXT: readonly (readonly [string, string])[] = [
+  [
+    'une liste de classes',
+    'const styles = cva("inline-flex items-center gap-2 rounded-md border border-input")',
+  ],
+  [
+    'un className',
+    'export const M = () => <div className="flex flex-wrap items-center gap-3" />',
+  ],
+  ['un appel à cn', "const cls = cn('flex items-center', extra)"],
+  ['un paramètre de type', 'const f = (): Promise<Response> => fetch(url)'],
+  [
+    'une extension de type générique',
+    "export interface P extends ComponentProps<'button'>, VariantProps<typeof v> {}",
+  ],
+  [
+    'une destructuration annotée',
+    "function A({ className, ...props }: ComponentProps<'div'>) { return <div /> }",
+  ],
+  [
+    'une clé de traduction',
+    "export const N = () => <p aria-label={t('app.account.title')}>{t('app.name')}</p>",
+  ],
+  ['une directive de module', "'use client'"],
+  ['un chemin construit', 'const href = `/${locale}/account`'],
+  ['un attribut d’import', "import fr from '../messages/fr.json' with { type: 'json' }"],
+  ['des enfants passés en prop', 'export const O = () => <div>{children}</div>'],
+  [
+    'un corps de fonction au type générique',
+    'const f = <T,>(x: T) => { const kind = "json"; return kind }',
+  ],
+  ['une chaîne de requête', "const to = `${path('/sign-in')}?reset=1`"],
+  [
+    'un attribut technique dans un enfant JSX',
+    "export const Q = () => <p>{ok ? <Badge variant='secondary' /> : null}</p>",
+  ],
+]
 
 /**
  * Le catalogue de référence : l'application **plus tous les modules du dépôt**,
@@ -194,46 +494,27 @@ describe('aucune chaîne visible n’est écrite en dur', () => {
     expect(RENDER_FILES.some((file) => file.endsWith('account/page.tsx'))).toBe(true)
   })
 
-  it('détecte une phrase écrite dans un composant, pas seulement dans un fichier réel', () => {
+  it.each(PLANTED)('détecte %s', (_form, source) => {
     // La preuve que le détecteur mord — le même geste que la revue fera :
-    // planter une chaîne en dur et regarder rougir. Trois formes, parce que
-    // trois formes existent à l'écran.
-    const planted = [
-      'export const A = () => <h1>Se connecter maintenant</h1>',
-      'export const B = () => <button aria-label="Fermer le panneau" />',
-      "const message = 'Votre compte a été supprimé'",
-    ]
-
-    for (const source of planted) {
-      expect(
-        displayedStringsOf(source).filter((value) => PROSE.test(value) && !DIRECTIVE.test(value)),
-        source,
-      ).not.toEqual([])
-    }
+    // planter une chaîne en dur et regarder rougir. Les formes énumérées sont
+    // celles qui ont été essayées **contre** ce filet, une à une ; ce n'est pas
+    // la liste de celles qui existent.
+    expect(hardcodedIn(source), source).not.toEqual([])
   })
 
-  it('ne confond pas les classes Tailwind ni le code avec du texte', () => {
+  it.each(NOT_TEXT)('ne prend pas %s pour du texte', (_form, source) => {
     // Le pendant du cas précédent : un détecteur qui rougit sur tout serait
-    // désarmé au premier `className`.
-    const source = [
-      'const styles = cva("inline-flex items-center gap-2 rounded-md border border-input")',
-      'export const C = () => <div className="flex flex-wrap items-center gap-3" />',
-      'const f = (): Promise<Response> => fetch(url)',
-    ].join('\n')
-
-    expect(
-      displayedStringsOf(source).filter((value) => PROSE.test(value) && !DIRECTIVE.test(value)),
-    ).toEqual([])
+    // désarmé au premier `className`, et son échec serait de se faire élargir
+    // les mailles jusqu'à ne plus rien voir.
+    expect(hardcodedIn(source), source).toEqual([])
   })
 
   it('ne laisse aucun texte en dur dans les écrans et les composants livrés', () => {
-    const offenders = RENDER_FILES.flatMap((file) => {
-      const suspects = displayedStringsOf(readFileSync(file, 'utf8')).filter(
-        (value) => PROSE.test(value) && !DIRECTIVE.test(value),
-      )
-
-      return suspects.map((value) => `${file.slice(REPO_ROOT.length)} : « ${value} »`)
-    })
+    const offenders = RENDER_FILES.flatMap((file) =>
+      hardcodedIn(readFileSync(file, 'utf8')).map(
+        (value) => `${file.slice(REPO_ROOT.length)} : « ${value} »`,
+      ),
+    )
 
     expect(offenders).toEqual([])
   })
@@ -318,15 +599,80 @@ describe('les catalogues sont complets dans toutes les locales du projet', () =>
     }
   })
 
-  it('refuse une clé manquante plutôt que de la remplacer par elle-même', () => {
-    // Le repli sur la clé est ce que le critère interdit : `i18n/request.ts`
-    // fait lever `onError` **et** `getMessageFallback`. La règle est éprouvée
-    // ici sur la seule chose qu'un test de nœud peut observer sans navigateur —
-    // qu'aucune des deux ne se contente de journaliser.
-    const source = readFileSync(join(REPO_ROOT, 'apps/web/i18n/request.ts'), 'utf8')
+})
 
-    expect(source).toMatch(/onError:[\s\S]*?throw/)
-    expect(source).toMatch(/getMessageFallback:[\s\S]*?throw/)
+/* ------------------------------------------------------------------------- *
+ * Le critère 9, éprouvé sur le comportement et non sur le texte du fichier.
+ *
+ * La revue de s09 a mesuré qu'une expression régulière sur la source
+ * (`/onError:[\s\S]*?throw/`) restait verte sur les deux neutralisations : le
+ * `[\s\S]*?` non gourmand se satisfaisait du `throw` du gestionnaire suivant.
+ * La configuration est donc passée au vrai traducteur de `next-intl`, avec un
+ * catalogue amputé — ce qu'un test de nœud sait faire.
+ * ------------------------------------------------------------------------- */
+
+describe('une clé manquante est refusée, jamais remplacée par elle-même', () => {
+  const config = requestConfigFor(defaultLocale)
+
+  // `createTranslator` déduit les clés admises de la **forme** du catalogue.
+  // Le nôtre est assemblé à l'exécution — application plus modules activés —,
+  // donc il n'a rien à déduire et refuse toute clé. Le type est posé à la main :
+  // ce qui est éprouvé ici est un comportement d'exécution, pas une inférence.
+  type Translate = (key: string) => string
+
+  const translatorFor = (
+    messages: Record<string, unknown>,
+    onError = config.onError,
+    getMessageFallback = config.getMessageFallback,
+  ): Translate =>
+    createTranslator({
+      locale: defaultLocale,
+      messages,
+      onError,
+      getMessageFallback,
+    }) as unknown as Translate
+
+  it('rend la traduction quand la clé existe', () => {
+    // Sans ce cas, « tout lève » serait une configuration parfaitement verte et
+    // parfaitement inutilisable.
+    expect(translatorFor(config.messages as Record<string, unknown>)('app.name')).toBe(
+      'Application',
+    )
+  })
+
+  it('lève plutôt que de rendre le chemin de la clé', () => {
+    const t = translatorFor({ app: {} })
+
+    // Le repli de `next-intl` rendrait « app.manquante » à l'écran, et aucun
+    // test ne verrait la différence avec une traduction.
+    expect(() => t('app.manquante')).toThrowError(/app\.manquante/)
+  })
+
+  it('lève aussi quand le message existe mais ne peut pas être formaté', () => {
+    const t = translatorFor({ app: { bonjour: 'Bonjour {name}' } })
+
+    expect(() => t('app.bonjour')).toThrowError()
+  })
+
+  it('ne tait pas une erreur qui n’a aucun repli de message', () => {
+    // Ce que `onError` tient **seul** : les erreurs que `use-intl` signale sans
+    // jamais demander de repli — ici, un formatage de date sans fuseau
+    // configuré. `getMessageFallback` n'est pas appelé sur ce chemin, donc ce
+    // cas est le seul à distinguer un `onError` qui lève d'un `onError` qui
+    // journalise.
+    const format = createFormatter({ locale: defaultLocale, onError: config.onError })
+
+    expect(() => format.dateTime(new Date('2026-01-01T00:00:00Z'))).toThrowError()
+  })
+
+  it('refuse encore si le premier verrou venait à être desserré', () => {
+    // Le second verrou, éprouvé là où il est observable : `onError` levant en
+    // premier, `getMessageFallback` n'est jamais atteint en production. C'est
+    // une défense en profondeur, et celle-ci en est une vraie — pas un
+    // commentaire.
+    const t = translatorFor({ app: {} }, () => {})
+
+    expect(() => t('app.manquante')).toThrowError(/app\.manquante/)
   })
 })
 
@@ -454,6 +800,44 @@ describe('module i18n non activé', () => {
     for (const path of ['/', '/account', '/sign-in', '/api/modules/auth/sign-in/email']) {
       expect(single.internalPath(path)).toBe(path)
       expect(prefixed.internalPath(prefixed.publicPath(path, 'en'))).toBe(path)
+    }
+  })
+})
+
+/* ------------------------------------------------------------------------- *
+ * Le cookie de langue : premier cookie hors session du dépôt, donc celui qui
+ * fixe le précédent.
+ * ------------------------------------------------------------------------- */
+
+/** Les en-têtes `Set-Cookie` que le proxy laisse réellement partir. */
+const setCookiesFor = (pathname: string): readonly string[] =>
+  proxy(
+    new NextRequest(new URL(`https://example.test${pathname}`), {
+      headers: { 'accept-language': 'fr' },
+    }),
+  ).headers.getSetCookie()
+
+describe('aucun cookie ne part sans les attributs du socle', () => {
+  it('pose le choix de langue en HttpOnly, Secure et SameSite', () => {
+    // `docs/security.md` §1 ne pose aucune condition : « HttpOnly, Secure,
+    // SameSite=Lax au minimum », et nomme la commande qui doit le tenir — un
+    // test sur l'en-tête `Set-Cookie`. Il n'existait pour aucun cookie hors
+    // session. Rien côté client ne lit `app_locale` : le sélecteur est une
+    // liste de liens, et c'est le proxy qui écrit, côté serveur.
+    const cookies = setCookiesFor('/en/account')
+
+    // La garde contre le vide : dans l'état où le projet sert plusieurs
+    // langues, suivre une URL préfixée **doit** poser le choix, sans quoi tout
+    // ce qui suit serait vrai sur zéro cookie. Une seule langue servie, aucun
+    // cookie n'est posé et il n'y a rien à contrôler.
+    if (localeRouting.locales.length > 1) {
+      expect(cookies.some((cookie) => cookie.startsWith(`${LOCALE_COOKIE}=`))).toBe(true)
+    }
+
+    for (const cookie of cookies) {
+      expect(cookie, cookie).toMatch(/;\s*HttpOnly/i)
+      expect(cookie, cookie).toMatch(/;\s*Secure/i)
+      expect(cookie, cookie).toMatch(/;\s*SameSite=/i)
     }
   })
 })

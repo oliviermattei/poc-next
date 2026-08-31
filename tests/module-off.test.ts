@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest'
 import { GET } from '../apps/web/app/api/modules/[...path]/route'
 import { moduleRegistry } from '../apps/web/lib/module-registry'
 import { availableModules, enabledModules } from '../config/features'
+import { appLocales } from '../config/i18n'
 
 /**
  * Ce que devient un module que la configuration ne nomme pas.
@@ -40,6 +41,7 @@ const requestTo = (path: string): Request =>
 const withoutDemoDisabled = buildRegistry({
   available: [...availableModules],
   enabled: ['demo-enabled'],
+  locales: [...appLocales],
 })
 
 describe('un module non activé', () => {
@@ -103,7 +105,11 @@ describe('un module non activé', () => {
 
   it('refuse d’être activé sans son module requis, en le nommant', () => {
     expect(() =>
-      buildRegistry({ available: [...availableModules], enabled: ['demo-disabled'] }),
+      buildRegistry({
+        available: [...availableModules],
+        enabled: ['demo-disabled'],
+        locales: [...appLocales],
+      }),
     ).toThrowError(/« demo-disabled » requiert « demo-enabled »/)
   })
 })

@@ -40,10 +40,17 @@ export function DesktopNavigation({ items, label }: NavigationProps) {
 
 export interface MobileNavigationProps extends NavigationProps {
   readonly openLabel: string
+  readonly closeLabel: string
   readonly title: string
 }
 
-export function MobileNavigation({ items, label, openLabel, title }: MobileNavigationProps) {
+export function MobileNavigation({
+  items,
+  label,
+  openLabel,
+  closeLabel,
+  title,
+}: MobileNavigationProps) {
   const [open, setOpen] = useState(false)
   const pathname = usePathname()
 
@@ -56,7 +63,7 @@ export function MobileNavigation({ items, label, openLabel, title }: MobileNavig
       </SheetTrigger>
       {/* `aria-describedby={undefined}` : ce panneau n'a pas de description, et
           Radix avertit en console tant qu'on ne le dit pas explicitement. */}
-      <SheetContent side="left" aria-describedby={undefined}>
+      <SheetContent side="left" aria-describedby={undefined} closeLabel={closeLabel}>
         <SheetTitle>{title}</SheetTitle>
         <SidebarNav
           items={items}

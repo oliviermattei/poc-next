@@ -166,22 +166,32 @@ export function assertDeclarationsAreComplete(
    * Les locales **de l'application** (`config/i18n.ts`), transmises par le
    * point de composition comme `requiredModules` l'est.
    *
-   * Facultatif, et retombant alors sur les locales du module, pour que les
-   * tests puissent valider deux modules d'essai sans hériter des langues du
-   * dépôt. Ce qui rend la règle exécutable est que les points de composition le
-   * passent : c'est ce contrôle-là qui refuse un module ne livrant que `fr`
-   * alors que le projet sert `fr` et `en` — la faille mesurée en revue de s06,
-   * où la référence était le module et non l'application.
+   * **Obligatoire, et non vide.** C'est ce contrôle-là qui refuse un module ne
+   * livrant que `fr` alors que le projet sert `fr` et `en` — la faille mesurée
+   * en revue de s06, où la référence était le module et non l'application. Tant
+   * que le paramètre était facultatif, l'oublier ramenait cette référence au
+   * module, en silence : la règle redevenait « chaque module est complet selon
+   * lui-même », qui est vraie par construction et ne refuse jamais rien.
+   *
+   * Le refus est levé ici plutôt que déduit d'un défaut, parce qu'un ensemble
+   * vide rendrait chaque boucle ci-dessous vide, donc chaque vérification
+   * verte.
    */
-  applicationLocales?: readonly string[],
+  applicationLocales: readonly string[],
 ): void {
+  // `Array.isArray` et non une comparaison à `undefined` : le paramètre est
+  // obligatoire pour le compilateur, et c'est justement l'appelant qui ignore
+  // les types que cette garde attend.
+  if (!Array.isArray(applicationLocales) || applicationLocales.length === 0) {
+    fail(
+      'Locales manquantes : la validation des modules exige les locales de l’application (« locales », config/i18n.ts). Sans elles, un module incomplet serait déclaré complet.',
+    )
+  }
+
   const routeOwners = new Map<string, string>()
 
   for (const module of modules) {
-    const locales =
-      applicationLocales === undefined || applicationLocales.length === 0
-        ? Object.keys(module.messages)
-        : applicationLocales
+    const locales = applicationLocales
 
     for (const template of module.emails) {
       for (const locale of locales) {

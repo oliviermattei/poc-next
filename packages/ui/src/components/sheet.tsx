@@ -27,8 +27,20 @@ export function SheetContent({
   className,
   children,
   side = 'left',
+  closeLabel,
   ...props
-}: ComponentProps<typeof SheetPrimitive.Content> & { readonly side?: 'left' | 'right' }) {
+}: ComponentProps<typeof SheetPrimitive.Content> & {
+  readonly side?: 'left' | 'right'
+  /**
+   * Le nom accessible du bouton de fermeture, **traduit par l'appelant**.
+   *
+   * Obligatoire : c'est le seul texte que cette primitive affiche, et il
+   * portait « Fermer » en dur jusqu'à la revue de s09. `packages/ui` ne connaît
+   * ni catalogue ni locale — les libellés lui arrivent en props, comme pour
+   * `SidebarNav` ou `ThemeToggle`.
+   */
+  readonly closeLabel: string
+}) {
   return (
     <SheetPrimitive.Portal>
       <SheetPrimitive.Overlay
@@ -47,7 +59,7 @@ export function SheetContent({
         {children}
         <SheetPrimitive.Close className="absolute top-4 right-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring">
           <XIcon className="size-4" aria-hidden />
-          <span className="sr-only">Fermer</span>
+          <span className="sr-only">{closeLabel}</span>
         </SheetPrimitive.Close>
       </SheetPrimitive.Content>
     </SheetPrimitive.Portal>
