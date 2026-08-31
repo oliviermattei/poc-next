@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@repo/ui'
 import { LogOutIcon, SettingsIcon, UserIcon } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 import { signOut } from './sign-out-button'
 
@@ -22,19 +23,25 @@ import { signOut } from './sign-out-button'
  *
  * Le nom accessible du déclencheur porte l'adresse du compte : « menu de
  * compte » seul ne dit pas *quel* compte, et c'est l'information qui compte le
- * jour où l'on est connecté avec le mauvais.
+ * jour où l'on est connecté avec le mauvais. Il est donc traduit **avec** son
+ * paramètre, jamais concaténé : « Compte — {email} » et « Account — {email} »
+ * ne se composent pas dans le même ordre d'une langue à l'autre.
  */
 export interface AccountMenuProps {
   readonly email: string
   readonly name: string
+  /** L'URL de l'écran de compte, déjà mise dans la forme publique de la locale. */
+  readonly accountHref: string
   readonly signOutAction: string
 }
 
-export function AccountMenu({ email, name, signOutAction }: AccountMenuProps) {
+export function AccountMenu({ email, name, accountHref, signOutAction }: AccountMenuProps) {
+  const t = useTranslations()
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label={`Compte — ${email}`}>
+        <Button variant="ghost" size="icon" aria-label={t('app.shell.account.menu', { email })}>
           <UserIcon aria-hidden />
         </Button>
       </DropdownMenuTrigger>
@@ -45,14 +52,14 @@ export function AccountMenu({ email, name, signOutAction }: AccountMenuProps) {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
-          <a href="/account">
+          <a href={accountHref}>
             <SettingsIcon aria-hidden />
-            Paramètres du compte
+            {t('app.shell.account.settings')}
           </a>
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => void signOut(signOutAction)}>
           <LogOutIcon aria-hidden />
-          Se déconnecter
+          {t('app.shell.account.signOut')}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

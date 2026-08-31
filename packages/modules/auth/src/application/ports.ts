@@ -119,8 +119,18 @@ export interface AuthDependencies {
   readonly policy: AuthPolicy
   /** URL publique de l'application : ce qui rend les liens d'email absolus. */
   readonly appUrl: string
-  /** Locale des emails transactionnels tant que l'i18n (s09) n'existe pas. */
-  readonly locale: string
+  /**
+   * **La règle unique de langue d'un email**, et elle vaut pour tout email de
+   * ce module, présents et futurs.
+   *
+   * Elle reçoit la langue **connue du destinataire** — celle de la requête
+   * qu'il vient de faire — et rend celle dans laquelle l'email part. Un
+   * destinataire dont rien n'est connu (invitation, guest checkout, liste
+   * d'attente : `null`) reçoit la locale par défaut du site. C'est câblé, pas
+   * déduit, et c'est `resolveLocale` de `@repo/core` qui décide — la même
+   * fonction que l'écran.
+   */
+  readonly emailLocaleFor: (knownLocale: string | null | undefined) => string
   readonly now: () => Date
 }
 

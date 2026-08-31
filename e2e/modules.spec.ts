@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test'
 
 import { moduleRegistry } from '../apps/web/lib/module-registry'
 import { availableModules } from '../config/features'
+import { publicPath } from './support/locale'
 
 /**
  * Le registre, vu depuis un serveur réellement démarré.
@@ -88,7 +89,7 @@ test('la navigation rendue est exactement celle que le registre autorise', async
   await expect(links).toHaveCount(expected.length)
 
   for (const [index, entry] of expected.entries()) {
-    await expect(links.nth(index)).toHaveAttribute('href', entry.href)
+    await expect(links.nth(index)).toHaveAttribute('href', publicPath(entry.href))
   }
 
   // Deux absences, vraies dans les deux états : aucune entrée d'un module non
@@ -106,6 +107,6 @@ test('la navigation rendue est exactement celle que le registre autorise', async
   expect(hidden.length).toBeGreaterThan(0)
 
   for (const entry of hidden) {
-    expect(rendered, entry.id).not.toContain(entry.href)
+    expect(rendered, entry.id).not.toContain(publicPath(entry.href))
   }
 })

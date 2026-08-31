@@ -19,6 +19,7 @@ import { ESLint } from 'eslint'
 import { describe, expect, it } from 'vitest'
 
 import { availableModules, enabledModules, requiredModules } from '../config/features'
+import { appLocales } from '../config/i18n'
 
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url))
 
@@ -230,6 +231,63 @@ describe('validation de la configuration des modules', () => {
         enabled: ['a'],
       }),
     ).toThrowError(/« welcome ».*« en »/)
+  })
+
+  it('refuse un template d’email absent d’une locale de l’application, et non du module', () => {
+    // La faille mesurée en revue de s06 : le contrôle portait sur les locales
+    // **du module**, donc un module ne livrant que `fr` passait alors que
+    // l'application sert `fr` et `en`, et son email partait dans une langue
+    // que le destinataire n'avait pas demandée. L'ensemble de référence est
+    // celui de `config/i18n.ts`, transmis comme `requiredModules`.
+    expect(() =>
+      buildRegistry({
+        available: [
+          moduleFixture('a', {
+            messages: { fr: {} },
+            emails: [{ id: 'welcome', locales: { fr: { subject: 'S', body: 'B' } } }],
+          }),
+        ],
+        enabled: ['a'],
+        locales: ['fr', 'en'],
+      }),
+    ).toThrowError(/« welcome ».*« en »/)
+  })
+
+  it('refuse une entrée de navigation non traduite dans une locale de l’application', () => {
+    expect(() =>
+      buildRegistry({
+        available: [
+          moduleFixture('a', {
+            messages: { fr: { 'nav.a': 'A' } },
+            navigation: [
+              {
+                id: 'a',
+                href: '/a',
+                labelKey: 'nav.a',
+                order: 1,
+                protection: { level: 'public' },
+              },
+            ],
+          }),
+        ],
+        enabled: ['a'],
+        locales: ['fr', 'en'],
+      }),
+    ).toThrowError(/« nav\.a ».*« en »/)
+  })
+
+  it('refuse la configuration du dépôt privée d’une locale livrée', () => {
+    // Le balayage de `tests/i18n.test.ts` porte sur l'annuaire complet ; ce
+    // cas-ci prouve que la **construction du registre** refuse, donc que
+    // l'application ne démarre pas — pas seulement qu'un test rougit.
+    expect(() =>
+      buildRegistry({
+        available: [...availableModules],
+        enabled: [...enabledModules],
+        required: [...requiredModules],
+        locales: [...appLocales, 'de'],
+      }),
+    ).toThrowError(/« de »/)
   })
 
   it('refuse deux modules activés déclarant la même route', () => {

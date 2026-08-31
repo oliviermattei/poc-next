@@ -38,6 +38,14 @@ export interface AuthService {
    * laquelle, dans la liste, est celle qu'on utilise en ce moment.
    */
   resolveSessionId(request: Request): Promise<string | null>
+  /**
+   * La langue dans laquelle un email part à qui a fait **cette** requête.
+   *
+   * `null` est le destinataire dont rien n'est connu — invitation, guest
+   * checkout, liste d'attente : il reçoit la locale par défaut du site. La règle
+   * est la même dans les deux cas, et c'est celle de `@repo/core`.
+   */
+  localeOf(request: Request | null): string
   readonly useCases: AuthUseCases
   readonly policy: AuthPolicy
 }

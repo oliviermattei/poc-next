@@ -1,6 +1,7 @@
 import { assertStartupEnv } from '@repo/config'
 import { loadRootEnv } from '@repo/config/server'
 import type { NextConfig } from 'next'
+import createNextIntlPlugin from 'next-intl/plugin'
 
 import { resolveAuthConfig } from './lib/auth-config'
 import { resolveMailerConfig } from './lib/mailer-config'
@@ -20,10 +21,19 @@ const nextConfig: NextConfig = {
     '@repo/module-auth',
     '@repo/module-demo-disabled',
     '@repo/module-demo-enabled',
+    '@repo/module-i18n',
   ],
   // Le pilote PostgreSQL reste externe au bundle serveur.
   serverExternalPackages: ['pg'],
 }
+
+/**
+ * Le greffon de `next-intl` ne fait **qu'une** chose, vérifiée dans le paquet
+ * installé (4.14.1) : aliaser `next-intl/config` vers `./i18n/request.ts`. Il
+ * n'impose ni segment `[locale]`, ni middleware, ni forme d'URL — sans quoi le
+ * critère « module coupé, routes sans préfixe » serait inatteignable.
+ */
+const withNextIntl = createNextIntlPlugin('./i18n/request.ts')
 
 /**
  * Configuration exportée en fonction, et non en objet, pour recevoir la phase.
@@ -57,5 +67,5 @@ export default function config(phase: string): NextConfig {
     resolveAuthConfig(env)
   }
 
-  return nextConfig
+  return withNextIntl(nextConfig)
 }

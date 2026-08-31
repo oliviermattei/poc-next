@@ -1,6 +1,7 @@
 'use client'
 
 import { Alert, Badge, Button } from '@repo/ui'
+import { useTranslations } from 'next-intl'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
@@ -15,7 +16,9 @@ import { useState } from 'react'
  *
  * Les dates sont **formatées par le serveur** : les formater ici les rendrait
  * dans le fuseau du navigateur, différent de celui du serveur, ce que React
- * signale comme un écart d'hydratation.
+ * signale comme un écart d'hydratation. Le serveur les formate donc **dans la
+ * locale servie** — une date longue en français ne s'écrit pas comme en
+ * anglais, et c'est le genre de détail qui trahit une traduction de façade.
  */
 export interface SessionRow {
   readonly id: string
@@ -28,16 +31,19 @@ export interface SessionRow {
 export interface SessionListProps {
   readonly sessions: readonly SessionRow[]
   readonly action: string
+  /** Où atterrir après avoir révoqué **sa propre** session, préfixe de locale compris. */
+  readonly signInHref: string
 }
 
-export function SessionList({ sessions, action }: SessionListProps) {
+export function SessionList({ sessions, action, signInHref }: SessionListProps) {
+  const t = useTranslations()
   const router = useRouter()
   const [revoking, setRevoking] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
 
   const revoke = async (session: SessionRow): Promise<void> => {
     setRevoking(session.id)
-    setError(null)
+    setFailed(false)
 
     const response = await fetch(action, {
       method: 'POST',
@@ -48,7 +54,7 @@ export function SessionList({ sessions, action }: SessionListProps) {
     setRevoking(null)
 
     if (!response.ok) {
-      setError('Cette session n’a pas pu être révoquée. Rechargez la page, puis réessayez.')
+      setFailed(true)
 
       return
     }
@@ -57,7 +63,7 @@ export function SessionList({ sessions, action }: SessionListProps) {
     // protégé avec un cookie que le serveur refuse désormais afficherait une
     // page vide au premier rechargement.
     if (session.current) {
-      window.location.assign('/sign-in')
+      window.location.assign(signInHref)
 
       return
     }
@@ -67,11 +73,11 @@ export function SessionList({ sessions, action }: SessionListProps) {
 
   return (
     <div className="flex flex-col gap-3">
-      {error === null ? null : (
+      {failed ? (
         <Alert variant="destructive" role="alert">
-          {error}
+          {t('app.account.sessions.error')}
         </Alert>
-      )}
+      ) : null}
       <ul className="flex flex-col gap-3">
         {sessions.map((session) => (
           <li
@@ -81,11 +87,17 @@ export function SessionList({ sessions, action }: SessionListProps) {
             <div className="min-w-0">
               <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
                 <span className="truncate">{session.device}</span>
-                {session.current ? <Badge variant="secondary">Session courante</Badge> : null}
+                {session.current ? (
+                  <Badge variant="secondary">{t('app.account.sessions.current')}</Badge>
+                ) : null}
               </p>
               <p className="truncate text-xs text-muted-foreground">
-                Ouverte le {session.createdAt}
-                {session.ipAddress === null ? '' : ` — ${session.ipAddress}`}
+                {session.ipAddress === null
+                  ? t('app.account.sessions.openedAt', { date: session.createdAt })
+                  : t('app.account.sessions.openedAtFrom', {
+                      date: session.createdAt,
+                      ip: session.ipAddress,
+                    })}
               </p>
             </div>
             <Button
@@ -93,9 +105,9 @@ export function SessionList({ sessions, action }: SessionListProps) {
               variant="outline"
               pending={revoking === session.id}
               onClick={() => void revoke(session)}
-              aria-label={`Révoquer la session ${session.device}`}
+              aria-label={t('app.account.sessions.revokeLabel', { device: session.device })}
             >
-              Révoquer
+              {t('app.account.sessions.revoke')}
             </Button>
           </li>
         ))}

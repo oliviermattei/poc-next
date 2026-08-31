@@ -1,4 +1,4 @@
-import { MODULE_ROUTE_PREFIX } from '@repo/core'
+import { MODULE_ROUTE_PREFIX, resolveLocale } from '@repo/core'
 import type { Mailer } from '@repo/ports'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { betterAuth } from 'better-auth/minimal'
@@ -49,7 +49,17 @@ export interface ConfigureAuthOptions {
   /** URL publique de l'application : ce qui rend les liens d'email absolus. */
   readonly appUrl: string
   readonly policy?: AuthPolicy
-  readonly locale?: string
+  /**
+   * Les locales que le projet **sert**, et celle qui décide par défaut.
+   *
+   * Reçues, jamais lues : le module ne connaît ni `config/i18n.ts`, ni le
+   * module `i18n`, ni le cookie qui porte le choix. Il reçoit aussi
+   * `readRequestLocale`, qui dit comment lire la langue d'une requête entrante —
+   * c'est le point de composition de l'application qui sait où elle est écrite.
+   */
+  readonly locales?: readonly string[]
+  readonly defaultLocale?: string
+  readonly readRequestLocale?: (request: Request) => string | null
   readonly log?: SecurityLog
   readonly now?: () => Date
   /**
@@ -109,6 +119,23 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
   const policy = options.policy ?? defaultAuthPolicy
   const tokenFactory = createTokenFactory()
   const now = options.now ?? (() => new Date())
+  const locales = options.locales ?? ['fr']
+  const defaultLocale = options.defaultLocale ?? locales[0] ?? 'fr'
+
+  /**
+   * La règle unique de langue d'un email, celle de `@repo/core` — la même que
+   * l'écran applique à la requête. Une seconde implémentation ferait recevoir
+   * un email anglais à qui lit l'application en français.
+   */
+  const emailLocaleFor = (knownLocale: string | null | undefined): string =>
+    resolveLocale({ locales, defaultLocale, candidate: knownLocale })
+
+  /** La langue connue d'une requête entrante, ou `null` : rien n'est deviné. */
+  const localeOf = (request: Request | null | undefined): string =>
+    emailLocaleFor(
+      request == null ? null : (options.readRequestLocale?.(request) ?? null),
+    )
+
   const runInBackground =
     options.runInBackground ??
     ((task: Promise<unknown>) => {
@@ -127,11 +154,20 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
     log: options.log ?? consoleSecurityLog,
     policy,
     appUrl: options.appUrl,
-    locale: options.locale ?? 'fr',
+    emailLocaleFor,
     now,
   }
 
   const useCases = createAuthUseCases(dependencies)
+
+  /**
+   * La langue lue d'une requête que la bibliothèque nous rend.
+   *
+   * Elle peut être absente — un appel serveur à serveur, un test —, et c'est
+   * alors le destinataire sans langue connue : la locale du site.
+   */
+  const readLocale = (request: Request | null | undefined): string | null =>
+    request == null ? null : (options.readRequestLocale?.(request) ?? null)
 
   /** L'identifiant sous lequel un magic link est stocké : `magic-link:<empreinte>`. */
   const magicLinkIdentifier = async (token: string): Promise<string> =>
@@ -191,9 +227,17 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
       // Réinitialiser un mot de passe révoque les sessions : c'est le sens
       // même du parcours — on le fait quand on a perdu la maîtrise du compte.
       revokeSessionsOnPasswordReset: true,
-      sendResetPassword: async ({ user, token }) => {
+      sendResetPassword: async ({ user, token }, request) => {
         // `url` est ignorée volontairement : voir `sendPasswordResetEmail`.
-        await useCases.sendPasswordResetEmail({ to: user.email, token, userId: user.id })
+        await useCases.sendPasswordResetEmail({
+          to: user.email,
+          token,
+          userId: user.id,
+          // La bibliothèque transmet la requête entrante en second argument
+          // (`dist/api/routes/password.mjs`, mesuré) : c'est là que se lit la
+          // langue de celui qui demande, et c'est lui le destinataire.
+          knownLocale: readLocale(request),
+        })
       },
       onPasswordReset: async ({ user }) => {
         await useCases.onPasswordReset(user.id)
@@ -218,10 +262,11 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
         // préfixe qui permet d'invalider les jetons frères sans toucher à ceux
         // d'un autre parcours.
         storeToken: { type: 'custom-hasher', hash: magicLinkIdentifier },
-        sendMagicLink: async ({ email, url, token }) => {
+        sendMagicLink: async ({ email, url, token }, context) => {
           await useCases.sendMagicLinkEmail({
             to: email,
             url,
+            knownLocale: readLocale(context?.request),
             siblingIdentifier: await magicLinkIdentifier(token),
             // La valeur que le greffon écrit pour un magic link : l'adresse,
             // sérialisée. C'est ce qui rassemble les liens d'un même
@@ -239,6 +284,8 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
     useCases,
 
     handle: (request) => auth.handler(request),
+
+    localeOf,
 
     changePassword: async ({ request, currentPassword, newPassword }) =>
       await auth.api.changePassword({

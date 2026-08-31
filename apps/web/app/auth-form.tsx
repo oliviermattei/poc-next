@@ -1,5 +1,6 @@
 'use client'
 
+import { useTranslations } from 'next-intl'
 import { useState, type FormEvent } from 'react'
 
 import { useHydrated } from './use-hydrated'
@@ -22,10 +23,16 @@ import { useHydrated } from './use-hydrated'
  * Il parle aux **routes du module**, pas à une action serveur : c'est le
  * navigateur qui reçoit le `Set-Cookie` de la session, et le parcours exercé en
  * production est exactement celui que `tests/auth.test.ts` mesure.
+ *
+ * Les libellés arrivent en **clés de traduction**, jamais en texte : c'est
+ * l'écran appelant qui nomme la clé, le formulaire qui la résout. Passer le
+ * texte déjà traduit obligerait chaque écran serveur à traduire ce que le
+ * composant client sait faire, et à le refaire à chaque champ.
  */
 export interface AuthFormField {
   readonly name: string
-  readonly label: string
+  /** Clé de traduction du libellé, jamais le libellé. */
+  readonly labelKey: string
   readonly type: 'email' | 'password'
   readonly autoComplete: string
 }
@@ -33,16 +40,16 @@ export interface AuthFormField {
 export interface AuthFormProps {
   readonly action: string
   readonly fields: readonly AuthFormField[]
-  readonly submitLabel: string
+  readonly submitLabelKey: string
   /** Valeurs jointes au corps sans être saisies (jeton, destination de retour). */
   readonly hiddenValues?: Readonly<Record<string, string>>
   /** Destination après succès. Absente, le message ci-dessous s'affiche. */
   readonly redirectTo?: string
-  readonly successMessage?: string
+  readonly successMessageKey?: string
 }
 
 /**
- * Le message d'un refus.
+ * La clé du message d'un refus.
  *
  * **401 dit toujours la même chose** : compte inconnu, mot de passe invalide et
  * adresse non vérifiée y sont indiscernables, et le serveur rend déjà la même
@@ -55,28 +62,29 @@ export interface AuthFormProps {
  * `/verify-email`, dont la route de renvoi répond la même chose que l'adresse
  * existe ou non.
  */
-const messageFor = (status: number): string => {
+const messageKeyFor = (status: number): string => {
   if (status === 401) {
-    return 'Identifiants invalides. Si votre adresse n’est pas encore vérifiée, demandez un nouveau lien.'
+    return 'app.auth.error.unauthorized'
   }
 
   if (status === 502) {
-    return 'L’email n’a pas pu être envoyé. Réessayez dans un instant.'
+    return 'app.auth.error.mail'
   }
 
-  return 'Demande invalide. Vérifiez les informations saisies.'
+  return 'app.auth.error.invalid'
 }
 
 export function AuthForm(props: AuthFormProps) {
+  const t = useTranslations()
   const hydrated = useHydrated()
-  const [error, setError] = useState<string | null>(null)
+  const [errorKey, setErrorKey] = useState<string | null>(null)
   const [done, setDone] = useState(false)
   const [pending, setPending] = useState(false)
 
   const submit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault()
     setPending(true)
-    setError(null)
+    setErrorKey(null)
 
     const entries = Object.fromEntries(new FormData(event.currentTarget).entries())
     const response = await fetch(props.action, {
@@ -88,7 +96,7 @@ export function AuthForm(props: AuthFormProps) {
     setPending(false)
 
     if (!response.ok) {
-      setError(messageFor(response.status))
+      setErrorKey(messageKeyFor(response.status))
 
       return
     }
@@ -102,15 +110,15 @@ export function AuthForm(props: AuthFormProps) {
     setDone(true)
   }
 
-  if (done && props.successMessage !== undefined) {
-    return <p role="status">{props.successMessage}</p>
+  if (done && props.successMessageKey !== undefined) {
+    return <p role="status">{t(props.successMessageKey)}</p>
   }
 
   return (
     <form method="post" onSubmit={submit}>
       {props.fields.map((field) => (
         <p key={field.name}>
-          <label htmlFor={field.name}>{field.label}</label>{' '}
+          <label htmlFor={field.name}>{t(field.labelKey)}</label>{' '}
           <input
             id={field.name}
             name={field.name}
@@ -120,9 +128,9 @@ export function AuthForm(props: AuthFormProps) {
           />
         </p>
       ))}
-      {error === null ? null : <p role="alert">{error}</p>}
+      {errorKey === null ? null : <p role="alert">{t(errorKey)}</p>}
       <button type="submit" disabled={pending || !hydrated}>
-        {props.submitLabel}
+        {t(props.submitLabelKey)}
       </button>
     </form>
   )

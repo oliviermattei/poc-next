@@ -1,26 +1,29 @@
 import { authRoutePath } from '../../lib/auth'
+import { appIntl } from '../../lib/i18n'
 import { AuthForm } from '../auth-form'
 
-export default function SignUpPage() {
+export default async function SignUpPage() {
+  const { t, path } = await appIntl()
+
   return (
     <main>
-      <h1>Créer un compte</h1>
+      <h1>{t('app.signUp.title')}</h1>
       <AuthForm
         action={authRoutePath('signUp')}
         fields={[
-          { name: 'email', label: 'Adresse email', type: 'email', autoComplete: 'email' },
+          { name: 'email', labelKey: 'app.auth.field.email', type: 'email', autoComplete: 'email' },
           {
             name: 'password',
-            label: 'Mot de passe',
+            labelKey: 'app.auth.field.password',
             type: 'password',
             autoComplete: 'new-password',
           },
         ]}
-        submitLabel="Créer le compte"
-        successMessage="Compte créé. Vérifiez votre boîte email pour activer votre compte."
+        submitLabelKey="app.signUp.submit"
+        successMessageKey="app.signUp.done"
       />
       <p>
-        <a href="/sign-in">J’ai déjà un compte</a>
+        <a href={path('/sign-in')}>{t('app.signUp.haveAccount')}</a>
       </p>
     </main>
   )

@@ -1,6 +1,7 @@
 'use client'
 
 import { Alert, Button, Input, Label } from '@repo/ui'
+import { useTranslations } from 'next-intl'
 import { useRouter } from 'next/navigation'
 import { useState, type FormEvent } from 'react'
 
@@ -26,10 +27,13 @@ import { useHydrated } from '../use-hydrated'
  * serveur, donc l'écran doit les redemander plutôt que de recopier localement
  * ce qu'il vient d'envoyer. Recopier afficherait « enregistré » sur une valeur
  * que la base aurait pu refuser.
+ *
+ * Les libellés sont des **clés**, résolues ici : l'écran serveur les nomme, le
+ * composant client les traduit.
  */
 export interface AccountFormField {
   readonly name: string
-  readonly label: string
+  readonly labelKey: string
   readonly type: 'text' | 'email' | 'password'
   readonly autoComplete: string
   readonly defaultValue?: string
@@ -38,45 +42,46 @@ export interface AccountFormField {
 export interface AccountFormProps {
   readonly action: string
   readonly fields: readonly AccountFormField[]
-  readonly submitLabel: string
-  readonly successMessage: string
+  readonly submitLabelKey: string
+  readonly successMessageKey: string
   /** Redirection après succès, quand la session ne survit pas au changement. */
   readonly redirectTo?: string
 }
 
-const messageFor = (status: number): string => {
+const messageKeyFor = (status: number): string => {
   if (status === 400) {
-    return 'Demande invalide. Vérifiez les informations saisies.'
+    return 'app.account.error.invalid'
   }
 
   if (status === 401 || status === 403) {
-    return 'Cette action a été refusée. Vérifiez votre mot de passe actuel, puis réessayez.'
+    return 'app.account.error.refused'
   }
 
   if (status === 502) {
-    return 'L’email n’a pas pu être envoyé. Réessayez dans un instant.'
+    return 'app.account.error.mail'
   }
 
-  return 'L’enregistrement a échoué. Réessayez dans un instant.'
+  return 'app.account.error.failed'
 }
 
 export function AccountForm({
   action,
   fields,
-  submitLabel,
-  successMessage,
+  submitLabelKey,
+  successMessageKey,
   redirectTo,
 }: AccountFormProps) {
+  const t = useTranslations()
   const router = useRouter()
   const hydrated = useHydrated()
-  const [error, setError] = useState<string | null>(null)
+  const [errorKey, setErrorKey] = useState<string | null>(null)
   const [done, setDone] = useState(false)
   const [pending, setPending] = useState(false)
 
   const submit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault()
     setPending(true)
-    setError(null)
+    setErrorKey(null)
     setDone(false)
 
     const form = event.currentTarget
@@ -89,7 +94,7 @@ export function AccountForm({
     setPending(false)
 
     if (!response.ok) {
-      setError(messageFor(response.status))
+      setErrorKey(messageKeyFor(response.status))
 
       return
     }
@@ -112,7 +117,7 @@ export function AccountForm({
     <form method="post" onSubmit={submit} className="flex flex-col gap-4">
       {fields.map((field) => (
         <div key={field.name} className="flex flex-col gap-2">
-          <Label htmlFor={field.name}>{field.label}</Label>
+          <Label htmlFor={field.name}>{t(field.labelKey)}</Label>
           <Input
             id={field.name}
             name={field.name}
@@ -123,19 +128,19 @@ export function AccountForm({
           />
         </div>
       ))}
-      {error === null ? null : (
+      {errorKey === null ? null : (
         <Alert variant="destructive" role="alert">
-          {error}
+          {t(errorKey)}
         </Alert>
       )}
-      {done && error === null ? (
+      {done && errorKey === null ? (
         <Alert variant="success" role="status">
-          {successMessage}
+          {t(successMessageKey)}
         </Alert>
       ) : null}
       <div>
         <Button type="submit" pending={pending} disabled={!hydrated}>
-          {submitLabel}
+          {t(submitLabelKey)}
         </Button>
       </div>
     </form>

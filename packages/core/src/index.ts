@@ -34,6 +34,17 @@ export {
   type RegistryRoute,
   type RegistryWebhookHandler,
 } from './registry'
+export {
+  resolveLocale,
+  singleLocaleRouting,
+  unflattenMessages,
+  type LocaleRequest,
+  type LocaleRouting,
+  type FlatMessages,
+  type Locale,
+  type LocaleChoice,
+  type NestedMessages,
+} from './i18n'
 export { satisfiesProtection, visibleNavigation } from './protection'
 export {
   assertDeclarationsAreComplete,

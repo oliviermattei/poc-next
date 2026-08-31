@@ -10,6 +10,7 @@ import {
   enabledModules,
   requiredModules,
 } from '../../../../config/features'
+import { appLocales } from '../../../../config/i18n'
 import drizzleConfig from '../../drizzle.config'
 import {
   ENABLED_SCHEMAS_FILE,
@@ -48,6 +49,7 @@ const registry = buildRegistry({
   available: [...availableModules],
   enabled: [...enabledModules],
   required: [...requiredModules],
+  locales: [...appLocales],
 })
 
 // L'annuaire complet, et non les seuls modules activés : c'est ce qui permet de

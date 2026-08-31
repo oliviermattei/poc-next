@@ -53,30 +53,52 @@ export type VerificationOutcome =
   | { readonly status: 'verified'; readonly userId: string }
   | { readonly status: 'invalid' }
 
+/**
+ * La langue **connue du destinataire** d'un email, jointe à chaque envoi.
+ *
+ * `null` — ou absente — est le cas explicite du destinataire dont rien n'est
+ * connu : `emailLocaleFor` rend alors la locale par défaut du site. Aujourd'hui
+ * les quatre emails du module partent vers la personne qui vient de faire la
+ * requête, donc la langue connue est celle de cette requête ; demain une
+ * invitation partira sans rien savoir de son destinataire, et la même règle
+ * décidera.
+ */
+export interface RecipientLocale {
+  readonly knownLocale?: string | null
+}
+
 export interface AuthUseCases {
   issueToken(input: {
     readonly purpose: TokenPurpose
     readonly value: string
     readonly ttlSeconds: number
   }): Promise<IssuedToken>
-  sendVerificationEmail(input: { readonly to: string }): Promise<SendEmailResult>
+  sendVerificationEmail(
+    input: { readonly to: string } & RecipientLocale,
+  ): Promise<SendEmailResult>
   verifyEmail(token: string): Promise<VerificationOutcome>
-  sendMagicLinkEmail(input: {
-    readonly to: string
-    readonly url: string
-    readonly siblingIdentifier: string
-    readonly siblingValue: string
-  }): Promise<SendEmailResult>
-  sendPasswordResetEmail(input: {
-    readonly to: string
-    readonly token: string
-    readonly userId: string
-  }): Promise<SendEmailResult>
+  sendMagicLinkEmail(
+    input: {
+      readonly to: string
+      readonly url: string
+      readonly siblingIdentifier: string
+      readonly siblingValue: string
+    } & RecipientLocale,
+  ): Promise<SendEmailResult>
+  sendPasswordResetEmail(
+    input: {
+      readonly to: string
+      readonly token: string
+      readonly userId: string
+    } & RecipientLocale,
+  ): Promise<SendEmailResult>
   onPasswordReset(userId: string): Promise<void>
-  requestEmailChange(input: {
-    readonly userId: string
-    readonly newEmail: string
-  }): Promise<SendEmailResult>
+  requestEmailChange(
+    input: {
+      readonly userId: string
+      readonly newEmail: string
+    } & RecipientLocale,
+  ): Promise<SendEmailResult>
   confirmEmailChange(token: string): Promise<EmailChangeOutcome>
   /** Le compte de l'appelant, tel qu'un écran l'affiche. */
   viewAccount(userId: string): Promise<AccountView | null>
@@ -100,8 +122,18 @@ export interface AuthUseCases {
 const EMAIL_CHANGE_SEPARATOR = ' '
 
 export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases {
-  const { users, sessions, tokens, tokenFactory, mailer, log, policy, appUrl, locale, now } =
-    dependencies
+  const {
+    users,
+    sessions,
+    tokens,
+    tokenFactory,
+    mailer,
+    log,
+    policy,
+    appUrl,
+    emailLocaleFor,
+    now,
+  } = dependencies
 
   /**
    * Une URL absolue vers une route **du module**.
@@ -157,7 +189,7 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
 
     issueToken,
 
-    sendVerificationEmail: async ({ to }) => {
+    sendVerificationEmail: async ({ to, knownLocale }) => {
       const { token } = await issueToken({
         purpose: 'email-verification',
         value: to,
@@ -168,7 +200,9 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
       const result = await mailer.send({
         to,
         template: `auth.${AUTH_EMAIL_TEMPLATES.verification}`,
-        locale,
+        // La **seule** règle de langue : celle du destinataire quand elle est
+        // connue, celle du site sinon (`docs/stories.md`, critères 5 et 6).
+        locale: emailLocaleFor(knownLocale),
         data: { url },
       })
 
@@ -217,7 +251,7 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
       return { status: 'verified', userId: user.id }
     },
 
-    sendMagicLinkEmail: async ({ to, url, siblingIdentifier, siblingValue }) => {
+    sendMagicLinkEmail: async ({ to, url, siblingIdentifier, siblingValue, knownLocale }) => {
       // Le magic link est émis par la bibliothèque ; l'invalidation des frères
       // ne l'est pas. Demander un nouveau lien périme les précédents : sans
       // cela, chaque demande laisse un lien vivant de plus dans une boîte.
@@ -230,7 +264,9 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
       const result = await mailer.send({
         to,
         template: `auth.${AUTH_EMAIL_TEMPLATES.magicLink}`,
-        locale,
+        // La **seule** règle de langue : celle du destinataire quand elle est
+        // connue, celle du site sinon (`docs/stories.md`, critères 5 et 6).
+        locale: emailLocaleFor(knownLocale),
         data: { url },
       })
 
@@ -245,7 +281,7 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
       return result
     },
 
-    sendPasswordResetEmail: async ({ to, token, userId }) => {
+    sendPasswordResetEmail: async ({ to, token, userId, knownLocale }) => {
       // **Le lien est reconstruit ici**, il n'est pas celui que la bibliothèque
       // propose : le sien passe par `/reset-password/<jeton>`, un segment
       // dynamique que le contrat de module ne sait pas déclarer (ADR 017) et
@@ -258,7 +294,9 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
       const result = await mailer.send({
         to,
         template: `auth.${AUTH_EMAIL_TEMPLATES.passwordReset}`,
-        locale,
+        // La **seule** règle de langue : celle du destinataire quand elle est
+        // connue, celle du site sinon (`docs/stories.md`, critères 5 et 6).
+        locale: emailLocaleFor(knownLocale),
         data: { url },
       })
 
@@ -290,7 +328,7 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
       )
     },
 
-    requestEmailChange: async ({ userId, newEmail }) => {
+    requestEmailChange: async ({ userId, newEmail, knownLocale }) => {
       const { token } = await issueToken({
         purpose: 'email-change',
         value: `${userId}${EMAIL_CHANGE_SEPARATOR}${newEmail}`,
@@ -301,7 +339,9 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
       const result = await mailer.send({
         to: newEmail,
         template: `auth.${AUTH_EMAIL_TEMPLATES.verification}`,
-        locale,
+        // La **seule** règle de langue : celle du destinataire quand elle est
+        // connue, celle du site sinon (`docs/stories.md`, critères 5 et 6).
+        locale: emailLocaleFor(knownLocale),
         data: { url },
       })
 

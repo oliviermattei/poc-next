@@ -78,10 +78,17 @@ export function buildRegistry(configuration: {
   readonly enabled: readonly string[]
   /** Le socle non désactivable, transmis tel quel à la validation (ADR 021). */
   readonly required?: readonly string[]
+  /**
+   * Les locales **de l'application** (`config/i18n.ts`), transmises comme le
+   * socle : `@repo/core` ne les lit pas, il les reçoit. C'est contre cet
+   * ensemble — et non contre les locales du module — que les templates d'email
+   * et les libellés de navigation sont contrôlés.
+   */
+  readonly locales?: readonly string[]
 }): ModuleRegistry {
   const modules = resolveEnabledModules(configuration)
 
-  assertDeclarationsAreComplete(modules)
+  assertDeclarationsAreComplete(modules, configuration.locales)
 
   const messages: Record<string, Record<string, string>> = {}
 

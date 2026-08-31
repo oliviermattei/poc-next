@@ -1,4 +1,5 @@
 import { authRoutePath } from '../../lib/auth'
+import { appIntl } from '../../lib/i18n'
 import { AuthForm } from '../auth-form'
 
 /**
@@ -14,20 +15,23 @@ export default async function VerifyEmailPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const params = await searchParams
+  const { t } = await appIntl()
 
   return (
     <main>
-      <h1>Vérification de l’adresse email</h1>
+      <h1>{t('app.verifyEmail.title')}</h1>
       {params.error === undefined ? (
-        <p>Suivez le lien reçu par email pour activer votre compte.</p>
+        <p>{t('app.verifyEmail.hint')}</p>
       ) : (
-        <p role="alert">Ce lien a expiré ou a déjà été utilisé. Demandez-en un nouveau.</p>
+        <p role="alert">{t('app.verifyEmail.expired')}</p>
       )}
       <AuthForm
         action={authRoutePath('sendVerificationEmail')}
-        fields={[{ name: 'email', label: 'Adresse email', type: 'email', autoComplete: 'email' }]}
-        submitLabel="Recevoir un nouveau lien"
-        successMessage="Si cette adresse attend une vérification, un lien vient de partir."
+        fields={[
+          { name: 'email', labelKey: 'app.auth.field.email', type: 'email', autoComplete: 'email' },
+        ]}
+        submitLabelKey="app.verifyEmail.submit"
+        successMessageKey="app.verifyEmail.sent"
       />
     </main>
   )

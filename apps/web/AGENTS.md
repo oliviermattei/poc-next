@@ -15,10 +15,14 @@ module (`packages/modules/<module>/src/domain`).
   `@repo/mailer-testing` pour la capture locale — **uniquement** dans
   `lib/mailer.ts`, qui est le point de composition du mailer ;
 - les modules du projet, **uniquement** parce que `config/features.ts` les
-  référence : `@repo/module-auth`, `@repo/module-demo-enabled` et
-  `@repo/module-demo-disabled` aujourd'hui. Un seul fichier fait exception et
-  importe un module directement — `lib/auth.ts`, le point de composition de
-  l'authentification (voir plus bas) ;
+  référence : `@repo/module-auth`, `@repo/module-i18n`,
+  `@repo/module-demo-enabled` et `@repo/module-demo-disabled` aujourd'hui. Deux
+  fichiers font exception et importent un module directement — `lib/auth.ts`, le
+  point de composition de l'authentification, et `lib/locale-routing.ts`, celui
+  de l'i18n (voir plus bas) ;
+- `next-intl` pour la résolution des chaînes — dans `i18n/request.ts`,
+  `lib/i18n.ts` et les composants qui affichent du texte. La bibliothèque est un
+  détail de ce point de composition : aucun module ne la connaît ;
 - `@repo/ui` pour **tout** ce qui s'affiche : c'est le design system, et la
   seule frontière avec le socle de composants. Un import de `@radix-ui/*` ici
   est refusé par `pnpm lint` (ADR 022) ;
@@ -127,6 +131,51 @@ bibliothèques, laisse un attaquant faire pointer un lien de réinitialisation
 vers son propre domaine.
 
 Le module reçoit sa connexion ; il n'importe jamais `@repo/db` (ADR 020).
+
+## Le montage de l'i18n
+
+Trois fichiers, sur le modèle exact du mailer et de l'authentification :
+
+- `lib/locale-routing.ts` porte le **choix** — le module `i18n` est-il monté ?
+  C'est le seul fichier de l'application qui connaisse `@repo/module-i18n`, et
+  le seul qui regarde si ce module est activé. Il rend un `LocaleRouting`
+  (`@repo/core`) dont la **forme est la même dans les deux états** ;
+- `lib/current-locale.ts` et `lib/i18n.ts` **résolvent** la langue de la requête
+  et rendent `{ locale, t, path }` ; `lib/messages.ts` assemble le catalogue —
+  celui de l'application, plus celui des modules **activés**, que le registre
+  agrège ;
+- `proxy.ts` applique le préfixe de locale aux URL, et écrit le cookie quand
+  l'utilisateur suit une URL de langue.
+
+Ce que cela interdit ailleurs : **aucune branche sur l'existence de l'i18n**. Un
+écran appelle `appIntl()`, une entrée de navigation passe par `path()`, un
+composant client par `useTranslations()` — et rien de tout cela ne change quand
+le module est coupé. C'est ce qui empêche chaque story suivante de porter un
+`if (i18n)`.
+
+Le sélecteur de langue apparaît quand l'application **sert plusieurs langues**
+(`localeRouting.locales.length > 1`), pas quand un module s'appelle `i18n` :
+c'est une condition sur des données, pas sur un identifiant de module.
+
+Deux choses ne sont pas là où on les chercherait, et c'est mesuré :
+
+- **`createMiddleware` de `next-intl` n'est pas utilisé.** Dans le paquet
+  installé (4.14.1), il réécrit chaque requête vers `/<locale><chemin>`
+  (`getLocaleAsPrefix`), ce qui impose un segment `[locale]` dans
+  l'arborescence — donc rend impossible « module coupé, routes servies sans
+  préfixe », et déplacerait toutes les routes livrées, `/api/modules/…`
+  comprises. Le reste de la bibliothèque est agnostique du routage :
+  `getRequestConfig` rend la locale qu'on lui donne. Le greffon
+  `createNextIntlPlugin` ne fait qu'aliaser `next-intl/config` vers
+  `i18n/request.ts` ;
+- **une clé de traduction manquante lève.** `onError` et `getMessageFallback`
+  de `i18n/request.ts` refusent tous deux le repli sur le chemin de la clé :
+  un écran affichant « app.account.title » ne rougirait nulle part.
+
+Le proxy ne voit pas `/api` (son `matcher` l'exclut) : les routes des modules
+n'héritent d'aucun préfixe de locale. Leur langue, elles la reçoivent du point
+de composition, qui la lit dans le cookie puis dans `Accept-Language` — par la
+même fonction que l'écran.
 
 ## Le montage du mailer
 

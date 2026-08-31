@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url'
 
 import { expect, type Page } from '@playwright/test'
 
+import { urlOf } from './locale'
+
 /**
  * Les gestes communs aux parcours : inscrire un compte, lire son email, se
  * connecter.
@@ -41,8 +43,14 @@ export interface LinkOptions {
   readonly since?: number
 }
 
-/** Le lien contenu dans le dernier email capturé pour ce destinataire. */
-export const linkSentTo = async (email: string, options: LinkOptions = {}): Promise<string> => {
+/**
+ * Le dernier email capturé pour ce destinataire, tel qu'il est parti.
+ *
+ * Une seule lecture de la boîte, partagée : le lien et le texte viennent du
+ * **même** email, sinon un parcours pourrait affirmer sur un courrier et suivre
+ * le lien d'un autre.
+ */
+export const mailSentTo = async (email: string, options: LinkOptions = {}): Promise<string> => {
   const since = options.since ?? 0
   const deadline = Date.now() + 10_000
 
@@ -58,19 +66,29 @@ export const linkSentTo = async (email: string, options: LinkOptions = {}): Prom
         .map(async (name) => await readFile(`${MAIL_DIRECTORY}/${name}`, 'utf8')),
     )
 
-    const match = contents
-      .find((content) => content.includes(email))
-      ?.match(LINK_PATTERN)
-      ?.at(-1)
+    const found = contents.find((content) => content.includes(email))
 
-    if (match !== undefined) {
-      return match.replaceAll('&amp;', '&')
+    // `match` et non `test` : le motif porte le drapeau global, donc `test`
+    // reprendrait sa recherche à `lastIndex` et rendrait faux un appel sur deux.
+    if (found !== undefined && found.match(LINK_PATTERN) !== null) {
+      return found
     }
 
     await new Promise((resolve) => setTimeout(resolve, 200))
   }
 
   throw new Error(`Aucun email capturé pour ${email} dans ${MAIL_DIRECTORY}.`)
+}
+
+/** Le lien contenu dans le dernier email capturé pour ce destinataire. */
+export const linkSentTo = async (email: string, options: LinkOptions = {}): Promise<string> => {
+  const match = (await mailSentTo(email, options)).match(LINK_PATTERN)?.at(-1)
+
+  if (match === undefined) {
+    throw new Error(`Aucun lien dans l’email capturé pour ${email}.`)
+  }
+
+  return match.replaceAll('&amp;', '&')
 }
 
 export const signUp = async (page: Page, email: string): Promise<void> => {
@@ -99,7 +117,7 @@ export const aSignedInAccount = async (page: Page, prefix: string): Promise<stri
   await signUp(page, email)
   await page.goto(await linkSentTo(email))
   await signIn(page, email)
-  await expect(page).toHaveURL(/localhost:\d+\/$/)
+  await expect(page).toHaveURL(urlOf('/'))
 
   return email
 }

@@ -8,6 +8,7 @@ import {
   signIn,
   signUp,
 } from './support/account'
+import { signInRedirectedFrom, urlOf } from './support/locale'
 
 /**
  * Le shell applicatif, dans un vrai navigateur.
@@ -133,7 +134,7 @@ test('une session révoquée depuis un autre appareil est refusée par le serveu
   await signUp(page, email)
   await page.goto(await linkSentTo(email))
   await signIn(page, email)
-  await expect(page).toHaveURL(/localhost:\d+\/$/)
+  await expect(page).toHaveURL(urlOf('/'))
 
   // Un second navigateur : deux sessions réelles, deux cookies distincts.
   const otherContext = await browser.newContext()
@@ -141,7 +142,7 @@ test('une session révoquée depuis un autre appareil est refusée par le serveu
 
   await other.goto('/sign-in')
   await signIn(other, email)
-  await expect(other).toHaveURL(/localhost:\d+\/$/)
+  await expect(other).toHaveURL(urlOf('/'))
 
   await page.goto('/account')
 
@@ -160,7 +161,7 @@ test('une session révoquée depuis un autre appareil est refusée par le serveu
   // **Côté serveur** : l'autre navigateur garde son cookie, et il ne lui sert
   // plus à rien. C'est la différence entre révoquer et retirer d'une liste.
   await other.goto('/account')
-  await expect(other).toHaveURL(/\/sign-in\?next=(%2F|\/)account$/)
+  await expect(other).toHaveURL(signInRedirectedFrom('/account'))
 
   await otherContext.close()
 })
@@ -177,14 +178,14 @@ test('changer son mot de passe depuis l’écran révoque l’autre session', as
   await signUp(page, email)
   await page.goto(await linkSentTo(email))
   await signIn(page, email)
-  await expect(page).toHaveURL(/localhost:\d+\/$/)
+  await expect(page).toHaveURL(urlOf('/'))
 
   const otherContext = await browser.newContext()
   const other = await otherContext.newPage()
 
   await other.goto('/sign-in')
   await signIn(other, email)
-  await expect(other).toHaveURL(/localhost:\d+\/$/)
+  await expect(other).toHaveURL(urlOf('/'))
 
   await page.goto('/account')
 
@@ -201,7 +202,7 @@ test('changer son mot de passe depuis l’écran révoque l’autre session', as
 
   // L'autre appareil est déconnecté, côté serveur.
   await other.goto('/account')
-  await expect(other).toHaveURL(/\/sign-in\?next=(%2F|\/)account$/)
+  await expect(other).toHaveURL(signInRedirectedFrom('/account'))
 
   await otherContext.close()
 })

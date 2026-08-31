@@ -8,6 +8,7 @@ import {
   enabledModules,
   requiredModules,
 } from '../../../../config/features'
+import { appLocales } from '../../../../config/i18n'
 import { closeDatabase, getDatabase } from '../client'
 import { planModuleMigrations, runModuleMigrations } from '../migrate'
 
@@ -33,6 +34,7 @@ const registry = buildRegistry({
   available: [...availableModules],
   enabled: [...enabledModules],
   required: [...requiredModules],
+  locales: [...appLocales],
 })
 
 const plan = planModuleMigrations({ modules: registry.modules, repoRoot: REPO_ROOT })

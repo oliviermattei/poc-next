@@ -24,33 +24,43 @@ import { useState } from 'react'
  * nom accessible seraient indistinguables pour un lecteur d'écran comme pour un
  * parcours de test.
  *
- * **Aucune condition sur un module ici** : ce composant reçoit des entrées et
- * les affiche. Il ne sait pas ce qu'est un module.
+ * **Aucune condition sur un module ici, et plus aucun texte** : ce composant
+ * reçoit des entrées et des libellés déjà traduits, et les affiche. Il ne sait
+ * ni ce qu'est un module, ni dans quelle langue il rend.
  */
-export const NAVIGATION_LABEL = 'Modules'
-
-export function DesktopNavigation({ items }: { readonly items: readonly SidebarItem[] }) {
-  return <SidebarNav items={items} label={NAVIGATION_LABEL} currentPath={usePathname()} />
+export interface NavigationProps {
+  readonly items: readonly SidebarItem[]
+  /** Nom accessible de la navigation, traduit par le shell. */
+  readonly label: string
 }
 
-export function MobileNavigation({ items }: { readonly items: readonly SidebarItem[] }) {
+export function DesktopNavigation({ items, label }: NavigationProps) {
+  return <SidebarNav items={items} label={label} currentPath={usePathname()} />
+}
+
+export interface MobileNavigationProps extends NavigationProps {
+  readonly openLabel: string
+  readonly title: string
+}
+
+export function MobileNavigation({ items, label, openLabel, title }: MobileNavigationProps) {
   const [open, setOpen] = useState(false)
   const pathname = usePathname()
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button variant="ghost" size="icon" className="md:hidden" aria-label="Ouvrir la navigation">
+        <Button variant="ghost" size="icon" className="md:hidden" aria-label={openLabel}>
           <MenuIcon aria-hidden />
         </Button>
       </SheetTrigger>
       {/* `aria-describedby={undefined}` : ce panneau n'a pas de description, et
           Radix avertit en console tant qu'on ne le dit pas explicitement. */}
       <SheetContent side="left" aria-describedby={undefined}>
-        <SheetTitle>Application</SheetTitle>
+        <SheetTitle>{title}</SheetTitle>
         <SidebarNav
           items={items}
-          label={NAVIGATION_LABEL}
+          label={label}
           currentPath={pathname}
           // Suivre un lien ferme le panneau : sans cela, il reste ouvert
           // par-dessus la page qu'on vient d'ouvrir.

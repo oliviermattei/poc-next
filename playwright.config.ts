@@ -41,6 +41,13 @@ export default defineConfig({
   retries: 0,
   use: {
     baseURL: BASE_URL,
+    // **La langue du navigateur est fixée**, et ce n'est pas cosmétique : depuis
+    // s09, l'application négocie la locale sur `Accept-Language`, et le défaut
+    // de Chromium est l'anglais. Sans cette ligne, les parcours écrits en
+    // français passeraient ou non selon la machine — exactement le genre
+    // d'instabilité que `retries: 0` refuse de peindre en jaune. Le parcours qui
+    // exerce l'anglais le demande explicitement, par son propre contexte.
+    locale: 'fr-FR',
     // Sans reprise, « à la première reprise » ne se déclenche jamais : la trace
     // est gardée quand le parcours échoue, ce qui est le seul moment où elle
     // sert.

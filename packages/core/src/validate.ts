@@ -162,11 +162,26 @@ export function resolveEnabledModules(configuration: {
  */
 export function assertDeclarationsAreComplete(
   modules: readonly AnyModuleDefinition[],
+  /**
+   * Les locales **de l'application** (`config/i18n.ts`), transmises par le
+   * point de composition comme `requiredModules` l'est.
+   *
+   * Facultatif, et retombant alors sur les locales du module, pour que les
+   * tests puissent valider deux modules d'essai sans hériter des langues du
+   * dépôt. Ce qui rend la règle exécutable est que les points de composition le
+   * passent : c'est ce contrôle-là qui refuse un module ne livrant que `fr`
+   * alors que le projet sert `fr` et `en` — la faille mesurée en revue de s06,
+   * où la référence était le module et non l'application.
+   */
+  applicationLocales?: readonly string[],
 ): void {
   const routeOwners = new Map<string, string>()
 
   for (const module of modules) {
-    const locales = Object.keys(module.messages)
+    const locales =
+      applicationLocales === undefined || applicationLocales.length === 0
+        ? Object.keys(module.messages)
+        : applicationLocales
 
     for (const template of module.emails) {
       for (const locale of locales) {

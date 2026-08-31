@@ -1,6 +1,7 @@
 'use client'
 
 import { Button } from '@repo/ui'
+import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 
 /**
@@ -11,17 +12,27 @@ import { useState } from 'react'
  *
  * L'appel vit ici, **une seule fois**, et le menu de compte l'appelle comme le
  * bouton : deux implémentations divergeraient au premier changement de route.
+ *
+ * La destination après déconnexion est reçue, pas décidée : elle porte le
+ * préfixe de locale quand il y en a un, et rien quand il n'y en a pas.
  */
-export async function signOut(action: string): Promise<void> {
+export async function signOut(action: string, destination = '/'): Promise<void> {
   await fetch(action, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: '{}',
   })
-  window.location.assign('/')
+  window.location.assign(destination)
 }
 
-export function SignOutButton({ action }: { readonly action: string }) {
+export function SignOutButton({
+  action,
+  destination,
+}: {
+  readonly action: string
+  readonly destination: string
+}) {
+  const t = useTranslations()
   const [pending, setPending] = useState(false)
 
   return (
@@ -32,10 +43,10 @@ export function SignOutButton({ action }: { readonly action: string }) {
       onClick={() => {
         setPending(true)
 
-        void signOut(action)
+        void signOut(action, destination)
       }}
     >
-      Se déconnecter
+      {t('app.account.signOut')}
     </Button>
   )
 }

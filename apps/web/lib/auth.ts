@@ -13,6 +13,7 @@ import { headers } from 'next/headers'
 import { after } from 'next/server'
 
 import { resolveAuthConfig } from './auth-config'
+import { LOCALE_COOKIE, localeRouting } from './locale-routing'
 import { createAppMailer } from './mailer'
 
 /**
@@ -45,6 +46,29 @@ import { createAppMailer } from './mailer'
  */
 export { authRoutePath, safeRedirectPath }
 
+/**
+ * La langue d'une requête entrante, telle que le module d'authentification la
+ * reçoit.
+ *
+ * Les routes du module vivent sous `/api/modules/…` : elles ne portent **aucun**
+ * préfixe de locale, et c'est voulu — les préfixer casserait chaque lien envoyé
+ * par email. Leur langue se lit donc dans le cookie posé quand l'utilisateur a
+ * suivi une URL de langue, et à défaut dans `Accept-Language`. C'est
+ * `localeRouting.resolve` qui décide, la même fonction que l'écran : deux
+ * lectures divergeraient, et l'email partirait dans une autre langue que la
+ * page qui l'a demandé.
+ */
+const readRequestLocale = (request: Request): string => {
+  const cookie = request.headers.get('cookie') ?? ''
+  const match = new RegExp(`(?:^|;\\s*)${LOCALE_COOKIE}=([^;]*)`).exec(cookie)
+
+  return localeRouting.resolve({
+    pathname: '/',
+    cookieLocale: match?.[1] === undefined ? null : decodeURIComponent(match[1]),
+    acceptLanguage: request.headers.get('accept-language'),
+  })
+}
+
 export interface AppAuthOptions {
   readonly env?: Env
 }
@@ -60,6 +84,15 @@ export function appAuth(options: AppAuthOptions = {}): AuthService {
       mailer: createAppMailer(),
       secret,
       appUrl,
+      // La langue des emails, transmise comme le reste : le module ne connaît
+      // ni `config/i18n.ts`, ni le module `i18n`, ni le nom du cookie. Il reçoit
+      // les locales servies, celle par défaut, et **comment** lire la langue
+      // d'une requête entrante. Un destinataire sans requête — invitation,
+      // guest checkout, liste d'attente — n'a aucune langue connue et reçoit
+      // celle du site, par la même règle.
+      locales: localeRouting.locales,
+      defaultLocale: localeRouting.defaultLocale,
+      readRequestLocale,
       // L'envoi de l'email de réinitialisation sort du temps de réponse, sans
       // quoi seul un compte **existant** le paie et son existence se lit au
       // chronomètre (`docs/security.md` §7). `after` est ce qui garantit que le

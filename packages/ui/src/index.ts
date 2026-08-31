@@ -45,6 +45,11 @@ export {
 } from './components/sheet'
 
 export { EmptyState, type EmptyStateProps } from './composed/empty-state'
+export {
+  LocaleSwitcher,
+  type LocaleOption,
+  type LocaleSwitcherProps,
+} from './composed/locale-switcher'
 export { PageHeader, type PageHeaderProps } from './composed/page-header'
 export {
   Sidebar,

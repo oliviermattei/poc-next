@@ -1,4 +1,5 @@
 import { authRoutePath, safeRedirectPath } from '../../lib/auth'
+import { appIntl } from '../../lib/i18n'
 import { AuthForm } from '../auth-form'
 
 /**
@@ -6,7 +7,9 @@ import { AuthForm } from '../auth-form'
  *
  * La destination de retour est filtrée **côté serveur**, une seule fois, par la
  * règle du module : `?next=https://evil.test` retombe sur le tableau de bord
- * (`docs/security.md` §4). Le composant client ne reçoit qu'un chemin déjà jugé.
+ * (`docs/security.md` §4). Le composant client ne reçoit qu'un chemin déjà jugé,
+ * puis mis dans la forme publique de la locale — module `i18n` coupé, cette
+ * mise en forme est l'identité.
  *
  * Ce repli est le **tableau de bord**, et pas l'écran de compte : c'est le
  * critère 1 de s08 — « une fois connecté, l'utilisateur atteint un tableau de
@@ -21,52 +24,55 @@ export default async function SignInPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const params = await searchParams
+  const { t, path } = await appIntl()
   const next = typeof params.next === 'string' ? params.next : null
-  const destination = safeRedirectPath(next, '/')
+  const destination = path(safeRedirectPath(next, '/'))
 
   return (
     <main>
-      <h1>Se connecter</h1>
+      <h1>{t('app.signIn.title')}</h1>
 
-      {params.verified === undefined ? null : (
-        <p role="status">Votre adresse est vérifiée. Vous pouvez vous connecter.</p>
-      )}
+      {params.verified === undefined ? null : <p role="status">{t('app.signIn.verified')}</p>}
       {params.email_changed === undefined ? null : (
-        <p role="status">Votre nouvelle adresse est confirmée. Reconnectez-vous.</p>
+        <p role="status">{t('app.signIn.emailChanged')}</p>
       )}
-      {params.reset === undefined ? null : (
-        <p role="status">Votre mot de passe est changé. Vous pouvez vous connecter.</p>
-      )}
+      {params.reset === undefined ? null : <p role="status">{t('app.signIn.reset')}</p>}
 
       <AuthForm
         action={authRoutePath('signIn')}
         fields={[
-          { name: 'email', label: 'Adresse email', type: 'email', autoComplete: 'email' },
+          { name: 'email', labelKey: 'app.auth.field.email', type: 'email', autoComplete: 'email' },
           {
             name: 'password',
-            label: 'Mot de passe',
+            labelKey: 'app.auth.field.password',
             type: 'password',
             autoComplete: 'current-password',
           },
         ]}
-        submitLabel="Se connecter"
+        submitLabelKey="app.signIn.submit"
         redirectTo={destination}
       />
 
-      <h2>Recevoir un lien de connexion</h2>
+      <h2>{t('app.signIn.magicLink.title')}</h2>
       <AuthForm
         action={authRoutePath('magicLink')}
         fields={[
-          { name: 'email', label: 'Adresse email (lien de connexion)', type: 'email', autoComplete: 'email' },
+          {
+            name: 'email',
+            labelKey: 'app.auth.field.magicLinkEmail',
+            type: 'email',
+            autoComplete: 'email',
+          },
         ]}
         hiddenValues={{ callbackURL: destination }}
-        submitLabel="Envoyer un lien"
-        successMessage="Si cette adresse a un compte, un lien de connexion vient de partir."
+        submitLabelKey="app.signIn.magicLink.submit"
+        successMessageKey="app.signIn.magicLink.sent"
       />
 
       <p>
-        <a href="/forgot-password">Mot de passe oublié</a> ·{' '}
-        <a href="/verify-email">Adresse non vérifiée</a> · <a href="/sign-up">Créer un compte</a>
+        <a href={path('/forgot-password')}>{t('app.signIn.links.forgotPassword')}</a> ·{' '}
+        <a href={path('/verify-email')}>{t('app.signIn.links.unverified')}</a> ·{' '}
+        <a href={path('/sign-up')}>{t('app.signIn.links.signUp')}</a>
       </p>
     </main>
   )

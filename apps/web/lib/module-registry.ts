@@ -1,6 +1,7 @@
 import { buildRegistry } from '@repo/core'
 
 import { availableModules, enabledModules, requiredModules } from '../../../config/features'
+import { appLocales } from '../../../config/i18n'
 
 /**
  * Le registre de l'application, construit une fois au chargement.
@@ -21,4 +22,8 @@ export const moduleRegistry = buildRegistry({
   available: [...availableModules],
   enabled: [...enabledModules],
   required: [...requiredModules],
+  // Les locales du projet : c'est contre elles qu'un template d'email ou un
+  // libellé de navigation incomplet est refusé, et non contre celles du module
+  // qui les déclare (revue de s06).
+  locales: [...appLocales],
 })

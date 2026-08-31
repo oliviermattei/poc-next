@@ -123,9 +123,19 @@ describe('le registre monté par l’application', () => {
   })
 
   it('ne monte aucune route hors des modules activés', () => {
-    expect(new Set(moduleRegistry.routes.map((route) => route.moduleId))).toEqual(
-      new Set(moduleRegistry.moduleIds),
-    )
+    // **Inclusion**, et non égalité : un module activé a le droit de ne
+    // déclarer aucune route — `i18n` n'en déclare aucune, il apporte la forme
+    // des URL et le sélecteur. L'égalité disait « tout module activé monte au
+    // moins une route », ce qui n'est écrit nulle part et rougissait sur une
+    // addition légitime. Ce qui compte est l'inverse, et il est conservé :
+    // aucune route ne vient d'ailleurs que des modules activés.
+    const mounted = new Set(moduleRegistry.routes.map((route) => route.moduleId))
+
+    expect(mounted.size).toBeGreaterThan(0)
+
+    for (const moduleId of mounted) {
+      expect(moduleRegistry.moduleIds).toContain(moduleId)
+    }
   })
 
   it('répond 404 sur un chemin d’aucun module', async () => {

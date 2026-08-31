@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 import { anEmail as anAddress, linkSentTo, PASSWORD, signIn, signUp } from './support/account'
+import { signInRedirectedFrom, urlOf } from './support/locale'
 
 /**
  * Le parcours d'authentification, dans un vrai navigateur.
@@ -31,13 +32,13 @@ test('inscription, vérification, connexion, écran protégé, déconnexion', as
 
   // Le lien de vérification, suivi depuis la « boîte email ».
   await page.goto(await linkSentTo(email))
-  await expect(page).toHaveURL(/\/sign-in\?verified=1$/)
+  await expect(page).toHaveURL(urlOf('/sign-in', '?verified=1'))
   await expect(page.getByRole('status')).toContainText('vérifiée')
 
   // La connexion aboutit au **tableau de bord** : c'est le critère 1 de s08.
   // s07 repliait sur `/account`, faute de tableau de bord à atteindre.
   await signIn(page, email)
-  await expect(page).toHaveURL(/localhost:\d+\/$/)
+  await expect(page).toHaveURL(urlOf('/'))
 
   await page.goto('/account')
   await expect(page.getByRole('heading', { name: 'Mon compte' })).toBeVisible()
@@ -61,14 +62,14 @@ test('inscription, vérification, connexion, écran protégé, déconnexion', as
   // une garde. Une déconnexion rejouée reste sans effet supplémentaire.
   await expect(async () => {
     await page.getByRole('button', { name: 'Se déconnecter' }).click()
-    await expect(page).toHaveURL(/\/$/, { timeout: 2_000 })
+    await expect(page).toHaveURL(urlOf('/'), { timeout: 2_000 })
   }).toPass({ timeout: 20_000 })
 
   // La session est révoquée **côté serveur** : reposer le cookie ne la
   // ressuscite pas.
   await context.addCookies([cookie ?? { name: 'x', value: 'x', url: 'http://localhost' }])
   await page.goto('/account')
-  await expect(page).toHaveURL(/\/sign-in\?next=(%2F|\/)account$/)
+  await expect(page).toHaveURL(signInRedirectedFrom('/account'))
 })
 
 test('une route protégée redirige vers la connexion, puis ramène à l’URL demandée', async ({
@@ -80,7 +81,7 @@ test('une route protégée redirige vers la connexion, puis ramène à l’URL d
   await page.goto(await linkSentTo(email))
 
   await page.goto('/account')
-  await expect(page).toHaveURL(/\/sign-in\?next=(%2F|\/)account$/)
+  await expect(page).toHaveURL(signInRedirectedFrom('/account'))
 
   await signIn(page, email)
 
@@ -91,7 +92,7 @@ test('une route protégée redirige vers la connexion, puis ramène à l’URL d
   // compte de `?next=` laissait les vingt parcours verts. C'est le seul endroit
   // du dépôt qui tient cette propriété ; le repli, lui, est tenu par les
   // assertions `/localhost:\d+\/$/` des autres parcours.
-  await expect(page).toHaveURL(/localhost:\d+\/account$/)
+  await expect(page).toHaveURL(urlOf('/account'))
 })
 
 test('compte inconnu, mot de passe invalide et adresse non vérifiée affichent le même message', async ({
@@ -181,12 +182,12 @@ test('mot de passe oublié : le lien reçu mène à l’écran, et le nouveau mo
 
   await page.getByLabel('Nouveau mot de passe').fill(newPassword)
   await page.getByRole('button', { name: 'Changer le mot de passe' }).click()
-  await expect(page).toHaveURL(/\/sign-in\?reset=1$/)
+  await expect(page).toHaveURL(urlOf('/sign-in', '?reset=1'))
 
   await page.getByLabel('Adresse email', { exact: true }).fill(email)
   await page.getByLabel('Mot de passe').fill(newPassword)
   await page.getByRole('button', { name: 'Se connecter' }).click()
-  await expect(page).toHaveURL(/localhost:\d+\/$/)
+  await expect(page).toHaveURL(urlOf('/'))
 })
 
 test('la navigation montre « Mon compte » une fois connecté, jamais avant', async ({ page }) => {
@@ -202,7 +203,7 @@ test('la navigation montre « Mon compte » une fois connecté, jamais avant', a
 
   await page.goto('/sign-in')
   await signIn(page, email)
-  await expect(page).toHaveURL(/localhost:\d+\/$/)
+  await expect(page).toHaveURL(urlOf('/'))
 
   await expect(navigation.getByRole('link', { name: 'Mon compte' })).toHaveCount(1)
 })

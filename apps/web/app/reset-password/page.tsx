@@ -1,4 +1,5 @@
 import { authRoutePath } from '../../lib/auth'
+import { appIntl } from '../../lib/i18n'
 import { AuthForm } from '../auth-form'
 
 export default async function ResetPasswordPage({
@@ -7,14 +8,16 @@ export default async function ResetPasswordPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const params = await searchParams
+  const { t, path } = await appIntl()
   const token = typeof params.token === 'string' ? params.token : null
 
   if (token === null) {
     return (
       <main>
-        <h1>Réinitialiser le mot de passe</h1>
+        <h1>{t('app.resetPassword.title')}</h1>
         <p role="alert">
-          Ce lien est incomplet ou a déjà servi. <a href="/forgot-password">Demandez-en un nouveau</a>.
+          {t('app.resetPassword.incomplete')}{' '}
+          <a href={path('/forgot-password')}>{t('app.resetPassword.requestNew')}</a>
         </p>
       </main>
     )
@@ -22,20 +25,20 @@ export default async function ResetPasswordPage({
 
   return (
     <main>
-      <h1>Réinitialiser le mot de passe</h1>
+      <h1>{t('app.resetPassword.title')}</h1>
       <AuthForm
         action={authRoutePath('resetPassword')}
         fields={[
           {
             name: 'newPassword',
-            label: 'Nouveau mot de passe',
+            labelKey: 'app.auth.field.newPassword',
             type: 'password',
             autoComplete: 'new-password',
           },
         ]}
         hiddenValues={{ token }}
-        submitLabel="Changer le mot de passe"
-        redirectTo="/sign-in?reset=1"
+        submitLabelKey="app.resetPassword.submit"
+        redirectTo={`${path('/sign-in')}?reset=1`}
       />
     </main>
   )

@@ -121,7 +121,13 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
           // `docs/reliability.md` §2 — « sans service d'email, l'inscription
           // échoue proprement en le disant ». Le compte existe malgré tout, et
           // un nouvel envoi reste possible : l'opération est reprenable.
-          const sent = await auth.useCases.sendVerificationEmail({ to: input.email })
+          const sent = await auth.useCases.sendVerificationEmail({
+            to: input.email,
+            // Le destinataire est celui qui vient de s'inscrire : sa langue est
+            // celle de la requête. Un destinataire sans langue connue
+            // retomberait sur celle du site, par la même règle.
+            knownLocale: auth.localeOf(request),
+          })
 
           if (!sent.ok) {
             return Response.json(
@@ -208,7 +214,10 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
         await refuseInvalid(async () => {
           const auth = service()
           const email = parseEmailInput(await jsonBody(request))
-          const sent = await auth.useCases.sendVerificationEmail({ to: email })
+          const sent = await auth.useCases.sendVerificationEmail({
+            to: email,
+            knownLocale: auth.localeOf(request),
+          })
 
           // La réponse ne dépend **pas** de l'existence du compte : le lien
           // n'est utile qu'à qui reçoit l'email.
@@ -387,6 +396,7 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
           const sent = await auth.useCases.requestEmailChange({
             userId: context.session.userId,
             newEmail: email,
+            knownLocale: auth.localeOf(request),
           })
 
           return sent.ok

@@ -2,6 +2,7 @@ import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Empt
 import { LayoutDashboardIcon } from 'lucide-react'
 
 import { currentViewer } from '../lib/auth'
+import { appIntl } from '../lib/i18n'
 
 /**
  * Le tableau de bord.
@@ -10,30 +11,33 @@ import { currentViewer } from '../lib/auth'
  * graphique factice serait une promesse que le boilerplate ne tient pas. C'est
  * donc un **état vide**, avec l'action qui en sort — ce que le design system
  * exige d'un écran sans contenu.
+ *
+ * Le nom de l'utilisateur est **un paramètre du message**, pas une
+ * concaténation : « Bonjour {name}. » et « Hello {name}. » ne se composent pas
+ * de la même façon, et une phrase coupée en trois morceaux est intraduisible.
  */
 export default async function HomePage() {
   const { account } = await currentViewer()
+  const { t, path } = await appIntl()
 
   if (account === null) {
     return (
       <>
         <PageHeader
-          title="Application"
-          description="Le socle démarre. Connectez-vous pour accéder à votre espace."
+          title={t('app.dashboard.anonymous.title')}
+          description={t('app.dashboard.anonymous.description')}
         />
         <Card>
           <CardHeader>
-            <CardTitle>Commencer</CardTitle>
-            <CardDescription>
-              Créez un compte ou connectez-vous pour atteindre le tableau de bord.
-            </CardDescription>
+            <CardTitle>{t('app.dashboard.anonymous.cardTitle')}</CardTitle>
+            <CardDescription>{t('app.dashboard.anonymous.cardDescription')}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
             <Button asChild>
-              <a href="/sign-in">Se connecter</a>
+              <a href={path('/sign-in')}>{t('app.dashboard.anonymous.signIn')}</a>
             </Button>
             <Button variant="outline" asChild>
-              <a href="/sign-up">Créer un compte</a>
+              <a href={path('/sign-up')}>{t('app.dashboard.anonymous.signUp')}</a>
             </Button>
           </CardContent>
         </Card>
@@ -44,16 +48,16 @@ export default async function HomePage() {
   return (
     <>
       <PageHeader
-        title="Tableau de bord"
-        description={`Bonjour ${account.name}. Les modules activés apparaissent dans la navigation.`}
+        title={t('app.dashboard.title')}
+        description={t('app.dashboard.description', { name: account.name })}
       />
       <EmptyState
         icon={<LayoutDashboardIcon />}
-        title="Rien à afficher pour l’instant"
-        description="Ce tableau de bord se remplira avec les modules que vous activerez. En attendant, vos paramètres de compte sont accessibles ici."
+        title={t('app.dashboard.empty.title')}
+        description={t('app.dashboard.empty.description')}
         action={
           <Button asChild>
-            <a href="/account">Paramètres du compte</a>
+            <a href={path('/account')}>{t('app.dashboard.empty.action')}</a>
           </Button>
         }
       />
