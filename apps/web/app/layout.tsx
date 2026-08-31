@@ -1,12 +1,14 @@
-import { ThemeProvider } from '@repo/ui'
+import { InlineStyleNonce, ThemeProvider } from '@repo/ui'
 import { GeistMono } from 'geist/font/mono'
 import { GeistSans } from 'geist/font/sans'
 import type { Metadata, Viewport } from 'next'
+import { headers } from 'next/headers'
 import { NextIntlClientProvider } from 'next-intl'
 import { getMessages, getTranslations } from 'next-intl/server'
 import type { ReactNode } from 'react'
 
 import { currentLocale } from '../lib/current-locale'
+import { NONCE_HEADER } from '../lib/security-headers'
 import { AppShell } from './app-shell'
 import './globals.css'
 
@@ -55,7 +57,12 @@ export async function generateMetadata(): Promise<Metadata> {
  * l'arbre.
  */
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  const [locale, messages] = await Promise.all([currentLocale(), getMessages()])
+  const [locale, messages, headerBag] = await Promise.all([
+    currentLocale(),
+    getMessages(),
+    headers(),
+  ])
+  const nonce = headerBag.get(NONCE_HEADER)
 
   return (
     <html
@@ -64,8 +71,16 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       suppressHydrationWarning
     >
       <body>
+        {/* Avant tout le reste : `setNonce` doit être posé avant qu'une surface
+            flottante n'injecte sa feuille de style de verrouillage. */}
+        <InlineStyleNonce nonce={nonce} />
         <NextIntlClientProvider locale={locale} messages={messages}>
-          <ThemeProvider>
+          {/* Next nonce lui-même ses propres balises, à partir de l'en-tête de
+              requête que le proxy pose. Ce qu'il ne voit pas, ce sont les
+              bibliothèques qui injectent : `next-themes` pose le nonce sur son
+              script anti-clignotement **et** sur le `<style>` qui coupe les
+              transitions, à condition qu'on le lui donne. */}
+          <ThemeProvider nonce={nonce ?? undefined}>
             <AppShell>{children}</AppShell>
           </ThemeProvider>
         </NextIntlClientProvider>

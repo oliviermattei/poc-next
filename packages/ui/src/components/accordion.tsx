@@ -2,7 +2,7 @@
 
 import * as AccordionPrimitive from '@radix-ui/react-accordion'
 import { ChevronDownIcon } from 'lucide-react'
-import type { ComponentProps } from 'react'
+import type { ComponentProps, CSSProperties } from 'react'
 
 import { cn } from '../lib/cn'
 
@@ -70,9 +70,32 @@ export function AccordionTrigger({
   )
 }
 
+/**
+ * Les deux variables que Radix écrit **toujours** sur le contenu, neutralisées.
+ *
+ * `AccordionPrimitive.Content` compose son style ainsi :
+ * `{ '--radix-accordion-content-height': …, '--radix-accordion-content-width': …, ...props.style }`
+ * (vérifié dans le paquet installé, `@radix-ui/react-accordion` 1.2.20). Les
+ * repasser à `undefined` depuis `props.style` les efface, et React n'émet alors
+ * plus d'attribut `style` du tout.
+ *
+ * Pourquoi s'en soucier : un attribut `style` rendu par le serveur est gouverné
+ * par `style-src-attr`, la seule directive CSP qui **ne connaît pas les
+ * nonces** ; sous la politique de s45 il est refusé, et chaque visite de
+ * l'accueil public inscrivait une violation dans la console. Ces deux variables
+ * n'apparaissent dans aucune règle de `src/styles.css` : aucune animation, aucun
+ * calcul de hauteur n'en dépend ici. Le jour où une story en aura besoin, elle
+ * les déclarera dans la feuille de style — pas en ligne.
+ */
+const RADIX_CONTENT_VARIABLES = {
+  '--radix-accordion-content-height': undefined,
+  '--radix-accordion-content-width': undefined,
+} as CSSProperties
+
 export function AccordionContent({
   className,
   children,
+  style,
   ...props
 }: ComponentProps<typeof AccordionPrimitive.Content>) {
   return (
@@ -80,6 +103,9 @@ export function AccordionContent({
       data-slot="accordion-content"
       className="overflow-hidden text-base"
       {...props}
+      // Après `props`, jamais avant : un appelant qui pose un style le garde,
+      // et c'est alors sa story qui en répond devant la politique.
+      style={{ ...RADIX_CONTENT_VARIABLES, ...style }}
     >
       <div className={cn('pb-4 text-muted-foreground', className)}>{children}</div>
     </AccordionPrimitive.Content>

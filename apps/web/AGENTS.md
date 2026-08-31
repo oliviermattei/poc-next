@@ -38,9 +38,13 @@ module (`packages/modules/<module>/src/domain`).
 - `lucide-react` pour les icônes : un seul jeu dans tout le produit, 16 px dans
   l'application. Ce n'est pas le socle de composants — celui-là ne sort pas de
   `packages/ui` ;
-- `geist` dans `app/layout.tsx` uniquement : les deux polices, chargées par
-  `next/font`, donc servies par l'application. Une police servie par un domaine
-  externe serait un script tiers, soumis au consentement de s36 ;
+- `geist` dans les deux fichiers qui rendent un **document** — `app/layout.tsx`
+  et `app/global-error.tsx`, ce dernier remplaçant le premier quand la racine
+  échoue. Les deux polices sont chargées par `next/font`, donc servies par
+  l'application. Une police servie par un domaine externe serait un script
+  tiers, soumis au consentement de s36. Hors de Next, `geist/font/*` ne résout
+  pas : `vitest.config.ts` l'aliase vers `tests/fixtures/next-font.ts`, qui rend
+  ce que le greffon de build rendrait ;
 - `next`, `react`, `react-dom` ;
 - `@repo/typescript-config` pour la configuration du compilateur.
 
@@ -60,7 +64,9 @@ point d'accès unique est `@repo/config`.
   s'affiche vient d'une clé de catalogue. La règle est exécutable :
   `tests/rendered-text.test.ts` rend chaque écran avec un catalogue dont chaque
   valeur est un marqueur, et refuse toute chaîne qui n'en est pas un. Un écran
-  ajouté sans être rendu là fait rougir la garde de couverture du même fichier ;
+  ajouté sans être rendu là fait rougir la garde de couverture du même fichier.
+  « Écran » veut dire `page.tsx`, `not-found.tsx` **et** `global-error.tsx` :
+  les trois sont servis à un visiteur ;
 - de connaissance d'un module en particulier : aucun `if (module activé)`, aucun
   fichier de route par module, aucune entrée de navigation écrite à la main. Tout
   cela vient du registre, et c'est ce qui fait qu'un module non activé n'expose
@@ -244,10 +250,17 @@ un cookie sans privilège, et c'est le premier cookie hors session du dépôt :
 partir, `e2e/i18n.spec.ts` les contrôle tels que le navigateur les stocke. Un
 cookie lu par du JavaScript de page demanderait une story, pas une exception.
 
-Le proxy ne voit pas `/api` (son `matcher` l'exclut) : les routes des modules
-n'héritent d'aucun préfixe de locale. Leur langue, elles la reçoivent du point
-de composition, qui la lit dans le cookie puis dans `Accept-Language` — par la
-même fonction que l'écran.
+Les routes des modules n'héritent d'aucun préfixe de locale. Leur langue, elles
+la reçoivent du point de composition, qui la lit dans le cookie puis dans
+`Accept-Language` — par la même fonction que l'écran. Depuis s45, ce n'est plus
+le `matcher` qui les exclut mais `carriesLocalePrefix` dans `proxy.ts` (voir
+plus bas) : le proxy doit voir `/api` pour y poser les en-têtes de sécurité, et
+le périmètre du préfixe, lui, reprend **une à une** les quatre alternatives de
+l'ancien motif (`api`, `_next`, `favicon.ico`, un point n'importe où). La
+première écriture de s45 n'en reprenait que deux, et la revue a mesuré que
+`/v1.2/page` et `/_next/quelque-chose` recevaient alors une redirection de
+locale qu'ils n'avaient jamais reçue : « à comportement identique » était faux.
+`tests/security-headers.test.ts` énumère les six sondes.
 
 ## Le montage du site public
 
@@ -294,6 +307,123 @@ supposé, et en deux moitiés (`tests/marketing.test.ts`) :
 Ce que cette mesure ne couvre pas, et qui est dit plutôt que sous-entendu : un
 composant **client** exécuté dans le navigateur ne passe par aucun de ces deux
 chemins — il n'a pas d'accès à la base, par construction.
+
+## Les en-têtes de sécurité et la politique de sécurité du contenu (s45)
+
+`docs/security.md` §1, implémenté. **Une seule source, et c'est structurant** :
+tout part de `proxy.ts`. Poser une partie des en-têtes ici et une autre dans
+`headers()` de `next.config.ts` ferait partir deux `Content-Security-Policy` sur
+les chemins couverts par les deux — le navigateur applique alors leur
+**intersection**, et la plus stricte gagne sans que rien ne le dise.
+
+Trois fichiers, sur le modèle du mailer et de l'i18n :
+
+- `config/security.ts` porte le **choix du propriétaire** : les sources tierces,
+  par directive, vides à la livraison. C'est le seul endroit d'où une source peut
+  entrer dans la politique, et la règle est exécutable —
+  `tests/security-headers.test.ts` découpe la politique construite et refuse tout
+  jeton qui n'est ni un mot-clé CSP ni une ligne de ce fichier. Un domaine écrit
+  en dur dans le constructeur fait échouer `pnpm test` ;
+- `lib/security-headers.ts` porte la **règle** : fonction pure — mode, nonce,
+  sources et chemin du collecteur arrivent **tous** en argument —, donc une
+  politique de production contrôlable sans être en production ;
+- `proxy.ts` **applique** : un nonce par requête, la politique posée sur les
+  en-têtes de la **requête** — c'est là que Next la lit
+  (`dist/server/app-render/app-render.js` → `getScriptNonceFromHeader`) pour
+  noncer ses propres balises — **et** sur la réponse.
+
+  Ce que la revue de s45 a corrigé, et qu'il ne faut pas relire à l'envers : sur
+  le runtime **Node** de Next 16.3.3, ne poser la politique que sur la réponse
+  ne casse **pas** l'hydratation. `dist/server/lib/router-utils/resolve-routes.js`
+  recopie chaque en-tête de réponse ordinaire du proxy sur `req.headers`, donc
+  elle atteint le rendu de toute façon. Le câblage explicite reste parce qu'il
+  est la voie du mécanisme de surcharge `x-middleware-request-*`, probablement
+  la seule sur un runtime **edge** — runtime que personne n'a mesuré ici. Le
+  test unitaire le protège (`x-middleware-request-content-security-policy`).
+
+Le `matcher` couvre désormais tout ce qui produit une réponse de l'application,
+`/api` et `/robots.txt` compris ; seuls `_next/static` et `_next/image` en sont
+exclus. Le préfixe de locale, lui, garde exactement son périmètre d'avant :
+c'est `carriesLocalePrefix` qui le porte, en reprenant une à une les quatre
+alternatives du motif d'origine, et `pnpm test` le vérifie sur six sondes —
+`/api/health`, `/api/modules/…`, `/_next/…`, `/favicon.ico`, `/robots.txt`,
+`/sitemap.xml`, plus `/v1.2/page` pour le point ailleurs qu'en fin de chemin.
+Sans cette condition, `canonicalPath('/robots.txt')` redirige vers
+`/fr/robots.txt` et le plan de site cesse d'être servi.
+
+**Le nonce doit atteindre ce que les bibliothèques injectent, pas seulement ce
+que Next émet.** `app/layout.tsx` lit `x-nonce` et le transmet à
+`ThemeProvider` (`next-themes` le pose sur son script anti-clignotement et sur
+le `<style>` qui coupe les transitions) et à `InlineStyleNonce`
+(`react-remove-scroll`, le verrou de défilement d'un `Sheet` ou d'un
+`DropdownMenu`). Un composant qui injecterait une feuille de style sans passer
+par là serait refusé en production, et **muet en développement**.
+
+**Le mode se lit sur `NODE_ENV`, et c'est l'exception qui confirme la règle du
+mailer.** Là-bas, déduire de l'environnement rendrait un email capturé
+indiscernable d'un email envoyé (`docs/reliability.md` §2). Ici, ce qui change
+est le **bundle React lui-même** — en développement il appelle `eval` pour
+reconstruire les piles serveur — et aucun drapeau ne peut décrire cela. La
+lecture passe malgré tout par `@repo/config` (`getNodeEnv`), qui reste le point
+d'accès unique.
+
+Ce n'est **pas** la forme d'opt-in de la sonde de s09, qui est un drapeau
+explicite : la revue de s45 a corrigé la comparaison, elles ne se ressemblent
+que par le 404. Ce qui rend la dérivation sûre n'est pas non plus le repli de
+`getNodeEnv` — `development` est le plus permissif des deux modes — mais la
+validation au démarrage : un `NODE_ENV=prod` mal orthographié arrête le
+processus en nommant la variable, et `packages/config/src/env.test.ts` l'exige.
+
+Le développement assouplit **deux** points, mesurés, et pas un de plus :
+`'unsafe-eval'` dans `script-src`, `'unsafe-inline'` dans `style-src` (Turbopack
+injecte le CSS par JavaScript). **`script-src` n'a jamais `'unsafe-inline'`**, et
+c'est ce qui permet à `e2e/security-headers.spec.ts` — qui tourne sur
+`next dev` — de démontrer qu'un script en ligne sans nonce ne s'exécute pas.
+
+Ce que les parcours **ne peuvent pas** voir, et il faut le savoir avant d'y
+ajouter une garde : `style-src` portant `'unsafe-inline'` en développement,
+aucune violation de style n'y est jamais signalée. C'est pourquoi le fichier
+mesure les **causes** — tout `<style>` du document porte le nonce, le HTML servi
+ne contient aucun attribut `style` — et non la seule sanction du navigateur.
+Retirer le câblage du nonce laissait sinon cinq parcours sur cinq au vert.
+
+`app/api/csp-report/route.ts` collecte les violations **en développement**, en
+mémoire et borné à 50, et répond 404 en production — comme la politique n'y
+déclare aucun `report-uri`. Aucun service tiers (`docs/reliability.md` §2). Les
+champs du rapport sont **normalisés à l'entrée** : Zod en borne la longueur, pas
+la forme, et un `blocked-uri` portant un retour à la ligne fabriquait une
+seconde ligne dans le terminal du développeur — une ligne que le rapport, donc
+n'importe qui, choisissait.
+
+### Les deux écrans qu'une politique stricte oblige à écrire
+
+`app/not-found.tsx` et `app/global-error.tsx` existent pour une raison de
+sécurité autant que de produit. Sans eux, Next sert ses composants intégrés, et
+la revue de s45 a mesuré sur le build de production que celui de la page 404
+émet **quatre attributs `style` et un `<style>` sans nonce** — deux violations
+sous la politique livrée, zéro sans elle, sur une page qu'un visiteur atteint.
+Une console bruyante est exactement ce qui pousse l'agent suivant à ajouter
+`'unsafe-inline'`.
+
+Ce qui les tient : `e2e/security-headers.spec.ts` juge le HTML servi sur une
+**URL inexistante** comme sur une page existante — aucun attribut `style`, aucun
+`<style>` sans nonce, aucun script en ligne sans nonce — et exige que l'écran
+404 offre une et une seule sortie, vers l'accueil. Une future page d'erreur qui
+réintroduirait du style en ligne rougit là.
+
+`global-error.tsx` a trois contraintes qui viennent de Next, pas d'un choix
+(`node_modules/next/dist/docs/…/error.md`, §Global Error) : composant **client**,
+`<html>` et `<body>` à lui, aucun export `metadata`. Il remplace
+`app/layout.tsx`, donc il n'a ni shell, ni thème, ni locale de requête — son
+texte vient de `lib/fallback-text.ts`, le catalogue de l'application dans la
+langue du site, qui **lève** sur une clé absente comme partout ailleurs.
+Reconstruire le catalogue complet aurait fait entrer le registre de modules dans
+un bundle client, pour un écran dont l'existence signale que ce registre peut
+être ce qui a échoué.
+
+Mesuré sur le build de production, Chromium (revue de s45, section de clôture) :
+`/fr/adresse-inexistante` → **0 violation**, `/fr/<page qui lève>` → 500 et
+**0 violation**, l'écran de dernier recours rendu.
 
 ## Le montage du mailer
 

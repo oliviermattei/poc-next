@@ -51,6 +51,7 @@ export {
 } from './components/sheet'
 
 export { EmptyState, type EmptyStateProps } from './composed/empty-state'
+export { InlineStyleNonce } from './composed/inline-style-nonce'
 export {
   LocaleSwitcher,
   type LocaleOption,

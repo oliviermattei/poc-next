@@ -87,6 +87,32 @@ vi.mock('../apps/web/lib/i18n', async () => {
 })
 
 /**
+ * Le catalogue de secours de `app/global-error.tsx`, en pseudo-locale.
+ *
+ * Cet écran remplace `app/layout.tsx` : il n'a ni `NextIntlClientProvider` ni
+ * locale de requête, donc il lit le catalogue de l'application directement
+ * (`lib/fallback-text.ts`). Le double reproduit la règle du vrai module — il
+ * **lève** sur une clé qu'aucun catalogue ne livre — et rend un marqueur sur
+ * les autres, faute de quoi cet écran-là échapperait au filet.
+ */
+vi.mock('../apps/web/lib/fallback-text', async () => {
+  const { catalogueKeys, markerFor } = await import('./fixtures/pseudo-locale')
+  const { defaultLocale: locale } = await import('../config/i18n')
+  const keys = new Set(catalogueKeys(locale))
+
+  return {
+    fallbackLocale: locale,
+    fallbackText: (key: string) => {
+      if (!keys.has(key)) {
+        throw new Error(`Traduction manquante : « ${key} »`)
+      }
+
+      return markerFor(key)
+    },
+  }
+})
+
+/**
  * Le routeur, absent d'un rendu de nœud : les composants clients qui
  * rafraîchissent l'écran après un enregistrement en demandent un. C'est du
  * contexte de requête, comme la session — pas une règle.
@@ -119,6 +145,18 @@ const MARKERS_PER_SCREEN = 20
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url))
 const SCREEN_ROOT = join(REPO_ROOT, 'apps/web/app')
 
+/**
+ * Les fichiers d'écran de l'arborescence.
+ *
+ * `page.tsx` n'est plus le seul depuis s45 : `not-found.tsx` et
+ * `global-error.tsx` sont **servis à un visiteur** exactement comme une page,
+ * et ce sont eux que la revue a trouvés en train de contredire la politique de
+ * sécurité du contenu tant qu'ils n'existaient pas. Les faire entrer ici, c'est
+ * les faire entrer dans la garde de couverture : un écran ajouté sans être
+ * rendu plus bas fait rougir.
+ */
+const SCREEN_FILENAMES = ['page.tsx', 'not-found.tsx', 'global-error.tsx']
+
 const pageFilesUnder = (directory: string): readonly string[] => {
   const found: string[] = []
 
@@ -128,7 +166,7 @@ const pageFilesUnder = (directory: string): readonly string[] => {
 
       if (statSync(path).isDirectory()) {
         walk(path)
-      } else if (name === 'page.tsx') {
+      } else if (SCREEN_FILENAMES.includes(name)) {
         found.push(relative(SCREEN_ROOT, path))
       }
     }
@@ -406,6 +444,21 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       readonly viewer: typeof SIGNED_IN
       /** Le refus attendu, tel que Next le signale — `null` quand l'écran doit rendre. */
       readonly refuses: string | null
+      /**
+       * Le plancher de marqueurs de **cet** écran.
+       *
+       * Absent, c'est celui d'un écran rendu dans le shell. `global-error.tsx`
+       * rend son propre document — il remplace `app/layout.tsx`, donc il n'a ni
+       * navigation, ni sélecteur de langue, ni menu de compte — et son budget de
+       * texte est celui d'un écran de dernier recours, pas d'un écran applicatif.
+       */
+      readonly floor?: number
+      /**
+       * L'écran rend son propre `<html>`. Le passer dans `AppShell` produirait un
+       * document imbriqué dans un autre, ce qui ne ressemble à rien de ce que le
+       * serveur envoie.
+       */
+      readonly ownDocument?: boolean
       readonly render: () => Promise<ReactNode>
     }[] = [
       {
@@ -527,6 +580,30 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
             searchParams: Promise.resolve({ error: 'expired' }),
           }),
       },
+      {
+        // L'écran servi sur une URL sans route. Il existe depuis s45 : le
+        // composant intégré de Next qu'il remplace émettait quatre attributs
+        // `style` et un `<style>` sans nonce, donc deux violations de la
+        // politique livrée, sur une page qu'un visiteur atteint.
+        id: 'page introuvable',
+        file: 'not-found.tsx',
+        viewer: ANONYMOUS,
+      refuses: null,
+        render: async () => (await import('../apps/web/app/not-found')).default(),
+      },
+      {
+        // L'écran de dernier recours, qui remplace `app/layout.tsx` : son texte
+        // ne vient pas de `appIntl()` mais du catalogue de secours, et c'est
+        // exactement ce que le double posé plus haut surveille.
+        id: 'erreur globale',
+        file: 'global-error.tsx',
+        viewer: ANONYMOUS,
+      refuses: null,
+        floor: 8,
+        ownDocument: true,
+        render: async () =>
+          (await import('../apps/web/app/global-error')).default({ retry: () => {} }),
+      },
     ]
 
     // La garde contre l'inertie : un écran ajouté sans être rendu ici sortirait
@@ -538,6 +615,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
     const failures: string[] = []
     let markers = 0
     let rendered = 0
+    let floors = 0
 
     for (const screen of screens) {
       viewerState.value = screen.viewer
@@ -571,8 +649,9 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       const before = markers
 
       rendered += 1
+      floors += screen.floor ?? MARKERS_PER_SCREEN
 
-      const tree = await AppShell({ children: content })
+      const tree = screen.ownDocument === true ? content : await AppShell({ children: content })
       const html = renderToStaticMarkup(
         createElement(NextIntlClientProvider, {
           locale: defaultLocale,
@@ -598,18 +677,22 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
 
       // Écran par écran : un rendu qui n'affiche plus rien ne peut plus se
       // cacher derrière le total des autres.
-      expect(markers - before, `${screen.id} — marqueurs`).toBeGreaterThan(MARKERS_PER_SCREEN)
+      expect(markers - before, `${screen.id} — marqueurs`).toBeGreaterThanOrEqual(
+        screen.floor ?? MARKERS_PER_SCREEN,
+      )
 
       failures.push(
         ...new Set(offenders(observed, rules).map((offender) => `${screen.id} — ${offender}`)),
       )
     }
 
-    // Le plancher **suit le nombre d'écrans réellement rendus** : figé à 60, il
-    // laissait passer un facteur cinq de mou, et une configuration qui n'aurait
-    // plus rendu que deux écrans l'aurait encore franchi.
+    // Le plancher **suit les écrans réellement rendus** : figé à 60, il laissait
+    // passer un facteur cinq de mou, et une configuration qui n'aurait plus rendu
+    // que deux écrans l'aurait encore franchi. Il est désormais la somme des
+    // planchers de chaque écran, parce que tous n'ont pas le même budget de
+    // texte — celui qui rend son propre document n'a pas de shell.
     expect(rendered).toBe(screens.filter((screen) => screen.refuses === null).length)
-    expect(markers).toBeGreaterThan(rendered * MARKERS_PER_SCREEN)
+    expect(markers).toBeGreaterThanOrEqual(floors)
     expect(failures).toEqual([])
   })
 })

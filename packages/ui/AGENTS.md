@@ -72,6 +72,32 @@ Le thème sombre est piloté par la **classe** `.dark` sur `<html>`
 (`@custom-variant dark`), jamais par `prefers-color-scheme` seul : le
 commutateur doit pouvoir contredire le système.
 
+## Aucun style en ligne rendu par le serveur (s45)
+
+Un attribut `style` présent dans le HTML servi est gouverné par
+`style-src-attr`, **la seule directive CSP qui ne connaît pas les nonces** : sous
+la politique de production, il est refusé et la console inscrit une violation à
+chaque visite. Le nonce ne peut donc rien pour lui — il n'y a qu'à ne pas en
+émettre.
+
+Deux conséquences, et elles sont exécutables :
+
+- `AccordionContent` neutralise `--radix-accordion-content-height` et
+  `--radix-accordion-content-width`, que `@radix-ui/react-accordion` 1.2.20
+  écrit toujours et dont aucune règle de `src/styles.css` ne se sert. Le style
+  d'un appelant, lui, passe : la neutralisation est posée avant `props.style` ;
+- un composant du design system qui aurait besoin d'une valeur dynamique la
+  déclare dans `src/styles.css`, jamais en ligne.
+
+`tests/security-headers.test.ts` rend un accordéon et refuse tout attribut
+`style` ; `e2e/security-headers.spec.ts` mesure la même chose sur le HTML
+réellement servi, plus le silence de la console.
+
+**Ce qui n'est pas concerné** : les écritures CSSOM
+(`element.style.transform = …`) que font Radix et Floating UI après hydratation.
+Mesuré — le positionnement des menus est identique avec et sans politique. CSP
+ne gouverne que les attributs analysés dans le HTML.
+
 ## Imports autorisés
 
 - `@radix-ui/react-accordion`, `@radix-ui/react-dialog`,
@@ -82,6 +108,14 @@ commutateur doit pouvoir contredire le système.
   la composition de classes (`cn`) ;
 - `lucide-react` pour les icônes : un seul jeu, 16 px dans l'application ;
 - `next-themes` pour le thème ;
+- `get-nonce` — **dans `src/composed/inline-style-nonce.tsx` seulement**. Ajouté
+  par s45 : sous une politique de sécurité du contenu stricte, le `<style>` que
+  `react-remove-scroll` injecte à l'ouverture d'un `Sheet` ou d'un
+  `DropdownMenu` est refusé s'il ne porte pas le nonce de la requête, et le fond
+  de page continue de défiler derrière le panneau ouvert. `setNonce` est l'API
+  publiée par `react-style-singleton` pour cela, et la seule qui ne dépende pas
+  d'un identifiant de bundler : la lecture par défaut passe par
+  `__webpack_nonce__`, que Turbopack ne pose pas (mesuré) ;
 - `react` et `react-dom`, déclarés en `peerDependencies` : c'est l'application
   qui fournit sa version ;
 - `@repo/typescript-config` pour la configuration du compilateur.

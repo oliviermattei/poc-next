@@ -352,6 +352,31 @@ export function assertStartupEnv(options: AssertStartupEnvOptions = {}): Env | u
 }
 
 /**
+ * Le **mode d'exécution seul**, sans juger le reste de l'environnement.
+ *
+ * `getEnv` valide tout le contrat et lève si `DATABASE_URL` manque : c'est ce
+ * qu'on veut au démarrage, et exactement ce qu'on ne veut pas dans un proxy
+ * appelé à chaque requête pour construire une politique de sécurité du contenu.
+ * Cet accesseur reste malgré tout **dans le module de configuration** : le socle
+ * (`docs/security.md` §5) interdit de lire `process.env` ailleurs, et une
+ * exception de commodité pour une seule variable en aurait ouvert d'autres.
+ *
+ * Une valeur inconnue vaut `development`, comme le défaut du schéma. **Ce repli
+ * est le plus permissif des deux** — c'est le mode `production` qui interdit
+ * `'unsafe-eval'` et `'unsafe-inline'` —, et ce n'est donc pas lui qui protège :
+ * ce qui protège est la validation au démarrage. Un `NODE_ENV=prod` mal
+ * orthographié n'obtient pas la politique de développement, il obtient un
+ * processus qui refuse de démarrer en nommant la variable (`parseEnv`, appelé
+ * par `assertStartupEnv` depuis `apps/web/next.config.ts`). Ce repli-ci ne sert
+ * que les appelants qui lisent le mode **sans** exiger le reste du contrat.
+ */
+export function getNodeEnv(source: EnvSource = process.env): Env['NODE_ENV'] {
+  const parsed = envShape.NODE_ENV.safeParse(source.NODE_ENV ?? undefined)
+
+  return parsed.success ? parsed.data : 'development'
+}
+
+/**
  * Point d'accès unique à l'environnement. Aucun autre module du dépôt ne lit
  * `process.env` directement.
  *

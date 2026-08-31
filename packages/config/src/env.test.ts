@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { getEnv, parseEnv } from './env'
+import { getEnv, getNodeEnv, parseEnv } from './env'
 
 const DATABASE_URL = 'postgres://user:password@localhost:5432/app'
 
@@ -132,5 +132,39 @@ describe('validation de l’environnement', () => {
     } finally {
       warn.mockRestore()
     }
+  })
+})
+
+/* ------------------------------------------------------------------------- *
+ * Le mode d'exécution, lu seul.
+ * ------------------------------------------------------------------------- */
+
+describe('la lecture du seul mode d’exécution', () => {
+  it('rend le mode annoncé, sans exiger le reste de l’environnement', () => {
+    // Ce que ça rend possible : le proxy pose une politique de sécurité du
+    // contenu à **chaque requête**, et il n'a aucune raison d'exiger une base de
+    // données pour savoir si React tourne en développement. Passer par `getEnv`
+    // aurait fait lever la requête, pas seulement le démarrage.
+    expect(getNodeEnv({ NODE_ENV: 'production' })).toBe('production')
+    expect(getNodeEnv({ NODE_ENV: 'test' })).toBe('test')
+  })
+
+  it('retombe sur le développement quand rien n’est annoncé ou que la valeur est inconnue', () => {
+    // Le défaut du schéma, repris à l'identique. Ce repli est **le plus
+    // permissif des deux** — c'est le mode production qui interdit
+    // `'unsafe-eval'` et `'unsafe-inline'` — et ce n'est pas lui qui protège :
+    // c'est la validation au démarrage, éprouvée par le cas suivant.
+    expect(getNodeEnv({})).toBe('development')
+    expect(getNodeEnv({ NODE_ENV: 'staging' })).toBe('development')
+    expect(getNodeEnv({ NODE_ENV: '' })).toBe('development')
+  })
+
+  it('ne peut pas laisser un déploiement retomber en silence sur le mode permissif', () => {
+    // La propriété qui rend la dérivation acceptable : un `NODE_ENV=prod` mal
+    // orthographié **arrête le démarrage** en nommant la variable, il ne sert
+    // pas la politique de développement à un site en production. Sans ce cas, la
+    // seule chose écrite quelque part serait un commentaire, et le repli
+    // ci-dessus serait un trou silencieux.
+    expect(() => parseEnv({ DATABASE_URL, NODE_ENV: 'prod' })).toThrowError(/NODE_ENV/)
   })
 })

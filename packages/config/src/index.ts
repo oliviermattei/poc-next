@@ -14,6 +14,7 @@ export {
   assertStartupEnv,
   envSchema,
   getEnv,
+  getNodeEnv,
   isBuildPhase,
   parseEnv,
   type AssertStartupEnvOptions,

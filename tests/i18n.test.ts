@@ -773,6 +773,18 @@ describe('une clé manquante est refusée, jamais remplacée par elle-même', ()
     expect(() => t('app.manquante')).toThrowError(/app\.manquante/)
   })
 
+  it('vaut aussi pour l’écran qui n’a plus de contexte de requête', async () => {
+    // `app/global-error.tsx` remplace `app/layout.tsx` : ni provider, ni locale
+    // résolue, donc il lit le catalogue de l'application directement
+    // (`lib/fallback-text.ts`). Sans ce cas, ce chemin-là serait le seul du dépôt
+    // où une clé absente se replierait silencieusement sur elle-même.
+    const { fallbackLocale, fallbackText } = await import('../apps/web/lib/fallback-text')
+
+    expect(fallbackLocale).toBe(defaultLocale)
+    expect(fallbackText('app.name')).toBe('Application')
+    expect(() => fallbackText('app.manquante')).toThrowError(/app\.manquante/)
+  })
+
   it('n’expose la sonde de clé manquante que sur un drapeau explicite', async () => {
     // Le câblage — « cette configuration est-elle encore branchée ? » — est
     // prouvé par `e2e/i18n.spec.ts`, sur le serveur réel : c'est le seul endroit

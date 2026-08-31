@@ -20,6 +20,16 @@ export default defineConfig({
       },
       { find: /^@repo\/config$/, replacement: resolveFromRoot('./packages/config/src/index.ts') },
       { find: /^@repo\/db$/, replacement: resolveFromRoot('./packages/db/src/index.ts') },
+      // Les polices sont une transformation de **build**, pas un module
+      // exécutable : hors de Next, `geist/font/*` charge `geist/dist/*.js`, qui
+      // importe le répertoire `next/font/local` — que Node refuse. L'alias rend
+      // ce que le greffon rendrait (voir `tests/fixtures/next-font.ts`), et il
+      // est ici plutôt que dans un `vi.mock` parce que le mock est résolu après
+      // le chargement du vrai module, donc trop tard.
+      {
+        find: /^geist\/font\/(sans|mono)$/,
+        replacement: resolveFromRoot('./tests/fixtures/next-font.ts'),
+      },
     ],
   },
   test: {
