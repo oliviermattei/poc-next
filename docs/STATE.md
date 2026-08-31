@@ -34,7 +34,7 @@ open -a Docker && docker compose up -d                                # Postgres
 | Voie | Story | Worktree | Base Postgres |
 |---|---|---|---|
 | A | s10-marketing-site | worktree dédié, `feature/s10-marketing-site` — commit `aa90610`, revue `major`/ship oui, **tour de correction** (F1 robots.txt, F2 canonical, F3 promesse non tenue, F4 filet relâché, ADR 024) | `s10` |
-| B | s12-oauth-signin | worktree dédié, `feature/s12-oauth-signin` — commit `5e49aca`, **en revue** | `s12` |
+| B | s12-oauth-signin | worktree dédié, `feature/s12-oauth-signin` — commit `5e49aca`, revue **critical** (appels sortants sans délai), **tour de correction** (N1 délais, N4 doublure locale en production, N7 énumération de fournisseurs, N3 mécanisme mal consigné, N2 journalisation) | `s12` |
 
 Chaque voie fait recherche → design → plan → exécution TDD → **un commit** sur sa branche, puis
 un `reviewer` en contexte frais écrit `docs/reviews/<id>.md` dans le worktree. Fusion dans `dev`
