@@ -34,9 +34,14 @@ open -a Docker && docker compose up -d                                # Postgres
 | Voie | Story | Worktree | Base Postgres |
 |---|---|---|---|
 | A | s10-marketing-site | **fusionnée dans `dev`** (`57e9658`), revue `minor`/ship oui | close |
-| C | s45-security-headers | worktree dédié, `feature/s45-security-headers` | `s45`, port 3145 |
+| C | s45-security-headers | commit `fed2909`, **en revue** | `s45`, port 3145 |
 | D | s15-organizations | worktree dédié, `feature/s15-organizations` | `s15`, port 3115 |
+| E | s13-two-factor | worktree dédié, `feature/s13-two-factor` | `s13`, port 3113 |
 | B | s12-oauth-signin | **fusionnée dans `dev`** (`5e73810`), revue `minor`/ship oui | close |
+
+**Le worktree d'un agent arrive sur une branche `worktree-agent-<id>`, pas sur `feature/<id>`** :
+la première consigne d'une voie est de la renommer (`git branch -m feature/<id>`). Sans ça la
+story se fait sur un nom hors convention, et la fusion ne retrouve rien.
 
 Chaque voie fait recherche → design → plan → exécution TDD → **un commit** sur sa branche, puis
 un `reviewer` en contexte frais écrit `docs/reviews/<id>.md` dans le worktree. Fusion dans `dev`
