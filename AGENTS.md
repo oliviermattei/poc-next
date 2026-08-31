@@ -142,7 +142,7 @@ All pipeline data lives in markdown files under docs/, versioned by git. No data
 
 Full detail in `docs/architecture.md`; each structural decision has an ADR in `docs/decisions/`.
 
-**Stack** — always the latest stable majors (ADR 010): Next 16, React 19, Tailwind v4 (CSS-first config, no `tailwind.config.js`), TypeScript 5.9+ strict, pnpm 10+, Node 20.10+. shadcn/ui on **Base UI**, copied into `packages/ui`, Turborepo + pnpm, PostgreSQL 16+ with Drizzle, Better Auth, Hono mounted in Next with oRPC contracts, Vitest + Playwright, GitHub Actions.
+**Stack** — always the latest stable majors (ADR 010): Next 16, React 19, Tailwind v4 (CSS-first config, no `tailwind.config.js`), TypeScript 5.9+ strict, pnpm 10+, Node 20.10+. shadcn/ui on **Radix UI**, copied into `packages/ui` (ADR 022 — Base UI has never shipped a stable release), Turborepo + pnpm, PostgreSQL 16+ with Drizzle, Better Auth, Hono mounted in Next with oRPC contracts, Vitest + Playwright, GitHub Actions.
 
 **Repo layout** — `apps/web` (Next, mounts the Hono server at `app/api/[[...route]]`), `config/` (features, billing, marketing — edited by the project owner), `packages/core` (module contract and registry), `packages/db`, `packages/api`, `packages/ui`, `packages/ports`, `packages/adapters`, `packages/modules/<module>`, `tooling/`.
 

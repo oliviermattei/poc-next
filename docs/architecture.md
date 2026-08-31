@@ -8,7 +8,7 @@
 |---|---|---|
 | Langage | TypeScript strict | 001 |
 | Framework | Next.js (App Router, React Server Components) | 001 |
-| UI | Tailwind CSS v4 (configuration en CSS) + shadcn/ui sur **Base UI**, composants copiés dans `packages/ui` | 001, 009 |
+| UI | Tailwind CSS v4 (configuration en CSS) + shadcn/ui sur **Radix UI** (Base UI n'a jamais publié de version stable — ADR 022), composants copiés dans `packages/ui` | 001, 022 |
 | Monorepo | Turborepo + pnpm | 002 |
 | Base de données | PostgreSQL 16+, Drizzle ORM, migrations SQL versionnées | 003 |
 | Provider base | Neon par défaut, PostgreSQL conteneurisé (Coolify) supporté et testé | 003 |
