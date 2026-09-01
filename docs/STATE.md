@@ -34,7 +34,7 @@ open -a Docker && docker compose up -d                                # Postgres
 | Voie | Story | Worktree | Base / port |
 |---|---|---|---|
 | A | s14-passkeys | **fusionnée dans `dev`** (`0c85639`), revue `minor`/ship oui | close |
-| B | s18-file-storage-avatar | commit `e1c0e70`, **en revue** | `s18`, port 3118 |
+| B | s18-file-storage-avatar | commit `e1c0e70`, revue **critical**, **tour de correction** | `s18`, port 3118 |
 | C | s19-subscribe-stripe | `feature/s19-subscribe-stripe` | `s19`, port 3119 |
 | D | s17-roles-permissions | **fusionnée dans `dev`** (`2b997df`), revue `major`/ship oui | close |
 | B | s16-invite-members | **fusionnée dans `dev`** (`6f14cc4`), revue `none`/ship oui | close |
@@ -90,6 +90,15 @@ La cascade `auth_user` → `organization_member` peut produire une organisation 
 propriétaire** : ingouvernable à vie, et sans commande de réconciliation, ce que
 `docs/reliability.md` interdit. Inatteignable par l'API aujourd'hui. Le mécanisme exact et la
 ligne de schéma sont écrits dans `packages/modules/organizations/AGENTS.md` et l'ADR 030.
+
+## Pièges de mesure connus
+
+- **`turbo` sert le `.next` de l'autre configuration de modules.** Après un `pnpm ks toggle`, un
+  `pnpm build` peut rendre « FULL TURBO » et servir le build précédent : la vérification
+  navigateur regarde alors un arbre qui n'est pas le sien. `pnpm build --force` avant toute
+  mesure au navigateur. Deux agents s'y sont fait prendre.
+- **Un outil qui part de la racine voit les autres worktrees** (trois occurrences : balayage
+  Tailwind de s10, `pnpm lint` à la fusion de s14, serveur Playwright partagé).
 
 ## Dettes à surveiller
 
