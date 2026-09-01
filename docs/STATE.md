@@ -6,11 +6,11 @@
 
 | Story | État |
 |---|---|
-| s01 → s13, s15, s16, s17, s45 | **closes**, revues, correctifs appliqués |
-| s14, s18 → s44, s46 | à faire — 29 stories (s14 en cours) |
+| s01 → s17, s45 | **closes**, revues, correctifs appliqués |
+| s19 → s44, s46 | à faire — 28 stories (s18 en cours) |
 
-Tests : **1140 + 2 ignorés**, 59 parcours end-to-end, déterministes (`retries: 0`).
-ADR : **30** (026 à 030 fusionnés ; 031 réservé à s14). Branche : `dev`. Commits : un par story, plus `docs:` pour recherche, plan, revue.
+Tests : **1170 + 2 ignorés**, 62 parcours end-to-end, déterministes (`retries: 0`).
+ADR : **31** (026 à 031 fusionnés ; 032 réservé à s18). Branche : `dev`. Commits : un par story, plus `docs:` pour recherche, plan, revue.
 
 ## Environnement (à refaire après un redémarrage de session)
 
@@ -33,7 +33,7 @@ open -a Docker && docker compose up -d                                # Postgres
 
 | Voie | Story | Worktree | Base / port |
 |---|---|---|---|
-| A | s14-passkeys | commit `0c988a5`, **en revue** | `s14`, port 3114 |
+| A | s14-passkeys | **fusionnée dans `dev`** (`0c85639`), revue `minor`/ship oui | close |
 | B | s18-file-storage-avatar | `feature/s18-file-storage-avatar` | `s18`, port 3118 |
 | D | s17-roles-permissions | **fusionnée dans `dev`** (`2b997df`), revue `major`/ship oui | close |
 | B | s16-invite-members | **fusionnée dans `dev`** (`6f14cc4`), revue `none`/ship oui | close |
@@ -63,6 +63,11 @@ Fichiers chauds, à ne jamais laisser à deux voies en même temps : `config/fea
 `generated/`, `turbo.json`, `eslint.config.ts`, `pnpm-lock.yaml`, `AGENTS.md`, `docs/STATE.md`
 (celui-ci appartient à l'orchestrateur). Chaque voie a **sa propre base** : deux suites qui
 migrent dans `app` en même temps rougissent pour rien.
+
+**Un outil qui part de la racine du dépôt voit les autres worktrees.** Trois fois maintenant :
+le balayage Tailwind de s10, `pnpm lint` à la fusion de s14, et le serveur Playwright partagé.
+Les worktrees vivent dans `.claude/worktrees/` : tout balayage doit s'en exclure ou passer par
+`git ls-files`, qui ne voit que l'arbre courant.
 
 **Le port des parcours est réglé (`df3bb2f`).** `reuseExistingServer` est passé à `false` :
 Playwright démarre son propre serveur et échoue bruyamment si le port est pris, au lieu de
