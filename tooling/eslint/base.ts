@@ -68,6 +68,13 @@ export const baseConfig = tseslint.config(
  * arborescence contient des violations volontaires de la règle de frontières,
  * et c'est `tests/lint-rules.test.ts` qui l'analyse, avec sa propre
  * configuration. Sans cette exclusion, `pnpm lint` échouerait en permanence.
+ *
+ * `.claude/worktrees/**` : les worktrees des voies parallèles vivent **dans**
+ * le dépôt. Sans cette ligne, `pnpm lint` juge le travail en cours d'une autre
+ * branche et échoue en nommant un fichier absent de la sienne — mesuré à la
+ * fusion de s14, sur une variable inutilisée d'un test que s18 était en train
+ * d'écrire. Même classe que le balayage Tailwind de s10, fermé de la même
+ * façon : un outil qui part de la racine du dépôt voit les autres arbres.
  */
 export const ignoresConfig: Linter.Config = {
   ignores: [
@@ -79,5 +86,6 @@ export const ignoresConfig: Linter.Config = {
     '**/test-results/**',
     'apps/web/next-env.d.ts',
     'tests/fixtures/layers/**',
+    '.claude/worktrees/**',
   ],
 }

@@ -114,7 +114,7 @@ test('compte inconnu, mot de passe invalide et adresse non vérifiée affichent 
   await page.goto('/sign-in')
   await page.getByLabel('Adresse email', { exact: true }).fill(anEmail())
   await page.getByLabel('Mot de passe').fill(PASSWORD)
-  await page.getByRole('button', { name: 'Se connecter' }).click()
+  await page.getByRole('button', { name: 'Se connecter', exact: true }).click()
 
   // Le refus est cherché **dans la page**, pas n'importe où : le serveur de
   // développement de Next injecte son propre élément `role="alert"`.
@@ -127,7 +127,7 @@ test('compte inconnu, mot de passe invalide et adresse non vérifiée affichent 
   await page.goto('/sign-in')
   await page.getByLabel('Adresse email', { exact: true }).fill(email)
   await page.getByLabel('Mot de passe').fill('un-autre-mot-de-passe')
-  await page.getByRole('button', { name: 'Se connecter' }).click()
+  await page.getByRole('button', { name: 'Se connecter', exact: true }).click()
 
   await expect(refusal).toBeVisible()
 
@@ -136,7 +136,7 @@ test('compte inconnu, mot de passe invalide et adresse non vérifiée affichent 
   await page.goto('/sign-in')
   await page.getByLabel('Adresse email', { exact: true }).fill(unverified)
   await page.getByLabel('Mot de passe').fill(PASSWORD)
-  await page.getByRole('button', { name: 'Se connecter' }).click()
+  await page.getByRole('button', { name: 'Se connecter', exact: true }).click()
 
   await expect(refusal).toBeVisible()
 
@@ -188,7 +188,7 @@ test('mot de passe oublié : le lien reçu mène à l’écran, et le nouveau mo
 
   await page.getByLabel('Adresse email', { exact: true }).fill(email)
   await page.getByLabel('Mot de passe').fill(newPassword)
-  await page.getByRole('button', { name: 'Se connecter' }).click()
+  await page.getByRole('button', { name: 'Se connecter', exact: true }).click()
   await expect(page).toHaveURL(urlOf('/'))
 })
 

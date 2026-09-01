@@ -301,7 +301,7 @@ test.describe('les formulaires sans JavaScript', () => {
     // correctif, deux écrans.
     await noScript.goto('/sign-in')
 
-    await expect(noScript.getByRole('button', { name: 'Se connecter' })).toBeDisabled()
+    await expect(noScript.getByRole('button', { name: 'Se connecter', exact: true })).toBeDisabled()
 
     await noScript.getByLabel('Adresse email', { exact: true }).fill('victime@example.test')
     await noScript.getByLabel('Mot de passe', { exact: true }).fill(SECRET)

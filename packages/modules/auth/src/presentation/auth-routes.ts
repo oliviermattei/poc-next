@@ -9,7 +9,13 @@ import {
   parseEmailInput,
   parseSignInInput,
   parseSignUpInput,
+  SIGN_IN_REFUSAL,
 } from '../domain/credentials'
+import {
+  parsePasskeyName,
+  passkeyRefusal,
+  PASSKEY_REFUSAL_STATUS,
+} from '../domain/passkey'
 import {
   isOAuthProviderId,
   LOCAL_OAUTH_ACCOUNT_ID,
@@ -76,6 +82,21 @@ const PATHS = {
   twoFactorBackupCode: '/auth/two-factor/verify-backup-code',
   twoFactorRegenerate: '/auth/two-factor/generate-backup-codes',
   twoFactorDisable: '/auth/two-factor/disable',
+  // s14. **Quatre chemins de la bibliothèque, et quatre seulement** : le
+  // greffon `passkey` en expose sept. `list-user-passkeys` rend la ligne
+  // entière — clé publique, identifiant de justificatif et compteur compris —,
+  // `delete-passkey` compte puis supprime hors transaction et ignore la règle
+  // du dernier moyen de connexion, `update-passkey` distingue « inconnue » de
+  // « pas à vous » (`requireResourceOwnership`, `forbiddenStatus:
+  // "UNAUTHORIZED"`), ce que `docs/security.md` §3 refuse. Non déclarés, les
+  // trois répondent 404 sans atteindre la bibliothèque, et les deux dernières
+  // opérations sont **au module**, ci-dessous.
+  passkeyRegisterOptions: '/auth/passkey/generate-register-options',
+  passkeyRegister: '/auth/passkey/verify-registration',
+  passkeyAuthenticateOptions: '/auth/passkey/generate-authenticate-options',
+  passkeyAuthenticate: '/auth/passkey/verify-authentication',
+  passkeyRename: '/auth/passkey/rename',
+  passkeyRevoke: '/auth/passkey/revoke',
 } as const
 
 /** Le chemin public d'une route du module, préfixe de montage compris. */
@@ -1256,6 +1277,245 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
         // porte le jeton de cette nouvelle session.
         return withoutSessionToken(response, { status: true })
       },
+    },
+    {
+      method: 'GET',
+      path: PATHS.passkeyRegisterOptions,
+      protection: { level: 'authenticated' },
+      handler: async (request) => {
+        const auth = service()
+
+        // **La requête d'URL est jetée, jamais transmise.** Celle de la
+        // bibliothèque accepte `name` — qui devient le `userName` de la
+        // cérémonie, donc le libellé qu'un gestionnaire de mots de passe
+        // affiche —, `authenticatorAttachment` et `context`. Le premier est un
+        // hameçonnage à un champ ; le nom d'une passkey se donne ici par le
+        // renommage, sur son propre compte.
+        const stripped = new URL(request.url)
+
+        stripped.search = ''
+
+        const response = await auth.handle(
+          new Request(stripped, { method: 'GET', headers: request.headers }),
+        )
+        const refusal = passkeyRefusal(response.status)
+
+        return refusal === null
+          ? response
+          : Response.json(refusal.body, { status: refusal.status })
+      },
+    },
+    {
+      method: 'POST',
+      path: PATHS.passkeyRegister,
+      protection: { level: 'authenticated' },
+      handler: async (request, context) =>
+        await refuseInvalid(async () => {
+          const auth = service()
+          const body = (await jsonBody(request)) as { readonly response?: unknown } | null
+
+          if (context.session === null) {
+            return badRequest('session absente')
+          }
+
+          if (body === null || typeof body !== 'object') {
+            return badRequest('réponse d’enrôlement manquante')
+          }
+
+          // Le nom passe par la règle du `domain` : absent, la passkey n'en a
+          // pas — l'écran affichera un libellé de son catalogue, le module ne
+          // fabrique aucun nom.
+          const name = parsePasskeyName(body)
+          // **La session précédente, lue avant l'appel.** La rotation qui suit
+          // en crée une nouvelle ; sans révoquer celle-ci, l'ancien
+          // identifiant resterait valable et la « rotation » n'en serait pas
+          // une (`docs/security.md` §2).
+          const previousSessionId = await auth.resolveSessionId(request)
+
+          const response = await auth.handle(
+            withBody(request, {
+              response: body.response,
+              ...(name === null ? {} : { name }),
+              // **Imposé, jamais lu du corps.** C'est ce qui fait tourner la
+              // session à l'élévation de privilège — ajouter un moyen de
+              // connexion en est une. Laisser le client le fournir
+              // reviendrait à lui laisser désarmer la rotation.
+              createSession: true,
+            }),
+          )
+
+          if (!response.ok) {
+            auth.useCases.log(
+              describeSecurityEvent({
+                event: 'auth.passkey_registration_refused',
+                actor: context.session,
+                details: { status: response.status },
+              }),
+            )
+
+            const refusal = passkeyRefusal(response.status)
+
+            return refusal === null
+              ? response
+              : Response.json(refusal.body, { status: refusal.status })
+          }
+
+          if (previousSessionId !== null) {
+            await auth.useCases.revokeSession({
+              userId: context.session.userId,
+              sessionId: previousSessionId,
+            })
+          }
+
+          auth.useCases.log(
+            describeSecurityEvent({
+              event: 'auth.passkey_registered',
+              actor: context.session,
+            }),
+          )
+
+          // **Le corps de la bibliothèque ne sort pas.** Le sien porte la ligne
+          // entière — `publicKey`, `credentialID`, `counter`, `aaguid` — plus
+          // la session et le compte. Les cookies, eux, sont recopiés : c'est là
+          // que vit la session rotée.
+          return withoutSessionToken(response, { status: true })
+        }),
+    },
+    {
+      method: 'GET',
+      // **Publique**, et elle ne peut pas être autre chose : on y arrive avant
+      // toute session. Elle ne prend **aucun paramètre** et ne consulte
+      // l'existence d'aucun compte — le navigateur propose les passkeys qu'il
+      // détient. Il n'y a donc rien à révéler (`docs/security.md` §7).
+      path: PATHS.passkeyAuthenticateOptions,
+      protection: { level: 'public' },
+      handler: async (request) => {
+        const stripped = new URL(request.url)
+
+        stripped.search = ''
+
+        return await service().handle(
+          new Request(stripped, { method: 'GET', headers: request.headers }),
+        )
+      },
+    },
+    {
+      method: 'POST',
+      path: PATHS.passkeyAuthenticate,
+      protection: { level: 'public' },
+      handler: async (request) => {
+        const auth = service()
+        const body = (await jsonBody(request)) as { readonly response?: unknown } | null
+
+        if (body === null || typeof body !== 'object') {
+          return badRequest('assertion manquante')
+        }
+
+        const response = await auth.handle(withBody(request, { response: body.response }))
+
+        // **Le second facteur s'applique ici aussi** (ADR 031). Une passkey de
+        // ce montage prouve la possession, et rien de plus : le greffon
+        // vérifie avec `requireUserVerification: false`, en dur. Le chemin
+        // n'est donc **pas** exempté du crochet, et la connexion d'un compte
+        // protégé s'arrête ici. Le journal de ce cas est écrit là où le compte
+        // est encore connu — `infrastructure/two-factor-challenge.ts`.
+        if (await isTwoFactorChallenge(response)) {
+          return withoutSessionToken(response, { twoFactor: true })
+        }
+
+        const actor = await actorOfSessionSetBy(auth, request, response)
+
+        auth.useCases.log(
+          describeSecurityEvent({
+            event: actor === null ? 'auth.sign_in_failed' : 'auth.sign_in_succeeded',
+            actor,
+            details: { method: 'passkey' },
+          }),
+        )
+
+        // **Le refus est celui de toutes les connexions.** La bibliothèque
+        // distingue `PASSKEY_NOT_FOUND` (justificatif inconnu) de
+        // `AUTHENTICATION_FAILED` (signature fausse) : le premier dirait à un
+        // visiteur anonyme si un justificatif est connu du serveur. Un seul
+        // refus sort, le même que celui du mot de passe.
+        if (!response.ok) {
+          return Response.json(SIGN_IN_REFUSAL.body, { status: SIGN_IN_REFUSAL.status })
+        }
+
+        // Et le succès ne relaie rien : le corps de la bibliothèque porte la
+        // session et le compte.
+        return withoutSessionToken(response, { status: true })
+      },
+    },
+    {
+      method: 'POST',
+      path: PATHS.passkeyRename,
+      protection: { level: 'authenticated' },
+      handler: async (request, context) =>
+        await refuseInvalid(async () => {
+          const auth = service()
+          const body = (await jsonBody(request)) as { readonly passkeyId?: unknown } | null
+
+          if (context.session === null) {
+            return badRequest('session absente')
+          }
+
+          if (typeof body?.passkeyId !== 'string' || body.passkeyId === '') {
+            return badRequest('passkey à renommer manquante')
+          }
+
+          const name = parsePasskeyName(body)
+
+          if (name === null) {
+            return badRequest('nom manquant')
+          }
+
+          // Le compte est **celui de la session**, jamais un identifiant reçu
+          // du client. Une passkey qui n'est pas la sienne répond 404 comme un
+          // identifiant inventé (`docs/security.md` §3).
+          const renamed = await auth.useCases.renamePasskey({
+            userId: context.session.userId,
+            passkeyId: body.passkeyId,
+            name,
+          })
+
+          return renamed ? Response.json({ status: true }) : notFound()
+        }),
+    },
+    {
+      method: 'POST',
+      path: PATHS.passkeyRevoke,
+      protection: { level: 'authenticated' },
+      handler: async (request, context) =>
+        await refuseInvalid(async () => {
+          const auth = service()
+          const body = (await jsonBody(request)) as { readonly passkeyId?: unknown } | null
+
+          if (context.session === null) {
+            return badRequest('session absente')
+          }
+
+          if (typeof body?.passkeyId !== 'string' || body.passkeyId === '') {
+            return badRequest('passkey à révoquer manquante')
+          }
+
+          const outcome = await auth.useCases.revokePasskey({
+            userId: context.session.userId,
+            passkeyId: body.passkeyId,
+          })
+
+          if (outcome === 'revoked') {
+            return Response.json({ status: true })
+          }
+
+          // Le dernier moyen de connexion est un refus **de règle**, dit à son
+          // propriétaire — il n'y a rien à cacher à qui possède déjà le
+          // compte. Une passkey qui n'est pas la sienne, en revanche, répond
+          // 404. Même forme que le déliement de s12.
+          return outcome === 'last-method'
+            ? Response.json({ error: 'last-method' }, { status: PASSKEY_REFUSAL_STATUS })
+            : notFound()
+        }),
     },
     {
       method: 'POST',

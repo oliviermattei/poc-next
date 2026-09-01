@@ -25,12 +25,14 @@ import { getAuthTables } from 'better-auth'
 import { appLocales } from '../config/i18n'
 import { magicLink } from 'better-auth/plugins/magic-link'
 import { twoFactor } from 'better-auth/plugins/two-factor'
+import { passkey } from '@better-auth/passkey'
 import { sql } from 'drizzle-orm'
 import { getTableConfig } from 'drizzle-orm/pg-core'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import type { SecurityEventRecord } from '@repo/module-auth'
 import { databaseUrl, isDatabaseReachable } from './fixtures/database'
+import { createVirtualAuthenticator } from './fixtures/webauthn'
 
 /**
  * L'authentification, éprouvée **contre une vraie base** et à travers le
@@ -209,11 +211,22 @@ interface CallOptions {
   readonly cookie?: string
   /** Employé par le seul cas qui présente un jeton nu — voir `bearer`. */
   readonly authorization?: string
+  /**
+   * L'en-tête `Origin` annoncé. Par défaut celui de l'application.
+   *
+   * Un seul cas le déplace, et c'est tout son intérêt (s14) : le greffon
+   * passkey, **sans `origin` explicite**, prend l'origine attendue dans cet
+   * en-tête — donc dans une valeur que l'appelant écrit.
+   */
+  readonly origin?: string
 }
 
 /** Une requête telle que l'application la sert : par le répartiteur du registre. */
 const call = async (path: string, options: CallOptions = {}): Promise<Response> => {
-  const headers = new Headers({ 'content-type': 'application/json', origin: APP_URL })
+  const headers = new Headers({
+    'content-type': 'application/json',
+    origin: options.origin ?? APP_URL,
+  })
 
   if (options.cookie !== undefined) {
     headers.set('cookie', options.cookie)
@@ -346,6 +359,11 @@ describe.skipIf(!databaseReachable)('frontière — le schéma appartient au mod
         // qui ne renommerait que la déclaration et laisserait ses trois
         // lectures sur `"twoFactor"` (mesuré dans 1.7.2).
         twoFactor({ schema: { twoFactor: AUTH_MODELS.twoFactor } }),
+        // s14 : le greffon `passkey` ajoute **une table et rien d'autre** —
+        // aucune colonne sur `auth_user` ni sur `auth_session`, contrairement
+        // au greffon `organization` que l'ADR 025 a écarté pour cette raison.
+        // Le nom de modèle est celui que le module monte.
+        passkey({ schema: { passkey: AUTH_MODELS.passkey } }),
       ],
     } as never)
 
@@ -2710,4 +2728,581 @@ describe.skipIf(!databaseReachable)('second facteur — aucune énumération', (
     expect(observed[2]).toEqual(observed[0])
     expect(observed[0]?.session).toBeNull()
   }, 90_000)
+})
+
+/* ------------------------------------------------------------------------- *
+ * ## Les passkeys (s14)
+ *
+ * Une passkey ne se teste pas en postant un formulaire : la seule chose qu'un
+ * serveur voit est une attestation ou une assertion **signées**.
+ * `tests/fixtures/webauthn.ts` fabrique donc les deux — et **rien d'autre** :
+ * les réponses produites traversent le vrai `@simplewebauthn/server` embarqué
+ * par le greffon, avec ses vraies vérifications. La doublure remplace
+ * l'authentificateur, jamais le vérificateur.
+ *
+ * Ce qu'elle ne prouve pas est écrit dans `docs/research/s14-passkeys.md` §4 :
+ * rien de ce qu'un **navigateur** accepte de produire. C'est
+ * `e2e/passkeys.spec.ts` qui s'en charge.
+ * ------------------------------------------------------------------------- */
+
+/** L'identifiant de partie de confiance que l'application borne : l'hôte d'`APP_URL`. */
+const RP_ID = new URL(APP_URL).hostname
+
+const anAuthenticator = (options: { readonly credentialId?: string } = {}) =>
+  createVirtualAuthenticator({ rpId: RP_ID, origin: APP_URL, ...options })
+
+/** Les cookies de l'appelant, complétés par ceux que la réponse vient de poser. */
+const withCookiesOf = (cookie: string, response: Response): string =>
+  [cookie, cookiesOf(response)].filter((part) => part !== '').join('; ')
+
+/** Le défi d'enrôlement, et le cookie qui le porte. */
+const registrationChallenge = async (
+  cookie: string,
+): Promise<{ challenge: string; cookie: string }> => {
+  const response = await call('/passkey/generate-register-options', { cookie })
+
+  expect(response.status).toBe(200)
+
+  const options = (await response.json()) as { challenge: string }
+
+  return { challenge: options.challenge, cookie: withCookiesOf(cookie, response) }
+}
+
+/** Le défi de connexion. **Aucune session, aucun paramètre** : voir §8 de la recherche. */
+const authenticationChallenge = async (): Promise<{ challenge: string; cookie: string }> => {
+  const response = await call('/passkey/generate-authenticate-options')
+
+  expect(response.status).toBe(200)
+
+  const options = (await response.json()) as { challenge: string }
+
+  return { challenge: options.challenge, cookie: cookiesOf(response) }
+}
+
+const registerPasskey = async (input: {
+  readonly cookie: string
+  readonly authenticator: ReturnType<typeof anAuthenticator>
+  readonly body?: Record<string, unknown>
+}): Promise<Response> => {
+  const started = await registrationChallenge(input.cookie)
+
+  return await call('/passkey/verify-registration', {
+    cookie: started.cookie,
+    body: {
+      response: input.authenticator.register({ challenge: started.challenge }),
+      ...input.body,
+    },
+  })
+}
+
+const signInWithPasskey = async (
+  authenticator: ReturnType<typeof anAuthenticator>,
+  overrides: {
+    readonly origin?: string
+    readonly rpId?: string
+    readonly counter?: number
+  } = {},
+): Promise<Response> => {
+  const started = await authenticationChallenge()
+
+  return await call('/passkey/verify-authentication', {
+    cookie: started.cookie,
+    origin: overrides.origin,
+    body: {
+      response: authenticator.authenticate({ challenge: started.challenge, ...overrides }),
+    },
+  })
+}
+
+/** Les passkeys d'un compte, lues en base — le juge, pas la réponse. */
+const storedPasskeys = async (userId: string) =>
+  await connection.db
+    .select({
+      id: authSchema.authPasskey.id,
+      name: authSchema.authPasskey.name,
+      counter: authSchema.authPasskey.counter,
+      credentialID: authSchema.authPasskey.credentialID,
+    })
+    .from(authSchema.authPasskey)
+    .where(sql`user_id = ${userId}`)
+
+interface PasskeyAccount {
+  readonly email: string
+  readonly userId: string
+  readonly cookie: string
+  readonly authenticator: ReturnType<typeof anAuthenticator>
+  readonly passkeyId: string
+}
+
+/** Un compte vérifié, connecté, et muni d'une passkey. */
+const anAccountWithPasskey = async (): Promise<PasskeyAccount> => {
+  const account = await aVerifiedAccount()
+  const cookie = sessionCookie(await signIn(account.email))?.value ?? ''
+  const authenticator = anAuthenticator()
+  const registered = await registerPasskey({ cookie, authenticator })
+
+  expect(registered.status).toBe(200)
+
+  const [row] = await storedPasskeys(account.userId)
+
+  return {
+    ...account,
+    // L'enrôlement **fait tourner** la session : c'est le nouveau cookie qui
+    // vaut, l'ancien vient d'être révoqué.
+    cookie: sessionCookie(registered)?.value ?? '',
+    authenticator,
+    passkeyId: row?.id ?? '',
+  }
+}
+
+describe.skipIf(!databaseReachable)('passkeys — enrôlement', () => {
+  it('enregistre la passkey, fait tourner la session, et ne rend ni jeton ni clé publique', async () => {
+    const account = await aVerifiedAccount()
+    const opened = await signIn(account.email)
+    const firstCookie = sessionCookie(opened)?.value ?? ''
+    const firstSessionId = await openedSession(opened)
+
+    const registered = await registerPasskey({ cookie: firstCookie, authenticator: anAuthenticator() })
+
+    expect(registered.status).toBe(200)
+
+    // **Le corps de la bibliothèque ne sort pas.** Le sien porte la ligne
+    // entière — `publicKey`, `credentialID`, `counter` — plus la session et le
+    // compte. Un jeton rendu à un écran, c'est `HttpOnly` annulé.
+    expect(await registered.json()).toEqual({ status: true })
+
+    const [row] = await storedPasskeys(account.userId)
+
+    expect(row?.counter).toBe(0)
+
+    // **La rotation est réelle** : l'ancien identifiant de session est mort,
+    // pas seulement remplacé dans le navigateur. Une « rotation » qui laisse
+    // l'ancienne ligne vivante n'en est pas une (`docs/security.md` §2).
+    const secondCookie = sessionCookie(registered)?.value ?? ''
+    const secondSessionId = await openedSession(registered)
+
+    expect(secondSessionId).not.toBeNull()
+    expect(secondSessionId).not.toBe(firstSessionId)
+    expect(
+      await service.resolveSession(new Request(APP_URL, { headers: { cookie: firstCookie } })),
+    ).toBeNull()
+    expect(
+      await service.resolveSession(new Request(APP_URL, { headers: { cookie: secondCookie } })),
+    ).not.toBeNull()
+
+    expect(logs.map((record) => record.event)).toContain('auth.passkey_registered')
+  }, 90_000)
+
+  it('n’écoute pas le `createSession` du client : la rotation n’est pas la sienne', async () => {
+    const account = await aVerifiedAccount()
+    const cookie = sessionCookie(await signIn(account.email))?.value ?? ''
+
+    const registered = await registerPasskey({
+      cookie,
+      authenticator: anAuthenticator(),
+      // Le corps de la bibliothèque accepte ce champ. Laisser le client
+      // décider si sa session tourne reviendrait à lui laisser désarmer la
+      // rotation que le socle exige.
+      body: { createSession: false },
+    })
+
+    expect(registered.status).toBe(200)
+    expect(await openedSession(registered)).not.toBeNull()
+    expect(
+      await service.resolveSession(new Request(APP_URL, { headers: { cookie } })),
+    ).toBeNull()
+  }, 90_000)
+
+  it('refuse un nom hors bornes, et n’écrit aucune ligne', async () => {
+    const account = await aVerifiedAccount()
+    const cookie = sessionCookie(await signIn(account.email))?.value ?? ''
+
+    const refused = await registerPasskey({
+      cookie,
+      authenticator: anAuthenticator(),
+      body: { name: 'x'.repeat(200) },
+    })
+
+    expect(refused.status).toBe(400)
+    expect(await storedPasskeys(account.userId)).toHaveLength(0)
+  }, 90_000)
+
+  it('refuse l’enrôlement sans session, sans atteindre la bibliothèque', async () => {
+    const options = await call('/passkey/generate-register-options')
+    const verified = await call('/passkey/verify-registration', { body: { response: {} } })
+
+    expect(options.status).toBe(401)
+    expect(verified.status).toBe(401)
+  }, 60_000)
+})
+
+describe.skipIf(!databaseReachable)('passkeys — connexion', () => {
+  it('ouvre une session sans mot de passe, et n’expose aucun jeton', async () => {
+    const account = await anAccountWithPasskey()
+
+    const signedIn = await signInWithPasskey(account.authenticator)
+
+    expect(signedIn.status).toBe(200)
+    expect(await signedIn.json()).toEqual({ status: true })
+
+    const session = await openedSession(signedIn)
+
+    expect(session).not.toBeNull()
+    expect(
+      logs.filter((record) => record.event === 'auth.sign_in_succeeded'),
+    ).toContainEqual({
+      event: 'auth.sign_in_succeeded',
+      actor: account.userId,
+      details: { method: 'passkey' },
+    })
+  }, 90_000)
+
+  it('refuse une assertion produite pour une autre origine, même annoncée comme telle', async () => {
+    const account = await anAccountWithPasskey()
+
+    // L'attaque que ce cas mesure : le greffon, **sans `origin` explicite**,
+    // prend l'origine attendue dans l'en-tête `Origin` de la requête — donc
+    // dans une valeur que l'appelant écrit. La comparaison devient alors une
+    // chaîne du client contre une autre chaîne du client, et ne peut plus
+    // échouer. Ici les deux disent `https://evil.test`, et le serveur refuse.
+    const refused = await signInWithPasskey(account.authenticator, {
+      origin: 'https://evil.test',
+    })
+
+    expect(refused.status).toBe(401)
+    expect(await openedSession(refused)).toBeNull()
+  }, 90_000)
+
+  it('refuse une assertion produite pour un autre identifiant de partie de confiance', async () => {
+    const account = await anAccountWithPasskey()
+
+    const refused = await signInWithPasskey(account.authenticator, { rpId: 'evil.test' })
+
+    expect(refused.status).toBe(401)
+    expect(await openedSession(refused)).toBeNull()
+  }, 90_000)
+
+  it('rend le même refus à un justificatif inconnu et à une signature fausse', async () => {
+    await anAccountWithPasskey()
+
+    // Un authentificateur que personne n'a enregistré.
+    const unknown = await signInWithPasskey(anAuthenticator())
+    // Un justificatif connu, signé par une **autre** clé : même identifiant,
+    // autre paire.
+    const known = await anAccountWithPasskey()
+    const impostor = anAuthenticator({ credentialId: known.authenticator.credentialId })
+    const forged = await signInWithPasskey(impostor)
+
+    expect(forged.status).toBe(unknown.status)
+    expect(await forged.text()).toBe(await unknown.text())
+    expect(await openedSession(unknown)).toBeNull()
+    expect(await openedSession(forged)).toBeNull()
+  }, 120_000)
+
+  it('refuse une assertion dont le compteur de signature n’a pas progressé', async () => {
+    const account = await anAccountWithPasskey()
+
+    const first = await signInWithPasskey(account.authenticator)
+
+    expect(first.status).toBe(200)
+
+    const [row] = await storedPasskeys(account.userId)
+
+    // Le compteur rangé est celui que l'authentificateur vient de présenter.
+    expect(row?.counter).toBe(1)
+
+    // Un clone resté en arrière — ou un rejeu — présente un compteur qui n'a
+    // pas avancé.
+    const replayed = await signInWithPasskey(account.authenticator, { counter: 1 })
+
+    expect(replayed.status).toBe(401)
+    expect(await openedSession(replayed)).toBeNull()
+  }, 120_000)
+
+  it('accepte deux fois un authentificateur qui ne compte pas — et c’est dit, pas prétendu', async () => {
+    const account = await anAccountWithPasskey()
+
+    // `verifyAuthenticationResponse` de `@simplewebauthn/server@13.3.3` saute
+    // la comparaison quand **les deux** compteurs valent zéro
+    // (`counter > 0 || credential.counter > 0`). C'est le cas de la plupart des
+    // passkeys synchronisées. Aucune détection de clonage n'est possible là,
+    // et aucune ligne de ce dépôt ne peut y changer quelque chose : le cas
+    // existe pour que personne n'écrive l'inverse.
+    const first = await signInWithPasskey(account.authenticator, { counter: 0 })
+    const second = await signInWithPasskey(account.authenticator, { counter: 0 })
+
+    expect(first.status).toBe(200)
+    expect(second.status).toBe(200)
+    expect(await openedSession(second)).not.toBeNull()
+  }, 120_000)
+})
+
+describe.skipIf(!databaseReachable)('passkeys — et le second facteur', () => {
+  it('défie un compte protégé : une passkey est un premier facteur (ADR 031)', async () => {
+    const enrolled = await anAccountWithTwoFactor()
+    const authenticator = anAuthenticator()
+
+    expect((await registerPasskey({ cookie: enrolled.cookie, authenticator })).status).toBe(200)
+
+    // Les sessions du compte **avant** la connexion par passkey : celle des
+    // paramètres, ouverte au clavier. C'est l'écart qui compte, pas le total.
+    const sessionsBefore = await service.useCases.listSessions({
+      userId: enrolled.userId,
+      currentSessionId: null,
+    })
+
+    const signedIn = await signInWithPasskey(authenticator)
+
+    // Ni un succès, ni un échec : le troisième cas de s13. Le corps est
+    // réécrit, la session que la bibliothèque venait d'ouvrir a été détruite,
+    // et un défi attend.
+    expect(signedIn.status).toBe(200)
+    expect(await signedIn.json()).toEqual({ twoFactor: true })
+    expect(await openedSession(signedIn)).toBeNull()
+
+    // **Aucune session de plus en base.** Le crochet ne masque pas une session
+    // à moitié authentifiée : il détruit la ligne que la bibliothèque venait
+    // d'écrire.
+    expect(
+      await service.useCases.listSessions({ userId: enrolled.userId, currentSessionId: null }),
+    ).toHaveLength(sessionsBefore.length)
+
+    // Et le défi posé est jouable : le second facteur, lui, ouvre la session.
+    await withinStablePeriod()
+
+    const verified = await call('/two-factor/verify-totp', {
+      body: { code: totpAt(enrolled.totpURI, 1) },
+      cookie: cookiesOf(signedIn),
+    })
+
+    expect(verified.status).toBe(200)
+    expect(await openedSession(verified)).not.toBeNull()
+  }, 120_000)
+
+  it('ne déconnecte pas un compte protégé qui enregistre une passkey', async () => {
+    const enrolled = await anAccountWithTwoFactor()
+
+    // L'enrôlement **fait tourner** la session, donc pose `newSession`, donc
+    // traverse le crochet du second facteur. Sans exemption, le compte perdrait
+    // sa session au milieu de ses paramètres — la même forme que le défaut que
+    // s13 a mesuré sur `/get-session`.
+    const registered = await registerPasskey({
+      cookie: enrolled.cookie,
+      authenticator: anAuthenticator(),
+    })
+
+    expect(registered.status).toBe(200)
+    expect(await openedSession(registered)).not.toBeNull()
+  }, 120_000)
+})
+
+describe.skipIf(!databaseReachable)('passkeys — liste, renommage, révocation', () => {
+  it('ne laisse sortir ni clé publique ni identifiant de justificatif', async () => {
+    const account = await anAccountWithPasskey()
+
+    const described = await service.useCases.listPasskeys(account.userId)
+    const [row] = await storedPasskeys(account.userId)
+
+    expect(described).toHaveLength(1)
+    expect(JSON.stringify(described)).not.toContain(row?.credentialID ?? 'introuvable')
+    expect(Object.keys(described[0] ?? {}).sort()).toEqual([
+      'createdAt',
+      'id',
+      'name',
+      'removable',
+    ])
+  }, 90_000)
+
+  it('renomme la sienne, et répond 404 pour celle d’un autre', async () => {
+    const owner = await anAccountWithPasskey()
+    const stranger = await anAccountWithPasskey()
+
+    const renamed = await call('/passkey/rename', {
+      cookie: owner.cookie,
+      body: { passkeyId: owner.passkeyId, name: '  MacBook  ' },
+    })
+
+    expect(renamed.status).toBe(200)
+    expect((await storedPasskeys(owner.userId))[0]?.name).toBe('MacBook')
+
+    // Celle d'un autre : **404, jamais 401 ni 403**. Le greffon, lui, distingue
+    // « inconnue » de « pas à vous » (`requireResourceOwnership`,
+    // `forbiddenStatus: "UNAUTHORIZED"`) — c'est un oracle d'existence, et
+    // c'est pourquoi cette route est celle du module (`docs/security.md` §3).
+    const foreign = await call('/passkey/rename', {
+      cookie: owner.cookie,
+      body: { passkeyId: stranger.passkeyId, name: 'volée' },
+    })
+    const invented = await call('/passkey/rename', {
+      cookie: owner.cookie,
+      body: { passkeyId: 'passkey-inventée', name: 'volée' },
+    })
+
+    expect(foreign.status).toBe(404)
+    expect(await foreign.text()).toBe(await invented.text())
+    expect((await storedPasskeys(stranger.userId))[0]?.name).toBeNull()
+  }, 120_000)
+
+  it('révoquée, elle n’ouvre plus de session — immédiatement', async () => {
+    const account = await anAccountWithPasskey()
+
+    const revoked = await call('/passkey/revoke', {
+      cookie: account.cookie,
+      body: { passkeyId: account.passkeyId },
+    })
+
+    expect(revoked.status).toBe(200)
+    expect(await storedPasskeys(account.userId)).toHaveLength(0)
+
+    const refused = await signInWithPasskey(account.authenticator)
+
+    expect(refused.status).toBe(401)
+    expect(await openedSession(refused)).toBeNull()
+    expect(logs.map((record) => record.event)).toContain('auth.passkey_revoked')
+  }, 120_000)
+
+  it('répond 404 à la révocation de la passkey d’un autre, et ne la retire pas', async () => {
+    const owner = await anAccountWithPasskey()
+    const stranger = await anAccountWithPasskey()
+
+    const foreign = await call('/passkey/revoke', {
+      cookie: owner.cookie,
+      body: { passkeyId: stranger.passkeyId },
+    })
+    const invented = await call('/passkey/revoke', {
+      cookie: owner.cookie,
+      body: { passkeyId: 'passkey-inventée' },
+    })
+
+    expect(foreign.status).toBe(404)
+    expect(await foreign.text()).toBe(await invented.text())
+    expect(await storedPasskeys(stranger.userId)).toHaveLength(1)
+  }, 120_000)
+
+  it('compte les passkeys **et** les comptes : ni l’une ni l’autre n’est le dernier moyen à elle seule', async () => {
+    const account = await anAccountWithPasskey()
+    const methods = await service.useCases.listSignInMethods(account.userId)
+
+    // Mot de passe **et** passkey : les deux sont retirables, séparément.
+    expect(methods).toHaveLength(1)
+    expect(methods[0]?.removable).toBe(true)
+    expect((await service.useCases.listPasskeys(account.userId))[0]?.removable).toBe(true)
+
+    // Le mot de passe part : il reste la passkey.
+    const unlinked = await call('/unlink-provider', {
+      cookie: account.cookie,
+      body: { accountId: methods[0]?.id },
+    })
+
+    expect(unlinked.status).toBe(200)
+
+    // Et la passkey devient le dernier moyen de connexion.
+    expect((await service.useCases.listPasskeys(account.userId))[0]?.removable).toBe(false)
+
+    const refused = await call('/passkey/revoke', {
+      cookie: account.cookie,
+      body: { passkeyId: account.passkeyId },
+    })
+
+    expect(refused.status).toBe(400)
+    expect(await refused.json()).toEqual({ error: 'last-method' })
+    expect(await storedPasskeys(account.userId)).toHaveLength(1)
+  }, 120_000)
+
+  it('ne laisse pas deux retraits simultanés vider le compte de ses deux derniers moyens', async () => {
+    const account = await anAccountWithPasskey()
+    const [method] = await service.useCases.listSignInMethods(account.userId)
+
+    // Compter puis supprimer laisserait les deux requêtes observer « il en
+    // reste deux » et retirer chacune la sienne (`docs/reliability.md` §1 :
+    // « jamais une simple vérification préalable »).
+    const [unlinked, revoked] = await Promise.all([
+      call('/unlink-provider', { cookie: account.cookie, body: { accountId: method?.id } }),
+      call('/passkey/revoke', { cookie: account.cookie, body: { passkeyId: account.passkeyId } }),
+    ])
+
+    const remaining =
+      (await storedPasskeys(account.userId)).length +
+      (await service.useCases.listSignInMethods(account.userId)).length
+
+    expect(remaining).toBeGreaterThanOrEqual(1)
+    expect([unlinked.status, revoked.status].filter((status) => status === 200)).toHaveLength(1)
+  }, 120_000)
+})
+
+describe.skipIf(!databaseReachable)('passkeys — ce que le module ne déclare pas', () => {
+  it('n’expose pas les trois points d’entrée du greffon qu’il ne déclare pas', async () => {
+    const account = await anAccountWithPasskey()
+
+    // Nommés un par un, et interrogés **avec une session valide** : ce qui
+    // répond 404 ici n'est pas une protection, c'est une route qui n'existe
+    // pas. Le greffon en expose sept, le module en déclare quatre.
+    const responses = {
+      list: await call('/passkey/list-user-passkeys', { cookie: account.cookie }),
+      delete: await call('/passkey/delete-passkey', {
+        cookie: account.cookie,
+        body: { id: account.passkeyId },
+      }),
+      update: await call('/passkey/update-passkey', {
+        cookie: account.cookie,
+        body: { id: account.passkeyId, name: 'volée' },
+      }),
+    }
+
+    for (const [name, response] of Object.entries(responses)) {
+      expect(response.status, `« ${name} » ne doit pas exister`).toBe(404)
+    }
+
+    // Et rien n'a été touché.
+    expect(await storedPasskeys(account.userId)).toHaveLength(1)
+    expect((await storedPasskeys(account.userId))[0]?.name).toBeNull()
+  }, 120_000)
+
+  it('ne transmet pas la requête d’URL du client aux options d’enrôlement', async () => {
+    const account = await aVerifiedAccount()
+    const cookie = sessionCookie(await signIn(account.email))?.value ?? ''
+
+    // `name` du client deviendrait le `userName` de la cérémonie, donc le
+    // libellé que le gestionnaire de mots de passe affiche. Le corps — et ici
+    // la requête d'URL — est reconstruit, jamais transmis.
+    const response = await call(
+      '/passkey/generate-register-options?name=compte-de-la-victime&authenticatorAttachment=cross-platform',
+      { cookie },
+    )
+
+    expect(response.status).toBe(200)
+    expect(await response.text()).not.toContain('compte-de-la-victime')
+  }, 60_000)
+})
+
+describe.skipIf(!databaseReachable)('passkeys — la purge du compte', () => {
+  it('efface les passkeys avec le compte, et se rejoue sans rien de plus', async () => {
+    // **La purge est exécutée, pas déduite de la cascade.** Le plan de s14
+    // annonçait cette propriété « mesurée » alors qu'aucun cas n'appelait
+    // `purgeAccount` (constat M2 de la revue) : lire `on delete cascade` dans
+    // une migration dit ce qui est écrit, jamais ce que la base fait. Ici la
+    // ligne est comptée avant, comptée après, et le justificatif est présenté
+    // une dernière fois.
+    const account = await anAccountWithPasskey()
+
+    expect(await storedPasskeys(account.userId)).toHaveLength(1)
+
+    await authModule.purge({ kind: 'user', userId: account.userId })
+    await authModule.purge({ kind: 'user', userId: account.userId })
+
+    expect(await storedPasskeys(account.userId)).toHaveLength(0)
+    expect(
+      await connection.db
+        .select({ id: authSchema.authUser.id })
+        .from(authSchema.authUser)
+        .where(sql`id = ${account.userId}`),
+    ).toHaveLength(0)
+
+    // Et le justificatif effacé n'ouvre plus rien : la ligne partie, la
+    // bibliothèque ne résout plus la connexion.
+    const refused = await signInWithPasskey(account.authenticator)
+
+    expect(refused.status).toBe(401)
+    expect(await openedSession(refused)).toBeNull()
+  }, 120_000)
 })

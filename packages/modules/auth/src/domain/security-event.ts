@@ -62,6 +62,22 @@ export type SecurityEventName =
   | 'auth.two_factor_verified'
   | 'auth.two_factor_failed'
   | 'auth.two_factor_backup_codes_regenerated'
+  // s14 : les passkeys. Une passkey est un **moyen de connexion** ; l'ajouter
+  // ou le retirer est de la même nature qu'une liaison de fournisseur, et §7
+  // demande de pouvoir compter les deux. Les refus ont leur nom pour la même
+  // raison qu'en s12 : la réponse ne distingue rien, le journal si.
+  //
+  // La **connexion** par passkey, elle, n'a pas de nom à elle : c'est
+  // `auth.sign_in_succeeded` avec `method: 'passkey'`, comme le magic link et
+  // les rappels de fournisseur. Un moyen de connexion de plus ne fait pas un
+  // événement de plus, sans quoi le verrouillage progressif de s28 devrait
+  // apprendre chaque nom.
+  | 'auth.passkey_registered'
+  | 'auth.passkey_registration_refused'
+  | 'auth.passkey_renamed'
+  | 'auth.passkey_rename_refused'
+  | 'auth.passkey_revoked'
+  | 'auth.passkey_revoke_refused'
 
 /** L'acteur d'un événement. `email` est accepté à l'appel, jamais journalisé. */
 export interface SecurityEventActor {

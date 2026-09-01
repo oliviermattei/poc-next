@@ -22,6 +22,13 @@
       "when": 1788210272371,
       "tag": "0002_huge_stryfe",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788218607655,
+      "tag": "0003_same_puck",
+      "breakpoints": true
     }
   ]
 }

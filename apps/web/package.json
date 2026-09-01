@@ -24,6 +24,7 @@
     "@repo/module-organizations": "workspace:*",
     "@repo/ports": "workspace:*",
     "@repo/ui": "workspace:*",
+    "@simplewebauthn/browser": "^13.3.0",
     "geist": "1.7.2",
     "lucide-react": "1.37.0",
     "next": "^16.3.0",

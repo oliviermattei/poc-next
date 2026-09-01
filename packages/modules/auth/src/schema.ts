@@ -195,6 +195,69 @@ export const authTwoFactor = pgTable(
   ],
 )
 
+/**
+ * Une passkey d'un compte (s14).
+ *
+ * Une ligne par justificatif WebAuthn enregistré. Les noms de propriété sont
+ * ceux que le greffon attend — `credentialID` et non `credential_id` du côté
+ * TypeScript —, les colonnes sont en `snake_case`, et `tests/auth.test.ts`
+ * confronte les deux à `getAuthTables` : un champ renommé ne casse pas la
+ * compilation, il casse la requête, en production.
+ *
+ * Trois choses méritent d'être dites, parce que leur nom ne suffit pas :
+ *
+ * - `publicKey` est la clé publique du justificatif, encodée en base64. Ce
+ *   n'est pas un secret — c'est la moitié publique d'une paire dont la privée
+ *   n'a jamais quitté l'appareil — mais elle ne sort jamais vers un écran :
+ *   `describePasskeys` recopie champ par champ (`domain/passkey.ts`) ;
+ * - `counter` est le **compteur de signature** rendu par l'authentificateur.
+ *   `@simplewebauthn/server` refuse une assertion dont le compteur n'a pas
+ *   progressé — donc un rejeu, ou un clone resté en arrière — **à condition
+ *   que l'un des deux compteurs soit non nul**. Un authentificateur qui rend
+ *   toujours zéro, ce qui est le cas des passkeys synchronisées, n'est pas
+ *   protégé par cette garde, et aucune ligne de ce dépôt ne peut y changer
+ *   quelque chose ;
+ * - `aaguid` identifie un **modèle** d'authentificateur, jamais un appareil ni
+ *   une personne. Les plateformes soucieuses de vie privée y mettent zéro.
+ *
+ * **Pas d'`updatedAt`** : le greffon n'en déclare pas (`getAuthTables` le
+ * confirme, recherche §2.2), donc rien ne l'écrirait — une colonne que
+ * personne ne met à jour ment sur ce qu'elle promet.
+ *
+ * La clé étrangère reste **interne au module** (ADR 018), en cascade : un
+ * compte effacé emporte ses passkeys, ce qui est ce que
+ * `retention: account: erase` promet.
+ */
+export const authPasskey = pgTable(
+  'auth_passkey',
+  {
+    id: text('id').primaryKey(),
+    /** Le nom donné par la personne. `null` tant qu'elle n'en a pas donné. */
+    name: text('name'),
+    userId: text('user_id')
+      .notNull()
+      .references(() => authUser.id, { onDelete: 'cascade' }),
+    credentialID: text('credential_id').notNull(),
+    publicKey: text('public_key').notNull(),
+    counter: integer('counter').notNull().default(0),
+    deviceType: text('device_type').notNull(),
+    backedUp: boolean('backed_up').notNull().default(false),
+    transports: text('transports'),
+    aaguid: text('aaguid'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('auth_passkey_user_id_idx').on(table.userId),
+    // **Un justificatif, une ligne**, et c'est une garantie de la base et non
+    // du code : la bibliothèque résout une connexion par
+    // `findOne({ credentialID })`, et deux lignes portant le même identifiant
+    // rendraient cette résolution arbitraire. L'attestation `none` que le
+    // greffon demande n'empêche personne de présenter l'identifiant d'un
+    // autre : c'est ici que ça se ferme.
+    uniqueIndex('auth_passkey_credential_id_key').on(table.credentialID),
+  ],
+)
+
 /** Les tables du module, telles que le contrat les déclare. */
 export const authSchema = {
   authUser,
@@ -202,4 +265,5 @@ export const authSchema = {
   authAccount,
   authVerification,
   authTwoFactor,
+  authPasskey,
 } as const

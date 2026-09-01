@@ -1,4 +1,8 @@
-import type { DescribedSession, DescribedSignInMethod } from '@repo/module-auth'
+import type {
+  DescribedPasskey,
+  DescribedSession,
+  DescribedSignInMethod,
+} from '@repo/module-auth'
 import { permissionsOf } from '@repo/module-organizations'
 
 /**
@@ -142,6 +146,31 @@ export const FIXTURE_SIGN_IN_METHODS: readonly DescribedSignInMethod[] = [
     createdAt: FIXTURE_SESSION_CREATED_AT,
     removable: false,
   },
+]
+
+/**
+ * Les passkeys affichées par l'écran de compte (s14).
+ *
+ * Trois, et c'est le minimum utile : une nommée et déliable, une **sans nom**
+ * — le libellé de repli du catalogue passe alors sous le filet —, et une
+ * dernière non déliable, qui rend la mention du dernier moyen de connexion à la
+ * place du bouton. Une seule ligne laisserait deux de ces trois formes non
+ * rendues.
+ *
+ * `FIXTURE_PASSKEY_NAME` est **une donnée** : elle s'affiche telle quelle et ne
+ * vient d'aucun catalogue.
+ */
+export const FIXTURE_PASSKEY_NAME = 'MacBook de Alice'
+
+export const FIXTURE_PASSKEYS: readonly DescribedPasskey[] = [
+  {
+    id: 'pk_1',
+    name: FIXTURE_PASSKEY_NAME,
+    createdAt: FIXTURE_SESSION_CREATED_AT,
+    removable: true,
+  },
+  { id: 'pk_2', name: null, createdAt: FIXTURE_SESSION_CREATED_AT, removable: true },
+  { id: 'pk_3', name: null, createdAt: FIXTURE_SESSION_CREATED_AT, removable: false },
 ]
 
 /**

@@ -22,6 +22,7 @@
     "ks": "node packages/cli/bin/ks.mjs"
   },
   "devDependencies": {
+    "@better-auth/passkey": "1.7.2",
     "@playwright/test": "^1.62.1",
     "@repo/adapter-resend": "workspace:*",
     "@repo/cli": "workspace:*",

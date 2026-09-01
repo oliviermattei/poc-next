@@ -47,6 +47,20 @@ module (`packages/modules/<module>/src/domain`).
   et sans style en ligne, que la politique livrée par s45 refuse. Le secret
   TOTP ne quitte pas le processus : ni URL d'image, ni service tiers, ni appel
   réseau ;
+- `@simplewebauthn/browser` dans **`app/account/passkey-card.tsx` et
+  `app/sign-in/passkey-button.tsx` uniquement** (s14) : ce sont les deux seuls
+  endroits où le navigateur doit appeler `navigator.credentials`. Le paquet
+  n'apporte que trois choses, et chacune est une raison de ne pas la réécrire —
+  `browserSupportsWebAuthn()` (le critère 4 de s14 : l'option est masquée quand
+  le navigateur ne sait pas faire), et les deux cérémonies, qui encodent en
+  base64url le défi, les identifiants de justificatif et les trois champs de
+  réponse. C'est la **même version** que celle dont dépend le greffon serveur
+  (`@better-auth/passkey`), donc les deux moitiés du format binaire sont
+  écrites par le même auteur ; les réécrire à la main serait une seconde
+  implémentation dont la divergence ne se verrait qu'à l'exécution, dans un
+  navigateur. Le client `@better-auth/passkey/client`, lui, n'est **pas**
+  employé : il suppose la table de routes et les corps de réponse de Better
+  Auth, que le module réécrit tous les deux ;
 - `geist` dans les deux fichiers qui rendent un **document** — `app/layout.tsx`
   et `app/global-error.tsx`, ce dernier remplaçant le premier quand la racine
   échoue. Les deux polices sont chargées par `next/font`, donc servies par

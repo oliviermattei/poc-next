@@ -286,15 +286,21 @@ vérification au lieu de la destination demandée.
 C11). La première forme livrée *ajoutait* deux chemins au `matcher` : aucune
 commande ne rougissait le jour où une quatrième voie de connexion apparaissait,
 et s14 en monte une (`/passkey/verify-authentication`). Le crochet vaut donc
-partout, et `TWO_FACTOR_CHALLENGE_EXEMPT_PATHS` énumère les **cinq** chemins qui
+partout, et `TWO_FACTOR_CHALLENGE_EXEMPT_PATHS` énumère les **six** chemins qui
 ont le droit de poser une session sans défi : les trois points d'entrée de
 vérification du second facteur — s'en exempter est ce qui empêche la boucle —,
-plus `/get-session` et `/change-password`, qui font tourner la session d'un
-appelant **déjà authentifié** (les deux seuls points d'entrée que le module
-appelle par `auth.api.*`). Une exemption manquante échoue *fermée* : un défi de
+plus `/get-session`, `/change-password` et, depuis s14,
+`/passkey/verify-registration`, qui font tourner la session d'un appelant
+**déjà authentifié**. Une exemption manquante échoue *fermée* : un défi de
 trop, visible tout de suite. Une inclusion manquante échouait *ouvert*.
 
-La propriété tenue, mesurée sur les trois voies que l'application expose
+**Six exemptions, c'est ce qui a été balayé — pas un inventaire de ce que les
+bibliothèques exposent.** Ce balayage-ci : les points d'entrée du greffon
+`two-factor`, les deux appels `auth.api.*` du module, et l'enrôlement d'une
+passkey. Une septième se mesure comme les six : on la retire, et le cas qui la
+justifie doit rougir.
+
+La propriété tenue, mesurée sur les **quatre** voies que l'application expose
 aujourd'hui, et **maintenue par la forme de la garde** plutôt que par une liste
 à mettre à jour : *aucune session n'existe sur un compte à second facteur actif
 tant que le facteur n'a pas été présenté*. La commande qui le vérifie :
@@ -347,6 +353,142 @@ Bearer` — sur une route protégée du module et au résolveur de session. Mont
 `bearer` rend ce cas rouge, ce qui est exactement le moment où ce paragraphe
 doit être relu.
 
+## Les passkeys (s14)
+
+**Une passkey est un premier facteur, et c'est un ADR** (031). Un compte à
+second facteur actif qui se connecte par passkey est renvoyé à l'écran de
+vérification, exactement comme après un mot de passe. La raison est mesurée, pas
+choisie : `@better-auth/passkey@1.7.2` appelle
+`verifyRegistrationResponse` **et** `verifyAuthenticationResponse` avec
+`requireUserVerification: false`, en dur, sans option pour y toucher. Le drapeau
+`UV` est écrit par l'authentificateur et jamais exigé — une passkey prouve la
+**possession**, et rien de plus. `authenticatorSelection: { userVerification:
+'required' }` n'y changerait rien : c'est une préférence transmise au
+navigateur, que seule la vérification côté serveur peut rendre contraignante.
+**Le jour où le greffon expose cette option — ou l'exige par défaut —, c'est ce
+paragraphe et l'ADR 031 qu'il faut relire**, et la réponse s'écrira dans un ADR
+superséquent, jamais dans une ligne ajoutée à la liste d'exemptions.
+
+**Quatre points d'entrée déclarés sur sept.** Le greffon en expose sept ; les
+trois autres répondent 404 sans atteindre la bibliothèque, et chacun a sa
+raison, mesurée dans le paquet :
+
+- `list-user-passkeys` rend la **ligne entière** — `publicKey`, `credentialID`,
+  `counter`, `aaguid`. Le module énumère ses colonnes depuis s07 ; l'écran lit
+  la liste par un cas d'usage, et `describePasskeys` recopie champ par champ ;
+- `delete-passkey` **compte puis supprime hors transaction**
+  (`api/routes/account.mjs`), et ne connaît pas la règle du dernier moyen de
+  connexion. Même défaut, même correctif que le déliement de s12 ;
+- `update-passkey` monte `requireResourceOwnership` avec
+  `notFoundError: PASSKEY_NOT_FOUND` **et** `forbiddenStatus: "UNAUTHORIZED"` :
+  un identifiant inconnu et celui d'un autre compte ne rendent donc pas la même
+  chose. C'est un oracle d'existence, et `docs/security.md` §3 demande
+  l'inverse. Les routes du module (`/passkey/rename`, `/passkey/revoke`)
+  répondent **404 dans les deux cas**.
+
+Ces trois-là sont nommés un par un dans `tests/auth.test.ts`, interrogés **avec
+une session valide** : ce qui répond 404 n'y est pas une protection, c'est une
+route qui n'existe pas.
+
+**Où `credentialID` sort malgré tout, et pourquoi la règle s'arrête là.** Ce que
+le module tient, c'est que `credentialID` ne parte **pas vers un écran** :
+`describePasskeys` ne le recopie pas, et c'est une des raisons pour lesquelles
+`list-user-passkeys` n'est pas déclarée. La règle n'est pas plus large que cela.
+`/passkey/generate-authenticate-options`, elle, est **publique** et traversée
+avec les cookies : quand une session existe, le greffon charge les justificatifs
+par `session.user.id` et rend un `allowCredentials` qui **contient** leurs
+`credentialID` (`dist/index.mjs`, lignes 264-283). WebAuthn en a besoin — un
+justificatif non découvrable ne se présente que si on le nomme —, et ce que
+l'appelant reçoit est ce qu'il détient déjà : aucun compte n'apprend rien d'un
+autre, aucune adresse n'entre dans la requête. Écrire ici « `credentialID` ne
+quitte jamais le serveur » rendrait ce point d'entrée lisible comme une
+violation, et l'agent suivant le contournerait au lieu de le comprendre.
+
+**L'origine attendue est posée, jamais lue dans la requête.** Sans `origin`
+explicite, `opts.origin` vaut `null` et les deux vérifications prennent
+l'origine attendue dans `ctx.headers.get("origin")` — une valeur que l'appelant
+écrit. La comparaison `clientDataJSON.origin === expectedOrigin` devient alors
+une chaîne du client contre une autre chaîne du client, et ne peut plus
+échouer. Mesuré : retirer `origin: appUrl` rend rouge le cas qui présente une
+assertion produite pour `https://evil.test` **avec** l'en-tête `Origin`
+correspondant. `rpID` est écrit aussi, et le retirer ne fait rougir aucun cas :
+ce n'est pas un trou de couverture, c'est une propriété du montage.
+`getRpID(options, baseURL)` retombe sur l'hôte de `baseURL`, et ce module
+**épingle** `baseURL` à `APP_URL` (`better-auth-service.ts`) — le repli calcule
+donc la même valeur épinglée, pas une valeur devinée. Le vrai repli de la
+bibliothèque (`getBaseURL` sur l'en-tête `Host` et les en-têtes de proxy,
+`better-auth/dist/auth/base.mjs`) ne s'arme que si `baseURL` **disparaît**, ce
+qui casserait du même coup `trustedOrigins`, les liens envoyés par email et les
+URI de rappel OAuth. Ce qui mord, ici, est la vérification du `rpIdHash` : elle
+a ses cas, et `rpID: 'evil.test'` en rougit dix-sept.
+
+**Changer l'hôte d'`APP_URL` invalide toutes les passkeys déjà enregistrées.**
+C'est la seule surprise de production que s14 installe, et elle n'a ni message
+ni migration : le `rpID` est scellé **dans le justificatif** par
+l'authentificateur au moment de l'enrôlement, et une cérémonie dont le `rpId`
+attendu a changé est refusée par le navigateur avant même d'atteindre le
+serveur. Passer de `example.com` à `app.example.com` — ou l'inverse, ou vers un
+autre domaine — casse donc silencieusement la connexion par passkey de tout le
+monde. Ce qu'il faut faire quand cela arrive :
+
+- prévenir **avant** de déplacer le domaine, et rappeler que l'autre moyen de
+  connexion existe toujours : la règle du dernier moyen garantit qu'il en reste
+  un (mot de passe, lien de connexion ou compte externe) ;
+- faire **réenregistrer** une passkey depuis le nouvel hôte ; les anciennes
+  lignes restent en base sans jamais pouvoir servir, et se révoquent depuis
+  l'écran de compte ;
+- ne pas « rattraper » en figeant l'ancien `rpID` : il doit rester un suffixe
+  enregistrable de l'origine servie, donc le mensonge ne tient que si le nouvel
+  hôte est un sous-domaine de l'ancien — et le navigateur refuse le reste.
+
+**Ce que le compteur de signature détecte, et ce qu'il ne détecte pas.**
+`@simplewebauthn/server@13.3.3` refuse une assertion dont le compteur n'a pas
+progressé — donc un rejeu, ou un clone resté en arrière — **à condition** que
+l'un des deux compteurs soit non nul :
+`if ((counter > 0 || credential.counter > 0) && counter <= credential.counter)`.
+Un authentificateur qui rend toujours zéro, ce qui est le cas de la plupart des
+passkeys synchronisées, n'est **pas** protégé, et aucune ligne de ce dépôt ne
+peut y changer quelque chose. Les deux branches ont leur cas : une assertion à
+compteur décroissant refusée, une assertion à compteur nul acceptée deux fois.
+Écrire « le clonage est détecté » serait faux pour l'authentificateur le plus
+répandu.
+
+**La règle du dernier moyen de connexion n'a pas été dupliquée.**
+`canUnlinkSignInMethod` (`domain/oauth.ts`) est toujours la seule ; ce qui a
+changé est son **entrée**, qui compte désormais `auth_account` **et**
+`auth_passkey`. Les deux tables sont verrouillées dans le **même ordre** —
+comptes puis passkeys, `lockSignInMethods` — par le déliement d'un compte comme
+par la révocation d'une passkey : deux retraits croisés qui prendraient les
+verrous en sens inverse se bloqueraient l'un l'autre. Le cas de concurrence
+lance les deux retraits ensemble et exige qu'un seul passe.
+
+**L'enrôlement fait tourner la session, et l'ancienne meurt.**
+`createSession: true` est **imposé** par la route, jamais lu du corps du client
+— le laisser décider reviendrait à lui laisser désarmer la rotation que
+`docs/security.md` §2 exige. Mais `internalAdapter.createSession` **ajoute** une
+ligne, il n'efface pas la précédente : la route révoque donc explicitement la
+session de l'appelant, lue avant l'appel. Sans cette révocation, l'ancien
+identifiant resterait valable et la « rotation » n'en serait pas une — mesuré,
+2 cas rouges.
+
+**Aucun appel réseau sortant.** La vérification WebAuthn est de la
+cryptographie locale : balayé sur `dist/index.mjs` du greffon et sur `esm/` de
+`@simplewebauthn/server`, aucun `fetch`, aucun `betterFetch`. La porte bornée du
+module (`oauth-outbound.ts`) n'a rien de neuf à couvrir, et une passkey
+fonctionne en local **sans aucune clé de fournisseur** — il n'y a pas de
+fournisseur (`docs/reliability.md` §2).
+
+**Un justificatif, une ligne.** `auth_passkey.credential_id` porte un index
+**unique** : la bibliothèque résout une connexion par `findOne({ credentialID })`,
+et deux lignes de même identifiant rendraient cette résolution arbitraire.
+L'attestation `none` que le greffon demande n'empêche personne de présenter
+l'identifiant d'un autre ; c'est la base qui ferme.
+
+**Ce que le module ne fait pas, et qu'il ne faut pas croire fait :**
+l'interface conditionnelle (`autocomplete="webauthn"` et `useBrowserAutofill`)
+n'est pas livrée — le bouton de `/sign-in` est explicite. Un attribut
+`autocomplete="webauthn"` posé sans l'appel qui l'arme ne fait rien du tout.
+
 ## Ce que la bibliothèque fait déjà bien, et qu'il ne faut pas réécrire
 
 Mesuré dans le paquet **installé** (1.7.2), sur les quatre points regardés :
@@ -364,6 +506,11 @@ un inventaire de ce que la bibliothèque garantit.
 - `@repo/core` pour le contrat de module, le préfixe de montage et la session ;
 - `@repo/ports` pour le port `Mailer` — jamais un client d'email ;
 - `better-auth` dans `infrastructure/` **uniquement** ;
+- `@better-auth/passkey` dans `infrastructure/` **uniquement**, et dans le seul
+  fichier qui monte les greffons (s14). Le greffon officiel, épinglé à la même
+  version que la bibliothèque ; son sous-chemin `/client` n'est jamais importé
+  ici — il appartient au navigateur, et `apps/web` l'écarte au profit de
+  `@simplewebauthn/browser` ;
 - `drizzle-orm` dans `src/schema.ts` et dans `infrastructure/` uniquement ;
 - `zod` pour la validation, y compris dans `domain/` où c'est la seule
   bibliothèque tierce admise ;
@@ -399,9 +546,10 @@ pourquoi le service de la bibliothèque est déclaré comme un **port** dans
   refus qui varie ;
 - de constante de politique en dur : longueurs de mot de passe et durées de vie
   des liens vivent dans `AuthPolicy`, injectée au point de composition ;
-- de passkey : c'est s14. **Le second facteur est livré (s13)**, voir plus bas ;
-  **OAuth est livré (s12)** ; ce qui reste hors du module est la liaison
-  explicite depuis les paramètres (`/link-social`, non déclarée, donc 404) ;
+- **Les passkeys sont livrées (s14)**, le second facteur aussi (s13), OAuth
+  aussi (s12) — les trois sections plus bas. Ce qui reste hors du module est la
+  liaison explicite depuis les paramètres (`/link-social`, non déclarée, donc
+  404) ;
 - de **lecture d'une variable d'environnement** : les identifiants de
   fournisseur sont **reçus** du point de composition, comme la connexion et le
   mailer. Une paire incomplète a déjà arrêté le démarrage, en nommant la
@@ -421,4 +569,13 @@ pourquoi le service de la bibliothèque est déclaré comme un **port** dans
   vérification. Ce qu'aucun test de nœud n'y voit — le **secret affiché à
   l'écran** est celui qui vérifie le code, le parcours le lit dans la page au
   lieu de le recevoir d'une API ; et le formulaire de connexion **va** à
-  l'écran de vérification au lieu du tableau de bord.
+  l'écran de vérification au lieu du tableau de bord ;
+- `e2e/passkeys.spec.ts` (s14) : la cérémonie **réelle** du navigateur, avec
+  l'authentificateur virtuel de Chrome (CDP `WebAuthn.addVirtualAuthenticator`).
+  Ce qu'aucun test de nœud n'y voit — la liaison entre le bouton et
+  `navigator.credentials`, et le fait que le bouton **n'existe pas** quand le
+  navigateur ne sait pas faire de WebAuthn. Les cérémonies de
+  `tests/auth.test.ts`, elles, sont fabriquées par
+  `tests/fixtures/webauthn.ts` : cette doublure remplace **l'authentificateur,
+  jamais le vérificateur**, et ne dit rien de ce qu'un navigateur accepte de
+  produire.

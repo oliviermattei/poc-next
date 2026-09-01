@@ -1,6 +1,7 @@
 import type { Mailer, SendEmailResult } from '@repo/ports'
 
 import type { AuthPolicy } from '../domain/auth-policy'
+import type { StoredPasskey } from '../domain/passkey'
 import type { SecurityEventRecord } from '../domain/security-event'
 import type { StoredSession } from '../domain/session'
 
@@ -109,6 +110,50 @@ export interface AuthAccountRepository {
   }): Promise<UnlinkOutcome>
 }
 
+/** Ce que rend une révocation de passkey. Trois issues, et l'appelant les traduit. */
+export type PasskeyRevocationOutcome = 'revoked' | 'not_found' | 'last-method'
+
+/**
+ * Les passkeys d'un compte (s14).
+ *
+ * Le module possède **la lecture, le renommage et la révocation** ; le greffon
+ * garde l'enrôlement et la vérification, qui sont de la cryptographie. Les
+ * trois points d'entrée que le greffon offre pour ces opérations ne sont pas
+ * déclarés, et chacun a sa raison (`packages/modules/auth/AGENTS.md`) : le
+ * premier rend la ligne entière, le deuxième compte puis supprime hors
+ * transaction, le troisième distingue « inconnue » de « pas à vous ».
+ */
+export interface AuthPasskeyRepository {
+  /** Les passkeys du compte, **sans clé publique ni identifiant de justificatif**. */
+  listForUser(userId: string): Promise<readonly StoredPasskey[]>
+  /** Combien ce compte en a. Employé par la règle du dernier moyen de connexion. */
+  countForUser(userId: string): Promise<number>
+  /**
+   * Renomme **une** passkey, à condition qu'elle appartienne à ce compte.
+   *
+   * Le propriétaire est dans la condition, jamais vérifié avant : l'appelant ne
+   * peut pas distinguer « pas à vous » de « n'existe pas ».
+   */
+  renameForUser(input: {
+    readonly userId: string
+    readonly passkeyId: string
+    readonly name: string
+  }): Promise<boolean>
+  /**
+   * Révoque **une** passkey, à condition qu'elle appartienne à ce compte et
+   * qu'il reste un moyen de connexion après elle.
+   *
+   * Les deux conditions sont tenues **dans la même transaction, sur les lignes
+   * verrouillées des deux tables** — passkeys et comptes. Compter puis
+   * supprimer laisserait deux retraits simultanés observer « il en reste
+   * deux » et retirer chacun le sien (`docs/reliability.md` §1).
+   */
+  revokeForUser(input: {
+    readonly userId: string
+    readonly passkeyId: string
+  }): Promise<PasskeyRevocationOutcome>
+}
+
 export interface VerificationToken {
   readonly identifier: string
   readonly value: string
@@ -184,6 +229,7 @@ export interface AuthDependencies {
   readonly users: AuthUserRepository
   readonly sessions: AuthSessionRepository
   readonly accounts: AuthAccountRepository
+  readonly passkeys: AuthPasskeyRepository
   readonly tokens: VerificationTokenRepository
   readonly tokenFactory: TokenFactory
   readonly mailer: Mailer

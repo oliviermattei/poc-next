@@ -13,6 +13,7 @@ export { authModule } from './module'
 export {
   authSchema,
   authAccount,
+  authPasskey,
   authSession,
   authTwoFactor,
   authUser,
@@ -43,6 +44,11 @@ export { safeRedirectPath } from './domain/redirect'
 export {
   type TwoFactorFailureClass,
 } from './domain/two-factor'
+export {
+  PASSKEY_NAME_MAX_LENGTH,
+  type DescribedPasskey,
+  type PasskeyFailureClass,
+} from './domain/passkey'
 export { authRoutePath } from './presentation/auth-routes'
 export {
   AUTH_EMAIL_TEMPLATES,

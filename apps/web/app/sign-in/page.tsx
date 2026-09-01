@@ -4,6 +4,7 @@ import { authRoutePath, readOAuthFailureClass, safeRedirectPath } from '../../li
 import { appIntl } from '../../lib/i18n'
 import { AuthForm } from '../auth-form'
 import { OAuthProviderButtons } from '../oauth-buttons'
+import { PasskeyButton } from './passkey-button'
 
 /**
  * L'écran de connexion.
@@ -46,6 +47,12 @@ export default async function SignInPage({
   // l'échec générique, au lieu de renseigner un visiteur sur l'existence d'un
   // compte (`docs/security.md` §7).
   const oauthFailure = params.oauth === undefined ? null : readOAuthFailureClass(params.oauth)
+  // La destination de l'écran de vérification, écrite **une fois** : le
+  // formulaire de mot de passe et le bouton de passkey mènent au même endroit
+  // quand un second facteur attend (ADR 031).
+  const twoFactorDestination = `${path('/two-factor')}?next=${encodeURIComponent(
+    safeRedirectPath(next, '/'),
+  )}`
 
   return (
     <main>
@@ -70,6 +77,20 @@ export default async function SignInPage({
         </Alert>
       )}
 
+      {/*
+        La passkey en premier : c'est le moyen le plus rapide quand il est
+        disponible, et le placer en bas en ferait un dernier recours. Aucune
+        adresse n'est demandée — le point d'entrée du serveur ne prend aucun
+        paramètre (`docs/security.md` §7). Le bouton n'est rendu que si le
+        navigateur sait faire ; sinon, tout ce qui suit reste servi.
+      */}
+      <PasskeyButton
+        optionsAction={authRoutePath('passkeyAuthenticateOptions')}
+        verifyAction={authRoutePath('passkeyAuthenticate')}
+        destination={destination}
+        twoFactorDestination={twoFactorDestination}
+      />
+
       <OAuthProviderButtons next={next === null ? undefined : safeRedirectPath(next, '/')} />
 
       <AuthForm
@@ -89,9 +110,7 @@ export default async function SignInPage({
         // le second facteur n'est pas une escale qui fait oublier où on allait.
         // Elle repasse par la même règle de liste blanche là-bas — cet écran
         // n'est pas le seul à filtrer.
-        twoFactorRedirectTo={`${path('/two-factor')}?next=${encodeURIComponent(
-          safeRedirectPath(next, '/'),
-        )}`}
+        twoFactorRedirectTo={twoFactorDestination}
       />
 
       <h2>{t('app.signIn.magicLink.title')}</h2>

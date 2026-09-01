@@ -124,6 +124,22 @@ type HookContext = Parameters<AfterHook['matcher']>[0]
  * de nom et d'adresse passent par ses propres cas d'usage. Les monter un jour
  * sans les exempter donnerait un défi de trop, visible immédiatement ; c'est le
  * sens de l'échec qu'on veut.
+ *
+ * **La sixième est arrivée avec s14**, et elle appartient à la seconde famille.
+ * `/passkey/verify-registration` fait tourner la session d'un appelant déjà
+ * authentifié — c'est ce que `createSession: true` demande, et c'est la
+ * rotation à l'élévation de privilège que `docs/security.md` §2 exige. Sans
+ * exemption, mesuré : un compte protégé perdait sa session **en enregistrant
+ * une passkey**, au milieu de ses paramètres. Elle ne peut ouvrir aucune
+ * session — la route est déclarée `authenticated`, le greffon y monte
+ * `freshSessionMiddleware`, et il refuse si le compte résolu n'est pas celui de
+ * la session.
+ *
+ * **`/passkey/verify-authentication`, lui, n'est pas exempté** (ADR 031) :
+ * c'est une voie de connexion, et une passkey de ce montage prouve la
+ * possession et rien de plus — le greffon vérifie avec
+ * `requireUserVerification: false`, en dur. Il traverse donc le crochet comme
+ * `/sign-in/email`, et le cas canari ci-dessous le nomme.
  */
 export const TWO_FACTOR_CHALLENGE_EXEMPT_PATHS = {
   '/two-factor/verify-totp': 'la vérification du second facteur elle-même',
@@ -131,6 +147,8 @@ export const TWO_FACTOR_CHALLENGE_EXEMPT_PATHS = {
   '/two-factor/verify-otp': 'la vérification du second facteur elle-même (non monté)',
   '/get-session': 'renouvellement du cookie d’une session déjà authentifiée',
   '/change-password': 'rotation de session après la preuve du mot de passe courant',
+  '/passkey/verify-registration':
+    'rotation de session à l’enrôlement d’une passkey, sur un appelant déjà authentifié',
 } as const
 
 /**
@@ -141,7 +159,7 @@ export const TWO_FACTOR_CHALLENGE_EXEMPT_PATHS = {
  * pas d'une table de libellés, et un événement au nom générique vaut mieux
  * qu'une session ouverte.
  */
-export type ChallengedSignInMethod = 'magic_link' | 'oauth' | 'other'
+export type ChallengedSignInMethod = 'magic_link' | 'oauth' | 'passkey' | 'other'
 
 /**
  * Ce que le journal écrit pour un chemin donné, `null` quand la route du module
@@ -156,6 +174,7 @@ const CHALLENGE_JOURNAL: Readonly<Record<string, ChallengedSignInMethod | null>>
   '/sign-in/email': null,
   '/magic-link/verify': 'magic_link',
   '/callback/:id': 'oauth',
+  '/passkey/verify-authentication': 'passkey',
 }
 
 const challengedMethod = (path: string | undefined): ChallengedSignInMethod | null =>

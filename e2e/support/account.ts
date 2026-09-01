@@ -102,7 +102,10 @@ export const signUp = async (page: Page, email: string): Promise<void> => {
 export const signIn = async (page: Page, email: string, password = PASSWORD): Promise<void> => {
   await page.getByLabel('Adresse email', { exact: true }).fill(email)
   await page.getByLabel('Mot de passe').fill(password)
-  await page.getByRole('button', { name: 'Se connecter' }).click()
+  // `exact` depuis s14 : l'écran porte aussi « Se connecter avec une passkey »,
+  // et une correspondance partielle en désignerait deux — Playwright refuse
+  // alors de cliquer, sur **tous** les parcours qui passent par ici.
+  await page.getByRole('button', { name: 'Se connecter', exact: true }).click()
 }
 
 /**

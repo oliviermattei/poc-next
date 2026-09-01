@@ -2,6 +2,7 @@ import { MODULE_ROUTE_PREFIX, type ModuleExportPayload, type ModuleScope } from 
 import type { SendEmailResult } from '@repo/ports'
 
 import { canUnlinkSignInMethod } from '../domain/oauth'
+import { describePasskeys, type DescribedPasskey } from '../domain/passkey'
 import { describeSecurityEvent } from '../domain/security-event'
 import { describeSessions, type DescribedSession } from '../domain/session'
 import {
@@ -9,7 +10,7 @@ import {
   tokenIdentifierPrefix,
   type TokenPurpose,
 } from '../domain/one-time-token'
-import type { AuthDependencies, UnlinkOutcome } from './ports'
+import type { AuthDependencies, PasskeyRevocationOutcome, UnlinkOutcome } from './ports'
 
 /**
  * Un moyen de connexion, tel qu'un écran de paramètres l'affiche.
@@ -153,6 +154,19 @@ export interface AuthUseCases {
     readonly userId: string
     readonly accountId: string
   }): Promise<UnlinkOutcome>
+  /** Les passkeys du compte, sans clé publique ni identifiant de justificatif (s14). */
+  listPasskeys(userId: string): Promise<readonly DescribedPasskey[]>
+  /** Renomme une passkey **du compte appelant**. `false` quand elle n'est pas à lui. */
+  renamePasskey(input: {
+    readonly userId: string
+    readonly passkeyId: string
+    readonly name: string
+  }): Promise<boolean>
+  /** Révoque une passkey **du compte appelant**, jamais le dernier moyen de connexion. */
+  revokePasskey(input: {
+    readonly userId: string
+    readonly passkeyId: string
+  }): Promise<PasskeyRevocationOutcome>
   purgeAccount(scope: ModuleScope): Promise<void>
   exportAccount(scope: ModuleScope): Promise<ModuleExportPayload>
   log: AuthDependencies['log']
@@ -166,6 +180,7 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
     users,
     sessions,
     accounts,
+    passkeys,
     tokens,
     tokenFactory,
     mailer,
@@ -457,9 +472,50 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
       // La règle est **une seule** : celle du `domain`. L'écran la reçoit déjà
       // appliquée, il ne la rejoue pas — et le repository la réapplique sous
       // verrou au moment de supprimer.
-      const removable = canUnlinkSignInMethod(methods.length)
+      //
+      // Depuis s14, son entrée compte **aussi les passkeys** : une passkey est
+      // un moyen de connexion, et un compte qui n'a qu'un fournisseur plus une
+      // passkey doit pouvoir retirer l'un des deux. Aucune seconde règle n'a
+      // été écrite ; c'est la même, mieux renseignée.
+      const removable = canUnlinkSignInMethod(methods.length + (await passkeys.countForUser(userId)))
 
       return methods.map((method) => ({ ...method, removable }))
+    },
+
+    listPasskeys: async (userId) => {
+      const stored = await passkeys.listForUser(userId)
+      const removable = canUnlinkSignInMethod(
+        stored.length + (await accounts.listForUser(userId)).length,
+      )
+
+      return describePasskeys(stored, { removable })
+    },
+
+    renamePasskey: async ({ userId, passkeyId, name }) => {
+      const renamed = await passkeys.renameForUser({ userId, passkeyId, name })
+
+      log(
+        describeSecurityEvent({
+          event: renamed ? 'auth.passkey_renamed' : 'auth.passkey_rename_refused',
+          actor: { userId },
+        }),
+      )
+
+      return renamed
+    },
+
+    revokePasskey: async ({ userId, passkeyId }) => {
+      const outcome = await passkeys.revokeForUser({ userId, passkeyId })
+
+      log(
+        describeSecurityEvent({
+          event: outcome === 'revoked' ? 'auth.passkey_revoked' : 'auth.passkey_revoke_refused',
+          actor: { userId },
+          details: { outcome },
+        }),
+      )
+
+      return outcome
     },
 
     unlinkSignInMethod: async ({ userId, accountId }) => {

@@ -31,6 +31,13 @@ import {
   twoFactorRefusal,
   TWO_FACTOR_REFUSAL_STATUS,
 } from './two-factor'
+import {
+  describePasskeys,
+  parsePasskeyName,
+  passkeyRefusal,
+  PASSKEY_NAME_MAX_LENGTH,
+  PASSKEY_REFUSAL_STATUS,
+} from './passkey'
 
 /**
  * Les règles pures du module d'authentification, éprouvées là où elles vivent.
@@ -600,5 +607,101 @@ describe('refus d’une vérification de second facteur', () => {
 
   it('laisse passer une réponse qui n’est pas un refus', () => {
     expect(twoFactorRefusal(200)).toBeNull()
+  })
+})
+
+describe('nom d’une passkey', () => {
+  it('rend `null` quand aucun nom n’est donné : une passkey sans nom est légitime', () => {
+    // L'enregistrement n'en demande pas — la cérémonie part d'un clic, pas
+    // d'un formulaire. Le nom vient ensuite, par le renommage.
+    expect(parsePasskeyName({})).toBeNull()
+    expect(parsePasskeyName({ name: undefined })).toBeNull()
+  })
+
+  it('rogne le nom donné', () => {
+    expect(parsePasskeyName({ name: '  MacBook  ' })).toBe('MacBook')
+  })
+
+  it('refuse un nom vide, blanc, trop long, ou qui n’est pas une chaîne', () => {
+    for (const name of ['', '   ', 'x'.repeat(PASSKEY_NAME_MAX_LENGTH + 1), 42, null]) {
+      expect(() => parsePasskeyName({ name })).toThrow(InvalidCredentialsError)
+    }
+
+    expect(parsePasskeyName({ name: 'x'.repeat(PASSKEY_NAME_MAX_LENGTH) })).toHaveLength(
+      PASSKEY_NAME_MAX_LENGTH,
+    )
+  })
+})
+
+describe('refus d’une opération de passkey', () => {
+  it('distingue la session trop ancienne du reste, au même statut', () => {
+    // Mesuré dans `better-auth@1.7.2` : `freshSessionMiddleware` rend `403`
+    // (`SESSION_NOT_FRESH`) quand la session dépasse `freshAge`, et `401`
+    // quand il n'y en a pas. La conduite à tenir n'est pas la même — se
+    // reconnecter, ou réessayer — mais le statut rendu, si.
+    expect(passkeyRefusal(403)?.body.error).toBe('stale')
+
+    for (const status of [400, 401, 429, 500]) {
+      expect(passkeyRefusal(status)?.body.error).toBe('refused')
+    }
+
+    for (const status of [400, 401, 403, 429, 500]) {
+      expect(passkeyRefusal(status)?.status).toBe(PASSKEY_REFUSAL_STATUS)
+    }
+  })
+
+  it('ne laisse sortir aucun code de la bibliothèque', () => {
+    const refusals = [400, 401, 403, 500].map((status) => JSON.stringify(passkeyRefusal(status)))
+
+    for (const code of [
+      'PASSKEY_NOT_FOUND',
+      'CHALLENGE_NOT_FOUND',
+      'AUTHENTICATION_FAILED',
+      'FAILED_TO_VERIFY_REGISTRATION',
+      'SESSION_NOT_FRESH',
+      'YOU_ARE_NOT_ALLOWED_TO_REGISTER_THIS_PASSKEY',
+    ]) {
+      for (const refusal of refusals) {
+        expect(refusal).not.toContain(code)
+      }
+    }
+  })
+
+  it('laisse passer une réponse qui n’est pas un refus', () => {
+    expect(passkeyRefusal(200)).toBeNull()
+  })
+})
+
+describe('liste des passkeys', () => {
+  const row = {
+    id: 'pk-1',
+    name: 'MacBook',
+    createdAt: new Date('2026-09-01T09:12:00.000Z'),
+    // Ce que la ligne porte **en plus**, et qui n'a rien à faire à l'écran.
+    credentialID: 'Y3JlZGVudGlhbA',
+    publicKey: 'cHVibGljLWtleQ',
+    counter: 7,
+  }
+
+  it('recopie champ par champ : ni clé publique, ni identifiant de justificatif, ni compteur', () => {
+    const [described] = describePasskeys([row], { removable: true })
+
+    expect(Object.keys(described ?? {}).sort()).toEqual(['createdAt', 'id', 'name', 'removable'])
+    expect(JSON.stringify(described)).not.toContain(row.publicKey)
+    expect(JSON.stringify(described)).not.toContain(row.credentialID)
+  })
+
+  it('porte la règle déjà décidée, elle ne la rejoue pas', () => {
+    expect(describePasskeys([row], { removable: false })[0]?.removable).toBe(false)
+    expect(describePasskeys([row], { removable: true })[0]?.removable).toBe(true)
+  })
+
+  it('rend la plus récente en tête', () => {
+    const older = { ...row, id: 'pk-0', createdAt: new Date('2026-08-01T09:12:00.000Z') }
+
+    expect(describePasskeys([older, row], { removable: true }).map((one) => one.id)).toEqual([
+      'pk-1',
+      'pk-0',
+    ])
   })
 })

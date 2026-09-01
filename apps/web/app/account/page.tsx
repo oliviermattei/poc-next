@@ -12,6 +12,7 @@ import { redirect } from 'next/navigation'
 
 import {
   authRoutePath,
+  currentPasskeys,
   currentSessions,
   currentSignInMethods,
   currentViewer,
@@ -20,6 +21,7 @@ import { appIntl } from '../../lib/i18n'
 import { SignOutButton } from '../sign-out-button'
 import { AccountForm } from './account-form'
 import { ConnectionList, type ConnectionRow } from './connection-list'
+import { PasskeyCard, type PasskeyRow } from './passkey-card'
 import { SessionList, type SessionRow } from './session-list'
 import { TwoFactorBadge, TwoFactorCard } from './two-factor-card'
 
@@ -89,6 +91,12 @@ export default async function AccountPage() {
     providerId: method.providerId,
     addedAt: dateFormat.format(method.createdAt),
     removable: method.removable,
+  }))
+  const passkeys: readonly PasskeyRow[] = (await currentPasskeys()).map((passkey) => ({
+    id: passkey.id,
+    name: passkey.name,
+    addedAt: dateFormat.format(passkey.createdAt),
+    removable: passkey.removable,
   }))
   const sessions: readonly SessionRow[] = (await currentSessions()).map((active) => ({
     id: active.id,
@@ -197,6 +205,28 @@ export default async function AccountPage() {
           <ConnectionList
             connections={connections}
             action={authRoutePath('unlinkProvider')}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('app.account.passkeys.title')}</CardTitle>
+          <CardDescription>{t('app.account.passkeys.description')}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {/*
+            La liste vient du **serveur** ; le bouton d'enregistrement, lui,
+            n'existe que dans un navigateur qui sait faire du WebAuthn — une
+            cérémonie ne peut pas naître d'une soumission de formulaire. Voir
+            `passkey-card.tsx`.
+          */}
+          <PasskeyCard
+            passkeys={passkeys}
+            optionsAction={authRoutePath('passkeyRegisterOptions')}
+            registerAction={authRoutePath('passkeyRegister')}
+            renameAction={authRoutePath('passkeyRename')}
+            revokeAction={authRoutePath('passkeyRevoke')}
           />
         </CardContent>
       </Card>

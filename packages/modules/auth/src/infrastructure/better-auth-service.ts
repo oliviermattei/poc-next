@@ -5,6 +5,7 @@ import { betterAuth } from 'better-auth/minimal'
 import { genericOAuth } from 'better-auth/plugins/generic-oauth'
 import { magicLink } from 'better-auth/plugins/magic-link'
 import { twoFactor } from 'better-auth/plugins/two-factor'
+import { passkey } from '@better-auth/passkey'
 import { createOTP } from '@better-auth/utils/otp'
 import { symmetricDecrypt } from 'better-auth/crypto'
 import { createHmac } from 'node:crypto'
@@ -34,10 +35,18 @@ import {
 import { describeSecurityEvent } from '../domain/security-event'
 import { tokenIdentifier } from '../domain/one-time-token'
 import { sessionOf } from '../domain/session'
-import { authAccount, authSession, authTwoFactor, authUser, authVerification } from '../schema'
+import {
+  authAccount,
+  authPasskey,
+  authSession,
+  authTwoFactor,
+  authUser,
+  authVerification,
+} from '../schema'
 import { consoleSecurityLog } from './console-security-log'
 import {
   createDrizzleAuthAccountRepository,
+  createDrizzleAuthPasskeyRepository,
   createDrizzleAuthSessionRepository,
   createDrizzleAuthUserRepository,
   createDrizzleTwoFactorRepository,
@@ -179,6 +188,15 @@ export const AUTH_MODELS = {
    * **nom de modèle** littéral `"twoFactor"` à l'adapter, mesuré dans 1.7.2.
    */
   twoFactor: { modelName: 'auth_two_factor' },
+  /**
+   * Les passkeys (s14). Comme le second facteur, c'est le greffon qui le
+   * déclare — `schema.passkey.modelName` —, et ses sept points d'entrée passent
+   * le **nom de modèle** littéral `"passkey"` à l'adapter. Ce greffon
+   * n'ajoute **aucune** colonne aux quatre tables du socle : ni sur
+   * `auth_user`, ni sur `auth_session`. C'est ce qui le distingue du greffon
+   * `organization`, écarté par l'ADR 025 pour la raison inverse.
+   */
+  passkey: { modelName: 'auth_passkey' },
 } as const
 
 /**
@@ -236,6 +254,7 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
     users: createDrizzleAuthUserRepository(options.db),
     sessions: createDrizzleAuthSessionRepository(options.db),
     accounts: createDrizzleAuthAccountRepository(options.db),
+    passkeys: createDrizzleAuthPasskeyRepository(options.db),
     tokens: createDrizzleVerificationTokenRepository(options.db, now),
     tokenFactory,
     mailer: options.mailer,
@@ -383,6 +402,7 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
         [AUTH_MODELS.account.modelName]: authAccount,
         [AUTH_MODELS.verification.modelName]: authVerification,
         [AUTH_MODELS.twoFactor.modelName]: authTwoFactor,
+        [AUTH_MODELS.passkey.modelName]: authPasskey,
       },
       // La consommation atomique d'un jeton s'exécute dans une transaction :
       // sans cela, deux clics simultanés sur le même lien passent tous les deux.
@@ -623,6 +643,60 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
               details: { method },
             }),
           ),
+      }),
+      /**
+       * **Les passkeys** (s14), et les trois valeurs qui ne sont pas héritées
+       * d'un défaut.
+       *
+       * - `origin` — **la seule qui ferme une brèche**. Sans elle,
+       *   `opts.origin` vaut `null` et les deux vérifications prennent
+       *   l'origine attendue dans `ctx.headers.get("origin")`, c'est-à-dire
+       *   dans une valeur que l'appelant écrit : la comparaison
+       *   `clientDataJSON.origin === expectedOrigin` devient une chaîne du
+       *   client contre une autre chaîne du client, et ne peut plus échouer.
+       *   `docs/security.md` §4 veut une liste blanche, jamais un paramètre
+       *   non validé — ici, l'URL publique de l'application, la même que
+       *   `trustedOrigins` ;
+       * - `rpID` — l'hôte de cette même URL. C'est déjà ce que
+       *   `getRpID(options, baseURL)` calcule par défaut, donc l'écrire ne
+       *   ferme rien aujourd'hui : c'est un défaut épinglé, comme les trois
+       *   lignes d'`accountLinking` de s12. Le retirer ne fait rougir aucun
+       *   cas, et la raison n'est pas « la bibliothèque devine juste » : ce
+       *   fichier **épingle** `baseURL` à `appUrl` (plus haut), et le repli lit
+       *   `baseURL`. Le vrai repli de la bibliothèque — l'en-tête `Host` et les
+       *   en-têtes de proxy, `better-auth/dist/auth/base.mjs` — ne s'arme que
+       *   si `baseURL` disparaît, ce qui casserait aussi `trustedOrigins`, les
+       *   liens envoyés par email et les URI de rappel OAuth. Ce qui **mord**
+       *   est la vérification elle-même — une assertion dont le `rpIdHash` est
+       *   celui d'un autre domaine est refusée, et `tests/auth.test.ts` le
+       *   mesure ;
+       * - `schema.passkey.modelName` — la table du module.
+       *
+       * **Changer l'hôte d'`APP_URL` invalide toutes les passkeys déjà
+       * enregistrées** : le `rpID` est scellé dans le justificatif à
+       * l'enrôlement, et le navigateur refuse une cérémonie dont le `rpId`
+       * attendu a changé — sans message, et sans migration possible. Avant de
+       * déplacer un domaine, prévenir, s'assurer que l'autre moyen de connexion
+       * reste utilisable, et faire réenregistrer. Le détail et ce qu'il ne faut
+       * pas tenter est dans `packages/modules/auth/AGENTS.md`, section s14.
+       *
+       * **Ce que ce greffon ne permet pas, et qu'il ne faut pas croire acquis :
+       * la vérification de l'utilisateur.** Les deux appels à
+       * `@simplewebauthn/server` portent `requireUserVerification: false`, en
+       * dur, sans option pour y toucher (1.7.2). Le drapeau `UV` est écrit par
+       * l'authentificateur et jamais exigé : une passkey prouve la
+       * **possession**, et rien de plus. C'est ce fait-là qui décide de
+       * l'ADR 031 — une passkey est un premier facteur, et un compte à second
+       * facteur actif reste défié après elle.
+       *
+       * Aucun appel réseau sortant : la vérification WebAuthn est locale. La
+       * porte bornée du module (`oauth-outbound.ts`) n'a rien à couvrir ici.
+       */
+      passkey({
+        rpID: new URL(options.appUrl).hostname,
+        rpName: 'killer-saas',
+        origin: options.appUrl,
+        schema: { passkey: AUTH_MODELS.passkey },
       }),
       ...localOAuthPlugins,
     ],

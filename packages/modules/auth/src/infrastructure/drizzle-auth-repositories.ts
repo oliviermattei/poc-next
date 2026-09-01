@@ -3,6 +3,7 @@ import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core'
 
 import type {
   AuthAccountRepository,
+  AuthPasskeyRepository,
   AuthSessionRepository,
   AuthUserRecord,
   AuthUserRepository,
@@ -12,7 +13,14 @@ import type {
 } from '../application/ports'
 import { canUnlinkSignInMethod } from '../domain/oauth'
 import { isTokenExpired } from '../domain/one-time-token'
-import { authAccount, authSession, authTwoFactor, authUser, authVerification } from '../schema'
+import {
+  authAccount,
+  authPasskey,
+  authSession,
+  authTwoFactor,
+  authUser,
+  authVerification,
+} from '../schema'
 
 /**
  * Les repositories du module, sur **ses** tables.
@@ -204,6 +212,45 @@ export function createDrizzleAuthSessionRepository(db: AuthDatabase): AuthSessio
   }
 }
 
+/** Les opérations que ce module demande à une transaction. */
+type AuthTransaction = Parameters<Parameters<AuthDatabase['transaction']>[0]>[0]
+
+/**
+ * **Verrouille tous les moyens de connexion du compte, dans un ordre fixe.**
+ *
+ * Un seul endroit, appelé par le déliement d'un compte et par la révocation
+ * d'une passkey : les deux verrouillent `auth_account` **puis** `auth_passkey`.
+ * L'ordre n'est pas décoratif — deux retraits croisés qui prendraient les deux
+ * verrous en sens inverse se bloqueraient mutuellement, et PostgreSQL en
+ * tuerait un.
+ *
+ * `total` est ce que `canUnlinkSignInMethod` (`domain/oauth.ts`) reçoit : la
+ * règle du dernier moyen de connexion n'a pas changé, c'est son entrée qui
+ * compte désormais les deux tables.
+ */
+const lockSignInMethods = async (
+  transaction: AuthTransaction,
+  userId: string,
+): Promise<{
+  accounts: readonly { id: string }[]
+  passkeys: readonly { id: string }[]
+  total: number
+}> => {
+  const accounts = await transaction
+    .select({ id: authAccount.id })
+    .from(authAccount)
+    .where(eq(authAccount.userId, userId))
+    .for('update')
+
+  const passkeys = await transaction
+    .select({ id: authPasskey.id })
+    .from(authPasskey)
+    .where(eq(authPasskey.userId, userId))
+    .for('update')
+
+  return { accounts, passkeys, total: accounts.length + passkeys.length }
+}
+
 export function createDrizzleAuthAccountRepository(db: AuthDatabase): AuthAccountRepository {
   return {
     listForUser: async (userId) => {
@@ -230,21 +277,25 @@ export function createDrizzleAuthAccountRepository(db: AuthDatabase): AuthAccoun
        * il voit le moyen déjà retiré. Sans ce verrou, les deux requêtes lisent
        * « il en reste deux » et le compte se retrouve sans aucun moyen de
        * connexion. Mesuré : le cas de concurrence est rouge sans lui.
+       *
+       * **Depuis s14, les passkeys comptent aussi.** La règle n'a pas changé —
+       * c'est toujours `canUnlinkSignInMethod` — mais son entrée est désormais
+       * la somme des deux tables : un compte qui n'a qu'un fournisseur *et* une
+       * passkey pouvait se voir refuser le déliement alors qu'il lui restait un
+       * moyen de connexion. Les deux tables sont verrouillées **dans le même
+       * ordre** ici et dans `revokeForUser` — comptes puis passkeys —, sans
+       * quoi deux retraits croisés se bloqueraient l'un l'autre.
        */
       return await db.transaction(async (transaction) => {
-        const rows = await transaction
-          .select({ id: authAccount.id })
-          .from(authAccount)
-          .where(eq(authAccount.userId, userId))
-          .for('update')
+        const rows = await lockSignInMethods(transaction, userId)
 
-        if (!rows.some((row) => row.id === accountId)) {
+        if (!rows.accounts.some((row) => row.id === accountId)) {
           // Ni « pas à vous », ni « n'existe pas » : la même réponse pour les
           // deux (`docs/security.md` §3).
           return 'not_found'
         }
 
-        if (!canUnlinkSignInMethod(rows.length)) {
+        if (!canUnlinkSignInMethod(rows.total)) {
           return 'last-method'
         }
 
@@ -254,6 +305,85 @@ export function createDrizzleAuthAccountRepository(db: AuthDatabase): AuthAccoun
           .returning({ id: authAccount.id })
 
         return deleted.length > 0 ? 'unlinked' : 'not_found'
+      })
+    },
+  }
+}
+
+/**
+ * Les passkeys d'un compte (s14).
+ *
+ * Le module possède la lecture, le renommage et la révocation ; le greffon
+ * garde l'enrôlement et la vérification, qui sont de la cryptographie. Les
+ * trois raisons de ne pas déclarer ses points d'entrée pour ces opérations
+ * sont dans `packages/modules/auth/AGENTS.md`, et elles se lisent dans les
+ * trois fonctions ci-dessous.
+ */
+export function createDrizzleAuthPasskeyRepository(db: AuthDatabase): AuthPasskeyRepository {
+  return {
+    listForUser: async (userId) => {
+      // Les colonnes sont **énumérées**, comme pour les sessions et les moyens
+      // de connexion : un `select()` nu ramènerait `publicKey`, `credentialID`
+      // et `counter`. Le point d'entrée `list-user-passkeys` du greffon, lui,
+      // rend la ligne entière — c'est pourquoi le module ne le déclare pas.
+      return await db
+        .select({
+          id: authPasskey.id,
+          name: authPasskey.name,
+          createdAt: authPasskey.createdAt,
+        })
+        .from(authPasskey)
+        .where(eq(authPasskey.userId, userId))
+    },
+
+    countForUser: async (userId) => {
+      const [row] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(authPasskey)
+        .where(eq(authPasskey.userId, userId))
+
+      return Number(row?.count ?? 0)
+    },
+
+    renameForUser: async ({ userId, passkeyId, name }) => {
+      // **Un seul ordre SQL**, propriétaire dans la condition : il n'existe pas
+      // d'instant où la passkey d'autrui est trouvée puis modifiée. Rend
+      // `false` quand rien ne correspond — l'appelant ne peut pas distinguer
+      // « pas à vous » de « n'existe pas » (`docs/security.md` §3), là où
+      // `requireResourceOwnership` du greffon rend `401` dans un cas et `404`
+      // dans l'autre.
+      const updated = await db
+        .update(authPasskey)
+        .set({ name })
+        .where(and(eq(authPasskey.id, passkeyId), eq(authPasskey.userId, userId)))
+        .returning({ id: authPasskey.id })
+
+      return updated.length > 0
+    },
+
+    revokeForUser: async ({ userId, passkeyId }) => {
+      // Même forme que le déliement d'un moyen de connexion, et pour la même
+      // raison : la bibliothèque compte puis supprime **hors transaction**
+      // (`api/routes/account.mjs`), ce qui laisse deux retraits simultanés
+      // vider le compte. Ici les deux tables sont verrouillées dans l'ordre
+      // fixe de `lockSignInMethods`, et la règle est celle du `domain`.
+      return await db.transaction(async (transaction) => {
+        const rows = await lockSignInMethods(transaction, userId)
+
+        if (!rows.passkeys.some((row) => row.id === passkeyId)) {
+          return 'not_found'
+        }
+
+        if (!canUnlinkSignInMethod(rows.total)) {
+          return 'last-method'
+        }
+
+        const deleted = await transaction
+          .delete(authPasskey)
+          .where(and(eq(authPasskey.id, passkeyId), eq(authPasskey.userId, userId)))
+          .returning({ id: authPasskey.id })
+
+        return deleted.length > 0 ? 'revoked' : 'not_found'
       })
     },
   }

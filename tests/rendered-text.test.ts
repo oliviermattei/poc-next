@@ -50,7 +50,7 @@ vi.mock('../apps/web/lib/auth', async () => {
   const { authRoutePath, readOAuthFailureClass, safeRedirectPath } = await import(
     '@repo/module-auth'
   )
-  const { FIXTURE_SESSIONS, FIXTURE_SIGN_IN_METHODS, viewerState } = await import(
+  const { FIXTURE_PASSKEYS, FIXTURE_SESSIONS, FIXTURE_SIGN_IN_METHODS, viewerState } = await import(
     './fixtures/screen-viewer'
   )
 
@@ -63,6 +63,10 @@ vi.mock('../apps/web/lib/auth', async () => {
       Promise.resolve(viewerState.value.session === null ? [] : FIXTURE_SESSIONS),
     currentSignInMethods: () =>
       Promise.resolve(viewerState.value.session === null ? [] : FIXTURE_SIGN_IN_METHODS),
+    // Trois passkeys, dont deux sans nom et une non déliable : les trois formes
+    // de la ligne sont rendues, donc les trois passent sous le filet.
+    currentPasskeys: () =>
+      Promise.resolve(viewerState.value.session === null ? [] : FIXTURE_PASSKEYS),
     // Les deux fournisseurs réels **et** celui de développement : les trois
     // libellés passent ainsi sous le filet, dans la configuration la plus
     // fournie. Aucun fournisseur configuré ne rendrait rien du tout.
@@ -440,6 +444,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       FIXTURE_NAME,
       FIXTURE_ORGANIZATION_NAME,
       FIXTURE_ORGANIZATION_SLUG,
+      FIXTURE_PASSKEY_NAME,
       FIXTURE_SESSION_CREATED_AT,
       FIXTURE_USER_AGENT,
       SIGNED_IN,
@@ -461,6 +466,11 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       FIXTURE_MEMBER_EMAIL,
       FIXTURE_INVITED_EMAIL,
       FIXTURE_EXPIRED_INVITED_EMAIL,
+      // s14 — le nom qu'une personne a donné à sa passkey. C'est une donnée :
+      // elle s'affiche telle quelle et ne vient d'aucun catalogue. Le libellé
+      // des passkeys **sans** nom, lui, est un marqueur — il vient du
+      // catalogue, et c'est la seconde ligne de la fixture qui le fait rendre.
+      FIXTURE_PASSKEY_NAME,
       new Intl.DateTimeFormat(defaultLocale, {
         dateStyle: 'long',
         timeStyle: 'short',
@@ -589,6 +599,11 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           'verifyAction',
           'regenerateAction',
           'disableAction',
+          // s14. Les quatre URL des routes de passkey, remises à la carte.
+          'optionsAction',
+          'registerAction',
+          'renameAction',
+          'revokeAction',
         ],
         render: async () => (await import('../apps/web/app/account/page')).default(),
       },
@@ -668,7 +683,13 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         refuses: null,
         // s13. La destination vers l'écran de vérification : un chemin monté,
         // jamais du texte.
-        technicalProps: ['twoFactorRedirectTo'],
+        technicalProps: [
+          'twoFactorRedirectTo',
+          // s14. Les deux URL des routes de passkey et la destination du défi.
+          'optionsAction',
+          'verifyAction',
+          'twoFactorDestination',
+        ],
         render: async () =>
           (await import('../apps/web/app/sign-in/page')).default({
             searchParams: Promise.resolve({ verified: '1', email_changed: '1', reset: '1' }),
@@ -679,7 +700,13 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         file: 'sign-in/page.tsx',
         viewer: ANONYMOUS,
         refuses: null,
-        technicalProps: ['twoFactorRedirectTo'],
+        technicalProps: [
+          'twoFactorRedirectTo',
+          // s14. Les deux URL des routes de passkey et la destination du défi.
+          'optionsAction',
+          'verifyAction',
+          'twoFactorDestination',
+        ],
         render: async () =>
           (await import('../apps/web/app/sign-in/page')).default({
             searchParams: Promise.resolve({ oauth: 'denied' }),

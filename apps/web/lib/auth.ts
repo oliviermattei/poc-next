@@ -8,6 +8,7 @@ import {
   type AccountView,
   type AnyOAuthProviderId,
   type AuthService,
+  type DescribedPasskey,
   type DescribedSession,
   type DescribedSignInMethod,
 } from '@repo/module-auth'
@@ -199,6 +200,21 @@ export async function currentSignInMethods(): Promise<readonly DescribedSignInMe
   const session = await auth.resolveSession(await incomingRequest())
 
   return session === null ? [] : await auth.useCases.listSignInMethods(session.userId)
+}
+
+/**
+ * Les passkeys de l'appelant, **sans clé publique ni identifiant de
+ * justificatif** (s14).
+ *
+ * La lecture passe par un cas d'usage, pas par le point d'entrée
+ * `list-user-passkeys` du greffon : celui-ci rend la ligne entière, et le
+ * module énumère ses colonnes depuis s07.
+ */
+export async function currentPasskeys(): Promise<readonly DescribedPasskey[]> {
+  const auth = appAuth()
+  const session = await auth.resolveSession(await incomingRequest())
+
+  return session === null ? [] : await auth.useCases.listPasskeys(session.userId)
 }
 
 /** Les sessions actives de l'appelant, la sienne en tête. Aucun jeton n'en sort. */
