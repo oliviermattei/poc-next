@@ -1,10 +1,31 @@
 /**
  * Interfaces des dépendances externes (`docs/architecture.md`).
  *
- * Un fichier par capacité. `mailer` est le premier (s06), `storage` le deuxième
- * (s18) et le premier héritier de son gabarit ; paiement, jobs, analytique et
- * monitoring suivront le même.
+ * Un fichier par capacité, et tous sur le même gabarit : `mailer` d'abord (s06),
+ * `storage` ensuite (s18), `payments` (s19) ; jobs, analytique et monitoring
+ * suivront.
  */
+export type {
+  Checkout,
+  CreateCheckoutInput,
+  CreateCheckoutResult,
+  CreatePortalSessionInput,
+  CreatePortalSessionResult,
+  ListSubscriptionsInput,
+  ListSubscriptionsResult,
+  PaymentEvent,
+  Payments,
+  PaymentsError,
+  PaymentsErrorCode,
+  PaymentsLogRecord,
+  PaymentsLogger,
+  PaymentsOperation,
+  PaymentStatus,
+  PaymentSubscription,
+  PortalSession,
+  VerifyWebhookInput,
+  VerifyWebhookResult,
+} from './payments'
 export type {
   EmailData,
   EmailRenderer,

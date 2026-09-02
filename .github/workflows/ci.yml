@@ -63,6 +63,20 @@ jobs:
       # jour un secret `RESEND_API_KEY` casserait **toutes** les étapes qui
       # valident l'environnement, la clé et le drapeau étant exclusifs.
       EMAIL_LOCAL_CAPTURE: '1'
+      # La CI n'encaisse rien : elle simule. Même règle et même raison que
+      # ci-dessus — l'absence de clé ne décide pas, `docs/reliability.md` §2
+      # interdisant le repli silencieux qui accorderait des abonnements que
+      # personne n'a payés.
+      #
+      # Mesuré, sans lui : `next dev` affiche `✓ Ready` puis meurt sur « aucun
+      # fournisseur de paiement n'est configuré », et `pnpm test:e2e` échoue au
+      # démarrage du serveur — dans les **deux** branches de la matrice, le
+      # module `billing` restant activé dans la configuration « socle ».
+      #
+      # Au niveau du job, comme la capture d'emails : c'est ce qui garantit
+      # qu'aucune étape ne peut joindre un fournisseur réel, et
+      # `tests/env-wiring.test.ts` le vérifie sur ce fichier.
+      PAYMENTS_LOCAL_MODE: '1'
 
     steps:
       - uses: actions/checkout@v7

@@ -42,6 +42,12 @@ export const I18N_MISSING_KEY_PROBE_ENABLED = '1'
  */
 export const OAUTH_LOCAL_PROVIDER_ENABLED = '1'
 
+/**
+ * La valeur qui monte le **mode de paiement local** — même littéral, même
+ * raison : une seule orthographe pour un seul choix.
+ */
+export const PAYMENTS_LOCAL_MODE_ENABLED = '1'
+
 const envShape = {
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   DATABASE_URL: z
@@ -189,6 +195,40 @@ const envShape = {
    * celui de la capture d'emails, et il n'est jamais deviné.
    */
   STORAGE_LOCAL_DIRECTORY: z.string().min(1).optional(),
+  /**
+   * Clé secrète du fournisseur de paiement (Stripe), **optionnelle** ici.
+   *
+   * Optionnelle parce qu'un projet peut couper le module de facturation, et
+   * parce que `pnpm db:migrate` n'encaisse rien. L'exigence « il faut un
+   * fournisseur ou le mode local » est portée par
+   * `apps/web/lib/billing-config.ts`, appliquée au démarrage **uniquement quand
+   * le module est activé**.
+   */
+  STRIPE_SECRET_KEY: z.string().min(1).optional(),
+  /**
+   * Secret de signature des webhooks du fournisseur.
+   *
+   * Il va **avec** la clé, et la règle croisée ci-dessous l'exige : un webhook
+   * qu'on ne peut pas vérifier est un webhook qu'on ne peut pas accepter
+   * (`docs/security.md` §4). Sans cette règle, l'application démarrerait,
+   * encaisserait, et refuserait chaque événement en 400 — c'est-à-dire perdrait
+   * l'état des abonnements en silence.
+   */
+  STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
+  /**
+   * Monte le **mode de paiement local**, sans aucune clé.
+   *
+   * Opt-in explicite, comme la capture locale des emails et le fournisseur
+   * OAuth de développement, et jamais déduit de `NODE_ENV` ni de l'absence de
+   * clé. Posé en même temps qu'une clé, il est refusé : le choix serait
+   * implicite, et personne ne saurait si un abonnement a été réellement payé.
+   *
+   * Il **accorde un abonnement sans paiement** à qui clique :
+   * `apps/web/lib/billing-config.ts` le refuse donc aussi sous
+   * `NODE_ENV=production`, au démarrage et en nommant la variable. `NODE_ENV`
+   * ne l'active jamais — il ne fait que restreindre l'opt-in.
+   */
+  PAYMENTS_LOCAL_MODE: z.literal(PAYMENTS_LOCAL_MODE_ENABLED).optional(),
   /** Expéditeur. Obligatoire dès qu'une clé est configurée : voir la règle croisée. */
   EMAIL_FROM: z
     .string()
@@ -299,6 +339,40 @@ export const envSchema = z.object(envShape).superRefine((value, ctx) => {
       code: 'custom',
       path: ['STORAGE_LOCAL_DIRECTORY'],
       message: 'cannot be set while an S3 bucket is configured: choose one',
+    })
+  }
+
+  // Le paiement : la clé et le secret de webhook vont **ensemble**. Une clé
+  // seule laisse démarrer une application qui encaisse et qui refuse ensuite
+  // chaque événement en 400 — donc qui perd l'état des abonnements en silence.
+  if (value.STRIPE_SECRET_KEY !== undefined && value.STRIPE_WEBHOOK_SECRET === undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['STRIPE_WEBHOOK_SECRET'],
+      message: 'is required when STRIPE_SECRET_KEY is set',
+    })
+  }
+
+  if (value.STRIPE_WEBHOOK_SECRET !== undefined && value.STRIPE_SECRET_KEY === undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['STRIPE_SECRET_KEY'],
+      message: 'is required when STRIPE_WEBHOOK_SECRET is set',
+    })
+  }
+
+  // Même règle que les deux modes locaux ci-dessus : un mode local est un
+  // choix, pas un repli. Les deux à la fois, et plus personne ne sait si un
+  // abonnement a été payé.
+  const paymentsLocal = value.PAYMENTS_LOCAL_MODE === PAYMENTS_LOCAL_MODE_ENABLED
+  const anyStripeKey =
+    value.STRIPE_SECRET_KEY !== undefined || value.STRIPE_WEBHOOK_SECRET !== undefined
+
+  if (paymentsLocal && anyStripeKey) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['PAYMENTS_LOCAL_MODE'],
+      message: 'cannot be enabled while STRIPE_SECRET_KEY or STRIPE_WEBHOOK_SECRET is set: choose one',
     })
   }
 })

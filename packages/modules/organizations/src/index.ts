@@ -59,6 +59,7 @@ export type {
 export {
   allows,
   assignableRolesFor,
+  ORGANIZATION_ACTION,
   ORGANIZATION_ACTIONS,
   permissionsOf,
   type OrganizationAction,

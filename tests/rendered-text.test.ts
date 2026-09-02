@@ -115,6 +115,27 @@ vi.mock('../apps/web/lib/storage', async (importOriginal) => {
   }
 })
 
+/**
+ * La facturation : **le point de composition, et rien d'autre**.
+ *
+ * `available` reste celui du vrai point de composition — c'est lui qui décide si
+ * l'écran rend ou refuse, et le doubler ferait de ce fichier une démonstration
+ * de sa propre fixture. Seule la lecture est remplacée, comme `lib/auth` et
+ * `lib/organizations` plus haut.
+ */
+vi.mock('../apps/web/lib/billing', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../apps/web/lib/billing')>()
+  const { billingState } = await import('./fixtures/screen-viewer')
+
+  return {
+    ...actual,
+    billing: {
+      ...actual.billing,
+      view: () => Promise.resolve(billingState.value),
+    },
+  }
+})
+
 vi.mock('../apps/web/lib/i18n', async () => {
   const { createTranslator } = await import('next-intl')
   const { localeRouting } = await import('../apps/web/lib/locale-routing')
@@ -467,12 +488,17 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       FIXTURE_IP,
       FIXTURE_MEMBER_EMAIL,
       FIXTURE_NAME,
+      FIXTURE_BILLING_ENDING,
+      FIXTURE_BILLING_NONE,
+      FIXTURE_BILLING_PAST_DUE,
+      FIXTURE_BILLING_PRICE,
       FIXTURE_ORGANIZATION_NAME,
       FIXTURE_ORGANIZATION_SLUG,
       FIXTURE_PASSKEY_NAME,
       FIXTURE_SESSION_CREATED_AT,
       FIXTURE_USER_AGENT,
       SIGNED_IN,
+      billingState,
       viewerState,
     } = await import('./fixtures/screen-viewer')
     const { AppShell } = await import('../apps/web/app/app-shell')
@@ -499,6 +525,15 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       // s18 — les initiales du repli d'avatar : une donnée **dérivée du nom**,
       // affichée telle quelle et venue d'aucun catalogue.
       FIXTURE_INITIALS,
+      // s19 — le prix formaté par `Intl`. Il s'affiche tel quel et ne vient
+      // d'aucun catalogue : c'est une donnée, comme un nom d'organisation.
+      FIXTURE_BILLING_PRICE,
+      // s19 — la date d'échéance, dans le style **long sans heure** de l'écran
+      // de facturation. Le format complet plus bas est celui des sessions.
+      new Intl.DateTimeFormat(defaultLocale, {
+        dateStyle: 'long',
+        timeZone: 'UTC',
+      }).format(FIXTURE_SESSION_CREATED_AT),
       new Intl.DateTimeFormat(defaultLocale, {
         dateStyle: 'long',
         timeStyle: 'short',
@@ -530,6 +565,8 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
     const { marketingSite } = await import('../apps/web/lib/marketing')
     const { organizations } = await import('../apps/web/lib/organizations')
     const organizationsMounted = organizations.available
+    const { billing } = await import('../apps/web/lib/billing')
+    const billingMounted = billing.available
     const LEGAL_SLUG = 'privacy'
     const publicSite = marketingSite.sections.length > 0
     const legalServed = marketingSite.legalDocuments.some(
@@ -643,6 +680,57 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           'accept',
         ],
         render: async () => (await import('../apps/web/app/account/page')).default(),
+      },
+      {
+        // s19. Trois rendus du même fichier : les états que l'écran distingue
+        // portent chacun des textes qu'aucun autre ne rend — l'alerte de tête,
+        // « accès jusqu'au … », l'essai, l'offre retirée du catalogue.
+        id: 'facturation, sans abonnement',
+        file: 'billing/page.tsx',
+        viewer: SIGNED_IN,
+        refuses: billingMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        // Les clés de libellé remises aux boutons, l'identifiant d'offre
+        // qu'ils envoient, l'état d'abonnement et le retour de paiement : quatre
+        // valeurs **techniques** que l'écran écrit, jamais du texte. Déclarées
+        // **sur cet écran** : ailleurs, une prop nommée `state` portant une
+        // chaîne fait toujours rougir, et le garde-fou de prose reste actif ici
+        // aussi — `state="Abonnement actif"` rougirait.
+        technicalProps: ['labelKey', 'offerId', 'state', 'checkoutOutcome'],
+        render: async () => {
+          billingState.value = FIXTURE_BILLING_NONE
+
+          return (await import('../apps/web/app/billing/page')).default({
+            searchParams: Promise.resolve({ checkout: 'success' }),
+          })
+        },
+      },
+      {
+        id: 'facturation, paiement échoué',
+        file: 'billing/page.tsx',
+        viewer: SIGNED_IN,
+        refuses: billingMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        technicalProps: ['labelKey', 'offerId', 'state', 'checkoutOutcome'],
+        render: async () => {
+          billingState.value = FIXTURE_BILLING_PAST_DUE
+
+          return (await import('../apps/web/app/billing/page')).default({
+            searchParams: Promise.resolve({ checkout: 'cancelled' }),
+          })
+        },
+      },
+      {
+        id: 'facturation, abonnement résilié',
+        file: 'billing/page.tsx',
+        viewer: SIGNED_IN,
+        refuses: billingMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        technicalProps: ['labelKey', 'offerId', 'state', 'checkoutOutcome'],
+        render: async () => {
+          billingState.value = FIXTURE_BILLING_ENDING
+
+          return (await import('../apps/web/app/billing/page')).default({
+            searchParams: noParams,
+          })
+        },
       },
       {
         // s15. L'écran refuse quand le module n'est pas monté — comme une page
@@ -947,6 +1035,6 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
     // texte — celui qui rend son propre document n'a pas de shell.
     expect(rendered).toBe(screens.filter((screen) => screen.refuses === null).length)
     expect(markers).toBeGreaterThanOrEqual(floors)
-    expect(failures).toEqual([])
+    expect(failures, failures.join(' ;; ')).toEqual([])
   })
 })

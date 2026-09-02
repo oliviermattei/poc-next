@@ -6,8 +6,10 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { Env, EnvSource } from '@repo/config'
+import { ENV_KEYS, parseEnv } from '@repo/config'
 import { findRootEnvPath, loadRootEnv } from '@repo/config/server'
 
+import { LOCAL_WEBHOOK_SECRET, resolveBillingConfig } from '../apps/web/lib/billing-config'
 import { resolveOAuthConfig } from '../apps/web/lib/oauth-config'
 
 const TURBO_CONFIG_PATH = fileURLToPath(new URL('../turbo.json', import.meta.url))
@@ -186,6 +188,31 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     vi.stubEnv('STORAGE_LOCAL_DIRECTORY', choice === 'disque' ? '.storage' : '')
   }
 
+  /**
+   * Le paiement lit trois variables, et la garde en refuse deux états. Un cas
+   * qui n'en déclare aucune ne passerait que sur un poste dont le `.env` les
+   * complète — la même raison que `stubMailer`.
+   */
+  const stubPayments = (choice: 'local' | 'aucun'): void => {
+    vi.stubEnv('STRIPE_SECRET_KEY', '')
+    vi.stubEnv('STRIPE_WEBHOOK_SECRET', '')
+    vi.stubEnv('PAYMENTS_LOCAL_MODE', choice === 'local' ? '1' : '')
+  }
+
+  /**
+   * Le module `billing` **activé**, quelle que soit la configuration du dépôt.
+   *
+   * `config/features.ts` bascule d'une configuration à l'autre (`pnpm ks
+   * toggle billing`), et ces cas-ci mesurent la garde, pas l'état du dépôt.
+   */
+  const withBillingEnabled = (): void => {
+    vi.doMock('../config/features', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('../config/features')>()
+
+      return { ...actual, enabledModules: [...new Set([...actual.enabledModules, 'billing'])] }
+    })
+  }
+
   const loadNextConfig = async () => {
     vi.resetModules()
     const { default: config } = await import('../apps/web/next.config')
@@ -195,6 +222,8 @@ describe('validation de l’environnement au démarrage du serveur', () => {
 
   afterEach(() => {
     vi.unstubAllEnvs()
+    vi.doUnmock('../config/features')
+    vi.doUnmock('../config/billing')
     vi.resetModules()
   })
 
@@ -203,6 +232,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     stubMailer('capture')
     stubAuth('configure')
     stubStorage('disque')
+    stubPayments('local')
 
     const config = await loadNextConfig()
 
@@ -216,6 +246,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     stubMailer('capture')
     stubAuth('configure')
     stubStorage('disque')
+    stubPayments('local')
 
     const config = await loadNextConfig()
 
@@ -232,6 +263,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     stubMailer('aucun')
     stubAuth('configure')
     stubStorage('disque')
+    stubPayments('local')
 
     const config = await loadNextConfig()
 
@@ -248,6 +280,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     stubMailer('capture')
     stubAuth('configure')
     stubStorage('aucun')
+    stubPayments('local')
 
     const config = await loadNextConfig()
 
@@ -265,6 +298,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     stubMailer('capture')
     stubAuth('aucun')
     stubStorage('disque')
+    stubPayments('local')
 
     const config = await loadNextConfig()
 
@@ -300,6 +334,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     stubMailer('capture')
     stubAuth('configure')
     stubStorage('disque')
+    stubPayments('local')
     stubOAuth()
 
     const config = await loadNextConfig()
@@ -312,6 +347,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     stubMailer('capture')
     stubAuth('configure')
     stubStorage('disque')
+    stubPayments('local')
     // Un identifiant sans secret : la bibliothèque se contenterait d'un
     // avertissement dans le journal, et l'échec n'apparaîtrait qu'au premier
     // clic sur le bouton, en production.
@@ -327,6 +363,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     stubMailer('capture')
     stubAuth('configure')
     stubStorage('disque')
+    stubPayments('local')
     stubOAuth({ githubSecret: 'secret-de-test' })
 
     const config = await loadNextConfig()
@@ -339,6 +376,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     stubMailer('capture')
     stubAuth('configure')
     stubStorage('disque')
+    stubPayments('local')
     stubOAuth({ githubId: 'id', githubSecret: 'secret', local: '1' })
 
     const config = await loadNextConfig()
@@ -351,6 +389,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     stubMailer('capture')
     stubAuth('configure')
     stubStorage('disque')
+    stubPayments('local')
     stubOAuth({ local: '1' })
 
     const config = await loadNextConfig()
@@ -367,6 +406,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     stubMailer('capture')
     stubAuth('configure')
     stubStorage('disque')
+    stubPayments('local')
     stubOAuth({ local: '1' })
 
     const config = await loadNextConfig()
@@ -374,11 +414,95 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     expect(() => config(DEV_SERVER_PHASE)).toThrowError(/OAUTH_LOCAL_PROVIDER/)
   })
 
+  /* ----------------------------------------------------------------------- *
+   * Le **catalogue d'offres** (s19, constat F2 de la revue).
+   *
+   * Premier critère de la story : « une offre malformée fait échouer le
+   * démarrage ». `parseBillingCatalogue` refusait bien — mais personne ne
+   * l'appelait au démarrage. L'application démarrait, servait, et la première
+   * requête qui construisait le service transformait le webhook **public** en
+   * 500 : Stripe rejoue, abandonne, et l'état des abonnements diverge en
+   * silence.
+   *
+   * Ces cas prouvent le **câblage**, pas la règle : la règle est éprouvée dans
+   * `packages/modules/billing/src/domain/billing-rules.test.ts`.
+   * ----------------------------------------------------------------------- */
+  const malformedCatalogue = (): void => {
+    vi.doMock('../config/billing', () => ({
+      // Deux offres sur le **même prix** : la forme exacte que `satisfies`
+      // laisse passer et que `parseBillingCatalogue` refuse.
+      billingOffers: [
+        {
+          id: 'pro-monthly',
+          mode: 'subscription',
+          priceId: 'price_pro_monthly',
+          amount: 2900,
+          currency: 'eur',
+          interval: 'month',
+          trialDays: 14,
+          perSeat: false,
+        },
+        {
+          id: 'pro-yearly',
+          mode: 'subscription',
+          priceId: 'price_pro_monthly',
+          amount: 29_000,
+          currency: 'eur',
+          interval: 'year',
+          trialDays: 14,
+          perSeat: false,
+        },
+      ],
+    }))
+  }
+
+  it('refuse de démarrer sur une offre malformée, en nommant le prix fautif', async () => {
+    vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
+    stubMailer('capture')
+    stubAuth('configure')
+    stubOAuth()
+    stubPayments('local')
+    withBillingEnabled()
+    malformedCatalogue()
+
+    const config = await loadNextConfig()
+
+    expect(() => config(DEV_SERVER_PHASE)).toThrowError(/price_pro_monthly/)
+    expect(() => config(DEV_SERVER_PHASE)).toThrowError(/config\/billing\.ts/)
+  })
+
+  it('refuse aussi pendant `next build` : un catalogue ne lit aucune variable', async () => {
+    // La trappe de la phase de build et `SKIP_ENV_VALIDATION` ne concernent que
+    // l'**environnement**. Le catalogue est du code : rien ne justifie qu'un
+    // artefact se construise sur une configuration que le démarrage refusera.
+    withBillingEnabled()
+    malformedCatalogue()
+
+    const config = await loadNextConfig()
+
+    expect(() => config(BUILD_PHASE)).toThrowError(/price_pro_monthly/)
+  })
+
+  it('démarre sur le catalogue livré, module de facturation activé', async () => {
+    vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
+    stubMailer('capture')
+    stubAuth('configure')
+    stubOAuth()
+    stubStorage('disque')
+    stubPayments('local')
+    withBillingEnabled()
+
+    const config = await loadNextConfig()
+
+    expect(() => config(DEV_SERVER_PHASE)).not.toThrow()
+  })
+
   it('ne réclame ni secret ni URL publique pendant `next build`', async () => {
     vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
     stubMailer('capture')
     stubAuth('aucun')
     stubStorage('disque')
+    stubPayments('local')
 
     const config = await loadNextConfig()
 
@@ -390,6 +514,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     stubMailer('aucun')
     stubAuth('aucun')
     stubStorage('disque')
+    stubPayments('local')
 
     const config = await loadNextConfig()
 
@@ -409,6 +534,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
       stubMailer('aucun')
       stubAuth('aucun')
       stubStorage('disque')
+      stubPayments('local')
       vi.stubEnv('SKIP_ENV_VALIDATION', '1')
 
       const config = await loadNextConfig()
@@ -425,6 +551,125 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     const config = await loadNextConfig()
 
     expect(() => config(BUILD_PHASE)).not.toThrow()
+  })
+
+  /* ----------------------------------------------------------------------- *
+   * **Ce dont le harnais a besoin se déclare dans sa configuration**, jamais
+   * dans le `.env` d'un poste.
+   *
+   * Chaque story qui ajoute une garde de démarrage ajoute une variable que la
+   * CI doit poser. Trois l'ont déjà fait (mailer, authentification, OAuth) ;
+   * s19 en a ajouté une quatrième — le fournisseur de paiement — sans la
+   * déclarer, et `next dev` mourait après `✓ Ready` dans les **deux** branches
+   * de la matrice : `pnpm test:e2e` échouait au démarrage du serveur, alors que
+   * l'arbre du poste restait vert grâce à son `.env` (constat C1 de la seconde
+   * revue).
+   *
+   * Les cas ci-dessous démarrent la configuration de Next avec l'environnement
+   * que le dépôt **contrôle**, et rien d'autre : toute variable du schéma
+   * absente de ces deux fichiers est posée vide, donc lue comme absente, et le
+   * `.env` du poste ne peut plus la compléter.
+   * ----------------------------------------------------------------------- */
+  const CI_WORKFLOW_PATH = fileURLToPath(new URL('../.github/workflows/ci.yml', import.meta.url))
+
+  /**
+   * Les variables du job `quality`, lues dans le workflow.
+   *
+   * Balayage volontairement étroit, et il est décrit plutôt que promis : il lit
+   * le **seul** bloc `env:` posé au niveau d'un job (indentation de quatre
+   * espaces), ses entrées nues ou entre guillemets, et ignore les commentaires.
+   * Il ne lit ni un `env:` d'étape, ni un `env:` du job `secrets` — il n'y en a
+   * aucun à ce jour, et s'il en naissait un, ce balayage ne le verrait pas.
+   */
+  const readCiJobEnv = async (): Promise<Record<string, string>> => {
+    const lines = (await readFile(CI_WORKFLOW_PATH, 'utf8')).split('\n')
+    const start = lines.indexOf('    env:')
+
+    if (start === -1) {
+      throw new Error('Aucun bloc `env:` de job dans `.github/workflows/ci.yml`.')
+    }
+
+    const collected: Record<string, string> = {}
+
+    for (const line of lines.slice(start + 1)) {
+      if (line.trim() === '' || line.startsWith('      #')) {
+        continue
+      }
+
+      const entry = /^ {6}([A-Z0-9_]+):\s*(.*)$/.exec(line)
+
+      if (entry === null) {
+        break
+      }
+
+      collected[entry[1] ?? ''] = (entry[2] ?? '').trim().replace(/^['"]|['"]$/g, '')
+    }
+
+    return collected
+  }
+
+  /** Les variables que Playwright pose sur le serveur qu'il démarre lui-même. */
+  const readPlaywrightServerEnv = async (): Promise<Record<string, string>> => {
+    const { default: playwright } = await import('../playwright.config')
+    const server = playwright.webServer
+
+    if (server === undefined || Array.isArray(server)) {
+      throw new Error('`playwright.config.ts` ne démarre plus un serveur unique.')
+    }
+
+    return Object.fromEntries(
+      Object.entries(server.env ?? {}).map(([key, value]) => [key, String(value)]),
+    )
+  }
+
+  /**
+   * Pose exactement cet environnement, et **vide tout le reste du schéma**.
+   *
+   * La valeur vide vaut absence, et c'est la seule forme qui tienne :
+   * `next.config` recharge le `.env` racine à chaque import, et une variable
+   * supprimée y serait repeuplée par le fichier du poste — c'est-à-dire par ce
+   * que ces cas existent justement pour ne pas mesurer.
+   */
+  const onlyThisEnv = (values: Record<string, string>): void => {
+    for (const key of ENV_KEYS) {
+      vi.stubEnv(key, values[key] ?? '')
+    }
+  }
+
+  it('démarre le serveur que Playwright lance avec le seul environnement du harnais', async () => {
+    const harness = { ...(await readCiJobEnv()), ...(await readPlaywrightServerEnv()) }
+
+    onlyThisEnv(harness)
+    withBillingEnabled()
+
+    const config = await loadNextConfig()
+
+    expect(() => config(DEV_SERVER_PHASE)).not.toThrow()
+  })
+
+  it('ne laisse le job de CI joindre aucun fournisseur de paiement réel', async () => {
+    // Le régime de la CI est celui des doublures (`AGENTS.md`, « Third-party
+    // integrations ») : le job ne porte aucune clé, et le mode de paiement doit
+    // donc y être **choisi**, jamais laissé au hasard d'un environnement.
+    const ci = await readCiJobEnv()
+
+    expect(resolveBillingConfig(parseEnv(ci))).toEqual({
+      kind: 'local',
+      webhookSecret: LOCAL_WEBHOOK_SECRET,
+    })
+  })
+
+  it('ne laisse le serveur de Playwright joindre aucun fournisseur de paiement réel', async () => {
+    // Le parcours de souscription **est** celui du simulateur : il termine le
+    // checkout sur une route servie par l'application. Le mode se déclare donc
+    // dans le fichier qui décrit ce serveur, et il l'emporte sur le `.env` du
+    // poste — un poste muni d'une vraie clé verra le démarrage refuser les deux
+    // ensemble, en le disant, plutôt que d'encaisser pendant un test.
+    const server = await readPlaywrightServerEnv()
+
+    expect(
+      resolveBillingConfig(parseEnv({ DATABASE_URL: 'postgres://app@localhost:5432/app', ...server })),
+    ).toEqual({ kind: 'local', webhookSecret: LOCAL_WEBHOOK_SECRET })
   })
 })
 

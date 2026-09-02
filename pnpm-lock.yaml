@@ -20,6 +20,9 @@ importers:
       '@repo/adapter-s3':
         specifier: workspace:*
         version: link:packages/adapters/s3
+      '@repo/adapter-stripe':
+        specifier: workspace:*
+        version: link:packages/adapters/stripe
       '@repo/cli':
         specifier: workspace:*
         version: link:packages/cli
@@ -44,6 +47,9 @@ importers:
       '@repo/module-auth':
         specifier: workspace:*
         version: link:packages/modules/auth
+      '@repo/module-billing':
+        specifier: workspace:*
+        version: link:packages/modules/billing
       '@repo/module-demo-disabled':
         specifier: workspace:*
         version: link:packages/modules/demo-disabled
@@ -62,6 +68,9 @@ importers:
       '@repo/module-storage':
         specifier: workspace:*
         version: link:packages/modules/storage
+      '@repo/payments-testing':
+        specifier: workspace:*
+        version: link:packages/payments-testing
       '@repo/ports':
         specifier: workspace:*
         version: link:packages/ports
@@ -110,6 +119,9 @@ importers:
       react-dom:
         specifier: ^19.2.0
         version: 19.2.8(react@19.2.8)
+      stripe:
+        specifier: ^22.6.0
+        version: 22.6.0(@types/node@22.20.1)
       tsx:
         specifier: ^4.23.13
         version: 4.23.13
@@ -131,6 +143,9 @@ importers:
       '@repo/adapter-resend':
         specifier: workspace:*
         version: link:../../packages/adapters/resend
+      '@repo/adapter-stripe':
+        specifier: workspace:*
+        version: link:../../packages/adapters/stripe
       '@repo/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -149,6 +164,9 @@ importers:
       '@repo/module-auth':
         specifier: workspace:*
         version: link:../../packages/modules/auth
+      '@repo/module-billing':
+        specifier: workspace:*
+        version: link:../../packages/modules/billing
       '@repo/module-demo-disabled':
         specifier: workspace:*
         version: link:../../packages/modules/demo-disabled
@@ -164,6 +182,9 @@ importers:
       '@repo/module-organizations':
         specifier: workspace:*
         version: link:../../packages/modules/organizations
+      '@repo/payments-testing':
+        specifier: workspace:*
+        version: link:../../packages/payments-testing
       '@repo/ports':
         specifier: workspace:*
         version: link:../../packages/ports
@@ -246,16 +267,38 @@ importers:
     dependencies:
       '@aws-sdk/client-s3':
         specifier: ^3.1123.0
-        version: 3.1123.0
+        version: 3.1124.0
       '@aws-sdk/s3-request-presigner':
         specifier: ^3.1123.0
-        version: 3.1123.0
+        version: 3.1124.0
       '@repo/ports':
         specifier: workspace:*
         version: link:../../ports
       '@smithy/fetch-http-handler':
         specifier: ^5.4.1
         version: 5.7.2
+    devDependencies:
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../../../tooling/typescript
+      '@types/node':
+        specifier: ^22
+        version: 22.20.1
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@types/node@22.20.1)(vite@8.2.2(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13))
+
+  packages/adapters/stripe:
+    dependencies:
+      '@repo/ports':
+        specifier: workspace:*
+        version: link:../../ports
+      stripe:
+        specifier: ^22.6.0
+        version: 22.6.0(@types/node@22.20.1)
     devDependencies:
       '@repo/typescript-config':
         specifier: workspace:*
@@ -459,6 +502,46 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
 
+  packages/modules/billing:
+    dependencies:
+      '@repo/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@repo/ports':
+        specifier: workspace:*
+        version: link:../../ports
+      '@repo/ui':
+        specifier: workspace:*
+        version: link:../../ui
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@types/pg@8.23.1)(kysely@0.29.5)(pg@8.23.0)
+      lucide-react:
+        specifier: 1.37.0
+        version: 1.37.0(react@19.2.8)
+      zod:
+        specifier: ^4.5.0
+        version: 4.5.4
+    devDependencies:
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../../../tooling/typescript
+      '@types/node':
+        specifier: ^22
+        version: 22.20.1
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.2.18
+      react:
+        specifier: ^19.2.0
+        version: 19.2.8
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@types/node@22.20.1)(vite@8.2.2(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13))
+
   packages/modules/demo-disabled:
     dependencies:
       '@repo/core':
@@ -621,6 +704,31 @@ importers:
         specifier: ^4.1.11
         version: 4.1.11(@types/node@22.20.1)(vite@8.2.2(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13))
 
+  packages/payments-testing:
+    dependencies:
+      '@repo/adapter-stripe':
+        specifier: workspace:*
+        version: link:../adapters/stripe
+      '@repo/ports':
+        specifier: workspace:*
+        version: link:../ports
+      stripe:
+        specifier: ^22.6.0
+        version: 22.6.0(@types/node@22.20.1)
+    devDependencies:
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../../tooling/typescript
+      '@types/node':
+        specifier: ^22
+        version: 22.20.1
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@types/node@22.20.1)(vite@8.2.2(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13))
+
   packages/ports:
     devDependencies:
       '@repo/typescript-config':
@@ -755,8 +863,8 @@ packages:
     resolution: {integrity: sha512-Dtu0gr4dnATZAPwEYbpCsG+MpLM7OAliy2gTepEFQwl1vZ6DL3QMH2FveMa3HLvPsOdhJsPRB3KtxVhph9T75A==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/client-s3@3.1123.0':
-    resolution: {integrity: sha512-InD/KXgF4clIFtqo8yzQQG755/BBoLstsC5WITLrMckKUUaACQgbpbZcdsySAXU3Uukp/3RV0Aiv5H3eDNGXcw==}
+  '@aws-sdk/client-s3@3.1124.0':
+    resolution: {integrity: sha512-f20BksgVlXufcf/mijde1LAjwM/iSDdG3mGtN3yRFOUzXtlFEOjxNi1Rf2Kb+rSgoiOSpO0hUOna9Bs+J1gX2A==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/core@3.977.9':
@@ -803,8 +911,8 @@ packages:
     resolution: {integrity: sha512-NhEgryjlBF9w38ZXqGymQV28IhkYa1mKhlbYnqIis57AYwWGVYfUPgg/qC2rLRqOUfblxx++irvju10kVTa8Vw==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/s3-request-presigner@3.1123.0':
-    resolution: {integrity: sha512-u0vjRCIRA8ATy9SseEmHu3BNv4xTE7Pi/+Q4AVXG2brRfnEEFU6oVBoagDxMeLqsNfvJJRlhP620O0rbiCDnpA==}
+  '@aws-sdk/s3-request-presigner@3.1124.0':
+    resolution: {integrity: sha512-e9R8FQD4QNAM+g2X8HB/wr5q4pgJXjFDMI+FOC759Ez70xG5Zo7lCBU/wVILSFQ2wOrT76F6kVPe3bMERxMf2w==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/signature-v4-multi-region@3.996.46':
@@ -4260,6 +4368,15 @@ packages:
   std-env@4.2.0:
     resolution: {integrity: sha512-oCUKSupKTHX53EyjDtuZQ64pjLJ6yYCtpmEw0goYxtjG9KpbRe8KAsl2tBUGU9DyMcJ0RwJ8GqJAFzMXcXW1Rw==}
 
+  stripe@22.6.0:
+    resolution: {integrity: sha512-Ezk+WYEEwX2DLxFrKfb6coznlCMZvCaCYMNPXNHFSZkBIEzF5Hgm7RLb38q/0h9Ol5jsUJGJRorvhzAvckgfhw==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      '@types/node': '>=18'
+    peerDependenciesMeta:
+      '@types/node':
+        optional: true
+
   styled-jsx@5.1.6:
     resolution: {integrity: sha512-qSVyDTeMotdvQYoHWLNGwRFJHC+i+ZvdBRYosOFgC+Wg1vx4frN2/RG/NA7SYqqvKNLf39P2LSRA2pu6n0XYZA==}
     engines: {node: '>= 12.0.0'}
@@ -4537,7 +4654,7 @@ snapshots:
       '@smithy/types': 4.17.2
       tslib: 2.8.1
 
-  '@aws-sdk/client-s3@3.1123.0':
+  '@aws-sdk/client-s3@3.1124.0':
     dependencies:
       '@aws-sdk/checksums': 3.1000.29
       '@aws-sdk/core': 3.977.9
@@ -4666,7 +4783,7 @@ snapshots:
       '@smithy/types': 4.17.2
       tslib: 2.8.1
 
-  '@aws-sdk/s3-request-presigner@3.1123.0':
+  '@aws-sdk/s3-request-presigner@3.1124.0':
     dependencies:
       '@aws-sdk/core': 3.977.9
       '@aws-sdk/signature-v4-multi-region': 3.996.46
@@ -7550,6 +7667,10 @@ snapshots:
       fast-sha256: 1.3.0
 
   std-env@4.2.0: {}
+
+  stripe@22.6.0(@types/node@22.20.1):
+    optionalDependencies:
+      '@types/node': 22.20.1
 
   styled-jsx@5.1.6(react@19.2.8):
     dependencies:

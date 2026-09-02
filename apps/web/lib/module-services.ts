@@ -2,6 +2,7 @@ import { getDatabase } from '@repo/db'
 import { provideMarketing } from '@repo/module-marketing'
 
 import { appAuth } from './auth'
+import { billing } from './billing'
 import { localeRouting } from './locale-routing'
 import { createAppMailer } from './mailer'
 import { marketingSite } from './marketing'
@@ -71,6 +72,7 @@ const provideMarketingForms = (): void => {
 
 export function prepareModuleServices(): void {
   organizations.prepare()
+  billing.prepare()
   provideMarketingForms()
   storage.prepare()
 }

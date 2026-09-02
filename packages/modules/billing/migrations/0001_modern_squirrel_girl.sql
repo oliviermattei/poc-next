@@ -1,0 +1,2 @@
+DROP INDEX "billing_subscription_customer_idx";--> statement-breakpoint
+CREATE INDEX "billing_subscription_customer_idx" ON "billing_subscription" USING btree ("billing_customer_id","last_event_at" DESC NULLS LAST,"current_period_end" DESC NULLS LAST,"provider_subscription_id" DESC NULLS LAST);

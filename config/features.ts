@@ -1,5 +1,6 @@
 import type { AnyModuleDefinition, ModuleIdOf } from '@repo/core'
 import { authModule } from '@repo/module-auth'
+import { billingModule } from '@repo/module-billing'
 import { demoDisabledModule } from '@repo/module-demo-disabled'
 import { demoEnabledModule } from '@repo/module-demo-enabled'
 import { i18nModule } from '@repo/module-i18n'
@@ -29,6 +30,7 @@ import { storageModule } from '@repo/module-storage'
  */
 export const availableModules = [
   authModule,
+  billingModule,
   i18nModule,
   marketingModule,
   organizationsModule,
@@ -70,6 +72,7 @@ export const requiredModules = ['auth'] as const satisfies readonly AvailableMod
  */
 export const enabledModules = [
   'auth',
+  'billing',
   'i18n',
   'marketing',
   'organizations',

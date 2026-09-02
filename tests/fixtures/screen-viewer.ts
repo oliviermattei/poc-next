@@ -3,6 +3,7 @@ import type {
   DescribedSession,
   DescribedSignInMethod,
 } from '@repo/module-auth'
+import type { BillingView } from '@repo/module-billing'
 import { permissionsOf } from '@repo/module-organizations'
 import { initialsOf } from '@repo/ui'
 
@@ -205,3 +206,72 @@ export const FIXTURE_PASSKEYS: readonly DescribedPasskey[] = [
  * connecté.
  */
 export const viewerState: { value: ViewerFixture } = { value: SIGNED_IN }
+
+/**
+ * Ce que l'écran de facturation (s19) voit pendant ce rendu.
+ *
+ * Le prix formaté est **une donnée** — il vient d'`Intl`, pas d'un catalogue —
+ * et le test l'énumère pour le distinguer d'un texte écrit en dur, comme le nom
+ * d'une organisation ou l'adresse d'un membre.
+ */
+export const FIXTURE_BILLING_PRICE = new Intl.NumberFormat('fr', {
+  style: 'currency',
+  currency: 'EUR',
+}).format(29)
+
+const OFFER: BillingView['offers'][number] = {
+  id: 'pro-monthly',
+  price: FIXTURE_BILLING_PRICE,
+  interval: 'month',
+  trialDays: 14,
+  perSeat: true,
+  current: false,
+}
+
+/** Sans abonnement : l'état d'entrée, et le seul qui rende les offres seules. */
+export const FIXTURE_BILLING_NONE: BillingView = {
+  state: 'none',
+  hasAccess: false,
+  offers: [OFFER],
+  subscription: null,
+  canManage: true,
+  hasCustomer: false,
+}
+
+/** Paiement échoué : l'alerte en tête, le badge, et un abonnement au siège. */
+export const FIXTURE_BILLING_PAST_DUE: BillingView = {
+  state: 'past_due',
+  hasAccess: true,
+  offers: [{ ...OFFER, current: true }],
+  subscription: {
+    offerId: 'pro-monthly',
+    quantity: 4,
+    renewsAt: FIXTURE_SESSION_CREATED_AT,
+    cancelAtPeriodEnd: false,
+    trialEnd: null,
+  },
+  canManage: true,
+  hasCustomer: true,
+}
+
+/**
+ * Résilié : la branche « accès jusqu'au … », la période d'essai affichée, et
+ * l'offre **retirée du catalogue** — trois textes qu'aucun autre état ne rend.
+ */
+export const FIXTURE_BILLING_ENDING: BillingView = {
+  state: 'ending',
+  hasAccess: true,
+  offers: [OFFER],
+  subscription: {
+    offerId: null,
+    quantity: 4,
+    renewsAt: FIXTURE_SESSION_CREATED_AT,
+    cancelAtPeriodEnd: true,
+    trialEnd: FIXTURE_SESSION_CREATED_AT,
+  },
+  canManage: true,
+  hasCustomer: true,
+}
+
+/** L'état lu par le double de `billing.view`, à l'appel et non à la construction. */
+export const billingState: { value: BillingView } = { value: FIXTURE_BILLING_NONE }

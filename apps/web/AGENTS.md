@@ -16,18 +16,30 @@ module (`packages/modules/<module>/src/domain`).
   et `@repo/storage-testing` pour le stockage sur disque — **uniquement** dans
   `lib/mailer.ts` et `lib/storage.ts`, qui sont les points de composition des
   deux ports ;
+- `@repo/ports` pour les ports `Mailer` et `Payments`, `@repo/adapter-resend`
+  pour l'unique implémentation du premier, `@repo/emails` pour le rendu des
+  templates et `@repo/mailer-testing` pour la capture locale — **uniquement**
+  dans `lib/mailer.ts`, qui est le point de composition du mailer ;
+- `@repo/adapter-stripe` pour l'unique implémentation du port `Payments`, et
+  `@repo/payments-testing` pour le mode local — **uniquement** dans
+  `lib/billing.ts`, qui est le point de composition de la facturation (s19) ;
 - les modules du projet, **uniquement** parce que `config/features.ts` les
-  référence : `@repo/module-auth`, `@repo/module-i18n`,
+  référence : `@repo/module-auth`, `@repo/module-billing`, `@repo/module-i18n`,
   `@repo/module-marketing`, `@repo/module-organizations`,
   `@repo/module-storage`, `@repo/module-demo-enabled` et
+  `@repo/module-demo-enabled` et
   `@repo/module-demo-disabled` aujourd'hui. Cinq fichiers font exception et
   importent un module directement — `lib/auth.ts`, le point de composition de
   l'authentification, `lib/locale-routing.ts`, celui de l'i18n,
   `lib/marketing.ts`, celui du site public, `lib/organizations.ts`, celui des
   organisations, et `lib/storage.ts`, celui du stockage (voir plus bas). Les écrans du site public et celui des
   organisations importent en plus le second point d'entrée de leur module
+  organisations, et `lib/billing.ts`, celui de la facturation (voir plus bas).
+  Les écrans du site public, celui des organisations et celui de la facturation
+  importent en plus le second point d'entrée de leur module
   (`@repo/module-marketing/presentation`,
-  `@repo/module-organizations/presentation`) : ses composants React n'ont pas
+  `@repo/module-organizations/presentation`,
+  `@repo/module-billing/presentation`) : ses composants React n'ont pas
   leur place dans le barril que lit `config/features.ts`, qu'aucun outil du
   dépôt ne compile en JSX (**ADR 024**, la règle de tout module à composants) ;
 - `zod` pour valider les entrées de route — le paramètre `[document]` des pages
@@ -617,6 +629,104 @@ profil » de `/account`. Le composant qui téléverse
 (`app/account/avatar-form.tsx`) vit ici et non dans le module, pour la raison
 déjà donnée à `app/public-form.tsx` : il appelle `fetch`, et `eslint.config.ts`
 refuse un appel réseau dans un module hors de sa porte bornée.
+## Le montage de la facturation (s19)
+
+Quatre fichiers, sur le modèle exact du mailer — **une règle par fichier, et le
+montage à part** :
+
+- `lib/billing-config.ts` porte la **règle du fournisseur** — quelle
+  configuration décide de qui encaisse, et le refus quand aucune n'est donnée.
+  Il ne dépend que de `@repo/config`, et `next.config.ts` le réapplique au
+  **démarrage** ;
+- `lib/billing-catalogue.ts` porte le **catalogue validé**. Il est appelé aux
+  deux bouts : par `next.config.ts` au démarrage — c'est le premier critère de
+  la story, « une offre malformée fait échouer le démarrage » — et par
+  `lib/billing.ts` à la construction du service, qui reçoit un catalogue déjà
+  validé. Sans le premier appel, une offre malformée ne se voyait qu'à la
+  première requête qui construisait le service, et cette requête pouvait être le
+  **webhook public**, qui répondait alors 500 (constat F2 de la revue) ;
+- `lib/billing-permission.ts` porte le **droit de gérer la facturation** : il
+  pose la question au module `organizations`, il ne compare aucun rôle. Il est
+  séparé pour être branché, dans `tests/billing.test.ts`, sur la vraie vue de ce
+  module avec un rôle réel en base — neutralisé en `return true`, il laissait
+  sinon la suite entière verte (constat F3) ;
+- `lib/billing.ts` **construit** l'implémentation correspondante. C'est le seul
+  fichier de l'application qui connaisse `@repo/module-billing`,
+  `@repo/adapter-stripe` et `@repo/payments-testing`.
+
+Il donne aussi au module l'**adresse** du compte qui ouvre le checkout, par un
+import **différé** de `lib/auth` : ce fichier est chargé hors de Next par
+`e2e/billing.spec.ts` et par `scripts/billing-reconcile.ts`, et un import
+statique de `next/headers` y ferait échouer tous les parcours — la mesure qui a
+déjà décidé du câblage de `marketing` dans `lib/module-services.ts`.
+
+`billing.prepare()` accepte **trois** substitutions, et trois seulement : la
+connexion, le port `Payments` et l'`APP_URL`. C'est la même ouverture que
+`createAppMailer({ env })` (« injecté dans les tests ; lu au démarrage sinon »),
+et elle existe pour une raison mesurée : les deux gardes qui vivent **ici** — la
+permission et l'adresse du compte — ne pouvaient être éprouvées qu'en
+reconstruisant cette composition à côté, si bien que les neutraliser à leur
+propre ligne laissait toute la suite verte. `tests/billing.test.ts` branche
+désormais le vrai objet `billing` sur la base du test. Ce que l'ouverture ne
+donne pas est le point : le périmètre, la permission, les sièges, l'adresse et le
+catalogue restent ceux de l'application, quel que soit l'appelant.
+
+Trois états, et il faut en choisir un :
+
+| Configuration | Ce qui se passe |
+|---|---|
+| `STRIPE_SECRET_KEY` **et** `STRIPE_WEBHOOK_SECRET` | le vrai fournisseur |
+| `PAYMENTS_LOCAL_MODE=1`, aucune clé | la simulation locale, sans réseau |
+| ni l'un ni l'autre, **module activé** | **le démarrage échoue en nommant les trois variables** |
+| une clé sans son secret de webhook | refusé par le schéma d'environnement |
+| le drapeau **et** une clé | refusé : le choix serait implicite |
+| le drapeau **et** `NODE_ENV=production` | **refusé au démarrage, en nommant la variable** |
+
+La dernière ligne est une **défense en profondeur**, comme pour le fournisseur
+OAuth de développement : la simulation accorde un abonnement complet **sans
+paiement**, à n'importe quel compte. La règle du socle « jamais déduit de
+`NODE_ENV` » reste tenue — le drapeau est l'unique opt-in, `NODE_ENV` ne
+l'active jamais, il le **restreint**.
+
+**La garde de démarrage ne s'applique que si le module est activé** : c'est la
+seule des quatre dans ce cas. Un projet qui ne vend rien n'a pas à configurer un
+fournisseur de paiement, et `next.config.ts` lit `enabledModules` pour le savoir.
+
+**Ce dont le harnais a besoin se déclare dans sa configuration.** Le mode local
+du paiement est posé par `playwright.config.ts` (le serveur que Playwright
+démarre) **et** par le job `quality` de `.github/workflows/ci.yml`, jamais laissé
+au `.env` d'un poste : sans lui, `next dev` affiche `✓ Ready` puis meurt sur la
+garde de démarrage, et `pnpm test:e2e` échoue au lancement du serveur — dans les
+deux branches de la matrice, le module restant activé en configuration « socle ».
+`tests/env-wiring.test.ts` démarre la configuration de Next avec l'union de ces
+deux fichiers et rien d'autre, et vérifie sur chacun qu'aucun fournisseur réel
+n'y est joignable. Conséquence à connaître : un poste muni d'une vraie clé Stripe
+verra `pnpm test:e2e` refuser de démarrer en nommant le conflit — ces parcours ne
+sauraient de toute façon pas se dérouler contre un vrai fournisseur.
+
+`GET /api/billing-local-checkout` est le **checkout simulé** : elle n'existe que
+sous le drapeau (404 sinon), elle fabrique les événements que le fournisseur
+enverrait, les signe, et les fait passer par la **vraie** route de webhook du
+module. C'est la seule route du dépôt qui écrive en `GET`, et c'est assumé : elle
+tient la place d'une page tierce vers laquelle le navigateur **navigue**.
+
+Elle exige une **session**, et le périmètre de cette session-là : les
+identifiants de session locale sont déterministes, donc devinables, et sans
+cette garde un visiteur terminait le checkout ouvert par quelqu'un d'autre
+(constat F7 de la revue). Le refus est **404** dans les trois cas — mode local
+absent, appelant anonyme, session d'un autre périmètre.
+
+**Ce que la politique de sécurité du contenu n'a pas eu à changer, et pourquoi
+c'est fragile.** Une redirection 303 vers `checkout.stripe.com` depuis une
+soumission de formulaire serait soumise à `form-action 'self'` dans les
+navigateurs fondés sur Chromium et WebKit : il faudrait déclarer deux origines
+tierces dans `config/security.ts`. `app/billing-actions.tsx` navigue donc par
+`window.location.assign`, qu'aucune directive livrée ne borne. **La conséquence,
+écrite plutôt que découverte** : le tunnel de paiement ne fonctionne pas sans
+JavaScript — le bouton reste éteint et un `<noscript>` le dit. Une story qui
+voudrait un formulaire natif vers le fournisseur devra déclarer ces origines,
+avec la justification écrite qu'exige `docs/security.md` §1 — voir
+`docs/research/s19-subscribe-stripe.md` §7.
 
 ## Le montage du mailer
 

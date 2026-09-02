@@ -45,6 +45,25 @@ export const ORGANIZATION_ACTION = {
   revokeInvitation: 'invitation.revoke',
   removeMember: 'member.remove',
   setRole: 'member.set_role',
+  /**
+   * **La facturation** (s19, ADR 034).
+   *
+   * Elle n'est pas une action du module `organizations`, et c'est pourtant ici
+   * qu'elle doit vivre : la matrice rôle × action s'écrit **une fois**, et ce
+   * module est celui qui possède les rôles. La ranger ailleurs — dans le module
+   * `billing`, ou pire dans le point de composition de l'application — la
+   * ferait exister à deux endroits, et le second serait celui qui ment (revue
+   * de s17, F4).
+   *
+   * Ce module n'importe pas `billing` pour autant : c'est une chaîne, pas une
+   * dépendance. Le module `billing` reçoit un **prédicat** de son point de
+   * composition, et ignore d'où il vient.
+   *
+   * Sans elle, tout `member` d'une organisation pourrait ouvrir le portail
+   * client et annuler l'abonnement — `docs/security.md` §3 exige que chaque
+   * combinaison rôle × action sensible soit couverte.
+   */
+  manageBilling: 'billing.manage',
 } as const
 
 export type OrganizationAction = (typeof ORGANIZATION_ACTION)[keyof typeof ORGANIZATION_ACTION]
@@ -86,6 +105,10 @@ const MATRIX: Readonly<Record<OrganizationRole, readonly OrganizationAction[]>> 
     ORGANIZATION_ACTION.resendInvitation,
     ORGANIZATION_ACTION.revokeInvitation,
     ORGANIZATION_ACTION.removeMember,
+    // La facturation : un `admin` administre l'organisation, ce qui inclut ce
+    // qu'elle paie. Ce que le critère de s17 lui refuse est la distribution des
+    // rôles, pas la gestion courante.
+    ORGANIZATION_ACTION.manageBilling,
   ],
   member: [],
 }

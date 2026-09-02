@@ -614,7 +614,7 @@ describe('aucune chaîne visible n’est écrite en dur', () => {
       ),
     )
 
-    expect(offenders).toEqual([])
+    expect(offenders, offenders.join(' ;; ')).toEqual([])
   })
 
   it('cite des clés qui existent toutes, dans chacune des locales livrées', () => {

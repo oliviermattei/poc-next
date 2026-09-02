@@ -7,6 +7,9 @@ Un port décrit ce dont le code métier a besoin ; l'implémentation vit dans
 le premier ; `Storage` (s18) est le deuxième et le premier héritier du gabarit ;
 paiement (s19), jobs (s33), analytique et monitoring (s39) suivront **le même**,
 alors il est écrit ici plutôt que déduit :
+le premier, `Payments` le second (s19, Stripe) ; storage (s18), jobs (s33),
+analytique et monitoring (s39) suivent **le même gabarit**, alors il est écrit
+ici plutôt que déduit :
 
 | Choix | Ce qui le motive |
 |---|---|
@@ -74,4 +77,22 @@ Les garanties d'un port sont prouvées **chez ses implémentations** —
 `packages/adapters/resend/src/*.test.ts` et `packages/adapters/s3/src/*.test.ts`
 pour les deux fournisseurs livrés, `packages/mailer-testing/src/*.test.ts` et
 `packages/storage-testing/src/*.test.ts` pour les outils de test. Un test propre
+`packages/adapters/resend/src/*.test.ts` et `packages/adapters/stripe/src/*.test.ts`
+pour les deux fournisseurs livrés, `packages/mailer-testing/src/*.test.ts` et
+`packages/payments-testing/src/*.test.ts` pour les outils de test. Un test propre
 à ce package vivrait en `src/**/*.test.ts`.
+
+## Ce que `payments.ts` ajoute au gabarit, et pourquoi
+
+- **Une quatrième opération** (`listSubscriptions`) alors que le critère de la
+  story en nomme trois : `docs/reliability.md` §5 exige une commande de
+  réconciliation, et on ne réconcilie pas sans relire. Elle est hors du chemin
+  nominal — aucun webhook ne l'appelle (ADR 034).
+- **Un code d'erreur `invalid_signature` distinct** : c'est le seul échec qui
+  doive se traduire en 400 **sans le moindre effet de bord**. Le confondre avec
+  `invalid_request` rendrait indiscernables « le fournisseur a refusé notre
+  requête » et « quelqu'un a forgé un événement ».
+- **Une clé d'idempotence reçue en argument** plutôt que tirée par
+  l'implémentation : c'est ce qui permet de rejouer un checkout sans en ouvrir
+  deux, et de **compter les tirages** dans un test — la mutation qui manquait à
+  s06 (revue, F2).

@@ -144,7 +144,26 @@ export interface WebhookEvent {
   readonly payload: unknown
 }
 
-/** Un gestionnaire de webhook déclaré par un module. */
+/**
+ * Un gestionnaire de webhook déclaré par un module.
+ *
+ * **Aucun répartiteur ne les appelle encore**, et cela décide de la forme :
+ * `WebhookEvent` porte un `payload` **déjà parsé**, alors qu'une signature de
+ * fournisseur se vérifie sur les **octets bruts** de la requête. Passer par ce
+ * contrat obligerait donc à parser avant de vérifier, ce que
+ * `docs/security.md` §4 interdit.
+ *
+ * Un module qui reçoit aujourd'hui un rappel signé le fait donc par une
+ * **route déclarée**, publique, dont la garde est la signature — et il laisse
+ * `webhooks: []`. C'est le cas de `billing` (s19). Ce n'est pas de la paresse,
+ * c'est la seule forme qui tienne, et
+ * `tests/module-registry.test.ts` porte le fil de détente : il rougit dès que le
+ * `handle` d'un gestionnaire de webhook est **invoqué** dans `apps/web` ou dans
+ * `packages/core/src` — à côté de `dispatchModuleRequest`, où un répartiteur
+ * naîtrait le plus naturellement —, et ces modules doivent alors être rouverts.
+ * Le motif cherché étant l'invocation elle-même, il ne s'écrit pas ici : ce
+ * commentaire ferait rougir le cas qu'il décrit.
+ */
 export interface WebhookHandler {
   readonly id: string
   readonly source: string

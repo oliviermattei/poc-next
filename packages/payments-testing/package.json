@@ -1,0 +1,23 @@
+{
+  "name": "@repo/payments-testing",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@repo/adapter-stripe": "workspace:*",
+    "@repo/ports": "workspace:*",
+    "stripe": "^22.6.0"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "workspace:*",
+    "@types/node": "^22",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
+  }
+}

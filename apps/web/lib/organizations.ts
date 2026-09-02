@@ -114,6 +114,13 @@ const ABSENT_ORGANIZATIONS: OrganizationsFeature = {
 const APPLICATION_SEGMENTS = [
   'account',
   'api',
+  // L'écran de facturation (s19) : un segment que l'application sert, donc un
+  // identifiant qu'aucune organisation ne peut prendre. Il est écrit ici en
+  // plus d'être dérivé de la navigation du registre, parce que le fichier
+  // d'écran existe sur le disque **même quand le module est coupé** — et
+  // `tests/organizations.test.ts` dérive les segments du disque, pas du
+  // registre.
+  'billing',
   // L'écran de contact du site public (s11) : un segment que l'application
   // sert, donc un identifiant qu'aucune organisation ne peut prendre.
   'contact',

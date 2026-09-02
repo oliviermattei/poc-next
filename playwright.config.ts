@@ -89,6 +89,19 @@ export default defineConfig({
       // GitHub n'est posé ici : les deux ensemble seraient refusés au
       // démarrage.
       OAUTH_LOCAL_PROVIDER: '1',
+      // Monte le **mode de paiement local** (s19), et c'est ce qui rend
+      // `e2e/billing.spec.ts` exerçable : le checkout se termine sur une route
+      // servie par l'application, qui fabrique et signe les événements que le
+      // fournisseur enverrait. Sans ce drapeau, le serveur meurt après
+      // `✓ Ready` — le module `billing` est activé, et l'application refuse de
+      // démarrer sans avoir dit ce qu'elle fait de ses paiements.
+      //
+      // Posé **ici**, donc l'emportant sur le `.env` du poste : un poste muni
+      // d'une vraie clé Stripe verra le démarrage refuser les deux ensemble en
+      // le disant, plutôt que d'encaisser pendant un parcours. Ces parcours-là
+      // ne sauraient de toute façon pas se dérouler contre un vrai
+      // fournisseur.
+      PAYMENTS_LOCAL_MODE: '1',
     },
     url: BASE_URL,
     // **Jamais de réutilisation.** Un serveur déjà lancé sur ce port peut être

@@ -5,6 +5,8 @@ import createNextIntlPlugin from 'next-intl/plugin'
 
 import { enabledModules } from '../../config/features'
 import { resolveAuthConfig } from './lib/auth-config'
+import { billingCatalogue } from './lib/billing-catalogue'
+import { resolveBillingConfig } from './lib/billing-config'
 import { resolveMailerConfig } from './lib/mailer-config'
 import { resolveOAuthConfig } from './lib/oauth-config'
 import { resolveStorageConfig } from './lib/storage-config'
@@ -22,6 +24,7 @@ const nextConfig: NextConfig = {
     '@repo/core',
     '@repo/db',
     '@repo/module-auth',
+    '@repo/module-billing',
     '@repo/module-demo-disabled',
     '@repo/module-demo-enabled',
     '@repo/module-i18n',
@@ -38,6 +41,9 @@ const nextConfig: NextConfig = {
  * critère « module coupé, routes sans préfixe » serait inatteignable.
  */
 const withNextIntl = createNextIntlPlugin('./i18n/request.ts')
+
+/** Le module de facturation est-il activé ? La configuration décide, pas un `if` épars. */
+const billingEnabled = (enabledModules as readonly string[]).includes('billing')
 
 /**
  * Configuration exportée en fonction, et non en objet, pour recevoir la phase.
@@ -63,6 +69,22 @@ const withNextIntl = createNextIntlPlugin('./i18n/request.ts')
 export default function config(phase: string): NextConfig {
   const env = assertStartupEnv({ phase })
 
+  // **Le catalogue d'offres, avant tout le reste et sans condition de phase.**
+  //
+  // Il ne lit **aucune** variable : c'est du code, pas de l'environnement. Les
+  // deux échappatoires qui suivent — la phase de build et `SKIP_ENV_VALIDATION`
+  // — existent pour des variables d'exécution absentes, et rien ne justifie
+  // qu'un artefact se construise sur une configuration que le démarrage
+  // refusera. Sans cet appel, une offre malformée ne se voyait qu'à la première
+  // requête qui construisait le service — et cette requête pouvait être le
+  // webhook public, qui répondait alors 500 (constat F2 de la revue de s19).
+  //
+  // Comme la garde du paiement, elle ne vaut que si le module est activé : un
+  // projet qui ne vend rien n'a pas de catalogue à tenir.
+  if (billingEnabled) {
+    billingCatalogue()
+  }
+
   if (env !== undefined) {
     resolveMailerConfig(env)
     // Même règle pour l'authentification : cette application refuse de démarrer
@@ -84,6 +106,16 @@ export default function config(phase: string): NextConfig {
     // construire le registre ici chargerait chaque module pour y répondre.
     if ((enabledModules as readonly string[]).includes('storage')) {
       resolveStorageConfig(env)
+    }
+
+    // **Et pour le paiement — mais seulement si le module est activé.** Un
+    // projet qui ne vend rien n'a pas à configurer un fournisseur de paiement,
+    // et c'est la seule des quatre gardes qui dépende de la configuration des
+    // modules. Sans clé et sans drapeau, l'application refuse de démarrer en
+    // nommant les trois variables : `docs/reliability.md` §2 interdit le repli
+    // silencieux, qui accorderait ici des abonnements que personne n'a payés.
+    if (billingEnabled) {
+      resolveBillingConfig(env)
     }
   }
 

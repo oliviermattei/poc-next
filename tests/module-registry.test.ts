@@ -663,6 +663,85 @@ describe('webhook déclaré par un module', () => {
 
     expect(await countItemsOf('u-webhook')).toBe(1)
   })
+
+  /**
+   * **Le contrat agrège des gestionnaires que personne ne répartit** — et
+   * c'est la raison pour laquelle un module qui reçoit un rappel du fournisseur
+   * passe par une **route déclarée** plutôt que par `webhooks` (`billing`,
+   * s19). L'argument tient tant que ce répartiteur n'existe pas ; il repose
+   * sinon sur un commentaire, ce que la revue de s19 a relevé comme la seule
+   * faiblesse de cette décision.
+   *
+   * Ce cas est le **fil de détente** : le jour où l'application répartira
+   * `registry.webhooks`, il rougit, et l'auteur du répartiteur doit rouvrir les
+   * modules qui ont choisi la route — à commencer par `billing`, dont la
+   * signature se vérifie sur les octets **bruts**, que `WebhookEvent` ne porte
+   * pas (`docs/security.md` §4).
+   *
+   * **Ce qui est balayé, et sur quoi** — dit plutôt que promis (constat m2 de
+   * la seconde revue, qui a montré que `apps/web` seul laissait dehors
+   * l'endroit le plus probable) :
+   *
+   * | Périmètre | Ce qui déclenche |
+   * |---|---|
+   * | `apps/web` | toute lecture de `.webhooks`, **et** tout appel `.handle(` |
+   * | `packages/core/src` | tout appel `.handle(` |
+   *
+   * Les deux motifs ne se recouvrent pas par hasard. Dans `packages/core`, lire
+   * `.webhooks` est le travail **normal** du registre — `registry.ts` les
+   * agrège, `module.ts` en décrit le contrat : un balayage textuel y rougirait
+   * pour la ligne qui construit l'agrégat. Ce qui distingue un répartiteur d'un
+   * agrégateur, c'est qu'il **appelle** le gestionnaire ; c'est donc l'appel qui
+   * est cherché là-bas, y compris dans `registry.ts`, à côté de
+   * `dispatchModuleRequest`, où un répartiteur naîtrait le plus naturellement.
+   *
+   * Rien d'autre n'est balayé : ni les modules, ni `tests/` — celui-ci appelle
+   * un gestionnaire deux lignes plus haut, et c'est son rôle.
+   */
+  it('n’est réparti nulle part, et le contrat le sait', () => {
+    const sourcesOf = (root: string): string[] => {
+      const sources: string[] = []
+      const sweep = (directory: string): void => {
+        for (const entry of readdirSync(directory, { withFileTypes: true })) {
+          const path = join(directory, entry.name)
+
+          if (entry.isDirectory() && entry.name !== 'node_modules' && !entry.name.startsWith('.')) {
+            sweep(path)
+          } else if (entry.isFile() && /\.tsx?$/.test(entry.name)) {
+            sources.push(path)
+          }
+        }
+      }
+
+      sweep(join(REPO_ROOT, root))
+
+      return sources
+    }
+
+    const application = sourcesOf('apps/web')
+    const core = sourcesOf('packages/core/src')
+
+    /** Appeler un gestionnaire de webhook : c'est cela, répartir. */
+    const invokes = (path: string): boolean => /\.handle\s*\(/.test(readFileSync(path, 'utf8'))
+
+    const dispatching = [
+      ...application.filter(
+        (path) => invokes(path) || /\.webhooks\b/.test(readFileSync(path, 'utf8')),
+      ),
+      ...core.filter(invokes),
+    ]
+
+    expect(
+      dispatching,
+      'Un répartiteur de webhooks apparaît : rouvrez les modules ' +
+        'qui reçoivent un rappel par une route déclarée (billing), la signature ' +
+        'devant être vérifiée sur les octets bruts avant tout effet de bord.',
+    ).toEqual([])
+    // Et le balayage a bien vu des fichiers dans les deux périmètres : une liste
+    // vide parce que rien n'a été lu passerait pour une garantie.
+    expect(application.length).toBeGreaterThan(20)
+    expect(core.length).toBeGreaterThan(3)
+  })
 })
 
 /**

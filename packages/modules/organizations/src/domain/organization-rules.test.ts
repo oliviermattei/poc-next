@@ -308,6 +308,7 @@ describe('la matrice des permissions', () => {
       'invitation.revoke',
       'member.remove',
       'member.set_role',
+      'billing.manage',
     ],
     // Un `admin` invite, révoque, renvoie, renomme et retire — mais il ne
     // distribue pas les rôles : les critères énumèrent ce qu'il peut faire
@@ -318,6 +319,10 @@ describe('la matrice des permissions', () => {
       'invitation.resend',
       'invitation.revoke',
       'member.remove',
+      // s19 — la facturation. Un `admin` administre l'organisation, ce qui
+      // inclut ce qu'elle paie ; ce que s17 lui refuse est la distribution des
+      // rôles. Un `member` ne peut donc ni souscrire, ni annuler (ADR 034).
+      'billing.manage',
     ],
     member: [],
   }
