@@ -2,59 +2,29 @@
 
 > Fichier de passation. À lire **en premier** après un `/clear`. La vérité reste dans les fichiers du dépôt ; ceci dit seulement où on en est et comment on travaille.
 
-## REPRENDRE ICI (écrit le 01/09 avant un vidage de contexte)
+## REPRENDRE ICI
 
-**Deux stories attendent leur fusion**, chacune avec une revue ciblée en cours au
-moment d'écrire. Vérifier d'abord si elles ont rendu leur verdict :
-`ListAgents`, ou lire la fin de `docs/reviews/<story>.md` dans le worktree.
+**Aucune voie en cours.** `dev` est à jour, poussée, aucun worktree ouvert.
+Le travail reprend en **série** : une story à la fois, branchée sur `dev`.
 
-| Story | Worktree | Branche | HEAD | État |
-|---|---|---|---|---|
-| s20-one-time-purchase | `.claude/worktrees/agent-aac44bd460fc037a9` | `feature/s20-one-time-purchase` | `357ac93` | 2 revues (`critical` puis `major`/oui), **3 tours de correction**, 3ᵉ revue ciblée sur `a28a82d..357ac93` en cours |
-| s41-mcp-server | `.claude/worktrees/agent-a6a005746d34a9f11` | `feature/s41-mcp-server` | `e9cf39a` | 1 revue (`critical`), 1 correction, 2ᵉ revue ciblée sur `2bdd88e..e9cf39a` en cours |
+Candidates dont les dépendances sont satisfaites : **s21** (essais et gating,
+dépend de s20 — fusionnée), **s39** (monitoring, dépend de s36), **s46** (écrans
+d'authentification), **s32** (notifications), **s37** (admin, dépend de s21).
+Numéros d'ADR libres : **043 et suivants**.
 
-**Pour chacune, quand la revue rend `Ship allowed: yes`** : suivre « Fusionner une
-story » ci-dessous, **y compris l'étape 6 — supprimer le worktree**. Bases
-Postgres `s20` et `s41` ; ports 3120 et 3141.
-
-**Ce qui reste ouvert et assumé sur s20**, à ne pas redécouvrir : le second
-prélèvement existe toujours chez le fournisseur (la réconciliation est rejouable,
-elle ne rend pas l'argent) ; le repli de lecture est une **dette datée**, à
-retirer une fois l'ancienne version hors ligne ; `m3` (minutage de
-`tests/rendered-text.test.ts`) et `m4` (instabilité e2e complète) sont mesurés
-**non imputables** à s20 et restent entiers.
-
-**Sur s41** : le mineur `m1` reste ouvert — le tableau des commandes de
-`AGENTS.md` racine décrit `ks` comme « list et toggle » alors que `scaffold`
-existe désormais.
-
-**Après ces deux fusions : bascule en série.** Une story à la fois, branchée sur
-un `dev` fraîchement fusionné (voir « Effort et modèle »). Prochaines candidates
-dont les dépendances sont satisfaites : **s21** (essais et gating, dépend de
-s20), **s39** (monitoring, dépend de s36), **s46** (écrans d'authentification),
-**s32** (notifications). Numéros d'ADR : 043 et suivants — 042 est pris par s41.
-
-**CI** : `dev` est poussée sur `origin`, la CI tourne sur chaque poussée
-(matrice `tous` / `socle`). Vérifier son verdict avec
-`gh run list --limit 3 --json status,conclusion,displayTitle` — **elle n'a
-jamais fini une exécution complète** au moment d'écrire, les précédentes ayant
-été annulées par le groupe de concurrence. Si elle est verte, les agents peuvent
-cesser de jouer les six commandes dans les deux configurations : la seconde est
-alors tenue par la machine.
-
-**Référentiel du retour vers killer-saas** : `docs/killer-saas-feedback.md`,
-fichier unique, onze propositions plus les observations. Le patch amont se
-régénère par `git diff 463c831..HEAD -- .claude/`.
+Avant d'ouvrir une voie, vérifier le verdict de la CI :
+`gh run list --limit 3 --json status,conclusion,displayTitle`. Si la matrice
+`tous` / `socle` est verte, l'agent n'a plus à jouer les six commandes deux fois.
 
 ## Où on en est
 
 | Story | État |
 |---|---|
-| s01 → s19, s36, s45 | **closes**, revues, correctifs appliqués |
+| s01 → s20, s36, s41, s45 | **closes**, revues, correctifs appliqués |
 | s20 → s35, s37 → s44, s46 | à faire — 25 stories (s20 en cours) |
 
-Tests : **1469 + 6 ignorés**, 79 parcours end-to-end, déterministes (`retries: 0`).
-ADR : **37** (jusqu'à 037 fusionnés ; 038-039 réservés à s20). Branche : `dev`. Commits : un par story, plus `docs:` pour recherche, plan, revue.
+Tests : **1580 + 6 ignorés**, 80 parcours end-to-end, déterministes (`retries: 0`).
+ADR : **42** (jusqu'à 042 fusionnés ; 043 et suivants libres).
 
 ## Environnement (à refaire après un redémarrage de session)
 
@@ -154,64 +124,6 @@ livrables sur une fenêtre donnée est le même. Et le parallélisme coûte, lui
 peut chevaucher l'implémentation de la suivante, puisqu'elle ne touche pas au code et que la
 suivante part d'un `dev` déjà fusionné.
 
-## Voies en cours (vague parallèle, ouverte le 31/08/2026)
-
-| Voie | Story | Worktree | Base / port |
-|---|---|---|---|
-| A | s14-passkeys | **fusionnée dans `dev`** (`0c85639`), revue `minor`/ship oui | close |
-| B | s18-file-storage-avatar | **fusionnée dans `dev`** (`caaa77c`), deux revues, `minor`/ship oui | close |
-| C | s19-subscribe-stripe | **fusionnée dans `dev`** (`448351d`), trois revues, `minor`/ship oui | close |
-| A | s36-cookie-consent | **fusionnée dans `dev`** (`4500416`), deux revues, `minor`/ship oui | close |
-| B | s20-one-time-purchase | commit `22b560c`, **en revue** | `s20`, port 3120 |
-| C | s41-mcp-server | `feature/s41-mcp-server` — niveau 2, implémenteur Sonnet | `s41`, port 3141 |
-| D | s17-roles-permissions | **fusionnée dans `dev`** (`2b997df`), revue `major`/ship oui | close |
-| B | s16-invite-members | **fusionnée dans `dev`** (`6f14cc4`), revue `none`/ship oui | close |
-| C | s11-public-forms | **fusionnée dans `dev`** (`9cf45c2`), revue `none`/ship oui | close |
-
-**Les numéros d'ADR se réservent à l'ouverture d'une vague — et un tour de correction peut en
-consommer un de plus.** C'est arrivé deux fois : s16 puis s18 ont ouvert un ADR imprévu pendant
-leur correction, sur un numéro déjà réservé à une autre voie. Réserver deux numéros par voie
-coûte moins qu'une renumérotation. Deux voies parallèles qui
-prennent « le prochain numéro libre » prennent le même, et la fusion écrase une décision sans
-conflit visible — les fichiers portent le même nom. Vague en cours : 026 et **029** = s16, 027 = s11, 028 = s13, **030 = s17**, **031 = s14**, **032 = s18**, **033 = s18** (pris au tour de correction), **034 = s19**, **035-036 = s36**, **038-039 = s20**, **040-041 = s41** (deux numéros par voie). s16 avait pris 027 à sa reprise
-après coupure : deux ADR de même numéro ne produisent **aucun** conflit de fusion, les fichiers
-portant des noms différents — la numérotation ment en silence. Renumérotation avant fusion.
-
-**Le worktree d'un agent arrive sur une branche `worktree-agent-<id>`, pas sur `feature/<id>`** :
-la première consigne d'une voie est de la renommer (`git branch -m feature/<id>`). Sans ça la
-story se fait sur un nom hors convention, et la fusion ne retrouve rien.
-
-**Une mutation posée ailleurs qu'à l'endroit exact du défaut ne prouve rien.** Mesuré en s19 :
-deux constats annoncés fermés « à 1 rouge » l'étaient par une mutation posée dans le module,
-alors que la neutralisation au **point de composition** — là où vivait le bug — laissait
-1320 tests sur 1320 verts. Quand un tableau de mutations est relu, vérifier **où** la mutation
-est posée, pas seulement qu'elle rougit.
-
-**Une mutation se restaure juste après avoir été mesurée, jamais en fin de campagne.** Le
-31/08/2026, une limite d'usage a tué trois agents d'un coup ; le relecteur de s45 est mort avec
-`headers.set(NONCE_HEADER, 'TEHMUTANT')` encore en place dans `apps/web/proxy.ts`. Une mutation
-oubliée dans un arbre est indiscernable d'un défaut réel pour qui passe après. Après toute
-interruption d'agent : `git status` du worktree **avant** de conclure quoi que ce soit.
-
-Chaque voie fait recherche → design → plan → exécution TDD → **un commit** sur sa branche, puis
-un `reviewer` en contexte frais écrit `docs/reviews/<id>.md` dans le worktree. Fusion dans `dev`
-**une voie à la fois**, en régénérant après coup ce qui dépend de `config/features.ts`.
-
-Fichiers chauds, à ne jamais laisser à deux voies en même temps : `config/features.ts`,
-`generated/`, `turbo.json`, `eslint.config.ts`, `pnpm-lock.yaml`, `AGENTS.md`, `docs/STATE.md`
-(celui-ci appartient à l'orchestrateur). Chaque voie a **sa propre base** : deux suites qui
-migrent dans `app` en même temps rougissent pour rien.
-
-**Un outil qui part de la racine du dépôt voit les autres worktrees.** Trois fois maintenant :
-le balayage Tailwind de s10, `pnpm lint` à la fusion de s14, et le serveur Playwright partagé.
-Les worktrees vivent dans `.claude/worktrees/` : tout balayage doit s'en exclure ou passer par
-`git ls-files`, qui ne voit que l'arbre courant.
-
-**Le port des parcours est réglé (`df3bb2f`).** `reuseExistingServer` est passé à `false` :
-Playwright démarre son propre serveur et échoue bruyamment si le port est pris, au lieu de
-mesurer l'arbre d'une autre branche. Chaque voie choisit le sien par `E2E_PORT` — voir la
-colonne de la table ci-dessus. Vérifié dans les deux sens : vert port libre, refus explicite
-port occupé.
 
 ## À savoir avant s14 (passkeys)
 
