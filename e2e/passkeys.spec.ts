@@ -1,7 +1,8 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { aSignedInAccount, PASSWORD, signIn } from './support/account'
-import { anonymousLanding, urlOf } from './support/locale'
+import { aSignedInAccount, PASSWORD, signIn, signOut } from './support/account'
+import { clickOnce } from './support/interaction'
+import { urlOf } from './support/locale'
 
 /**
  * Les passkeys, dans un vrai navigateur (s14).
@@ -52,27 +53,25 @@ const withVirtualAuthenticator = async (page: Page): Promise<void> => {
   })
 }
 
-/** Le clic rejoué jusqu'à ce qu'il prenne — un bouton non hydraté l'avale. */
-const clickUntil = async (
-  page: Page,
-  name: string,
-  settled: () => Promise<void>,
-): Promise<void> => {
-  await expect(async () => {
-    // `exact` : l'écran de compte porte « Enregistrer le nom »,
-    // « Enregistrer ce nom » et « Enregistrer une passkey ». Une
-    // correspondance partielle en désignerait trois, et Playwright refuserait
-    // de cliquer.
-    await page.getByRole('button', { name, exact: true }).click()
-    await settled()
-  }).toPass({ timeout: 20_000 })
-}
-
-const signOut = async (page: Page): Promise<void> => {
-  await page.goto('/account')
-  await clickUntil(page, 'Se déconnecter', async () => {
-    await expect(page).toHaveURL(urlOf(anonymousLanding()), { timeout: 2_000 })
-  })
+/**
+ * Le geste d'un bouton de cet écran, **une fois**, puis son achèvement.
+ *
+ * Le reclic est parti d'ici pour la raison mesurée dans
+ * `support/interaction.ts` : à un cœur, le second clic tombait sur une page
+ * **déjà en navigation** — le journal montre `navigated to …/fr` juste après
+ * l'expiration de l'attente interne —, et l'attente suivante regardait
+ * l'ancienne page ou la nouvelle selon le hasard.
+ *
+ * Les délais de 2 000 à 5 000 ms qui bornaient chaque attente sont partis avec
+ * la boucle : ils bornaient **un essai** dans un `toPass` de 20 s, pas le geste.
+ * Ce qui reste est le délai par défaut du projet. Aucun délai n'est allongé.
+ *
+ * `exact` : l'écran de compte porte « Enregistrer le nom », « Enregistrer ce
+ * nom » et « Enregistrer une passkey ». Une correspondance partielle en
+ * désignerait trois, et Playwright refuserait de cliquer.
+ */
+const press = async (page: Page, name: string, settled: () => Promise<void>): Promise<void> => {
+  await clickOnce(page, page.getByRole('button', { name, exact: true }), settled)
 }
 
 test('enregistrement, connexion sans mot de passe, renommage puis révocation', async ({ page }) => {
@@ -86,8 +85,8 @@ test('enregistrement, connexion sans mot de passe, renommage puis révocation', 
   await expect(page.getByText('Aucune passkey enregistrée')).toBeVisible()
 
   // --- Enregistrement ---------------------------------------------------
-  await clickUntil(page, 'Enregistrer une passkey', async () => {
-    await expect(page.getByText('Passkey sans nom')).toBeVisible({ timeout: 5_000 })
+  await press(page, 'Enregistrer une passkey', async () => {
+    await expect(page.getByText('Passkey sans nom')).toBeVisible()
   })
 
   // Le critère 1 : elle apparaît **avec sa date de création**. Sans nom pour
@@ -95,21 +94,21 @@ test('enregistrement, connexion sans mot de passe, renommage puis révocation', 
   await expect(page.getByText(/^Ajoutée le /)).toBeVisible()
 
   // --- Renommage --------------------------------------------------------
-  await clickUntil(page, 'Renommer la passkey Passkey sans nom', async () => {
-    await expect(page.getByLabel('Nouveau nom')).toBeVisible({ timeout: 2_000 })
+  await press(page, 'Renommer la passkey Passkey sans nom', async () => {
+    await expect(page.getByLabel('Nouveau nom')).toBeVisible()
   })
 
   await page.getByLabel('Nouveau nom').fill('MacBook')
-  await clickUntil(page, 'Enregistrer ce nom', async () => {
-    await expect(page.getByText('MacBook', { exact: true })).toBeVisible({ timeout: 3_000 })
+  await press(page, 'Enregistrer ce nom', async () => {
+    await expect(page.getByText('MacBook', { exact: true })).toBeVisible()
   })
 
   // --- Connexion sans mot de passe --------------------------------------
   await signOut(page)
   await page.goto('/sign-in')
 
-  await clickUntil(page, 'Se connecter avec une passkey', async () => {
-    await expect(page).toHaveURL(urlOf('/'), { timeout: 5_000 })
+  await press(page, 'Se connecter avec une passkey', async () => {
+    await expect(page).toHaveURL(urlOf('/'))
   })
 
   // La session est bien celle du compte : l'écran de compte le sert.
@@ -119,20 +118,18 @@ test('enregistrement, connexion sans mot de passe, renommage puis révocation', 
   // --- Révocation -------------------------------------------------------
   // Le mot de passe reste : la passkey n'est pas le dernier moyen de
   // connexion, et le bouton existe donc.
-  await clickUntil(page, 'Révoquer la passkey MacBook', async () => {
-    await expect(page.getByText('Aucune passkey enregistrée')).toBeVisible({ timeout: 3_000 })
+  await press(page, 'Révoquer la passkey MacBook', async () => {
+    await expect(page.getByText('Aucune passkey enregistrée')).toBeVisible()
   })
 
   // --- Et elle n'ouvre plus rien ----------------------------------------
   await signOut(page)
   await page.goto('/sign-in')
 
-  await clickUntil(page, 'Se connecter avec une passkey', async () => {
+  await press(page, 'Se connecter avec une passkey', async () => {
     // Le texte plutôt que le rôle : Next pose son propre `role="alert"` vide
     // (`__next-route-announcer__`) sur chaque page, et il gagne la sélection.
-    await expect(page.getByText('Connexion par passkey impossible')).toBeVisible({
-      timeout: 5_000,
-    })
+    await expect(page.getByText('Connexion par passkey impossible')).toBeVisible()
   })
 
   await expect(page).toHaveURL(urlOf('/sign-in'))
@@ -220,13 +217,13 @@ test('une cérémonie d’enrôlement annulée le dit, et n’écrit rien', asyn
     await expect(page.getByText('Aucune passkey enregistrée')).toBeVisible()
 
     // Le critère 5 de la story, dans ses deux moitiés.
-    await clickUntil(page, 'Enregistrer une passkey', async () => {
+    await press(page, 'Enregistrer une passkey', async () => {
       // **Annuler n'est pas échouer**, et le message le dit : il nomme le
       // geste et son absence de conséquence, là où « L'opération a échoué »
       // enverrait réessayer une personne qui vient de renoncer.
       await expect(
         page.getByText('Enregistrement annulé. Aucune passkey n’a été ajoutée.'),
-      ).toBeVisible({ timeout: 5_000 })
+      ).toBeVisible()
     })
 
     await expect(

@@ -517,7 +517,12 @@ const offenders = (found: readonly Verdict[], rules: AcceptanceRules): readonly 
     .map(({ where, value }) => `${where} : « ${value} »`)
 
 describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => {
-  it('rend chaque écran de l’application', async () => {
+  // Ce cas rend **tous** les écrans de l'application en une fois. Le budget par
+  // défaut de Vitest (5 s) n'a rien à voir avec ce qu'il vérifie — il ne mesure
+  // aucune propriété de vitesse — et il a rougi trois fois sous charge, à
+  // 5 012 ms, pendant que le cas passait seul. Un budget explicite, dimensionné
+  // pour ce que le cas fait, évite un faux rouge qui n'apprend rien.
+  it('rend chaque écran de l’application', { timeout: 30_000 }, async () => {
     const { localeRouting } = await import('../apps/web/lib/locale-routing')
     const { catalogueKeys, isMarker, pseudoRequestConfig } = await import(
       './fixtures/pseudo-locale'
