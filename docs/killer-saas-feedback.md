@@ -232,6 +232,13 @@ qu'on propose, où est le patch, et son état.
   vert ; rejoués sur environnement sain, 1507 tests et 79 parcours passent. La
   bonne réponse à un rouge inexpliqué est de mesurer l'environnement, pas de
   choisir entre s'accuser et se dédouaner.
+- **Une revue peut affirmer faux, et faire corriger la mauvaise chose.** En
+  s41, le rapport écrivait que le module MCP était « le seul sans les quatre
+  couches » ; c'est inexact — `i18n` n'en a que deux. L'implémenteur l'a mesuré
+  et corrigé dans sa réponse. Le pipeline n'a aucun mécanisme pour ça : le
+  rapport de revue est traité comme une vérité. Piste : rendre explicite qu'un
+  implémenteur peut **réfuter un constat par la mesure**, comme il peut réfuter
+  une consigne — trois réfutations de consigne se sont révélées justes.
 - **Les mutations vertes déclarées** sont un signal de qualité, pas un aveu :
   trois voies ont signalé d'elles-mêmes une mutation restée verte plutôt que de
   la taire. Le skill pourrait le dire explicitement pour l'encourager.
