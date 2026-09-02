@@ -137,6 +137,11 @@ const APPLICATION_SEGMENTS = [
   // l'application, donc un identifiant qu'aucune organisation ne peut prendre.
   'oauth',
   'organizations',
+  // L'écran d'une fonctionnalité réservée à une offre payante (s21) : un écran
+  // servi par l'application, donc un identifiant qu'aucune organisation ne peut
+  // prendre. Il existe sur le disque quel que soit l'état du module de
+  // facturation, et c'est du disque que `tests/organizations.test.ts` dérive.
+  'premium',
   'reset-password',
   'sign-in',
   'sign-up',

@@ -342,6 +342,17 @@ export const FIXTURE_BILLING_PURCHASED: BillingView = {
 export const billingState: { value: BillingView } = { value: FIXTURE_BILLING_NONE }
 
 /**
+ * Le droit lu par le double d'`entitlements.allows` (s21), à l'appel.
+ *
+ * C'est la **lecture** qui est doublée, comme `billing.view` juste au-dessus —
+ * pas la règle, qui vit dans `apps/web/lib/entitlements.ts` et qui est éprouvée
+ * dans `tests/entitlements.test.ts`. Sans ce levier, l'écran réservé ne
+ * rendrait qu'une de ses deux moitiés, et laquelle dépendrait de la
+ * configuration de modules du dépôt.
+ */
+export const entitlementState: { value: boolean } = { value: false }
+
+/**
  * Les scripts non essentiels que voient la bannière et l'écran de préférences
  * pendant ce rendu (s36).
  *

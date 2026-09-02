@@ -137,6 +137,29 @@ vi.mock('../apps/web/lib/billing', async (importOriginal) => {
 })
 
 /**
+ * Le droit d'utiliser une fonctionnalité réservée (s21).
+ *
+ * Seule la **lecture** est doublée, comme `billing.view` juste au-dessus : la
+ * règle vit dans `apps/web/lib/entitlements.ts` et elle est éprouvée dans
+ * `tests/entitlements.test.ts`. Sans ce levier, l'écran réservé ne rendrait
+ * qu'une de ses deux moitiés — et laquelle dépendrait de l'état de
+ * `config/features.ts`, ce qui ferait un balayage vrai dans une seule
+ * configuration du dépôt.
+ */
+vi.mock('../apps/web/lib/entitlements', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../apps/web/lib/entitlements')>()
+  const { entitlementState } = await import('./fixtures/screen-viewer')
+
+  return {
+    ...actual,
+    entitlements: {
+      ...actual.entitlements,
+      allows: () => Promise.resolve(entitlementState.value),
+    },
+  }
+})
+
+/**
  * Le consentement (s36) : **la configuration la plus fournie**, et le contexte
  * de requête.
  *
@@ -548,6 +571,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       FIXTURE_USER_AGENT,
       SIGNED_IN,
       billingState,
+      entitlementState,
       viewerState,
     } = await import('./fixtures/screen-viewer')
     const { AppShell } = await import('../apps/web/app/app-shell')
@@ -617,6 +641,16 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
     const organizationsMounted = organizations.available
     const { billing } = await import('../apps/web/lib/billing')
     const billingMounted = billing.available
+    /**
+     * **Ce que l'écran réservé fait dans cette configuration, dérivé de la
+     * déclaration** et non concédé : il répond 404 quand `config/gating.ts` ne
+     * réserve plus cette fonctionnalité — c'est exactement la condition qu'il
+     * pose. Le droit, lui, est piloté par la fixture : il ne dépend pas de la
+     * configuration du dépôt.
+     */
+    const { featureGates } = await import('../apps/web/lib/feature-gates')
+    const { DEMO_PREMIUM_FEATURE } = await import('@repo/module-demo-enabled')
+    const premiumGated = featureGates().some((gate) => gate.id === DEMO_PREMIUM_FEATURE)
     const consentMounted = consent.available
     const LEGAL_SLUG = 'privacy'
     const publicSite = marketingSite.sections.length > 0
@@ -810,6 +844,36 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           return (await import('../apps/web/app/billing/page')).default({
             searchParams: noParams,
           })
+        },
+      },
+      {
+        // s21. L'écran d'une fonctionnalité réservée, **sans le droit** : c'est
+        // lui qui porte l'invitation à souscrire, que le second critère de la
+        // story exige. Il rend dans les deux configurations de modules — ce
+        // n'est pas un écran de facturation, c'est un écran de produit —, et le
+        // droit est piloté par la fixture, non par l'état du dépôt.
+        id: 'fonctionnalité réservée, sans le droit',
+        file: 'premium/page.tsx',
+        viewer: SIGNED_IN,
+        refuses: premiumGated ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        render: async () => {
+          entitlementState.value = false
+
+          return (await import('../apps/web/app/premium/page')).default()
+        },
+      },
+      {
+        // s21. Le second rendu du même fichier : avec le droit. Il porte trois
+        // textes qu'aucun autre écran ne rend — le titre, le badge et la
+        // description de l'accès accordé.
+        id: 'fonctionnalité réservée, avec le droit',
+        file: 'premium/page.tsx',
+        viewer: SIGNED_IN,
+        refuses: premiumGated ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        render: async () => {
+          entitlementState.value = true
+
+          return (await import('../apps/web/app/premium/page')).default()
         },
       },
       {

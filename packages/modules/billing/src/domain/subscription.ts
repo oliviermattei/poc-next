@@ -47,6 +47,21 @@ export interface SubscriptionSnapshot {
  *
  * `canceled`, `paused` et `incomplete` ne donnent rien : le premier est fini, le
  * deuxième est suspendu, le troisième n'a jamais été payé.
+ *
+ * **Quatrième décision, ajoutée par s21 (ADR 044) : un essai expire par le
+ * temps.** Le point 1 ci-dessus ne vaut plus pour `trialing`, et c'est le cœur
+ * de la story — « un essai est un droit d'accès qui **expire sans paiement** ».
+ * Le fournisseur émet bien un événement quand il convertit ou échoue l'essai,
+ * mais cet événement peut se perdre : c'est exactement ce que la commande de
+ * réconciliation existe pour rattraper (ADR 034 §3), donc exactement ce qu'un
+ * droit d'accès ne peut pas attendre. Un essai dont le terme est passé
+ * n'accorde plus rien, sans qu'aucun webhook n'ait à arriver.
+ *
+ * C'est la même mécanique que l'annulation programmée : la tolérance au retard
+ * du cache s'efface devant une **échéance**, et l'essai en est une.
+ * `trialEnd` absent d'une ligne `trialing` ne devrait pas exister ; il retombe
+ * alors sur `currentPeriodEnd`, pour que l'accès reste **borné** au lieu de
+ * devenir perpétuel sur une lacune de notre cache.
  */
 export function grantsAccess(subscription: SubscriptionSnapshot | null, now: Date): boolean {
   if (subscription === null) {
@@ -61,11 +76,52 @@ export function grantsAccess(subscription: SubscriptionSnapshot | null, now: Dat
     return false
   }
 
+  if (subscription.status === 'trialing') {
+    return now.getTime() < trialTermOf(subscription).getTime()
+  }
+
   if (subscription.cancelAtPeriodEnd || subscription.status === 'past_due') {
     return now.getTime() < subscription.currentPeriodEnd.getTime()
   }
 
   return true
+}
+
+/** Le terme opposable d'un essai : sa date, ou à défaut la fin de la période. */
+const trialTermOf = (subscription: SubscriptionSnapshot): Date =>
+  subscription.trialEnd ?? subscription.currentPeriodEnd
+
+/**
+ * **Combien de jours d'essai cette offre ouvre à ce périmètre** — zéro, ou
+ * plutôt `null`, s'il en a déjà eu un (ADR 044).
+ *
+ * Le fournisseur n'a **aucune** mémoire d'essai par client : mesuré dans
+ * `stripe@22.6.1`, `subscription_data.trial_period_days` est un nombre que
+ * l'appelant pose à chaque ouverture de session de checkout, et rien n'y
+ * consulte l'historique. Un périmètre qui a essayé, laissé l'essai expirer,
+ * puis ouvert un checkout sur une autre offre recevait donc quatorze jours de
+ * plus — indéfiniment, offre après offre.
+ *
+ * La trace d'un essai déjà accordé est **déjà en cache**, et elle est
+ * reconstructible depuis le fournisseur (`listSubscriptions` rend `trialEnd`) :
+ * une ligne d'abonnement qui porte une date de fin d'essai. C'est pourquoi
+ * cette règle ne demande **aucune table** — donc aucune donnée personnelle de
+ * plus, aucune catégorie à déclarer, aucune purge ni aucun export à rouvrir.
+ *
+ * Elle prend les jours de l'offre plutôt que l'offre entière : c'est tout ce
+ * qu'il lui faut, et cela la rend appelable sur une offre absente du catalogue.
+ */
+export function trialDaysFor(
+  offerTrialDays: number | null,
+  subscriptions: readonly Pick<SubscriptionSnapshot, 'trialEnd'>[],
+): number | null {
+  if (offerTrialDays === null) {
+    return null
+  }
+
+  return subscriptions.some((subscription) => subscription.trialEnd !== null)
+    ? null
+    : offerTrialDays
 }
 
 /**
@@ -144,7 +200,14 @@ export function displayStateOf(
     return now.getTime() < subscription.currentPeriodEnd.getTime() ? 'ending' : 'expired'
   }
 
-  return subscription.status === 'trialing' ? 'trialing' : 'active'
+  if (subscription.status === 'trialing') {
+    // **Un essai périmé n'est pas « essai en cours »** (s21). L'écran suit
+    // l'accès : dire « période d'essai » à quelqu'un qui n'a plus rien serait
+    // le laisser chercher pourquoi ses fonctionnalités ont disparu.
+    return now.getTime() < trialTermOf(subscription).getTime() ? 'trialing' : 'expired'
+  }
+
+  return 'active'
 }
 
 /**

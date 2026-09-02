@@ -14,6 +14,15 @@ import type { ModuleRegistry, RegistryNavigationEntry } from './registry'
  *
  * Ce prédicat ne connaît ni requête, ni réponse HTTP : c'est le répartiteur qui
  * traduit un refus en 401 ou en 403, selon qu'il sait ou non qui appelle.
+ *
+ * **Il ne répond que la moitié de la question sur une route réservée à une
+ * offre** (`level: 'entitlement'`, ADR 043), et c'est écrit plutôt que subi :
+ * savoir quelles offres un périmètre détient demande une lecture, donc une
+ * fonction asynchrone, que la navigation ne peut pas attendre. Cette moitié-ci
+ * est celle de la session ; l'autre est portée par `dispatchModuleRequest`, qui
+ * est **fail-closed**. Un appelant qui prendrait ce prédicat pour la garde
+ * entière n'aurait aucun gating — c'est pourquoi il n'y a qu'un seul appelant
+ * côté serveur, et que le refus 403 est éprouvé au répartiteur.
  */
 export const satisfiesProtection = (
   protection: RouteProtection,

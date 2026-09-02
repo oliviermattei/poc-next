@@ -185,6 +185,40 @@ du nettoyage, un remboursement d'un cas révoque l'achat des suivants. Mesuré
 fichier — c'est un compte de fuite, il dépend de cet ordre et se déplacera. La
 table l'annonçait à 5.
 
+**Un essai expire par le temps, et il commence une fois par périmètre**
+(s21, ADR 044). Deux moitiés, et il faut les deux.
+
+La première : `grantsAccess` rend un `trialing` **daté**. La tolérance au retard
+du cache, écrite pour `active`, ne s'applique pas ici — c'est l'essai qui fait
+de cette date une échéance, comme l'annulation programmée. Un essai est un droit
+d'accès **que personne n'a payé**, et le seul événement qui le termine peut se
+perdre : c'est même le cas que `pnpm billing:reconcile` existe pour rattraper,
+donc trop tard pour un droit d'accès. `displayStateOf` suit — un essai périmé
+s'affiche `expired`. Un `trialing` sans `trial_end` ne devrait pas exister ; il
+retombe sur `currentPeriodEnd`, pour que l'accès reste **borné** au lieu de
+devenir perpétuel sur une lacune du cache.
+
+La seconde : `trialDaysFor` rend `null` dès qu'un abonnement du client porte un
+`trial_end`, et `openCheckout` l'appelle sur les abonnements qu'il lit **déjà**
+pour la garde `already_subscribed` — une lecture, deux décisions. Mesuré dans
+`stripe@22.6.1`, `subscription_data.trial_period_days` est un nombre que
+l'appelant pose à chaque ouverture : le fournisseur n'a aucune mémoire d'essai
+par client, et redemander un checkout rendait quatorze jours de plus,
+indéfiniment. **Aucune table pour autant** : la trace est le cache, elle est
+reconstructible depuis le fournisseur (`listSubscriptions` rend `trialEnd`),
+donc `dataCategories`, `retention`, `purge` et `export` ne bougent pas.
+
+**Ce module dit quelles offres un périmètre détient, jamais ce qu'elles
+ouvrent** (s21, ADR 043). `entitledOffers` est toute sa part du gating : la
+correspondance offre → fonctionnalité vit dans `config/gating.ts`, et la règle
+dans `@repo/core`, parce qu'elle doit répondre **module coupé**. Deux
+conséquences à ne pas défaire : `entitledOffers` ne consulte **aucune
+permission** — `canManage` dit qui a le droit de *gérer* la facturation, pas qui
+a le droit d'*utiliser* ce que le périmètre paie, et confondre les deux ferait
+payer une organisation pour une seule personne —, et `entitledOfferIds` lit
+**tous** les abonnements qui donnent l'accès, pas `currentSubscriptionOf`, qui
+désigne celui que l'écran affiche.
+
 **Le portail suit l'abonnement.** `canOpenPortal` est vrai s'il existe au moins
 un abonnement en cache, pas dès qu'il existe un client : ce que le portail sert
 — moyen de paiement, changement d'offre, résiliation — n'existe pas pour un
@@ -363,6 +397,31 @@ ajoutée à `config/billing.ts` sans ses quatre entrées `fr`/`en` fait rougir
 déclarée, dans chaque langue », qui itère `billingOffers` lu de `config/billing.ts`.
 La revue n'avait balayé que `tests/i18n.test.ts`, qui ne voit effectivement pas
 les clés composées. Aucun code n'a donc été changé pour m5.
+
+**s21 — l'essai et le droit nommé par offre** — mêmes règles, mêmes comptes.
+Mesurés le 2 septembre 2026 par
+`pnpm vitest run tests/billing.test.ts packages/modules/billing/src/domain/billing-rules.test.ts`
+(185 cas verts sans mutation) :
+
+| Mutation | Rouges |
+|---|---|
+| retirer la date d'un essai dans `grantsAccess` (il n'expire plus) | 5 |
+| `trialDaysFor` rend toujours les jours de l'offre | 4 |
+| `entitledOfferIds` n'exige plus que l'abonnement donne l'accès | 5 |
+| envoyer `offer.trialDays` au fournisseur sans passer par `trialDaysFor` | 2 |
+| `entitledOffers` ne lit plus les achats uniques | 1 |
+| `replaceSubscriptions` écrit `trialEnd: null` (la réconciliation perd l'essai) | 1 |
+
+Les trois dernières sont posées **au point de composition du module** — dans
+`openCheckout`, dans le cas d'usage, et dans l'écriture de la réconciliation —,
+pas dans le `domain` : c'est là que vivrait le défaut, et les deux premières
+lignes ne les couvrent pas.
+
+La dernière est celle qui manquait : « la réconciliation rétablit la mémoire
+d'essai » était écrite dans l'ADR 044 et dans ce fichier sans qu'aucune commande
+ne la rejoue (constat m4 de la revue). Le cas « retrouve la mémoire d'essai par
+la réconciliation, cache perdu » efface les lignes en cache, observe que l'essai
+redevient disponible, réconcilie, et observe qu'il se referme.
 
 La mutation à 13 rouges est **grossière** et il faut la lire comme telle :
 retirer l'unicité casse aussi la cible de conflit de l'écriture. Les deux cas

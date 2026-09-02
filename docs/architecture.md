@@ -30,6 +30,7 @@ apps/
 config/                    Configuration éditée par le propriétaire du projet
   features.ts              Modules activés (typé, validé au démarrage)
   billing.ts               Offres : mode, prix, intervalle, essai, siège
+  gating.ts                Fonctionnalités réservées : quelles offres les ouvrent (ADR 043)
   marketing.ts             Sections de la page d'accueil, contenu et ordre
 packages/
   core/                    Contrat de module, registre, validation de configuration
@@ -161,7 +162,7 @@ Trois référentiels s'appliquent à **toute** story, au même titre que la règ
 
 Le plan d'une story nomme les sections applicables ; la revue les vérifie en mutant le code, pas en lisant les intentions. Un manquement est un finding **critical**, au même rang qu'une régression fonctionnelle.
 
-Conséquence directe sur le contrat de module : une route déclarée par un module indique son niveau de protection (publique, authentifiée, réservée à un rôle). Sans cela, le §3 du socle de sécurité serait invérifiable autrement que par relecture.
+Conséquence directe sur le contrat de module : une route déclarée par un module indique son niveau de protection (publique, authentifiée, réservée à un rôle, réservée à une offre payante — ADR 043). Sans cela, le §3 du socle de sécurité serait invérifiable autrement que par relecture.
 
 ## Points de vigilance repris des revues
 

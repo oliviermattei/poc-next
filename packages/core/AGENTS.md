@@ -46,6 +46,53 @@ satisfaite, `visibleNavigation` retire l'entrée correspondante. La règle
 elle-même (`satisfiesProtection`) est écrite une seule fois, dans
 `src/protection.ts` — deux implémentations divergeraient au premier rôle ajouté.
 
+**Quatre niveaux depuis s21** : `public`, `authenticated`, `role`, et
+`entitlement` — réservé à une offre payante (ADR 043). Le quatrième est le seul
+que `satisfiesProtection` ne tranche **pas** entièrement, et il faut le savoir
+avant d'y toucher : elle en répond la moitié « session » — sans session, 401
+comme une route authentifiée —, l'autre moitié étant asynchrone (savoir quelles
+offres un périmètre détient demande une lecture, que le filtre de navigation ne
+peut pas attendre). Cette seconde moitié vit dans `dispatchModuleRequest`, elle
+est **fail-closed** (`DispatchOptions.resolveFeatures` absent ⇒ 403), et elle
+répond **403 et non 404** : l'existence d'une fonctionnalité vendue est
+publique, seul son usage est réservé. Un appelant qui prendrait
+`satisfiesProtection` pour la garde entière n'aurait aucun gating — c'est
+pourquoi il n'y a qu'un appelant côté serveur, et que le refus est éprouvé au
+répartiteur (`tests/module-registry.test.ts`).
+
+Une entrée de navigation `entitlement` reste **visible** à toute session, et
+c'est une décision : le critère de s21 demande une invitation à souscrire, pas
+une disparition.
+
+**Ce qui a été prouvé par mutation** sur le gating (s21) — le compte est le
+nombre de cas passés au rouge, mesurés le 2 septembre 2026.
+
+Les trois premières par `pnpm vitest run packages/core/src/entitlement.test.ts`
+(17 cas verts sans mutation), les deux dernières par
+`pnpm vitest run tests/module-registry.test.ts` (62 cas verts sans mutation) —
+c'est là que le refus vit :
+
+| Mutation | Rouges |
+|---|---|
+| `assertGatesCoverRoutes` ne refuse plus rien | 2 |
+| `allowsFeature` accorde toujours | 3 |
+| accepter une offre absente du catalogue dans `parseFeatureGates` | 1 |
+| le répartiteur accorde quand aucun résolveur n'est branché | 1 |
+| retirer la garde d'`entitlement` du répartiteur | 3 |
+
+Ces comptes sont ceux des cas passés au rouge sur les mutations **posées** — pas
+un inventaire de ce qui est couvert.
+
+`src/entitlement.ts` porte la règle de gating — `FeatureGate`,
+`parseFeatureGates`, `allowsFeature`, `entitledFeatureIds`,
+`assertGatesCoverRoutes`. Elle est ici, et pas dans le module de facturation,
+pour la raison qui y a mis `resolveDataOwner` : **elle doit répondre quand ce
+module est coupé**. `@repo/core` ne connaît donc ni offre, ni abonnement, ni
+achat — il reçoit des chaînes et en dérive des fonctionnalités.
+`assertGatesCoverRoutes` ferme le défaut symétrique de celui de s17 : une action
+absente de la matrice n'était refusée par personne, une fonctionnalité absente
+des déclarations serait refusée à **tout le monde**, et le démarrage la nomme.
+
 La clé `jobs` déclare les tâches planifiées d'un module. Elle est **déclarative**
 comme `routes` et `webhooks` : l'ordonnanceur de s33 se branchera sur le
 registre, jamais sur un enregistrement à l'import — une tâche qui s'enregistre

@@ -1,5 +1,13 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -7,12 +15,14 @@ import { fileURLToPath } from 'node:url'
 import {
   buildRegistry,
   dispatchModuleRequest,
+  entitlementFeatureOf,
   MODULE_ROUTE_PREFIX,
   purgeModules,
   type AnyModuleDefinition,
 } from '@repo/core'
 import {
   createDemoItem,
+  DEMO_PREMIUM_FEATURE,
   demoItemUseCases,
   InvalidDemoItemError,
 } from '@repo/module-demo-enabled'
@@ -601,24 +611,127 @@ describe('acheminement des requêtes vers les modules activés', () => {
 })
 
 /**
+ * **Le quatrième niveau de protection : réservé à une offre payante** (s21,
+ * ADR 043).
+ *
+ * Il est éprouvé ici, au répartiteur, parce que c'est là que le refus vit :
+ * `satisfiesProtection` ne répond que la moitié « session » de la question, et
+ * un test posé sur elle ne dirait rien du gating. Le second critère de la story
+ * porte sur l'**API**, pas sur l'interface.
+ */
+describe('une route réservée à une offre payante', () => {
+  const premium = (): Request => requestTo('/demo-enabled/premium/report')
+
+  const granting = (...features: readonly string[]) => ({
+    ...asMember,
+    resolveFeatures: () => Promise.resolve(new Set(features)),
+  })
+
+  it('refuse un appel anonyme en 401 : sans session, il n’y a pas de périmètre', async () => {
+    const response = await dispatchModuleRequest(demoRegistry, premium(), {
+      resolveFeatures: () => Promise.resolve(new Set([DEMO_PREMIUM_FEATURE])),
+    })
+
+    expect(response.status).toBe(401)
+  })
+
+  /**
+   * **Fail-closed** : un point de composition qui oublie le résolveur n'ouvre
+   * pas la porte, il la ferme. C'est le sens qu'a déjà `resolveSession`, absent
+   * duquel toute route non publique est refusée — et c'est le seul sens
+   * acceptable pour une garde de facturation.
+   */
+  it('refuse en 403 quand aucun résolveur de droits n’est branché', async () => {
+    const response = await dispatchModuleRequest(demoRegistry, premium(), asMember)
+
+    expect(response.status).toBe(403)
+    // Le gestionnaire n'est pas appelé : le refus n'atteint pas la règle métier.
+    await expect(response.json()).resolves.not.toHaveProperty('count')
+  })
+
+  it('refuse en 403 la session qui ne détient aucune offre ouvrant la fonctionnalité', async () => {
+    const response = await dispatchModuleRequest(demoRegistry, premium(), granting())
+
+    expect(response.status).toBe(403)
+    await expect(response.json()).resolves.not.toHaveProperty('count')
+  })
+
+  it('refuse en 403 la session qui détient une **autre** fonctionnalité', async () => {
+    const response = await dispatchModuleRequest(demoRegistry, premium(), granting('exports'))
+
+    expect(response.status).toBe(403)
+  })
+
+  it('sert la route à la session dont le périmètre ouvre la fonctionnalité', async () => {
+    const response = await dispatchModuleRequest(
+      demoRegistry,
+      premium(),
+      granting(DEMO_PREMIUM_FEATURE),
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toHaveProperty('count')
+  })
+})
+
+/**
  * Un lien de navigation mène quelque part, ou il ment.
  *
  * Le module de démonstration sert de gabarit au générateur de s41 et à tout
  * agent qui écrit son premier module : un `href` qui ne correspond à rien y
  * enseignerait qu'un lien n'a besoin de correspondre à rien (revue de s03, F8).
- * Tant qu'aucun mécanisme de **page** de module n'existe, la seule URL qu'un
- * module sert réellement est sa route montée : c'est là que pointent ses
- * entrées. Le jour où une page existe, cette assertion se déplace vers elle,
- * elle ne disparaît pas.
+ *
+ * Il y a **deux** destinations légitimes, et le cas les distingue au lieu d'en
+ * supposer une :
+ *
+ * 1. une **route montée** par le module — la seule URL qu'il sert lui-même :
+ *    elle est demandée au répartiteur, et elle doit répondre 200 ;
+ * 2. un **écran de l'application** dont le module ne connaît que le chemin
+ *    (`DEMO_PREMIUM_SCREEN_PATH`, comme `BILLING_SCREEN_PATH`) : le répartiteur
+ *    ne le sert pas, c'est Next qui le sert, et ce qui se vérifie ici est que
+ *    la page **existe**. Le clic depuis la navigation, lui, est mesuré par
+ *    `e2e/billing.spec.ts` (« mène de la navigation à l'écran de la
+ *    fonctionnalité réservée »), qui rougit dans les deux configurations de
+ *    modules.
+ *
+ * La seconde branche a été ouverte par le constat m6 de la revue : l'entrée
+ * réservée pointait la route d'API, et le seul clic possible vers la
+ * fonctionnalité affichait `{"error":"forbidden"}` au lieu de l'invitation à
+ * souscrire.
  */
 describe('les entrées de navigation du module de démonstration', () => {
   it.each(demoRegistry.navigation.map((entry) => [entry.id, entry.href] as const))(
     'l’entrée « %s » pointe sur une URL réellement servie',
     async (_id, href) => {
+      if (!href.startsWith(MODULE_ROUTE_PREFIX)) {
+        // Un écran de l'application : le fichier de page de Next, à l'endroit
+        // que le chemin désigne. Le renommer ou le supprimer fait rougir ici.
+        expect(
+          existsSync(join(REPO_ROOT, 'apps/web/app', href.replace(/^\//, ''), 'page.tsx')),
+          `aucun écran ne sert ${href}`,
+        ).toBe(true)
+
+        return
+      }
+
       const response = await dispatchModuleRequest(
         demoRegistry,
         new Request(`http://localhost${href}`),
-        asAdmin,
+        {
+          ...asAdmin,
+          // Ce cas mesure qu'un `href` **mène quelque part**, pas la garde de
+          // facturation : l'appelant y détient donc toutes les fonctionnalités
+          // réservées que le registre déclare. Le refus 403 est éprouvé au
+          // répartiteur, juste au-dessus, et là il est fail-closed.
+          resolveFeatures: () =>
+            Promise.resolve(
+              new Set(
+                demoRegistry.routes
+                  .map((route) => entitlementFeatureOf(route.protection))
+                  .filter((feature): feature is string => feature !== null),
+              ),
+            ),
+        },
       )
 
       expect(response.status).toBe(200)

@@ -10,6 +10,7 @@ import type {
   NavigationEntry,
   WebhookHandler,
 } from './module'
+import { entitlementFeatureOf } from './entitlement'
 import { satisfiesProtection } from './protection'
 import { assertDeclarationsAreComplete, resolveEnabledModules } from './validate'
 
@@ -164,6 +165,21 @@ export interface DispatchOptions {
    * ici sa propre résolution.
    */
   readonly resolveSession?: (request: Request) => Promise<ModuleSession | null>
+  /**
+   * Les fonctionnalités réservées que **cette session** a le droit d'utiliser
+   * (s21, ADR 043).
+   *
+   * Même forme et même raison que `resolveSession` : `@repo/core` ne connaît
+   * aucun module, et surtout pas celui qui vend. Il **reçoit** la réponse du
+   * point de composition de l'application, qui interroge la facturation quand
+   * elle est montée et accorde tout quand elle ne l'est pas (critère 6).
+   *
+   * **Absent, rien n'est accordé** : c'est le sens fermé, le même que celui de
+   * `resolveSession` avant s07. Un point de composition qui l'oublie casse une
+   * fonctionnalité payante ; l'inverse — accorder par défaut — offrirait
+   * gratuitement ce que le produit vend, et personne ne s'en apercevrait.
+   */
+  readonly resolveFeatures?: (session: ModuleSession) => Promise<ReadonlySet<string>>
   readonly prefix?: string
 }
 
@@ -216,6 +232,32 @@ export async function dispatchModuleRequest(
     // la traduction du refus est propre au transport : 401 quand on ne sait pas
     // qui appelle, 403 quand on le sait et que ça ne suffit pas.
     return session === null ? refuse('unauthorized', 401) : refuse('forbidden', 403)
+  }
+
+  /**
+   * **La seconde moitié de la protection réservée à une offre** (ADR 043).
+   *
+   * `satisfiesProtection` a déjà exigé une session — sans elle, il n'y a pas de
+   * périmètre dont parler, et le refus est un 401 comme pour toute route
+   * authentifiée. Reste la question qui demande une lecture, donc de
+   * l'asynchrone : ce périmètre détient-il une offre qui ouvre cette
+   * fonctionnalité ?
+   *
+   * **403 et non 404** : l'existence de la fonctionnalité est publique — le
+   * catalogue d'offres la vend —, seul son usage est réservé. La règle des 404
+   * (`docs/security.md` §3) protège l'existence de la ressource **d'autrui**,
+   * ce qui n'est pas le cas ici.
+   *
+   * **Fail-closed** : pas de résolveur, pas d'accès.
+   */
+  const feature = entitlementFeatureOf(route.protection)
+
+  if (feature !== null && session !== null) {
+    const granted = await options.resolveFeatures?.(session)
+
+    if (granted === undefined || !granted.has(feature)) {
+      return refuse('forbidden', 403)
+    }
   }
 
   return await route.handler(request, { session })

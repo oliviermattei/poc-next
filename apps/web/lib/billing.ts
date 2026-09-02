@@ -74,6 +74,18 @@ export interface BillingFeature {
   readonly prepare: (runtime?: BillingRuntime) => void
   readonly view: (session: ModuleSession, locale: string) => Promise<BillingView>
   /**
+   * **Les offres que ce périmètre détient** (s21) — tout ce que la facturation
+   * dit au gating, et rien de plus.
+   *
+   * Elle ne rend ni une vue, ni un état d'abonnement : `lib/entitlements.ts`
+   * n'a pas à savoir qu'un abonnement existe, sinon l'achat unique de s20
+   * redeviendrait invisible au premier appelant qui lirait `state`.
+   *
+   * Module coupé, elle rend une liste vide **sans ouvrir de connexion** — et
+   * l'appelant ne l'interroge même pas : c'est `available` qui décide.
+   */
+  readonly entitledOffers: (session: ModuleSession) => Promise<readonly string[]>
+  /**
    * **La commande de réconciliation** (`docs/reliability.md` §5).
    *
    * Elle relit le fournisseur — la source de vérité — et réécrit le cache. Elle
@@ -106,6 +118,7 @@ const ABSENT_BILLING: BillingFeature = {
   available: false,
   prepare: () => {},
   view: () => Promise.resolve(EMPTY_BILLING_VIEW),
+  entitledOffers: () => Promise.resolve([]),
   reconcile: () => Promise.resolve({ customers: 0, changed: 0 }),
   localCheckout: () => null,
 }
@@ -258,6 +271,7 @@ export const billing: BillingFeature = mounted
         provide(runtime)
       },
       view: async (session, locale) => await billingService().useCases.view({ session, locale }),
+      entitledOffers: async (session) => await billingService().useCases.entitledOffers({ session }),
       reconcile: async () => await billingService().useCases.reconcile(),
       localCheckout: () => {
         // Lu à l'appel, pas à l'import : c'est la construction du port qui

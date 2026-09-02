@@ -47,6 +47,15 @@ export {
 } from './i18n'
 export { resolveDataOwner, satisfiesProtection, visibleNavigation } from './protection'
 export {
+  allowsFeature,
+  assertGatesCoverRoutes,
+  entitledFeatureIds,
+  entitlementFeatureOf,
+  parseFeatureGates,
+  FeatureGateError,
+  type FeatureGate,
+} from './entitlement'
+export {
   assertDeclarationsAreComplete,
   resolveEnabledModules,
   ModuleConfigurationError,

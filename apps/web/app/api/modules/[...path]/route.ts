@@ -1,6 +1,7 @@
 import { dispatchModuleRequest } from '@repo/core'
 
 import { resolveModuleSession } from '../../../../lib/auth'
+import { entitlements } from '../../../../lib/entitlements'
 import { moduleRegistry } from '../../../../lib/module-registry'
 import { prepareModuleServices } from '../../../../lib/module-services'
 
@@ -31,7 +32,15 @@ const handle = (request: Request): Promise<Response> => {
   // `lib/module-registry.ts`, et c'est lui qui sait qui a besoin de quoi.
   prepareModuleServices()
 
-  return dispatchModuleRequest(moduleRegistry, request, { resolveSession: resolveModuleSession })
+  return dispatchModuleRequest(moduleRegistry, request, {
+    resolveSession: resolveModuleSession,
+    // **Le droit d'utiliser une fonctionnalité réservée** (s21, ADR 043), du
+    // même côté de la dépendance que la session : `@repo/core` ne sait pas
+    // qu'un produit se vend, il reçoit la réponse. Le répartiteur est
+    // fail-closed — retirer cette ligne refuse toute route réservée en 403,
+    // jamais l'inverse.
+    resolveFeatures: entitlements.featuresOf,
+  })
 }
 
 export const GET = handle

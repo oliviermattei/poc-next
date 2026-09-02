@@ -13,11 +13,18 @@ Ce qu'il démontre, et qu'un module réel doit reproduire :
   `jobs`, `purge`, `export` et `retention` compris ;
 - le **niveau de protection déclaré** sur chaque route et chaque entrée de
   navigation (`docs/security.md` §3) — publique, authentifiée, réservée à un
-  rôle — et **lu** : l'entrée `admin-report` n'apparaît que pour une session
-  qui porte le rôle ;
-- un `href` de navigation qui **mène quelque part** : tant qu'aucune page de
-  module n'existe, il désigne la route montée du module, jamais un chemin
-  d'écran qui répondrait 404 ;
+  rôle, **réservée à une offre payante** — et **lu** : l'entrée `admin-report`
+  n'apparaît que pour une session qui porte le rôle, et `premium-report` répond
+  403 tant que le périmètre ne détient aucune offre qui l'ouvre ;
+- un `href` de navigation qui **mène quelque part**, et il y a deux
+  destinations légitimes : la route montée du module, ou un écran que
+  l'application sert et dont le module ne connaît que le chemin
+  (`DEMO_PREMIUM_SCREEN_PATH`, comme `BILLING_SCREEN_PATH`) — jamais un chemin
+  inventé, qui répondrait 404. L'entrée réservée à une offre vise l'**écran** :
+  une entrée visible qui menait à la route d'API rendait `{"error":"forbidden"}`
+  au clic, alors que c'est l'invitation à souscrire qui justifie sa visibilité
+  (ADR 043). `tests/module-registry.test.ts` vérifie les deux formes, et
+  `e2e/billing.spec.ts` mesure le clic ;
 - **Zod à la frontière** (corps de requête, charge utile de webhook) et un
   webhook **idempotent par identifiant d'événement**.
 
@@ -46,7 +53,11 @@ domain`. `infrastructure` et `presentation` ne se connaissent pas.
   seconde vérité, et c'est la plus permissive qui gagne ;
 - de framework, d'ORM, de SDK ni de module Node dans `domain/` ;
 - d'import d'un autre module : un module ne dépend d'un autre que par la clé
-  `requires` de son contrat, jamais par un import direct ;
+  `requires` de son contrat, jamais par un import direct. **`DEMO_PREMIUM_FEATURE`
+  n'y déroge pas** (s21, ADR 043) : la route **nomme** une fonctionnalité, et
+  c'est `config/gating.ts` qui dit quelles offres l'ouvrent. Ce module ignore
+  qu'il existe une facturation, et il continue de fonctionner quand elle est
+  coupée — la fonctionnalité est alors ouverte à toute session ;
 - de clé étrangère vers un module optionnel : elle rendrait ce module
   silencieusement non désactivable ;
 - de commande de nettoyage de ses tables — ce serait `eject`.

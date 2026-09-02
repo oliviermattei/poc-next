@@ -42,6 +42,22 @@ export type RouteProtection =
   | { readonly level: 'public' }
   | { readonly level: 'authenticated' }
   | { readonly level: 'role'; readonly role: string }
+  /**
+   * **Réservée à une offre payante** (s21, ADR 043).
+   *
+   * Le module **nomme** une fonctionnalité ; il ne dit pas quelle offre
+   * l'ouvre, et il n'importe donc pas le module de facturation. C'est
+   * `config/gating.ts` qui fait la correspondance, et le point de composition
+   * de l'application qui donne au répartiteur de quoi y répondre
+   * (`DispatchOptions.resolveFeatures`).
+   *
+   * Ce niveau **implique une session** : sans elle, le répartiteur répond 401
+   * comme pour une route authentifiée, faute de savoir de quel périmètre
+   * parler. Avec elle et sans le droit, il répond **403** — l'existence de la
+   * fonctionnalité est publique, seul son usage est réservé, à la différence de
+   * la ressource d'une autre organisation qui rend 404 (`docs/security.md` §3).
+   */
+  | { readonly level: 'entitlement'; readonly feature: string }
 
 /** Méthodes HTTP qu'un module peut déclarer. */
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'

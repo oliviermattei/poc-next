@@ -58,6 +58,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { billing as appBilling } from '../apps/web/lib/billing'
 import { LOCAL_WEBHOOK_SECRET, resolveBillingConfig } from '../apps/web/lib/billing-config'
 import { billingPermissionOf } from '../apps/web/lib/billing-permission'
+import { entitlements as appEntitlements } from '../apps/web/lib/entitlements'
+import { featureGates } from '../apps/web/lib/feature-gates'
 import { organizations as appOrganizations } from '../apps/web/lib/organizations'
 import { billingOffers } from '../config/billing'
 import { appLocales, defaultLocale } from '../config/i18n'
@@ -196,6 +198,22 @@ const CATALOGUE = parseBillingCatalogue([
     amount: 2900,
     currency: 'eur',
     interval: 'month',
+    trialDays: 14,
+    perSeat: false,
+  },
+  /**
+   * La **seconde** offre d'abonnement à essai, comme `config/billing.ts` en
+   * porte une : sans elle, « ne réaccorde pas l'essai sur une autre offre » ne
+   * pouvait que rouvrir la même, et le cas était un doublon (constat m3 de la
+   * revue).
+   */
+  {
+    id: 'pro-yearly',
+    mode: 'subscription',
+    priceId: 'price_pro_yearly',
+    amount: 29_000,
+    currency: 'eur',
+    interval: 'year',
     trialDays: 14,
     perSeat: false,
   },
@@ -1026,6 +1044,7 @@ describe.runIf(databaseReachable)('la vue de l’écran', () => {
     expect(view.hasAccess).toBe(false)
     expect(view.offers.map((offer) => offer.id)).toEqual([
       'pro-monthly',
+      'pro-yearly',
       'team-monthly',
       'lifetime',
     ])
@@ -1731,6 +1750,60 @@ describe.runIf(compositionMeasurable)('le point de composition de l’applicatio
     // Ce que le **réseau** a vu partir : l'adresse est celle du compte appelant,
     // résolue par `lib/auth` à partir de son seul identifiant.
     expect(new URLSearchParams(calls[0]?.body ?? '').get('email')).toBe(email)
+  })
+
+  /**
+   * **Le droit d'accès de l'application vient de la facturation montée** (s21).
+   *
+   * L'autre moitié du sixième critère — module coupé, tout est accordé — vit
+   * dans `tests/entitlements.test.ts`, qui n'a besoin d'aucune base. Celle-ci a
+   * besoin des trois : une vraie session, un vrai client, un vrai abonnement.
+   */
+  it('n’ouvre la fonctionnalité réservée qu’une fois l’offre détenue', async () => {
+    const { other } = await anOrganizationWithRole('owner')
+
+    responses = [
+      () => json({ id: 'cus_s21_composition', object: 'customer' }),
+      () =>
+        json({
+          id: 'cs_s21_composition',
+          object: 'checkout.session',
+          url: 'https://checkout.stripe.com/c/pay/cs_s21_composition',
+          customer: 'cus_s21_composition',
+        }),
+    ]
+
+    expect(
+      (await call('checkout', { session: other, body: { offerId: SHIPPED_OFFER } })).status,
+    ).toBe(200)
+
+    // Le client existe chez le fournisseur, **rien n'est encore payé** : aucune
+    // fonctionnalité réservée n'est ouverte. Un checkout ouvert n'est pas un
+    // droit.
+    expect(await appEntitlements.featuresOf(other)).toEqual(new Set())
+
+    await deliver(
+      eventPayload({
+        id: `evt_s21_composition_${randomUUID()}`,
+        type: 'customer.subscription.updated',
+        created: 1_788_000_000,
+        object: subscriptionObject({
+          customer: 'cus_s21_composition',
+          periodEnd: 1_790_000_000,
+          priceId: billingOffers[0].priceId,
+        }),
+      }),
+    )
+
+    // Ce que l'offre livrée ouvre est **dérivé** de `config/gating.ts`, jamais
+    // recopié : ajouter une fonctionnalité à cette offre ne fait pas rougir ce
+    // cas, en retirer la déclaration si.
+    const opened = featureGates()
+      .filter((gate) => gate.offers.includes(SHIPPED_OFFER))
+      .map((gate) => gate.id)
+
+    expect(opened.length).toBeGreaterThan(0)
+    expect(await appEntitlements.featuresOf(other)).toEqual(new Set(opened))
   })
 })
 
@@ -2700,6 +2773,337 @@ describe.runIf(databaseReachable)('l’achat unique', () => {
 
     expect(plan).toContain('billing_purchase_customer_idx')
     expect(plan).not.toContain('Sort')
+  })
+})
+
+/* -------------------------------------------------------------------------- *
+ * s21 — l'essai accordé une seule fois, et le droit d'accès **nommé par offre**.
+ *
+ * Assemblé : le module à travers le répartiteur, contre une vraie base, avec le
+ * vrai adaptateur dont seul le réseau est doublé. Les règles pures, elles, sont
+ * éprouvées dans `packages/modules/billing/src/domain/billing-rules.test.ts` —
+ * ici, c'est le **câblage** qui est en jeu.
+ * -------------------------------------------------------------------------- */
+describe.runIf(databaseReachable)('l’essai, une fois par périmètre', () => {
+  const trialSubscription = (input: {
+    readonly id: string
+    readonly created: number
+    readonly status: string
+    readonly trialEnd: number | null
+  }): string =>
+    eventPayload({
+      id: input.id,
+      type: 'customer.subscription.updated',
+      created: input.created,
+      object: {
+        ...subscriptionObject({ customer: 'cus_s19', periodEnd: 1_790_000_000 }),
+        status: input.status,
+        trial_end: input.trialEnd,
+      },
+    })
+
+  /** Ouvre un checkout d'abonnement et rend ce qui est parti au fournisseur. */
+  const openSubscriptionCheckout = async (
+    offerId: string,
+    withExistingCustomer: boolean,
+  ): Promise<URLSearchParams> => {
+    responses = withExistingCustomer
+      ? [
+          () =>
+            json({
+              id: 'cs_s21',
+              object: 'checkout.session',
+              url: 'https://checkout.stripe.com/c/pay/cs_s21',
+              customer: 'cus_s19',
+            }),
+        ]
+      : [
+          () => json({ id: 'cus_s19', object: 'customer' }),
+          () =>
+            json({
+              id: 'cs_s21',
+              object: 'checkout.session',
+              url: 'https://checkout.stripe.com/c/pay/cs_s21',
+              customer: 'cus_s19',
+            }),
+        ]
+
+    const response = await call('checkout', {
+      session: { userId: 'usr_s21', roles: [] },
+      body: { offerId },
+    })
+
+    expect(response.status).toBe(200)
+
+    return new URLSearchParams(calls.at(-1)?.body ?? '')
+  }
+
+  it('accorde les jours d’essai de l’offre au premier checkout', async () => {
+    const sent = await openSubscriptionCheckout('pro-monthly', false)
+
+    expect(sent.get('subscription_data[trial_period_days]')).toBe('14')
+  })
+
+  /**
+   * **Le trou que la story ferme.** Le fournisseur n'a aucune mémoire d'essai
+   * par client : redemander un checkout après un essai terminé rendait quatorze
+   * jours de plus, offre après offre, indéfiniment.
+   */
+  it('ne le réaccorde pas à un périmètre qui a déjà essayé', async () => {
+    await openSubscriptionCheckout('pro-monthly', false)
+
+    // L'essai a eu lieu, puis l'abonnement a été résilié : la ligne en cache
+    // porte un `trial_end`, et c'est la seule trace nécessaire.
+    const applied = await deliver(
+      trialSubscription({
+        id: 'evt_s21_trial',
+        created: 1_788_000_000,
+        status: 'canceled',
+        trialEnd: 1_788_500_000,
+      }),
+    )
+
+    expect(applied.status).toBe(200)
+    expect(await storedSubscription()).toMatchObject({ status: 'canceled' })
+
+    const sent = await openSubscriptionCheckout('pro-monthly', true)
+
+    expect(sent.get('subscription_data[trial_period_days]')).toBeNull()
+  })
+
+  /**
+   * **Une autre offre, réellement** (constat m3 de la revue).
+   *
+   * Le cas rouvrait `pro-monthly` sous un nom qui annonçait le contraire, et son
+   * commentaire nommait `team-monthly`, qui ne déclare aucun essai. Le
+   * catalogue de la suite porte désormais une seconde offre d'abonnement à
+   * essai, et l'offre du cas en est **dérivée** — jamais recopiée. Les deux
+   * premières assertions disent ce que le cas exige du catalogue : sans elles,
+   * retirer cette offre rendrait le cas vert et vide.
+   */
+  const OTHER_TRIAL_OFFER = CATALOGUE.filter(
+    (offer) => offer.mode === 'subscription' && offer.trialDays !== null,
+  )[1]
+
+  it('ne le réaccorde pas davantage sur une **autre** offre', async () => {
+    expect(OTHER_TRIAL_OFFER?.id).toBeDefined()
+    expect(OTHER_TRIAL_OFFER?.id).not.toBe('pro-monthly')
+
+    await openSubscriptionCheckout('pro-monthly', false)
+    await deliver(
+      trialSubscription({
+        id: 'evt_s21_trial_2',
+        created: 1_788_000_000,
+        status: 'canceled',
+        trialEnd: 1_788_500_000,
+      }),
+    )
+
+    // Cette offre-là déclare bien un essai : sans la garde, elle en enverrait
+    // les jours — c'est exactement le trou que la story ferme, « offre après
+    // offre, indéfiniment ».
+    const sent = await openSubscriptionCheckout(OTHER_TRIAL_OFFER?.id ?? '', true)
+
+    expect(sent.get('subscription_data[trial_period_days]')).toBeNull()
+  })
+
+  /**
+   * **La réconciliation rétablit la mémoire d'essai** (constat m4 de la revue).
+   *
+   * L'ADR 044 l'affirme — « la trace est le cache, et elle est reconstructible
+   * depuis le fournisseur » — et rien ne la rejouait. Le cas pose l'incident :
+   * le cache d'abonnements est perdu, l'essai redevient disponible, puis
+   * `pnpm billing:reconcile` relit le fournisseur et le referme.
+   *
+   * Ce qu'il mesure vraiment, c'est que `trial_end` **fait l'aller-retour** par
+   * `subscriptions.list` : le supprimer du mappage de l'adaptateur laisse le
+   * cache reconstruit sans mémoire d'essai, et ce cas rougit.
+   */
+  it('retrouve la mémoire d’essai par la réconciliation, cache perdu', async () => {
+    await openSubscriptionCheckout('pro-monthly', false)
+    await deliver(
+      trialSubscription({
+        id: 'evt_s21_trial_perdu',
+        created: 1_788_000_000,
+        status: 'canceled',
+        trialEnd: 1_788_500_000,
+      }),
+    )
+
+    // Le cache est perdu — le client, lui, reste rattaché : c'est la situation
+    // que la commande de réconciliation existe pour rattraper.
+    await connection.db.execute(sql`delete from billing_subscription`)
+
+    // Sans elle, l'essai est bel et bien réaccordé : c'est la mesure de la
+    // perte, et c'est ce qui rend la ligne suivante autre chose qu'un rite.
+    expect(
+      (await openSubscriptionCheckout('pro-monthly', true)).get(
+        'subscription_data[trial_period_days]',
+      ),
+    ).toBe('14')
+
+    // Le fournisseur, lui, n'a rien oublié : l'abonnement résilié porte
+    // toujours son `trial_end`.
+    responses = [
+      ...noPurchases(),
+      () =>
+        json({
+          object: 'list',
+          has_more: false,
+          data: [
+            {
+              ...subscriptionObject({ customer: 'cus_s19', periodEnd: 1_790_000_000 }),
+              status: 'canceled',
+              trial_end: 1_788_500_000,
+            },
+          ],
+        }),
+    ]
+
+    expect(await requireBillingService().useCases.reconcile()).toEqual({
+      customers: 1,
+      changed: 1,
+    })
+
+    const sent = await openSubscriptionCheckout('pro-monthly', true)
+
+    expect(sent.get('subscription_data[trial_period_days]')).toBeNull()
+  })
+
+  it('laisse l’essai à un périmètre dont l’abonnement n’en a jamais porté', async () => {
+    await openSubscriptionCheckout('pro-monthly', false)
+    await deliver(
+      trialSubscription({
+        id: 'evt_s21_no_trial',
+        created: 1_788_000_000,
+        status: 'canceled',
+        trialEnd: null,
+      }),
+    )
+
+    const sent = await openSubscriptionCheckout('pro-monthly', true)
+
+    expect(sent.get('subscription_data[trial_period_days]')).toBe('14')
+  })
+
+  /**
+   * **L'essai expire sans qu'aucun événement n'arrive** — le cœur de la story,
+   * mesuré à l'assemblage : la ligne reste `trialing` en base, le temps passe,
+   * et l'accès se ferme.
+   */
+  it('ferme l’accès au terme de l’essai, la base inchangée', async () => {
+    await openSubscriptionCheckout('pro-monthly', false)
+    await deliver(
+      trialSubscription({
+        id: 'evt_s21_running',
+        created: 1_788_000_000,
+        status: 'trialing',
+        // 2026-09-15T12:00:00Z, quatorze jours après l'horloge de la suite.
+        trialEnd: 1_789_819_200,
+      }),
+    )
+
+    const running = await requireBillingService().useCases.view({
+      session: { userId: 'usr_s21', roles: [] },
+      locale: 'fr',
+    })
+
+    expect(running.state).toBe('trialing')
+    expect(running.hasAccess).toBe(true)
+
+    const stored = await storedSubscription()
+
+    clock = new Date('2026-09-20T12:00:00.000Z')
+
+    const expired = await requireBillingService().useCases.view({
+      session: { userId: 'usr_s21', roles: [] },
+      locale: 'fr',
+    })
+
+    expect(expired.hasAccess).toBe(false)
+    expect(expired.state).toBe('expired')
+    // **Rien n'a bougé en base** : aucun webhook n'est arrivé, et c'est le
+    // point. L'accès s'est fermé sur le temps seul.
+    expect(await storedSubscription()).toEqual(stored)
+  })
+})
+
+describe.runIf(databaseReachable)('les offres qu’un périmètre détient', () => {
+  const session = { userId: 'usr_s21', roles: [] }
+
+  const entitled = async (): Promise<readonly string[]> =>
+    await requireBillingService().useCases.entitledOffers({ session })
+
+  it('n’en rend aucune à un périmètre sans client chez le fournisseur', async () => {
+    expect(await entitled()).toEqual([])
+  })
+
+  it('n’en rend aucune quand le périmètre n’est pas résolu', async () => {
+    currentScope = null
+
+    expect(await entitled()).toEqual([])
+  })
+
+  it('rend l’offre de l’abonnement vivant', async () => {
+    responses = [
+      () => json({ id: 'cus_s19', object: 'customer' }),
+      () =>
+        json({
+          id: 'cs_s21',
+          object: 'checkout.session',
+          url: 'https://checkout.stripe.com/c/pay/cs_s21',
+          customer: 'cus_s19',
+        }),
+    ]
+
+    await call('checkout', { session, body: { offerId: 'pro-monthly' } })
+
+    await deliver(
+      eventPayload({
+        id: 'evt_s21_active',
+        type: 'customer.subscription.updated',
+        created: 1_788_000_000,
+        object: subscriptionObject({ customer: 'cus_s19', periodEnd: 1_790_000_000 }),
+      }),
+    )
+
+    expect(await entitled()).toEqual(['pro-monthly'])
+  })
+
+  it('rend l’offre d’un achat unique payé, sans aucun abonnement', async () => {
+    responses = [
+      () => json({ id: 'cus_s19', object: 'customer' }),
+      () =>
+        json({
+          id: 'cs_life_s21',
+          object: 'checkout.session',
+          url: 'https://checkout.stripe.com/c/pay/cs_life_s21',
+          customer: 'cus_s19',
+        }),
+    ]
+
+    await call('checkout', { session, body: { offerId: 'lifetime' } })
+
+    await deliver(
+      eventPayload({
+        id: 'evt_s21_paid',
+        type: 'checkout.session.completed',
+        created: 1_788_000_000,
+        object: {
+          id: 'cs_life_s21',
+          object: 'checkout.session',
+          mode: 'payment',
+          payment_status: 'paid',
+          customer: 'cus_s19',
+          payment_intent: 'pi_life_s21',
+          amount_total: 49_000,
+          currency: 'eur',
+          client_reference_id: 'organization:org_s19',
+        },
+      }),
+    )
+
+    expect(await entitled()).toEqual(['lifetime'])
   })
 })
 

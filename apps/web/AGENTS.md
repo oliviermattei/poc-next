@@ -727,6 +727,77 @@ voudrait un formulaire natif vers le fournisseur devra déclarer ces origines,
 avec la justification écrite qu'exige `docs/security.md` §1 — voir
 `docs/research/s19-subscribe-stripe.md` §7.
 
+## Le gating par offre (s21)
+
+Deux fichiers, sur le modèle du catalogue et de la permission de facturation —
+**une règle par fichier** :
+
+- `lib/feature-gates.ts` porte les **déclarations validées** de
+  `config/gating.ts`, et la garde de démarrage. `next.config.ts` l'appelle
+  **sans condition de phase** : deux fichiers de configuration, aucune variable
+  d'environnement, donc rien ne justifie qu'un artefact se construise sur une
+  déclaration que le démarrage refusera. Elle refuse deux fautes — une
+  fonctionnalité qui nomme une offre absente du catalogue (seulement module de
+  facturation activé : sans lui il n'y a pas de catalogue), et une route ou une
+  entrée de navigation qui réserve une fonctionnalité que rien ne déclare, donc
+  refusée à **tout le monde** en silence ;
+- `lib/entitlements.ts` porte **la fonction unique** — `allows(session,
+  feature)` et `featuresOf(session)` —, écrite dans une fabrique injectable
+  (`createEntitlements`). Elle est injectable pour une raison mesurée : les deux
+  constats majeurs de la seconde revue de s19 étaient des règles enfermées dans
+  ce dossier, qu'une mutation posée dans le module ne faisait pas rougir.
+
+| | module `billing` monté | module coupé |
+|---|---|---|
+| `featuresOf(session)` | ce que ses offres ouvrent | **toutes** les fonctionnalités déclarées |
+| route réservée | 403 sans le droit | servie |
+| `/premium` | l'invitation à souscrire, ou la fonctionnalité | la fonctionnalité |
+| invitation à souscrire | affichée sans le droit | **jamais** |
+
+« Tout est accordé » veut dire **toutes les fonctionnalités déclarées**, jamais
+« oui à n'importe quelle question » : une route qui réserverait une
+fonctionnalité inconnue doit être refusée dans les deux configurations, sans
+quoi couper la facturation ouvrirait une porte que le démarrage refuse par
+ailleurs.
+
+Le résolveur est branché à **un seul endroit** :
+`app/api/modules/[...path]/route.ts`, en `resolveFeatures`, du même côté de la
+dépendance que `resolveSession`. Le répartiteur est fail-closed — retirer cette
+ligne refuse toute route réservée, jamais l'inverse. **Deux commandes le
+tiennent, une par configuration**, et il faut les deux : `e2e/billing.spec.ts`
+quand le module de facturation est monté (le seul endroit où la vraie session,
+la vraie base et le vrai répartiteur se rencontrent, avec un vrai abonnement),
+et `tests/entitlements.test.ts` quand il est coupé — tout est alors accordé,
+donc la route doit **servir**, et un point de montage sans résolveur la refuse
+en 403. Le parcours navigateur porte `test.skip(!mounted)` : sans ce second cas,
+retirer la ligne ne faisait rougir **aucune** commande dans la configuration
+sans facturation (constat m1 de la revue).
+
+`app/premium/page.tsx` est l'écran de la fonctionnalité réservée. **Il invite,
+il ne masque pas** : une fonctionnalité qu'on ne voit pas ne s'achète pas, et
+masquer n'a jamais été une permission (`docs/security.md` §3). Son segment est
+**réservé** dans `lib/organizations.ts`, comme tout écran servi par
+l'application.
+
+**Ce qui a été prouvé par mutation**, le 2 septembre 2026 — le compte est le
+nombre de cas passés au rouge, sur les mutations **posées** :
+
+| Mutation | Rouges | Commande |
+|---|---|---|
+| retirer `assertFeatureGates()` de `next.config.ts` | 2 | `pnpm vitest run tests/env-wiring.test.ts` (45 verts) |
+| `createEntitlements` accorde tout, module monté ou non | 3 | `pnpm vitest run tests/billing.test.ts tests/entitlements.test.ts` (106 verts) |
+| retirer `resolveFeatures` du point de montage, `billing` **activé** | 1 | `E2E_PORT=3121 pnpm test:e2e e2e/billing.spec.ts` (9 verts) |
+| retirer `resolveFeatures` du point de montage, `billing` **coupé** | 1 | `pnpm test` (1 653 verts) |
+| l'entrée de navigation réservée pointe la route d'API au lieu de l'écran | 1 | `E2E_PORT=3121 pnpm test:e2e e2e/billing.spec.ts`, **dans les deux configurations** |
+| supprimer `app/premium/page.tsx` | 2 | `pnpm test` |
+
+Les deux premières lignes sont la **même** mutation, mesurée dans les deux
+configurations de modules : c'est ce qui manquait. Module de facturation activé,
+seul le parcours navigateur rougit — le câblage ne se voit qu'avec une vraie
+session et une vraie base ; module coupé, c'est `tests/entitlements.test.ts` qui
+rougit, et le parcours, lui, est sauté. Une garde qui ne bite que dans une
+configuration est une garde que la CI peut ne jamais exécuter.
+
 ## Le montage du consentement (s36)
 
 Un fichier, sur le modèle exact du site public :

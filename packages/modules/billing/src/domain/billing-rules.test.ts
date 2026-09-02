@@ -11,9 +11,11 @@ import {
   currentSubscriptionOf,
   displayStateOf,
   grantsAccess,
+  trialDaysFor,
   type SubscriptionSnapshot,
 } from './subscription'
 import {
+  entitledOfferIds,
   grantsBillingAccess,
   reconciledPurchaseStatus,
   purchaseGrantsAccess,
@@ -437,5 +439,218 @@ describe('ce qu’une lecture de réconciliation impose à un achat', () => {
         amountRefunded: 0,
       }),
     ).toBe('paid')
+  })
+})
+
+/* -------------------------------------------------------------------------- *
+ * s21 — l'essai, et l'accès **nommé par offre**.
+ *
+ * Mêmes règles pures, même fichier : trois unités du même `domain`, et le coût
+ * d'une suite est dominé par le fichier.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * **Un essai est un droit d'accès qui expire sans paiement** (ADR 044).
+ *
+ * Sa conséquence est le cœur de la story : le terme est **opposable
+ * localement**. Le temps passe, personne ne nous notifie — le fournisseur émet
+ * un événement quand il convertit ou échoue l'essai, et cet événement peut se
+ * perdre, c'est précisément ce que la réconciliation existe pour rattraper. Un
+ * accès qui attendrait cet événement serait donc gratuit d'une durée
+ * indéterminée.
+ *
+ * La tolérance au retard du cache, écrite pour `active`, ne s'applique **pas**
+ * ici, et pour la même raison qu'elle ne s'applique pas à une annulation
+ * programmée : c'est l'essai lui-même qui fait de cette date une échéance.
+ */
+describe('l’essai expire par le temps, sans qu’aucun événement n’arrive', () => {
+  it('accorde l’accès jusqu’au terme de l’essai', () => {
+    expect(grantsAccess(snapshot({ status: 'trialing', trialEnd: LATER }), NOW)).toBe(true)
+  })
+
+  it('retire l’accès une fois le terme passé, l’état du fournisseur inchangé', () => {
+    // La ligne est toujours `trialing` en base : aucun webhook n'est arrivé.
+    // C'est exactement le cas que le critère 5 nomme, et le seul qui ne dépende
+    // de personne.
+    const expired = snapshot({ status: 'trialing', trialEnd: EARLIER })
+
+    expect(grantsAccess(expired, NOW)).toBe(false)
+  })
+
+  it('borne un essai dont le terme est inconnu par la fin de période', () => {
+    // `trial_end` absent d'une ligne `trialing` ne devrait pas exister ; s'il
+    // arrive, l'accès reste **borné** au lieu de devenir perpétuel. Fermer
+    // sèchement couperait un essai légitime sur une lacune de notre cache.
+    expect(grantsAccess(snapshot({ status: 'trialing', currentPeriodEnd: LATER }), NOW)).toBe(true)
+    expect(grantsAccess(snapshot({ status: 'trialing', currentPeriodEnd: EARLIER }), NOW)).toBe(
+      false,
+    )
+  })
+
+  it('le dit à l’écran : un essai périmé n’est plus « essai en cours »', () => {
+    const expired = snapshot({ status: 'trialing', trialEnd: EARLIER })
+
+    expect(displayStateOf(expired, NOW)).toBe('expired')
+    expect(displayStateOf(snapshot({ status: 'trialing', trialEnd: LATER }), NOW)).toBe('trialing')
+  })
+
+  it('n’est plus l’abonnement courant dès qu’un autre donne l’accès', () => {
+    const expiredTrial = { ...snapshot({ status: 'trialing', trialEnd: EARLIER }), id: 'essai' }
+    const active = { ...snapshot(), id: 'payé' }
+
+    expect(currentSubscriptionOf([expiredTrial, active], NOW)).toBe(active)
+  })
+})
+
+/**
+ * **L'essai commence une fois, et une seule, par périmètre** (ADR 044).
+ *
+ * Le fournisseur n'a aucune mémoire d'essai par client : `trial_period_days`
+ * est un nombre que **nous** posons à chaque ouverture de checkout. Un
+ * périmètre qui a essayé, laissé expirer, puis ouvert un checkout sur une autre
+ * offre recevait quatorze jours de plus — indéfiniment.
+ *
+ * La trace est déjà là, et elle est reconstructible depuis le fournisseur : une
+ * ligne d'abonnement qui porte un `trial_end`. Aucune table, donc aucune donnée
+ * personnelle de plus.
+ */
+describe('l’essai ne se prolonge pas en le redemandant', () => {
+  it('accorde l’essai à un périmètre qui n’en a jamais eu', () => {
+    expect(trialDaysFor(14, [])).toBe(14)
+    expect(trialDaysFor(14, [snapshot()])).toBe(14)
+  })
+
+  it('ne le réaccorde pas à un périmètre qui en a déjà eu un', () => {
+    expect(trialDaysFor(14, [snapshot({ status: 'trialing', trialEnd: LATER })])).toBeNull()
+  })
+
+  it('ne le réaccorde pas non plus quand l’essai est terminé depuis longtemps', () => {
+    // C'est le seul cas atteignable en pratique : tant que l'essai court, la
+    // garde d'abonnement de s20 refuse déjà le second checkout.
+    expect(trialDaysFor(14, [snapshot({ status: 'canceled', trialEnd: EARLIER })])).toBeNull()
+  })
+
+  it('n’invente pas d’essai sur une offre qui n’en déclare pas', () => {
+    expect(trialDaysFor(null, [])).toBeNull()
+  })
+})
+
+/**
+ * **Le droit d'accès, nommé par offre** — ce que le gating interroge.
+ *
+ * `grantsBillingAccess` répond « ce périmètre a-t-il accès », ce qui ne suffit
+ * pas dès qu'une fonctionnalité est réservée à **certaines** offres. Les deux
+ * sources restent indépendantes (critère 6 de s20) : un abonnement expiré ne
+ * retire pas un achat payé, un achat remboursé ne retire pas un abonnement
+ * actif.
+ */
+describe('les offres qu’un périmètre détient', () => {
+  const sub = (
+    offerId: string | null,
+    overrides: Partial<SubscriptionSnapshot> = {},
+  ): SubscriptionSnapshot & { readonly offerId: string | null } => ({
+    ...snapshot(overrides),
+    offerId,
+  })
+
+  const owned = (
+    offerId: string,
+    status: PurchaseStatus,
+  ): PurchaseSnapshot & { readonly offerId: string } => ({ status, offerId })
+
+  it('n’en détient aucune sans abonnement ni achat', () => {
+    expect(entitledOfferIds([], [], NOW)).toEqual([])
+  })
+
+  it('détient l’offre de son abonnement vivant', () => {
+    expect(entitledOfferIds([sub('pro-monthly')], [], NOW)).toEqual(['pro-monthly'])
+  })
+
+  it('détient l’offre de son achat payé, sans aucun abonnement', () => {
+    expect(entitledOfferIds([], [owned('lifetime', 'paid')], NOW)).toEqual(['lifetime'])
+  })
+
+  /**
+   * **Chaque état de facturation, face au droit qu'il donne** (critère 7 de la
+   * story). L'énumération est ici, à la règle : ses appelants n'ont qu'à
+   * prouver qu'ils l'appellent.
+   */
+  const STATES: readonly {
+    readonly why: string
+    readonly subscription: SubscriptionSnapshot & { readonly offerId: string | null }
+    readonly at?: Date
+    readonly offers: readonly string[]
+  }[] = [
+    { why: 'actif', subscription: sub('pro-monthly'), offers: ['pro-monthly'] },
+    {
+      why: 'en essai, avant le terme',
+      subscription: sub('pro-monthly', { status: 'trialing', trialEnd: LATER }),
+      offers: ['pro-monthly'],
+    },
+    {
+      why: 'en essai, après le terme',
+      subscription: sub('pro-monthly', { status: 'trialing', trialEnd: EARLIER }),
+      offers: [],
+    },
+    {
+      why: 'en retard de paiement, période encore couverte',
+      subscription: sub('pro-monthly', { status: 'past_due' }),
+      offers: ['pro-monthly'],
+    },
+    {
+      why: 'en retard de paiement, période dépassée',
+      subscription: sub('pro-monthly', { status: 'past_due', currentPeriodEnd: EARLIER }),
+      offers: [],
+    },
+    {
+      why: 'annulé, période payée en cours',
+      subscription: sub('pro-monthly', { cancelAtPeriodEnd: true }),
+      offers: ['pro-monthly'],
+    },
+    {
+      why: 'annulé, période payée terminée',
+      subscription: sub('pro-monthly', { cancelAtPeriodEnd: true }),
+      at: LATER,
+      offers: [],
+    },
+    { why: 'résilié', subscription: sub('pro-monthly', { status: 'canceled' }), offers: [] },
+    { why: 'vivant mais sur une offre retirée du catalogue', subscription: sub(null), offers: [] },
+  ]
+
+  it.each(STATES)('un abonnement $why ouvre $offers', ({ subscription, at, offers }) => {
+    expect(entitledOfferIds([subscription], [], at ?? NOW)).toEqual(offers)
+  })
+
+  it.each([
+    ['payé', 'paid', ['lifetime']],
+    ['en attente', 'pending', []],
+    ['remboursé', 'refunded', []],
+  ] as const)('un achat %s ouvre %s', (_why, status, offers) => {
+    expect(entitledOfferIds([], [owned('lifetime', status)], NOW)).toEqual([...offers])
+  })
+
+  it('cumule les deux sources sans que l’une ferme l’autre', () => {
+    // Le sixième critère de s20, relu par le gating : un abonné qui a aussi
+    // acheté à vie détient les deux offres, et perdre l'une ne retire pas
+    // l'autre.
+    expect(
+      entitledOfferIds(
+        [sub('pro-monthly', { status: 'canceled' })],
+        [owned('lifetime', 'paid')],
+        NOW,
+      ),
+    ).toEqual(['lifetime'])
+    expect(entitledOfferIds([sub('pro-monthly')], [owned('lifetime', 'refunded')], NOW)).toEqual([
+      'pro-monthly',
+    ])
+    expect(
+      new Set(entitledOfferIds([sub('pro-monthly')], [owned('lifetime', 'paid')], NOW)),
+    ).toEqual(new Set(['pro-monthly', 'lifetime']))
+  })
+
+  it('ne rend jamais deux fois la même offre', () => {
+    expect(entitledOfferIds([sub('pro-monthly'), sub('pro-monthly')], [], NOW)).toEqual([
+      'pro-monthly',
+    ])
   })
 })

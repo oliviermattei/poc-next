@@ -11,6 +11,7 @@ import {
   type BillingOffer,
 } from '../domain/offer'
 import {
+  entitledOfferIds,
   grantsBillingAccess,
   purchaseGrantsAccess,
   refundRevokesPurchase,
@@ -20,6 +21,7 @@ import {
   currentSubscriptionOf,
   displayStateOf,
   grantsAccess,
+  trialDaysFor,
   type BillingDisplayState,
   type SubscriptionStatus,
 } from '../domain/subscription'
@@ -212,6 +214,21 @@ export interface BillingUseCases {
     readonly session: { readonly userId: string; readonly roles: readonly string[] }
     readonly locale: string
   }): Promise<BillingView>
+  /**
+   * **Les offres que ce périmètre détient** (s21, ADR 043).
+   *
+   * C'est tout ce que le module de facturation dit au gating : *quelles offres*
+   * — jamais *quelle fonctionnalité*, qui est la question de `config/gating.ts`
+   * et de `@repo/core`. La séparation est ce qui permet au gating de répondre
+   * quand ce module est coupé.
+   *
+   * Elle rend une liste et non une vue : la vue formate des prix dans une
+   * locale et lit le catalogue entier, alors que la question posée à chaque
+   * requête de route réservée doit rester une lecture.
+   */
+  entitledOffers(input: {
+    readonly session: { readonly userId: string; readonly roles: readonly string[] }
+  }): Promise<readonly string[]>
   /** Réconcilie le cache avec le fournisseur. Rend le nombre de lignes changées. */
   reconcile(): Promise<{ readonly customers: number; readonly changed: number }>
   purge(scope: ModuleScope): Promise<void>
@@ -435,12 +452,15 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
       // d'achat ne lit que les achats. Une garde unique sur l'accès consolidé
       // interdirait à un abonné d'acheter à vie, et à un acheteur à vie de
       // s'abonner.
+      // **Les abonnements du périmètre, lus une fois**, et deux décisions en
+      // dépendent : la fermeture du catalogue (s20) et les jours d'essai
+      // (s21). Une seconde lecture ferait deux vérités.
+      const subscriptions =
+        existing === null ? [] : await repository.subscriptionsOfCustomer(existing.id)
+
       if (existing !== null && offer.mode === 'subscription') {
         const at = now()
-        const current = currentSubscriptionOf(
-          await repository.subscriptionsOfCustomer(existing.id),
-          at,
-        )
+        const current = currentSubscriptionOf(subscriptions, at)
 
         if (grantsAccess(current, at)) {
           return { ok: false, reason: 'already_subscribed' }
@@ -473,7 +493,11 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
         reference: referenceOf(scope),
         successUrl: returnUrl('?checkout=success'),
         cancelUrl: returnUrl('?checkout=cancelled'),
-        trialPeriodDays: offer.trialDays,
+        // **L'essai commence une fois par périmètre** (s21, ADR 044). Le
+        // fournisseur n'en garde aucune mémoire : c'est ce nombre-ci, posé à
+        // chaque ouverture, qui rouvrait quatorze jours indéfiniment. La règle
+        // est dans le `domain`, la trace est dans le cache.
+        trialPeriodDays: trialDaysFor(offer.trialDays, subscriptions),
         locale,
         idempotencyKey: `checkout:${referenceOf(scope)}:${offer.id}`,
       })
@@ -608,6 +632,39 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
         // chez le fournisseur — c'est le cas de l'acheteur unique pur.
         canOpenPortal: subscriptions.length > 0,
       }
+    },
+
+    /**
+     * **Ce que le gating interroge**, et rien de plus (s21, ADR 043).
+     *
+     * Aucune permission n'est consultée, et c'est délibéré : `canManage` dit
+     * qui a le droit de **gérer** la facturation — souscrire, ouvrir le
+     * portail —, pas qui a le droit d'**utiliser** ce que le périmètre a payé.
+     * Un `member` d'une organisation abonnée doit accéder aux fonctionnalités
+     * de l'offre sans pouvoir la résilier ; confondre les deux ferait payer
+     * l'organisation pour une seule personne.
+     *
+     * Périmètre non résolu, ou aucun client chez le fournisseur : aucune offre,
+     * et **aucune lecture inutile**.
+     */
+    entitledOffers: async ({ session }) => {
+      const scope = await ownerOf(session)
+
+      if (scope === null) {
+        return []
+      }
+
+      const customer = await repository.customerForScope(scope)
+
+      if (customer === null) {
+        return []
+      }
+
+      return entitledOfferIds(
+        await repository.subscriptionsOfCustomer(customer.id),
+        await repository.purchasesOfCustomer(customer.id),
+        now(),
+      )
     },
 
     /**

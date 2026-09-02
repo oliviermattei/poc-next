@@ -1,4 +1,6 @@
+import { MODULE_ROUTE_PREFIX } from '@repo/core'
 import { billingRoutePath } from '@repo/module-billing'
+import { demoEnabledModule, DEMO_PREMIUM_SCREEN_PATH } from '@repo/module-demo-enabled'
 import { expect, test } from '@playwright/test'
 
 import { billing } from '../apps/web/lib/billing'
@@ -21,6 +23,13 @@ import { signInRedirectedFrom, urlOf } from './support/locale'
  */
 
 const mounted = billing.available
+
+/**
+ * Le chemin de la route réservée, **dérivé du contrat du module** : le recopier
+ * ferait un parcours qui reste vert quand la route déménage.
+ */
+const PREMIUM_ROUTE =
+  demoEnabledModule.routes.find((route) => route.protection.level === 'entitlement')?.path ?? ''
 
 test.describe('la facturation', () => {
   test('redirige un visiteur anonyme vers la connexion, avec son retour', async ({ page }) => {
@@ -178,6 +187,105 @@ test.describe('la facturation', () => {
     const legitimate = await page.request.get(url, { maxRedirects: 0 })
 
     expect(legitimate.status()).toBe(303)
+  })
+
+
+  /**
+   * s21 — **la fonctionnalité réservée, des deux côtés du mur**.
+   *
+   * Le second critère de la story porte sur les deux surfaces à la fois : la
+   * route de l'API refuse en **403**, l'écran affiche une **invitation à
+   * souscrire**. Ce parcours est le seul endroit du dépôt où la vraie session,
+   * la vraie base et le vrai répartiteur se rencontrent : c'est donc lui qui
+   * tient le câblage du résolveur de droits sur la route montée
+   * (`apps/web/app/api/modules/[...path]/route.ts`).
+   *
+   * Et il mesure l'essai : l'offre livrée en déclare quatorze jours, si bien que
+   * le checkout simulé ouvre un abonnement **en essai** — un droit d'accès que
+   * personne n'a payé, et qui ouvre pourtant la fonctionnalité (critère 4).
+   */
+  test('réserve une fonctionnalité à une offre, et l’ouvre dès l’essai', async ({ page }) => {
+    test.skip(!mounted, 'module de facturation coupé')
+
+    await aSignedInAccount(page, 's21')
+
+    // **L'écran invite, il ne masque pas.** Une fonctionnalité qu'on ne voit
+    // pas ne s'achète pas, et masquer n'a jamais été une permission.
+    await page.goto('/premium')
+    await expect(page.getByText('Réservé aux offres payantes')).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Voir les offres' })).toBeVisible()
+
+    // **Et la route refuse en 403**, session comprise : c'est la garde qui
+    // compte, celle que l'écran ne peut pas contourner.
+    const refused = await page.request.get(`${MODULE_ROUTE_PREFIX}${PREMIUM_ROUTE}`)
+
+    expect(refused.status()).toBe(403)
+    expect(await refused.json()).toEqual({ error: 'forbidden' })
+
+    // Souscrire : l'offre livrée porte quatorze jours d'essai, donc l'accès
+    // vient d'un essai, pas d'un paiement.
+    await page.goto('/billing')
+    await page.getByRole('button', { name: 'Souscrire' }).first().click()
+    await expect(page).toHaveURL(urlOf('/billing', '?checkout=success'))
+    await expect(page.getByText('Période d’essai').first()).toBeVisible()
+
+    await page.goto('/premium')
+    await expect(page.getByText('Accès ouvert')).toBeVisible()
+
+    const served = await page.request.get(`${MODULE_ROUTE_PREFIX}${PREMIUM_ROUTE}`)
+
+    expect(served.status()).toBe(200)
+    expect(await served.json()).toHaveProperty('count')
+  })
+
+  /**
+   * **Le mur est le même pour tout le monde tant que rien n'est payé.**
+   *
+   * Un visiteur anonyme est renvoyé vers la connexion — il n'y a pas de
+   * périmètre dont parler —, et la route répond 401 sans dire ce qui existe.
+   */
+  test('renvoie un visiteur anonyme vers la connexion, et refuse la route en 401', async ({
+    page,
+    request,
+  }) => {
+    await page.goto('/premium')
+
+    await expect(page).toHaveURL(signInRedirectedFrom('/premium'))
+
+    const response = await request.get(`${MODULE_ROUTE_PREFIX}${PREMIUM_ROUTE}`)
+
+    expect(response.status()).toBe(401)
+  })
+
+  /**
+   * **L'entrée visible mène à un écran, pas à du JSON nu** (constat m6 de la
+   * revue).
+   *
+   * L'ADR 043 justifie la visibilité de l'entrée de navigation par
+   * l'invitation à souscrire : une fonctionnalité qu'on ne voit pas ne s'achète
+   * pas. Une entrée qui rendait `{"error":"forbidden"}` au clic n'invitait
+   * personne — elle affichait le refus de l'API, pédagogie nulle, et l'écran
+   * qui porte l'invitation n'était atteignable qu'en tapant son URL.
+   *
+   * **Aucun `skip` ici** : l'entrée appartient à `demo-enabled` et l'écran rend
+   * dans les deux configurations. C'est le seul parcours de la story qui mesure
+   * quelque chose quand le module de facturation est coupé.
+   */
+  test('mène de la navigation à l’écran de la fonctionnalité réservée', async ({ page }) => {
+    await aSignedInAccount(page, 's21-navigation')
+
+    await page.goto('/')
+    await page
+      .getByRole('navigation', { name: 'Modules' })
+      .getByRole('link', { name: 'Rapport détaillé' })
+      .click()
+
+    await expect(page).toHaveURL(urlOf(DEMO_PREMIUM_SCREEN_PATH))
+    // Un écran, avec son titre — et non un corps JSON servi par la route du
+    // module.
+    await expect(
+      page.getByRole('heading', { name: 'Rapport détaillé', exact: true, level: 1 }),
+    ).toBeVisible()
   })
 
   test('refuse un checkout anonyme, sans dire ce qui existe', async ({ request }) => {

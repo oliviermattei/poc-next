@@ -80,6 +80,56 @@ export function grantsBillingAccess(
 }
 
 /**
+ * **Les offres qu'un périmètre détient**, dans l'ordre où on les lui trouve
+ * (s21, ADR 043).
+ *
+ * `grantsBillingAccess` répond « ce périmètre a-t-il accès », ce qui suffisait
+ * tant que le produit n'avait qu'un seul mur. Dès qu'une fonctionnalité est
+ * réservée à **certaines** offres, il faut savoir lesquelles sont détenues :
+ * c'est la même règle, nommée par offre.
+ *
+ * Trois décisions, et chacune se paie si on l'inverse :
+ *
+ * 1. **Tous** les abonnements qui donnent l'accès comptent, pas seulement
+ *    « l'abonnement courant ». `currentSubscriptionOf` désigne celui que
+ *    l'écran affiche ; ici, la question est le **droit**, et un périmètre qui
+ *    porterait deux abonnements vivants les détiendrait tous les deux.
+ * 2. **Les deux sources restent indépendantes** — c'est le sixième critère de
+ *    s20, relu par le gating : un abonnement expiré ne retire pas un achat
+ *    payé, un achat remboursé ne retire pas un abonnement actif.
+ * 3. **Une offre inconnue du catalogue ne donne rien de nommable.** Un
+ *    abonnement dont le prix a quitté `config/billing.ts` porte `offerId:
+ *    null` : il garde l'accès consolidé — `grantsBillingAccess` le dit — mais
+ *    il n'ouvre aucune fonctionnalité **nommée**, parce qu'il n'y a aucun nom à
+ *    donner. Inventer un nom serait accorder au hasard.
+ *
+ * Elle est générique sur les lignes pour que l'appelant garde **sa** forme :
+ * la couche `application` lit des enregistrements complets, ce `domain` n'a
+ * besoin que de l'état et de l'offre.
+ */
+export function entitledOfferIds(
+  subscriptions: readonly (SubscriptionSnapshot & { readonly offerId: string | null })[],
+  purchases: readonly (PurchaseSnapshot & { readonly offerId: string })[],
+  now: Date,
+): readonly string[] {
+  const offers = new Set<string>()
+
+  for (const subscription of subscriptions) {
+    if (grantsAccess(subscription, now) && subscription.offerId !== null) {
+      offers.add(subscription.offerId)
+    }
+  }
+
+  for (const purchase of purchases) {
+    if (purchaseGrantsAccess(purchase)) {
+      offers.add(purchase.offerId)
+    }
+  }
+
+  return [...offers]
+}
+
+/**
  * **Ce qu'une lecture de réconciliation impose à une ligne d'achat** — ou
  * `null` quand elle n'a pas d'opinion.
  *

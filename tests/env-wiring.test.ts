@@ -224,6 +224,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     vi.unstubAllEnvs()
     vi.doUnmock('../config/features')
     vi.doUnmock('../config/billing')
+    vi.doUnmock('../config/gating')
     vi.resetModules()
   })
 
@@ -484,6 +485,71 @@ describe('validation de l’environnement au démarrage du serveur', () => {
   })
 
   it('démarre sur le catalogue livré, module de facturation activé', async () => {
+    vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
+    stubMailer('capture')
+    stubAuth('configure')
+    stubOAuth()
+    stubStorage('disque')
+    stubPayments('local')
+    withBillingEnabled()
+
+    const config = await loadNextConfig()
+
+    expect(() => config(DEV_SERVER_PHASE)).not.toThrow()
+  })
+
+  /* ----------------------------------------------------------------------- *
+   * Les **fonctionnalités réservées** (s21, ADR 043).
+   *
+   * Même classe de faute que le catalogue d'offres, et donc même endroit : une
+   * déclaration fausse doit arrêter le démarrage, pas se découvrir au premier
+   * appel. Deux fautes, et elles ne se ressemblent pas :
+   *
+   * - une fonctionnalité qui **nomme une offre inexistante** serait fermée pour
+   *   toujours à qui a pourtant payé ;
+   * - une route qui **réserve une fonctionnalité que rien ne déclare** serait
+   *   refusée à tout le monde — l'inverse exact de la leçon de s17, et pire,
+   *   puisque le refus est silencieux.
+   *
+   * Ces cas prouvent le **câblage** ; la règle est éprouvée dans
+   * `packages/core/src/entitlement.test.ts`.
+   * ----------------------------------------------------------------------- */
+  it('refuse de démarrer sur une fonctionnalité qui nomme une offre inconnue', async () => {
+    vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
+    stubMailer('capture')
+    stubAuth('configure')
+    stubOAuth()
+    stubStorage('disque')
+    stubPayments('local')
+    withBillingEnabled()
+    vi.doMock('../config/gating', () => ({
+      featureGates: [{ id: 'premium-report', offers: ['pro-quarterly'] }],
+    }))
+
+    const config = await loadNextConfig()
+
+    expect(() => config(DEV_SERVER_PHASE)).toThrowError(/pro-quarterly/)
+    expect(() => config(DEV_SERVER_PHASE)).toThrowError(/config\/gating\.ts/)
+  })
+
+  it('refuse de démarrer quand une route réserve une fonctionnalité non déclarée', async () => {
+    vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
+    stubMailer('capture')
+    stubAuth('configure')
+    stubOAuth()
+    stubStorage('disque')
+    stubPayments('local')
+    withBillingEnabled()
+    // Aucune déclaration : la route réservée du module de démonstration ne
+    // serait plus ouverte par personne.
+    vi.doMock('../config/gating', () => ({ featureGates: [] }))
+
+    const config = await loadNextConfig()
+
+    expect(() => config(DEV_SERVER_PHASE)).toThrowError(/premium-report/)
+  })
+
+  it('démarre sur les fonctionnalités réservées livrées', async () => {
     vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
     stubMailer('capture')
     stubAuth('configure')

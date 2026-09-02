@@ -7,6 +7,7 @@ import { enabledModules } from '../../config/features'
 import { resolveAuthConfig } from './lib/auth-config'
 import { billingCatalogue } from './lib/billing-catalogue'
 import { resolveBillingConfig } from './lib/billing-config'
+import { assertFeatureGates } from './lib/feature-gates'
 import { resolveMailerConfig } from './lib/mailer-config'
 import { resolveOAuthConfig } from './lib/oauth-config'
 import { resolveStorageConfig } from './lib/storage-config'
@@ -84,6 +85,22 @@ export default function config(phase: string): NextConfig {
   if (billingEnabled) {
     billingCatalogue()
   }
+
+  // **Les fonctionnalités réservées aux offres payantes** (s21, ADR 043), et
+  // pour la même raison, sans condition de phase : deux fichiers de
+  // configuration, aucune variable d'environnement.
+  //
+  // Deux fautes y sont refusées, et elles ne se ressemblent pas : une
+  // fonctionnalité qui nomme une offre absente du catalogue serait fermée pour
+  // toujours à qui a payé ; une route qui réserve une fonctionnalité que
+  // `config/gating.ts` ne déclare pas serait refusée à **tout le monde**, en
+  // silence — l'inverse exact du trou de s17, où une action absente de la
+  // matrice n'était refusée par personne.
+  //
+  // La garde vaut dans les **deux** configurations de modules : couper la
+  // facturation retire seulement la confrontation au catalogue, qui n'aurait
+  // alors plus de sens.
+  assertFeatureGates()
 
   if (env !== undefined) {
     resolveMailerConfig(env)
