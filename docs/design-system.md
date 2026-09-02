@@ -2,7 +2,7 @@
 
 > **Système neutre et thémable, pas une identité.** Comme les quatre cibles, le boilerplate ne vend pas une esthétique : il vend un système que chaque projet généré habille en changeant des tokens. Neutre ne veut pas dire indécis — tout ce qui suit est tranché et fait foi.
 >
-> Socle : shadcn/ui sur **Base UI** (ADR 009), Tailwind **v4** avec configuration en CSS (ADR 010). Les composants vivent dans `packages/ui` ; aucun module n'importe Base UI directement.
+> Socle : shadcn/ui sur **Radix UI** (ADR 022, qui supersède l'ADR 009 — Base UI n'a jamais publié de majeure stable), Tailwind **v4** avec configuration en CSS (ADR 010). Les composants vivent dans `packages/ui` ; aucun module n'importe Radix directement.
 
 ## Tokens
 
@@ -185,7 +185,7 @@ Activé par la classe `.dark` sur `<html>` via next-themes, **pas** par `prefers
 - ❌ Créer une primitive dans un module. Un besoin non couvert est un **design system gap** à signaler, jamais à combler sur place.
 - ✅ Utiliser les tokens sémantiques : `bg-background`, `text-muted-foreground`, `border-border`.
 - ❌ Écrire une couleur Tailwind brute (`bg-zinc-800`, `text-red-500`) dans un module : elle casse le thème sombre et la thématisation par projet.
-- ✅ Importer Base UI uniquement dans `packages/ui`.
+- ✅ Importer Radix UI uniquement dans `packages/ui`.
 - ❌ L'importer depuis un module : le socle deviendrait irremplaçable.
 - ✅ Charger les polices par `next/font`.
 - ❌ Appeler une police hébergée ailleurs : ce serait un script tiers, donc soumis au consentement (s36).
