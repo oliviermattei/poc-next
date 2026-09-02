@@ -2,8 +2,9 @@ import { createHmac } from 'node:crypto'
 
 import { expect, test, type Page } from '@playwright/test'
 
-import { aSignedInAccount, PASSWORD, signIn } from './support/account'
-import { anonymousLanding, urlOf } from './support/locale'
+import { aSignedInAccount, PASSWORD, signIn, signOut } from './support/account'
+import { clickOnce } from './support/interaction'
+import { urlOf } from './support/locale'
 
 /**
  * Le second facteur, dans un vrai navigateur (s13).
@@ -98,23 +99,28 @@ const withinStablePeriod = async (): Promise<void> => {
   }
 }
 
-/** Le clic rejoué jusqu'à ce qu'il prenne — un bouton non hydraté l'avale. */
-const clickUntil = async (
+/**
+ * Le geste d'un bouton de cet écran, **une fois**, puis son achèvement.
+ *
+ * Le reclic est parti d'ici avec une raison qui lui est propre : chacun de ces
+ * gestes est **à usage unique**. Le code TOTP de la confirmation brûle son
+ * compteur, le code de secours se consomme, le défi de vérification aussi.
+ * Rejouer le clic renvoyait le même code déjà servi, que le serveur refuse à
+ * juste titre — et il le refuse dans un `role="alert"`, quand l'attente cherche
+ * un `role="status"` : la boucle ne pouvait plus aboutir. Le détail est dans
+ * `support/interaction.ts`.
+ *
+ * Les délais de 2 000 et 3 000 ms qui bornaient chaque attente sont partis avec
+ * la boucle : ils n'étaient pas un budget réfléchi, ils bornaient **un essai**
+ * dans un `toPass` de 20 s. Ce qui reste est le délai par défaut du projet.
+ * Aucun délai n'est allongé.
+ */
+const press = async (
   page: Page,
   name: string,
   settled: () => Promise<void>,
 ): Promise<void> => {
-  await expect(async () => {
-    await page.getByRole('button', { name }).click()
-    await settled()
-  }).toPass({ timeout: 20_000 })
-}
-
-const signOut = async (page: Page): Promise<void> => {
-  await page.goto('/account')
-  await clickUntil(page, 'Se déconnecter', async () => {
-    await expect(page).toHaveURL(urlOf(anonymousLanding()), { timeout: 2_000 })
-  })
+  await clickOnce(page, page.getByRole('button', { name }), settled)
 }
 
 test('activation, connexion par code, puis connexion par code de secours', async ({ page }) => {
@@ -129,8 +135,8 @@ test('activation, connexion par code, puis connexion par code de secours', async
   // `.first()` viserait l'autre carte — le formulaire partirait vide, et le
   // parcours échouerait en accusant l'activation.
   await page.locator('#two-factor-enable-password').fill(PASSWORD)
-  await clickUntil(page, 'Activer', async () => {
-    await expect(page.getByRole('img', { name: /Code QR/ })).toBeVisible({ timeout: 2_000 })
+  await press(page, 'Activer', async () => {
+    await expect(page.getByRole('img', { name: /Code QR/ })).toBeVisible()
   })
 
   // Le secret est **lu dans la page** : c'est le chemin de qui n'a pas de
@@ -139,10 +145,8 @@ test('activation, connexion par code, puis connexion par code de secours', async
 
   await withinStablePeriod()
   await page.getByLabel('Code à six chiffres').fill(totpOf(secret))
-  await clickUntil(page, 'Confirmer', async () => {
-    await expect(page.getByRole('status')).toContainText('Notez ces dix codes', {
-      timeout: 2_000,
-    })
+  await press(page, 'Confirmer', async () => {
+    await expect(page.getByRole('status')).toContainText('Notez ces dix codes')
   })
 
   // Les éléments de liste **de la forme d'un code** : la page en porte
@@ -155,8 +159,8 @@ test('activation, connexion par code, puis connexion par code de secours', async
 
   expect(backupCodes).toHaveLength(10)
 
-  await clickUntil(page, 'J’ai noté ces codes', async () => {
-    await expect(page.getByText('Activée', { exact: true })).toBeVisible({ timeout: 2_000 })
+  await press(page, 'J’ai noté ces codes', async () => {
+    await expect(page.getByText('Activée', { exact: true })).toBeVisible()
   })
 
   // **Affichés une seule fois** : rien ne les relit, ni l'écran, ni une route.
@@ -177,8 +181,8 @@ test('activation, connexion par code, puis connexion par code de secours', async
   const signInCode = totpOf(secret, 1)
 
   await page.getByLabel('Code à six chiffres').fill(signInCode)
-  await clickUntil(page, 'Vérifier', async () => {
-    await expect(page).toHaveURL(urlOf('/'), { timeout: 3_000 })
+  await press(page, 'Vérifier', async () => {
+    await expect(page).toHaveURL(urlOf('/'))
   })
 
   // --- Connexion par code de secours ------------------------------------
@@ -188,8 +192,8 @@ test('activation, connexion par code, puis connexion par code de secours', async
   await expect(page).toHaveURL(urlOf('/two-factor', '?next=%2F'))
 
   await page.getByLabel('Code de secours').fill(backupCodes[0] ?? '')
-  await clickUntil(page, 'Valider ce code', async () => {
-    await expect(page).toHaveURL(urlOf('/'), { timeout: 3_000 })
+  await press(page, 'Valider ce code', async () => {
+    await expect(page).toHaveURL(urlOf('/'))
   })
 
   // --- Le même code, une seconde fois -----------------------------------
@@ -201,8 +205,8 @@ test('activation, connexion par code, puis connexion par code de secours', async
   await page.getByLabel('Code de secours').fill(backupCodes[0] ?? '')
   // Le texte plutôt que le rôle : Next pose son propre `role="alert"` vide
   // (`__next-route-announcer__`) sur chaque page, et il gagne la sélection.
-  await clickUntil(page, 'Valider ce code', async () => {
-    await expect(page.getByText('n’est pas valide')).toBeVisible({ timeout: 3_000 })
+  await press(page, 'Valider ce code', async () => {
+    await expect(page.getByText('n’est pas valide')).toBeVisible()
   })
 
   await expect(page).toHaveURL(urlOf('/two-factor', '?next=%2F'))
@@ -215,8 +219,8 @@ test('activation, connexion par code, puis connexion par code de secours', async
   // compromission qui n'existe pas (revue s13, C12/C13/C14). Le défi est
   // consommé par cette tentative, elle vient donc en dernier.
   await page.getByLabel('Code à six chiffres').fill(signInCode)
-  await clickUntil(page, 'Vérifier', async () => {
-    await expect(page.getByText('a déjà servi')).toBeVisible({ timeout: 3_000 })
+  await press(page, 'Vérifier', async () => {
+    await expect(page.getByText('a déjà servi')).toBeVisible()
   })
 
   await expect(page).toHaveURL(urlOf('/two-factor', '?next=%2F'))

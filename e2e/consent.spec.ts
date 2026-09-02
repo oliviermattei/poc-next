@@ -1,6 +1,7 @@
 import { expect, test, type Page, type Request } from '@playwright/test'
 
 import { aSignedInAccount } from './support/account'
+import { clickOnce } from './support/interaction'
 import { anonymousLanding, publicPath, urlOf } from './support/locale'
 
 /**
@@ -158,8 +159,20 @@ test('le retrait depuis les paramètres de compte empêche le chargement suivant
 
   // Le point d'accès des paramètres de compte, suivi comme un utilisateur le
   // suivrait — pas une URL écrite à la main.
-  await preferences(page).getByRole('link', { name: 'Gérer mes cookies' }).click()
-  await expect(page).toHaveURL(urlOf('/cookies'))
+  //
+  // `clickOnce` et non un clic nu : mesuré à un cœur, ce clic partait sur un
+  // document que React n'avait pas encore repris, et la mise en page bougeait
+  // de 1 778 px entre le contrôle d'actionnabilité et la dépêche de
+  // l'événement — **aucune requête de navigation** vers `/cookies` n'était
+  // émise, et l'assertion suivante regardait `/account` pendant cinq secondes.
+  // Ce n'est pas un budget d'attente : la navigation n'avait pas eu lieu.
+  await clickOnce(
+    page,
+    preferences(page).getByRole('link', { name: 'Gérer mes cookies' }),
+    async () => {
+      await expect(page).toHaveURL(urlOf('/cookies'))
+    },
+  )
 
   await preferences(page).getByRole('button', { name: 'Tout refuser' }).click()
   await expect(preferences(page).getByRole('checkbox', { name: /Publicité/ })).not.toBeChecked()

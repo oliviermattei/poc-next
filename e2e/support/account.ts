@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url'
 
 import { expect, type Page } from '@playwright/test'
 
-import { urlOf } from './locale'
+import { clickOnce } from './interaction'
+import { anonymousLanding, urlOf } from './locale'
 
 /**
  * Les gestes communs aux parcours : inscrire un compte, lire son email, se
@@ -106,6 +107,27 @@ export const signIn = async (page: Page, email: string, password = PASSWORD): Pr
   // et une correspondance partielle en désignerait deux — Playwright refuse
   // alors de cliquer, sur **tous** les parcours qui passent par ici.
   await page.getByRole('button', { name: 'Se connecter', exact: true }).click()
+}
+
+/**
+ * Déconnecte le compte courant depuis l'écran de compte.
+ *
+ * Ici, et plus dans chaque parcours : `passkeys.spec.ts` et
+ * `two-factor.spec.ts` en portaient deux copies identiques, toutes deux fondées
+ * sur le `clickUntil` que `support/interaction.ts` remplace.
+ *
+ * Le bouton de déconnexion n'est **pas** désactivé jusqu'à l'hydratation
+ * (`app/sign-out-button.tsx` : un `type="button"` avec un `onClick`, sans
+ * formulaire derrière) : avant que React n'ait repris la main, le clic n'a
+ * aucun gestionnaire et disparaît sans trace. C'est exactement le cas que
+ * `clickOnce` attend — et le signal d'achèvement est la navigation que
+ * `window.location.assign` provoque.
+ */
+export const signOut = async (page: Page): Promise<void> => {
+  await page.goto('/account')
+  await clickOnce(page, page.getByRole('button', { name: 'Se déconnecter' }), async () => {
+    await expect(page).toHaveURL(urlOf(anonymousLanding()))
+  })
 }
 
 /**
