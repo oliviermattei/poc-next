@@ -214,6 +214,29 @@ qu'on propose, où est le patch, et son état.
   possible, puisque la revue ne touche pas au code.
 - **État** — décidé ici le 01/09, après achèvement des deux voies en cours.
 
+## P12 — Un harnais de parcours doit réchauffer les routes avant de mesurer
+
+- **Aujourd'hui** — le gabarit lance Playwright contre `next dev` sans
+  préambule.
+- **Mesuré** — `next dev` compile chaque route à sa **première** requête, et
+  cette compilation tombe à l'intérieur d'une assertion. Dans un conteneur borné
+  à deux cœurs : une inscription coûte **7 630 ms** cache vide contre **350 ms**
+  cache chaud, pour un délai d'assertion de 5 000 ms. La suite passait sur un
+  poste à huit cœurs et rougissait sur le runner — quatre parcours, dans les
+  deux branches de la matrice, à la **première** exécution de CI du projet.
+- **Ce que la mesure a écarté** — le nombre de travailleurs (la CI en utilise
+  **un**, Playwright prenant la moitié des cœurs : elle est plus sérielle que le
+  poste) et l'isolement d'état (suite rejouée dans l'ordre du job, à un
+  travailleur, machine chargée : 80 vertes).
+- **Proposé** — un préambule qui demande une fois chaque point d'entrée avant le
+  premier parcours, avec les cibles **dérivées** de l'arborescence des routes :
+  un segment que la dérivation ne sait pas rendre fait échouer le préambule
+  plutôt que de laisser une route non réchauffée. Sans allonger un seul délai,
+  sans reprise, sans sérialiser.
+- **Patch** — `e2e/support/warm-up.ts`, `playwright.config.ts` (commit `bf821c6`).
+- **État** — appliqué ici. **Candidat fort à remonter** : tout projet du gabarit
+  a ce défaut, et il ne se voit que le jour où la CI tourne.
+
 ---
 
 # Observations sans proposition ferme
