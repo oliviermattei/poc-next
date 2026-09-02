@@ -82,3 +82,4 @@ l'agent n'en joue plus qu'une.
 | 01/09 | Deux voies prenaient le même numéro d'ADR sans conflit git | réservation, deux numéros par voie |
 | 01/09 | Mutation déplacée annoncée « 1 rouge » alors que le défaut restait vert | mutation **à l'endroit du défaut**, vérifié en revue |
 | 01/09 | Le scan de secrets aurait été rouge dès le premier jour sur des doublures | `.gitleaks.toml`, vérifié par mutation dans les deux sens |
+| 01/09 | **Disque plein à 100 %** : douze worktrees de stories fusionnées, 1,5 à 2,4 Go chacun, jamais supprimés. Plus aucun outil ne pouvait écrire son fichier de sortie | **La suppression du worktree devient une étape de la fusion**, au même titre que la mise à jour de `docs/STATE.md`. `git worktree remove --force` puis `git worktree prune` |

@@ -55,6 +55,19 @@ quelle story n'en a pas besoin.
 L'orchestrateur ne vérifie lui-même qu'un cas : un **tour de correction** qui ne touche que des
 textes ou des comptes, **à l'intérieur d'une story déjà relue**. Ça ne franchit aucune porte.
 
+## Fusionner une story — la liste, dans l'ordre
+
+1. Commiter le rapport de revue **sur la branche de la story**.
+2. `git merge --squash feature/<id>` depuis `dev`.
+3. Conflits : **`git merge-file` fichier par fichier**, jamais de concaténation
+   — elle coupe au milieu d'un bloc, et c'est le typecheck qui le dit ensuite.
+4. `pnpm install`, puis les six commandes, migration comprise.
+5. Commit de fusion, `docs/STATE.md` à jour, **push**.
+6. **Supprimer le worktree** : `git worktree remove --force .claude/worktrees/agent-<id>`
+   puis `git worktree prune`. Chacun pèse 1,5 à 2,4 Go de `node_modules` ; douze
+   oubliés ont rempli le disque le 01/09 et bloqué tout outil, y compris ceux qui
+   auraient libéré la place.
+
 ## Cadence
 
 **Commit et push à intervalle régulier**, pas seulement à la fusion d'une story :
