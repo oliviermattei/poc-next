@@ -92,8 +92,23 @@ défaut de briefing, pas un défaut d'agent.
 - **La vérification navigateur**, dès qu'il y a un écran : elle a mordu six fois, chaque fois sur
   un défaut qu'aucune des six commandes ne voyait.
 
-**Deux voies en parallèle, pas trois.** Les trois coupures de limite d'usage sont toutes arrivées
-à trois voies simultanées, et chaque coupure fait perdre le travail en cours d'un agent.
+**En série, une story à la fois** (décidé le 01/09, après s20 et s41).
+
+La contrainte qui borne le débit est le **budget de tokens**, pas le temps : il a été atteint
+quatre fois. Paralléliser ne crée pas de budget, ça le dépense plus vite — le nombre de stories
+livrables sur une fenêtre donnée est le même. Et le parallélisme coûte, lui :
+
+- **les fusions** : une voie part d'un `dev` qui a vieilli. Dernière fusion, dix fichiers en
+  conflit, reprise en trois points fichier par fichier, quatre blocs tronqués à réparer. En série,
+  chaque branche part d'un `dev` à jour et les conflits disparaissent presque tous ;
+- **les coupures** : les trois épuisements de limite sont arrivés à trois voies simultanées, et
+  chacune a tué du travail en vol ;
+- **six défauts créés par le parallélisme lui-même** : `oauth` absent des segments réservés, un
+  bloc de lint qui éteignait la règle voisine, des cas d'environnement nés après leur garde.
+
+**Une seule exception, qui n'est pas du parallélisme mais du pipeline** : la revue d'une story
+peut chevaucher l'implémentation de la suivante, puisqu'elle ne touche pas au code et que la
+suivante part d'un `dev` déjà fusionné.
 
 ## Voies en cours (vague parallèle, ouverte le 31/08/2026)
 

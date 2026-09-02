@@ -199,6 +199,21 @@ qu'on propose, où est le patch, et son état.
   ça a fonctionné les trois fois.
 - **État** — pratiqué ici, **à formaliser dans `ks-execute` et `ks-review`.**
 
+## P11 — Le parallélisme n'achète rien quand le budget est la contrainte
+
+- **Aujourd'hui** — `ks-orchestrator` prévoit un worktree par story, ce qui
+  invite à mener plusieurs voies de front.
+- **Mesuré** — la limite de budget a été atteinte **quatre fois**. Paralléliser
+  ne crée pas de budget : sur une fenêtre donnée, le nombre de stories livrables
+  est le même. Le coût, lui, est réel — dix fichiers en conflit à la dernière
+  fusion, quatre blocs tronqués à réparer, trois coupures survenues à trois
+  voies simultanées, et **six défauts créés par le parallélisme lui-même**.
+- **Proposé** — mener **en série** par défaut, chaque branche partant d'un `dev`
+  fraîchement fusionné. Ne garder qu'un chevauchement : la **revue** d'une story
+  pendant l'implémentation de la suivante — c'est du pipeline, sans conflit
+  possible, puisque la revue ne touche pas au code.
+- **État** — décidé ici le 01/09, après achèvement des deux voies en cours.
+
 ---
 
 # Observations sans proposition ferme
