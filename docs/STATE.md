@@ -2,6 +2,50 @@
 
 > Fichier de passation. À lire **en premier** après un `/clear`. La vérité reste dans les fichiers du dépôt ; ceci dit seulement où on en est et comment on travaille.
 
+## REPRENDRE ICI (écrit le 01/09 avant un vidage de contexte)
+
+**Deux stories attendent leur fusion**, chacune avec une revue ciblée en cours au
+moment d'écrire. Vérifier d'abord si elles ont rendu leur verdict :
+`ListAgents`, ou lire la fin de `docs/reviews/<story>.md` dans le worktree.
+
+| Story | Worktree | Branche | HEAD | État |
+|---|---|---|---|---|
+| s20-one-time-purchase | `.claude/worktrees/agent-aac44bd460fc037a9` | `feature/s20-one-time-purchase` | `357ac93` | 2 revues (`critical` puis `major`/oui), **3 tours de correction**, 3ᵉ revue ciblée sur `a28a82d..357ac93` en cours |
+| s41-mcp-server | `.claude/worktrees/agent-a6a005746d34a9f11` | `feature/s41-mcp-server` | `e9cf39a` | 1 revue (`critical`), 1 correction, 2ᵉ revue ciblée sur `2bdd88e..e9cf39a` en cours |
+
+**Pour chacune, quand la revue rend `Ship allowed: yes`** : suivre « Fusionner une
+story » ci-dessous, **y compris l'étape 6 — supprimer le worktree**. Bases
+Postgres `s20` et `s41` ; ports 3120 et 3141.
+
+**Ce qui reste ouvert et assumé sur s20**, à ne pas redécouvrir : le second
+prélèvement existe toujours chez le fournisseur (la réconciliation est rejouable,
+elle ne rend pas l'argent) ; le repli de lecture est une **dette datée**, à
+retirer une fois l'ancienne version hors ligne ; `m3` (minutage de
+`tests/rendered-text.test.ts`) et `m4` (instabilité e2e complète) sont mesurés
+**non imputables** à s20 et restent entiers.
+
+**Sur s41** : le mineur `m1` reste ouvert — le tableau des commandes de
+`AGENTS.md` racine décrit `ks` comme « list et toggle » alors que `scaffold`
+existe désormais.
+
+**Après ces deux fusions : bascule en série.** Une story à la fois, branchée sur
+un `dev` fraîchement fusionné (voir « Effort et modèle »). Prochaines candidates
+dont les dépendances sont satisfaites : **s21** (essais et gating, dépend de
+s20), **s39** (monitoring, dépend de s36), **s46** (écrans d'authentification),
+**s32** (notifications). Numéros d'ADR : 043 et suivants — 042 est pris par s41.
+
+**CI** : `dev` est poussée sur `origin`, la CI tourne sur chaque poussée
+(matrice `tous` / `socle`). Vérifier son verdict avec
+`gh run list --limit 3 --json status,conclusion,displayTitle` — **elle n'a
+jamais fini une exécution complète** au moment d'écrire, les précédentes ayant
+été annulées par le groupe de concurrence. Si elle est verte, les agents peuvent
+cesser de jouer les six commandes dans les deux configurations : la seconde est
+alors tenue par la machine.
+
+**Référentiel du retour vers killer-saas** : `docs/killer-saas-feedback.md`,
+fichier unique, onze propositions plus les observations. Le patch amont se
+régénère par `git diff 463c831..HEAD -- .claude/`.
+
 ## Où on en est
 
 | Story | État |
