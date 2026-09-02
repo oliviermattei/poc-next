@@ -673,6 +673,46 @@ describe('validation de l’environnement au démarrage du serveur', () => {
   })
 })
 
+describe('le préambule qui compile l’application avant les parcours', () => {
+  /*
+   * Le défaut mesuré : `next dev` compile à la demande, et la première requête
+   * d'une route paie la facture. Sur deux cœurs, l'inscription passe de 350 ms
+   * à 7 630 ms — vingt fois le geste, et bien au-delà des 5 000 ms du délai de
+   * `expect`. La suite était verte sur un poste à huit cœurs et rouge sur le
+   * runner, sur un ensemble de parcours qui changeait d'une exécution à
+   * l'autre : celui qui se trouvait toucher la route en premier.
+   *
+   * Ce que ces cas gardent est la **dérivation** des points d'entrée. Une
+   * dérivation vide, ou qui laisserait un segment dynamique tel quel, rendrait
+   * le préambule silencieusement inutile — la route attrape-tout des modules
+   * n'est atteinte par aucune URL contenant `[...path]`, et c'est précisément
+   * elle que l'inscription emprunte.
+   */
+
+  it('demande une URL que le routeur peut atteindre, pour chaque point d’entrée', async () => {
+    const { warmUpTargets } = await import('../e2e/support/warm-up')
+    const targets = await warmUpTargets()
+
+    expect(targets.length).toBeGreaterThan(0)
+    expect(targets.filter((target) => /[[\]()@]/.test(target))).toEqual([])
+  })
+
+  it('couvre la route attrape-tout des modules, celle que l’inscription emprunte', async () => {
+    const { warmUpTargets } = await import('../e2e/support/warm-up')
+
+    expect(
+      (await warmUpTargets()).some((target) => target.startsWith('/api/modules/')),
+    ).toBe(true)
+  })
+
+  it('refuse un segment qu’il ne sait pas traduire, plutôt que de l’ignorer', async () => {
+    const { urlSegment } = await import('../e2e/support/warm-up')
+
+    expect(() => urlSegment('(marketing)')).toThrow(/préambule/)
+    expect(() => urlSegment('@panneau')).toThrow(/préambule/)
+  })
+})
+
 /* ------------------------------------------------------------------------- *
  * La règle des fournisseurs, éprouvée **là où elle vit** (s12).
  *

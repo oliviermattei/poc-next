@@ -24,11 +24,17 @@ const PORT = Number(process.env.E2E_PORT ?? 3100)
 // `localhost` et non `127.0.0.1` : le serveur de développement de Next bloque
 // les requêtes de ressources internes venant d'une origine qu'il ne reconnaît
 // pas, et noie la sortie d'avertissements.
-const BASE_URL = `http://localhost:${PORT}`
+export const BASE_URL = `http://localhost:${PORT}`
 
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
+  // **Le serveur répond avant d'être compilé.** `webServer.url` ci-dessous
+  // n'atteste que d'un port qui écoute ; `next dev` compile chaque route à sa
+  // première requête, et sur deux cœurs cette compilation dépasse les 5 000 ms
+  // du délai par défaut de `expect`. Le préambule paie cette facture une fois,
+  // hors de toute assertion — le détail mesuré est dans le fichier.
+  globalSetup: './e2e/support/warm-up.ts',
   reporter: 'list',
   // **Aucune reprise.** Un parcours qui ne passe qu'au second essai est un
   // parcours instable, et la reprise ne le disait pas : elle le peignait en
