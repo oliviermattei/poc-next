@@ -29,13 +29,38 @@ open -a Docker && docker compose up -d                                # Postgres
 
 **Protocole de contexte** : les agents écrivent les rapports dans les fichiers ; je ne fais pas transiter les corps de rapport par ma conversation. Mes messages restent courts.
 
+## Effort et modèle, par niveau de risque
+
+Le protocole coûte souvent plus cher que le modèle qui l'exécute. Trois niveaux, choisis par ce
+que la story peut casser — pas par sa taille.
+
+**Niveau 1 — ce qui peut fuir, facturer ou verrouiller un compte.** s20, s21, s23, s28, s34, s35.
+Implémenteur **Opus**, relecteur **Opus**. Mutation sur chaque invariant revendiqué, **posée à
+l'endroit du défaut** ; les six commandes dans les **deux** configurations de modules ;
+vérification navigateur sous le build de production ; revue indépendante, tour de correction,
+seconde revue. Une revue de correction se **cible sur le delta**, elle ne refait pas la première.
+
+**Niveau 2 — une fonctionnalité avec de l'interface, sans surface de sécurité.** s32, s39, s40,
+s41, s46. Implémenteur **Sonnet**, relecteur **Opus** au briefing court (les trois pièges de la
+story, pas l'historique complet). Mutations sur les invariants **propres à la story**, pas sur le
+socle qu'elle réutilise. Six commandes une fois, plus un aller-retour de bascule de module.
+Vérification navigateur.
+
+**Niveau 3 — contenu, documentation, mécanique.** s29, s30, s31, s44, et tout tour de correction
+qui ne touche que des textes ou des comptes. Implémenteur **Sonnet**. **Pas de sous-agent
+relecteur** : l'orchestrateur vérifie le diff et les commandes lui-même. Pas de campagne de
+mutations — il n'y a pas d'invariant à casser dans un article de blog.
+
+**Deux voies en parallèle, pas trois.** Les trois coupures de limite d'usage sont toutes arrivées
+à trois voies simultanées, et chaque coupure fait perdre le travail en cours d'un agent.
+
 ## Voies en cours (vague parallèle, ouverte le 31/08/2026)
 
 | Voie | Story | Worktree | Base / port |
 |---|---|---|---|
 | A | s14-passkeys | **fusionnée dans `dev`** (`0c85639`), revue `minor`/ship oui | close |
 | B | s18-file-storage-avatar | **fusionnée dans `dev`** (`caaa77c`), deux revues, `minor`/ship oui | close |
-| C | s19-subscribe-stripe | deux revues **critical**, **second tour de correction** | `s19`, port 3119 |
+| C | s19-subscribe-stripe | corrigée deux fois (`d95aea2`), **troisième revue ciblée** | `s19`, port 3119 |
 | D | s36-cookie-consent | commit `8448788`, **en revue** | `s36`, port 3136 |
 | D | s17-roles-permissions | **fusionnée dans `dev`** (`2b997df`), revue `major`/ship oui | close |
 | B | s16-invite-members | **fusionnée dans `dev`** (`6f14cc4`), revue `none`/ship oui | close |
