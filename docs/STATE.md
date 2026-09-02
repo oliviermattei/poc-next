@@ -55,6 +55,20 @@ quelle story n'en a pas besoin.
 L'orchestrateur ne vérifie lui-même qu'un cas : un **tour de correction** qui ne touche que des
 textes ou des comptes, **à l'intérieur d'une story déjà relue**. Ça ne franchit aucune porte.
 
+## Cadence
+
+**Commit et push à intervalle régulier**, pas seulement à la fusion d'une story :
+`dev` est poussée sur `origin`, la CI tourne sur chaque poussée, et un correctif
+de processus poussé tôt profite à la voie suivante. Un travail non poussé est un
+travail qu'une coupure de session peut perdre.
+
+**Boucle d'auto-optimisation.** Ce qu'une revue trouve et qui se répète ne doit
+pas être redécouvert par la story suivante : il remonte dans le skill
+(`.claude/skills/review-antihallu`, `.claude/skills/tdd-skill`) ou dans
+`AGENTS.md`, et le journal de `docs/process-review.md` le date. La règle qui
+décide : *ce constat serait-il apparu si l'agent avait su ?* Si oui, c'est un
+défaut de briefing, pas un défaut d'agent.
+
 ## Ce qui ne se négocie à aucun niveau
 
 - Toute story passe par un **relecteur en contexte frais** et par la porte mécanique
