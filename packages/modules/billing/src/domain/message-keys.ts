@@ -54,6 +54,13 @@ export const BILLING_KEYS = {
   unknownOffer: billingKey('subscription.unknownOffer'),
   manage: billingKey('action.manage'),
   subscribe: billingKey('action.subscribe'),
+  /**
+   * **« Acheter », et pas « Souscrire »** : un achat unique n'est pas un
+   * abonnement, et le dire autrement annoncerait un renouvellement qui n'aura
+   * pas lieu. C'est le seul libellé de refus/d'action que s20 ajoute au
+   * catalogue.
+   */
+  purchase: billingKey('action.purchase'),
   noScript: billingKey('action.noScript'),
   offersTitle: billingKey('offers.title'),
   emptyTitle: billingKey('offers.emptyTitle'),
@@ -72,6 +79,20 @@ export const BILLING_KEYS = {
    */
   currentOffer: billingKey('offers.current'),
   /**
+   * L'offre unique **déjà possédée**, à la place de son déclencheur.
+   *
+   * Elle ne renvoie pas au portail, contrairement à une offre d'abonnement : il
+   * n'y a rien à y gérer. Une carte simplement privée de bouton ne dirait pas
+   * pourquoi ; ce libellé le dit.
+   */
+  ownedOffer: billingKey('offers.owned'),
+  /** La périodicité d'une offre qui n'en a pas : elle se paie une fois. */
+  oneTime: billingKey('offers.oneTime'),
+  purchasesTitle: billingKey('purchases.title'),
+  purchasedAt: billingKey('purchases.purchasedAt'),
+  purchasePaid: billingKey('purchases.paid'),
+  purchaseRefunded: billingKey('purchases.refunded'),
+  /**
    * **Par où passe un changement d'offre** : le portail du fournisseur.
    *
    * Le catalogue ne propose plus de souscrire à qui a déjà l'accès — un second
@@ -87,7 +108,7 @@ export const BILLING_KEYS = {
   refusal: {
     forbidden: billingKey('refusal.forbidden'),
     unknownOffer: billingKey('refusal.unknownOffer'),
-    unsupportedMode: billingKey('refusal.unsupportedMode'),
+    alreadyPurchased: billingKey('refusal.alreadyPurchased'),
     providerUnavailable: billingKey('refusal.providerUnavailable'),
     noCustomer: billingKey('refusal.noCustomer'),
     alreadySubscribed: billingKey('refusal.alreadySubscribed'),

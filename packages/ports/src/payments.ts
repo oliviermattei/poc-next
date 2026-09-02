@@ -8,12 +8,14 @@
  * résultat discriminé plutôt qu'une exception, les collaborateurs injectés, la
  * forme du journal fermée. Ce qui suit dit ce que ce port-ci ajoute.
  *
- * **Quatre opérations, et la liste se justifie.** Le critère 2 de la story en
- * nomme trois — « checkout, portail et traitement de webhook ». La quatrième,
- * `listSubscriptions`, existe parce que `docs/reliability.md` §5 exige une
- * commande de réconciliation pour « toute divergence possible avec un système
- * externe », et qu'on ne réconcilie pas sans relire. Elle est hors du chemin
- * nominal : aucun webhook ne l'appelle (ADR 034).
+ * **Cinq opérations, et la liste se justifie.** Le critère 2 de s19 en nomme
+ * trois — « checkout, portail et traitement de webhook ». Les deux autres,
+ * `listSubscriptions` et `listPurchases`, existent parce que
+ * `docs/reliability.md` §5 exige une commande de réconciliation pour « toute
+ * divergence possible avec un système externe », et qu'on ne réconcilie pas
+ * sans relire. Elles sont hors du chemin nominal : aucun webhook ne les appelle
+ * (ADR 034). La seconde est arrivée avec l'achat unique (s20), qui est un état
+ * de plus à réconcilier.
  *
  * **Ce port ne connaît pas les offres.** Il reçoit un identifiant de prix du
  * fournisseur, jamais un montant ni une devise : le catalogue est une affaire
@@ -97,10 +99,18 @@ export interface PaymentsError {
  * rien : une valeur modifiable depuis le tableau de bord du fournisseur ne peut
  * pas décider de qui accède à quoi.
  */
+/**
+ * Le mode d'un paiement — **deux, et le second n'est pas un abonnement**.
+ *
+ * `subscription` renouvelle et expire ; `payment` encaisse une fois et n'expire
+ * jamais (ADR 038). Le mode est **résolu du catalogue par le serveur**, jamais
+ * reçu du navigateur : un mode reçu du client est un prix reçu du client.
+ */
+export type CheckoutMode = 'subscription' | 'payment'
+
 export interface CreateCheckoutInput {
   readonly priceId: string
-  /** Seul `subscription` est livré par s19 ; `payment` est la story s20. */
-  readonly mode: 'subscription'
+  readonly mode: CheckoutMode
   readonly quantity: number
   readonly customerId: string | null
   /** Sert à créer le client quand il n'existe pas encore. Jamais affiché. */
@@ -127,6 +137,15 @@ export interface CreateCheckoutInput {
 export interface Checkout {
   readonly url: string
   readonly customerId: string
+  /**
+   * L'identifiant de la session ouverte chez le fournisseur.
+   *
+   * Rendu parce qu'il est **l'acte d'achat** (ADR 038 §1) : la session de
+   * checkout ne porte pas son prix dans les charges utiles de webhook — c'est
+   * un champ développable, jamais livré —, si bien que l'offre achetée ne peut
+   * être connue qu'en ayant été écrite avant, sous cet identifiant.
+   */
+  readonly sessionId: string
 }
 
 export type CreateCheckoutResult =
@@ -200,6 +219,41 @@ export type ListSubscriptionsResult =
   | { readonly ok: false; readonly error: PaymentsError }
 
 /* -------------------------------------------------------------------------- *
+ * Achat unique
+ * -------------------------------------------------------------------------- */
+
+/**
+ * Un achat unique, tel que le fournisseur le détient — **la lecture de
+ * réconciliation**, hors du chemin nominal (`docs/reliability.md` §5).
+ *
+ * Il ne porte pas d'offre, et c'est une propriété : la session de checkout ne
+ * livre pas son prix (ADR 038), et la réconciliation ne fait que **promouvoir
+ * des lignes que nous avons ouvertes**. Une session inconnue n'a pas d'offre à
+ * deviner.
+ */
+export interface PaymentPurchase {
+  readonly sessionId: string
+  readonly paymentId: string | null
+  /** Le paiement est-il encaissé ? Un `unpaid` en attente ne l'est pas. */
+  readonly paid: boolean
+  /** Ce qui a été prélevé, ou `null` quand le fournisseur ne le dit pas. */
+  readonly amountTotal: number | null
+  readonly currency: string | null
+  /** Ce qui a été remboursé sur ce paiement. `0` quand rien ne l'a été. */
+  readonly amountRefunded: number
+  /** Le montant de la charge, base de comparaison du remboursement. */
+  readonly chargedAmount: number | null
+}
+
+export interface ListPurchasesInput {
+  readonly customerId: string
+}
+
+export type ListPurchasesResult =
+  | { readonly ok: true; readonly purchases: readonly PaymentPurchase[] }
+  | { readonly ok: false; readonly error: PaymentsError }
+
+/* -------------------------------------------------------------------------- *
  * Webhook
  * -------------------------------------------------------------------------- */
 
@@ -239,6 +293,47 @@ export type PaymentEvent =
       readonly customerId: string | null
       readonly subscriptionId: string | null
     }
+  /**
+   * Un **achat unique payé** (ADR 038 §1).
+   *
+   * Rendu pour `checkout.session.completed` **et** pour
+   * `checkout.session.async_payment_succeeded`, et dans les deux cas seulement
+   * quand le mode est `payment` et le paiement effectivement encaissé : les
+   * deux unions du fournisseur sont ouvertes, et le repli est fermé — ce qui
+   * n'est pas reconnu n'accorde rien.
+   *
+   * `sessionId` est la clé de l'achat ; `paymentId` sert au remboursement, qui
+   * ne porte que lui. `amountTotal` et `currency` sont **ce qui a été
+   * prélevé**, et c'est la seule source honnête pour un historique de
+   * paiements : le catalogue, lui, peut changer de prix.
+   */
+  | {
+      readonly kind: 'purchase_paid'
+      readonly id: string
+      readonly occurredAt: Date
+      readonly sessionId: string
+      readonly customerId: string | null
+      readonly paymentId: string | null
+      readonly amountTotal: number | null
+      readonly currency: string | null
+      readonly reference: string | null
+    }
+  /**
+   * Un **remboursement reçu** — et rien de plus.
+   *
+   * Il ne dit pas ce qu'il révoque : `amount` et `amountRefunded` traversent
+   * jusqu'au domaine, qui décide (ADR 038 §3). Le fournisseur émet le même type
+   * d'événement pour un remboursement total et pour un geste partiel, et
+   * trancher ici rendrait la règle inatteignable par un test de domaine.
+   */
+  | {
+      readonly kind: 'purchase_refunded'
+      readonly id: string
+      readonly occurredAt: Date
+      readonly paymentId: string
+      readonly amount: number
+      readonly amountRefunded: number
+    }
   | {
       readonly kind: 'unhandled'
       readonly id: string
@@ -272,6 +367,7 @@ export type PaymentsOperation =
   | 'create_portal_session'
   | 'verify_webhook'
   | 'list_subscriptions'
+  | 'list_purchases'
 
 /**
  * La seule surface que le code métier appelle pour parler au fournisseur de
@@ -286,6 +382,7 @@ export interface Payments {
   createPortalSession(input: CreatePortalSessionInput): Promise<CreatePortalSessionResult>
   verifyWebhook(input: VerifyWebhookInput): Promise<VerifyWebhookResult>
   listSubscriptions(input: ListSubscriptionsInput): Promise<ListSubscriptionsResult>
+  listPurchases(input: ListPurchasesInput): Promise<ListPurchasesResult>
 }
 
 /**

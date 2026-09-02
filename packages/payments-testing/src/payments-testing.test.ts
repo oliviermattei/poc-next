@@ -216,6 +216,70 @@ describe('le reste du port en mode local', () => {
     expect(listed).toEqual({ ok: true, subscriptions: [] })
   })
 
+  /* ---------------------------------------------------------------------- *
+   * s20 — le paiement unique simulé.
+   * ---------------------------------------------------------------------- */
+
+  const PURCHASE = { ...CHECKOUT, mode: 'payment', trialPeriodDays: null, quantity: 1 } as const
+
+  const openPurchase = async (payments: ReturnType<typeof options>) => {
+    const opened = await payments.createCheckout(PURCHASE)
+
+    return opened.ok ? opened.checkout : null
+  }
+
+  it('livre un **seul** événement pour un achat unique, encaissé et en mode paiement', async () => {
+    const payments = options()
+    const checkout = await openPurchase(payments)
+    const deliveries = payments.completeCheckout(checkout?.sessionId ?? '', PURCHASE.reference)
+
+    // Un seul : il n'y a pas de second objet à décrire — pas d'abonnement,
+    // donc pas de désordre à simuler.
+    expect(deliveries).toHaveLength(1)
+
+    // La vraie vérification, et la vraie normalisation : ce que ce parcours
+    // exerce est le code qui traitera les charges utiles du fournisseur.
+    const verified = await payments.verifyWebhook(deliveries[0]!)
+
+    expect(verified.ok && verified.event).toMatchObject({
+      kind: 'purchase_paid',
+      sessionId: checkout?.sessionId,
+      reference: 'organization:org_1',
+    })
+    expect(verified.ok && verified.event.kind === 'purchase_paid' && verified.event.paymentId).toMatch(
+      /^pi_local_/,
+    )
+  })
+
+  it('rend l’identifiant de session du checkout ouvert : c’est l’acte d’achat', async () => {
+    const payments = options()
+    const checkout = await openPurchase(payments)
+
+    expect(checkout?.sessionId).toBe(
+      new URL(checkout?.url ?? '').searchParams.get('session'),
+    )
+  })
+
+  it('rend les achats terminés du client, pour la réconciliation', async () => {
+    const payments = options()
+    const checkout = await openPurchase(payments)
+
+    payments.completeCheckout(checkout?.sessionId ?? '', PURCHASE.reference)
+
+    const listed = await payments.listPurchases({ customerId: checkout?.customerId ?? '' })
+
+    expect(listed.ok && listed.purchases).toHaveLength(1)
+    // **Aucun montant** : le port ne transporte pas de prix, et la simulation
+    // n'en invente pas.
+    expect(listed.ok && listed.purchases[0]).toMatchObject({ paid: true, amountTotal: null })
+  })
+
+  it('ne rend aucun achat pour un client qui n’en a pas', async () => {
+    const listed = await options().listPurchases({ customerId: 'cus_local_inconnu' })
+
+    expect(listed).toEqual({ ok: true, purchases: [] })
+  })
+
   it('refuse une signature forgée, comme le vrai fournisseur', async () => {
     const payments = options()
     const opened = await payments.createCheckout(CHECKOUT)

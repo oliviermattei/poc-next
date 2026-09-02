@@ -84,7 +84,11 @@ export default async function BillingPage({
           <BillingAction
             key={offer.id}
             action={billingRoutePath('checkout')}
-            labelKey={BILLING_KEYS.subscribe}
+            // **« Acheter » pour une offre unique** : le libellé vient du mode
+            // résolu par le serveur, jamais d'une supposition de l'écran. Dire
+            // « Souscrire » sur un paiement unique annoncerait un
+            // renouvellement qui n'aura pas lieu.
+            labelKey={offer.mode === 'one_time' ? BILLING_KEYS.purchase : BILLING_KEYS.subscribe}
             offerId={offer.id}
             locale={locale}
           />,

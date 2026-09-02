@@ -22,17 +22,20 @@ import {
   BILLING_KEYS,
   billingModule,
   billingRoutePath,
+  billingPurchase,
   billingSubscription,
   configureBilling,
   EMPTY_BILLING_VIEW,
   offerDescriptionKey,
   offerNameKey,
   parseBillingCatalogue,
+  purchaseReadOrder,
   requireBillingService,
   resetBillingService,
   stateTitleKey,
   subscriptionReadOrder,
   type BillingPermission,
+  type BillingView,
   type ConfigureBillingOptions,
 } from '@repo/module-billing'
 import {
@@ -206,6 +209,18 @@ const CATALOGUE = parseBillingCatalogue([
     trialDays: null,
     perSeat: true,
   },
+  // s20 — l'offre **unique** : ni périodicité, ni essai. Le catalogue refuse
+  // les deux pour ce mode, au démarrage.
+  {
+    id: 'lifetime',
+    mode: 'one_time',
+    priceId: 'price_lifetime',
+    amount: 49_000,
+    currency: 'eur',
+    interval: null,
+    trialDays: null,
+    perSeat: false,
+  },
 ])
 
 let connection: DatabaseConnection
@@ -271,6 +286,18 @@ const payments = createStripePayments({
   backoff: { baseMs: 1, maxMs: 1, random: () => 0 },
   sleep: async () => {},
 })
+
+/**
+ * Les deux lectures d'achats que la réconciliation fait **avant** celle des
+ * abonnements — sessions, puis charges — quand le client n'en a aucun.
+ *
+ * Écrites une fois : la doublure de réseau est une file, et chaque cas qui
+ * réconcilie doit décrire tous les appels, dans l'ordre.
+ */
+const noPurchases = (): readonly (() => Response)[] => [
+  () => json({ object: 'list', has_more: false, data: [] }),
+  () => json({ object: 'list', has_more: false, data: [] }),
+]
 
 const call = async (
   path: 'checkout' | 'portal' | 'webhook',
@@ -463,6 +490,11 @@ const suiteBilling = (): ConfigureBillingOptions => ({
 const cleanup = async (): Promise<void> => {
   await connection.db.execute(sql`delete from billing_customer`)
   await connection.db.execute(sql`delete from billing_webhook_event`)
+  // Le journal des remboursements est **hors périmètre**, comme celui des
+  // événements : il n'a pas de client, donc la cascade ne l'emporte pas. Sans
+  // cette ligne, un `pi_life_1` remboursé par un cas révoquerait l'achat des
+  // cas suivants, qui réemploient le même identifiant de paiement.
+  await connection.db.execute(sql`delete from billing_refunded_payment`)
 }
 
 beforeAll(async () => {
@@ -992,7 +1024,11 @@ describe.runIf(databaseReachable)('la vue de l’écran', () => {
 
     expect(view.state).toBe('none')
     expect(view.hasAccess).toBe(false)
-    expect(view.offers.map((offer) => offer.id)).toEqual(['pro-monthly', 'team-monthly'])
+    expect(view.offers.map((offer) => offer.id)).toEqual([
+      'pro-monthly',
+      'team-monthly',
+      'lifetime',
+    ])
     expect(view.hasCustomer).toBe(false)
   })
 
@@ -1207,6 +1243,7 @@ describe.runIf(databaseReachable)('un client qui se réabonne', () => {
     await openCheckout()
 
     responses = [
+      ...noPurchases(),
       () =>
         json({
           object: 'list',
@@ -1441,7 +1478,7 @@ describe.runIf(databaseReachable)('la réconciliation', () => {
         data: [subscriptionObject({ customer: 'cus_s19', periodEnd: 1_800_000_000, quantity: 2 })],
       })
 
-    responses = [listed]
+    responses = [...noPurchases(), listed]
 
     const first = await requireBillingService().useCases.reconcile()
 
@@ -1697,6 +1734,975 @@ describe.runIf(compositionMeasurable)('le point de composition de l’applicatio
   })
 })
 
+/* -------------------------------------------------------------------------- *
+ * s20 — **l'achat unique**, contre la vraie base et à travers le répartiteur.
+ *
+ * L'invariant que ce bloc existe pour tenir : *on ne facture pas deux fois le
+ * même acte d'achat*. Il est éprouvé trois fois, parce qu'il a trois manières
+ * de casser — un événement rejoué, deux ouvertures simultanées, et une seconde
+ * ligne écrite en base.
+ * -------------------------------------------------------------------------- */
+describe.runIf(databaseReachable)('l’achat unique', () => {
+  const SESSION = { userId: 'usr_s19', roles: [] }
+  const CUSTOMER = 'cus_s20'
+
+  const sessionObject = (id: string): Record<string, unknown> => ({
+    id,
+    object: 'checkout.session',
+    url: `https://checkout.stripe.com/c/pay/${id}`,
+    customer: CUSTOMER,
+  })
+
+  /** Ouvre le checkout de l'offre unique. Le client n'est créé qu'au premier. */
+  const openPurchase = async (
+    sessionId = 'cs_life_1',
+    options: { readonly withCustomer?: boolean } = {},
+  ): Promise<Response> => {
+    responses = [
+      ...(options.withCustomer === false ? [] : [() => json({ id: CUSTOMER, object: 'customer' })]),
+      () => json(sessionObject(sessionId)),
+    ]
+
+    return await call('checkout', { session: SESSION, body: { offerId: 'lifetime' } })
+  }
+
+  const paidEvent = (input: {
+    readonly id: string
+    readonly sessionId: string
+    readonly created: number
+    readonly paymentId?: string
+    readonly amountTotal?: number
+  }): string =>
+    eventPayload({
+      id: input.id,
+      type: 'checkout.session.completed',
+      created: input.created,
+      object: {
+        id: input.sessionId,
+        object: 'checkout.session',
+        mode: 'payment',
+        payment_status: 'paid',
+        customer: CUSTOMER,
+        payment_intent: input.paymentId ?? 'pi_life_1',
+        amount_total: input.amountTotal ?? 49_000,
+        currency: 'eur',
+        client_reference_id: 'organization:org_s19',
+      },
+    })
+
+  const refundEvent = (input: {
+    readonly id: string
+    readonly created: number
+    readonly amountRefunded: number
+    readonly paymentId?: string
+  }): string =>
+    eventPayload({
+      id: input.id,
+      type: 'charge.refunded',
+      created: input.created,
+      object: {
+        id: 'ch_life_1',
+        object: 'charge',
+        payment_intent: input.paymentId ?? 'pi_life_1',
+        amount: 49_000,
+        amount_refunded: input.amountRefunded,
+      },
+    })
+
+  const purchases = async (): Promise<readonly Record<string, unknown>[]> =>
+    (
+      await connection.db.execute<Record<string, unknown>>(
+        sql`select * from billing_purchase order by created_at`,
+      )
+    ).rows
+
+  const view = async () =>
+    await requireBillingService().useCases.view({ session: SESSION, locale: 'fr' })
+
+  it('ouvre un paiement, jamais un abonnement, et écrit l’achat **avant** l’URL', async () => {
+    const response = await openPurchase()
+
+    expect(response.status).toBe(200)
+
+    // Ce que le serveur a décidé, envoyé au fournisseur : le mode vient du
+    // catalogue, pas de la requête, et aucune donnée d'abonnement ne part.
+    const sent = new URLSearchParams(calls.at(-1)?.body ?? '')
+
+    expect(sent.get('mode')).toBe('payment')
+    expect(sent.get('line_items[0][price]')).toBe('price_lifetime')
+    expect(sent.get('subscription_data[trial_period_days]')).toBeNull()
+
+    // **La ligne existe déjà**, en attente, et elle porte l'offre — que la
+    // confirmation ne dira pas (ADR 038 §1).
+    const rows = await purchases()
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      offer_id: 'lifetime',
+      status: 'pending',
+      provider_session_id: 'cs_life_1',
+    })
+
+    // Un achat en attente n'accorde rien et n'est pas un paiement : il
+    // n'apparaît pas dans l'historique.
+    const screen = await view()
+
+    expect(screen.hasAccess).toBe(false)
+    expect(screen.purchases).toEqual([])
+  })
+
+  it('accorde un droit permanent à la confirmation, et le rejeu n’en accorde pas un second', async () => {
+    await openPurchase()
+
+    const payload = paidEvent({ id: 'evt_life_paid', sessionId: 'cs_life_1', created: 1_788_100_000 })
+    const first = await deliver(payload)
+    const replayed = await deliver(payload)
+
+    expect(await first.json()).toEqual({ received: true, applied: true })
+    // **Le septième critère** : un événement rejoué n'accorde pas un second
+    // droit — le journal le refuse, et il n'y a de toute façon qu'une ligne.
+    expect(await replayed.json()).toEqual({ received: true, applied: false })
+
+    const rows = await purchases()
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      status: 'paid',
+      provider_payment_id: 'pi_life_1',
+      amount: 49_000,
+      currency: 'eur',
+    })
+
+    const screen = await view()
+
+    // **Un droit permanent, sans aucun abonnement** (critères 2 et 3) : aucune
+    // date n'y entre, et l'état d'abonnement reste « aucun ».
+    expect(screen.hasAccess).toBe(true)
+    expect(screen.hasSubscription).toBe(false)
+    expect(screen.state).toBe('none')
+    expect(screen.purchases).toHaveLength(1)
+    expect(screen.purchases[0]).toMatchObject({ offerId: 'lifetime', refunded: false })
+    // Le montant vient du **fournisseur**, formaté pour l'affichage.
+    expect(screen.purchases[0]?.price).toContain('490')
+    // Quatrième critère : rien à gérer au portail pour un acheteur unique pur.
+    expect(screen.canOpenPortal).toBe(false)
+    expect(screen.hasCustomer).toBe(true)
+  })
+
+  it('dit « offre retirée du catalogue » pour un achat dont l’offre a disparu', async () => {
+    await openPurchase()
+    await deliver(paidEvent({ id: 'evt_life_paid7', sessionId: 'cs_life_1', created: 1_788_101_300 }))
+
+    // L'offre est retirée de `config/billing.ts` : la ligne reste, et la vue ne
+    // doit **pas** rendre un identifiant qu'aucun catalogue de traduction ne
+    // connaît — le traducteur lève sur une clé absente depuis s09.
+    await connection.db.execute(
+      sql`update billing_purchase set offer_id = 'offre-disparue' where offer_id = 'lifetime'`,
+    )
+
+    const screen = await view()
+
+    expect(screen.purchases[0]?.offerId).toBeNull()
+    // Le droit, lui, survit : c'est un achat payé, pas une ligne de catalogue.
+    expect(screen.hasAccess).toBe(true)
+  })
+
+  it('n’écrit rien pour une session qu’il n’a pas ouverte, et journalise quand même', async () => {
+    await openPurchase()
+
+    const response = await deliver(
+      paidEvent({ id: 'evt_life_inconnu', sessionId: 'cs_jamais_ouverte', created: 1_788_100_100 }),
+    )
+
+    expect(await response.json()).toEqual({ received: true, applied: true })
+    expect((await purchases())[0]).toMatchObject({ status: 'pending' })
+  })
+
+  it('n’applique pas une confirmation plus ancienne que ce qui est déjà écrit', async () => {
+    await openPurchase()
+    await deliver(paidEvent({ id: 'evt_life_a', sessionId: 'cs_life_1', created: 1_788_100_300 }))
+    await deliver(
+      paidEvent({
+        id: 'evt_life_b',
+        sessionId: 'cs_life_1',
+        created: 1_788_100_200,
+        paymentId: 'pi_perime',
+        amountTotal: 1,
+      }),
+    )
+
+    // Le désordre de livraison est absorbé par le prédicat d'écriture, comme
+    // pour un abonnement (ADR 034 §2).
+    expect((await purchases())[0]).toMatchObject({ provider_payment_id: 'pi_life_1', amount: 49_000 })
+  })
+
+  /* ------------------------------------------------------------------------ *
+   * La session supplantée (constat C1 de la revue).
+   * ------------------------------------------------------------------------ */
+
+  it('rattache le paiement d’une session supplantée par une seconde ouverture', async () => {
+    await openPurchase('cs_life_1')
+    await openPurchase('cs_life_2', { withCustomer: false })
+
+    // **Ce que la ligne porte après une seconde ouverture**, que rien ne
+    // fixait : la dernière session ouverte. La revue l'a établi par une
+    // mutation verte — remplacer l'écriture par un `do nothing` laissait la
+    // suite entière au vert.
+    expect((await purchases())[0]).toMatchObject({
+      provider_session_id: 'cs_life_2',
+      status: 'pending',
+    })
+
+    // L'utilisateur revient en arrière et paie la **première** session, restée
+    // payable chez le fournisseur. Le paiement encaissé doit accorder le droit,
+    // pas se perdre parce que la ligne ne porte plus cette session-là.
+    const response = await deliver(
+      paidEvent({ id: 'evt_life_supplante', sessionId: 'cs_life_1', created: 1_788_102_000 }),
+    )
+
+    expect(await response.json()).toEqual({ received: true, applied: true })
+
+    const rows = await purchases()
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ status: 'paid', provider_payment_id: 'pi_life_1' })
+    expect((await view()).hasAccess).toBe(true)
+
+    // Et le second prélèvement est fermé : l'offre est possédée, donc refusée
+    // **avant** tout appel sortant.
+    calls.length = 0
+    responses = []
+
+    const refused = await call('checkout', { session: SESSION, body: { offerId: 'lifetime' } })
+
+    expect(refused.status).toBe(409)
+    expect(calls).toHaveLength(0)
+  })
+
+  /* ------------------------------------------------------------------------ *
+   * La fenêtre de bascule du déploiement (constat C4 de la seconde revue).
+   *
+   * `docs/reliability.md` décrit une migration appliquée **avant** que le
+   * trafic ne bascule : pendant cet intervalle, la version encore en ligne
+   * ouvre des checkouts en n'écrivant que `billing_purchase.provider_session_id`
+   * — elle ne connaît pas l'index inverse. Le rattrapage de la migration `0004`
+   * ne reprend que les sessions présentes à l'instant où elle passe.
+   *
+   * L'ancien emplacement est donc **relu tant que la transition dure** : c'est
+   * ce que « ajouter avant de lire » demande. Les deux cas ci-dessous
+   * reproduisent cette fenêtre en effaçant l'index inverse — l'état exact que
+   * l'ancienne version laisse — et exigent que les **deux** chemins retrouvent
+   * l'achat.
+   * ------------------------------------------------------------------------ */
+
+  /** L'état qu'un checkout ouvert par la version précédente laisse en base. */
+  const asOpenedByPreviousVersion = async (): Promise<void> => {
+    await connection.db.execute(sql`delete from billing_purchase_session`)
+  }
+
+  it('confirme un checkout ouvert par la version précédente, pendant la bascule', async () => {
+    await openPurchase('cs_life_bascule')
+    await asOpenedByPreviousVersion()
+
+    const response = await deliver(
+      paidEvent({ id: 'evt_life_bascule', sessionId: 'cs_life_bascule', created: 1_788_104_000 }),
+    )
+
+    expect(await response.json()).toEqual({ received: true, applied: true })
+
+    const rows = await purchases()
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ status: 'paid', provider_payment_id: 'pi_life_1' })
+    expect((await view()).hasAccess).toBe(true)
+  })
+
+  it('réconcilie un checkout ouvert par la version précédente, pendant la bascule', async () => {
+    await openPurchase('cs_life_bascule')
+    await asOpenedByPreviousVersion()
+
+    responses = [
+      () =>
+        json({
+          object: 'list',
+          has_more: false,
+          data: [
+            {
+              id: 'cs_life_bascule',
+              object: 'checkout.session',
+              mode: 'payment',
+              payment_status: 'paid',
+              payment_intent: 'pi_bascule',
+              amount_total: 49_000,
+              currency: 'eur',
+            },
+          ],
+        }),
+      () => json({ object: 'list', has_more: false, data: [] }),
+      () => json({ object: 'list', has_more: false, data: [] }),
+    ]
+
+    expect((await requireBillingService().useCases.reconcile()).changed).toBe(1)
+    expect((await purchases())[0]).toMatchObject({
+      status: 'paid',
+      provider_payment_id: 'pi_bascule',
+    })
+  })
+
+  /* ------------------------------------------------------------------------ *
+   * Le remboursement (critère 5).
+   * ------------------------------------------------------------------------ */
+
+  it('révoque le droit sur un remboursement total', async () => {
+    await openPurchase()
+    await deliver(paidEvent({ id: 'evt_life_paid2', sessionId: 'cs_life_1', created: 1_788_100_400 }))
+    await deliver(refundEvent({ id: 'evt_life_refund', created: 1_788_100_500, amountRefunded: 49_000 }))
+
+    expect((await purchases())[0]).toMatchObject({ status: 'refunded' })
+
+    const screen = await view()
+
+    expect(screen.hasAccess).toBe(false)
+    // L'achat reste dans l'historique, avec son statut : le paiement a eu lieu.
+    expect(screen.purchases[0]).toMatchObject({ refunded: true })
+    // Et l'offre redevient achetable.
+    expect(screen.offers.find((offer) => offer.id === 'lifetime')?.owned).toBe(false)
+  })
+
+  it('laisse le droit sur un geste commercial partiel', async () => {
+    await openPurchase()
+    await deliver(paidEvent({ id: 'evt_life_paid3', sessionId: 'cs_life_1', created: 1_788_100_600 }))
+
+    const response = await deliver(
+      refundEvent({ id: 'evt_life_partiel', created: 1_788_100_700, amountRefunded: 100 }),
+    )
+
+    // Journalisé — donc non rejoué — et sans effet (ADR 038 §3).
+    expect(await response.json()).toEqual({ received: true, applied: true })
+    expect((await purchases())[0]).toMatchObject({ status: 'paid' })
+    expect((await view()).hasAccess).toBe(true)
+  })
+
+  it('applique un remboursement livré **avant** la confirmation qu’il annule', async () => {
+    await openPurchase()
+
+    // Le remboursement arrive le premier — le désordre que l'ADR 034 déclare
+    // possible, et que les reprises de livraison du fournisseur produisent. La
+    // ligne n'a pas encore de paiement : `charge.refunded` ne porte que
+    // celui-ci, donc rien ne l'y rattache.
+    const refunded = await deliver(
+      refundEvent({ id: 'evt_life_refund_avant', created: 1_788_102_300, amountRefunded: 49_000 }),
+    )
+
+    expect(await refunded.json()).toEqual({ received: true, applied: true })
+    expect((await purchases())[0]).toMatchObject({ status: 'pending' })
+
+    // La confirmation suit, et elle est **plus ancienne** : le paiement a bien
+    // eu lieu avant son remboursement, seule la livraison était inversée. Elle
+    // ne doit pas accorder l'accès à un achat intégralement remboursé.
+    await deliver(
+      paidEvent({ id: 'evt_life_paid_apres', sessionId: 'cs_life_1', created: 1_788_102_200 }),
+    )
+
+    const rows = await purchases()
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ status: 'refunded' })
+    expect(rows[0]?.['refunded_at']).not.toBeNull()
+
+    const screen = await view()
+
+    expect(screen.hasAccess).toBe(false)
+    expect(screen.purchases[0]).toMatchObject({ refunded: true })
+  })
+
+  it('remboursé puis racheté : la ligne repayée ne porte plus la date de remboursement', async () => {
+    await openPurchase()
+    await deliver(paidEvent({ id: 'evt_life_cycle_paid', sessionId: 'cs_life_1', created: 1_788_102_400 }))
+    await deliver(refundEvent({ id: 'evt_life_cycle_refund', created: 1_788_102_500, amountRefunded: 49_000 }))
+
+    // L'offre est redevenue achetable (ADR 038 §3) : le rachat rouvre **la
+    // même ligne**, et il ouvre une nouvelle session chez le fournisseur.
+    await openPurchase('cs_life_rachat', { withCustomer: false })
+
+    expect((await purchases())[0]).toMatchObject({
+      status: 'pending',
+      refunded_at: null,
+      provider_payment_id: null,
+      amount: null,
+      purchased_at: null,
+    })
+
+    await deliver(
+      paidEvent({
+        id: 'evt_life_cycle_repaid',
+        sessionId: 'cs_life_rachat',
+        created: 1_788_102_600,
+        paymentId: 'pi_life_rachat',
+      }),
+    )
+
+    const scope: ModuleScope = { kind: 'organization', organizationId: 'org_s19' }
+    const exported = (await requireBillingService().useCases.export(scope)) as {
+      readonly purchases: readonly Record<string, unknown>[]
+    }
+
+    // **Ce que l'export dit du périmètre** : un achat payé, et rien qui
+    // prétende qu'il a été remboursé. Le cycle précédent est clos, pas
+    // superposé au neuf.
+    expect(exported.purchases).toHaveLength(1)
+    expect(exported.purchases[0]).toMatchObject({ status: 'paid', refundedAt: null })
+    expect((await view()).hasAccess).toBe(true)
+  })
+
+  /* ------------------------------------------------------------------------ *
+   * L'invariant central : jamais deux fois pour le même acte d'achat.
+   * ------------------------------------------------------------------------ */
+
+  it('refuse un second achat de la même offre, **sans appeler le fournisseur**', async () => {
+    await openPurchase()
+    await deliver(paidEvent({ id: 'evt_life_paid4', sessionId: 'cs_life_1', created: 1_788_100_800 }))
+
+    calls.length = 0
+    responses = []
+
+    const refused = await call('checkout', { session: SESSION, body: { offerId: 'lifetime' } })
+
+    expect(refused.status).toBe(409)
+    expect(await refused.json()).toEqual({ error: BILLING_KEYS.refusal.alreadyPurchased })
+    // Rien n'est parti chez le fournisseur : le refus est **avant** l'appel.
+    expect(calls).toHaveLength(0)
+    expect(await purchases()).toHaveLength(1)
+  })
+
+  it('converge sur une seule ligne quand deux ouvertures partent en même temps', async () => {
+    await openPurchase()
+
+    responses = [() => json(sessionObject('cs_life_2')), () => json(sessionObject('cs_life_3'))]
+
+    const [first, second] = await Promise.all([
+      call('checkout', { session: SESSION, body: { offerId: 'lifetime' } }),
+      call('checkout', { session: SESSION, body: { offerId: 'lifetime' } }),
+    ])
+
+    expect(first.status).toBe(200)
+    expect(second.status).toBe(200)
+    // **Une contrainte d'unicité, pas une lecture** : les deux ouvertures
+    // convergent, et le périmètre ne peut pas se retrouver avec deux achats de
+    // la même offre.
+    expect(await purchases()).toHaveLength(1)
+  })
+
+  it('refuse **par le moteur** une seconde ligne pour la même offre', async () => {
+    await openPurchase()
+
+    const stored = (await purchases())[0]
+
+    await expect(
+      connection.db.execute(sql`
+        insert into billing_purchase (id, billing_customer_id, offer_id, price_id, provider_session_id, status)
+        values ('bp_double', ${String(stored?.['billing_customer_id'])}, 'lifetime', 'price_lifetime', 'cs_double', 'paid')
+      `),
+    ).rejects.toThrow()
+  })
+
+  /* ------------------------------------------------------------------------ *
+   * Le cumul (critère 6) : les deux fermetures ne se regardent pas.
+   * ------------------------------------------------------------------------ */
+
+  it('laisse s’abonner un acheteur à vie, et acheter à vie un abonné', async () => {
+    await openPurchase()
+    await deliver(paidEvent({ id: 'evt_life_paid5', sessionId: 'cs_life_1', created: 1_788_100_900 }))
+
+    // L'accès consolidé est déjà accordé, et pourtant la souscription passe.
+    responses = [() => json(sessionObject('cs_sub_apres'))]
+
+    const subscribed = await call('checkout', {
+      session: SESSION,
+      body: { offerId: 'pro-monthly' },
+    })
+
+    expect(subscribed.status).toBe(200)
+
+    await deliver(
+      eventPayload({
+        id: 'evt_life_sub',
+        type: 'customer.subscription.created',
+        created: 1_788_101_000,
+        object: subscriptionObject({
+          customer: CUSTOMER,
+          periodEnd: Math.floor(clock.getTime() / 1000) + 86_400,
+        }),
+      }),
+    )
+
+    // **Aucun des deux n'a écrasé l'autre** : deux tables, deux lignes.
+    const screen = await view()
+
+    expect(screen.hasSubscription).toBe(true)
+    expect(screen.hasAccess).toBe(true)
+    expect(screen.subscription?.offerId).toBe('pro-monthly')
+    expect(screen.purchases).toHaveLength(1)
+    expect(await countRows('billing_subscription')).toBe(1)
+    expect(await purchases()).toHaveLength(1)
+  })
+
+  it('n’oppose pas l’abonnement en cours à l’achat unique', async () => {
+    // L'abonné a l'accès : `already_subscribed` fermerait le catalogue si la
+    // garde regardait l'accès consolidé au lieu des seuls abonnements.
+    responses = [() => json({ id: CUSTOMER, object: 'customer' }), () => json(sessionObject('cs_sub_1'))]
+    await call('checkout', { session: SESSION, body: { offerId: 'pro-monthly' } })
+    await deliver(
+      eventPayload({
+        id: 'evt_life_sub2',
+        type: 'customer.subscription.created',
+        created: 1_788_101_100,
+        object: subscriptionObject({
+          customer: CUSTOMER,
+          periodEnd: Math.floor(clock.getTime() / 1000) + 86_400,
+        }),
+      }),
+    )
+
+    responses = [() => json(sessionObject('cs_life_9'))]
+
+    const bought = await call('checkout', { session: SESSION, body: { offerId: 'lifetime' } })
+
+    expect(bought.status).toBe(200)
+    expect(await purchases()).toHaveLength(1)
+  })
+
+  /* ------------------------------------------------------------------------ *
+   * La permission, la purge, la réconciliation.
+   * ------------------------------------------------------------------------ */
+
+  it('refuse l’achat à qui n’a pas le droit de gérer la facturation, sans appeler', async () => {
+    permitted = false
+    calls.length = 0
+
+    const refused = await call('checkout', { session: SESSION, body: { offerId: 'lifetime' } })
+
+    expect(refused.status).toBe(403)
+    expect(calls).toHaveLength(0)
+    expect(await purchases()).toHaveLength(0)
+  })
+
+  it('efface les achats avec le périmètre, et l’export les rend', async () => {
+    await openPurchase()
+    await deliver(paidEvent({ id: 'evt_life_paid6', sessionId: 'cs_life_1', created: 1_788_101_200 }))
+
+    const scope: ModuleScope = { kind: 'organization', organizationId: 'org_s19' }
+    const exported = (await requireBillingService().useCases.export(scope)) as {
+      readonly purchases: readonly Record<string, unknown>[]
+    }
+
+    expect(exported.purchases).toHaveLength(1)
+    expect(exported.purchases[0]).toMatchObject({ offerId: 'lifetime', status: 'paid' })
+
+    await requireBillingService().useCases.purge(scope)
+
+    // La clé étrangère reste **à l'intérieur du module** : les achats partent
+    // par la cascade, comme les abonnements.
+    expect(await purchases()).toHaveLength(0)
+  })
+
+  /**
+   * **L'inventaire déclaré ne doit pas mentir** (constat m9 de la seconde
+   * revue).
+   *
+   * `dataCategories` déclarait `billing-customer` et `subscription` alors que le
+   * module stockait des achats, que l'export les rend et que la purge les
+   * efface. Aucune donnée ne survivait — c'est l'inventaire qui était faux —,
+   * et c'est lui que liront s34 et s35 : `retention` n'est contrainte que par ce
+   * que `dataCategories` déclare.
+   *
+   * L'exigence est **dérivée** de ce que l'export rend, jamais recopiée d'une
+   * liste : une collection ajoutée à l'export sans sa catégorie fait rougir ce
+   * cas. Le singulier est dérivé du pluriel de la clé, ce qui est la convention
+   * de nommage de ce contrat (`subscriptions` → `subscription`).
+   */
+  it('déclare une catégorie et une rétention pour chaque collection que l’export rend', async () => {
+    await openPurchase()
+    await deliver(paidEvent({ id: 'evt_life_paid8', sessionId: 'cs_life_1', created: 1_788_105_000 }))
+
+    const exported = (await requireBillingService().useCases.export({
+      kind: 'organization',
+      organizationId: 'org_s19',
+    })) as Record<string, unknown>
+
+    const collections = Object.entries(exported)
+      .filter(([, value]) => Array.isArray(value))
+      .map(([key]) => key)
+
+    // Le cas ne vaut que s'il voit quelque chose : un export vide le rendrait
+    // vert sans rien exiger.
+    expect(collections.length).toBeGreaterThan(1)
+
+    for (const collection of collections) {
+      const category = collection.replace(/s$/, '')
+
+      expect(billingModule.dataCategories).toContain(category)
+      expect(billingModule.retention).toHaveProperty(category)
+    }
+  })
+
+  it('rattrape un achat qu’aucun webhook n’a confirmé, puis ne change plus rien', async () => {
+    await openPurchase()
+
+    responses = [
+      // L'ordre des appels : la lecture des achats d'abord — sessions, puis
+      // charges —, celle des abonnements ensuite.
+      () =>
+        json({
+          object: 'list',
+          has_more: false,
+          data: [
+            {
+              id: 'cs_life_1',
+              object: 'checkout.session',
+              mode: 'payment',
+              payment_status: 'paid',
+              payment_intent: 'pi_reconcile',
+              amount_total: 49_000,
+              currency: 'eur',
+            },
+          ],
+        }),
+      () => json({ object: 'list', has_more: false, data: [] }),
+      // Les abonnements : aucun.
+      () => json({ object: 'list', has_more: false, data: [] }),
+    ]
+
+    const first = await requireBillingService().useCases.reconcile()
+
+    expect(first.changed).toBe(1)
+    expect((await purchases())[0]).toMatchObject({ status: 'paid', provider_payment_id: 'pi_reconcile' })
+
+    responses = [
+      () =>
+        json({
+          object: 'list',
+          has_more: false,
+          data: [
+            {
+              id: 'cs_life_1',
+              object: 'checkout.session',
+              mode: 'payment',
+              payment_status: 'paid',
+              payment_intent: 'pi_reconcile',
+              amount_total: 49_000,
+              currency: 'eur',
+            },
+          ],
+        }),
+      () => json({ object: 'list', has_more: false, data: [] }),
+      () => json({ object: 'list', has_more: false, data: [] }),
+    ]
+
+    // **Rejouée, elle ne change rien** : c'est ce que le compte prouve
+    // (`docs/reliability.md` §1).
+    expect((await requireBillingService().useCases.reconcile()).changed).toBe(0)
+  })
+
+  /**
+   * **La réconciliation répare ce que le constat C1 déclarait irréparable**
+   * (constat C3 de la seconde revue).
+   *
+   * L'index inverse est interrogé à deux endroits — la confirmation et cette
+   * commande —, et seul le premier était exigé par un cas : résoudre l'achat
+   * par la colonne dans la réconciliation laissait 82 cas sur 82 au vert. C'est
+   * ce cas-ci qui rougit alors.
+   *
+   * Le scénario est celui de C1 sans aucun webhook : deux ouvertures, la
+   * **première** encaissée chez le fournisseur, la colonne de l'achat portant
+   * désormais la seconde.
+   */
+  it('retrouve un achat par une session supplantée, qu’aucun webhook n’a confirmé', async () => {
+    await openPurchase('cs_life_1')
+    await openPurchase('cs_life_2', { withCustomer: false })
+
+    expect((await purchases())[0]).toMatchObject({
+      provider_session_id: 'cs_life_2',
+      status: 'pending',
+    })
+
+    responses = [
+      () =>
+        json({
+          object: 'list',
+          has_more: false,
+          data: [
+            {
+              id: 'cs_life_1',
+              object: 'checkout.session',
+              mode: 'payment',
+              payment_status: 'paid',
+              payment_intent: 'pi_supplante',
+              amount_total: 49_000,
+              currency: 'eur',
+            },
+          ],
+        }),
+      () => json({ object: 'list', has_more: false, data: [] }),
+      () => json({ object: 'list', has_more: false, data: [] }),
+    ]
+
+    expect((await requireBillingService().useCases.reconcile()).changed).toBe(1)
+    expect((await purchases())[0]).toMatchObject({
+      status: 'paid',
+      provider_payment_id: 'pi_supplante',
+    })
+    expect((await view()).hasAccess).toBe(true)
+  })
+
+  it('ne rétrograde pas un achat payé à cause de la session abandonnée du même achat', async () => {
+    // Deux ouvertures, donc deux sessions rattachées au **même** achat depuis
+    // le constat C1. Le fournisseur en rend une encaissée et une abandonnée :
+    // la seconde ne doit pas défaire ce que la première a promu.
+    await openPurchase('cs_life_1')
+    await openPurchase('cs_life_2', { withCustomer: false })
+    await deliver(paidEvent({ id: 'evt_life_rec_2s', sessionId: 'cs_life_1', created: 1_788_103_400 }))
+
+    const listing = (): Response =>
+      json({
+        object: 'list',
+        has_more: false,
+        data: [
+          {
+            id: 'cs_life_1',
+            object: 'checkout.session',
+            mode: 'payment',
+            payment_status: 'paid',
+            payment_intent: 'pi_life_1',
+            amount_total: 49_000,
+            currency: 'eur',
+          },
+          {
+            id: 'cs_life_2',
+            object: 'checkout.session',
+            mode: 'payment',
+            payment_status: 'unpaid',
+            amount_total: 49_000,
+            currency: 'eur',
+          },
+        ],
+      })
+
+    responses = [
+      listing,
+      () => json({ object: 'list', has_more: false, data: [] }),
+      () => json({ object: 'list', has_more: false, data: [] }),
+    ]
+
+    expect((await requireBillingService().useCases.reconcile()).changed).toBe(0)
+    expect((await purchases())[0]).toMatchObject({ status: 'paid' })
+    expect((await view()).hasAccess).toBe(true)
+  })
+
+  it('ne ré-accorde pas un achat remboursé dont la charge est introuvable', async () => {
+    await openPurchase()
+    await deliver(paidEvent({ id: 'evt_life_rec_paid', sessionId: 'cs_life_1', created: 1_788_103_000 }))
+    await deliver(
+      refundEvent({ id: 'evt_life_rec_refund', created: 1_788_103_100, amountRefunded: 49_000 }),
+    )
+
+    expect((await purchases())[0]).toMatchObject({ status: 'refunded' })
+
+    responses = [
+      // La session est bien encaissée chez le fournisseur — un remboursement ne
+      // la rend pas impayée.
+      () =>
+        json({
+          object: 'list',
+          has_more: false,
+          data: [
+            {
+              id: 'cs_life_1',
+              object: 'checkout.session',
+              mode: 'payment',
+              payment_status: 'paid',
+              payment_intent: 'pi_life_1',
+              amount_total: 49_000,
+              currency: 'eur',
+            },
+          ],
+        }),
+      // **Aucune charge relue** : au-delà du plafond de pagination, ou en mode
+      // local, où le montant prélevé n'existe pas. « Charge introuvable » n'est
+      // pas « rien n'a été remboursé ».
+      () => json({ object: 'list', has_more: false, data: [] }),
+      () => json({ object: 'list', has_more: false, data: [] }),
+    ]
+
+    expect((await requireBillingService().useCases.reconcile()).changed).toBe(0)
+    expect((await purchases())[0]).toMatchObject({ status: 'refunded' })
+    expect((await view()).hasAccess).toBe(false)
+  })
+
+  /**
+   * **Deux sessions payées pour le même achat, et la commande reste rejouable**
+   * (constat m7 de la seconde revue).
+   *
+   * La fenêtre laissée ouverte — deux onglets, deux sessions vivantes — autorise
+   * deux prélèvements. Le droit reste juste, mais les deux lectures se
+   * départagent sur le paiement : chaque passage réécrivait alternativement
+   * l'une puis l'autre, `changed: 2` **indéfiniment**, là où
+   * `docs/reliability.md` §1 exige qu'un second passage n'ait aucun effet
+   * supplémentaire.
+   */
+  it('reste rejouable quand deux sessions du même achat sont payées', async () => {
+    await openPurchase('cs_life_1')
+    await openPurchase('cs_life_2', { withCustomer: false })
+
+    const listing = (): Response =>
+      json({
+        object: 'list',
+        has_more: false,
+        data: [
+          {
+            id: 'cs_life_1',
+            object: 'checkout.session',
+            mode: 'payment',
+            payment_status: 'paid',
+            payment_intent: 'pi_deux_a',
+            amount_total: 49_000,
+            currency: 'eur',
+          },
+          {
+            id: 'cs_life_2',
+            object: 'checkout.session',
+            mode: 'payment',
+            payment_status: 'paid',
+            payment_intent: 'pi_deux_b',
+            amount_total: 49_000,
+            currency: 'eur',
+          },
+        ],
+      })
+
+    responses = [
+      listing,
+      () => json({ object: 'list', has_more: false, data: [] }),
+      () => json({ object: 'list', has_more: false, data: [] }),
+    ]
+
+    // **Une lecture qui tranche consomme l'achat pour ce passage** : la
+    // première dans l'ordre du fournisseur l'emporte, et l'ordre est le sien —
+    // pas celui d'un tirage.
+    expect((await requireBillingService().useCases.reconcile()).changed).toBe(1)
+    expect((await purchases())[0]).toMatchObject({
+      status: 'paid',
+      provider_payment_id: 'pi_deux_a',
+    })
+
+    responses = [
+      listing,
+      () => json({ object: 'list', has_more: false, data: [] }),
+      () => json({ object: 'list', has_more: false, data: [] }),
+    ]
+
+    expect((await requireBillingService().useCases.reconcile()).changed).toBe(0)
+    expect((await purchases())[0]).toMatchObject({ provider_payment_id: 'pi_deux_a' })
+  })
+
+  /**
+   * **La réconciliation rejoue le journal des remboursements**, comme la
+   * promotion le fait déjà (constat m6 de la seconde revue).
+   *
+   * C2 n'était refermé que sur le chemin des webhooks. L'autre chemin qui pose
+   * un `provider_payment_id` est celui-ci, et il ne consultait jamais
+   * `billing_refunded_payment` : un remboursement journalisé dont la
+   * confirmation ne vient jamais, plus une charge introuvable — le cas
+   * **permanent** du mode local —, et l'accès était accordé sur un achat
+   * intégralement remboursé.
+   */
+  it('n’accorde pas un achat dont le remboursement est journalisé mais non appliqué', async () => {
+    await openPurchase()
+
+    // Le remboursement arrive avant la confirmation : il est journalisé sous la
+    // seule clé qu'il porte, et la ligne reste en attente.
+    await deliver(
+      refundEvent({ id: 'evt_life_rec_avant', created: 1_788_104_500, amountRefunded: 49_000 }),
+    )
+
+    expect((await purchases())[0]).toMatchObject({ status: 'pending' })
+
+    const listing = (): Response =>
+      json({
+        object: 'list',
+        has_more: false,
+        data: [
+          {
+            id: 'cs_life_1',
+            object: 'checkout.session',
+            mode: 'payment',
+            payment_status: 'paid',
+            payment_intent: 'pi_life_1',
+            amount_total: 49_000,
+            currency: 'eur',
+          },
+        ],
+      })
+
+    // La confirmation n'arrivera jamais ; c'est la réconciliation qui pose le
+    // paiement. Aucune charge relue — le cas du mode local.
+    responses = [
+      listing,
+      () => json({ object: 'list', has_more: false, data: [] }),
+      () => json({ object: 'list', has_more: false, data: [] }),
+    ]
+
+    expect((await requireBillingService().useCases.reconcile()).changed).toBe(1)
+
+    const rows = await purchases()
+
+    expect(rows[0]).toMatchObject({ status: 'refunded', provider_payment_id: 'pi_life_1' })
+    expect(rows[0]?.['refunded_at']).not.toBeNull()
+    expect((await view()).hasAccess).toBe(false)
+
+    responses = [
+      listing,
+      () => json({ object: 'list', has_more: false, data: [] }),
+      () => json({ object: 'list', has_more: false, data: [] }),
+    ]
+
+    // Rejouée, elle ne change rien de plus (`docs/reliability.md` §1).
+    expect((await requireBillingService().useCases.reconcile()).changed).toBe(0)
+  })
+
+  /**
+   * **L'ordre de lecture et l'index doivent rester d'accord** — la conséquence
+   * que l'ADR 037 demande de surveiller, appliquée à la nouvelle table.
+   *
+   * Le constat m1 de la seconde revue de s19 avait montré un index que la
+   * requête qui l'a motivé ne servait pas : la position des `NULL` divergeait,
+   * et le planificateur retriait par-dessus. Ici comme là-bas, c'est le plan
+   * réel qui répond, pas un commentaire.
+   */
+  it('sert l’ordre de lecture des achats depuis l’index, sans retri', async () => {
+    const query = connection.db
+      .select({ id: billingPurchase.id })
+      .from(billingPurchase)
+      .where(eq(billingPurchase.billingCustomerId, 'bc_s20_explain'))
+      .orderBy(...purchaseReadOrder)
+      .toSQL()
+
+    const plan = await connection.db.transaction(async (tx) => {
+      await tx.execute(sql`set local enable_seqscan = off`)
+      await tx.execute(sql`set local enable_bitmapscan = off`)
+
+      const explained = await tx.execute<{ 'QUERY PLAN': string }>(
+        sql.raw(`explain ${query.sql.replace(/\$1/, `'bc_s20_explain'`)}`),
+      )
+
+      return explained.rows.map((row) => row['QUERY PLAN']).join('\n')
+    })
+
+    expect(plan).toContain('billing_purchase_customer_idx')
+    expect(plan).not.toContain('Sort')
+  })
+})
+
 describe('un module de facturation non activé', () => {
   it('déclare pourtant bien des routes et une entrée de navigation', () => {
     expect(billingModule.routes.length).toBeGreaterThan(0)
@@ -1735,17 +2741,34 @@ describe('un module de facturation non activé', () => {
 describe('l’offre déjà souscrite', () => {
   const offerView = (id: string, current: boolean) => ({
     id,
+    mode: 'subscription' as const,
     price: '29,00 €',
     interval: 'month' as const,
     trialDays: null,
     perSeat: false,
     current,
+    owned: false,
   })
 
-  const render = (offers: readonly ReturnType<typeof offerView>[], hasAccess = false): string =>
+  /** s20 — une offre unique : elle se ferme sur sa propre possession. */
+  const purchaseView = (id: string, owned: boolean) => ({
+    id,
+    mode: 'one_time' as const,
+    price: '490,00 €',
+    interval: null,
+    trialDays: null,
+    perSeat: false,
+    current: false,
+    owned,
+  })
+
+  const render = (
+    offers: readonly ReturnType<typeof offerView | typeof purchaseView>[],
+    view: Partial<BillingView> = {},
+  ): string =>
     renderToStaticMarkup(
       createElement(BillingScreen, {
-        view: { ...EMPTY_BILLING_VIEW, offers, hasAccess, canManage: true },
+        view: { ...EMPTY_BILLING_VIEW, offers, canManage: true, ...view },
         intl: { t: (key: string) => key, formatDate: () => '1 janvier 2026' },
         manageAction: createElement('span', null, 'action:gerer'),
         subscribeActions: Object.fromEntries(
@@ -1756,7 +2779,10 @@ describe('l’offre déjà souscrite', () => {
     )
 
   it('ne propose plus aucune souscription à qui a déjà l’accès', () => {
-    const markup = render([offerView('pro-monthly', true), offerView('pro-yearly', false)], true)
+    const markup = render([offerView('pro-monthly', true), offerView('pro-yearly', false)], {
+      hasSubscription: true,
+      hasAccess: true,
+    })
 
     expect(markup).not.toContain('action:pro-monthly')
     // **Ni l'autre offre** (constat M3) : la souscrire ouvrirait un second
@@ -1780,11 +2806,86 @@ describe('l’offre déjà souscrite', () => {
   it('rouvre l’offre expirée : c’est la même carte qui sert à se réabonner', () => {
     // Sans accès, l'abonnement passé ne ferme rien — c'est le parcours « annuler
     // puis se réabonner » du constat F1, et la carte doit reprendre son bouton.
-    const markup = render([offerView('pro-monthly', true), offerView('pro-yearly', false)], false)
+    const markup = render([offerView('pro-monthly', true), offerView('pro-yearly', false)])
 
     expect(markup).toContain('action:pro-monthly')
     expect(markup).toContain('action:pro-yearly')
     expect(markup).not.toContain(BILLING_KEYS.currentOffer)
+  })
+
+  /* ---------------------------------------------------------------------- *
+   * s20 — les deux fermetures ne se regardent pas (critère 6).
+   * ---------------------------------------------------------------------- */
+
+  it('laisse acheter à vie **pendant** un abonnement en cours', () => {
+    const markup = render([offerView('pro-monthly', true), purchaseView('lifetime', false)], {
+      hasSubscription: true,
+      hasAccess: true,
+    })
+
+    expect(markup).not.toContain('action:pro-monthly')
+    expect(markup).toContain('action:lifetime')
+    // Et surtout : l'achat unique n'est pas renvoyé au portail, où il n'y a
+    // rien à gérer.
+    expect(markup).not.toContain(BILLING_KEYS.ownedOffer)
+  })
+
+  it('laisse souscrire **alors qu’un achat à vie donne déjà l’accès**', () => {
+    // L'accès consolidé est vrai, et pourtant le catalogue d'abonnements reste
+    // ouvert : le fermer sur `hasAccess` rejouerait le défaut que le sixième
+    // critère interdit.
+    const markup = render([offerView('pro-monthly', false), purchaseView('lifetime', true)], {
+      hasAccess: true,
+      hasSubscription: false,
+    })
+
+    expect(markup).toContain('action:pro-monthly')
+    expect(markup).not.toContain('action:lifetime')
+    expect(markup).toContain(BILLING_KEYS.ownedOffer)
+  })
+
+  it('n’offre le portail que lorsqu’il y a un abonnement à gérer', () => {
+    // Quatrième critère : « le portail client n'est pas proposé pour un achat
+    // unique ». Un client existe pourtant chez le fournisseur.
+    const acheteur = render([purchaseView('lifetime', true)], {
+      hasAccess: true,
+      hasCustomer: true,
+      canOpenPortal: false,
+    })
+
+    expect(acheteur).not.toContain('action:gerer')
+
+    const abonne = render([offerView('pro-monthly', true)], {
+      hasSubscription: true,
+      hasAccess: true,
+      hasCustomer: true,
+      canOpenPortal: true,
+    })
+
+    expect(abonne).toContain('action:gerer')
+  })
+
+  it('rend l’historique des paiements, et le distingue d’un remboursement', () => {
+    const markup = render([purchaseView('lifetime', true)], {
+      hasAccess: true,
+      purchases: [
+        { offerId: 'lifetime', price: '490,00 €', purchasedAt: new Date(), refunded: false },
+        { offerId: null, price: null, purchasedAt: new Date(), refunded: true },
+      ],
+    })
+
+    expect(markup).toContain(BILLING_KEYS.purchasesTitle)
+    // Les deux statuts portent un **libellé**, pas seulement une couleur.
+    expect(markup).toContain(BILLING_KEYS.purchasePaid)
+    expect(markup).toContain(BILLING_KEYS.purchaseRefunded)
+    // Une offre retirée du catalogue est **nommée comme telle**, jamais par sa
+    // clé : depuis s09 le traducteur lève sur une clé absente, donc un achat
+    // dont l'offre a disparu de `config/billing.ts` mettrait l'écran en 500.
+    expect(markup).toContain(BILLING_KEYS.unknownOffer)
+  })
+
+  it('n’affiche pas de carte d’achats quand il n’y en a aucun', () => {
+    expect(render([offerView('pro-monthly', false)])).not.toContain(BILLING_KEYS.purchasesTitle)
   })
 })
 

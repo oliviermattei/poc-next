@@ -21,6 +21,9 @@ export { billingModule } from './module'
  */
 export {
   billingCustomer,
+  billingPurchase,
+  billingPurchaseSession,
+  billingRefundedPayment,
   billingSchema,
   billingSubscription,
   billingWebhookEvent,
@@ -38,6 +41,14 @@ export {
   type BillingMode,
   type BillingOffer,
 } from './domain/offer'
+export {
+  PURCHASE_STATUSES,
+  grantsBillingAccess,
+  purchaseGrantsAccess,
+  refundRevokesPurchase,
+  type PurchaseSnapshot,
+  type PurchaseStatus,
+} from './domain/purchase'
 export {
   SUBSCRIPTION_STATUSES,
   appliesAfter,
@@ -64,6 +75,7 @@ export {
   type BillingUseCases,
   type BillingView,
   type OfferView,
+  type PurchaseView,
   type SubscriptionView,
 } from './application/billing-use-cases'
 export type {
@@ -72,7 +84,10 @@ export type {
   ScopeResolver,
   SeatCounter,
 } from './application/ports'
-export { subscriptionReadOrder } from './infrastructure/drizzle-billing-repositories'
+export {
+  purchaseReadOrder,
+  subscriptionReadOrder,
+} from './infrastructure/drizzle-billing-repositories'
 export {
   BillingNotConfiguredError,
   configureBilling,

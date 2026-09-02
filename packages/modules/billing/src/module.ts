@@ -56,11 +56,19 @@ export const billingModule = defineModule({
   // anonymisées — un rattachement anonyme ne veut rien dire, et l'identifiant
   // *est* la donnée.
   //
+  // **L'achat unique est une catégorie à part entière** (constat m9 de la
+  // seconde revue de s20) : le module en stocke, l'export les rend et la purge
+  // les efface par la cascade. La donnée était bien traitée ; c'est
+  // l'inventaire qui mentait, et c'est lui que liront s34 et s35 —
+  // `retention` n'est contrainte que par ce que cette liste déclare.
+  //
   // Le journal d'événements n'est pas une catégorie : il ne porte que des
   // identifiants d'événements du fournisseur, sans lien avec un compte, et
-  // l'effacer rouvrirait le rejeu d'événements déjà traités.
-  dataCategories: ['billing-customer', 'subscription'],
-  retention: { 'billing-customer': 'erase', subscription: 'erase' },
+  // l'effacer rouvrirait le rejeu d'événements déjà traités. Le journal des
+  // remboursements est de la même nature, et échappe à la purge pour la même
+  // raison.
+  dataCategories: ['billing-customer', 'subscription', 'purchase'],
+  retention: { 'billing-customer': 'erase', subscription: 'erase', purchase: 'erase' },
   purge: (scope) => requireBillingService().useCases.purge(scope),
   export: (scope) => requireBillingService().useCases.export(scope),
 })

@@ -51,7 +51,10 @@ const refuse = (key: string, status: number): Response =>
 const CHECKOUT_REFUSALS = {
   forbidden: { key: BILLING_KEYS.refusal.forbidden, status: 403 },
   unknown_offer: { key: BILLING_KEYS.refusal.unknownOffer, status: 400 },
-  unsupported_mode: { key: BILLING_KEYS.refusal.unsupportedMode, status: 400 },
+  // 409, comme `already_subscribed` : c'est l'état du périmètre — et non la
+  // requête — qui interdit l'opération. Le corps ne rend qu'une clé de
+  // catalogue, et ne dit rien de l'achat en cours.
+  already_purchased: { key: BILLING_KEYS.refusal.alreadyPurchased, status: 409 },
   // 409, comme le portail sans client : l'état du périmètre — et non la
   // requête — interdit l'opération. Le corps ne rend qu'une clé de catalogue,
   // et ne dit rien de l'abonnement en cours.

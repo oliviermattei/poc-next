@@ -1,11 +1,15 @@
 import { createStripePayments } from '@repo/adapter-stripe'
 import type {
+  CheckoutMode,
   CreateCheckoutInput,
   CreateCheckoutResult,
   CreatePortalSessionInput,
   CreatePortalSessionResult,
+  ListPurchasesInput,
+  ListPurchasesResult,
   ListSubscriptionsInput,
   ListSubscriptionsResult,
+  PaymentPurchase,
   Payments,
   VerifyWebhookInput,
   VerifyWebhookResult,
@@ -31,9 +35,10 @@ import Stripe from 'stripe'
  *
  * **Ce qu'il ne simule pas**, et c'est écrit plutôt que sous-entendu : le
  * changement d'offre et l'annulation depuis le portail, l'échec de paiement, la
- * fin de période réelle. Le portail local ramène simplement dans l'application.
- * Ces états-là s'éprouvent par rejeu d'événements enregistrés
- * (`tests/billing.test.ts`), pas au navigateur.
+ * fin de période réelle, le **remboursement** d'un achat unique et le **montant
+ * prélevé** — le port ne transporte aucun prix, délibérément. Le portail local
+ * ramène simplement dans l'application. Ces états-là s'éprouvent par rejeu
+ * d'événements enregistrés (`tests/billing.test.ts`), pas au navigateur.
  *
  * **L'état vit en mémoire du processus** : redémarrer le serveur oublie les
  * sessions ouvertes. C'est un simulateur, pas une base.
@@ -80,6 +85,8 @@ interface PendingSession {
   readonly quantity: number
   readonly reference: string
   readonly trialPeriodDays: number | null
+  /** `subscription` ou `payment` : les deux ne produisent pas les mêmes événements. */
+  readonly mode: CheckoutMode
 }
 
 /** Trente jours : la période simulée d'un abonnement local. */
@@ -103,6 +110,8 @@ export function createLocalPayments(options: LocalPaymentsOptions): LocalPayment
   const now = options.now ?? (() => new Date())
   const sessions = new Map<string, PendingSession>()
   const subscriptions = new Map<string, Record<string, unknown>>()
+  /** Les achats uniques terminés, pour la lecture de réconciliation. */
+  const purchases = new Map<string, PaymentPurchase>()
 
   /**
    * La vérification et la normalisation sont **celles de l'adaptateur**.
@@ -152,6 +161,54 @@ export function createLocalPayments(options: LocalPaymentsOptions): LocalPayment
     }
   }
 
+  /**
+   * Termine un **achat unique** : un seul événement, et il suffit.
+   *
+   * Contrairement à l'abonnement, il n'y a pas de second objet à décrire — pas
+   * d'objet `Subscription`, donc pas de désordre à simuler. Ce que ce parcours
+   * exerce est la promotion de la ligne écrite à l'ouverture du checkout
+   * (ADR 038 §1), à travers la vraie route de webhook.
+   *
+   * `amount_total` reste **absent** : le port ne transporte aucun montant, et
+   * la simulation n'en invente pas. L'historique affichera donc l'achat sans
+   * son prix, ce qui est la vérité de ce qu'on sait ici.
+   */
+  const completePurchase = (session: PendingSession): LocalWebhookDelivery => {
+    const paymentId = `pi_local_${session.id}`
+
+    purchases.set(session.id, {
+      sessionId: session.id,
+      paymentId,
+      paid: true,
+      amountTotal: null,
+      currency: null,
+      amountRefunded: 0,
+      chargedAmount: null,
+    })
+
+    return sign({
+      id: `evt_local_purchase_${session.id}`,
+      object: 'event',
+      api_version: null,
+      created: seconds(now()),
+      livemode: false,
+      pending_webhooks: 0,
+      request: { id: null, idempotency_key: null },
+      type: 'checkout.session.completed',
+      data: {
+        object: {
+          id: session.id,
+          object: 'checkout.session',
+          mode: 'payment',
+          payment_status: 'paid',
+          customer: session.customerId,
+          payment_intent: paymentId,
+          client_reference_id: session.reference,
+        },
+      },
+    })
+  }
+
   return {
     createCheckout: async (input: CreateCheckoutInput): Promise<CreateCheckoutResult> => {
       const customerId = input.customerId ?? customerIdFor(input.reference)
@@ -164,13 +221,14 @@ export function createLocalPayments(options: LocalPaymentsOptions): LocalPayment
         quantity: input.quantity,
         reference: input.reference,
         trialPeriodDays: input.trialPeriodDays,
+        mode: input.mode,
       })
 
       const url = new URL(`${options.appUrl}${LOCAL_CHECKOUT_PATH}`)
 
       url.searchParams.set('session', id)
 
-      return { ok: true, checkout: { url: url.toString(), customerId } }
+      return { ok: true, checkout: { url: url.toString(), customerId, sessionId: id } }
     },
 
     createPortalSession: async (
@@ -224,6 +282,22 @@ export function createLocalPayments(options: LocalPaymentsOptions): LocalPayment
       }
     },
 
+    /**
+     * La lecture des achats uniques, pour la réconciliation.
+     *
+     * Elle ne rend **aucun montant** : le port `Payments` ne transporte pas de
+     * prix, délibérément (un port qui porterait un montant inviterait
+     * quelqu'un à le lui passer depuis un navigateur), et la simulation n'en
+     * invente pas. Ce que la réconciliation locale corrige est donc l'état, pas
+     * la somme.
+     */
+    listPurchases: async (input: ListPurchasesInput): Promise<ListPurchasesResult> => ({
+      ok: true,
+      purchases: [...purchases.entries()]
+        .filter(([sessionId]) => sessions.get(sessionId)?.customerId === input.customerId)
+        .map(([, purchase]) => purchase),
+    }),
+
     completeCheckout: (sessionId, reference) => {
       const session = sessions.get(sessionId)
 
@@ -232,6 +306,10 @@ export function createLocalPayments(options: LocalPaymentsOptions): LocalPayment
       // visiteur qu'une session existe pour quelqu'un d'autre.
       if (session === undefined || session.reference !== reference) {
         return []
+      }
+
+      if (session.mode === 'payment') {
+        return [completePurchase(session)]
       }
 
       const trial = session.trialPeriodDays

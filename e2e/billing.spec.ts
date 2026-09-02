@@ -76,6 +76,47 @@ test.describe('la facturation', () => {
     await expect(page.getByText('Offre en cours')).toBeVisible()
   })
 
+  /**
+   * s20 — **l'achat unique, de bout en bout**.
+   *
+   * Le même checkout simulé que l'abonnement, donc la même chaîne réelle :
+   * l'achat est écrit en attente à l'ouverture, la simulation fabrique et signe
+   * l'événement du fournisseur, et la **vraie** route de webhook le promeut.
+   * Ce que ce parcours mesure est donc la promotion, pas un raccourci.
+   */
+  test('achète une fois pour toutes, et ne le propose plus', async ({ page }) => {
+    test.skip(!mounted, 'module de facturation coupé')
+
+    await aSignedInAccount(page, 's20')
+    await page.goto('/billing')
+
+    // L'offre unique dit ce qu'elle est : un paiement, pas un abonnement.
+    await expect(page.getByRole('heading', { name: 'Licence à vie' })).toBeVisible()
+    await expect(page.getByText('paiement unique').first()).toBeVisible()
+
+    const buy = page.getByRole('button', { name: 'Acheter' })
+
+    await expect(buy).toBeEnabled()
+    await buy.click()
+
+    await expect(page).toHaveURL(urlOf('/billing', '?checkout=success'))
+
+    // **L'état vient de la base**, écrite par le webhook : l'achat apparaît
+    // dans l'historique des paiements, et il n'est plus proposé.
+    await expect(page.getByText('Vos achats')).toBeVisible()
+    await expect(page.getByText('Payé')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Acheter' })).toHaveCount(0)
+    await expect(page.getByText('Déjà acheté')).toBeVisible()
+
+    // **Le portail n'est pas proposé** (quatrième critère) : il n'y a aucun
+    // abonnement à gérer, alors qu'un client existe bien chez le fournisseur.
+    await expect(page.getByRole('button', { name: 'Gérer la facturation' })).toHaveCount(0)
+
+    // Et l'abonnement reste ouvert : un acheteur à vie peut souscrire
+    // (sixième critère).
+    await expect(page.getByRole('button', { name: 'Souscrire' }).first()).toBeEnabled()
+  })
+
   test('ouvre le portail client depuis la facturation', async ({ page }) => {
     test.skip(!mounted, 'module de facturation coupé')
 

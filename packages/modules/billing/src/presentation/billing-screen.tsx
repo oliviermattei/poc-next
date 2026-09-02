@@ -101,6 +101,12 @@ function OfferCard({
   readonly subscribed: boolean
 }) {
   const intervalKey = offer.interval === 'year' ? K.intervalYear : K.intervalMonth
+  // **Deux fermetures, et elles ne se regardent pas** (critère 6 de s20) : une
+  // offre unique se ferme sur sa propre possession, une offre d'abonnement sur
+  // l'abonnement en cours. Les confondre interdirait à un abonné d'acheter à
+  // vie, et à un acheteur à vie de s'abonner — ce que la garde serveur permet
+  // toutes deux.
+  const oneTime = offer.mode === 'one_time'
 
   return (
     <Card className="min-w-0">
@@ -110,9 +116,9 @@ function OfferCard({
       </CardHeader>
       <CardContent className="space-y-2">
         <p className="text-2xl font-semibold">{offer.price}</p>
-        {offer.interval === null ? null : (
-          <p className="text-sm text-muted-foreground">{intl.t(intervalKey)}</p>
-        )}
+        <p className="text-sm text-muted-foreground">
+          {intl.t(offer.interval === null ? K.oneTime : intervalKey)}
+        </p>
         <div className="flex flex-wrap gap-2">
           {offer.trialDays === null ? null : (
             <Badge variant="info">{intl.t(K.trialDays, { count: offer.trialDays })}</Badge>
@@ -138,7 +144,13 @@ function OfferCard({
         masquer un bouton n'est pas une permission.
       */}
       <CardFooter>
-        {subscribed ? (
+        {oneTime ? (
+          offer.owned ? (
+            <Badge variant="success">{intl.t(K.ownedOffer)}</Badge>
+          ) : (
+            action
+          )
+        ) : subscribed ? (
           offer.current ? (
             <Badge variant="success">{intl.t(K.currentOffer)}</Badge>
           ) : (
@@ -222,8 +234,71 @@ export function BillingScreen({
             ) : null}
           </CardContent>
         )}
-        {view.hasCustomer ? <CardFooter>{manageAction}</CardFooter> : null}
+        {/*
+          **Le portail n'est proposé que s'il y a un abonnement** (quatrième
+          critère de s20, ADR 038 §4). Ce qu'il sert — moyen de paiement,
+          changement d'offre, résiliation — n'existe pas pour un achat unique ;
+          l'historique des paiements, lui, est juste en dessous et vient de
+          l'application.
+        */}
+        {view.canOpenPortal ? <CardFooter>{manageAction}</CardFooter> : null}
       </Card>
+
+      {/*
+        **L'historique des paiements uniques** — rendu seulement s'il y en a.
+        Pas d'`EmptyState` : ce qui en sort est le catalogue, juste en dessous,
+        et un état vide y promettrait une action qui vit ailleurs.
+      */}
+      {view.purchases.length === 0 ? null : (
+        <Card className="min-w-0">
+          <CardHeader>
+            <CardTitle>{intl.t(K.purchasesTitle)}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {view.purchases.map((purchase, index) => (
+              <div
+                key={`${purchase.offerId}-${String(index)}`}
+                className="flex flex-wrap items-center justify-between gap-2"
+              >
+                <div className="min-w-0 space-y-1">
+                  {/*
+                    Une offre retirée du catalogue est **nommée comme telle** :
+                    composer sa clé de traduction ferait lever le traducteur
+                    (s09), donc mettrait l'écran en 500 pour un achat payé.
+                  */}
+                  <p className="font-medium">
+                    {purchase.offerId === null
+                      ? intl.t(K.unknownOffer)
+                      : intl.t(offerNameKey(purchase.offerId))}
+                  </p>
+                  {purchase.purchasedAt === null ? null : (
+                    <p className="text-sm text-muted-foreground">
+                      {intl.t(K.purchasedAt, { date: intl.formatDate(purchase.purchasedAt) })}
+                    </p>
+                  )}
+                  {/*
+                    Le montant **réellement prélevé**, jamais celui du
+                    catalogue : une offre dont le prix change ne réécrit pas le
+                    passé. Absent quand le fournisseur ne l'a pas dit.
+                  */}
+                  {purchase.price === null ? null : (
+                    <p className="text-sm text-muted-foreground">{purchase.price}</p>
+                  )}
+                </div>
+                {/*
+                  Le badge porte le **nom** de l'état : une distinction faite
+                  uniquement par la teinte n'existe pas pour qui ne la perçoit
+                  pas. `secondary` et non `destructive` — un remboursement est
+                  un état terminé, pas une erreur du système.
+                */}
+                <Badge variant={purchase.refunded ? 'secondary' : 'success'}>
+                  {intl.t(purchase.refunded ? K.purchaseRefunded : K.purchasePaid)}
+                </Badge>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <section className="space-y-4">
         <h2 className="text-xl font-semibold">{intl.t(K.offersTitle)}</h2>
@@ -246,7 +321,7 @@ export function BillingScreen({
                 offer={offer}
                 intl={intl}
                 action={subscribeActions[offer.id]}
-                subscribed={view.hasAccess}
+                subscribed={view.hasSubscription}
               />
             ))}
           </div>

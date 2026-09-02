@@ -534,6 +534,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       FIXTURE_BILLING_ENDING,
       FIXTURE_BILLING_NONE,
       FIXTURE_BILLING_PAST_DUE,
+      FIXTURE_BILLING_PURCHASED,
       FIXTURE_BILLING_PRICE,
       FIXTURE_ORGANIZATION_NAME,
       FIXTURE_ORGANIZATION_SLUG,
@@ -782,6 +783,24 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         technicalProps: ['labelKey', 'offerId', 'state', 'checkoutOutcome'],
         render: async () => {
           billingState.value = FIXTURE_BILLING_ENDING
+
+          return (await import('../apps/web/app/billing/page')).default({
+            searchParams: noParams,
+          })
+        },
+      },
+      {
+        // s20. Le quatrième rendu du même fichier : l'acheteur unique pur.
+        // Il porte l'historique des paiements, les deux badges de statut et
+        // « déjà acheté » — quatre textes qu'aucun des trois autres ne rend —
+        // et il est le seul où le bouton du portail doit être absent.
+        id: 'facturation, achat unique',
+        file: 'billing/page.tsx',
+        viewer: SIGNED_IN,
+        refuses: billingMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        technicalProps: ['labelKey', 'offerId', 'state', 'checkoutOutcome'],
+        render: async () => {
+          billingState.value = FIXTURE_BILLING_PURCHASED
 
           return (await import('../apps/web/app/billing/page')).default({
             searchParams: noParams,

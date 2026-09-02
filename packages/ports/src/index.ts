@@ -7,13 +7,17 @@
  */
 export type {
   Checkout,
+  CheckoutMode,
   CreateCheckoutInput,
   CreateCheckoutResult,
   CreatePortalSessionInput,
   CreatePortalSessionResult,
+  ListPurchasesInput,
+  ListPurchasesResult,
   ListSubscriptionsInput,
   ListSubscriptionsResult,
   PaymentEvent,
+  PaymentPurchase,
   Payments,
   PaymentsError,
   PaymentsErrorCode,

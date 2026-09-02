@@ -13,6 +13,14 @@ import {
   grantsAccess,
   type SubscriptionSnapshot,
 } from './subscription'
+import {
+  grantsBillingAccess,
+  reconciledPurchaseStatus,
+  purchaseGrantsAccess,
+  refundRevokesPurchase,
+  type PurchaseSnapshot,
+  type PurchaseStatus,
+} from './purchase'
 
 /**
  * Les règles pures du module, éprouvées **là où elles vivent**.
@@ -288,5 +296,146 @@ describe('le prix affiché', () => {
 
   it('n’invente pas de décimales : le montant est en unités mineures', () => {
     expect(formatOfferPrice({ amount: 29_000, currency: 'eur' }, 'fr')).toContain('290')
+  })
+})
+
+/* -------------------------------------------------------------------------- *
+ * s20 — l'achat unique. Mêmes règles pures, même fichier : le coût d'une suite
+ * est dominé par le fichier, et ces règles appartiennent au même `domain`.
+ * -------------------------------------------------------------------------- */
+
+const purchase = (status: PurchaseStatus): PurchaseSnapshot => ({ status })
+
+describe('ce qu’un achat unique donne', () => {
+  it('n’accorde rien tant que le paiement n’est pas encaissé', () => {
+    expect(purchaseGrantsAccess(purchase('pending'))).toBe(false)
+  })
+
+  it('accorde l’accès à un achat payé, **sans regarder aucune date**', () => {
+    // Le critère 2 : un achat unique n'expire pas. La règle ne prend donc pas
+    // d'instant — lui en donner un serait déjà une échéance.
+    expect(purchaseGrantsAccess(purchase('paid'))).toBe(true)
+  })
+
+  it('n’accorde plus rien à un achat remboursé', () => {
+    expect(purchaseGrantsAccess(purchase('refunded'))).toBe(false)
+  })
+})
+
+describe('ce qu’un remboursement révoque', () => {
+  it('révoque quand tout a été rendu', () => {
+    expect(refundRevokesPurchase({ amount: 49_000, amountRefunded: 49_000 })).toBe(true)
+  })
+
+  it('laisse le droit sur un geste commercial partiel', () => {
+    // ADR 038 §3 : `charge.refunded` est émis pour un remboursement partiel
+    // comme total. Révoquer sur tout remboursement détruirait une licence à vie
+    // pour un geste de quelques euros.
+    expect(refundRevokesPurchase({ amount: 49_000, amountRefunded: 100 })).toBe(false)
+  })
+
+  it('ne révoque rien quand rien n’a été rendu', () => {
+    expect(refundRevokesPurchase({ amount: 49_000, amountRefunded: 0 })).toBe(false)
+  })
+
+  it('ne révoque pas sur une charge à zéro : il n’y a rien à rendre', () => {
+    expect(refundRevokesPurchase({ amount: 0, amountRefunded: 0 })).toBe(false)
+  })
+})
+
+describe('l’accès consolidé aux fonctionnalités payantes', () => {
+  it('n’accorde rien sans abonnement ni achat', () => {
+    expect(grantsBillingAccess(null, [], NOW)).toBe(false)
+  })
+
+  it('accorde par l’abonnement seul', () => {
+    expect(grantsBillingAccess(snapshot(), [], NOW)).toBe(true)
+  })
+
+  it('accorde par l’achat seul, **sans aucun abonnement**', () => {
+    // Le critère 3 : « le droit d'accès survit à l'absence d'abonnement ».
+    expect(grantsBillingAccess(null, [purchase('paid')], NOW)).toBe(true)
+  })
+
+  it('garde l’accès de l’achat quand l’abonnement est expiré', () => {
+    // La moitié qui mord du critère 3 : aucune vérification d'abonnement actif
+    // ne révoque un achat unique.
+    expect(grantsBillingAccess(snapshot({ status: 'canceled' }), [purchase('paid')], NOW)).toBe(
+      true,
+    )
+  })
+
+  it('garde l’accès de l’abonnement quand l’achat a été remboursé', () => {
+    expect(grantsBillingAccess(snapshot(), [purchase('refunded')], NOW)).toBe(true)
+  })
+
+  it('ne retient qu’un achat payé parmi plusieurs', () => {
+    expect(grantsBillingAccess(null, [purchase('refunded'), purchase('paid')], NOW)).toBe(true)
+    expect(grantsBillingAccess(null, [purchase('refunded'), purchase('pending')], NOW)).toBe(false)
+  })
+})
+
+describe('ce qu’une lecture de réconciliation impose à un achat', () => {
+  it('promeut ce qui attendait quand le fournisseur dit « encaissé »', () => {
+    expect(
+      reconciledPurchaseStatus({
+        stored: 'pending',
+        paid: true,
+        chargedAmount: 49_000,
+        amountRefunded: 0,
+      }),
+    ).toBe('paid')
+  })
+
+  it('révoque quand la charge relue a été intégralement rendue', () => {
+    expect(
+      reconciledPurchaseStatus({
+        stored: 'paid',
+        paid: true,
+        chargedAmount: 49_000,
+        amountRefunded: 49_000,
+      }),
+    ).toBe('refunded')
+  })
+
+  it('n’a **aucune opinion** sur une session que le fournisseur dit impayée', () => {
+    // Plusieurs sessions désignent le même achat depuis que chaque ouverture
+    // est retenue : celle qui a été abandonnée ne doit pas rétrograder la ligne
+    // que celle qui a été payée vient de promouvoir.
+    expect(
+      reconciledPurchaseStatus({
+        stored: 'paid',
+        paid: false,
+        chargedAmount: null,
+        amountRefunded: 0,
+      }),
+    ).toBeNull()
+  })
+
+  it('ne ré-accorde jamais un achat remboursé dont la charge est introuvable', () => {
+    // `chargedAmount: null` veut dire « je ne sais pas », pas « rien n'a été
+    // remboursé » — c'est le cas du mode local et celui du plafond de
+    // pagination (constat m1).
+    expect(
+      reconciledPurchaseStatus({
+        stored: 'refunded',
+        paid: true,
+        chargedAmount: null,
+        amountRefunded: 0,
+      }),
+    ).toBeNull()
+  })
+
+  it('promeut quand même un achat en attente dont la charge est introuvable', () => {
+    // La dissymétrie est voulue : le silence sur le remboursement ne doit pas
+    // empêcher de rattraper un paiement qu'aucun webhook n'a apporté.
+    expect(
+      reconciledPurchaseStatus({
+        stored: 'pending',
+        paid: true,
+        chargedAmount: null,
+        amountRefunded: 0,
+      }),
+    ).toBe('paid')
   })
 })

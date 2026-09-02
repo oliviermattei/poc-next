@@ -1,15 +1,25 @@
 import type { ModuleScope } from '@repo/core'
-import { and, desc, eq, lte } from 'drizzle-orm'
+import { and, desc, eq, isNull, lte, ne, or, sql, type SQL } from 'drizzle-orm'
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core'
 
 import type {
   BillingCustomerRecord,
   BillingRepository,
+  PurchaseReconcileWrite,
+  PurchaseRecord,
   SubscriptionRecord,
   SubscriptionWrite,
 } from '../application/ports'
+import { reconciledPurchaseStatus, type PurchaseStatus } from '../domain/purchase'
 import type { SubscriptionStatus } from '../domain/subscription'
-import { billingCustomer, billingSubscription, billingWebhookEvent } from '../schema'
+import {
+  billingCustomer,
+  billingPurchase,
+  billingPurchaseSession,
+  billingRefundedPayment,
+  billingSubscription,
+  billingWebhookEvent,
+} from '../schema'
 
 /**
  * Le repository du module, sur **ses** tables.
@@ -36,6 +46,73 @@ export const subscriptionReadOrder = [
   desc(billingSubscription.currentPeriodEnd),
   desc(billingSubscription.providerSubscriptionId),
 ]
+
+/**
+ * **L'ordre de lecture des achats d'un client, écrit une seule fois.**
+ *
+ * Deux clés, dont la dernière est la clé primaire : l'ordre est **total**, et
+ * il correspond exactement à `billing_purchase_customer_idx`. Exporté pour la
+ * même raison que celui des abonnements — `tests/billing.test.ts` le passe à
+ * `EXPLAIN` pour vérifier que l'index le sert, et le réécrire là-bas ferait
+ * deux vérités.
+ */
+export const purchaseReadOrder = [desc(billingPurchase.createdAt), desc(billingPurchase.id)]
+
+/**
+ * **Le prédicat d'ordre d'un achat**, en SQL — ce que `appliesAfter` nomme dans
+ * le `domain` (ADR 034 §2).
+ *
+ * `last_event_at` est **nullable** ici, contrairement à celui d'un abonnement :
+ * une ligne en attente ne vient d'aucun événement. `NULL <= x` vaut `NULL`,
+ * donc faux, et sans ce `or` la toute première promotion n'écrirait jamais
+ * rien. C'est exactement `appliesAfter(null, …) === true`, dit une seconde fois
+ * parce qu'il y a deux mécanismes.
+ */
+const purchaseAppliesAfter = (occurredAt: Date): SQL | undefined =>
+  or(isNull(billingPurchase.lastEventAt), lte(billingPurchase.lastEventAt, occurredAt))
+
+/**
+ * **L'achat auquel une session de checkout appartient** — l'index inverse
+ * d'abord, l'ancien emplacement **à défaut**.
+ *
+ * `billing_purchase.provider_session_id` ne porte que la dernière ouverture ;
+ * `billing_purchase_session` les porte toutes. Un paiement encaissé sur une
+ * session supplantée par une reprise est donc rattaché à son achat au lieu de
+ * se perdre — c'est le constat C1 de la revue de s20, et c'est la raison d'être
+ * de l'index inverse.
+ *
+ * **Le repli sur la colonne est transitoire, et il est obligatoire** (constat
+ * C4). `docs/reliability.md` demande qu'une migration soit rétrocompatible avec
+ * la version qui sert encore : pendant la bascule, l'ancienne version continue
+ * d'ouvrir des checkouts **sans** écrire dans l'index inverse, que le
+ * rattrapage de la migration `0004` ne pouvait pas connaître — il ne reporte
+ * que les sessions présentes à l'instant où il passe. Lire les deux
+ * emplacements est ce que « ajouter avant de lire » exige ; sans ce repli, une
+ * session ouverte dans cette fenêtre et payée après la bascule rejouerait C1
+ * mot pour mot, pendant le déploiement censé le refermer.
+ *
+ * Les deux branches ne peuvent pas désigner deux achats différents : la colonne
+ * est unique, et `openPurchase` écrit les deux emplacements pour la même ligne.
+ *
+ * **À retirer** une fois l'ancienne version hors ligne — c'est le « cesser
+ * d'écrire avant de supprimer » de la même section, et il demande un tour
+ * ultérieur, pas une décision d'ici.
+ *
+ * Un seul prédicat pour les **deux** lecteurs — la confirmation et la
+ * réconciliation. Deux formulations feraient deux vérités, et la seconde revue
+ * a mesuré ce que coûte la moitié non prouvée (constat C3).
+ *
+ * Écrit en sous-requête plutôt qu'en jointure : une transaction de ce module
+ * **n'a pas le droit de lire** (voir `TransactionalWriter`), et une lecture
+ * suivie d'une décision rouvrirait la fenêtre de concurrence que
+ * `docs/reliability.md` §1 refuse.
+ */
+const purchaseOfSession = (providerSessionId: string): SQL =>
+  sql`(${billingPurchase.id} = (
+    select ${billingPurchaseSession.billingPurchaseId}
+    from ${billingPurchaseSession}
+    where ${billingPurchaseSession.providerSessionId} = ${providerSessionId}
+  ) or ${billingPurchase.providerSessionId} = ${providerSessionId})`
 
 /**
  * Ce qu'une transaction de ce module fait, et rien de plus : elle journalise et
@@ -92,6 +169,36 @@ const asCustomer = (row: Record<string, unknown> | undefined): BillingCustomerRe
 const asSubscription = (row: Record<string, unknown> | undefined): SubscriptionRecord | null =>
   row === undefined ? null : (row as unknown as SubscriptionRecord)
 
+const PURCHASE_COLUMNS = {
+  id: billingPurchase.id,
+  billingCustomerId: billingPurchase.billingCustomerId,
+  offerId: billingPurchase.offerId,
+  priceId: billingPurchase.priceId,
+  providerSessionId: billingPurchase.providerSessionId,
+  providerPaymentId: billingPurchase.providerPaymentId,
+  status: billingPurchase.status,
+  amount: billingPurchase.amount,
+  currency: billingPurchase.currency,
+  purchasedAt: billingPurchase.purchasedAt,
+  refundedAt: billingPurchase.refundedAt,
+  lastEventAt: billingPurchase.lastEventAt,
+  lastEventId: billingPurchase.lastEventId,
+}
+
+const asPurchase = (row: Record<string, unknown> | undefined): PurchaseRecord | null =>
+  row === undefined ? null : (row as unknown as PurchaseRecord)
+
+/** Les colonnes qu'une réconciliation d'achat compare. Le reste est technique. */
+const purchaseDiffers = (
+  stored: PurchaseRecord,
+  write: PurchaseReconcileWrite,
+  status: PurchaseStatus,
+): boolean =>
+  stored.status !== status ||
+  stored.providerPaymentId !== write.providerPaymentId ||
+  stored.amount !== write.amount ||
+  stored.currency !== write.currency
+
 /** Les colonnes qu'une réconciliation compare. Le reste est dérivé ou technique. */
 const differs = (stored: SubscriptionRecord, write: SubscriptionWrite): boolean =>
   stored.status !== write.status ||
@@ -115,6 +222,27 @@ export function createDrizzleBillingRepository(db: BillingDatabase): BillingRepo
       .limit(1)
 
     return asCustomer(rows[0])
+  }
+
+  /**
+   * Le remboursement **déjà reçu** pour ce paiement, ou `null`.
+   *
+   * Lu, et non appliqué dans le prédicat d'une écriture, parce que le seul
+   * appelant est la réconciliation : elle n'est pas concurrente — elle est
+   * lancée à la main ou par un ordonnanceur —, et elle lit déjà l'état stocké
+   * avant de le comparer. La promotion, elle, reste sans lecture : elle rejoue
+   * le journal par une sous-requête, dans sa transaction.
+   */
+  const refundedPayment = async (
+    providerPaymentId: string,
+  ): Promise<{ readonly refundedAt: Date } | null> => {
+    const rows = await db
+      .select({ refundedAt: billingRefundedPayment.refundedAt })
+      .from(billingRefundedPayment)
+      .where(eq(billingRefundedPayment.providerPaymentId, providerPaymentId))
+      .limit(1)
+
+    return rows[0] ?? null
   }
 
   return {
@@ -190,6 +318,114 @@ export function createDrizzleBillingRepository(db: BillingDatabase): BillingRepo
         .orderBy(...subscriptionReadOrder)) as readonly SubscriptionRecord[],
 
     /**
+     * **Les achats d'un client, dans un ordre total.** La règle qui décide
+     * lequel donne l'accès vit dans le `domain` ; ce port ne fait que lire.
+     */
+    purchasesOfCustomer: async (billingCustomerId) =>
+      (await db
+        .select(PURCHASE_COLUMNS)
+        .from(billingPurchase)
+        .where(eq(billingPurchase.billingCustomerId, billingCustomerId))
+        .orderBy(...purchaseReadOrder)) as readonly PurchaseRecord[],
+
+    /**
+     * Ouvre — ou rouvre — l'achat d'une offre, **sous la contrainte d'unicité**.
+     *
+     * `(billing_customer_id, offer_id)` est unique : deux ouvertures
+     * simultanées du même achat convergent sur une ligne, et le périmètre ne
+     * peut pas se retrouver avec deux achats de la même offre. C'est
+     * l'invariant central de s20, et c'est le moteur qui le tient — pas une
+     * lecture suivie d'une décision (`docs/reliability.md` §1).
+     *
+     * `setWhere` refuse de rétrograder une ligne **déjà payée** : une course
+     * entre la confirmation d'un achat et une seconde ouverture ne doit pas
+     * effacer un encaissement. Le `returning` est alors vide, et on relit la
+     * ligne en place.
+     *
+     * **La reprise repart à zéro**, et pas seulement sur la session : le
+     * paiement, le montant, la devise, la date d'achat, la date de
+     * remboursement et l'horodatage d'événement du cycle précédent sont
+     * remis à `null`. Sans cela, un « payé → remboursé → racheté → payé »
+     * rendait un achat `paid` **portant une date de remboursement** : l'écran
+     * n'en montrait rien, mais l'export RGPD mentait (constat m2).
+     *
+     * **La session est aussi écrite dans l'index inverse**, et c'est ce qui
+     * rend l'écrasement ci-dessus inoffensif : la session précédente reste
+     * rattachée à cet achat, donc payable sans perte (constat C1).
+     */
+    openPurchase: async ({ id, billingCustomerId, offerId, priceId, providerSessionId }) => {
+      const rows = await db
+        .insert(billingPurchase)
+        .values({
+          id,
+          billingCustomerId,
+          offerId,
+          priceId,
+          providerSessionId,
+          status: 'pending' satisfies PurchaseStatus,
+        })
+        .onConflictDoUpdate({
+          target: [billingPurchase.billingCustomerId, billingPurchase.offerId],
+          set: {
+            providerSessionId,
+            priceId,
+            status: 'pending' satisfies PurchaseStatus,
+            providerPaymentId: null,
+            amount: null,
+            currency: null,
+            purchasedAt: null,
+            refundedAt: null,
+            lastEventAt: null,
+            lastEventId: null,
+            updatedAt: new Date(),
+          },
+          setWhere: ne(billingPurchase.status, 'paid' satisfies PurchaseStatus),
+        })
+        .returning(PURCHASE_COLUMNS)
+
+      const written = asPurchase(rows[0])
+
+      if (written !== null) {
+        await db
+          .insert(billingPurchaseSession)
+          .values({ providerSessionId, billingPurchaseId: written.id })
+          .onConflictDoNothing({ target: billingPurchaseSession.providerSessionId })
+
+        return written
+      }
+
+      const existing = await db
+        .select(PURCHASE_COLUMNS)
+        .from(billingPurchase)
+        .where(
+          and(
+            eq(billingPurchase.billingCustomerId, billingCustomerId),
+            eq(billingPurchase.offerId, offerId),
+          ),
+        )
+        .limit(1)
+
+      const found = asPurchase(existing[0])
+
+      if (found === null) {
+        // Inatteignable par construction : le conflit signifie qu'une ligne
+        // existe. Levé plutôt que replié, pour qu'un défaut de schéma se voie.
+        throw new Error('billing_purchase : conflit sur un achat introuvable')
+      }
+
+      // La ligne était déjà payée, donc pas rétrogradée — mais la session que
+      // nous venons d'ouvrir existe chez le fournisseur et reste payable. Elle
+      // est rattachée elle aussi : un encaissement ne doit jamais tomber sur un
+      // achat introuvable.
+      await db
+        .insert(billingPurchaseSession)
+        .values({ providerSessionId, billingPurchaseId: found.id })
+        .onConflictDoNothing({ target: billingPurchaseSession.providerSessionId })
+
+      return found
+    },
+
+    /**
      * Le journal **et** l'effet, dans une seule transaction.
      *
      * Deux propriétés, et elles sont indissociables :
@@ -247,6 +483,106 @@ export function createDrizzleBillingRepository(db: BillingDatabase): BillingRepo
               // décrivent le même instant (ADR 034).
               setWhere: lte(billingSubscription.lastEventAt, write.lastEventAt),
             })
+        }
+
+        if (effect.kind === 'purchase_paid') {
+          // **Une mise à jour, jamais une insertion** (ADR 038 §1) : la ligne
+          // a été écrite à l'ouverture du checkout, et c'est elle qui porte
+          // l'offre. Une session que nous n'avons pas ouverte n'écrit rien —
+          // l'événement reste journalisé, donc non rejoué.
+          //
+          // La ligne est retrouvée par **l'index inverse des sessions**, et à
+          // défaut par la colonne de l'achat : une session supplantée par une
+          // reprise reste rattachée, et son paiement accorde le droit (constat
+          // C1). Le repli sur la colonne est **transitoire** — il couvre les
+          // achats ouverts par la version encore en ligne pendant la bascule,
+          // qui n'ont pas de ligne de session (constat C4), et se retire quand
+          // cette version est hors ligne.
+          //
+          // `ne(status, 'refunded')` couvre un ordre, et un seul : une
+          // confirmation livrée **après** un remboursement déjà appliqué sur
+          // cette ligne ne doit pas la rouvrir. L'ordre inverse — le
+          // remboursement livré avant la confirmation qu'il annule — ne peut
+          // pas passer par cette garde, puisque la ligne n'était alors pas
+          // encore marquée : il est rejoué juste en dessous, depuis
+          // `billing_refunded_payment` (constat C2).
+          await tx
+            .update(billingPurchase)
+            .set({
+              providerPaymentId: effect.providerPaymentId,
+              status: 'paid' satisfies PurchaseStatus,
+              amount: effect.amount,
+              currency: effect.currency,
+              purchasedAt: effect.paidAt,
+              lastEventAt: effect.lastEventAt,
+              lastEventId: effect.lastEventId,
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                purchaseOfSession(effect.providerSessionId),
+                ne(billingPurchase.status, 'refunded' satisfies PurchaseStatus),
+                purchaseAppliesAfter(effect.lastEventAt),
+              ),
+            )
+
+          // **Le remboursement arrivé trop tôt, rejoué dans la même
+          // transaction.** Rien ici si aucun remboursement n'a été reçu pour ce
+          // paiement : le `where` ne trouve alors aucune ligne. Le prédicat
+          // n'est pas décoratif — c'est lui qui empêche d'accorder un accès sur
+          // un achat intégralement remboursé.
+          if (effect.providerPaymentId !== null) {
+            await tx
+              .update(billingPurchase)
+              .set({
+                status: 'refunded' satisfies PurchaseStatus,
+                refundedAt: sql`(select ${billingRefundedPayment.refundedAt} from ${billingRefundedPayment} where ${billingRefundedPayment.providerPaymentId} = ${effect.providerPaymentId})`,
+                lastEventAt: sql`(select ${billingRefundedPayment.lastEventAt} from ${billingRefundedPayment} where ${billingRefundedPayment.providerPaymentId} = ${effect.providerPaymentId})`,
+                lastEventId: sql`(select ${billingRefundedPayment.lastEventId} from ${billingRefundedPayment} where ${billingRefundedPayment.providerPaymentId} = ${effect.providerPaymentId})`,
+                updatedAt: new Date(),
+              })
+              .where(
+                and(
+                  eq(billingPurchase.providerPaymentId, effect.providerPaymentId),
+                  sql`exists (select 1 from ${billingRefundedPayment} where ${billingRefundedPayment.providerPaymentId} = ${effect.providerPaymentId})`,
+                ),
+              )
+          }
+        }
+
+        if (effect.kind === 'purchase_refunded') {
+          // **Écrit d'abord sous la seule clé que le remboursement porte.**
+          // `charge.refunded` ne transporte jamais la session de checkout
+          // (recherche §2.3), et une ligne encore en attente n'a pas de
+          // paiement : sans cette trace, un remboursement livré avant sa
+          // confirmation était journalisé — donc jamais rejoué — et perdu
+          // (constat C2). La promotion la relit et l'applique.
+          await tx
+            .insert(billingRefundedPayment)
+            .values({
+              providerPaymentId: effect.providerPaymentId,
+              refundedAt: effect.refundedAt,
+              lastEventAt: effect.lastEventAt,
+              lastEventId: effect.lastEventId,
+            })
+            .onConflictDoNothing({ target: billingRefundedPayment.providerPaymentId })
+
+          // Retrouvé **par le paiement**, quand la ligne le porte déjà.
+          await tx
+            .update(billingPurchase)
+            .set({
+              status: 'refunded' satisfies PurchaseStatus,
+              refundedAt: effect.refundedAt,
+              lastEventAt: effect.lastEventAt,
+              lastEventId: effect.lastEventId,
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(billingPurchase.providerPaymentId, effect.providerPaymentId),
+                purchaseAppliesAfter(effect.lastEventAt),
+              ),
+            )
         }
 
         if (effect.kind === 'payment_failed') {
@@ -324,9 +660,127 @@ export function createDrizzleBillingRepository(db: BillingDatabase): BillingRepo
     },
 
     /**
+     * La réconciliation des achats : elle **compare avant d'écrire**, et rend
+     * le nombre de lignes réellement changées.
+     *
+     * Elle ne crée rien — une session que nous n'avons pas ouverte n'a pas
+     * d'offre — et n'efface rien. Le compte est ce qui rend l'idempotence
+     * **observable** : une seconde exécution rend zéro
+     * (`docs/reliability.md` §1).
+     */
+    reconcilePurchases: async ({ billingCustomerId, purchases }) => {
+      let changed = 0
+      /**
+       * **Les achats déjà tranchés pendant ce passage** (constat m7).
+       *
+       * Plusieurs sessions désignent le même achat depuis l'index inverse, et
+       * deux d'entre elles peuvent être payées — deux onglets, deux sessions
+       * vivantes, deux prélèvements. Elles se départagent alors sur le
+       * paiement, et chaque passage réécrivait l'une puis l'autre : `changed`
+       * ne retombait jamais à zéro, ce que `docs/reliability.md` §1 refuse.
+       *
+       * La première lecture qui **tranche** l'emporte, dans l'ordre rendu par
+       * le fournisseur — un ordre stable, pas un tirage. Une session que le
+       * fournisseur dit impayée ne tranche pas : elle ne consomme pas la place.
+       */
+      const decided = new Set<string>()
+
+      for (const write of purchases) {
+        // **Le même prédicat que la confirmation** : l'index inverse, et
+        // l'ancien emplacement à défaut. C'est ici que la réconciliation
+        // *répare* ce que le constat C1 déclarait irréparable — retrouver
+        // l'achat d'une session supplantée —, et c'est ici que la fenêtre de
+        // bascule est couverte (constat C4).
+        const rows = await db
+          .select(PURCHASE_COLUMNS)
+          .from(billingPurchase)
+          .where(
+            and(
+              eq(billingPurchase.billingCustomerId, billingCustomerId),
+              purchaseOfSession(write.providerSessionId),
+            ),
+          )
+          .limit(1)
+
+        const stored = asPurchase(rows[0])
+
+        if (stored === null) {
+          continue
+        }
+
+        // **La décision appartient au `domain`** : il rend `null` quand la
+        // lecture n'impose rien — une session impayée parmi plusieurs, ou une
+        // charge introuvable sur une ligne déjà remboursée (constat m1). Écrire
+        // sur un `null` ré-accorderait un achat rendu.
+        const read = reconciledPurchaseStatus({
+          stored: stored.status,
+          paid: write.paid,
+          chargedAmount: write.chargedAmount,
+          amountRefunded: write.amountRefunded,
+        })
+
+        if (read === null) {
+          continue
+        }
+
+        if (decided.has(stored.id)) {
+          continue
+        }
+
+        decided.add(stored.id)
+
+        // **Le journal des remboursements, rejoué ici aussi** (constat m6).
+        // C'est l'autre chemin qui pose un `provider_payment_id`, et il ne le
+        // consultait pas : un remboursement livré avant une confirmation qui ne
+        // vient jamais, plus une charge introuvable — le cas **permanent** du
+        // mode local —, et la réconciliation accordait l'accès sur un achat
+        // intégralement remboursé. Le journal l'emporte sur le silence de la
+        // charge : il porte un événement **reçu** du fournisseur, la charge
+        // introuvable ne porte rien.
+        const journalled =
+          write.providerPaymentId === null ? null : await refundedPayment(write.providerPaymentId)
+
+        const status = journalled === null ? read : ('refunded' satisfies PurchaseStatus)
+
+        if (!purchaseDiffers(stored, write, status)) {
+          continue
+        }
+
+        await db
+          .update(billingPurchase)
+          .set({
+            providerPaymentId: write.providerPaymentId,
+            status,
+            amount: write.amount,
+            currency: write.currency,
+            ...(status === 'paid' && stored.purchasedAt === null
+              ? { purchasedAt: write.at }
+              : {}),
+            ...(status === 'refunded' && stored.refundedAt === null
+              ? // L'instant du **remboursement**, quand le journal le connaît ;
+                // celui de la lecture sinon.
+                { refundedAt: journalled?.refundedAt ?? write.at }
+              : {}),
+            // La réconciliation vient de la **source de vérité** : elle pose
+            // l'instant de la lecture, ce qui la rend plus récente que tout
+            // événement déjà appliqué (ADR 034 §3).
+            lastEventAt: write.at,
+            lastEventId: `reconcile:${write.at.toISOString()}`,
+            updatedAt: new Date(),
+          })
+          .where(eq(billingPurchase.id, stored.id))
+
+        changed += 1
+      }
+
+      return changed
+    },
+
+    /**
      * La purge du périmètre.
      *
-     * Les abonnements partent par la clé étrangère (`on delete cascade`), qui
+     * Les abonnements **et les achats** partent par la clé étrangère
+     * (`on delete cascade`), qui
      * reste **à l'intérieur du module** : ADR 018 n'autorise une référence que
      * vers un requis déclaré, et `billing` n'en a aucun. Le journal
      * d'événements n'est pas touché : il ne porte que des identifiants

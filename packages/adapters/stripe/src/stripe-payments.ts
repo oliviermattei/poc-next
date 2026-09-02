@@ -2,9 +2,12 @@ import type {
   CreateCheckoutInput,
   CreateCheckoutResult,
   CreatePortalSessionResult,
+  ListPurchasesInput,
+  ListPurchasesResult,
   ListSubscriptionsInput,
   ListSubscriptionsResult,
   PaymentEvent,
+  PaymentPurchase,
   Payments,
   PaymentsError,
   PaymentsErrorCode,
@@ -189,6 +192,21 @@ function normalizeSubscription(raw: unknown): PaymentSubscription {
   }
 }
 
+const asNumber = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isFinite(value) ? value : null
+
+/**
+ * Cette session est-elle un **achat unique encaissé** ? (ADR 038 §1)
+ *
+ * Les deux unions du fournisseur sont ouvertes — `Mode` et `PaymentStatus`
+ * déclarent toutes deux `… | OtherString` (recherche §2.1). Le repli est donc
+ * **fermé** : tout ce qui n'est pas exactement `payment` **et** `paid` n'accorde
+ * rien. Un paiement différé passe ici en `unpaid`, et c'est
+ * `checkout.session.async_payment_succeeded` qui le confirmera plus tard.
+ */
+const isPaidPurchaseSession = (object: Record<string, unknown>): boolean =>
+  object['mode'] === 'payment' && object['payment_status'] === 'paid'
+
 /** Les types d'événement qui décrivent un changement d'abonnement. */
 const SUBSCRIPTION_EVENTS = new Set([
   'customer.subscription.created',
@@ -204,6 +222,19 @@ const SUBSCRIPTION_EVENTS = new Set([
 const PAYMENT_FAILED_EVENTS = new Set(['invoice.payment_failed'])
 
 /**
+ * Les types qui confirment un **achat unique** — et il en faut deux.
+ *
+ * `completed` couvre le paiement immédiat ; `async_payment_succeeded` couvre le
+ * paiement différé, qui arrive *après* un `completed` non payé (recherche
+ * §2.2). N'écouter que le premier laisserait ces acheteurs sans droit pour
+ * toujours.
+ */
+const PURCHASE_EVENTS = new Set([
+  'checkout.session.completed',
+  'checkout.session.async_payment_succeeded',
+])
+
+/**
  * L'événement du fournisseur, ramené à la forme du port.
  *
  * `unhandled` est une **valeur**, pas une absence : un événement qu'on ne traite
@@ -215,7 +246,49 @@ function normalizeEvent(event: Stripe.Event): PaymentEvent {
   const occurredAt = new Date(event.created * 1000)
   const object = event.data.object as unknown as Record<string, unknown>
 
-  if (event.type === 'checkout.session.completed') {
+  if (PURCHASE_EVENTS.has(event.type) && isPaidPurchaseSession(object)) {
+    return {
+      kind: 'purchase_paid',
+      id,
+      occurredAt,
+      sessionId: asId(object['id']) ?? '',
+      customerId: asId(object['customer']),
+      paymentId: asId(object['payment_intent']),
+      // **Ce qui a été prélevé**, pas ce que le catalogue affiche : c'est la
+      // seule source honnête pour un historique de paiements (ADR 038 §4).
+      amountTotal: asNumber(object['amount_total']),
+      currency: typeof object['currency'] === 'string' ? object['currency'] : null,
+      reference:
+        typeof object['client_reference_id'] === 'string' ? object['client_reference_id'] : null,
+    }
+  }
+
+  if (event.type === 'charge.refunded') {
+    const paymentId = asId(object['payment_intent'])
+    const amount = asNumber(object['amount'])
+
+    // Un remboursement qu'on ne sait rattacher à aucun paiement est journalisé
+    // et n'écrit rien — comme un événement d'abonnement dont le client est
+    // inconnu. Inventer un rattachement révoquerait au hasard.
+    if (paymentId !== null && amount !== null) {
+      return {
+        kind: 'purchase_refunded',
+        id,
+        occurredAt,
+        paymentId,
+        amount,
+        // **Aucune décision ici** (ADR 038 §3) : les deux montants traversent
+        // jusqu'au domaine, qui dit ce qu'un remboursement fait perdre.
+        amountRefunded: asNumber(object['amount_refunded']) ?? 0,
+      }
+    }
+  }
+
+  // **Le mode départage**, et il est comparé en toutes lettres : `Mode` est une
+  // union ouverte chez le fournisseur, et une session qui n'est ni un
+  // abonnement ni un achat encaissé n'accorde rien — elle est journalisée comme
+  // `unhandled`, donc pas rejouée, et c'est tout.
+  if (event.type === 'checkout.session.completed' && object['mode'] === 'subscription') {
     return {
       kind: 'checkout_completed',
       id,
@@ -365,6 +438,13 @@ export function createStripePayments(options: StripePaymentsOptions): Payments {
             ...(input.trialPeriodDays === null
               ? {}
               : { subscription_data: { trial_period_days: input.trialPeriodDays } }),
+            // **La facture d'un achat unique est demandée**, celle d'un
+            // abonnement ne l'est pas : le fournisseur facture déjà le second,
+            // et la lui demander en plus produirait deux factures pour un seul
+            // encaissement. Le quatrième critère de s20 exige que les factures
+            // restent accessibles ; sans ce paramètre, un paiement hors
+            // abonnement n'en produit aucune.
+            ...(input.mode === 'payment' ? { invoice_creation: { enabled: true } } : {}),
             ...(input.locale === null ? {} : { locale: input.locale as Stripe.Checkout.SessionCreateParams.Locale }),
           },
           // **Une seule clé pour toutes les tentatives** de cet appel : si la
@@ -389,7 +469,13 @@ export function createStripePayments(options: StripePaymentsOptions): Payments {
         }
       }
 
-      return { ok: true, checkout: { url, customerId: customer.value } }
+      return {
+        ok: true,
+        // L'identifiant de session est **l'acte d'achat** (ADR 038 §1) :
+        // l'appelant l'écrit avant de rendre l'URL, et c'est lui qui rattache
+        // l'offre — que la charge utile de confirmation ne porte pas.
+        checkout: { url, customerId: customer.value, sessionId: session.value.id },
+      }
     },
 
     createPortalSession: async (input): Promise<CreatePortalSessionResult> => {
@@ -508,6 +594,123 @@ export function createStripePayments(options: StripePaymentsOptions): Payments {
       }
 
       return { ok: true, subscriptions }
+    },
+
+    /**
+     * **Les achats uniques d'un client — deux lectures, et il faut les deux.**
+     *
+     * La session dit ce qui a été payé ; l'état de **remboursement**, lui,
+     * n'est pas sur la session — il est sur la charge (recherche §6). Une
+     * réconciliation qui ne lirait que les sessions ne verrait jamais un
+     * remboursement dont le webhook s'est perdu, c'est-à-dire un accès qui
+     * aurait dû être révoqué.
+     *
+     * Comme `listSubscriptions`, les deux boucles sont **plafonnées** : une
+     * série d'appels sortants sans borne est refusée par
+     * `docs/reliability.md` §3.
+     *
+     * Elle ne rend **pas** l'offre achetée, et c'est une propriété : la session
+     * ne porte pas son prix, et la réconciliation ne promeut que des lignes que
+     * nous avons ouvertes (ADR 038). Une session inconnue n'a pas d'offre à
+     * deviner.
+     */
+    listPurchases: async (input: ListPurchasesInput): Promise<ListPurchasesResult> => {
+      const sessions: Record<string, unknown>[] = []
+      let afterSession: string | undefined
+
+      for (let page = 0; page < MAX_LIST_PAGES; page += 1) {
+        const outcome = await run('list_purchases', async () =>
+          await client.checkout.sessions.list({
+            customer: input.customerId,
+            limit: PAGE_SIZE,
+            ...(afterSession === undefined ? {} : { starting_after: afterSession }),
+          }),
+        )
+
+        if (!outcome.ok) {
+          return { ok: false, error: outcome.error }
+        }
+
+        for (const entry of outcome.value.data) {
+          sessions.push(entry as unknown as Record<string, unknown>)
+        }
+
+        const last = outcome.value.data.at(-1)
+
+        if (!outcome.value.has_more || last === undefined) {
+          break
+        }
+
+        afterSession = last.id
+      }
+
+      const refunds = new Map<string, { readonly amount: number; readonly refunded: number }>()
+      let afterCharge: string | undefined
+
+      for (let page = 0; page < MAX_LIST_PAGES; page += 1) {
+        const outcome = await run('list_purchases', async () =>
+          await client.charges.list({
+            customer: input.customerId,
+            limit: PAGE_SIZE,
+            ...(afterCharge === undefined ? {} : { starting_after: afterCharge }),
+          }),
+        )
+
+        if (!outcome.ok) {
+          return { ok: false, error: outcome.error }
+        }
+
+        for (const charge of outcome.value.data) {
+          const paymentId = asId((charge as unknown as Record<string, unknown>)['payment_intent'])
+
+          if (paymentId !== null) {
+            refunds.set(paymentId, {
+              amount: charge.amount,
+              refunded: charge.amount_refunded,
+            })
+          }
+        }
+
+        const last = outcome.value.data.at(-1)
+
+        if (!outcome.value.has_more || last === undefined) {
+          break
+        }
+
+        afterCharge = last.id
+      }
+
+      const purchases: PaymentPurchase[] = []
+
+      for (const session of sessions) {
+        // Un abonnement n'est pas un achat, et il ne doit pas en devenir un :
+        // les deux vivent dans des tables distinctes, ce qui est exactement ce
+        // que le sixième critère de la story demande.
+        if (session['mode'] !== 'payment') {
+          continue
+        }
+
+        const sessionId = asId(session['id'])
+
+        if (sessionId === null) {
+          continue
+        }
+
+        const paymentId = asId(session['payment_intent'])
+        const charge = paymentId === null ? undefined : refunds.get(paymentId)
+
+        purchases.push({
+          sessionId,
+          paymentId,
+          paid: session['payment_status'] === 'paid',
+          amountTotal: asNumber(session['amount_total']),
+          currency: typeof session['currency'] === 'string' ? session['currency'] : null,
+          amountRefunded: charge?.refunded ?? 0,
+          chargedAmount: charge?.amount ?? null,
+        })
+      }
+
+      return { ok: true, purchases }
     },
   }
 }

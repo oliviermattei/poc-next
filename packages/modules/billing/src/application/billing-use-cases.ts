@@ -1,5 +1,5 @@
 import type { ModuleExportPayload, ModuleScope } from '@repo/core'
-import type { PaymentEvent, Payments, PaymentStatus } from '@repo/ports'
+import type { CheckoutMode, PaymentEvent, Payments, PaymentStatus } from '@repo/ports'
 
 import {
   formatOfferPrice,
@@ -7,8 +7,14 @@ import {
   offerForPrice,
   type BillingCatalogue,
   type BillingInterval,
+  type BillingMode,
   type BillingOffer,
 } from '../domain/offer'
+import {
+  grantsBillingAccess,
+  purchaseGrantsAccess,
+  refundRevokesPurchase,
+} from '../domain/purchase'
 import {
   appliesAfter,
   currentSubscriptionOf,
@@ -21,6 +27,7 @@ import type {
   BillingEffect,
   BillingPermission,
   BillingRepository,
+  PurchaseRecord,
   ScopeEmailResolver,
   ScopeResolver,
   SeatCounter,
@@ -58,8 +65,16 @@ const DOMAIN_STATUS: Readonly<Record<PaymentStatus, SubscriptionStatus>> = {
 export type CheckoutRefusal =
   | 'forbidden'
   | 'unknown_offer'
-  | 'unsupported_mode'
   | 'already_subscribed'
+  /**
+   * L'offre unique est **déjà possédée** — l'invariant central de s20.
+   *
+   * Distinct d'`already_subscribed`, et ce n'est pas un détail : le sixième
+   * critère de la story veut qu'un abonné puisse acheter à vie et qu'un
+   * acheteur à vie puisse s'abonner. Une garde unique fondée sur « ce périmètre
+   * a déjà l'accès » casserait exactement ce critère.
+   */
+  | 'already_purchased'
   | 'provider_unavailable'
 
 export type PortalRefusal = 'forbidden' | 'no_customer' | 'provider_unavailable'
@@ -75,12 +90,40 @@ export type WebhookOutcome =
 /** Une offre, telle que l'écran la reçoit — prix déjà formaté, jamais recalculé à l'affichage. */
 export interface OfferView {
   readonly id: string
+  /** `subscription` ou `one_time` : l'écran ne dit pas « souscrire » à un achat. */
+  readonly mode: BillingMode
   readonly price: string
   readonly interval: BillingInterval | null
   readonly trialDays: number | null
   readonly perSeat: boolean
   /** Cette offre est-elle celle de l'abonnement en cours ? */
   readonly current: boolean
+  /**
+   * Cette offre unique est-elle **déjà possédée** ?
+   *
+   * Toujours `false` pour une offre d'abonnement : ce sont deux fermetures
+   * différentes, et les confondre rejouerait le défaut que le sixième critère
+   * de la story interdit.
+   */
+  readonly owned: boolean
+}
+
+/** Un achat unique, tel que l'historique des paiements l'affiche. */
+export interface PurchaseView {
+  /**
+   * L'offre achetée, ou `null` si elle n'est **plus au catalogue**.
+   *
+   * Nullable comme celle d'un abonnement, et pour la même raison : retirer une
+   * offre de `config/billing.ts` laisse ses achats en base, et rendre son
+   * identifiant à l'écran ferait composer une clé de traduction qui n'existe
+   * pas — or le traducteur **lève** sur une clé absente depuis s09. L'écran
+   * dirait donc 500 au lieu de « offre retirée du catalogue ».
+   */
+  readonly offerId: string | null
+  /** Le montant **réellement prélevé**, déjà formaté, ou `null` s'il est inconnu. */
+  readonly price: string | null
+  readonly purchasedAt: Date | null
+  readonly refunded: boolean
 }
 
 export interface SubscriptionView {
@@ -93,22 +136,49 @@ export interface SubscriptionView {
 
 export interface BillingView {
   readonly state: BillingDisplayState
+  /**
+   * **Le droit d'accès consolidé** — abonnement *ou* achat payé (critère 3).
+   *
+   * C'est cette valeur que le gating de s21 lira ; elle ne dit **pas** si le
+   * catalogue d'abonnements doit se fermer, ce que dit `hasSubscription`.
+   */
   readonly hasAccess: boolean
+  /**
+   * Un abonnement **vivant** donne-t-il l'accès ?
+   *
+   * Séparé de `hasAccess` parce qu'un acheteur à vie doit pouvoir s'abonner
+   * (critère 6) : fermer le catalogue d'abonnements sur l'accès consolidé le
+   * lui interdirait.
+   */
+  readonly hasSubscription: boolean
   readonly offers: readonly OfferView[]
   readonly subscription: SubscriptionView | null
+  /** L'historique des paiements uniques — les achats en attente n'en sont pas. */
+  readonly purchases: readonly PurchaseView[]
   /** L'appelant peut-il souscrire ou ouvrir le portail ? L'écran l'affiche quand même. */
   readonly canManage: boolean
   /** Un client existe chez le fournisseur : le portail a une destination. */
   readonly hasCustomer: boolean
+  /**
+   * Le portail a-t-il quelque chose à gérer ? (critère 4, ADR 038 §4)
+   *
+   * Ce qu'il sert — moyen de paiement, changement d'offre, résiliation —
+   * n'existe que pour un abonnement. Un acheteur unique pur n'y a rien à faire,
+   * et son historique de paiements est servi par l'application.
+   */
+  readonly canOpenPortal: boolean
 }
 
 export const EMPTY_BILLING_VIEW: BillingView = {
   state: 'none',
   hasAccess: false,
+  hasSubscription: false,
   offers: [],
   subscription: null,
+  purchases: [],
   canManage: false,
   hasCustomer: false,
+  canOpenPortal: false,
 }
 
 export interface BillingDependencies {
@@ -195,6 +265,35 @@ const writeFrom = (
   lastEventId: context.lastEventId,
 })
 
+/**
+ * L'historique des paiements, tel que l'écran le reçoit.
+ *
+ * **Les achats en attente n'en sont pas** : un checkout ouvert puis abandonné
+ * n'est pas un paiement, et l'afficher annoncerait un encaissement qui n'a pas
+ * eu lieu.
+ *
+ * Le prix affiché est celui qui a été **prélevé**, pas celui du catalogue : une
+ * offre dont le prix change ne réécrit pas le passé (ADR 038 §4).
+ */
+const purchaseViews = (
+  purchases: readonly PurchaseRecord[],
+  catalogue: BillingCatalogue,
+  locale: string,
+): readonly PurchaseView[] =>
+  purchases
+    .filter((purchase) => purchase.status !== 'pending')
+    .map((purchase) => ({
+      // `null` quand l'offre n'est plus au catalogue : l'écran sait le dire,
+      // et il ne compose pas une clé de traduction qui ferait lever.
+      offerId: offerById(catalogue, purchase.offerId) === null ? null : purchase.offerId,
+      price:
+        purchase.amount === null || purchase.currency === null
+          ? null
+          : formatOfferPrice({ amount: purchase.amount, currency: purchase.currency }, locale),
+      purchasedAt: purchase.purchasedAt,
+      refunded: purchase.status === 'refunded',
+    }))
+
 export function createBillingUseCases(dependencies: BillingDependencies): BillingUseCases {
   const {
     repository,
@@ -245,6 +344,38 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
           }
     }
 
+    if (event.kind === 'purchase_paid') {
+      // **Aucune insertion** (ADR 038 §1) : la ligne existe depuis l'ouverture
+      // du checkout, sous cet identifiant de session, et c'est elle qui porte
+      // l'offre — que la charge utile ne dit pas. Une session que nous n'avons
+      // pas ouverte est journalisée et n'écrit rien.
+      return {
+        kind: 'purchase_paid',
+        providerSessionId: event.sessionId,
+        providerPaymentId: event.paymentId,
+        amount: event.amountTotal,
+        currency: event.currency,
+        paidAt: event.occurredAt,
+        lastEventAt: event.occurredAt,
+        lastEventId: event.id,
+      }
+    }
+
+    if (event.kind === 'purchase_refunded') {
+      // **La règle est dans le domaine** (ADR 038 §3) : le fournisseur émet le
+      // même événement pour un geste partiel et pour un remboursement total.
+      // Un partiel est journalisé — donc non rejoué — et n'écrit rien.
+      return refundRevokesPurchase({ amount: event.amount, amountRefunded: event.amountRefunded })
+        ? {
+            kind: 'purchase_refunded',
+            providerPaymentId: event.paymentId,
+            refundedAt: event.occurredAt,
+            lastEventAt: event.occurredAt,
+            lastEventId: event.id,
+          }
+        : { kind: 'none' }
+    }
+
     if (event.kind === 'payment_failed' && event.subscriptionId !== null) {
       return {
         kind: 'payment_failed',
@@ -277,12 +408,10 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
         return { ok: false, reason: 'unknown_offer' }
       }
 
-      if (offer.mode !== 'subscription') {
-        // s19 ne livre que l'abonnement. Ouvrir un chemin `payment` non éprouvé
-        // serait pire que de le refuser : c'est la story s20.
-        return { ok: false, reason: 'unsupported_mode' }
-      }
-
+      // **Le mode vient du catalogue**, jamais de la requête : le navigateur
+      // n'envoie qu'un identifiant d'offre, et c'est ici que « offre unique »
+      // devient « paiement » chez le fournisseur.
+      const mode: CheckoutMode = offer.mode === 'one_time' ? 'payment' : 'subscription'
       const existing = await repository.customerForScope(scope)
 
       // **Un abonnement vivant ferme le catalogue** (constat M3 de la seconde
@@ -300,7 +429,13 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
       // **« Vivant » veut dire `grantsAccess`**, la même règle que l'écran :
       // un abonnement terminé rouvre le catalogue, et c'est exactement le
       // parcours « annuler puis se réabonner » du constat F1.
-      if (existing !== null) {
+      //
+      // **Deux fermetures, et elles ne se regardent pas** (critère 6, ADR 038
+      // §2) : la garde d'abonnement ne lit que les abonnements, la garde
+      // d'achat ne lit que les achats. Une garde unique sur l'accès consolidé
+      // interdirait à un abonné d'acheter à vie, et à un acheteur à vie de
+      // s'abonner.
+      if (existing !== null && offer.mode === 'subscription') {
         const at = now()
         const current = currentSubscriptionOf(
           await repository.subscriptionsOfCustomer(existing.id),
@@ -312,9 +447,22 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
         }
       }
 
+      // **L'invariant central de s20** : on ne facture pas deux fois le même
+      // acte d'achat. Le refus dit pourquoi ; c'est l'unicité
+      // `(billing_customer_id, offer_id)` qui le tient sous concurrence.
+      if (existing !== null && offer.mode === 'one_time') {
+        const owned = (await repository.purchasesOfCustomer(existing.id)).find(
+          (candidate) => candidate.offerId === offer.id,
+        )
+
+        if (purchaseGrantsAccess(owned ?? null)) {
+          return { ok: false, reason: 'already_purchased' }
+        }
+      }
+
       const checkout = await payments.createCheckout({
         priceId: offer.priceId,
-        mode: 'subscription',
+        mode,
         // Résolue **côté serveur**. Une quantité reçue du navigateur est un prix
         // reçu du navigateur.
         quantity: offer.perSeat ? await seatsOf(scope, session.userId) : 1,
@@ -337,11 +485,24 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
       // **Écrit avant de rendre l'URL** : c'est ce qui ferme le désordre des
       // événements (ADR 034). Un `customer.subscription.updated` arrivé avant le
       // `checkout.session.completed` retrouve son propriétaire ici.
-      await repository.linkCustomer({
+      const customer = await repository.linkCustomer({
         id: existing?.id ?? generateId(),
         scope,
         providerCustomerId: checkout.checkout.customerId,
       })
+
+      if (offer.mode === 'one_time') {
+        // **La seconde écriture avant l'URL**, et c'est celle qui rend l'achat
+        // rattachable (ADR 038 §1) : la confirmation ne porte pas le prix payé,
+        // donc l'offre doit être écrite ici, sous l'identifiant de session.
+        await repository.openPurchase({
+          id: generateId(),
+          billingCustomerId: customer.id,
+          offerId: offer.id,
+          priceId: offer.priceId,
+          providerSessionId: checkout.checkout.sessionId,
+        })
+      }
 
       return { ok: true, url: checkout.checkout.url }
     },
@@ -404,24 +565,30 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
 
       const at = now()
       const customer = await repository.customerForScope(scope)
+      const subscriptions =
+        customer === null ? [] : await repository.subscriptionsOfCustomer(customer.id)
+      const purchases = customer === null ? [] : await repository.purchasesOfCustomer(customer.id)
       // **Lequel est *le* sien** est une règle, pas une requête : un client qui
       // s'est réabonné en a plusieurs, et c'est celui qui donne l'accès qui
       // compte (constat F1 de la revue).
-      const subscription =
-        customer === null
-          ? null
-          : currentSubscriptionOf(await repository.subscriptionsOfCustomer(customer.id), at)
+      const subscription = currentSubscriptionOf(subscriptions, at)
+      const ownedOffers = new Set(
+        purchases.filter((entry) => purchaseGrantsAccess(entry)).map((entry) => entry.offerId),
+      )
 
       return {
         state: displayStateOf(subscription, at),
-        hasAccess: grantsAccess(subscription, at),
+        hasAccess: grantsBillingAccess(subscription, purchases, at),
+        hasSubscription: grantsAccess(subscription, at),
         offers: catalogue.map((offer) => ({
           id: offer.id,
+          mode: offer.mode,
           price: formatOfferPrice(offer, locale),
           interval: offer.interval,
           trialDays: offer.trialDays,
           perSeat: offer.perSeat,
           current: subscription?.offerId === offer.id,
+          owned: offer.mode === 'one_time' && ownedOffers.has(offer.id),
         })),
         subscription:
           subscription === null
@@ -433,8 +600,13 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
                 cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
                 trialEnd: subscription.trialEnd,
               },
+        purchases: purchaseViews(purchases, catalogue, locale),
         canManage: await canManage(scope, session.userId),
         hasCustomer: customer !== null,
+        // Le portail ne sert **que** l'abonnement (critère 4). Un périmètre qui
+        // n'a jamais eu d'abonnement n'y a rien à gérer, même s'il a un client
+        // chez le fournisseur — c'est le cas de l'acheteur unique pur.
+        canOpenPortal: subscriptions.length > 0,
       }
     },
 
@@ -452,6 +624,35 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
       let changed = 0
 
       for (const customer of customers) {
+        const at = now()
+        // **Les deux lectures sont indépendantes**, et c'est délibéré : un
+        // fournisseur qui échoue sur les abonnements ne doit pas emporter la
+        // réconciliation des achats, ni l'inverse. Une lecture en échec ne
+        // dégrade rien — la réconciliation n'efface jamais (ADR 034 §3).
+        const purchases = await payments.listPurchases({
+          customerId: customer.providerCustomerId,
+        })
+
+        if (purchases.ok) {
+          changed += await repository.reconcilePurchases({
+            billingCustomerId: customer.id,
+            // **Des faits, pas une décision** : ce que le fournisseur a dit de
+            // cette session, transmis tel quel. Le statut qu'il impose — ou
+            // l'absence de statut — est tranché par le `domain`, qui seul voit
+            // aussi ce qui est stocké (constat m1).
+            purchases: purchases.purchases.map((purchase) => ({
+              providerSessionId: purchase.sessionId,
+              providerPaymentId: purchase.paymentId,
+              paid: purchase.paid,
+              chargedAmount: purchase.chargedAmount,
+              amountRefunded: purchase.amountRefunded,
+              amount: purchase.amountTotal,
+              currency: purchase.currency,
+              at,
+            })),
+          })
+        }
+
         const listed = await payments.listSubscriptions({
           customerId: customer.providerCustomerId,
         })
@@ -459,8 +660,6 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
         if (!listed.ok) {
           continue
         }
-
-        const at = now()
 
         changed += await repository.replaceSubscriptions({
           billingCustomerId: customer.id,
@@ -506,6 +705,11 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
       // désigne pas l'abonnement en cours ; l'écran, lui, le désigne.
       const subscriptions = await repository.subscriptionsOfCustomer(customer.id)
 
+      // Les achats uniques sont **aussi** les données du périmètre : ne rendre
+      // que les abonnements inventerait un filtre que personne n'a décidé, et
+      // c'est le même raisonnement que le constat m3 de la seconde revue.
+      const purchases = await repository.purchasesOfCustomer(customer.id)
+
       return {
         subscriptions: subscriptions.map((subscription) => ({
           offerId: subscription.offerId,
@@ -513,6 +717,14 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
           quantity: subscription.quantity,
           currentPeriodEnd: subscription.currentPeriodEnd.toISOString(),
           cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+        })),
+        purchases: purchases.map((purchase) => ({
+          offerId: offerById(catalogue, purchase.offerId) === null ? null : purchase.offerId,
+          status: purchase.status,
+          amount: purchase.amount,
+          currency: purchase.currency,
+          purchasedAt: purchase.purchasedAt?.toISOString() ?? null,
+          refundedAt: purchase.refundedAt?.toISOString() ?? null,
         })),
       }
     },

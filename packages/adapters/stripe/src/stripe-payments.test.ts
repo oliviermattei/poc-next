@@ -144,7 +144,9 @@ describe('ouvrir un checkout', () => {
 
     expect(result).toEqual({
       ok: true,
-      checkout: { url: SESSION.url, customerId: 'cus_1' },
+      // `sessionId` est rendu parce qu'il est **l'acte d'achat** (ADR 038) :
+      // sans lui, un achat unique ne peut être rattaché à aucune offre.
+      checkout: { url: SESSION.url, customerId: 'cus_1', sessionId: 'cs_test_1' },
     })
 
     const call = calls[0]
@@ -186,6 +188,45 @@ describe('ouvrir un checkout', () => {
     expect(calls[0]?.url).toBe('https://api.stripe.com/v1/customers')
     expect(calls[1]?.url).toBe('https://api.stripe.com/v1/checkout/sessions')
     expect(new URLSearchParams(calls[1]?.body ?? '').get('customer')).toBe('cus_created')
+  })
+
+  /**
+   * s20 — le **paiement unique**, et ce qui le distingue à l'aller.
+   *
+   * `invoice_creation` est le second point : le fournisseur n'émet pas de
+   * facture pour un paiement hors abonnement sans qu'on le lui demande, et le
+   * quatrième critère de la story exige que les factures restent accessibles.
+   */
+  it('ouvre un paiement unique, sans données d’abonnement et avec une facture', async () => {
+    const { calls, fetchDouble } = harness([() => json(200, SESSION)])
+    const payments = createStripePayments(options(fetchDouble))
+
+    const result = await payments.createCheckout({
+      ...CHECKOUT,
+      mode: 'payment',
+      quantity: 1,
+      trialPeriodDays: null,
+    })
+
+    expect(result.ok && result.checkout.sessionId).toBe('cs_test_1')
+
+    const sent = new URLSearchParams(calls[0]?.body ?? '')
+
+    expect(sent.get('mode')).toBe('payment')
+    expect(sent.get('invoice_creation[enabled]')).toBe('true')
+    // Aucune donnée d'abonnement : un achat unique n'en crée pas.
+    expect(sent.get('subscription_data[trial_period_days]')).toBeNull()
+  })
+
+  it('n’active pas la facturation automatique pour un abonnement', async () => {
+    // Le fournisseur facture déjà un abonnement ; la lui demander en plus
+    // produirait une seconde facture pour un seul encaissement.
+    const { calls, fetchDouble } = harness([() => json(200, SESSION)])
+    const payments = createStripePayments(options(fetchDouble))
+
+    await payments.createCheckout(CHECKOUT)
+
+    expect(new URLSearchParams(calls[0]?.body ?? '').get('invoice_creation[enabled]')).toBeNull()
   })
 
   it('refuse une session sans URL au lieu de rendre un succès vide', async () => {
@@ -510,6 +551,150 @@ describe('la vérification de signature', () => {
       subscriptionId: 'sub_1',
     })
   })
+
+  /* ---------------------------------------------------------------------- *
+   * s20 — l'achat unique à l'arrivée.
+   * ---------------------------------------------------------------------- */
+
+  const purchaseSession = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+    id: 'cs_purchase_1',
+    object: 'checkout.session',
+    mode: 'payment',
+    payment_status: 'paid',
+    customer: 'cus_1',
+    payment_intent: 'pi_1',
+    amount_total: 49_000,
+    currency: 'eur',
+    client_reference_id: 'organization:org_1',
+    ...overrides,
+  })
+
+  const purchaseEvent = (
+    type: string,
+    object: Record<string, unknown>,
+    id = 'evt_purchase',
+  ): string =>
+    payloadOf({
+      id,
+      object: 'event',
+      api_version: '2026-08-26.dahlia',
+      created: 1_788_000_500,
+      livemode: false,
+      pending_webhooks: 0,
+      request: { id: null, idempotency_key: null },
+      type,
+      data: { object },
+    })
+
+  it('reconnaît un achat unique payé, et porte le montant réellement prélevé', async () => {
+    const { fetchDouble } = harness([() => json(200, {})])
+    const payments = createStripePayments(options(fetchDouble))
+    const payload = purchaseEvent('checkout.session.completed', purchaseSession())
+
+    const result = await payments.verifyWebhook({ payload, signature: sign(payload) })
+
+    expect(result.ok && result.event).toEqual({
+      kind: 'purchase_paid',
+      id: 'evt_purchase',
+      occurredAt: new Date(1_788_000_500 * 1000),
+      sessionId: 'cs_purchase_1',
+      customerId: 'cus_1',
+      paymentId: 'pi_1',
+      amountTotal: 49_000,
+      currency: 'eur',
+      reference: 'organization:org_1',
+    })
+  })
+
+  it('reconnaît le paiement différé qui se confirme plus tard', async () => {
+    // Recherche §2.2 : pour un virement ou un prélèvement,
+    // `checkout.session.completed` arrive **non payé**, et c'est
+    // `async_payment_succeeded` qui confirme. Ne lire que le premier laisserait
+    // ces acheteurs sans droit pour toujours.
+    const { fetchDouble } = harness([() => json(200, {})])
+    const payments = createStripePayments(options(fetchDouble))
+    const payload = purchaseEvent(
+      'checkout.session.async_payment_succeeded',
+      purchaseSession(),
+      'evt_async',
+    )
+
+    const result = await payments.verifyWebhook({ payload, signature: sign(payload) })
+
+    expect(result.ok && result.event).toMatchObject({ kind: 'purchase_paid', sessionId: 'cs_purchase_1' })
+  })
+
+  it('n’accorde rien sur une session dont le paiement n’est pas encaissé', async () => {
+    // `PaymentStatus` est une **union ouverte** chez le fournisseur
+    // (recherche §2.1) : le repli est fermé — ce qui n'est pas exactement
+    // `paid` n'accorde rien, et l'événement reste journalisé.
+    const { fetchDouble } = harness([() => json(200, {})])
+    const payments = createStripePayments(options(fetchDouble))
+    const payload = purchaseEvent(
+      'checkout.session.completed',
+      purchaseSession({ payment_status: 'unpaid' }),
+      'evt_unpaid',
+    )
+
+    const result = await payments.verifyWebhook({ payload, signature: sign(payload) })
+
+    expect(result.ok && result.event.kind).toBe('unhandled')
+  })
+
+  it('n’accorde rien sur un mode que le fournisseur invente', async () => {
+    const { fetchDouble } = harness([() => json(200, {})])
+    const payments = createStripePayments(options(fetchDouble))
+    const payload = purchaseEvent(
+      'checkout.session.completed',
+      purchaseSession({ mode: 'quelque_chose_de_neuf' }),
+      'evt_mode',
+    )
+
+    const result = await payments.verifyWebhook({ payload, signature: sign(payload) })
+
+    expect(result.ok && result.event.kind).toBe('unhandled')
+  })
+
+  it('reconnaît un remboursement, **sans décider** ce qu’il révoque', async () => {
+    // ADR 038 §3 : les deux montants traversent jusqu'au domaine. L'adaptateur
+    // ne sait pas ce qu'un remboursement fait perdre.
+    const { fetchDouble } = harness([() => json(200, {})])
+    const payments = createStripePayments(options(fetchDouble))
+    const payload = purchaseEvent('charge.refunded', {
+      id: 'ch_1',
+      object: 'charge',
+      payment_intent: 'pi_1',
+      amount: 49_000,
+      amount_refunded: 12_000,
+      refunded: false,
+    })
+
+    const result = await payments.verifyWebhook({ payload, signature: sign(payload) })
+
+    expect(result.ok && result.event).toMatchObject({
+      kind: 'purchase_refunded',
+      paymentId: 'pi_1',
+      amount: 49_000,
+      amountRefunded: 12_000,
+    })
+  })
+
+  it('journalise sans plus un remboursement sans paiement identifiable', async () => {
+    const { fetchDouble } = harness([() => json(200, {})])
+    const payments = createStripePayments(options(fetchDouble))
+    const payload = purchaseEvent('charge.refunded', {
+      id: 'ch_2',
+      object: 'charge',
+      payment_intent: null,
+      amount: 49_000,
+      amount_refunded: 49_000,
+      refunded: true,
+    })
+
+    const result = await payments.verifyWebhook({ payload, signature: sign(payload) })
+
+    expect(result.ok && result.event.kind).toBe('unhandled')
+  })
 })
 
 describe('la lecture pour la réconciliation', () => {
@@ -536,6 +721,105 @@ describe('la lecture pour la réconciliation', () => {
    * silencieuse** — et c'est précisément la commande dont le rôle est de
    * réparer une divergence.
    */
+  /**
+   * s20 — la lecture des achats uniques.
+   *
+   * **Deux lectures, et il faut les deux** : la session dit ce qui a été payé,
+   * la charge dit ce qui a été remboursé — l'état de remboursement n'est pas
+   * sur la session (recherche §6).
+   */
+  it('rend les achats d’un client, avec leur état de remboursement', async () => {
+    const { calls, fetchDouble } = harness([
+      () =>
+        json(200, {
+          object: 'list',
+          has_more: false,
+          data: [
+            {
+              id: 'cs_purchase_1',
+              object: 'checkout.session',
+              mode: 'payment',
+              payment_status: 'paid',
+              payment_intent: 'pi_1',
+              amount_total: 49_000,
+              currency: 'eur',
+            },
+            // Un abonnement : ce n'est pas un achat, et il ne doit pas en
+            // devenir un.
+            {
+              id: 'cs_sub_1',
+              object: 'checkout.session',
+              mode: 'subscription',
+              payment_status: 'paid',
+              payment_intent: null,
+            },
+          ],
+        }),
+      () =>
+        json(200, {
+          object: 'list',
+          has_more: false,
+          data: [
+            {
+              id: 'ch_1',
+              object: 'charge',
+              payment_intent: 'pi_1',
+              amount: 49_000,
+              amount_refunded: 49_000,
+              refunded: true,
+            },
+          ],
+        }),
+    ])
+    const payments = createStripePayments(options(fetchDouble))
+
+    const result = await payments.listPurchases({ customerId: 'cus_1' })
+
+    expect(result.ok && result.purchases).toEqual([
+      {
+        sessionId: 'cs_purchase_1',
+        paymentId: 'pi_1',
+        paid: true,
+        amountTotal: 49_000,
+        currency: 'eur',
+        amountRefunded: 49_000,
+        chargedAmount: 49_000,
+      },
+    ])
+    expect(calls[0]?.url).toContain('/v1/checkout/sessions')
+    expect(calls[1]?.url).toContain('/v1/charges')
+  })
+
+  it('rend zéro remboursement quand aucune charge ne correspond', async () => {
+    const { fetchDouble } = harness([
+      () =>
+        json(200, {
+          object: 'list',
+          has_more: false,
+          data: [
+            {
+              id: 'cs_purchase_2',
+              object: 'checkout.session',
+              mode: 'payment',
+              payment_status: 'paid',
+              payment_intent: 'pi_2',
+              amount_total: 49_000,
+              currency: 'eur',
+            },
+          ],
+        }),
+      () => json(200, { object: 'list', has_more: false, data: [] }),
+    ])
+    const payments = createStripePayments(options(fetchDouble))
+
+    const result = await payments.listPurchases({ customerId: 'cus_1' })
+
+    expect(result.ok && result.purchases[0]).toMatchObject({
+      amountRefunded: 0,
+      chargedAmount: null,
+    })
+  })
+
   it('suit les pages jusqu’à la dernière, en repartant du dernier lu', async () => {
     const { calls, fetchDouble } = harness([
       () =>

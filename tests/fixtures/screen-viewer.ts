@@ -221,27 +221,49 @@ export const FIXTURE_BILLING_PRICE = new Intl.NumberFormat('fr', {
 
 const OFFER: BillingView['offers'][number] = {
   id: 'pro-monthly',
+  mode: 'subscription',
   price: FIXTURE_BILLING_PRICE,
   interval: 'month',
   trialDays: 14,
   perSeat: true,
   current: false,
+  owned: false,
+}
+
+/**
+ * s20 — l'offre **unique**, dont la carte rend des textes qu'aucune offre
+ * d'abonnement ne rend : « paiement unique », et « déjà acheté » quand elle est
+ * possédée.
+ */
+const ONE_TIME_OFFER: BillingView['offers'][number] = {
+  id: 'lifetime',
+  mode: 'one_time',
+  price: FIXTURE_BILLING_PRICE,
+  interval: null,
+  trialDays: null,
+  perSeat: false,
+  current: false,
+  owned: false,
 }
 
 /** Sans abonnement : l'état d'entrée, et le seul qui rende les offres seules. */
 export const FIXTURE_BILLING_NONE: BillingView = {
   state: 'none',
   hasAccess: false,
-  offers: [OFFER],
+  hasSubscription: false,
+  offers: [OFFER, ONE_TIME_OFFER],
   subscription: null,
+  purchases: [],
   canManage: true,
   hasCustomer: false,
+  canOpenPortal: false,
 }
 
 /** Paiement échoué : l'alerte en tête, le badge, et un abonnement au siège. */
 export const FIXTURE_BILLING_PAST_DUE: BillingView = {
   state: 'past_due',
   hasAccess: true,
+  hasSubscription: true,
   offers: [{ ...OFFER, current: true }],
   subscription: {
     offerId: 'pro-monthly',
@@ -250,8 +272,10 @@ export const FIXTURE_BILLING_PAST_DUE: BillingView = {
     cancelAtPeriodEnd: false,
     trialEnd: null,
   },
+  purchases: [],
   canManage: true,
   hasCustomer: true,
+  canOpenPortal: true,
 }
 
 /**
@@ -261,6 +285,7 @@ export const FIXTURE_BILLING_PAST_DUE: BillingView = {
 export const FIXTURE_BILLING_ENDING: BillingView = {
   state: 'ending',
   hasAccess: true,
+  hasSubscription: true,
   offers: [OFFER],
   subscription: {
     offerId: null,
@@ -269,8 +294,48 @@ export const FIXTURE_BILLING_ENDING: BillingView = {
     cancelAtPeriodEnd: true,
     trialEnd: FIXTURE_SESSION_CREATED_AT,
   },
+  purchases: [],
   canManage: true,
   hasCustomer: true,
+  canOpenPortal: true,
+}
+
+/**
+ * s20 — **l'acheteur unique pur** : un achat payé, un achat remboursé, aucun
+ * abonnement.
+ *
+ * C'est le rendu qui porte les textes que nul autre ne produit — le titre de
+ * l'historique, « acheté le … », les deux badges de statut, « déjà acheté » sur
+ * la carte de l'offre — et c'est aussi celui où le bouton du portail **ne doit
+ * pas** apparaître (quatrième critère).
+ */
+export const FIXTURE_BILLING_PURCHASED: BillingView = {
+  state: 'none',
+  // L'accès **consolidé** : il vient de l'achat, sans aucun abonnement.
+  hasAccess: true,
+  hasSubscription: false,
+  offers: [OFFER, { ...ONE_TIME_OFFER, owned: true }],
+  subscription: null,
+  purchases: [
+    {
+      offerId: 'lifetime',
+      price: FIXTURE_BILLING_PRICE,
+      purchasedAt: FIXTURE_SESSION_CREATED_AT,
+      refunded: false,
+    },
+    // Une offre **retirée du catalogue** et un remboursement : la seconde
+    // ligne rend le badge et le libellé que la première ne rend pas.
+    {
+      offerId: null,
+      price: null,
+      purchasedAt: FIXTURE_SESSION_CREATED_AT,
+      refunded: true,
+    },
+  ],
+  canManage: true,
+  hasCustomer: true,
+  // **Aucun portail** : il n'y a pas d'abonnement à gérer.
+  canOpenPortal: false,
 }
 
 /** L'état lu par le double de `billing.view`, à l'appel et non à la construction. */

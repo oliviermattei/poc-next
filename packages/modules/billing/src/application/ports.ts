@@ -1,5 +1,6 @@
 import type { ModuleScope } from '@repo/core'
 
+import type { PurchaseStatus } from '../domain/purchase'
 import type { SubscriptionStatus } from '../domain/subscription'
 
 /**
@@ -33,6 +34,55 @@ export interface SubscriptionRecord {
   readonly lastEventId: string
 }
 
+/**
+ * L'achat unique tel que le cache local le connaît (ADR 038).
+ *
+ * `offerId` n'est **pas** nullable, contrairement à celui d'un abonnement : il
+ * est résolu du catalogue à l'ouverture du checkout, et c'est justement parce
+ * que la confirmation ne le dirait pas que la ligne est écrite d'abord. Une
+ * offre retirée du catalogue laisse la valeur en place ; c'est l'écran qui sait
+ * dire qu'il ne la connaît plus.
+ */
+export interface PurchaseRecord {
+  readonly id: string
+  readonly billingCustomerId: string
+  readonly offerId: string
+  readonly priceId: string
+  readonly providerSessionId: string
+  readonly providerPaymentId: string | null
+  readonly status: PurchaseStatus
+  /** Ce qui a été **prélevé**, connu à la confirmation seulement. */
+  readonly amount: number | null
+  readonly currency: string | null
+  readonly purchasedAt: Date | null
+  readonly refundedAt: Date | null
+  readonly lastEventAt: Date | null
+  readonly lastEventId: string | null
+}
+
+/**
+ * Ce que la réconciliation a **lu** du fournisseur pour une session donnée.
+ *
+ * Des faits, pas une décision : le statut qu'ils imposent — ou l'absence de
+ * statut quand ils n'en imposent aucun — est tranché par
+ * `reconciledPurchaseStatus`, dans le `domain`, qui a besoin de l'état stocké
+ * pour le faire. Porter ici un statut déjà décidé obligeait l'appelant à
+ * trancher sans cet état, et c'est ce qui a fait ré-accorder un achat remboursé
+ * dont la charge était introuvable (constat m1 de la revue de s20).
+ */
+export interface PurchaseReconcileWrite {
+  readonly providerSessionId: string
+  readonly providerPaymentId: string | null
+  /** Le paiement est-il encaissé chez le fournisseur ? */
+  readonly paid: boolean
+  /** La charge relue, ou `null` quand le fournisseur ne la donne pas. */
+  readonly chargedAmount: number | null
+  readonly amountRefunded: number
+  readonly amount: number | null
+  readonly currency: string | null
+  readonly at: Date
+}
+
 /** Ce qu'un événement demande d'écrire, exprimé en **données**, jamais en requêtes. */
 export type BillingEffect =
   /** Rien à écrire : événement non traité, ou client inconnu. */
@@ -41,6 +91,37 @@ export type BillingEffect =
   | {
       readonly kind: 'payment_failed'
       readonly providerSubscriptionId: string
+      readonly lastEventAt: Date
+      readonly lastEventId: string
+    }
+  /**
+   * La **promotion** d'un achat en attente (ADR 038 §1).
+   *
+   * Une mise à jour, jamais une insertion : la ligne existe depuis l'ouverture
+   * du checkout, et c'est elle qui porte l'offre. Une session inconnue n'écrit
+   * rien — l'événement reste journalisé, donc non rejoué.
+   */
+  | {
+      readonly kind: 'purchase_paid'
+      readonly providerSessionId: string
+      readonly providerPaymentId: string | null
+      readonly amount: number | null
+      readonly currency: string | null
+      readonly paidAt: Date
+      readonly lastEventAt: Date
+      readonly lastEventId: string
+    }
+  /**
+   * La **révocation** d'un achat remboursé, retrouvé par son paiement — la
+   * charge ne porte jamais la session.
+   *
+   * Elle n'est produite que lorsque le domaine a jugé le remboursement total
+   * (`refundRevokesPurchase`) : un geste partiel journalise et n'écrit rien.
+   */
+  | {
+      readonly kind: 'purchase_refunded'
+      readonly providerPaymentId: string
+      readonly refundedAt: Date
       readonly lastEventAt: Date
       readonly lastEventId: string
     }
@@ -99,6 +180,33 @@ export interface BillingRepository {
   subscriptionsOfCustomer(billingCustomerId: string): Promise<readonly SubscriptionRecord[]>
 
   /**
+   * **Tous** les achats uniques de ce client, du plus récemment ouvert au plus
+   * ancien, dans un ordre **total** qui ne dépend pas du moteur — la même
+   * discipline que `subscriptionsOfCustomer` (ADR 037).
+   */
+  purchasesOfCustomer(billingCustomerId: string): Promise<readonly PurchaseRecord[]>
+
+  /**
+   * Ouvre — ou rouvre — l'achat d'une offre pour ce client, et rend la ligne.
+   *
+   * **Une contrainte d'unicité, jamais une lecture préalable**
+   * (`docs/reliability.md` §1) : `(billing_customer_id, offer_id)` est unique,
+   * si bien que deux ouvertures simultanées du même achat convergent sur une
+   * ligne. C'est l'invariant central de la story, et il est tenu par le moteur.
+   *
+   * Une ligne **déjà payée n'est jamais rétrogradée** : le refus applicatif
+   * (`already_purchased`) est au-dessus, mais une course entre une confirmation
+   * et une seconde ouverture ne doit pas effacer un achat encaissé.
+   */
+  openPurchase(input: {
+    readonly id: string
+    readonly billingCustomerId: string
+    readonly offerId: string
+    readonly priceId: string
+    readonly providerSessionId: string
+  }): Promise<PurchaseRecord>
+
+  /**
    * Journalise l'événement **et** applique son effet, dans la même transaction.
    *
    * Rend `false` quand l'identifiant était déjà journalisé : c'est un rejeu, et
@@ -137,6 +245,20 @@ export interface BillingRepository {
   replaceSubscriptions(input: {
     readonly billingCustomerId: string
     readonly subscriptions: readonly SubscriptionWrite[]
+  }): Promise<number>
+
+  /**
+   * Réécrit l'état des achats **déjà connus** d'un client, et rend le nombre de
+   * lignes réellement changées.
+   *
+   * Elle ne crée rien : une session que nous n'avons pas ouverte n'a pas
+   * d'offre, et il n'y en a aucune à deviner (ADR 038). Elle n'efface pas
+   * davantage — une lecture partielle du fournisseur ne doit pas couper un
+   * client qui a payé.
+   */
+  reconcilePurchases(input: {
+    readonly billingCustomerId: string
+    readonly purchases: readonly PurchaseReconcileWrite[]
   }): Promise<number>
 
   /** Efface les données de facturation d'un périmètre. Rend le nombre de clients effacés. */

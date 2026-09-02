@@ -35,9 +35,21 @@ lieu d'ouvrir une connexion depuis un poste de développement.
 ## Ce qu'il ne simule pas — écrit plutôt que sous-entendu
 
 Le changement d'offre et l'annulation depuis le portail, l'échec de paiement, la
-fin réelle d'une période. Le portail local se contente de ramener dans
-l'application. Ces états s'éprouvent par **rejeu d'événements enregistrés**
+fin réelle d'une période, **le remboursement d'un achat unique** et **le montant
+prélevé**. Le portail local se contente de ramener dans l'application, et ces
+états-là s'éprouvent par rejeu d'événements enregistrés
 (`tests/billing.test.ts`), pas au navigateur.
+
+**Aucun montant, et c'est une propriété du port** (s20) : `CreateCheckoutInput`
+ne transporte ni prix ni devise — un port qui en porterait inviterait quelqu'un à
+les lui passer depuis un navigateur. Le simulateur n'en invente donc pas : un
+achat terminé en mode local rend `amountTotal: null`, et l'écran affiche l'achat
+sans son prix. C'est la vérité de ce qu'on sait ici, pas un chiffre fabriqué.
+
+**Le mode paiement produit un seul événement** (`checkout.session.completed`,
+`mode: 'payment'`, `payment_status: 'paid'`), là où l'abonnement en produit deux
+volontairement désordonnés : il n'y a pas de second objet à décrire, donc pas de
+désordre à simuler.
 
 L'état vit **en mémoire du processus** : redémarrer le serveur oublie les
 sessions ouvertes. C'est un simulateur, pas une base.
@@ -70,10 +82,11 @@ du mode se fait au point de composition (`apps/web/lib/billing.ts`) sur la
 `src/payments-testing.test.ts`, à côté du code qu'il couvre. Un seul fichier :
 le coût d'une suite est dominé par le fichier, pas par l'assertion.
 
-**Ce qui a été prouvé par mutation** (sur les 13 cas de la suite) : faire lever
+**Ce qui a été prouvé par mutation** (sur les 18 cas de la suite) : faire lever
 le simulateur sur une session inconnue → 1 ; tirer un identifiant de client
 aléatoire au lieu de le dériver du périmètre → 1 ; **signer avec l'horloge
-injectée au lieu de l'horloge réelle → 6**.
+injectée au lieu de l'horloge réelle → 6** ; rendre `payment_status: 'unpaid'`
+dans la session d'achat simulée → 1 (s20).
 
 Cette dernière n'est pas une mutation inventée : c'est le défaut que la suite a
 trouvé toute seule, un jour après avoir été écrite verte. Les deux horodatages

@@ -52,4 +52,22 @@ export const billingOffers = [
     trialDays: 14,
     perSeat: false,
   },
+  /**
+   * **L'achat unique** (s20) — `mode: 'one_time'`, donc ni périodicité ni
+   * période d'essai : le catalogue refuse les deux au démarrage pour ce mode.
+   *
+   * Il ne s'agit pas d'un abonnement déguisé : il n'expire pas, il ne se
+   * renouvelle pas, et un périmètre ne peut le posséder qu'une fois (ADR 038).
+   * Le supprimer d'ici est la manière de ne pas vendre à l'unité.
+   */
+  {
+    id: 'lifetime',
+    mode: 'one_time',
+    priceId: 'price_lifetime',
+    amount: 49_000,
+    currency: 'eur',
+    interval: null,
+    trialDays: null,
+    perSeat: false,
+  },
 ] as const satisfies readonly BillingOffer[]
