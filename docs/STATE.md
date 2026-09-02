@@ -76,7 +76,8 @@ textes ou des comptes, **à l'intérieur d'une story déjà relue**. Ça ne fran
 | B | s18-file-storage-avatar | **fusionnée dans `dev`** (`caaa77c`), deux revues, `minor`/ship oui | close |
 | C | s19-subscribe-stripe | **fusionnée dans `dev`** (`448351d`), trois revues, `minor`/ship oui | close |
 | A | s36-cookie-consent | **fusionnée dans `dev`** (`4500416`), deux revues, `minor`/ship oui | close |
-| B | s20-one-time-purchase | `feature/s20-one-time-purchase` | `s20`, port 3120 |
+| B | s20-one-time-purchase | commit `22b560c`, **en revue** | `s20`, port 3120 |
+| C | s41-mcp-server | `feature/s41-mcp-server` — niveau 2, implémenteur Sonnet | `s41`, port 3141 |
 | D | s17-roles-permissions | **fusionnée dans `dev`** (`2b997df`), revue `major`/ship oui | close |
 | B | s16-invite-members | **fusionnée dans `dev`** (`6f14cc4`), revue `none`/ship oui | close |
 | C | s11-public-forms | **fusionnée dans `dev`** (`9cf45c2`), revue `none`/ship oui | close |
@@ -86,7 +87,7 @@ consommer un de plus.** C'est arrivé deux fois : s16 puis s18 ont ouvert un ADR
 leur correction, sur un numéro déjà réservé à une autre voie. Réserver deux numéros par voie
 coûte moins qu'une renumérotation. Deux voies parallèles qui
 prennent « le prochain numéro libre » prennent le même, et la fusion écrase une décision sans
-conflit visible — les fichiers portent le même nom. Vague en cours : 026 et **029** = s16, 027 = s11, 028 = s13, **030 = s17**, **031 = s14**, **032 = s18**, **033 = s18** (pris au tour de correction), **034 = s19**, **035-036 = s36**, **038-039 = s20** (deux numéros par voie). s16 avait pris 027 à sa reprise
+conflit visible — les fichiers portent le même nom. Vague en cours : 026 et **029** = s16, 027 = s11, 028 = s13, **030 = s17**, **031 = s14**, **032 = s18**, **033 = s18** (pris au tour de correction), **034 = s19**, **035-036 = s36**, **038-039 = s20**, **040-041 = s41** (deux numéros par voie). s16 avait pris 027 à sa reprise
 après coupure : deux ADR de même numéro ne produisent **aucun** conflit de fusion, les fichiers
 portant des noms différents — la numérotation ment en silence. Renumérotation avant fusion.
 
