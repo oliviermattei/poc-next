@@ -31,6 +31,7 @@ export {
   CardHeader,
   CardTitle,
 } from './components/card'
+export { Checkbox } from './components/checkbox'
 export {
   DropdownMenu,
   DropdownMenuContent,
@@ -53,6 +54,7 @@ export {
 } from './components/sheet'
 export { Textarea } from './components/textarea'
 
+export { CookieBanner, type CookieBannerProps } from './composed/cookie-banner'
 export { EmptyState, type EmptyStateProps } from './composed/empty-state'
 export { InlineStyleNonce } from './composed/inline-style-nonce'
 export {

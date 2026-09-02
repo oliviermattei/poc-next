@@ -23,7 +23,7 @@ import {
   sectionDescriptionKey,
   sectionTitleKey,
 } from '../domain/message-keys'
-import { MarketingFooter } from './marketing-footer'
+import { MarketingFooter, type MarketingFooterLink } from './marketing-footer'
 import type { MarketingIntl } from './marketing-intl'
 
 /**
@@ -54,6 +54,14 @@ export interface MarketingHomeProps {
    * dans l'ordre des sections ; il ne le construit pas.
    */
   readonly newsletterForm: ReactNode
+  /**
+   * Les liens que l'application ajoute au pied de page (s36).
+   *
+   * Le module ne sait pas ce qu'est le consentement aux cookies : il reçoit un
+   * lien déjà traduit et l'affiche. Le point d'accès du socle survit ainsi à ce
+   * module optionnel sans y être déclaré.
+   */
+  readonly footerLinks?: readonly MarketingFooterLink[]
 }
 
 function SectionActions({
@@ -140,7 +148,12 @@ function SectionBody({
   )
 }
 
-export function MarketingHome({ site, intl, newsletterForm }: MarketingHomeProps) {
+export function MarketingHome({
+  site,
+  intl,
+  newsletterForm,
+  footerLinks,
+}: MarketingHomeProps) {
   return (
     <>
       {site.sections.map((section, index) => (
@@ -157,7 +170,7 @@ export function MarketingHome({ site, intl, newsletterForm }: MarketingHomeProps
           <SectionBody section={section} intl={intl} newsletterForm={newsletterForm} />
         </MarketingSection>
       ))}
-      <MarketingFooter site={site} intl={intl} />
+      <MarketingFooter site={site} intl={intl} extraLinks={footerLinks} />
     </>
   )
 }

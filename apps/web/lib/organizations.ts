@@ -1,6 +1,7 @@
 import { getEnv } from '@repo/config'
 import { resolveDataOwner, type ModuleScope, type ModuleSession } from '@repo/core'
 import { getDatabase } from '@repo/db'
+import { CONSENT_SCREEN_SEGMENT } from '@repo/module-consent'
 import {
   EMPTY_ORGANIZATIONS_VIEW,
   INVITATION_SCREEN_PATH,
@@ -124,6 +125,9 @@ const APPLICATION_SEGMENTS = [
   // L'écran de contact du site public (s11) : un segment que l'application
   // sert, donc un identifiant qu'aucune organisation ne peut prendre.
   'contact',
+  // L'écran de préférences de cookies (s36) : le segment vient du module, il
+  // n'est pas recopié — le renommer là-bas le réserve ici sans qu'on y pense.
+  CONSENT_SCREEN_SEGMENT,
   'forgot-password',
   // L'écran d'atterrissage d'un lien d'invitation (s16) : un écran servi par
   // l'application, donc un identifiant qu'aucune organisation ne peut prendre.

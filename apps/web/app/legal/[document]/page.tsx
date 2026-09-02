@@ -9,6 +9,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { z } from 'zod'
 
+import { consentFooterLinks } from '../../../lib/consent'
 import { appIntl } from '../../../lib/i18n'
 import { marketingSite } from '../../../lib/marketing'
 
@@ -79,5 +80,12 @@ export default async function LegalPage({
 
   const { t, path } = await appIntl()
 
-  return <LegalDocumentView site={marketingSite} document={document} intl={{ t, path }} />
+  return (
+    <LegalDocumentView
+      site={marketingSite}
+      document={document}
+      intl={{ t, path }}
+      footerLinks={consentFooterLinks(t)}
+    />
+  )
 }

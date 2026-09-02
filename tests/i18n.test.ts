@@ -4,11 +4,14 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
+  MODULE_ROUTE_PREFIX,
   buildRegistry,
+  dispatchModuleRequest,
   resolveLocale,
   singleLocaleRouting,
   type AnyModuleDefinition,
 } from '@repo/core'
+import { configureConsent, resetConsentService } from '@repo/module-consent'
 import { localePrefixRouting } from '@repo/module-i18n'
 import { createRecordingMailer } from '@repo/mailer-testing'
 import { createFormatter, createTranslator } from 'next-intl'
@@ -21,9 +24,11 @@ import { defaultAuthPolicy } from '../packages/modules/auth/src/domain/auth-poli
 import { LOCALE_COOKIE, localeRouting } from '../apps/web/lib/locale-routing'
 import { flatMessagesFor } from '../apps/web/lib/messages'
 import { requestConfigFor } from '../apps/web/i18n/request-config'
+import { moduleRegistry } from '../apps/web/lib/module-registry'
 import { proxy } from '../apps/web/proxy'
 import { availableModules, enabledModules, requiredModules } from '../config/features'
 import { appLocales, defaultLocale } from '../config/i18n'
+import { FIXTURE_CONSENT_SCRIPTS } from './fixtures/screen-viewer'
 
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url))
 
@@ -945,6 +950,55 @@ describe('module i18n non activé', () => {
  * fixe le précédent.
  * ------------------------------------------------------------------------- */
 
+/**
+ * Les en-têtes `Set-Cookie` que **les routes de module** laissent partir.
+ *
+ * Le balayage part du registre de l'application : chaque route déclarée reçoit
+ * une requête de même site, minimale et sans session. Ce qui est ainsi observé,
+ * ce sont les réponses qu'une route rend **sans configuration ni session** —
+ * les autres refusent avant d'écrire quoi que ce soit (401) ou réclament leur
+ * configuration, et ne posent alors aucun cookie. C'est donc un balayage large,
+ * pas une preuve d'exhaustivité : un cookie posé derrière une session ne
+ * passerait pas ici.
+ */
+const moduleRouteSetCookies = async (): Promise<readonly string[]> => {
+  // Le module `consent` est le seul, à ce jour, dont une route publique pose un
+  // cookie : il lui faut sa liste de scripts pour répondre autre chose qu'une
+  // erreur de configuration.
+  configureConsent({ scripts: FIXTURE_CONSENT_SCRIPTS })
+
+  try {
+    const collected: string[] = []
+
+    for (const route of moduleRegistry.routes) {
+      const response = await dispatchModuleRequest(
+        moduleRegistry,
+        new Request(`https://example.test${MODULE_ROUTE_PREFIX}${route.path}`, {
+          method: route.method,
+          headers: {
+            'content-type': 'application/x-www-form-urlencoded',
+            origin: 'https://example.test',
+            referer: 'https://example.test/',
+          },
+          // Un corps **plausible**, pas un corps par route : celui d'un refus
+          // de consentement, la seule soumission qui pose aujourd'hui un
+          // cookie. Le jour où il cesse d'être valide, la garde contre le vide
+          // ci-dessous rougit — le balayage ne peut pas devenir muet en
+          // silence.
+          body:
+            route.method === 'GET' ? undefined : new URLSearchParams({ decision: 'refuse-all' }),
+        }),
+      ).catch(() => null)
+
+      collected.push(...(response?.headers.getSetCookie() ?? []))
+    }
+
+    return collected
+  } finally {
+    resetConsentService()
+  }
+}
+
 /** Les en-têtes `Set-Cookie` que le proxy laisse réellement partir. */
 const setCookiesFor = (pathname: string): readonly string[] =>
   proxy(
@@ -988,6 +1042,25 @@ describe('aucun cookie ne part sans les attributs du socle', () => {
       createRequire(join(REPO_ROOT, workspace, 'package.json')).resolve('next/server')
 
     expect(resolveFrom('apps/web')).toBe(resolveFrom('.'))
+  })
+
+  it('voit aussi les cookies posés par les routes de module', async () => {
+    // Le filet portait le nom du contrôle de socle et ne balayait que le proxy :
+    // retirer `HttpOnly` de `consentSetCookie` ne faisait rougir que le test du
+    // module (revue de s36, constat C6). Il balaie maintenant **le registre**,
+    // et non une liste de chemins écrite à la main : une route ajoutée demain
+    // entre dans le balayage sans que personne y pense.
+    const cookies = await moduleRouteSetCookies()
+
+    // La garde contre le vide : sans une route qui pose réellement un cookie,
+    // tout ce qui suit serait vrai sur zéro en-tête.
+    expect(cookies.length).toBeGreaterThan(0)
+
+    for (const cookie of cookies) {
+      expect(cookie, cookie).toMatch(/;\s*HttpOnly/i)
+      expect(cookie, cookie).toMatch(/;\s*Secure/i)
+      expect(cookie, cookie).toMatch(/;\s*SameSite=/i)
+    }
   })
 })
 

@@ -275,3 +275,28 @@ export const FIXTURE_BILLING_ENDING: BillingView = {
 
 /** L'état lu par le double de `billing.view`, à l'appel et non à la construction. */
 export const billingState: { value: BillingView } = { value: FIXTURE_BILLING_NONE }
+
+/**
+ * Les scripts non essentiels que voient la bannière et l'écran de préférences
+ * pendant ce rendu (s36).
+ *
+ * Deux, un par catégorie, et ce n'est pas de la générosité : le dépôt n'en
+ * déclare aucun dans son état livré — c'est s39 qui apportera PostHog —, si
+ * bien que ni la bannière ni les cases ne seraient rendues et que leurs
+ * libellés sortiraient du filet. Deux catégories permettent en outre de rendre
+ * un badge « accepté » **et** un badge « en attente » sur le même écran.
+ *
+ * Ce sont des chemins servis par l'application, jamais du texte affiché.
+ */
+export const FIXTURE_CONSENT_SCRIPTS = [
+  {
+    id: 'demo-analytics',
+    category: 'analytics' as const,
+    src: '/api/consent-probe/demo-analytics',
+  },
+  {
+    id: 'demo-advertising',
+    category: 'advertising' as const,
+    src: '/api/consent-probe/demo-advertising',
+  },
+]

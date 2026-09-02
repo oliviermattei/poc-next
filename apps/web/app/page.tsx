@@ -6,6 +6,7 @@ import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 
 import { currentViewer } from '../lib/auth'
+import { consentFooterLinks } from '../lib/consent'
 import { NewsletterForm } from './public-form'
 import { appIntl } from '../lib/i18n'
 import { marketingSite } from '../lib/marketing'
@@ -89,6 +90,11 @@ export default async function HomePage() {
       site={marketingSite}
       intl={{ t, path }}
       newsletterForm={<NewsletterForm locale={locale} />}
+      // Le point d'accès au consentement dans le pied de page (s36). Il est
+      // **fourni** par l'application : le module `marketing` ne sait pas ce
+      // qu'est le consentement, et le déclarer chez lui ferait disparaître ce
+      // point d'accès avec le site public.
+      footerLinks={consentFooterLinks(t)}
     />
   )
 }

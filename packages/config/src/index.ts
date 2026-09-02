@@ -5,6 +5,7 @@
  */
 export {
   BUILD_ENV_KEYS,
+  CONSENT_SCRIPT_PROBE_ENABLED,
   EMAIL_LOCAL_CAPTURE_ENABLED,
   ENV_KEYS,
   EnvValidationError,

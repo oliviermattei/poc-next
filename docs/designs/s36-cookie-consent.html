@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>s36 — Consentement aux cookies (maquette de référence)</title>
+    <!--
+      Maquette de référence, pas du code. L'implémentation compose avec les
+      vrais composants de `packages/ui` (`CookieBanner`, `Checkbox`, `Card`,
+      `Badge`, `Button`, `EmptyState`, `PageHeader`). Les tokens ci-dessous sont
+      recopiés de `docs/design-system.md` pour que la maquette s'affiche seule.
+      Les textes sont ceux des catalogues (`messages/fr.json` du module), pour
+      qu'une différence de formulation se voie ici et non en production.
+    -->
+    <style>
+      :root {
+        --background: oklch(1 0 0);
+        --foreground: oklch(0.145 0 0);
+        --card: oklch(1 0 0);
+        --card-foreground: oklch(0.145 0 0);
+        --muted: oklch(0.97 0 0);
+        --muted-foreground: oklch(0.556 0 0);
+        --primary: oklch(0.205 0 0);
+        --primary-foreground: oklch(0.985 0 0);
+        --secondary: oklch(0.97 0 0);
+        --secondary-foreground: oklch(0.205 0 0);
+        --success: oklch(0.627 0.194 149.214);
+        --border: oklch(0.922 0 0);
+        --input: oklch(0.922 0 0);
+        --ring: oklch(0.708 0 0);
+        --radius: 0.5rem;
+      }
+      .dark {
+        --background: oklch(0.145 0 0);
+        --foreground: oklch(0.985 0 0);
+        --card: oklch(0.205 0 0);
+        --card-foreground: oklch(0.985 0 0);
+        --muted: oklch(0.269 0 0);
+        --muted-foreground: oklch(0.708 0 0);
+        --primary: oklch(0.985 0 0);
+        --primary-foreground: oklch(0.205 0 0);
+        --secondary: oklch(0.269 0 0);
+        --secondary-foreground: oklch(0.985 0 0);
+        --success: oklch(0.696 0.17 162.48);
+        --border: oklch(1 0 0 / 10%);
+        --input: oklch(1 0 0 / 15%);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 2rem 1rem;
+        font: 400 0.875rem/1.5 system-ui, sans-serif;
+        background: var(--background);
+        color: var(--foreground);
+      }
+      .stack { display: flex; flex-direction: column; gap: 2rem; max-width: 56rem; margin: 0 auto; }
+      .surface { background: var(--background); color: var(--foreground); border-radius: var(--radius); padding: 1rem; }
+      .card {
+        background: var(--card); color: var(--card-foreground);
+        border: 1px solid var(--border); border-radius: var(--radius);
+      }
+      .card-header { padding: 1.5rem 1.5rem 0; display: flex; flex-direction: column; gap: 0.375rem; }
+      .card-title { font-size: 1.25rem; font-weight: 600; margin: 0; }
+      .card-description { color: var(--muted-foreground); margin: 0; }
+      .card-content { padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
+      .page-header { display: flex; flex-direction: column; gap: 0.375rem; }
+      .page-header h1 { font-size: 1.5rem; font-weight: 600; margin: 0; }
+      .btn {
+        height: 2.5rem; padding: 0 1rem; border-radius: calc(var(--radius) - 2px);
+        border: 1px solid transparent; font: inherit; font-weight: 500; cursor: pointer;
+        background: var(--primary); color: var(--primary-foreground);
+      }
+      .btn-secondary { background: var(--secondary); color: var(--secondary-foreground); }
+      .badge {
+        display: inline-flex; align-items: center; height: 1.375rem; padding: 0 0.5rem;
+        border-radius: 9999px; font-size: 0.75rem; font-weight: 500;
+        background: var(--secondary); color: var(--secondary-foreground);
+        border: 1px solid var(--border);
+      }
+      .badge-success { background: var(--success); color: var(--primary-foreground); border-color: transparent; }
+      .separator { height: 1px; background: var(--border); border: 0; margin: 0; }
+      .choice { display: flex; gap: 0.75rem; align-items: flex-start; }
+      .choice input { width: 1rem; height: 1rem; margin: 0.25rem 0 0; accent-color: var(--primary); flex: none; }
+      .choice .text { display: flex; flex-direction: column; gap: 0.125rem; min-width: 0; }
+      .choice .text strong { font-weight: 500; }
+      .choice .text span { color: var(--muted-foreground); }
+      .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+      .actions .spacer { margin-left: auto; }
+      .note { color: var(--muted-foreground); font-size: 0.75rem; margin: 0; }
+      /* La bannière : rendue en place dans la maquette, `fixed` en production. */
+      .banner {
+        border-top: 1px solid var(--border); background: var(--background);
+        padding: 1rem; border-radius: var(--radius);
+      }
+      .banner-inner { max-width: 56rem; margin: 0 auto; display: flex; flex-direction: column; gap: 0.75rem; }
+      .banner .text { min-width: 0; display: flex; flex-direction: column; gap: 0.25rem; }
+      .banner .banner-title { font-size: 0.875rem; font-weight: 600; margin: 0; }
+      .banner p { margin: 0; color: var(--muted-foreground); }
+      .banner a { color: var(--muted-foreground); text-decoration: underline; text-underline-offset: 4px; width: fit-content; }
+      .banner .buttons { display: flex; flex-direction: column; gap: 0.5rem; }
+      .banner .buttons .btn { width: 100%; }
+      /* Les boutons passent en ligne dès `sm`, la bannière entière dès `md` :
+         c'est ce que fait `CookieBanner` dans `packages/ui`. */
+      @media (min-width: 640px) {
+        .banner .buttons { flex-direction: row; }
+        .banner .buttons .btn { width: auto; }
+      }
+      @media (min-width: 768px) {
+        .banner-inner { flex-direction: row; align-items: center; gap: 1.5rem; }
+        .banner .buttons { margin-left: auto; }
+      }
+      .empty {
+        display: flex; flex-direction: column; align-items: center; gap: 0.5rem;
+        padding: 2.5rem 1.5rem; text-align: center;
+      }
+      .empty .glyph { font-size: 1.25rem; }
+      .footer { display: flex; flex-wrap: wrap; gap: 1rem; border-top: 1px solid var(--border); padding-top: 1rem; }
+      .footer a { color: var(--muted-foreground); }
+      .narrow { max-width: 24.375rem; margin: 0; border: 1px dashed var(--border); }
+    </style>
+  </head>
+  <body>
+    <div class="stack">
+      <!-- 1. La bannière, thème clair, largeur ≥ 768 px. -->
+      <section>
+        <p class="note">
+          1 — Bannière, thème clair, ≥ 768 px. Rendue <strong>seulement</strong>
+          s'il reste une catégorie déclarée non décidée. Non modale
+          (<code>role="region"</code>), en fin de document, sans piège de focus.
+        </p>
+        <div class="banner" role="region" aria-label="Consentement aux cookies">
+          <div class="banner-inner">
+            <div class="text">
+              <p class="banner-title">Cookies non essentiels</p>
+              <p>
+                Ce site peut charger des services tiers qui déposent des cookies.
+                Rien n’est chargé tant que vous n’avez pas choisi.
+              </p>
+              <a href="#preferences">Personnaliser mes choix</a>
+            </div>
+            <form method="post" action="/api/modules/consent/decide" class="buttons">
+              <!-- « Tout refuser » d'abord, et même variante que « Tout accepter » :
+                   refuser n'est ni plus petit, ni plus loin, ni plus long. -->
+              <button type="submit" name="decision" value="refuse-all" class="btn">Tout refuser</button>
+              <button type="submit" name="decision" value="accept-all" class="btn">Tout accepter</button>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. La bannière, thème sombre, 390 px. -->
+      <section>
+        <p class="note">
+          2 — Même bannière, thème sombre, 390 px : colonne, boutons pleine
+          largeur. Deux boutons côte à côte y seraient tronqués.
+        </p>
+        <div class="dark surface narrow">
+          <div class="banner" role="region" aria-label="Consentement aux cookies">
+            <div class="banner-inner">
+              <div class="text">
+                <p class="banner-title">Cookies non essentiels</p>
+                <p>
+                  Ce site peut charger des services tiers qui déposent des
+                  cookies. Rien n’est chargé tant que vous n’avez pas choisi.
+                </p>
+                <a href="#preferences">Personnaliser mes choix</a>
+              </div>
+              <form method="post" action="/api/modules/consent/decide" class="buttons">
+                <button type="submit" name="decision" value="refuse-all" class="btn">Tout refuser</button>
+                <button type="submit" name="decision" value="accept-all" class="btn">Tout accepter</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. L'écran /cookies, un choix enregistré par catégorie. -->
+      <section id="preferences">
+        <div class="page-header">
+          <h1>Cookies</h1>
+          <p class="card-description">
+            Choisissez ce que ce site a le droit de charger. Vous pouvez revenir
+            sur ce choix à tout moment.
+          </p>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-header">
+          <h2 class="card-title">Vos préférences</h2>
+          <p class="card-description">
+            Les cookies strictement nécessaires — session, langue, ce choix
+            lui-même — ne sont pas concernés : sans eux le site ne fonctionne pas.
+          </p>
+        </div>
+        <div class="card-content">
+          <form method="post" action="/api/modules/consent/decide" style="display: flex; flex-direction: column; gap: 1rem">
+            <div class="choice">
+              <input type="checkbox" id="analytics" name="category" value="analytics" checked />
+              <div class="text">
+                <strong><label for="analytics">Mesure d’audience</label></strong>
+                <span>Comprendre comment le site est utilisé, pour l’améliorer.</span>
+              </div>
+              <span class="badge badge-success" style="margin-left: auto">Accepté</span>
+            </div>
+            <hr class="separator" />
+            <div class="choice">
+              <input type="checkbox" id="advertising" name="category" value="advertising" />
+              <div class="text">
+                <strong><label for="advertising">Publicité</label></strong>
+                <span>Personnaliser les annonces qui vous sont présentées ailleurs.</span>
+              </div>
+              <span class="badge" style="margin-left: auto">Refusé</span>
+            </div>
+            <div class="actions">
+              <button type="submit" name="decision" value="refuse-all" class="btn">Tout refuser</button>
+              <button type="submit" name="decision" value="accept-all" class="btn">Tout accepter</button>
+              <span class="spacer"></span>
+              <button type="submit" name="decision" value="save" class="btn">Enregistrer mes choix</button>
+            </div>
+          </form>
+        </div>
+      </section>
+      <p class="note">
+        3 — Le <code>Badge</code> porte l’état <strong>enregistré</strong> :
+        « Accepté », « Refusé », « En attente ». C’est le seul retour de succès —
+        la page est rendue à nouveau et le badge a changé, sans notification.
+        Les cases sont natives : le formulaire fonctionne sans JavaScript.
+      </p>
+
+      <!-- 4. L'écran /cookies quand aucun script non essentiel n'est déclaré. -->
+      <section class="card">
+        <div class="empty">
+          <span class="glyph" aria-hidden="true">🍪</span>
+          <strong>Aucun cookie non essentiel</strong>
+          <span class="card-description">
+            Ce site ne charge aujourd’hui aucun service tiers. Il n’y a rien à
+            accepter ni à refuser.
+          </span>
+        </div>
+      </section>
+      <p class="note">
+        4 — État livré du boilerplate : aucun script déclaré, donc aucune
+        bannière, aucun cookie, et cet <code>EmptyState</code> plutôt qu’un
+        formulaire vide (icône <code>CookieIcon</code> de <code>lucide-react</code>).
+      </p>
+
+      <!-- 5. La carte des paramètres de compte. -->
+      <section class="card">
+        <div class="card-header">
+          <h2 class="card-title">Cookies</h2>
+          <p class="card-description">
+            Modifiez ou retirez votre consentement aux cookies non essentiels à
+            tout moment.
+          </p>
+        </div>
+        <div class="card-content">
+          <div class="actions"><a class="btn" href="#preferences">Gérer mes cookies</a></div>
+        </div>
+      </section>
+      <p class="note">
+        5 — La carte de <code>/account</code> : un lien, pas une action. Elle est
+        rendue <strong>quel que soit l’état du module <code>marketing</code></strong> —
+        c’est le second point d’accès, celui qui reste quand le site public est coupé.
+      </p>
+
+      <!-- 6. Le pied de page public. -->
+      <nav class="footer">
+        <a href="#">Mentions légales</a>
+        <a href="#">Confidentialité</a>
+        <a href="#">Contact</a>
+        <a href="#preferences">Cookies</a>
+      </nav>
+      <p class="note">
+        6 — Le lien du pied de page public, ajouté après les documents légaux et
+        le contact. Il est <strong>fourni par l’application</strong> : le module
+        <code>marketing</code> reçoit une liste de liens, il ne connaît pas le
+        consentement.
+      </p>
+    </div>
+  </body>
+</html>

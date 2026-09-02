@@ -102,6 +102,19 @@ export default defineConfig({
       // ne sauraient de toute façon pas se dérouler contre un vrai
       // fournisseur.
       PAYMENTS_LOCAL_MODE: '1',
+      // Déclare les **deux scripts non essentiels de démonstration** (s36), un
+      // par catégorie de consentement. Le dépôt n'en livre aucun — c'est s39
+      // qui apportera PostHog —, et un mécanisme de consentement sans rien à
+      // consentir n'est éprouvable dans aucun navigateur : sans ce drapeau, il
+      // n'y aurait ni bannière à refuser, ni script dont on puisse mesurer
+      // qu'il n'est **pas** chargé.
+      //
+      // Posé **ici** et pas laissé au `.env` du poste, pour la raison mesurée à
+      // la fusion de s18 : une suite qui passe grâce au fichier d'une machine
+      // ne prouve rien. Conséquence assumée : la bannière est visible dans
+      // **tous** les parcours tant que le consentement n'est pas donné — c'est
+      // la condition réelle d'un déploiement muni d'un outil d'analyse.
+      CONSENT_SCRIPT_PROBE: '1',
     },
     url: BASE_URL,
     // **Jamais de réutilisation.** Un serveur déjà lancé sur ce port peut être

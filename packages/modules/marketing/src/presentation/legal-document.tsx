@@ -8,7 +8,7 @@ import {
   legalSectionTitleKey,
   legalTitleKey,
 } from '../domain/message-keys'
-import { MarketingFooter } from './marketing-footer'
+import { MarketingFooter, type MarketingFooterLink } from './marketing-footer'
 import type { MarketingIntl } from './marketing-intl'
 
 /**
@@ -24,9 +24,16 @@ export interface LegalDocumentViewProps {
   readonly site: MarketingSite
   readonly document: MarketingLegalDocument
   readonly intl: MarketingIntl
+  /** Les liens que l'application ajoute au pied de page (s36). */
+  readonly footerLinks?: readonly MarketingFooterLink[]
 }
 
-export function LegalDocumentView({ site, document, intl }: LegalDocumentViewProps) {
+export function LegalDocumentView({
+  site,
+  document,
+  intl,
+  footerLinks,
+}: LegalDocumentViewProps) {
   return (
     <>
       <PageHeader
@@ -45,7 +52,7 @@ export function LegalDocumentView({ site, document, intl }: LegalDocumentViewPro
           </section>
         ))}
       </div>
-      <MarketingFooter site={site} intl={intl} />
+      <MarketingFooter site={site} intl={intl} extraLinks={footerLinks} />
     </>
   )
 }

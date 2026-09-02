@@ -22,9 +22,36 @@ import type { MarketingIntl } from './marketing-intl'
  * dans la même page (celle du shell et celle-ci) sont indistinguables au
  * clavier et au lecteur d'écran.
  */
+/**
+ * Un lien que **l'application** ajoute au pied de page.
+ *
+ * `href` est un chemin **interne** : c'est le pied de page qui le met dans la
+ * forme publique de la langue servie, une seule fois, comme il le fait pour ses
+ * propres liens.
+ */
+export interface MarketingFooterLink {
+  readonly key: string
+  readonly href: string
+  readonly label: string
+}
+
 export interface MarketingFooterProps {
   readonly site: MarketingSite
   readonly intl: MarketingIntl
+  /**
+   * Les liens que l'application ajoute, après ceux du module.
+   *
+   * Ils existent parce que le socle a des pages que le site public doit
+   * annoncer sans que ce module les connaisse : l'écran de préférences de
+   * cookies de s36 est le premier. Le module ne sait pas ce qu'est le
+   * consentement — il sait afficher un lien qu'on lui donne, déjà traduit.
+   *
+   * C'est aussi ce qui empêche l'inverse, qui serait une régression : déclarer
+   * ces pages dans `config/marketing.ts` ferait disparaître le point d'accès au
+   * consentement avec le site public — exactement la non-conformité que le
+   * finding F57 a relevée.
+   */
+  readonly extraLinks?: readonly MarketingFooterLink[]
 }
 
 /** Le style d'un lien du pied de page. Écrit une fois : deux copies divergeraient. */
@@ -32,7 +59,7 @@ const FOOTER_LINK = cn(
   'rounded-sm text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring',
 )
 
-export function MarketingFooter({ site, intl }: MarketingFooterProps) {
+export function MarketingFooter({ site, intl, extraLinks = [] }: MarketingFooterProps) {
   /**
    * Ce que le pied de page a réellement à montrer.
    *
@@ -56,6 +83,9 @@ export function MarketingFooter({ site, intl }: MarketingFooterProps) {
     ...(site.forms === null
       ? []
       : [{ key: 'contact', href: CONTACT_PATH, label: intl.t(CONTACT_TITLE_KEY) }]),
+    // Les liens du socle viennent après ceux du module : ce sont des pages de
+    // service, pas du contenu du site.
+    ...extraLinks,
   ]
 
   if (links.length === 0) {

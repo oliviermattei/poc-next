@@ -103,6 +103,25 @@ vi.mock('../apps/web/lib/auth', async () => {
   }
 })
 
+/**
+ * Le consentement de la requête — **le contexte de requête**, comme l'appelant.
+ *
+ * `currentConsent()` lit le cookie du visiteur par `next/headers`, qui n'existe
+ * pas hors d'une requête : c'est le shell qui l'appelle depuis s36. Le registre
+ * de scripts, lui, reste celui du vrai point de composition — vide dans l'état
+ * livré —, donc aucune bannière n'est rendue et la mesure de ce fichier porte
+ * bien sur ce que le shell fait, pas sur une fixture.
+ */
+vi.mock('../apps/web/lib/consent', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../apps/web/lib/consent')>()
+  const { resolveConsentState } = await import('@repo/module-consent')
+
+  return {
+    ...actual,
+    currentConsent: () => Promise.resolve(resolveConsentState(actual.consent.scripts, {})),
+  }
+})
+
 vi.mock('../apps/web/lib/i18n', async () => {
   const { buildRegistry } = await import('@repo/core')
   const { createTranslator } = await import('next-intl')

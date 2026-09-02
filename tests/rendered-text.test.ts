@@ -136,6 +136,43 @@ vi.mock('../apps/web/lib/billing', async (importOriginal) => {
   }
 })
 
+/**
+ * Le consentement (s36) : **la configuration la plus fournie**, et le contexte
+ * de requête.
+ *
+ * Même raison que `oauthProviders` juste au-dessus : le dépôt ne déclare aucun
+ * script non essentiel dans son état livré, donc ni la bannière ni les cases de
+ * l'écran de préférences ne seraient rendues, et leurs libellés sortiraient du
+ * filet. Deux scripts sont donc déclarés, et l'état est choisi pour que la
+ * bannière **et** l'écran rendent quelque chose : une catégorie accordée (donc
+ * un script injecté et un badge « accepté »), une catégorie en attente (donc la
+ * bannière et un badge « en attente »).
+ *
+ * `available` reste celui du vrai point de composition : c'est lui qui décide
+ * si l'écran rend ou refuse, et le doubler ferait de ce fichier une
+ * démonstration de sa propre fixture.
+ */
+vi.mock('../apps/web/lib/consent', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../apps/web/lib/consent')>()
+  const { declaredCategories, resolveConsentState } = await import('@repo/module-consent')
+  const { FIXTURE_CONSENT_SCRIPTS } = await import('./fixtures/screen-viewer')
+
+  return {
+    ...actual,
+    // Écrit champ par champ, jamais étalé depuis l'original : `scripts` et
+    // `categories` y sont des accesseurs qui lisent l'environnement, et les
+    // étaler les évaluerait au chargement du double.
+    consent: {
+      available: actual.consent.available,
+      scripts: FIXTURE_CONSENT_SCRIPTS,
+      categories: declaredCategories(FIXTURE_CONSENT_SCRIPTS),
+      prepare: () => {},
+    },
+    currentConsent: () =>
+      Promise.resolve(resolveConsentState(FIXTURE_CONSENT_SCRIPTS, { analytics: true })),
+  }
+})
+
 vi.mock('../apps/web/lib/i18n', async () => {
   const { createTranslator } = await import('next-intl')
   const { localeRouting } = await import('../apps/web/lib/locale-routing')
@@ -278,6 +315,12 @@ const TECHNICAL_PROPS = new Set([
   'callbackURL',
   'className',
   'currentPath',
+  // s36 — la destination de « personnaliser » de la bannière de consentement,
+  // remise au composant du design system. Elle entre ici pour la même raison
+  // qu'`accountHref` : la bannière vit dans le **shell**, donc sur chaque
+  // écran, et ce n'est la prop d'aucun écran en particulier. Le garde-fou de
+  // prose reste actif — `customizeHref="Personnaliser"` rougirait.
+  'customizeHref',
   'destination',
   'href',
   'hrefLang',
@@ -564,9 +607,11 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
      */
     const { marketingSite } = await import('../apps/web/lib/marketing')
     const { organizations } = await import('../apps/web/lib/organizations')
+    const { consent } = await import('../apps/web/lib/consent')
     const organizationsMounted = organizations.available
     const { billing } = await import('../apps/web/lib/billing')
     const billingMounted = billing.available
+    const consentMounted = consent.available
     const LEGAL_SLUG = 'privacy'
     const publicSite = marketingSite.sections.length > 0
     const legalServed = marketingSite.legalDocuments.some(
@@ -648,6 +693,17 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // reste active — `type="Adresse email"` rougirait toujours.
         technicalProps: ['contactRecipient', 'newsletterSource', 'type', 'labelKey'],
         render: async () => (await import('../apps/web/app/contact/page')).default(),
+      },
+      {
+        // s36 — l'écran de préférences de cookies, **public** : un visiteur
+        // anonyme a le même droit qu'un compte à retirer son consentement. Il
+        // refuse quand le module n'est pas monté, comme `/organizations`, et le
+        // refus attendu est **dérivé** de l'état du module.
+        id: 'cookies',
+        file: 'cookies/page.tsx',
+        viewer: ANONYMOUS,
+        refuses: consentMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        render: async () => (await import('../apps/web/app/cookies/page')).default(),
       },
       {
         id: 'compte',

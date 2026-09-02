@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 
 import type { MarketingSite } from '../application/marketing-site'
 import { CONTACT_DESCRIPTION_KEY, CONTACT_TITLE_KEY } from '../domain/message-keys'
-import { MarketingFooter } from './marketing-footer'
+import { MarketingFooter, type MarketingFooterLink } from './marketing-footer'
 import type { MarketingIntl } from './marketing-intl'
 
 /**
@@ -27,9 +27,11 @@ export interface ContactViewProps {
   readonly site: MarketingSite
   readonly intl: MarketingIntl
   readonly form: ReactNode
+  /** Les liens que l'application ajoute au pied de page (s36). */
+  readonly footerLinks?: readonly MarketingFooterLink[]
 }
 
-export function ContactView({ site, intl, form }: ContactViewProps) {
+export function ContactView({ site, intl, form, footerLinks }: ContactViewProps) {
   return (
     <>
       <MarketingSection
@@ -39,7 +41,7 @@ export function ContactView({ site, intl, form }: ContactViewProps) {
       >
         {form}
       </MarketingSection>
-      <MarketingFooter site={site} intl={intl} />
+      <MarketingFooter site={site} intl={intl} extraLinks={footerLinks} />
     </>
   )
 }

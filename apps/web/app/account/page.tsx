@@ -1,3 +1,4 @@
+import { ConsentSettingsCard } from '@repo/module-consent/presentation'
 import {
   Alert,
   Badge,
@@ -17,6 +18,7 @@ import {
   currentSignInMethods,
   currentViewer,
 } from '../../lib/auth'
+import { consent } from '../../lib/consent'
 import { appIntl } from '../../lib/i18n'
 import { AVATAR_CONTENT_TYPES, fileUrl, storage, storageRoutePath } from '../../lib/storage'
 import { SignOutButton } from '../sign-out-button'
@@ -283,6 +285,16 @@ export default async function AccountPage() {
           />
         </CardContent>
       </Card>
+
+      {/*
+        **Le second point d'accès au consentement** (finding F57). Il est rendu
+        quel que soit l'état du module `marketing` : sur une installation qui
+        coupe le site public tout en gardant un script d'analyse, le lien du
+        pied de page n'existe pas, et cette carte est alors le seul moyen de
+        retirer son consentement. `consent.available` est une **donnée**, pas un
+        identifiant de module écrit dans un écran.
+      */}
+      {consent.available ? <ConsentSettingsCard intl={{ t, path }} /> : null}
 
       <Card>
         <CardHeader>

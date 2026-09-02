@@ -48,6 +48,12 @@ export const OAUTH_LOCAL_PROVIDER_ENABLED = '1'
  */
 export const PAYMENTS_LOCAL_MODE_ENABLED = '1'
 
+/**
+ * La valeur qui déclare les **scripts non essentiels de démonstration** (s36) —
+ * même littéral, même raison que les trois ci-dessus.
+ */
+export const CONSENT_SCRIPT_PROBE_ENABLED = '1'
+
 const envShape = {
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   DATABASE_URL: z
@@ -94,6 +100,24 @@ const envShape = {
    * `playwright.config.ts`.
    */
   I18N_MISSING_KEY_PROBE: z.literal(I18N_MISSING_KEY_PROBE_ENABLED).optional(),
+  /**
+   * Déclare **deux scripts non essentiels de démonstration** (s36), servis par
+   * l'application elle-même sur `/api/consent-probe/<id>`, un par catégorie.
+   *
+   * Elle existe parce que le boilerplate ne livre aucun script tiers — c'est s39
+   * qui apportera PostHog — et qu'un mécanisme de consentement sans rien à
+   * consentir n'est éprouvable ni au navigateur, ni à l'œil. Deux scripts et non
+   * un : « le consentement **de sa catégorie** » ne se distingue d'un
+   * tout-ou-rien qu'à partir de deux.
+   *
+   * Opt-in explicite, comme la capture locale des emails et la sonde de
+   * traduction manquante : sans ce drapeau, aucun script n'est déclaré, aucune
+   * bannière n'apparaît, aucun cookie de consentement n'est posé et
+   * `/api/consent-probe/<id>` répond 404. C'est **l'état livré** du boilerplate,
+   * et le critère 7 de la story. Elle n'est activée que par
+   * `playwright.config.ts`.
+   */
+  CONSENT_SCRIPT_PROBE: z.literal(CONSENT_SCRIPT_PROBE_ENABLED).optional(),
   /**
    * Secret de signature des sessions et des jetons d'authentification.
    *

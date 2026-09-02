@@ -81,7 +81,11 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               script anti-clignotement **et** sur le `<style>` qui coupe les
               transitions, à condition qu'on le lui donne. */}
           <ThemeProvider nonce={nonce ?? undefined}>
-            <AppShell>{children}</AppShell>
+            {/* Le nonce descend jusqu'au shell : c'est lui qui rend les scripts
+                non essentiels de s36, et `script-src` porte `'strict-dynamic'` —
+                un `<script src>` sans nonce est refusé, même depuis notre
+                propre origine. */}
+            <AppShell nonce={nonce}>{children}</AppShell>
           </ThemeProvider>
         </NextIntlClientProvider>
       </body>

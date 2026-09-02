@@ -146,17 +146,38 @@ vit dans `apps/web`.
 Ceux que s08 utilise réellement, et rien de plus — copier l'inventaire complet
 « pour plus tard » livrerait du code que personne n'a exercé :
 
-| Copiés | `Accordion`, `Alert`, `Badge`, `Button`, `Card`, `DropdownMenu`, `Input`, `Label`, `Separator`, `Sheet`, `Textarea` |
+| Copiés | `Accordion`, `Alert`, `Badge`, `Button`, `Card`, `Checkbox`, `DropdownMenu`, `Input`, `Label`, `Separator`, `Sheet`, `Textarea` |
 | --- | --- |
-| Composés maison | `EmptyState`, `LocaleSwitcher`, `MarketingSection`, `OrgSwitcher`, `PageHeader`, `Sidebar` / `SidebarNav`, `ThemeProvider`, `ThemeToggle` |
+| Composés maison | `CookieBanner`, `EmptyState`, `LocaleSwitcher`, `MarketingSection`, `OrgSwitcher`, `PageHeader`, `Sidebar` / `SidebarNav`, `ThemeProvider`, `ThemeToggle` |
 
 Le reste de l'inventaire de `docs/design-system.md` — `Form`, `Table`,
 `DataTable`, `Tabs`, `Toaster`, `Command`, `AlertDialog`, `Avatar`, `Tooltip`,
 `Popover`, `Skeleton`, `Progress`, `ScrollArea`, `Breadcrumb`, `Pagination`,
-`Checkbox`, `RadioGroup`, `Select`, `Switch`,
+`RadioGroup`, `Select`, `Switch`,
 `ConfirmDialog`, et les composés des stories à venir — **n'est pas encore
-copié**. C'est la liste au 31 août 2026, révisée par s10 puis par s11 ; le
-document fait foi, pas ce tableau.
+copié**. C'est la liste au 2 septembre 2026, révisée par s10, s11, s18 puis
+s36 ; le document fait foi, pas ce tableau.
+
+`Checkbox` et `CookieBanner` sont arrivés avec **s36**, que le document attribue
+nommément au second (« Bannière de consentement (s36) »).
+
+**`Checkbox` est l'élément natif, et c'est une décision, pas un raccourci.**
+`@radix-ui/react-checkbox` rend un `<button>` doublé d'un `<input>` masqué : la
+case ne se coche pas tant que JavaScript n'a pas pris la main, et sa valeur ne
+part pas dans une soumission native. Le premier formulaire qui l'emploie est
+celui du consentement aux cookies, dont **toute** la propriété est de
+fonctionner sans script — refuser des cookies ne peut pas dépendre du script
+qu'on refuse. La règle « un composant maison qui réimplémente un comportement
+Radix est un défaut d'accessibilité en attente » n'est pas contredite : rien
+n'est réimplémenté ici, c'est la plateforme qui porte le focus, la barre
+d'espace, l'état indéterminé, l'association à l'étiquette et l'envoi du champ.
+`accent-color` teinte la case avec le token du produit sans redessiner un
+contrôle.
+
+`CookieBanner` **n'expose pas de variante par bouton**, et c'est la même
+discipline : « tout refuser » et « tout accepter » partagent variante et taille.
+Un appelant qui pourrait rendre le refus discret rendrait la bannière non
+conforme sans qu'aucune commande ne le voie.
 
 `Textarea` est arrivé avec **s11** : le message du formulaire de contact. Il
 reprend les classes d'`Input` à la hauteur près (`min-h-24`, `resize-y` — un

@@ -24,22 +24,21 @@ module (`packages/modules/<module>/src/domain`).
   `@repo/payments-testing` pour le mode local — **uniquement** dans
   `lib/billing.ts`, qui est le point de composition de la facturation (s19) ;
 - les modules du projet, **uniquement** parce que `config/features.ts` les
-  référence : `@repo/module-auth`, `@repo/module-billing`, `@repo/module-i18n`,
-  `@repo/module-marketing`, `@repo/module-organizations`,
-  `@repo/module-storage`, `@repo/module-demo-enabled` et
-  `@repo/module-demo-enabled` et
-  `@repo/module-demo-disabled` aujourd'hui. Cinq fichiers font exception et
-  importent un module directement — `lib/auth.ts`, le point de composition de
-  l'authentification, `lib/locale-routing.ts`, celui de l'i18n,
-  `lib/marketing.ts`, celui du site public, `lib/organizations.ts`, celui des
-  organisations, et `lib/storage.ts`, celui du stockage (voir plus bas). Les écrans du site public et celui des
-  organisations importent en plus le second point d'entrée de leur module
-  organisations, et `lib/billing.ts`, celui de la facturation (voir plus bas).
-  Les écrans du site public, celui des organisations et celui de la facturation
-  importent en plus le second point d'entrée de leur module
-  (`@repo/module-marketing/presentation`,
+  référence : `@repo/module-auth`, `@repo/module-billing`,
+  `@repo/module-consent`, `@repo/module-i18n`, `@repo/module-marketing`,
+  `@repo/module-organizations`, `@repo/module-storage`,
+  `@repo/module-demo-enabled` et `@repo/module-demo-disabled` aujourd'hui. Sept
+  fichiers font exception et importent un module directement — `lib/auth.ts`, le
+  point de composition de l'authentification, `lib/locale-routing.ts`, celui de
+  l'i18n, `lib/marketing.ts`, celui du site public, `lib/organizations.ts`,
+  celui des organisations, `lib/storage.ts`, celui du stockage,
+  `lib/billing.ts`, celui de la facturation, et `lib/consent.ts`, celui du
+  consentement (voir plus bas). Les écrans du site public, des organisations, de
+  la facturation, des cookies, ainsi que le shell, importent en plus le second
+  point d'entrée de leur module (`@repo/module-marketing/presentation`,
   `@repo/module-organizations/presentation`,
-  `@repo/module-billing/presentation`) : ses composants React n'ont pas
+  `@repo/module-billing/presentation`,
+  `@repo/module-consent/presentation`) : ses composants React n'ont pas
   leur place dans le barril que lit `config/features.ts`, qu'aucun outil du
   dépôt ne compile en JSX (**ADR 024**, la règle de tout module à composants) ;
 - `zod` pour valider les entrées de route — le paramètre `[document]` des pages
@@ -727,6 +726,83 @@ JavaScript — le bouton reste éteint et un `<noscript>` le dit. Une story qui
 voudrait un formulaire natif vers le fournisseur devra déclarer ces origines,
 avec la justification écrite qu'exige `docs/security.md` §1 — voir
 `docs/research/s19-subscribe-stripe.md` §7.
+
+## Le montage du consentement (s36)
+
+Un fichier, sur le modèle exact du site public :
+
+- `lib/consent.ts` porte le **choix** — le module `consent` est-il monté ? —
+  **et le registre des scripts non essentiels** (ADR 036). C'est le seul fichier
+  de l'application qui regarde si ce module est activé, et le seul qui sache
+  qu'un script non essentiel existe. Ailleurs — le shell, l'écran `/cookies`, la
+  carte de compte — on lit `consent`, dont la forme est la même dans les deux
+  états : un drapeau `available`, une liste de scripts vide.
+
+| | module activé | module coupé |
+|---|---|---|
+| `/cookies` | l'écran | **404** |
+| bannière | s'il reste une catégorie non décidée | **jamais** |
+| scripts injectés | ceux dont la catégorie est accordée | **aucun** |
+| cookie `app_consent` | posé au choix du visiteur | jamais posé |
+
+**Le registre n'est pas au contrat de module, et c'est une décision** (ADR 036) :
+y ajouter une quinzième clé obligerait à rouvrir les sept modules écrits **et**
+`docs/architecture.md`. s39 ajoutera trois lignes à `lib/consent.ts` —
+« module d'analytique monté ⇒ le script du fournisseur entre dans la liste » —
+exactement comme `lib/marketing.ts` décide de l'existence du site public.
+
+**Le consentement ne touche jamais la base** (ADR 035) : le choix vit dans le
+cookie `app_consent` (`HttpOnly`, `Secure`, `SameSite=Lax`, six mois), écrit par
+la route du module. Un visiteur anonyme a exactement le même droit qu'un compte,
+et l'enregistrer côté serveur demanderait de le pister pour noter son refus
+d'être pisté.
+
+**Deux points d'accès, et c'est le cœur de la story** (finding F57 de la revue
+des stories) :
+
+- le **lien du pied de page** du site public, fourni par l'application au module
+  `marketing` (`footerLinks`) et non déclaré chez lui — sinon il disparaîtrait
+  avec le site public ;
+- la **carte « Cookies » de `/account`**, rendue quel que soit l'état de
+  `marketing`. Sur une installation « site public coupé, analytique activée », il
+  est le seul moyen de retirer son consentement.
+
+Les deux mènent à `/cookies`, servi par l'application. Son segment est
+**réservé** dans `lib/organizations.ts`, et l'identifiant vient du module
+(`CONSENT_SCREEN_SEGMENT`) : `tests/organizations.test.ts` dérive du disque les
+segments de premier niveau et exige que chacun soit refusé.
+
+**Toute la surface fonctionne sans JavaScript**, et c'est structurel : refuser
+des cookies ne peut pas dépendre du script qu'on refuse. La bannière et l'écran
+de préférences sont des `<form method="post">` natifs avec des `<input
+type="checkbox">` natifs — d'où le `Checkbox` de `packages/ui`, qui n'est **pas**
+porté par Radix. Aucun `<noscript>` n'est nécessaire ici : il n'y a pas de bouton
+éteint à expliquer.
+
+**Le nonce descend jusqu'au shell, et il est obligatoire.** `script-src` porte
+`'strict-dynamic'` (s45) : un navigateur qui comprend CSP niveau 3 **ignore
+alors `'self'` et toute source d'hôte**, si bien qu'un `<script src>` sans nonce
+est refusé — y compris depuis notre propre origine. `app/layout.tsx` lit `x-nonce`
+et le passe à `AppShell`, qui le passe à `ConsentScripts`. Mesuré sous le build
+de production en remplaçant le nonce par une valeur fausse : les deux scripts
+sont bloqués, `e2e/consent.spec.ts` rougit sur deux parcours, et la console dit
+« Note that 'strict-dynamic' is present, so host-based allowlisting is disabled ».
+
+**La bannière réserve sa place au lieu de couvrir la page.** Posée en surface
+fixe sans réserve, elle interceptait les clics de **dix** parcours — pied de
+page marketing, formulaires de fin d'écran, actions d'une ligne de membre à
+390 px. Ce n'était pas un défaut de test : un visiteur ne pouvait pas atteindre
+le bas de la page avant d'avoir répondu, ce qui rend la bannière modale par
+accident. `app/app-shell.tsx` ajoute donc `pb-64 md:pb-36` au contenu tant que
+`bannerRequired` — mesuré au navigateur sous le build de production : la
+bannière fait 241 px à 390 px et 121 px à 1280 px, pour 256 px et 144 px
+réservés.
+
+`app/api/consent-probe/[script]/route.ts` sert les **scripts de démonstration**,
+un par catégorie, sur opt-in explicite `CONSENT_SCRIPT_PROBE=1` — même forme que
+la sonde de traduction manquante de s09, et posé par `playwright.config.ts`, pas
+par le `.env` d'un poste. Sans le drapeau : aucun script déclaré, aucune
+bannière, aucun cookie, et la route répond 404. C'est l'état livré.
 
 ## Le montage du mailer
 

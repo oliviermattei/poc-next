@@ -141,6 +141,24 @@ exploitable. L'écart malformée/valide n'en est pas une non plus — l'appelant
 déjà si son adresse est bien formée. C'est écrit ici pour que la prochaine
 mesure sache ce qui a déjà été mesuré, et sur quoi.
 
+## Le pied de page accepte des liens qu'il ne connaît pas (s36)
+
+`MarketingFooter` porte un `extraLinks`, que les trois vues du module
+(`MarketingHome`, `ContactView`, `LegalDocumentView`) reçoivent en `footerLinks`
+et transmettent. Les liens arrivent **déjà traduits** et portent un chemin
+interne, comme ceux du module.
+
+La raison est le finding F57 de la revue des stories : le socle a des pages que
+le site public doit annoncer sans que ce module les connaisse — l'écran de
+préférences de cookies de s36 est la première. L'inverse, les déclarer dans
+`config/marketing.ts`, ferait **disparaître le point d'accès au consentement
+avec le site public**, c'est-à-dire exactement la non-conformité que s36 existe
+pour empêcher.
+
+Ce module ne sait donc pas ce qu'est le consentement : il affiche un lien qu'on
+lui donne. Le point d'accès qui ne dépend de rien vit ailleurs, dans les
+paramètres de compte de l'application.
+
 ## Ce qui n'est pas livré, et pourquoi
 
 - **le lien de désinscription** dans l'email de confirmation : aucune route

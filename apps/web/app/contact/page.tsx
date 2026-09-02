@@ -3,6 +3,7 @@ import { ContactView } from '@repo/module-marketing/presentation'
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 
+import { consentFooterLinks } from '../../lib/consent'
 import { appIntl } from '../../lib/i18n'
 import { marketingFormsAvailable, marketingSite } from '../../lib/marketing'
 import { ContactForm } from '../public-form'
@@ -53,6 +54,7 @@ export default async function ContactPage() {
       site={marketingSite}
       intl={{ t, path }}
       form={<ContactForm locale={locale} />}
+      footerLinks={consentFooterLinks(t)}
     />
   )
 }
