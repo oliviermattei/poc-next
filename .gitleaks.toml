@@ -1,0 +1,55 @@
+# Configuration du scan de secrets.
+#
+# **Ce fichier n'assouplit rien sur le code de production.** Il déclare que les
+# valeurs de test sont des valeurs de test, et rien d'autre : sans lui, le job
+# bloquant de la CI est rouge dès le premier jour sur quinze doublures — dont
+# plusieurs sont précisément les assertions qui vérifient que le code **masque**
+# les clés. Un contrôle bloquant rouge en permanence finit désarmé par quelqu'un
+# que ça fatigue, et c'est ce désarmement qui laisse passer le vrai secret. Le
+# contrôle doit être vert quand tout va bien, pour que son rouge veuille dire
+# quelque chose.
+#
+# La règle : on autorise par **emplacement de test** et par **valeur
+# manifestement fausse**, jamais par règle désactivée.
+#
+# **Vérifié par mutation, dans le mode que la CI utilise (`gitleaks git`)** :
+# une clé d'allure réelle posée dans `apps/web/lib/` est trouvée (« leaks
+# found: 1 ») ; la même valeur dans `tests/` ne l'est pas. Rejouer la mesure en
+# commitant une sonde puis en lançant
+# `docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest git /repo --config /repo/.gitleaks.toml --log-opts=-1`.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Doublures de test et exemples de documentation"
+
+paths = [
+  # Ce que le scan de répertoire local voit et que la CI ne voit jamais : elle
+  # scanne l'historique git, donc uniquement des fichiers suivis.
+  '''(^|/)node_modules/.*''',
+  '''(^|/)\.next/.*''',
+  '''(^|/)dist/.*''',
+  '''(^|/)\.claude/worktrees/.*''',
+  # Les emplacements de test du dépôt, et eux seuls : la convention est fixée
+  # par `AGENTS.md`, cette liste la reprend telle quelle.
+  '''(^|/)tests/.*''',
+  '''(^|/)e2e/.*''',
+  '''.*\.test\.ts$''',
+  '''.*\.spec\.ts$''',
+  '''(^|/)packages/[^/]*-testing/.*''',
+  '''(^|/)docs/(research|reviews|plans|designs|decisions)/.*''',
+  '''(^|/)\.env\.example$''',
+]
+
+# Les valeurs manifestement fausses, où qu'elles soient : chacune porte une
+# marque qu'aucune clé réelle ne porte.
+regexes = [
+  '''sk_test_double''',
+  '''whsec_[a-z0-9_]*double''',
+  '''secret-de-test-uniquement[-0-9a-z]*''',
+  '''re_test_ABCDEF0123456789''',
+  '''sk_test_51ABCdefGHIjklMNO''',
+  '''nouveau-secret-123''',
+  '''abcdef0123456789(abcdef)?''',
+]
