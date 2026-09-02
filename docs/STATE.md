@@ -34,8 +34,8 @@ open -a Docker && docker compose up -d                                # Postgres
 | Voie | Story | Worktree | Base / port |
 |---|---|---|---|
 | A | s14-passkeys | **fusionnée dans `dev`** (`0c85639`), revue `minor`/ship oui | close |
-| B | s18-file-storage-avatar | corrigée (`6d5d647`), **seconde revue** | `s18`, port 3118 |
-| C | s19-subscribe-stripe | `feature/s19-subscribe-stripe` | `s19`, port 3119 |
+| B | s18-file-storage-avatar | seconde revue `minor`/ship oui, **dernier tour** (cinq mineurs) | `s18`, port 3118 |
+| C | s19-subscribe-stripe | commit `54f7eb2`, **en revue** | `s19`, port 3119 |
 | D | s17-roles-permissions | **fusionnée dans `dev`** (`2b997df`), revue `major`/ship oui | close |
 | B | s16-invite-members | **fusionnée dans `dev`** (`6f14cc4`), revue `none`/ship oui | close |
 | C | s11-public-forms | **fusionnée dans `dev`** (`9cf45c2`), revue `none`/ship oui | close |
@@ -95,6 +95,9 @@ propriétaire** : ingouvernable à vie, et sans commande de réconciliation, ce 
 ligne de schéma sont écrits dans `packages/modules/organizations/AGENTS.md` et l'ADR 030.
 
 ## Pièges de mesure connus
+
+- **Next 16.3.3 charge sa configuration *après* la ligne `✓ Ready`.** Une mesure de démarrage qui
+  s'arrête à cette ligne conclut à tort que les gardes d'environnement sont mortes. Mesuré en s19.
 
 - **`turbo` sert le `.next` de l'autre configuration de modules.** Après un `pnpm ks toggle`, un
   `pnpm build` peut rendre « FULL TURBO » et servir le build précédent : la vérification
