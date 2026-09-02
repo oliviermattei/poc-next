@@ -6,11 +6,11 @@
 
 | Story | État |
 |---|---|
-| s01 → s18, s45 | **closes**, revues, correctifs appliqués |
-| s20 → s44, s46 | à faire — 27 stories (s19 en revue) |
+| s01 → s19, s45 | **closes**, revues, correctifs appliqués |
+| s20 → s44, s46 | à faire — 26 stories (s36 en correction) |
 
-Tests : **1261 + 2 ignorés**, 67 parcours end-to-end, déterministes (`retries: 0`).
-ADR : **33** (026 à 033 fusionnés ; 034 appartient à s19, non fusionnée). Branche : `dev`. Commits : un par story, plus `docs:` pour recherche, plan, revue.
+Tests : **1420 + 6 ignorés**, 73 parcours end-to-end, déterministes (`retries: 0`).
+ADR : **35** (jusqu'à 034 et 037 fusionnés ; 035-036 appartiennent à s36, non fusionnée). Branche : `dev`. Commits : un par story, plus `docs:` pour recherche, plan, revue.
 
 ## Environnement (à refaire après un redémarrage de session)
 
@@ -74,7 +74,7 @@ textes ou des comptes, **à l'intérieur d'une story déjà relue**. Ça ne fran
 |---|---|---|---|
 | A | s14-passkeys | **fusionnée dans `dev`** (`0c85639`), revue `minor`/ship oui | close |
 | B | s18-file-storage-avatar | **fusionnée dans `dev`** (`caaa77c`), deux revues, `minor`/ship oui | close |
-| C | s19-subscribe-stripe | corrigée deux fois (`d95aea2`), **troisième revue ciblée** | `s19`, port 3119 |
+| C | s19-subscribe-stripe | **fusionnée dans `dev`** (`448351d`), trois revues, `minor`/ship oui | close |
 | D | s36-cookie-consent | commit `8448788`, **en revue** | `s36`, port 3136 |
 | D | s17-roles-permissions | **fusionnée dans `dev`** (`2b997df`), revue `major`/ship oui | close |
 | B | s16-invite-members | **fusionnée dans `dev`** (`6f14cc4`), revue `none`/ship oui | close |
