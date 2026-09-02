@@ -8,6 +8,7 @@
     "node": ">=20.10.0"
   },
   "scripts": {
+    "clean": "rm -rf .turbo/cache node_modules/.cache apps/*/.next packages/*/dist test-results playwright-report",
     "dev": "turbo run dev",
     "build": "turbo run build",
     "test": "vitest run",

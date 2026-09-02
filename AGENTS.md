@@ -181,6 +181,7 @@ est de la documentation, pas une règle.
 | `pnpm lint:fix` | idem, en réparant ce qui est réparable | rien : c'est la commande de correction |
 | `pnpm test` | tests unitaires et de câblage (Vitest) | une régression de comportement |
 | `pnpm test:e2e` | parcours navigateur (Playwright) | l'application ne démarre pas, ou ne sert pas la page |
+| `pnpm clean` | vide les artefacts régénérables : cache Turbo, `.next`, `dist`, rapports de test | rien : c'est la commande de nettoyage. Turbo ne purge jamais son cache tout seul — laissé libre il atteint plusieurs dizaines de Go et sature le disque, ce qui fait échouer *toutes* les autres commandes |
 | `pnpm run audit` | vulnérabilités au seuil « élevé », exceptions datées de `.audit-exceptions.json` | une vulnérabilité non exceptée, ou une exception sans date d'expiration. **`pnpm run`** est obligatoire : `pnpm audit` seul appelle la commande interne de pnpm, qui ignore les exceptions |
 | `pnpm db:generate` | génère les migrations SQL depuis le schéma | jamais `push` : la génération est la seule voie |
 | `pnpm db:migrate` | applique les migrations, deux fois de suite sans effet supplémentaire | une migration en échec |
