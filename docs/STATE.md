@@ -4,8 +4,13 @@
 
 ## REPRENDRE ICI
 
-**Aucune voie en cours.** `dev` est à jour, poussée, aucun worktree ouvert.
-Le travail reprend en **série** : une story à la fois, branchée sur `dev`.
+**Une voie, en série** : **s21-trials-and-gating**, worktree
+`.claude/worktrees/agent-a1cb10ded3429bf47`, branche `feature/s21-trials-and-gating`,
+base `s21`, port 3121, ADR réservés 043-044.
+
+C'est la première story menée en série. Après elle : **s39** (monitoring, dépend
+de s36), **s46** (écrans d'authentification), **s32** (notifications), **s37**
+(admin, dépend de s21).
 
 Candidates dont les dépendances sont satisfaites : **s21** (essais et gating,
 dépend de s20 — fusionnée), **s39** (monitoring, dépend de s36), **s46** (écrans
