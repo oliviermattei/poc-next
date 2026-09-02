@@ -42,8 +42,9 @@ module (`packages/modules/<module>/src/domain`).
   leur place dans le barril que lit `config/features.ts`, qu'aucun outil du
   dépôt ne compile en JSX (**ADR 024**, la règle de tout module à composants) ;
 - `zod` pour valider les entrées de route — le paramètre `[document]` des pages
-  légales aujourd'hui. Zod à **chaque** frontière (`docs/security.md` §4), y
-  compris un segment d'URL ;
+  légales et le `?offer=` de la page de tarifs (s22), à ce jour. Zod à **chaque**
+  frontière (`docs/security.md` §4), y compris un segment d'URL et un paramètre
+  de requête qui n'est qu'une préférence d'affichage ;
 - `next-intl` pour la résolution des chaînes — dans `i18n/request.ts`,
   `i18n/request-config.ts`, `lib/i18n.ts`, `app/api/i18n-probe/route.ts` et les
   composants qui affichent du texte. La bibliothèque est un
@@ -714,6 +715,33 @@ identifiants de session locale sont déterministes, donc devinables, et sans
 cette garde un visiteur terminait le checkout ouvert par quelqu'un d'autre
 (constat F7 de la revue). Le refus est **404** dans les trois cas — mode local
 absent, appelant anonyme, session d'un autre périmètre.
+
+**La page publique de tarifs** (s22) est servie par `app/pricing/page.tsx`. Elle
+suit le modèle de `/billing` — 404 sur `billing.available`, une **donnée** — mais
+**sans redirection de session** : comparer des offres ne demande aucun compte.
+Elle lit `billingCatalogue()`, jamais `billing.view()`, qui exige une session.
+
+Son déclencheur a deux formes, et la distinction est une garde autant qu'une
+commodité : **sans session, un lien** vers la connexion portant l'offre en
+`?next=` — monter `BillingAction` viserait une route `authenticated`, donc un
+403, bruit inutile et signal trompeur ; **avec une session**, `BillingAction`,
+qui n'envoie qu'un identifiant d'offre. Le retour de connexion **repose** le
+choix, il ne l'achète pas (ADR 045) : ouvrir le tunnel sur un paramètre d'URL
+laisserait un lien forgé créer une session de paiement au nom d'un tiers.
+
+Son segment est **réservé** dans `lib/organizations.ts`, comme tout écran servi
+par l'application — et il est écrit là en plus d'être dérivé de la navigation,
+parce que le fichier existe sur le disque même quand le module est coupé.
+
+**Un bouton désactivé jusqu'à l'hydratation ne peut pas porter `autoFocus`.**
+L'attribut que React rend dans le document servi est appliqué par le navigateur à
+l'analyse : il focalise bien un `<a>`, il ne focalise **rien** d'un bouton
+désactivé, et rien ne repose le focus quand le bouton se rallume — mesuré à la
+revue de s22, `document.activeElement` restait `BODY` pendant que trois textes
+affirmaient le contraire. Tout écran qui veut donner le focus à un contrôle
+éteint par `useHydrated` passe donc par `app/use-focus-when-ready.ts`, qui le
+pose après l'hydratation. La commande qui le garde est `pnpm test:e2e` : un focus
+n'existe que dans un navigateur, et aucun test de nœud ne peut le voir.
 
 **Ce que la politique de sécurité du contenu n'a pas eu à changer, et pourquoi
 c'est fragile.** Une redirection 303 vers `checkout.stripe.com` depuis une

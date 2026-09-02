@@ -142,6 +142,11 @@ const APPLICATION_SEGMENTS = [
   // prendre. Il existe sur le disque quel que soit l'état du module de
   // facturation, et c'est du disque que `tests/organizations.test.ts` dérive.
   'premium',
+  // La page publique de tarifs (s22) : elle est aussi dérivée de la navigation
+  // du registre, mais son fichier d'écran existe sur le disque **même quand le
+  // module de facturation est coupé** — et c'est du disque que
+  // `tests/organizations.test.ts` dérive. Même raison que `billing` plus haut.
+  'pricing',
   'reset-password',
   'sign-in',
   'sign-up',

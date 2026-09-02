@@ -105,6 +105,26 @@ export const BILLING_KEYS = {
   changeThroughPortal: billingKey('offers.changeThroughPortal'),
   checkoutSuccess: billingKey('return.success'),
   checkoutCancelled: billingKey('return.cancelled'),
+  /**
+   * **La page publique de tarifs** (s22), et ses clés à elle.
+   *
+   * Elles ne réemploient pas `interval.*` ni `offers.*` : l'écran de
+   * facturation parle à quelqu'un qui a déjà un compte et souvent un
+   * abonnement, la page de tarifs parle à un visiteur. « par mois » y est la
+   * périodicité d'un prix affiché, pas l'état d'un abonnement en cours — et un
+   * projet qui reformule l'un n'a aucune raison de reformuler l'autre.
+   */
+  pricing: {
+    title: billingKey('pricing.title'),
+    description: billingKey('pricing.description'),
+    perMonth: billingKey('pricing.perMonth'),
+    perYear: billingKey('pricing.perYear'),
+    oneTime: billingKey('pricing.oneTime'),
+    trialBadge: billingKey('pricing.trialBadge'),
+    emptyTitle: billingKey('pricing.empty.title'),
+    emptyDescription: billingKey('pricing.empty.description'),
+    noScript: billingKey('pricing.noscript'),
+  },
   refusal: {
     forbidden: billingKey('refusal.forbidden'),
     unknownOffer: billingKey('refusal.unknownOffer'),

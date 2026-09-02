@@ -41,6 +41,7 @@ export {
   type BillingMode,
   type BillingOffer,
 } from './domain/offer'
+export { highlightedOfferId, selectedOfferOf } from './domain/pricing'
 export {
   PURCHASE_STATUSES,
   grantsBillingAccess,
@@ -101,6 +102,7 @@ export {
 } from './infrastructure/billing-runtime'
 export {
   BILLING_SCREEN_PATH,
+  PRICING_SCREEN_PATH,
   billingNavigation,
   billingRoutePath,
 } from './presentation/billing-routes'

@@ -12,3 +12,8 @@
  */
 export { BillingScreen, type BillingScreenProps } from './billing-screen'
 export type { BillingIntl } from './billing-intl'
+export {
+  PricingTable,
+  type PricingOfferView,
+  type PricingTableProps,
+} from './pricing-table'

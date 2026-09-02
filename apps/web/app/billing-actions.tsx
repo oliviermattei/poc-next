@@ -5,6 +5,7 @@ import { Alert, Button } from '@repo/ui'
 import { useTranslations } from 'next-intl'
 import { useState, type FormEvent } from 'react'
 
+import { useFocusWhenReady } from './use-focus-when-ready'
 import { useHydrated } from './use-hydrated'
 
 /**
@@ -39,6 +40,20 @@ interface BillingActionProps {
   readonly offerId?: string
   readonly locale: string
   readonly variant?: 'default' | 'outline'
+  /**
+   * Reprend le focus **une fois le bouton allumé** (s22, ADR 045).
+   *
+   * Une personne revenue de la connexion avec son offre en poche retrouve son
+   * bouton sous le curseur ; l'ouverture du tunnel reste son geste.
+   *
+   * Pas `autoFocus` : le navigateur applique l'attribut servi à l'analyse du
+   * document, où ce bouton est encore **désactivé** jusqu'à l'hydratation — il
+   * ne focalise donc rien, et rien ne repose le focus au rallumage. Mesuré à la
+   * revue de s22, `document.activeElement` restait `BODY`. Le focus est posé
+   * par `useFocusWhenReady`, après l'hydratation, et `pnpm test:e2e` rougit s'il
+   * disparaît.
+   */
+  readonly focusOnReady?: boolean
 }
 
 /** Les clés de refus que le serveur peut rendre. Une clé inconnue retombe. */
@@ -50,9 +65,11 @@ export function BillingAction({
   offerId,
   locale,
   variant = 'default',
+  focusOnReady = false,
 }: BillingActionProps) {
   const t = useTranslations()
   const hydrated = useHydrated()
+  const focus = useFocusWhenReady<HTMLButtonElement>(focusOnReady && hydrated)
   const [pending, setPending] = useState(false)
   const [refusalKey, setRefusalKey] = useState<string | null>(null)
 
@@ -116,7 +133,13 @@ export function BillingAction({
         <Alert variant="warning">{t(BILLING_KEYS.noScript)}</Alert>
       </noscript>
 
-      <Button type="submit" variant={variant} disabled={pending || !hydrated} className="w-full">
+      <Button
+        type="submit"
+        ref={focus}
+        variant={variant}
+        disabled={pending || !hydrated}
+        className="w-full"
+      >
         {t(labelKey)}
       </Button>
     </form>
