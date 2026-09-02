@@ -42,6 +42,7 @@
     "@repo/module-demo-enabled": "workspace:*",
     "@repo/module-i18n": "workspace:*",
     "@repo/module-marketing": "workspace:*",
+    "@repo/module-mcp-server": "workspace:*",
     "@repo/module-organizations": "workspace:*",
     "@repo/module-storage": "workspace:*",
     "@repo/payments-testing": "workspace:*",

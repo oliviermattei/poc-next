@@ -528,6 +528,11 @@ describe('ks toggle — écriture sur un dépôt temporaire', () => {
     // qu'on le lui demande : toucher la base.
     expect(harness.migrated).toEqual([])
     expect(outcome.migrationsApplied).toBe(false)
+    // Et elles sont **nommées** dans le résultat : la façade terminal les
+    // imprime, une façade lue par une machine n'a que cet objet.
+    expect(outcome.migrations).toEqual([
+      { moduleId: 'facturation', path: 'packages/modules/facturation/migrations' },
+    ])
     expect(harness.lines.join('\n')).toContain('pnpm db:migrate')
   })
 

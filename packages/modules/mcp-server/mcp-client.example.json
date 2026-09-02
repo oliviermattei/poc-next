@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "killer-boilerplate": {
+      "command": "node",
+      "args": ["./packages/modules/mcp-server/bin/mcp-server.mjs"]
+    }
+  }
+}

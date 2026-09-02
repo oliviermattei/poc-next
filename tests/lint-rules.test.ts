@@ -1,4 +1,5 @@
-import { join } from 'node:path'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { boundariesOnlyConfig } from '@repo/eslint-config/boundaries'
@@ -1093,5 +1094,124 @@ describe('la matrice des rôles ne se compare qu’à un endroit', () => {
       .then(([result]) => (result?.messages ?? []).map((message) => message.message))
 
     expect(messages.filter((message) => message.includes('scoped-reads.ts'))).not.toEqual([])
+  })
+})
+
+/**
+ * Aucun module n'échappe à une frontière (ADR 006, ADR 042).
+ *
+ * Le lint des couches est câblé sur
+ * `packages/modules/<module>/src/{domain,application,infrastructure,presentation}` :
+ * un module dont le `src/` est plat ne matche aucun motif, et la règle ne peut
+ * **rien** lui refuser — elle est vraie en apparence et inerte en fait. Deux
+ * formes sont donc admises, et une seule des deux dispense des couches : le
+ * module-processus (ADR 042), qui ne sert aucune route et concentre tout ce qui
+ * touche au monde extérieur dans son unique point de composition `src/bin.ts`.
+ * La seconde assertion est la frontière qui remplace le lint pour ceux-là ; sans
+ * elle, « le module est exempté » serait une phrase que rien ne vérifie.
+ */
+describe('chaque module est tenu par une frontière (ADR 006, ADR 042)', () => {
+  const MODULES_ROOT = 'packages/modules'
+  const LAYERS = ['domain', 'application', 'infrastructure', 'presentation']
+  /** Les fichiers du contrat, à la racine de `src/` : le registre les lit tels quels. */
+  const CONTRACT_FILES = ['index.ts', 'module.ts', 'schema.ts']
+  /** Les gabarits d'e-mails, déclarés par le contrat (`emails`), hors code de couche. */
+  const CONTRACT_DIRECTORIES = ['emails']
+
+  const modules = readdirSync(join(REPO_ROOT, MODULES_ROOT), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .filter((name) => existsSync(join(REPO_ROOT, MODULES_ROOT, name, 'package.json')))
+
+  const sourceFiles = (directory: string): string[] =>
+    readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+      const full = join(directory, entry.name)
+
+      if (entry.isDirectory()) {
+        return sourceFiles(full)
+      }
+
+      return entry.name.endsWith('.ts') && !entry.name.endsWith('.test.ts') ? [full] : []
+    })
+
+  /** Les fichiers qu'aucun motif de la règle de couches ne peut classer. */
+  const unjudged = (name: string): string[] => {
+    const root = join(REPO_ROOT, MODULES_ROOT, name, 'src')
+
+    return sourceFiles(root)
+      .map((file) => relative(root, file))
+      .filter(
+        (file) =>
+          ![...LAYERS, ...CONTRACT_DIRECTORIES].some((directory) =>
+            file.startsWith(`${directory}/`),
+          ) && !CONTRACT_FILES.includes(file),
+      )
+  }
+
+  const processModules = modules.filter((name) => unjudged(name).length > 0)
+
+  it('n’a trouvé aucun fichier de module hors de portée de la règle', () => {
+    expect(modules).not.toEqual([])
+
+    for (const name of modules) {
+      const files = unjudged(name)
+
+      // Un fichier hors des quatre couches n'est refusé par rien : la règle
+      // ADR 006 ne le classe pas, donc ne peut rien lui interdire. Seul le
+      // module-processus (ADR 042) en a le droit, et il le paie par la garde
+      // ci-dessous.
+      expect(
+        files.length === 0 || existsSync(join(REPO_ROOT, MODULES_ROOT, name, 'src', 'bin.ts')),
+        `${name} : ${files.join(', ')} hors des couches, sans point de composition « src/bin.ts »`,
+      ).toBe(true)
+    }
+  })
+
+  it('ne laisse sortir du baril d’un module-processus que son contrat', () => {
+    // `config/features.ts` importe ce baril et `apps/web` importe
+    // `config/features.ts` : tout ce qui en sort entre dans le bundle serveur
+    // de l'application. Réexporter le serveur MCP y tirait son SDK — module
+    // activé comme désactivé, et sans consommateur (mesuré : 8 fichiers de
+    // `.next/server` le nommaient, 0 après).
+    expect(processModules).not.toEqual([])
+
+    for (const name of processModules) {
+      const barrel = readFileSync(join(REPO_ROOT, MODULES_ROOT, name, 'src', 'index.ts'), 'utf8')
+      const specifiers = [...barrel.matchAll(/from\s+'([^']+)'/g)].map((match) => match[1] ?? '')
+
+      expect(specifiers, `${name} : le baril ne porte que le contrat`).toEqual(['./module'])
+    }
+  })
+
+  it('ne laisse un module-processus toucher au monde que dans src/bin.ts', () => {
+    // Ce qu'ADR 042 confine au point de composition, faute de couches pour le
+    // faire : le sous-processus, le transport, et le chargement de
+    // `config/features.ts` — qui passe par un `import()` dynamique, la seule
+    // façon de lire un fichier de configuration à un chemin calculé. Les
+    // commentaires sont retirés d'abord : ils nomment ces choses sans les
+    // faire. Les tests non plus ne sont pas la surface du module — ils lancent
+    // le vrai binaire, et `sourceFiles` les écarte.
+    const FORBIDDEN_IMPORT = /node:child_process|server\/stdio\.js/
+    const withoutComments = (content: string): string =>
+      content.replaceAll(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, '')
+
+    expect(processModules).not.toEqual([])
+
+    for (const name of processModules) {
+      const root = join(REPO_ROOT, MODULES_ROOT, name, 'src')
+
+      for (const file of sourceFiles(root).filter((path) => !path.endsWith('/bin.ts'))) {
+        const code = withoutComments(readFileSync(file, 'utf8'))
+        const specifiers = [...code.matchAll(/from\s+'([^']+)'/g)].map((match) => match[1] ?? '')
+
+        expect(
+          specifiers.filter((specifier) => FORBIDDEN_IMPORT.test(specifier)),
+          `${file} sort du point de composition`,
+        ).toEqual([])
+        expect(code, `${file} charge une configuration hors du point de composition`).not.toMatch(
+          /\bimport\s*\(/,
+        )
+      }
+    }
   })
 })

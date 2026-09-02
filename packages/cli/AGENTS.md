@@ -66,6 +66,18 @@ invalide ou un commentaire déplacé en silence : le rendu est confronté aux
 liste ne suffit pas, la récupération d'erreur la rend intacte sur un fichier
 cassé — et tout commentaire perdu passe par `droppedComments`.
 
+**5. `ks scaffold <id>` (s41) génère un paquet, il ne l'installe pas.** Il
+écrit `packages/modules/<id>` avec le contrat à 13 clés déjà rempli (ADR 007),
+et rien d'autre : il **n'édite jamais** `availableModules` dans
+`config/features.ts` — cette ligne reste, comme documenté plus bas, le geste
+de l'installation, pas du scaffolding. L'identifiant est validé en
+`kebab-case` avant tout calcul de chemin : c'est ce qui empêche un
+identifiant du type `../../etc` d'atteindre un chemin de fichier hors de
+`packages/modules/`. Et parce qu'un agent n'a pas la garde qu'a un humain qui
+relit avant de valider, `ks scaffold` refuse sur un dépôt aux modifications
+non commitées (`src/git-guard.ts`, ADR 041) — refus que `ks toggle` (s05) ne
+porte **pas** : son contrat et ses tests ne changent pas avec cette story.
+
 Le CLI est utilisable par un agent autant que par un humain (ADR 013) : `--json`
 rend une sortie lisible par une machine, et hors terminal interactif il ne pose
 aucune question — il refuse en nommant le drapeau qui aurait autorisé l'action.
@@ -108,9 +120,17 @@ Pas de bibliothèque d'analyse d'arguments ni d'invites interactives : l'analyse
 tient en une fonction pure, et `node:readline/promises` pose les questions. Une
 dépendance de plus se justifie par une story, pas par une commodité.
 
-Ce package n'expose aucun point d'entrée importable : on l'utilise par sa
-commande `ks`, pas par un `import`. Un baril de réexports sans consommateur
-donnerait à croire qu'il en existe un.
+**Depuis s41, ce package a un second point d'entrée : `src/index.ts`.** Avant,
+il n'exposait aucun `import` — seulement sa commande. La story du serveur MCP
+exige que la seconde façade « réutilise la logique du CLI de s05, jamais une
+seconde implémentation » ; extraire un nouveau paquet aurait déplacé ~600
+lignes déjà couvertes (dont les 768 allers-retours mesurés sur
+`features-file.ts`) pour un gain surtout cosmétique (ADR 040). `src/index.ts`
+exporte donc le moteur — tout ce qui reçoit des modules et de l'environnement
+en paramètre — et rien d'autre : ni `bin.ts`, ni un accès à
+`config/features.ts`. `bin.ts` reste le **seul** point de composition CLI, et
+`packages/modules/mcp-server` en est le second, tous deux à parts égales
+consommateurs de `src/index.ts`.
 
 `config/features.ts` n'est lu que dans `src/bin.ts` — c'est le **point de
 composition**. Les fonctions de `src/` reçoivent des modules et du texte ; sans

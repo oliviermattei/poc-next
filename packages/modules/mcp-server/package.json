@@ -1,25 +1,27 @@
 {
-  "name": "@repo/cli",
+  "name": "@repo/module-mcp-server",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "bin": {
-    "ks": "./bin/ks.mjs"
-  },
   "exports": {
     ".": "./src/index.ts"
+  },
+  "bin": {
+    "boilerplate-mcp": "./bin/mcp-server.mjs"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@repo/cli": "workspace:*",
     "@repo/core": "workspace:*",
-    "ts-morph": "^28.0.0",
-    "tsx": "^4.23.13"
+    "zod": "^4.5.0"
   },
   "devDependencies": {
     "@repo/typescript-config": "workspace:*",
     "@types/node": "^22",
+    "tsx": "^4.23.13",
     "typescript": "^7.0.2",
     "vitest": "^4.1.11"
   }

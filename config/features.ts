@@ -6,6 +6,7 @@ import { demoDisabledModule } from '@repo/module-demo-disabled'
 import { demoEnabledModule } from '@repo/module-demo-enabled'
 import { i18nModule } from '@repo/module-i18n'
 import { marketingModule } from '@repo/module-marketing'
+import { mcpServerModule } from '@repo/module-mcp-server'
 import { organizationsModule } from '@repo/module-organizations'
 import { storageModule } from '@repo/module-storage'
 
@@ -35,6 +36,7 @@ export const availableModules = [
   consentModule,
   i18nModule,
   marketingModule,
+  mcpServerModule,
   organizationsModule,
   storageModule,
   demoEnabledModule,
@@ -78,6 +80,7 @@ export const enabledModules = [
   'consent',
   'i18n',
   'marketing',
+  'mcp-server',
   'organizations',
   'storage',
   'demo-enabled',

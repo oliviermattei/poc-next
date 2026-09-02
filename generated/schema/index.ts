@@ -12,6 +12,7 @@ import * as consent from './consent'
 import * as demoEnabled from './demo-enabled'
 import * as i18n from './i18n'
 import * as marketing from './marketing'
+import * as mcpServer from './mcp-server'
 import * as organizations from './organizations'
 import * as storage from './storage'
 
@@ -22,6 +23,7 @@ export const enabledModuleSchemas = [
   { id: 'demo-enabled', schema: demoEnabled },
   { id: 'i18n', schema: i18n },
   { id: 'marketing', schema: marketing },
+  { id: 'mcp-server', schema: mcpServer },
   { id: 'organizations', schema: organizations },
   { id: 'storage', schema: storage },
 ] as const satisfies readonly ModuleSchema[]

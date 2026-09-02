@@ -7,9 +7,13 @@ import { pathToFileURL } from 'node:url'
 import type { AnyModuleDefinition } from '@repo/core'
 
 import { ArtifactSnapshotError, RegenerationFailedError } from './apply'
+import { applyScaffold, ScaffoldDirectoryExistsError, ScaffoldWriteError } from './apply-scaffold'
 import { ArgumentError, parseArguments, USAGE } from './arguments'
 import { renderModuleList, runList, runToggle, type ToggleEnvironment } from './commands'
 import { FeaturesFileError } from './features-file'
+import { assertRepositoryClean, DirtyRepositoryError } from './git-guard'
+import { planScaffold, ScaffoldRefusedError } from './scaffold'
+import { scaffoldFiles } from './scaffold-files'
 import { ToggleRefusedError } from './toggle'
 
 /**
@@ -121,6 +125,32 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       return 0
     }
 
+    if (options.command === 'scaffold') {
+      // La garde de dépôt propre (ADR 041) : `ks scaffold` n'existait pas avant
+      // s41, elle n'a donc aucun usage établi à préserver. Un agent qui l'invoke
+      // doit pouvoir toujours annuler.
+      await assertRepositoryClean(root)
+
+      const plan = planScaffold({ available, moduleId: options.moduleId })
+      const written = await applyScaffold({
+        repoRoot: root,
+        packagePath: plan.packagePath,
+        files: scaffoldFiles(plan.moduleId),
+      })
+
+      if (options.json) {
+        console.log(JSON.stringify({ moduleId: plan.moduleId, written }, null, 2))
+      } else {
+        console.log(
+          `Module ${plan.moduleId} généré dans ${plan.packagePath} :\n${written
+            .map((path) => `  - ${path}`)
+            .join('\n')}`,
+        )
+      }
+
+      return 0
+    }
+
     // Hors terminal — un agent, la CI — aucune question n'est posée : personne
     // n'y répondrait, et une commande qui attend sur `stdin` est inutilisable
     // (ADR 013). `--json` force le même régime.
@@ -175,7 +205,11 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       error instanceof ToggleRefusedError ||
       error instanceof FeaturesFileError ||
       error instanceof ArtifactSnapshotError ||
-      error instanceof RegenerationFailedError
+      error instanceof RegenerationFailedError ||
+      error instanceof ScaffoldRefusedError ||
+      error instanceof ScaffoldDirectoryExistsError ||
+      error instanceof ScaffoldWriteError ||
+      error instanceof DirtyRepositoryError
     ) {
       console.error(error.message)
 

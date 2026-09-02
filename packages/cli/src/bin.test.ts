@@ -1,8 +1,9 @@
-import { spawn } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { promisify } from 'node:util'
 
 import { afterAll, describe, expect, it } from 'vitest'
 
@@ -233,5 +234,63 @@ describe('ks, lancé comme un utilisateur le lance', () => {
     expect(unknown.stderr).toContain('--with-requiers')
     // Rien n'a été basculé par une invocation refusée.
     expect(await repo.features()).toBe(FEATURES)
+  }, 30_000)
+})
+
+const execFileAsync = promisify(execFile)
+
+/** `ks scaffold` pose la garde de dépôt propre (ADR 041) : il lui faut un vrai dépôt git. */
+const gitInit = async (root: string): Promise<void> => {
+  await execFileAsync('git', ['init', '--quiet'], { cwd: root })
+  await execFileAsync('git', ['config', 'user.email', 'test@example.com'], { cwd: root })
+  await execFileAsync('git', ['config', 'user.name', 'Test'], { cwd: root })
+  await execFileAsync('git', ['add', '.'], { cwd: root })
+  await execFileAsync('git', ['commit', '--quiet', '-m', 'initial'], { cwd: root })
+}
+
+describe('ks scaffold, lancé comme un utilisateur le lance', () => {
+  it('génère le squelette et l’annonce en JSON, fichier par fichier', async () => {
+    const repo = await temporaryRepo(NOISY_GENERATE)
+
+    await gitInit(repo.root)
+
+    const result = await ks(['scaffold', 'roadmap', '--json'], repo.root)
+
+    expect(result.code).toBe(0)
+
+    const parsed = JSON.parse(result.stdout) as { moduleId: string; written: string[] }
+
+    expect(parsed.moduleId).toBe('roadmap')
+    expect(parsed.written).toContain(join('packages', 'modules', 'roadmap', 'src', 'module.ts'))
+    expect(
+      await readFile(join(repo.root, 'packages', 'modules', 'roadmap', 'src', 'module.ts'), 'utf8'),
+    ).toContain("id: 'roadmap'")
+  }, 30_000)
+
+  it('refuse sur un dépôt aux modifications non commitées, sans rien créer', async () => {
+    const repo = await temporaryRepo(NOISY_GENERATE)
+
+    await gitInit(repo.root)
+    await writeFile(join(repo.root, 'oubli.txt'), 'travail en cours\n', 'utf8')
+
+    const result = await ks(['scaffold', 'roadmap'], repo.root)
+
+    expect(result.code).toBe(1)
+    expect(result.stderr).toContain('non commitées')
+
+    const created = await readdir(join(repo.root, 'packages', 'modules')).catch(() => [])
+
+    expect(created).not.toContain('roadmap')
+  }, 30_000)
+
+  it('refuse un identifiant déjà déclaré dans l’annuaire, en le nommant', async () => {
+    const repo = await temporaryRepo(NOISY_GENERATE)
+
+    await gitInit(repo.root)
+
+    const result = await ks(['scaffold', 'alpha'], repo.root)
+
+    expect(result.code).toBe(1)
+    expect(result.stderr).toContain('alpha')
   }, 30_000)
 })

@@ -31,6 +31,7 @@ export type ParsedArguments =
   | ({ readonly command: 'help' } & CommonOptions)
   | ({ readonly command: 'list' } & CommonOptions)
   | ({ readonly command: 'toggle'; readonly moduleId: string } & CommonOptions)
+  | ({ readonly command: 'scaffold'; readonly moduleId: string } & CommonOptions)
 
 const FLAGS = {
   '--json': 'json',
@@ -51,6 +52,7 @@ export const USAGE = [
   '',
   '  ks list                     liste les modules, leur état, leurs requis et le socle',
   '  ks toggle <module>          inverse l’état d’un module dans config/features.ts',
+  '  ks scaffold <module>        génère le squelette d’un nouveau module (packages/modules/<module>)',
   '',
   'Options :',
   '  --help, -h                  affiche cette aide',
@@ -84,7 +86,7 @@ export function parseArguments(argv: readonly string[]): ParsedArguments {
 
   const [command, moduleId, ...extra] = positional
 
-  if (command !== 'list' && command !== 'toggle') {
+  if (command !== 'list' && command !== 'toggle' && command !== 'scaffold') {
     throw new ArgumentError(
       `Commande ${command === undefined ? 'manquante' : `inconnue « ${command} »`}.\n\n${USAGE}`,
     )
@@ -103,7 +105,7 @@ export function parseArguments(argv: readonly string[]): ParsedArguments {
   }
 
   if (moduleId === undefined) {
-    throw new ArgumentError(`« ks toggle » attend un identifiant de module.\n\n${USAGE}`)
+    throw new ArgumentError(`« ks ${command} » attend un identifiant de module.\n\n${USAGE}`)
   }
 
   return { command, moduleId, ...flags }

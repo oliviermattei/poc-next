@@ -36,11 +36,27 @@ export interface ToggleRequest {
   readonly applyMigrations?: boolean
 }
 
+/** Le SQL versionné d'un module que la bascule vient d'activer. */
+export interface PendingMigrations {
+  readonly moduleId: string
+  /** Chemin du dossier de migrations, relatif à la racine du dépôt. */
+  readonly path: string
+}
+
 export interface ToggleOutcome {
   readonly action: 'enable' | 'disable'
   readonly moduleId: string
   readonly enabled: readonly string[]
   readonly alsoEnabled: readonly string[]
+  /**
+   * Les migrations que l'activation a générées, nommées.
+   *
+   * La façade terminal les *imprime* ; une façade lue par une machine (`--json`,
+   * le serveur MCP) n'a que cet objet, et sans ce champ un agent ne saurait pas
+   * qu'il reste quelque chose à jouer. Vide sur une désactivation, et vide quand
+   * aucun module activé ne déclare de migration.
+   */
+  readonly migrations: readonly PendingMigrations[]
   readonly migrationsApplied: boolean
   /** Entrées déjà présentes que l'ordre canonique a déplacées (ADR 019). */
   readonly reordered: readonly string[]
@@ -154,12 +170,14 @@ export async function runToggle(input: {
 
     announce(environment, edit)
 
-    return { ...plan, ...written, migrationsApplied: false }
+    return { ...plan, ...written, migrations: [], migrationsApplied: false }
   }
 
   const activated = [...plan.alsoEnabled, plan.moduleId]
-  const withMigrations = available.filter(
-    (module) => activated.includes(module.id) && module.migrations !== null,
+  const migrations: readonly PendingMigrations[] = available.flatMap((module) =>
+    activated.includes(module.id) && module.migrations !== null
+      ? [{ moduleId: module.id, path: module.migrations }]
+      : [],
   )
 
   environment.print(
@@ -170,12 +188,12 @@ export async function runToggle(input: {
 
   announce(environment, edit)
 
-  if (withMigrations.length === 0) {
-    return { ...plan, ...written, migrationsApplied: false }
+  if (migrations.length === 0) {
+    return { ...plan, ...written, migrations, migrationsApplied: false }
   }
 
   environment.print(
-    `Migrations générées pour ${withMigrations.map((module) => quote(module.id)).join(', ')}.`,
+    `Migrations générées pour ${migrations.map((module) => quote(module.moduleId)).join(', ')}.`,
   )
 
   // Générer, mais ne pas appliquer : une commande de configuration ne touche pas
@@ -190,13 +208,13 @@ export async function runToggle(input: {
       'Migrations non appliquées. Lancez « pnpm db:migrate » quand votre base est prête.',
     )
 
-    return { ...plan, ...written, migrationsApplied: false }
+    return { ...plan, ...written, migrations, migrationsApplied: false }
   }
 
   await environment.applyMigrations()
   environment.print('Migrations appliquées.')
 
-  return { ...plan, ...written, migrationsApplied: true }
+  return { ...plan, ...written, migrations, migrationsApplied: true }
 }
 
 export { ToggleRefusedError }

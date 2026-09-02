@@ -2,6 +2,7 @@ import { readdirSync, readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { scaffoldFiles } from '@repo/cli'
 import { describe, expect, it } from 'vitest'
 
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url))
@@ -80,6 +81,21 @@ const workspaceDependencyNames = (): string[] => {
  */
 const REQUIRED_SECTIONS = ['## Imports autorisés', '## Ne doit jamais contenir', '## Tests']
 
+/**
+ * Ce que « ce package peut importer » désigne : les dépendances d'exécution,
+ * plus les packages du dépôt. L'outillage de développement (types,
+ * compilateur) n'entre pas dans le graphe d'import du produit.
+ */
+const declaredDependencies = (manifest: {
+  dependencies?: Record<string, string>
+  devDependencies?: Record<string, string>
+}): string[] => [
+  ...Object.keys(manifest.dependencies ?? {}),
+  ...Object.entries(manifest.devDependencies ?? {})
+    .filter(([, range]) => range.startsWith('workspace:'))
+    .map(([name]) => name),
+]
+
 describe('AGENTS.md par package (ADR 013)', () => {
   // Sans ces deux gardes, un motif de workspace qui ne matche plus rien rendrait
   // toutes les assertions ci-dessous vertes sur zéro package. Un plancher
@@ -114,22 +130,49 @@ describe('AGENTS.md par package (ADR 013)', () => {
   })
 
   it.each(PACKAGES)('%s nomme chacune des dépendances qu’il déclare', (directory) => {
-    const manifest = manifestOf(directory)
-
-    // Les dépendances d'exécution, plus les packages du dépôt : ce sont elles
-    // que « ce package peut importer » désigne. L'outillage de développement
-    // (types, compilateur) n'entre pas dans le graphe d'import du produit.
-    const declared = [
-      ...Object.keys(manifest.dependencies ?? {}),
-      ...Object.entries(manifest.devDependencies ?? {})
-        .filter(([, range]) => range.startsWith('workspace:'))
-        .map(([name]) => name),
-    ]
-
     const content = read(directory, 'AGENTS.md')
 
-    for (const dependency of declared) {
+    for (const dependency of declaredDependencies(manifestOf(directory))) {
       expect(content).toContain(dependency)
+    }
+  })
+})
+
+/**
+ * Le squelette généré passe la garde qu'il devra passer une fois écrit.
+ *
+ * `AGENTS.md` racine ordonne de **générer** un module plutôt que de le
+ * deviner : un générateur dont la sortie fait rougir `pnpm test` dès la
+ * génération envoie l'agent réparer le dépôt à la main, exactement ce que la
+ * commande devait lui éviter. La règle est celle du bloc ci-dessus, appliquée
+ * aux fichiers en mémoire — pas une seconde règle écrite pour l'occasion.
+ */
+describe('le squelette de `ks scaffold` (s41)', () => {
+  const files = scaffoldFiles('probe-module')
+  const contentOf = (path: string): string => {
+    const file = files.find((candidate) => candidate.path === path)
+
+    expect(file, `le squelette écrit ${path}`).toBeDefined()
+
+    return file?.content ?? ''
+  }
+
+  const agents = contentOf('AGENTS.md')
+
+  it('nomme ses trois règles locales', () => {
+    for (const section of REQUIRED_SECTIONS) {
+      expect(agents).toContain(section)
+    }
+  })
+
+  it('nomme chacune des dépendances que son `package.json` déclare', () => {
+    const manifest = JSON.parse(contentOf('package.json')) as {
+      dependencies?: Record<string, string>
+      devDependencies?: Record<string, string>
+    }
+
+    for (const dependency of declaredDependencies(manifest)) {
+      expect(agents).toContain(dependency)
     }
   })
 })
