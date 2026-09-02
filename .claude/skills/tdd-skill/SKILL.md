@@ -97,6 +97,34 @@ says. A presentation-only task reports visual evidence instead.
 - **Substring coverage** of documentation or registries: a name contained in a longer one is "covered" by it, and the guarantee is an illusion.
 - **A test written to raise a coverage number.** This method sets no coverage target, deliberately: that metric manufactures suites that are large, slow and blind.
 
+## Prove it where the defect lives
+
+A mutation posted anywhere but at the defect's own site proves nothing. Measured
+twice on this codebase: a guard neutralised **inside a module** went red as
+expected, while the bug lived at the **composition point** — neutralised there,
+1320 tests stayed green and the reported "1 red" was worthless. Before writing a
+mutation table, ask of each line: is this the place where a real defect would
+appear, or a place where my own code happens to be?
+
+Two more, each of which produced a green suite over a real defect:
+
+- **Every configuration is a shippable product.** When optional modules can be
+  toggled, a guard that only bites in one configuration is a guard that CI may
+  never run. Prove it in both.
+- **A double must not validate in the server's place.** If the double refuses
+  what the test believes it is measuring, the test measures the double. Prove
+  the opposite: neutralise the server-side rule and check the forged input
+  becomes accepted.
+
+## Do not claim what nothing checks
+
+"Purge is measured", "the compiler holds this wiring", "six occurrences, all
+cited", "eighteen invariants" — all written on this codebase, all false, all
+read as verified by the next agent. For any count or guarantee you write in a
+comment, an `AGENTS.md` or an ADR, name the command that fails when it stops
+being true. If none exists, either write the command or delete the claim, and
+prefer deriving a count over typing one.
+
 ## When it goes wrong
 
 - The new test passes immediately → it doesn't test the new behavior. Rewrite the test, not the code.

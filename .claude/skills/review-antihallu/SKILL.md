@@ -26,6 +26,34 @@ Verification procedure (do it, don't skim):
 5. Hunt plausible-but-wrong logic: values that look right (defaults, formats, status codes, edge conditions) but were never checked against reality.
 6. Regressions: what else uses the touched code paths? Open it.
 
+Five failure modes measured on this codebase, each of which produced a green
+suite over a real defect. Hunt them by name:
+
+- **A mutation posted anywhere but at the defect's own site proves nothing.**
+  Twice a report claimed "1 red" for a guard neutralised inside the module while
+  the bug lived at the composition point — neutralised there, 1320 tests stayed
+  green. When you audit a mutation table, check **where** each mutation was
+  posted, not just that it went red.
+- **A guard that only bites in one module configuration.** Optional modules mean
+  every configuration is a shippable product. Run the toggled configuration too;
+  three reviews found guards that only bite in the state CI wasn't playing.
+- **A complacent test double.** The double itself refused what the test believed
+  it was measuring. Prove the double doesn't validate in the server's place:
+  neutralise the *server-side* rule and check the forged input becomes accepted.
+- **An assertion on a page that hasn't hydrated.** `toHaveCount(0)` before any
+  client render passes whatever happens. Require a positive signal (an enabled
+  control) before asserting an absence.
+- **A measured-sounding claim nobody can check.** "Purge is measured", "the
+  compiler holds this wiring", "six occurrences, all cited" — each was false.
+  For every count or guarantee written in a comment, an `AGENTS.md` or an ADR,
+  ask which command fails when it stops being true. Derive counts rather than
+  writing them.
+
+Anything with a screen gets **browser evidence under the production build**.
+Seven defects on this codebase were invisible to every command and visible on
+sight: a QR code rendered white-on-black, a replaced avatar that kept showing the
+old image, a label truncated to one character at 390 px.
+
 Severity scale:
 - **critical** — ships a bug, a security hole, an invented API, or breaks existing behavior. Blocks the ship.
 - **major** — real defect or rule violation, but scoped and not silently corrupting anything. Ship allowed, fix next cycle.
