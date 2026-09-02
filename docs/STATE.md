@@ -35,8 +35,8 @@ open -a Docker && docker compose up -d                                # Postgres
 |---|---|---|---|
 | A | s14-passkeys | **fusionnée dans `dev`** (`0c85639`), revue `minor`/ship oui | close |
 | B | s18-file-storage-avatar | **fusionnée dans `dev`** (`caaa77c`), deux revues, `minor`/ship oui | close |
-| C | s19-subscribe-stripe | commit `54f7eb2`, revue **critical**, **tour de correction** | `s19`, port 3119 |
-| D | s36-cookie-consent | `feature/s36-cookie-consent` | `s36`, port 3136 |
+| C | s19-subscribe-stripe | deux revues **critical**, **second tour de correction** | `s19`, port 3119 |
+| D | s36-cookie-consent | commit `8448788`, **en revue** | `s36`, port 3136 |
 | D | s17-roles-permissions | **fusionnée dans `dev`** (`2b997df`), revue `major`/ship oui | close |
 | B | s16-invite-members | **fusionnée dans `dev`** (`6f14cc4`), revue `none`/ship oui | close |
 | C | s11-public-forms | **fusionnée dans `dev`** (`9cf45c2`), revue `none`/ship oui | close |
@@ -53,6 +53,12 @@ portant des noms différents — la numérotation ment en silence. Renumérotati
 **Le worktree d'un agent arrive sur une branche `worktree-agent-<id>`, pas sur `feature/<id>`** :
 la première consigne d'une voie est de la renommer (`git branch -m feature/<id>`). Sans ça la
 story se fait sur un nom hors convention, et la fusion ne retrouve rien.
+
+**Une mutation posée ailleurs qu'à l'endroit exact du défaut ne prouve rien.** Mesuré en s19 :
+deux constats annoncés fermés « à 1 rouge » l'étaient par une mutation posée dans le module,
+alors que la neutralisation au **point de composition** — là où vivait le bug — laissait
+1320 tests sur 1320 verts. Quand un tableau de mutations est relu, vérifier **où** la mutation
+est posée, pas seulement qu'elle rougit.
 
 **Une mutation se restaure juste après avoir été mesurée, jamais en fin de campagne.** Le
 31/08/2026, une limite d'usage a tué trois agents d'un coup ; le relecteur de s45 est mort avec
