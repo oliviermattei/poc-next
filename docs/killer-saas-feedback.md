@@ -225,6 +225,13 @@ qu'on propose, où est le patch, et son état.
   sur le nombre de paquets créés plutôt que sur une note.
 - **Le document de recherche séparé** n'a de valeur que si la story explore un
   terrain neuf ; pour une variation d'un motif déjà livré, il redit le connu.
+- **Un piège de mesure produit aussi de faux rouges, pas seulement de faux
+  verts.** Un postgres orphelin détournait `localhost:5432` sous un conteneur
+  « healthy » : trois parcours rougissaient sans rapport avec le code livré.
+  L'agent a eu raison de ne pas se les attribuer **et** de ne pas prétendre au
+  vert ; rejoués sur environnement sain, 1507 tests et 79 parcours passent. La
+  bonne réponse à un rouge inexpliqué est de mesurer l'environnement, pas de
+  choisir entre s'accuser et se dédouaner.
 - **Les mutations vertes déclarées** sont un signal de qualité, pas un aveu :
   trois voies ont signalé d'elles-mêmes une mutation restée verte plutôt que de
   la taire. Le skill pourrait le dire explicitement pour l'encourager.
