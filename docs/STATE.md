@@ -6,11 +6,11 @@
 
 | Story | État |
 |---|---|
-| s01 → s17, s45 | **closes**, revues, correctifs appliqués |
-| s19 → s44, s46 | à faire — 28 stories (s18 en cours) |
+| s01 → s18, s45 | **closes**, revues, correctifs appliqués |
+| s20 → s44, s46 | à faire — 27 stories (s19 en revue) |
 
-Tests : **1170 + 2 ignorés**, 62 parcours end-to-end, déterministes (`retries: 0`).
-ADR : **31** (026 à 031 fusionnés ; 032 réservé à s18). Branche : `dev`. Commits : un par story, plus `docs:` pour recherche, plan, revue.
+Tests : **1261 + 2 ignorés**, 67 parcours end-to-end, déterministes (`retries: 0`).
+ADR : **33** (026 à 033 fusionnés ; 034 appartient à s19, non fusionnée). Branche : `dev`. Commits : un par story, plus `docs:` pour recherche, plan, revue.
 
 ## Environnement (à refaire après un redémarrage de session)
 
@@ -34,7 +34,7 @@ open -a Docker && docker compose up -d                                # Postgres
 | Voie | Story | Worktree | Base / port |
 |---|---|---|---|
 | A | s14-passkeys | **fusionnée dans `dev`** (`0c85639`), revue `minor`/ship oui | close |
-| B | s18-file-storage-avatar | seconde revue `minor`/ship oui, **dernier tour** (cinq mineurs) | `s18`, port 3118 |
+| B | s18-file-storage-avatar | **fusionnée dans `dev`** (`caaa77c`), deux revues, `minor`/ship oui | close |
 | C | s19-subscribe-stripe | commit `54f7eb2`, **en revue** | `s19`, port 3119 |
 | D | s17-roles-permissions | **fusionnée dans `dev`** (`2b997df`), revue `major`/ship oui | close |
 | B | s16-invite-members | **fusionnée dans `dev`** (`6f14cc4`), revue `none`/ship oui | close |
@@ -95,6 +95,10 @@ propriétaire** : ingouvernable à vie, et sans commande de réconciliation, ce 
 ligne de schéma sont écrits dans `packages/modules/organizations/AGENTS.md` et l'ADR 030.
 
 ## Pièges de mesure connus
+
+- **Un `.env` de poste peut faire passer une suite qui échouerait ailleurs.** Mesuré à la fusion
+  de s18 : les parcours passaient chez la voie parce que son fichier portait `STORAGE_LOCAL_DIRECTORY`.
+  Ce dont le harnais a besoin se déclare **dans `playwright.config.ts`**, jamais laissé au `.env`.
 
 - **Next 16.3.3 charge sa configuration *après* la ligne `✓ Ready`.** Une mesure de démarrage qui
   s'arrête à cette ligne conclut à tort que les gardes d'environnement sont mortes. Mesuré en s19.
