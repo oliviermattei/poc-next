@@ -186,6 +186,14 @@ ligne de schéma sont écrits dans `packages/modules/organizations/AGENTS.md` et
 
 ## Pièges de mesure connus
 
+- **Un postgres orphelin peut détourner `localhost:5432` sous un conteneur « healthy ».** Un
+  `embedded-postgres` lancé depuis un scratchpad écoute sur `127.0.0.1:5432`, **plus spécifique**
+  que le proxy Docker en `*:5432` : toutes les connexions `localhost` partent chez lui pendant que
+  `docker ps` affiche un conteneur en bonne santé. Trouvé en s41, après une saturation disque qui
+  avait tué Docker. Diagnostic : `lsof -nP -iTCP:5432 -sTCP:LISTEN` — s'il y a une ligne
+  `127.0.0.1` en plus de `*:5432`, c'est un orphelin ; `ps -o ppid -p <pid>` rendant `1` le
+  confirme.
+
 - **Un `.env` de poste peut faire passer une suite qui échouerait ailleurs.** Mesuré à la fusion
   de s18 : les parcours passaient chez la voie parce que son fichier portait `STORAGE_LOCAL_DIRECTORY`.
   Ce dont le harnais a besoin se déclare **dans `playwright.config.ts`**, jamais laissé au `.env`.
