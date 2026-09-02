@@ -6,6 +6,7 @@ import { localeRouting } from './locale-routing'
 import { createAppMailer } from './mailer'
 import { marketingSite } from './marketing'
 import { organizations } from './organizations'
+import { storage } from './storage'
 
 /**
  * Ce que les modules attendent de l'application **avant** qu'une de leurs
@@ -71,4 +72,5 @@ const provideMarketingForms = (): void => {
 export function prepareModuleServices(): void {
   organizations.prepare()
   provideMarketingForms()
+  storage.prepare()
 }

@@ -8,6 +8,13 @@ node_modules/
 # ici plutôt qu'envoyé. Ce sont des emails de développement, jamais du code.
 .mail/
 
+# Stockage sur disque : avec `STORAGE_LOCAL_DIRECTORY=.storage`, les fichiers
+# téléversés sont écrits ici plutôt que dans un seau. Ce sont des fichiers de
+# développement, jamais du code — et un avatar est une donnée personnelle.
+.storage/
+# Le stockage du serveur de Playwright, distinct de celui de `pnpm dev`.
+.storage-e2e/
+
 # Rapports et traces Playwright
 playwright-report/
 test-results/

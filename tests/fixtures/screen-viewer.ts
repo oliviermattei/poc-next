@@ -4,6 +4,7 @@ import type {
   DescribedSignInMethod,
 } from '@repo/module-auth'
 import { permissionsOf } from '@repo/module-organizations'
+import { initialsOf } from '@repo/ui'
 
 /**
  * L'appelant que voient les écrans pendant le rendu de `tests/rendered-text.test.ts`.
@@ -42,6 +43,31 @@ export const SIGNED_IN: ViewerFixture = {
 }
 
 export const ANONYMOUS: ViewerFixture = { session: null, account: null }
+
+/**
+ * L'avatar que voient le shell et l'écran de compte pendant ce rendu (s18).
+ *
+ * Il est **présent**, et ce n'est pas de la générosité : `null`, la carte
+ * rendrait le repli sur les initiales et le bouton « Retirer » ne serait pas
+ * rendu du tout — deux branches passeraient sous le filet sans être vues. Les
+ * initiales, elles, sont observables dans les deux cas : le menu de compte du
+ * shell les rend derrière l'image.
+ */
+export const FIXTURE_AVATAR = {
+  fileId: 'file_1',
+  contentType: 'image/png' as const,
+  version: '1788000000000',
+}
+
+/**
+ * Les initiales du nom de la fixture, **dérivées** et non recopiées.
+ *
+ * C'est une donnée affichée qui ne vient d'aucun catalogue, au même titre que
+ * le nom dont elles sortent. Les écrire en dur ici ferait de « AM » une
+ * constante que la fonction pourrait cesser de produire sans que rien ne le
+ * dise.
+ */
+export const FIXTURE_INITIALS = initialsOf(FIXTURE_NAME)
 
 /**
  * Les organisations que voit l'écran de s15 pendant ce rendu.

@@ -10,19 +10,21 @@ module (`packages/modules/<module>/src/domain`).
   fichier ;
 - `@repo/db` pour la base ;
 - `@repo/core` pour le registre de modules ;
-- `@repo/ports` pour le port `Mailer`, `@repo/adapter-resend` pour son unique
-  implémentation, `@repo/emails` pour le rendu des templates et
-  `@repo/mailer-testing` pour la capture locale — **uniquement** dans
-  `lib/mailer.ts`, qui est le point de composition du mailer ;
+- `@repo/ports` pour les ports `Mailer` et `Storage`, `@repo/adapter-resend` et
+  `@repo/adapter-s3` pour leurs uniques implémentations, `@repo/emails` pour le
+  rendu des templates, `@repo/mailer-testing` pour la capture locale des emails
+  et `@repo/storage-testing` pour le stockage sur disque — **uniquement** dans
+  `lib/mailer.ts` et `lib/storage.ts`, qui sont les points de composition des
+  deux ports ;
 - les modules du projet, **uniquement** parce que `config/features.ts` les
   référence : `@repo/module-auth`, `@repo/module-i18n`,
   `@repo/module-marketing`, `@repo/module-organizations`,
-  `@repo/module-demo-enabled` et
-  `@repo/module-demo-disabled` aujourd'hui. Quatre fichiers font exception et
+  `@repo/module-storage`, `@repo/module-demo-enabled` et
+  `@repo/module-demo-disabled` aujourd'hui. Cinq fichiers font exception et
   importent un module directement — `lib/auth.ts`, le point de composition de
   l'authentification, `lib/locale-routing.ts`, celui de l'i18n,
-  `lib/marketing.ts`, celui du site public, et `lib/organizations.ts`, celui des
-  organisations (voir plus bas). Les écrans du site public et celui des
+  `lib/marketing.ts`, celui du site public, `lib/organizations.ts`, celui des
+  organisations, et `lib/storage.ts`, celui du stockage (voir plus bas). Les écrans du site public et celui des
   organisations importent en plus le second point d'entrée de leur module
   (`@repo/module-marketing/presentation`,
   `@repo/module-organizations/presentation`) : ses composants React n'ont pas
@@ -549,6 +551,72 @@ Ce qu'elle rend est le périmètre **au moment de l'appel**, et l'appartenance y
 est jointe à la lecture : un compte retiré d'une organisation retombe
 immédiatement sur son périmètre de compte, sans qu'aucune ligne n'ait été
 nettoyée (ADR 025).
+
+## Le montage du stockage (s18)
+
+Deux fichiers, sur le modèle exact du mailer :
+
+- `lib/storage-config.ts` porte la **règle** — un seau S3 complet, ou
+  `STORAGE_LOCAL_DIRECTORY`, jamais les deux, jamais rien ;
+- `lib/storage.ts` **construit** l'implémentation correspondante. C'est le seul
+  fichier de l'application qui connaisse `@repo/adapter-s3`,
+  `@repo/storage-testing` et `@repo/module-storage`. Le code métier ne connaît
+  que le port `Storage`.
+
+**Une différence avec le mailer, et elle est structurante** : le mailer est
+exigé de toute application qui démarre, le stockage **seulement quand le module
+`storage` est activé**. `next.config.ts` lit donc `enabledModules` avant
+d'appliquer la règle. Un dépôt qui coupe le module n'a aucune variable à
+renseigner, et l'avatar retombe sur les initiales sans erreur — c'est le
+critère 7 de la story.
+
+| Configuration | Ce qui se passe |
+|---|---|
+| `STORAGE_LOCAL_DIRECTORY=.storage` | les fichiers sont écrits sur le disque, l'URL présignée reste sur **notre origine**. C'est l'état livré |
+| les quatre `STORAGE_S3_*` | seau réel (S3, R2, MinIO, Spaces) ; `STORAGE_S3_ENDPOINT` en plus hors AWS |
+| les deux | refusé par le schéma d'environnement : le choix serait ambigu |
+| un seau à moitié renseigné | **le démarrage échoue en nommant la variable absente** |
+| ni l'un ni l'autre, module activé | **le démarrage échoue en nommant les deux voies** |
+| ni l'un ni l'autre, module coupé | rien n'est exigé, rien n'est monté |
+| un seau réel dont l'origine n'est pas dans `config/security.ts` | **le démarrage échoue en nommant l'origine et le champ** |
+| `STORAGE_LOCAL_DIRECTORY` avec `NODE_ENV=production` | **refusé au démarrage, en nommant la variable** |
+
+**Le geste que le propriétaire doit faire, et que le démarrage exige** : avec un
+vrai seau, le navigateur téléverse **directement** vers son domaine, donc cette
+origine doit entrer dans `config/security.ts`, champ `connect` —
+`connect-src 'self'` la refuse autrement. La lecture, elle, ne demande rien :
+l'avatar est **servi par l'application** (ADR 032), donc `img-src 'self'`
+suffit.
+
+C'était écrit dans `.env.example` et nulle part exécuté : quatre variables
+renseignées passaient `pnpm dev`, `pnpm build` et la CI, et le téléversement
+échouait **chez le navigateur du premier utilisateur**, sans trace côté serveur
+(constat F3 de la revue de s18). `lib/storage-config.ts` **lit** désormais
+`config/security.ts` — il ne le modifie pas, ce fichier appartient à s45 — et
+refuse de démarrer en nommant l'origine attendue. `tests/storage.test.ts` le
+tient dans les deux sens.
+
+Les deux dernières lignes du tableau sont des **défenses en profondeur**, sur le
+modèle d'`OAUTH_LOCAL_PROVIDER` : `NODE_ENV` n'arme jamais rien, il
+**restreint**. Un `.env` recopié d'un poste écrirait sinon les avatars sur le
+disque éphémère d'une fonction serverless, et le symptôme — l'image qui
+disparaît — arriverait au premier redéploiement, longtemps après la cause.
+
+**L'avatar de `/account` est celui de la personne**, et les trois chemins —
+écrire, afficher, retirer — passent par la même résolution de propriétaire
+(`ownerOf`, donnée au module, rejouée par `avatarOfUser`). La première écriture
+donnait `dataOwnerOf` à l'écriture et fabriquait le périmètre du compte à
+l'affichage : sous une organisation courante, le fichier partait dans
+`avatars/organization/…`, l'écran ne changeait pas, et « Retirer » supprimait la
+ressource **partagée** de l'organisation en rendant 204, sans aucune garde de
+rôle (constat F1). `e2e/storage.spec.ts` crée une organisation et exige que la
+photo du compte lui survive.
+
+Deux surfaces en héritent : le menu de compte du shell et la carte « Photo de
+profil » de `/account`. Le composant qui téléverse
+(`app/account/avatar-form.tsx`) vit ici et non dans le module, pour la raison
+déjà donnée à `app/public-form.tsx` : il appelle `fetch`, et `eslint.config.ts`
+refuse un appel réseau dans un module hors de sa porte bornée.
 
 ## Le montage du mailer
 

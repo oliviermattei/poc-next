@@ -1,6 +1,9 @@
 'use client'
 
 import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
   Button,
   DropdownMenu,
   DropdownMenuContent,
@@ -8,8 +11,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  initialsOf,
 } from '@repo/ui'
-import { LogOutIcon, SettingsIcon, UserIcon } from 'lucide-react'
+import { LogOutIcon, SettingsIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { signOut } from './sign-out-button'
@@ -33,16 +37,39 @@ export interface AccountMenuProps {
   /** L'URL de l'écran de compte, déjà mise dans la forme publique de la locale. */
   readonly accountHref: string
   readonly signOutAction: string
+  /**
+   * L'avatar du compte, ou `null`.
+   *
+   * `null` quand il n'y en a pas **et** quand le module de stockage est coupé :
+   * ce composant ne connaît pas la différence, et c'est voulu. Le repli sur les
+   * initiales est le comportement d'`Avatar`, pas une condition écrite ici.
+   */
+  readonly avatarUrl: string | null
 }
 
-export function AccountMenu({ email, name, accountHref, signOutAction }: AccountMenuProps) {
+export function AccountMenu({
+  email,
+  name,
+  accountHref,
+  signOutAction,
+  avatarUrl,
+}: AccountMenuProps) {
   const t = useTranslations()
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" aria-label={t('app.shell.account.menu', { email })}>
-          <UserIcon aria-hidden />
+          {/*
+            L'image est **décorative ici** (`alt=""`) : le nom accessible du
+            bouton porte déjà l'adresse du compte, et un second texte ne ferait
+            que répéter. Elle est informative dans la carte des paramètres, où
+            rien d'autre ne la nomme.
+          */}
+          <Avatar size="sm" className="border-0">
+            {avatarUrl === null ? null : <AvatarImage src={avatarUrl} alt="" />}
+            <AvatarFallback>{initialsOf(name)}</AvatarFallback>
+          </Avatar>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent>

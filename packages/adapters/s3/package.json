@@ -1,0 +1,24 @@
+{
+  "name": "@repo/adapter-s3",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1123.0",
+    "@aws-sdk/s3-request-presigner": "^3.1123.0",
+    "@repo/ports": "workspace:*",
+    "@smithy/fetch-http-handler": "^5.4.1"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "workspace:*",
+    "@types/node": "^22",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
+  }
+}

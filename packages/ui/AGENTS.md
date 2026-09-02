@@ -100,10 +100,12 @@ ne gouverne que les attributs analysés dans le HTML.
 
 ## Imports autorisés
 
-- `@radix-ui/react-accordion`, `@radix-ui/react-dialog`,
+- `@radix-ui/react-accordion`, `@radix-ui/react-avatar`, `@radix-ui/react-dialog`,
   `@radix-ui/react-dropdown-menu`, `@radix-ui/react-label`,
   `@radix-ui/react-separator`, `@radix-ui/react-slot` —
-  **ici et nulle part ailleurs** ;
+  **ici et nulle part ailleurs**. `@radix-ui/react-avatar` est arrivé avec s18 :
+  c'est lui qui porte le **repli sur les initiales** quand l'image manque ou ne
+  se charge pas, et c'est ce qui évite qu'un écran porte un `if (avatar ?)` ;
 - `class-variance-authority` pour les variantes, `clsx` et `tailwind-merge` pour
   la composition de classes (`cn`) ;
 - `lucide-react` pour les icônes : un seul jeu, 16 px dans l'application ;

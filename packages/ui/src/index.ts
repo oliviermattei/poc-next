@@ -11,6 +11,7 @@
  * copier « pour plus tard » livrerait du code que personne n'a exercé.
  */
 export { cn } from './lib/cn'
+export { initialsOf } from './lib/initials'
 
 export {
   Accordion,
@@ -19,6 +20,7 @@ export {
   AccordionTrigger,
 } from './components/accordion'
 export { Alert, AlertDescription, AlertTitle, type AlertProps } from './components/alert'
+export { Avatar, AvatarFallback, AvatarImage, type AvatarProps } from './components/avatar'
 export { Badge, type BadgeProps } from './components/badge'
 export { Button, buttonVariants, type ButtonProps } from './components/button'
 export {

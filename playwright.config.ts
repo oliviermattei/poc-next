@@ -70,6 +70,13 @@ export default defineConfig({
       AUTH_SECRET: 'playwright-e2e-non-secret-0123456789abcdef',
       APP_URL: BASE_URL,
       EMAIL_LOCAL_CAPTURE: '1',
+      // Le stockage sur disque, posé **ici** et pas laissé au `.env` du poste :
+      // le module `storage` activé sans stockage refuse de démarrer, et le
+      // harnais ne doit pas dépendre de ce qu'un développeur a dans son
+      // fichier. Mesuré à la fusion de s18 — la suite passait sur le poste de
+      // la voie, dont le `.env` portait la variable, et échouait sur un arbre
+      // qui ne l'avait pas.
+      STORAGE_LOCAL_DIRECTORY: '.storage-e2e',
       // Monte `GET /api/i18n-probe` : une clé absente doit faire échouer la
       // requête, dans le vrai serveur. C'est la seule preuve que la
       // configuration qui refuse est encore branchée par `i18n/request.ts` —

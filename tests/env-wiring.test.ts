@@ -172,6 +172,20 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     vi.stubEnv('APP_URL', choice === 'configure' ? 'http://localhost:3000' : '')
   }
 
+  /**
+   * Même doctrine, pour la garde posée par s18 : le module `storage` activé
+   * sans stockage configuré refuse le démarrage. Un cas qui ne déclare rien ne
+   * passerait que sur un poste dont le `.env` porte un `STORAGE_*` — et
+   * rougirait sur un clone neuf, ce que la revue de s06 avait déjà nommé.
+   */
+  const stubStorage = (choice: 'disque' | 'aucun'): void => {
+    vi.stubEnv('STORAGE_S3_BUCKET', '')
+    vi.stubEnv('STORAGE_S3_REGION', '')
+    vi.stubEnv('STORAGE_S3_ACCESS_KEY_ID', '')
+    vi.stubEnv('STORAGE_S3_SECRET_ACCESS_KEY', '')
+    vi.stubEnv('STORAGE_LOCAL_DIRECTORY', choice === 'disque' ? '.storage' : '')
+  }
+
   const loadNextConfig = async () => {
     vi.resetModules()
     const { default: config } = await import('../apps/web/next.config')
@@ -188,6 +202,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     vi.stubEnv('DATABASE_URL', 'mysql://oops@localhost/x')
     stubMailer('capture')
     stubAuth('configure')
+    stubStorage('disque')
 
     const config = await loadNextConfig()
 
@@ -200,6 +215,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     vi.stubEnv('DATABASE_URL', 'postgres://app:app@127.0.0.1:1/app')
     stubMailer('capture')
     stubAuth('configure')
+    stubStorage('disque')
 
     const config = await loadNextConfig()
 
@@ -215,11 +231,28 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
     stubMailer('aucun')
     stubAuth('configure')
+    stubStorage('disque')
 
     const config = await loadNextConfig()
 
     expect(() => config(DEV_SERVER_PHASE)).toThrowError(/RESEND_API_KEY/)
     expect(() => config(DEV_SERVER_PHASE)).toThrowError(/EMAIL_LOCAL_CAPTURE/)
+  })
+
+  it('refuse de démarrer quand le module `storage` est activé sans stockage, en nommant les variables', async () => {
+    // Même doctrine que le mailer : c'est cette application qui **monte** le
+    // stockage. Sans cette garde, un module activé sans seau ni disque
+    // n'échouerait qu'au premier téléversement — donc chez un utilisateur, en
+    // production, et sur un chemin que personne ne rejoue au démarrage.
+    vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
+    stubMailer('capture')
+    stubAuth('configure')
+    stubStorage('aucun')
+
+    const config = await loadNextConfig()
+
+    expect(() => config(DEV_SERVER_PHASE)).toThrowError(/STORAGE_S3_BUCKET/)
+    expect(() => config(DEV_SERVER_PHASE)).toThrowError(/STORAGE_LOCAL_DIRECTORY/)
   })
 
   it('refuse de démarrer sans secret de session ni URL publique, en nommant les deux variables', async () => {
@@ -231,6 +264,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
     stubMailer('capture')
     stubAuth('aucun')
+    stubStorage('disque')
 
     const config = await loadNextConfig()
 
@@ -265,6 +299,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
     stubMailer('capture')
     stubAuth('configure')
+    stubStorage('disque')
     stubOAuth()
 
     const config = await loadNextConfig()
@@ -276,6 +311,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
     stubMailer('capture')
     stubAuth('configure')
+    stubStorage('disque')
     // Un identifiant sans secret : la bibliothèque se contenterait d'un
     // avertissement dans le journal, et l'échec n'apparaîtrait qu'au premier
     // clic sur le bouton, en production.
@@ -290,6 +326,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
     stubMailer('capture')
     stubAuth('configure')
+    stubStorage('disque')
     stubOAuth({ githubSecret: 'secret-de-test' })
 
     const config = await loadNextConfig()
@@ -301,6 +338,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
     stubMailer('capture')
     stubAuth('configure')
+    stubStorage('disque')
     stubOAuth({ githubId: 'id', githubSecret: 'secret', local: '1' })
 
     const config = await loadNextConfig()
@@ -312,6 +350,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
     stubMailer('capture')
     stubAuth('configure')
+    stubStorage('disque')
     stubOAuth({ local: '1' })
 
     const config = await loadNextConfig()
@@ -327,6 +366,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
     stubMailer('capture')
     stubAuth('configure')
+    stubStorage('disque')
     stubOAuth({ local: '1' })
 
     const config = await loadNextConfig()
@@ -338,6 +378,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
     stubMailer('capture')
     stubAuth('aucun')
+    stubStorage('disque')
 
     const config = await loadNextConfig()
 
@@ -348,6 +389,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
     stubMailer('aucun')
     stubAuth('aucun')
+    stubStorage('disque')
 
     const config = await loadNextConfig()
 
@@ -366,6 +408,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
       vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
       stubMailer('aucun')
       stubAuth('aucun')
+      stubStorage('disque')
       vi.stubEnv('SKIP_ENV_VALIDATION', '1')
 
       const config = await loadNextConfig()

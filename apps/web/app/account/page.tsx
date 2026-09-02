@@ -18,8 +18,10 @@ import {
   currentViewer,
 } from '../../lib/auth'
 import { appIntl } from '../../lib/i18n'
+import { AVATAR_CONTENT_TYPES, fileUrl, storage, storageRoutePath } from '../../lib/storage'
 import { SignOutButton } from '../sign-out-button'
 import { AccountForm } from './account-form'
+import { AvatarForm } from './avatar-form'
 import { ConnectionList, type ConnectionRow } from './connection-list'
 import { PasskeyCard, type PasskeyRow } from './passkey-card'
 import { SessionList, type SessionRow } from './session-list'
@@ -82,6 +84,10 @@ export default async function AccountPage() {
     redirect(`${path('/sign-in')}?next=${encodeURIComponent('/account')}`)
   }
 
+  // Module de stockage coupé : `avatarOf` rend `null` **sans toucher la base**,
+  // et la carte n'est pas rendue. Aucune condition ne nomme un module ici —
+  // `available` est une donnée, comme `sections.length` l'est pour la racine.
+  const avatar = await storage.avatarOf(account.userId)
   const dateFormat = dateFormatFor(locale)
   // Les dates sont formatées **par le serveur**, dans la locale servie : les
   // formater dans le composant client les rendrait dans le fuseau du
@@ -113,6 +119,28 @@ export default async function AccountPage() {
         description={t('app.account.description')}
         actions={<SignOutButton action={authRoutePath('signOut')} destination={path('/')} />}
       />
+
+      {storage.available ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('storage.avatar.title')}</CardTitle>
+            <CardDescription>{t('storage.avatar.description')}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <AvatarForm
+              presignAction={storageRoutePath('presignAvatar')}
+              confirmAction={storageRoutePath('confirmAvatar')}
+              removeAction={storageRoutePath('removeAvatar')}
+              avatarUrl={avatar === null ? null : fileUrl(avatar.fileId, avatar.version)}
+              name={account.name}
+              // Les types acceptés viennent du `domain` du module : les
+              // recopier ici en ferait une seconde liste, qui divergerait le
+              // jour où le `domain` en ajoute ou en retire un.
+              accept={AVATAR_CONTENT_TYPES.join(',')}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>

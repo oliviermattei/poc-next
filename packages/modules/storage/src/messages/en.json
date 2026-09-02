@@ -1,0 +1,15 @@
+{
+  "avatar.title": "Profile picture",
+  "avatar.description": "PNG, JPEG or WebP. 2 MB maximum.",
+  "avatar.choose": "Choose an image",
+  "avatar.remove": "Remove",
+  "avatar.alt": "Profile picture of {name}",
+  "avatar.pending": "Uploading…",
+  "avatar.error.unsupported_type": "This format is not accepted: PNG, JPEG or WebP.",
+  "avatar.error.too_large": "This image is larger than 2 MB.",
+  "avatar.error.invalid_size": "This file is empty.",
+  "avatar.error.content_mismatch": "This file is not a valid image.",
+  "avatar.error.invalid_key": "This upload is no longer valid. Try again.",
+  "avatar.error.storage_unavailable": "Storage is unavailable. Try again later.",
+  "avatar.error.failed": "The upload failed. Try again."
+}

@@ -3,9 +3,11 @@ import { loadRootEnv } from '@repo/config/server'
 import type { NextConfig } from 'next'
 import createNextIntlPlugin from 'next-intl/plugin'
 
+import { enabledModules } from '../../config/features'
 import { resolveAuthConfig } from './lib/auth-config'
 import { resolveMailerConfig } from './lib/mailer-config'
 import { resolveOAuthConfig } from './lib/oauth-config'
+import { resolveStorageConfig } from './lib/storage-config'
 
 // Next ne lit les fichiers `.env` que dans le dossier de l'application. Le dépôt
 // n'en a qu'un, à la racine — celui que `.env.example` demande de copier. Sans
@@ -72,6 +74,17 @@ export default function config(phase: string): NextConfig {
     // démarrage en nommant la variable absente, plutôt que d'échouer au premier
     // clic en production (`docs/security.md` §5).
     resolveOAuthConfig(env)
+    // Et pour le stockage — **mais seulement si le module est activé**. C'est
+    // la différence avec les trois précédents : le mailer et l'authentification
+    // sont exigés de toute application qui démarre, le stockage ne l'est que
+    // d'une application qui en a un. Un dépôt qui coupe le module n'a aucune
+    // variable à renseigner (critère 7 de s18), et la liste est lue dans
+    // `config/features.ts` plutôt que dans le registre : la question est « ce
+    // module est-il activé ? », pas « le registre est-il cohérent ? », et
+    // construire le registre ici chargerait chaque module pour y répondre.
+    if ((enabledModules as readonly string[]).includes('storage')) {
+      resolveStorageConfig(env)
+    }
   }
 
   return withNextIntl(nextConfig)

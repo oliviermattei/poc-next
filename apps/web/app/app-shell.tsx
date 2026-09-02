@@ -6,6 +6,7 @@ import { appIntl } from '../lib/i18n'
 import { localeRouting } from '../lib/locale-routing'
 import { moduleRegistry } from '../lib/module-registry'
 import { localeOptions, shellNavigation } from '../lib/navigation'
+import { fileUrl, storage } from '../lib/storage'
 import { AccountMenu } from './account-menu'
 import { DesktopNavigation, MobileNavigation } from './app-navigation'
 
@@ -36,6 +37,11 @@ export async function AppShell({ children }: { readonly children: ReactNode }) {
   const intl = { locale, t, path }
   const items = shellNavigation(moduleRegistry, session, intl)
   const languages = localeOptions(localeRouting, intl)
+  // **Lu seulement quand il y a un compte.** Un visiteur anonyme n'a pas de
+  // menu de compte, donc pas d'avatar à chercher — et `tests/marketing.test.ts`
+  // compte les connexions ouvertes pendant le rendu du shell : une lecture
+  // inconditionnelle ici ferait rougir cette mesure.
+  const avatar = account === null ? null : await storage.avatarOf(account.userId)
 
   return (
     <div className="flex min-h-svh w-full">
@@ -87,6 +93,7 @@ export async function AppShell({ children }: { readonly children: ReactNode }) {
                 name={account.name}
                 accountHref={path('/account')}
                 signOutAction={authRoutePath('signOut')}
+                avatarUrl={avatar === null ? null : fileUrl(avatar.fileId, avatar.version)}
               />
             )}
           </div>

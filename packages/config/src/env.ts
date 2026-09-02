@@ -146,6 +146,49 @@ const envShape = {
    * ne l'active jamais — il ne fait que restreindre l'opt-in.
    */
   OAUTH_LOCAL_PROVIDER: z.literal(OAUTH_LOCAL_PROVIDER_ENABLED).optional(),
+  /**
+   * Le seau de fichiers (s18) : S3, ou toute API compatible — R2, MinIO,
+   * Spaces. **Optionnelles par groupe**, comme les paires OAuth.
+   *
+   * Optionnelles parce que tout processus ne monte pas un stockage, et parce
+   * qu'un projet peut couper le module `storage` : le schéma juge la **forme**
+   * des variables, il n'impose de stockage à personne. L'exigence « il faut un
+   * stockage » est portée par `apps/web/lib/storage-config.ts`, et seulement
+   * quand le module est activé.
+   *
+   * Ce qui n'est pas optionnel, c'est la **cohérence** : un seau sans région ni
+   * identifiants n'échouerait qu'au premier téléversement, en production. La
+   * règle croisée ci-dessous nomme l'absente.
+   */
+  STORAGE_S3_BUCKET: z.string().min(1).optional(),
+  STORAGE_S3_REGION: z.string().min(1).optional(),
+  STORAGE_S3_ACCESS_KEY_ID: z.string().min(1).optional(),
+  STORAGE_S3_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+  /**
+   * Point de terminaison du seau. Absent pour AWS, renseigné pour R2, MinIO ou
+   * Spaces. Seul du groupe à rester facultatif quand les quatre autres sont là.
+   */
+  STORAGE_S3_ENDPOINT: z
+    .string()
+    .min(1)
+    .refine((value) => URL.canParse(value) && /^https?:$/.test(new URL(value).protocol), {
+      message: 'must be an absolute http(s) URL (https://accountid.r2.cloudflarestorage.com)',
+    })
+    .optional(),
+  /**
+   * Monte le **stockage sur disque**, sans aucune clé : les fichiers sont
+   * écrits dans ce dossier, et l'URL présignée reste sur notre propre origine.
+   *
+   * Opt-in explicite, comme `EMAIL_LOCAL_CAPTURE` et `OAUTH_LOCAL_PROVIDER`, et
+   * jamais déduit de `NODE_ENV` ni de l'absence de seau : un repli automatique
+   * ferait écrire sur le disque d'un déploiement en rendant un succès que rien
+   * ne distingue d'un vrai stockage (`docs/reliability.md` §2). Posé en même
+   * temps qu'un seau, il est refusé : le choix serait implicite.
+   *
+   * C'est un **chemin**, pas un drapeau à `1` : le dossier est injecté, comme
+   * celui de la capture d'emails, et il n'est jamais deviné.
+   */
+  STORAGE_LOCAL_DIRECTORY: z.string().min(1).optional(),
   /** Expéditeur. Obligatoire dès qu'une clé est configurée : voir la règle croisée. */
   EMAIL_FROM: z
     .string()
@@ -220,6 +263,42 @@ export const envSchema = z.object(envShape).superRefine((value, ctx) => {
       code: 'custom',
       path: ['OAUTH_LOCAL_PROVIDER'],
       message: 'cannot be enabled while a provider client id or secret is set: choose one',
+    })
+  }
+
+  // Le seau de fichiers (s18) : les quatre variables vont ensemble, et
+  // l'absente est **nommée**. Un seau sans identifiants n'échouerait qu'au
+  // premier téléversement, en production, sur un journal que personne ne lit.
+  // `STORAGE_S3_ENDPOINT` n'en fait pas partie : il est absent chez AWS.
+  const s3Keys = [
+    'STORAGE_S3_BUCKET',
+    'STORAGE_S3_REGION',
+    'STORAGE_S3_ACCESS_KEY_ID',
+    'STORAGE_S3_SECRET_ACCESS_KEY',
+  ] as const
+
+  const declaredS3 = s3Keys.filter((key) => value[key] !== undefined)
+
+  if (declaredS3.length > 0) {
+    for (const key of s3Keys) {
+      if (value[key] === undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [key],
+          message: `is required when ${declaredS3[0]} is set`,
+        })
+      }
+    }
+  }
+
+  // Même règle que la capture locale des emails et que le fournisseur OAuth de
+  // développement : le mode local est un **choix**, pas un repli. Les deux à la
+  // fois, et plus personne ne sait si un téléversement atteint le seau.
+  if (declaredS3.length > 0 && value.STORAGE_LOCAL_DIRECTORY !== undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['STORAGE_LOCAL_DIRECTORY'],
+      message: 'cannot be set while an S3 bucket is configured: choose one',
     })
   }
 })

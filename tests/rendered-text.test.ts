@@ -97,6 +97,24 @@ vi.mock('../apps/web/lib/organizations', async (importOriginal) => {
   }
 })
 
+/**
+ * Le stockage : **la base**, et rien d'autre (s18).
+ *
+ * `available` reste celui du vrai point de composition — c'est lui qui décide
+ * si la carte est rendue, et le doubler ferait de ce fichier une démonstration
+ * de sa propre fixture. Seule la lecture est remplacée, comme pour
+ * `lib/organizations`.
+ */
+vi.mock('../apps/web/lib/storage', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../apps/web/lib/storage')>()
+  const { FIXTURE_AVATAR } = await import('./fixtures/screen-viewer')
+
+  return {
+    ...actual,
+    storage: { ...actual.storage, avatarOf: () => Promise.resolve(FIXTURE_AVATAR) },
+  }
+})
+
 vi.mock('../apps/web/lib/i18n', async () => {
   const { createTranslator } = await import('next-intl')
   const { localeRouting } = await import('../apps/web/lib/locale-routing')
@@ -230,6 +248,12 @@ const TECHNICAL_PROPS = new Set([
   'accountHref',
   'align',
   'autoComplete',
+  // s18 — l'URL de lecture de l'avatar, remise au menu de compte du **shell**,
+  // donc présente sur chaque écran. Elle entre ici pour la même raison que
+  // `accountHref` et `signOutAction` : ce sont les props du shell, pas celles
+  // d'un écran. Le garde-fou de prose reste actif — `avatarUrl="Photo de
+  // profil"` rougirait.
+  'avatarUrl',
   'callbackURL',
   'className',
   'currentPath',
@@ -438,6 +462,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       ANONYMOUS,
       FIXTURE_EMAIL,
       FIXTURE_EXPIRED_INVITED_EMAIL,
+      FIXTURE_INITIALS,
       FIXTURE_INVITED_EMAIL,
       FIXTURE_IP,
       FIXTURE_MEMBER_EMAIL,
@@ -471,6 +496,9 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       // des passkeys **sans** nom, lui, est un marqueur — il vient du
       // catalogue, et c'est la seconde ligne de la fixture qui le fait rendre.
       FIXTURE_PASSKEY_NAME,
+      // s18 — les initiales du repli d'avatar : une donnée **dérivée du nom**,
+      // affichée telle quelle et venue d'aucun catalogue.
+      FIXTURE_INITIALS,
       new Intl.DateTimeFormat(defaultLocale, {
         dateStyle: 'long',
         timeStyle: 'short',
@@ -604,6 +632,15 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           'registerAction',
           'renameAction',
           'revokeAction',
+          // s18. Les trois routes du module de stockage et la liste des types
+          // acceptés, remises à la carte « Photo de profil ». Déclarées **sur
+          // cet écran** : ailleurs, une prop nommée `accept` portant une chaîne
+          // fait toujours rougir, et le garde-fou de prose reste actif ici
+          // aussi — `accept="Choisir une image"` rougirait.
+          'presignAction',
+          'confirmAction',
+          'removeAction',
+          'accept',
         ],
         render: async () => (await import('../apps/web/app/account/page')).default(),
       },

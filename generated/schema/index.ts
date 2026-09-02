@@ -11,6 +11,7 @@ import * as demoEnabled from './demo-enabled'
 import * as i18n from './i18n'
 import * as marketing from './marketing'
 import * as organizations from './organizations'
+import * as storage from './storage'
 
 export const enabledModuleSchemas = [
   { id: 'auth', schema: auth },
@@ -18,4 +19,5 @@ export const enabledModuleSchemas = [
   { id: 'i18n', schema: i18n },
   { id: 'marketing', schema: marketing },
   { id: 'organizations', schema: organizations },
+  { id: 'storage', schema: storage },
 ] as const satisfies readonly ModuleSchema[]

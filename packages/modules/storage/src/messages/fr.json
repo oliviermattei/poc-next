@@ -1,0 +1,15 @@
+{
+  "avatar.title": "Photo de profil",
+  "avatar.description": "PNG, JPEG ou WebP. 2 Mo au maximum.",
+  "avatar.choose": "Choisir une image",
+  "avatar.remove": "Retirer",
+  "avatar.alt": "Photo de profil de {name}",
+  "avatar.pending": "Envoi en cours…",
+  "avatar.error.unsupported_type": "Ce format n’est pas accepté : PNG, JPEG ou WebP.",
+  "avatar.error.too_large": "Cette image dépasse 2 Mo.",
+  "avatar.error.invalid_size": "Ce fichier est vide.",
+  "avatar.error.content_mismatch": "Ce fichier n’est pas une image valide.",
+  "avatar.error.invalid_key": "Cet envoi n’est plus valide. Réessayez.",
+  "avatar.error.storage_unavailable": "Le stockage est indisponible. Réessayez plus tard.",
+  "avatar.error.failed": "L’envoi a échoué. Réessayez."
+}
