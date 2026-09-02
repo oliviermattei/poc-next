@@ -46,10 +46,24 @@ story, pas l'historique complet). Mutations sur les invariants **propres à la s
 socle qu'elle réutilise. Six commandes une fois, plus un aller-retour de bascule de module.
 Vérification navigateur.
 
-**Niveau 3 — contenu, documentation, mécanique.** s29, s30, s31, s44, et tout tour de correction
-qui ne touche que des textes ou des comptes. Implémenteur **Sonnet**. **Pas de sous-agent
-relecteur** : l'orchestrateur vérifie le diff et les commandes lui-même. Pas de campagne de
-mutations — il n'y a pas d'invariant à casser dans un article de blog.
+**Niveau 3 — contenu, documentation.** s29, s30, s31, s44. Implémenteur **Sonnet**, relecteur
+**Sonnet** au briefing court. Pas de campagne de mutations sur du texte — mais **jamais zéro
+relecteur** : s10 passait pour « juste un site marketing », et sa revue y a trouvé un
+`robots.txt` qui offrait `/reset-password?token=…` à l'indexation. On ne sait pas à l'avance
+quelle story n'en a pas besoin.
+
+L'orchestrateur ne vérifie lui-même qu'un cas : un **tour de correction** qui ne touche que des
+textes ou des comptes, **à l'intérieur d'une story déjà relue**. Ça ne franchit aucune porte.
+
+## Ce qui ne se négocie à aucun niveau
+
+- Toute story passe par un **relecteur en contexte frais** et par la porte mécanique
+  `Ship allowed`. On ne relit jamais dans le contexte qui a écrit.
+- Chaque invariant revendiqué est **neutralisé à l'endroit du défaut**, et le rouge est montré.
+  C'est ce qui a rattrapé les treize tests faux.
+- **Les deux configurations de modules**, dès qu'une story touche un module.
+- **La vérification navigateur**, dès qu'il y a un écran : elle a mordu six fois, chaque fois sur
+  un défaut qu'aucune des six commandes ne voyait.
 
 **Deux voies en parallèle, pas trois.** Les trois coupures de limite d'usage sont toutes arrivées
 à trois voies simultanées, et chaque coupure fait perdre le travail en cours d'un agent.
