@@ -53,6 +53,9 @@ packages/
 tooling/                   Configurations partagées : eslint, typescript, tailwind, vitest
 docs/                      PRD, stories, architecture, design system, décisions, recherches,
                            plans, revues
+Dockerfile                 Image de production, trois étapes (build, migrations, exécution)
+docker-compose.prod.yml    Pile de production : base, migrations, application
+.dockerignore              Ce qui n'entre jamais dans le contexte de build, `.env` en tête
 ```
 
 Un module non activé n'est pas importé par l'application : son package existe dans le dépôt, mais ni ses routes, ni sa navigation, ni ses migrations n'entrent dans la composition.
@@ -192,6 +195,16 @@ Trois référentiels s'appliquent à **toute** story, au même titre que la règ
 Le plan d'une story nomme les sections applicables ; la revue les vérifie en mutant le code, pas en lisant les intentions. Un manquement est un finding **critical**, au même rang qu'une régression fonctionnelle.
 
 Conséquence directe sur le contrat de module : une route déclarée par un module indique son niveau de protection (publique, authentifiée, réservée à un rôle, réservée à une offre payante — ADR 043). Sans cela, le §3 du socle de sécurité serait invérifiable autrement que par relecture.
+
+## Déploiement (s27)
+
+`docs/deployment.md` porte la chaîne complète : l'image, la pile, la checklist des variables et les guides Coolify et Vercel. Trois faits y sont structurants pour le reste du dépôt.
+
+**L'application a deux points de démarrage, et un seul texte les garde** (ADR 049). `apps/web/lib/startup.ts` est appelé par `next.config.ts` (développement, build) **et** par `apps/web/instrumentation.ts` (chaque instance de serveur). Le second existe parce que `output: 'standalone'` sérialise la configuration Next dans `server.js` : `next.config.ts` n'est plus exécuté au démarrage du serveur, et sans ce second point l'image démarrerait **sans valider son environnement**.
+
+**L'étape d'exécution n'hérite pas de la permissivité de l'étape de construction.** L'échappatoire de validation (`NEXT_PHASE`, `SKIP_ENV_VALIDATION`) est portée par la commande de build du `Dockerfile`, jamais par un `ENV` d'étape. Posée dans une étape, elle est héritée par toutes celles qui en descendent — et l'image démarre alors en production sans rien vérifier.
+
+**Les migrations sont un conteneur distinct, joué avant le basculement du trafic.** `web` dépend de `migrate` par `service_completed_successfully` : une migration en échec empêche la nouvelle version de démarrer, et aucun trafic n'atteint un schéma à moitié appliqué. **Ce n'est pas une continuité de service** — mesuré sur une pile déjà en service, `docker compose up -d --build` recrée le conteneur `web` *avant* de jouer les migrations, si bien qu'une migration en échec laisse la pile sans rien qui réponde. Jouer `run --rm migrate` d'abord, ou basculer en bleu-vert, sont les deux formes qui ne coupent pas ; `docs/deployment.md` porte les trois états mesurés. Les migrations restent rétrocompatibles avec la version encore en ligne (`docs/reliability.md` §4).
 
 ## Points de vigilance repris des revues
 

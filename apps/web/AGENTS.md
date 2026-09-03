@@ -109,6 +109,56 @@ point d'accès unique est `@repo/config`.
   cela vient du registre, et c'est ce qui fait qu'un module non activé n'expose
   rien du tout.
 
+## Les deux points de démarrage (s27, ADR 049)
+
+**Cette application valide sa configuration en deux endroits, et un seul texte
+la porte** : `lib/startup.ts`, `assertStartupConfiguration`. La décision, ses
+options rejetées et l'exception qu'elle ouvre à `docs/security.md` §5 vivent dans
+`docs/decisions/049-la-garde-de-demarrage-vit-dans-l-instrumentation-que-la-sortie-autonome-atteint.md`.
+
+| Point | Qui l'appelle | Ce qu'il couvre |
+|---|---|---|
+| `next.config.ts` | `next dev`, `next build` | le développement et le build ; il reçoit la **phase**, ce qui laisse passer le build |
+| `instrumentation.ts` | le démarrage de **chaque instance de serveur** | `next start` et **l'image de production** |
+
+Le second existe parce que `output: 'standalone'` sérialise la configuration
+Next dans `server.js` : **`next.config.ts` n'est plus exécuté au démarrage du
+serveur**. La frontière était écrite dans `packages/config/src/env.ts` (constats
+N15/N16 de s01) ; elle a été mesurée en s27 — la première image démarrait avec
+un environnement **entièrement vide**, affichait `✓ Ready`, et `/api/health`
+répondait 503 pour toujours.
+
+Deux conséquences, et elles ne se devinent pas :
+
+- **`instrumentation.ts` sort du processus (`process.exit(1)`), il ne se
+  contente pas de lever.** Mesuré : quand `register` lève, Next journalise
+  « Failed to prepare server » puis un `unhandledRejection`, et **laisse le
+  processus vivant** — il répond alors 500 sur chaque requête. Un conteneur dans
+  cet état est « running » pour son orchestrateur ;
+- **la garde hérite de l'échappatoire de build**, `NEXT_PHASE` et
+  `SKIP_ENV_VALIDATION`, sans la redéclarer. C'est pourquoi le `Dockerfile` ne
+  la pose que sur sa commande de build, jamais par un `ENV` d'étape.
+
+Les mentions de `next.config.ts` ailleurs dans ce fichier — le mailer,
+l'authentification, le stockage, la facturation, le gating — désignent
+désormais **cette garde partagée**, appelée par les deux points.
+
+`tests/deployment.test.ts` tient un témoin de refus au second point ;
+l'énumération des états refusés reste à la règle, dans
+`tests/env-wiring.test.ts`.
+
+**Ce qui a été prouvé par mutation**, le 3 septembre 2026 — le compte est le
+nombre de cas passés au rouge, sur les mutations **posées** :
+
+| Mutation | Rouges | Commande |
+|---|---|---|
+| `ENV SKIP_ENV_VALIDATION=1` dans l'étape d'exécution du `Dockerfile` | 1 | `pnpm vitest run tests/deployment.test.ts` (13 cas) |
+| idem, mesuré sur l'image : `docker run` **sans aucune variable** | — | le conteneur reste « Up », journalise « database unreachable » et ne refuse rien |
+| retirer `refuseStartupOnInvalidConfiguration()` d'`instrumentation.ts` | 1 | `pnpm vitest run tests/deployment.test.ts` (13 cas) |
+| figer `3000` dans la sonde du `Dockerfile`, que `PORT` rend variable | 1 | idem |
+| retirer une variable du schéma de l'environnement transmis aux conteneurs | 1 | idem |
+| retirer `environment:` du service `migrate` | 1 | idem |
+
 ## Le montage des modules
 
 Deux fichiers, et deux seulement :

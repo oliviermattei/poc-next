@@ -397,6 +397,70 @@ jobs:
           path: test-results-profil-minimal/
           retention-days: 7
 
+  # **Le critère 7 de s27** — « le pipeline CI construit l'image et échoue si le
+  # build de production échoue » — et un pas de plus, parce que s'arrêter à la
+  # construction livrerait une garantie creuse : **l'image est démarrée**.
+  #
+  # Une image qui se construit mais ne démarre pas est le faux vert évident de
+  # cette chaîne : la sortie autonome d'un monorepo pnpm ne résout ses paquets
+  # `workspace:` qu'à l'exécution, et rien de tout cela ne se voit au
+  # `docker build`.
+  #
+  # Et le démarrage est éprouvé **sans aucune variable** : l'image doit sortir en
+  # erreur en nommant ce qui manque. C'est le critère 1 pris à l'envers, et la
+  # seule preuve mécanique que l'échappatoire du build — `SKIP_ENV_VALIDATION`,
+  # `NEXT_PHASE` — n'a pas fui dans l'étape d'exécution. Mesuré sur la version
+  # fautive : le conteneur restait « Up », vert et sans configuration.
+  #
+  # Un job à part, et sans `if:` : la matrice de `quality` le paierait deux fois
+  # pour rien — l'image se construit à partir de la configuration livrée.
+  image:
+    name: Image de production (construite, puis démarrée)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # **La pile, avant les images.** `docker-compose.prod.yml` porte tout le
+      # mécanisme du critère 3 — l'ordre de démarrage, la dépendance
+      # `service_completed_successfully`, et la configuration transmise aux
+      # conteneurs par interpolation. Sans cette étape, rien en CI ne le charge :
+      # une ancre YAML cassée ou un service supprimé ne se verrait qu'au
+      # déploiement.
+      #
+      # Les deux variables sans défaut sont fournies ici : le fichier refuse de
+      # se résoudre sans elles, et c'est voulu.
+      - name: Valider la pile de production
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+        run: docker compose -f docker-compose.prod.yml config --quiet
+
+      - name: Construire l'image de production
+        run: docker build --target runner --tag killer-saas-web:ci .
+
+      # L'étape des migrations, que `docker-compose.prod.yml` fait jouer **avant**
+      # le basculement du trafic. Elle ne descend pas de `runner` : une image
+      # `runner` qui construit ne dit rien de celle-ci.
+      - name: Construire l'image de migration
+        run: docker build --target migrator --tag killer-saas-migrate:ci .
+
+      - name: L'image refuse de démarrer sans configuration, en la nommant
+        run: |
+          if docker run --rm killer-saas-web:ci > demarrage.log 2>&1; then
+            echo "L'image a démarré sans aucune variable d'environnement : la validation ne s'exécute pas."
+            cat demarrage.log
+            exit 1
+          fi
+
+          cat demarrage.log
+
+          if ! grep -q 'DATABASE_URL' demarrage.log; then
+            echo "L'image a bien refusé de démarrer, mais sans nommer la variable manquante."
+            exit 1
+          fi
+
   secrets:
     name: Scan de secrets
     runs-on: ubuntu-latest
