@@ -20,7 +20,8 @@
     "vitest.config.ts",
     "eslint.config.ts",
     "playwright.config.ts",
-    "playwright.golden-path.config.ts"
+    "playwright.golden-path.config.ts",
+    "playwright.minimal-profile.config.ts"
   ],
   "exclude": [
     "node_modules",

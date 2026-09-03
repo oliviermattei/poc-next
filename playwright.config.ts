@@ -39,6 +39,18 @@ export const BASE_URL = `http://localhost:${PORT}`
 export const GOLDEN_PATH_DIRECTORY = './e2e/golden-path'
 
 /**
+ * **Le dossier de la recette du profil minimal** (s26), exclu de cette suite et
+ * servi par `playwright.minimal-profile.config.ts`.
+ *
+ * Même raison que ci-dessus, plus une propre à s26 : ces parcours attendent des
+ * modules **absents**, ce qui n'est vrai que dans le clone où le profil a été
+ * appliqué. Collectés par `pnpm test:e2e`, ils échoueraient sur la
+ * configuration livrée — ce qui est un rouge juste, mais sur la mauvaise
+ * question.
+ */
+export const MINIMAL_PROFILE_DIRECTORY = './e2e/minimal-profile'
+
+/**
  * **L'environnement du serveur des parcours**, partagé avec la configuration du
  * parcours doré.
  *
@@ -118,9 +130,10 @@ export const webServerEnv = (): Record<string, string> => ({
 
 export default defineConfig({
   testDir: './e2e',
-  // Le parcours doré vit sous `e2e/`, mais il n'appartient pas à cette suite :
-  // il a sa propre configuration et sa propre commande.
-  testIgnore: '**/golden-path/**',
+  // Le parcours doré et la recette du profil minimal vivent sous `e2e/`, mais
+  // ils n'appartiennent pas à cette suite : chacun a sa propre configuration et
+  // sa propre commande.
+  testIgnore: ['**/golden-path/**', '**/minimal-profile/**'],
   fullyParallel: true,
   // **Le serveur répond avant d'être compilé.** `webServer.url` ci-dessous
   // n'atteste que d'un port qui écoute ; `next dev` compile chaque route à sa
