@@ -1,9 +1,12 @@
 # packages/modules/billing — règles locales
 
-Le module de facturation (s19, s20, s22). Il possède les offres, les
+Le module de facturation (s19, s20, s22, s24). Il possède les offres, les
 abonnements, **les achats uniques**, le webhook entrant du fournisseur de
-paiement et **l'écran public de tarifs** (`PricingTable`). Il ne possède **ni**
-le gating par offre (s21), **ni** les métriques de revenus (s38).
+paiement, **le tunnel de paiement d'un visiteur sans compte** et **l'écran
+public de tarifs** (`PricingTable`). Il ne possède **ni** le gating par offre
+(s21), **ni** les métriques de revenus (s38), **ni** les comptes : créer celui
+d'un paiement invité se fait au point de composition
+(`apps/web/lib/guest-account.ts`), parce que ce module ne connaît pas `auth`.
 
 **Ce qu'il possède de la page de tarifs, exactement** : l'écran
 (`presentation/pricing-table.tsx`), les deux règles qui le nourrissent
@@ -321,6 +324,88 @@ qui cliquait la seconde offre était donc prélevé deux fois, et l'écran — q
 n'affiche que son abonnement courant — ne montrait pas le second. Changer d'offre
 passe par le **portail**, ce que le sixième critère de la story dit déjà.
 
+## Le périmètre invité (s24, ADR 047)
+
+**`scope_kind` porte trois valeurs, `ModuleScope` en garde deux.** `user`,
+`organization` — et `guest`, qui n'existe **qu'au stockage**. `billing_customer`
+ne porte aucune clé étrangère (ADR 018) : deux colonnes de texte suffisent à
+représenter un visiteur qui paie sans compte. Ajouter un troisième cas à
+`ModuleScope` (`packages/core/src/module.ts`) obligerait à rouvrir **chaque**
+module écrit, pour un périmètre qui n'a ni donnée à exporter ni donnée à purger.
+
+**La ligne est écrite à l'ouverture du tunnel, comme toutes les autres**
+(ADR 034). Le webhook ne la crée pas : il la **promeut**. C'est ce qui préserve
+intacte la garantie d'ordre — `provider_customer_id` ne change jamais, donc tout
+événement continue d'y résoudre son propriétaire, quel que soit son ordre
+d'arrivée, et il n'y a toujours pas de tampon d'événements orphelins.
+
+**Trois gardes, et chacune ferme un défaut différent :**
+
+| Garde | Où | Ce qu'elle ferme |
+|---|---|---|
+| `accountScopeOfCustomer` rend `null` pour un invité | `domain/guest.ts` | une ligne invitée reconstruite en `user:<jeton>` — un compte que personne n'a créé, passé au compteur de sièges par `pnpm billing:reconcile` |
+| `isGuestScopeKind` avant de produire une promotion | `application/billing-use-cases.ts` | un second `checkout.session.completed` sur le même client, avec une autre adresse, qui repointerait vers un autre compte la ligne d'une personne déjà promue |
+| `where scope_kind = 'guest'` dans la mise à jour | `infrastructure/drizzle-billing-repositories.ts` | la **même** prise de contrôle, quand deux livraisons simultanées passent toutes les deux la garde applicative — celle-ci lit puis écrit, celle-là décide en base |
+
+La troisième porte aussi un `not exists` : un visiteur qui paie deux fois sans se
+connecter produit deux lignes invitées, et promouvoir la seconde vers le même
+compte dépasserait l'index `(scope_kind, scope_id)`. La clause laisse la seconde
+ligne invitée plutôt que de faire lever le webhook — un 400 que le fournisseur
+rejouerait indéfiniment (`docs/reliability.md` §1).
+
+**Une requête qui sert un compte ne rend jamais une ligne invitée.**
+`customerForScope` filtre sur les deux colonnes, donc un périmètre `user:` ou
+`organization:` ne peut pas atteindre une ligne `guest`. Toute lecture ajoutée
+ici doit garder cette propriété : l'unicité de la base ne l'attrapera pas.
+
+**L'identifiant invité est un tirage cryptographique** — trente-deux octets,
+`infrastructure/guest-scope-id.ts`. Il est écrit avant tout paiement, dans une
+ligne que le webhook retrouvera : prévisible, il permettrait de viser la ligne
+d'un autre. Il est **distinct de `generateId`**, que les suites remplacent
+volontiers par un compteur, et `tests/billing.test.ts` mesure le générateur
+réellement livré — deux tirages doivent différer sur la majorité de leurs
+positions.
+
+**Ce qu'un paiement abandonné laisse, et que rien ne nettoie** : une ligne
+`billing_customer` invitée, orpheline. Ce n'est ni un compte ni un droit
+d'accès, donc le cinquième critère de la story est tenu — mais aucun périmètre
+ne la nomme, donc aucune purge ne peut l'atteindre. La catégorie
+`guest-checkout` est déclarée au contrat avec sa politique, et le commentaire de
+`module.ts` dit exactement ce que cette politique recouvre et ce qu'elle ne
+recouvre pas. **N'écrivez pas de commande de nettoyage** : l'`eject` est au
+cimetière du PRD.
+
+**La route publique est limitée en débit**, en base, donc partagée entre
+instances (`docs/security.md` §7). **Deux seaux, et ils ne disent pas la même
+chose** (constat F3 de la revue) :
+
+| Seau | Clé | Ce qu'il fait quand il est plein |
+|---|---|---|
+| l'appelant | le premier maillon de `x-forwarded-for` — une valeur que le client écrit | **refuse** (429) |
+| global | aucune clé : une ligne pour toute la route | **dégrade** — le tunnel n'est pas ouvert, le visiteur repart par la connexion, avec son offre en poche |
+
+La première rédaction n'avait que le premier seau, et affirmait qu'il n'y avait
+rien à dégrader. C'était faux : la dégradation disponible est **le comportement
+d'avant s24** — le déclencheur anonyme menait à `/sign-in`. Sans le second seau,
+qui fait tourner l'en-tête obtient une croissance **définitive** de
+`billing_customer` (rien ne l'efface, voir ci-dessus) et une consommation
+illimitée du budget d'appels du marchand : chaque ouverture crée un client et
+une session chez le fournisseur, avec une clé d'idempotence tirée au hasard qui
+ne converge jamais.
+
+Trois propriétés que le second seau ne doit pas perdre, et chacune a son cas
+dans `tests/billing.test.ts` : le canal de vente reste ouvert, le **chemin
+authentifié** n'est pas touché, et les martèlements **refusés** ne comptent pas
+dedans — sinon un seul appelant enverrait tout le monde à la connexion. Où mène
+la porte est décidé par le point de composition (`guestFallbackUrl`,
+`apps/web/lib/billing.ts`) : ce module ne connaît pas `auth`. Le raisonnement
+complet est dans `domain/checkout-throttle.ts`.
+
+**`openCheckout` n'a pas été assoupli.** Le chemin authentifié garde sa garde de
+session et sa permission ; l'anonyme a **sa propre entrée**
+(`openGuestCheckout`). Affaiblir la première pour servir la seconde mettrait le
+chemin authentifié en danger pour un besoin qui n'est pas le sien.
+
 ## Imports autorisés
 
 - `@repo/core` pour le contrat de module, `ModuleScope` et le registre ;
@@ -562,3 +647,45 @@ Les deux lignes du montant affiché se répondent : celle du **composant** est
 celle qui compte, parce que c'est là que le prix est réellement écrit à l'écran.
 Une mutation posée seulement dans la page aurait laissé croire à une couverture
 qu'un test de props n'aurait pas eue.
+
+**s24 — le tunnel invité**, premier passage, mesuré le 3 septembre 2026
+(`pnpm test` à 1745 verts alors, `pnpm test:e2e` à 86 verts, base levée) — les
+comptes de la colonne « Commande » sont ceux de ce jour-là, avant les six cas
+ajoutés par le second passage :
+
+| Mutation | Rouges | Commande |
+|---|---|---|
+| retirer `where scope_kind = 'guest'` de la promotion (`infrastructure/`) | 1 | `pnpm vitest run tests/billing.test.ts` (159 verts) |
+| retirer `isGuestScopeKind` avant de produire la promotion (`application/`) | 2 | idem (158 verts) |
+| passer le compteur de débit en mémoire de processus | 6 | idem (154 verts) |
+| la page de retour ouvre une session pour le payeur (`apps/web/app/pricing/page.tsx`) | 1 | idem (159 verts) |
+| envoyer un lien de définition de mot de passe à un compte existant (`apps/web/lib/guest-account.ts`) | 1 | idem (159 verts) |
+| la résolution de compte ne retrouve plus avant de créer (`accountFor`) | 2 | idem (158 verts) |
+| un `scope_id` invité tiré d'un compteur et d'un horodatage | 1 | idem (159 verts) |
+
+**Le second passage** — les filets que la revue a trouvés manquants (constats F1
+à F4), mesurés le 3 septembre 2026, `pnpm test` à **1751** verts et
+`pnpm test:e2e` à 86 verts :
+
+| Mutation | Rouges | Commande |
+|---|---|---|
+| le seau **global** ne décide plus rien | 1 | `pnpm vitest run tests/billing.test.ts` (163 verts) |
+| le seau global prend l'appelant dans sa clé — donc contournable par l'en-tête | 1 | idem |
+| les martèlements **refusés** comptent dans le seau global | 1 | idem |
+| la branche de promotion réduite à `checkout_completed` — le **paiement unique** perd son filet | 1 | idem |
+| `if (applied && promoted !== null)` ramené à `if (promoted !== null)` | 1 | idem |
+| `await users.markEmailVerified(userId)` supprimé (`packages/modules/auth`) | 1 | `pnpm vitest run tests/auth.test.ts` (102 verts) |
+
+Les deux dernières étaient **vertes** au premier passage, et elles disaient
+quelque chose : la première parce que l'inertie du rejeu est portée par
+`isGuestScopeKind` **dans le cas courant**, mais pas dans celui d'une promotion
+que le `not exists` a bloquée — un rejeu y reproduit une promotion non nulle, et
+`applied` est alors la **seule** barrière ; la seconde parce que rien ne jouait
+la ligne la plus sensible du diff.
+
+**Une mutation verte reste, et elle est nommée là où elle vit** : déplacer le
+`return false` du journal **après** la promotion ne fait rougir aucun cas.
+L'idempotence de la promotion est une propriété du **stockage** (les deux gardes
+de l'écriture, prouvées rouges ci-dessus), pas de l'ordre des instructions. Le
+commentaire d'`applyEvent` porte le constat et la condition qui le rendrait
+faux — un effet non idempotent entrant dans cette transaction.

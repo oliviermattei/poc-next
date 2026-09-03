@@ -315,6 +315,17 @@ export type PaymentEvent =
       readonly reference: string | null
       readonly customerId: string | null
       readonly subscriptionId: string | null
+      /**
+       * **L'adresse que le payeur a saisie chez le fournisseur** (s24).
+       *
+       * C'est la seule chose qu'un checkout invité rapporte de son visiteur, et
+       * c'est une **frontière** : ce n'est pas une preuve de possession de la
+       * boîte, c'est une affirmation du fournisseur. Elle est validée par Zod
+       * là où elle est lue, et rien n'ouvre jamais de session à partir d'elle.
+       *
+       * `null` pour un checkout dont le fournisseur n'a pas collecté d'adresse.
+       */
+      readonly customerEmail: string | null
     }
   | {
       readonly kind: 'subscription_changed'
@@ -353,6 +364,8 @@ export type PaymentEvent =
       readonly amountTotal: number | null
       readonly currency: string | null
       readonly reference: string | null
+      /** L'adresse saisie par le payeur, ou `null`. Même frontière que ci-dessus (s24). */
+      readonly customerEmail: string | null
     }
   /**
    * Un **remboursement reçu** — et rien de plus.

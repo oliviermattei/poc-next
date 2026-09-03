@@ -608,6 +608,64 @@ describe.skipIf(!databaseReachable)('connexion, magic link et réinitialisation'
 
     expect(replayed.status).toBe(400)
   }, 30_000)
+
+  /**
+   * **Consommer un lien de réinitialisation vaut vérification de l'adresse**
+   * (s24, constat F1 de la revue).
+   *
+   * C'est la ligne la plus sensible que s24 pose hors de la facturation, et
+   * elle change le comportement de **tous** les comptes du produit : le lien de
+   * réinitialisation ne part que vers l'adresse du compte, le consommer demande
+   * donc de l'avoir lue — la preuve même que `verifyEmail` exige, obtenue par un
+   * autre chemin.
+   *
+   * Ce qu'elle sert : un compte créé par un **paiement invité** (ADR 047) n'a
+   * jamais reçu d'email de vérification, puisque personne ne s'y est inscrit.
+   * Sans cette marque, `requireEmailVerification` refuse sa connexion et le lien
+   * reçu ne mène nulle part. Le cas joue exactement cet enchaînement : une
+   * connexion refusée d'abord, la même connexion ouverte ensuite, et rien entre
+   * les deux qu'un lien lu dans une boîte.
+   *
+   * **Le piège à connaître** (lu dans `better-auth@1.7.2`, pas déduit) :
+   * `onPasswordReset` est appelé depuis **trois** sites de la bibliothèque —
+   * `dist/api/routes/password.mjs:172`, `dist/plugins/email-otp/routes.mjs:601`
+   * et `dist/plugins/phone-number/routes.mjs:484`. Seul le premier est
+   * atteignable avec les greffons montés aujourd'hui (`genericOAuth`,
+   * `magicLink`, `twoFactor`, `passkey`). Le jour où une story monte
+   * `phoneNumber`, une réinitialisation **par téléphone** marquerait l'adresse
+   * email vérifiée sans que personne n'ait ouvert cette boîte — et ce cas-ci
+   * resterait vert. Monter ce greffon oblige donc à rouvrir
+   * `onPasswordReset`, et cette phrase est le seul endroit qui le dise.
+   */
+  it('rend l’adresse vérifiée en consommant un lien de réinitialisation', async () => {
+    const email = anEmail()
+
+    expect((await call('/sign-up/email', { body: { email, password: PASSWORD } })).status).toBe(200)
+
+    // L'état d'un compte que personne n'a vérifié : la connexion est refusée.
+    const refused = await signIn(email)
+
+    expect(refused.status).toBe(401)
+    expect(sessionCookie(refused)).toBeNull()
+
+    await call('/request-password-reset', { body: { email } })
+    await settled()
+
+    const token = new URL(lastLink('reset-password')).searchParams.get('token') ?? ''
+    const defined = await call('/reset-password', {
+      body: { token, newPassword: `${PASSWORD}-defini` },
+    })
+
+    expect(defined.status).toBe(200)
+
+    // La **même** connexion, refusée il y a trois lignes.
+    const opened = await call('/sign-in/email', {
+      body: { email, password: `${PASSWORD}-defini` },
+    })
+
+    expect(opened.status).toBe(200)
+    expect(sessionCookie(opened)).not.toBeNull()
+  }, 30_000)
 })
 
 describe.skipIf(!databaseReachable)('durcissement de la session', () => {

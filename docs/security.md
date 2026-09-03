@@ -27,6 +27,13 @@
 - Verrouillage progressif sur échecs répétés, par compte **et** par adresse IP (s28).
 - Messages d'erreur indistinguables entre compte inconnu et mot de passe invalide, y compris en temps de réponse.
 - Jetons à usage unique (vérification, réinitialisation, invitation, magic link) : durée de vie courte, consommation atomique, invalidation des jetons frères à l'usage.
+- **Un paiement n'ouvre jamais de session** (s24). Une page de retour de
+  paiement n'accorde rien : ni depuis un paramètre d'URL, ni depuis un
+  identifiant de session du fournisseur. Le seul chemin vers un compte créé par
+  un paiement est un lien envoyé à l'adresse — et si cette adresse possède déjà
+  un compte, ce lien **connecte** (magic link), il ne redéfinit pas le mot de
+  passe : sinon n'importe qui déclencherait, en payant, une réinitialisation sur
+  le compte d'un tiers.
 - Codes de secours stockés **hachés** ; secret de second facteur **chiffré**
   au repos et exposé une seule fois, à l'enrôlement de son propriétaire. La
   ligne disait « hachés » pour les deux jusqu'à s13 : un secret TOTP est
@@ -72,6 +79,31 @@
 - Événements de sécurité journalisés avec leur acteur : connexion, échec de connexion, réinitialisation, changement de second facteur, impersonation, changement de rôle, suppression de compte.
 - Données sensibles filtrées avant tout envoi à un service tiers ; le filtrage est **testé**, pas seulement configuré.
 - Limitation de débit sur tout point d'entrée public, partagée entre instances (s28).
+  **Deux compteurs existent avant s28** : `public_form_throttle` (formulaires
+  publics, s11) et `billing_checkout_throttle` (checkout invité, s24).
+
+  **Relevé du 3 septembre 2026**, et c'est un relevé, pas un inventaire :
+  `grep -rn "level: 'public'" packages apps` (hors `node_modules` et hors
+  fichiers de test) rend **30** occurrences, dont **1** définition de type
+  (`packages/core/src/module.ts`) et **4** entrées de *navigation* (accueil
+  marketing, tarifs, et les deux modules de démonstration). Restent **25 routes
+  publiques déclarées**, balayées une à une :
+
+  | Routes | Limitées en débit | Ce qui les garde autrement |
+  |---|---|---|
+  | `marketing` : `POST /contact`, `POST /newsletter` | **oui** (s11) | champ piège, seau qui dégrade |
+  | `billing` : `POST /billing/guest-checkout` | **oui** (s24) | seau par appelant *et* seau global qui dégrade |
+  | `billing` : `POST /billing/webhook` | non | **signature** vérifiée avant tout effet, journal par identifiant d'événement |
+  | `auth` : 18 routes (inscription, connexion, magic link, vérification, réinitialisation, OAuth, second facteur, passkeys) | non | indistinguabilité des refus, jetons à usage unique, envoi différé |
+  | `consent` : `POST /consent/decide` | non | **écrit un cookie**, jamais la base (ADR 035) |
+  | `demo-enabled` : `GET /demo-enabled/items` | non | lecture seule, module de démonstration |
+  | `demo-disabled` : `GET /demo-disabled/notes` | non | lecture seule, module coupé par défaut |
+
+  Aucune commande ne tient ce tableau : il se refait avec la commande ci-dessus,
+  et il sera faux dès qu'une story ajoutera une route publique. s28 possède la
+  limitation de débit : elle fera converger les deux compteurs vers son port,
+  supprimera les deux tables, et c'est à ce moment-là que le relevé doit devenir
+  une garde exécutable.
 - Protection anti-automatisation sur les formulaires publics : captcha activable, pièges à robots, seuils configurables.
 - Aucune information exploitable dans une réponse d'erreur publique : pas d'énumération de comptes, pas de différence de temps de réponse observable.
 

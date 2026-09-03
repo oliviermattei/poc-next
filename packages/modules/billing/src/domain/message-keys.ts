@@ -124,6 +124,23 @@ export const BILLING_KEYS = {
     emptyTitle: billingKey('pricing.empty.title'),
     emptyDescription: billingKey('pricing.empty.description'),
     noScript: billingKey('pricing.noscript'),
+    /**
+     * **Le retour d'un paiement invité** (s24, critère 7).
+     *
+     * Un bandeau, et rien d'autre : il n'accorde aucun droit et n'ouvre aucune
+     * session. Ce qu'il dit, c'est que la suite se passe dans la boîte mail —
+     * le compte est créé par le **webhook**, et le lien y est envoyé.
+     *
+     * **Il n'affirme donc aucun fait qu'il n'a pas lu** (constat F7 de la
+     * revue) : l'écran ne consulte ni la base ni le fournisseur, et le
+     * paramètre vient de l'URL. « Paiement reçu » sur un `?checkout=success`
+     * forgé, ou « aucun compte n'a été créé » sur un `?checkout=cancelled`
+     * posté après un vrai paiement, étaient deux affirmations que rien ne
+     * soutenait. Les deux libellés sont donc **conditionnels** : toute
+     * reformulation doit le rester tant que cet écran ne lit rien.
+     */
+    returnSuccess: billingKey('pricing.return.success'),
+    returnCancelled: billingKey('pricing.return.cancelled'),
   },
   refusal: {
     forbidden: billingKey('refusal.forbidden'),
@@ -132,6 +149,13 @@ export const BILLING_KEYS = {
     providerUnavailable: billingKey('refusal.providerUnavailable'),
     noCustomer: billingKey('refusal.noCustomer'),
     alreadySubscribed: billingKey('refusal.alreadySubscribed'),
+    /**
+     * **Trop d'ouvertures de tunnel depuis le même appelant** (s24).
+     *
+     * Le seul refus de limitation de débit du module, et il n'existe que sur la
+     * route publique : un compte identifié n'y est pas soumis.
+     */
+    rateLimited: billingKey('refusal.rateLimited'),
     failed: billingKey('refusal.failed'),
   },
 } as const

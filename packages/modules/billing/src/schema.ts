@@ -367,8 +367,48 @@ export const billingWebhookEvent = pgTable('billing_webhook_event', {
     .defaultNow(),
 })
 
+/**
+ * **Le compteur de la limitation de débit du checkout invité** (s24) —
+ * partagé entre instances.
+ *
+ * `docs/security.md` §7 exige une limite « partagée entre instances » sur tout
+ * point d'entrée public ; un compteur en mémoire de processus se contourne en
+ * scalant horizontalement. Une ligne par seau et par fenêtre, incrémentée par
+ * **une seule** instruction atomique
+ * (`infrastructure/drizzle-billing-repositories.ts`).
+ *
+ * `bucket` est un **condensat** : l'identifiant d'appelant — une adresse IP,
+ * quand un en-tête en donne une — n'entre jamais en clair dans cette table.
+ * C'est pour cela qu'elle n'est pas déclarée comme catégorie de données au
+ * contrat : aucune requête de ce module ne peut relier une de ces lignes à un
+ * compte.
+ *
+ * **Dette nommée**, la même que celle de `public_form_throttle` : la limitation
+ * de débit appartient à s28 (`docs/architecture.md`). Cette table porte
+ * volontairement un autre nom que la `rate_limit_window` que s28 déclarera, et
+ * s28 devra la supprimer après avoir fait converger les points d'entrée vers
+ * son port.
+ */
+export const billingCheckoutThrottle = pgTable(
+  'billing_checkout_throttle',
+  {
+    /** Condensat du seau : `guest-checkout:client:<identifiant>`. */
+    bucket: text('bucket').primaryKey(),
+    /** Début de la fenêtre fixe en cours, aligné sur sa durée. */
+    windowStartedAt: timestamp('window_started_at', { withTimezone: true, mode: 'date' }).notNull(),
+    /** Ouvertures comptées dans cette fenêtre, celle en cours comprise. */
+    hits: integer('hits').notNull(),
+  },
+  (table) => [
+    // L'effacement des fenêtres closes porte sur cette colonne : sans index, il
+    // balaierait la table entière à chaque bascule de fenêtre.
+    index('billing_checkout_throttle_window_idx').on(table.windowStartedAt),
+  ],
+)
+
 /** Les tables du module, telles que le contrat les déclare. */
 export const billingSchema = {
+  billingCheckoutThrottle,
   billingCustomer,
   billingSubscription,
   billingPurchase,

@@ -67,8 +67,34 @@ export const billingModule = defineModule({
   // l'effacer rouvrirait le rejeu d'événements déjà traités. Le journal des
   // remboursements est de la même nature, et échappe à la purge pour la même
   // raison.
-  dataCategories: ['billing-customer', 'subscription', 'purchase'],
-  retention: { 'billing-customer': 'erase', subscription: 'erase', purchase: 'erase' },
+  //
+  // **`guest-checkout` est une catégorie à part** (s24, ADR 047), et pas un
+  // doublon de `billing-customer` : ce sont les mêmes lignes, ce n'est pas le
+  // même cycle de vie. Une ligne invitée est écrite **avant** tout paiement,
+  // pour un visiteur qui n'a pas de compte, et elle ne porte qu'un identifiant
+  // opaque et un identifiant de client chez le fournisseur.
+  //
+  // Ce que sa politique `erase` recouvre **exactement**, dit plutôt que
+  // sous-entendu :
+  //
+  // - une ligne **promue** — le paiement a abouti, le webhook lui a donné un
+  //   compte — est effacée par `purge(user:<id>)`, comme n'importe quelle ligne
+  //   `billing-customer`, et ses abonnements et achats suivent par la cascade.
+  //   C'est le cas mesuré par `tests/billing.test.ts` ;
+  // - une ligne **abandonnée** — le visiteur a fermé le tunnel — n'est effacée
+  //   par rien, et c'est la conséquence assumée de l'ADR 047 : aucun périmètre
+  //   ne la nomme, donc aucune purge ne peut l'atteindre. Elle n'est ni un
+  //   compte ni un droit d'accès (critère 5), et écrire une commande de
+  //   nettoyage serait un chemin destructeur dont le PRD ne veut pas
+  //   (`eject`, au cimetière). Il n'en existe pas, et il ne doit pas en
+  //   exister.
+  dataCategories: ['billing-customer', 'guest-checkout', 'subscription', 'purchase'],
+  retention: {
+    'billing-customer': 'erase',
+    'guest-checkout': 'erase',
+    subscription: 'erase',
+    purchase: 'erase',
+  },
   purge: (scope) => requireBillingService().useCases.purge(scope),
   export: (scope) => requireBillingService().useCases.export(scope),
 })

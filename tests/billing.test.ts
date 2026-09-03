@@ -18,8 +18,15 @@ import {
   type DatabaseConnection,
 } from '@repo/db'
 import { createRecordingMailer } from '@repo/mailer-testing'
+import { createLocalPayments } from '@repo/payments-testing'
 import { createStripePayments } from '@repo/adapter-stripe'
-import { authModule, authUser, safeRedirectPath } from '@repo/module-auth'
+import {
+  authModule,
+  authUser,
+  configureAuth,
+  safeRedirectPath,
+  type AuthService,
+} from '@repo/module-auth'
 import {
   BILLING_KEYS,
   BILLING_SCREEN_PATH,
@@ -29,8 +36,17 @@ import {
   offerById,
   billingRoutePath,
   billingPurchase,
+  billingScopeReference,
   billingSubscription,
+  checkoutWindowStartOf,
   configureBilling,
+  createDrizzleBillingRepository,
+  createDrizzleCheckoutThrottle,
+  createGuestScopeIdGenerator,
+  guestScopeReference,
+  GUEST_CHECKOUT_GLOBAL_BUCKET,
+  GUEST_CHECKOUT_RATE_LIMIT,
+  isOpaqueGuestScopeId,
   EMPTY_BILLING_VIEW,
   offerDescriptionKey,
   offerNameKey,
@@ -43,6 +59,7 @@ import {
   type BillingPermission,
   type BillingView,
   type ConfigureBillingOptions,
+  type GuestAccounts,
   type ScopeSeats,
 } from '@repo/module-billing'
 import {
@@ -65,9 +82,10 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import Stripe from 'stripe'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { billing as appBilling } from '../apps/web/lib/billing'
+import { billing as appBilling, guestFallbackUrl } from '../apps/web/lib/billing'
 import { LOCAL_WEBHOOK_SECRET, resolveBillingConfig } from '../apps/web/lib/billing-config'
 import { billingPermissionOf } from '../apps/web/lib/billing-permission'
+import { guestAccountsOf } from '../apps/web/lib/guest-account'
 import { entitlements as appEntitlements } from '../apps/web/lib/entitlements'
 import { featureGates } from '../apps/web/lib/feature-gates'
 import { organizations as appOrganizations } from '../apps/web/lib/organizations'
@@ -296,6 +314,39 @@ let scopeSeats: ScopeSeats = () => Promise.resolve(null)
 /** Le courrier sortant du module `organizations` : c'est lui qui porte le jeton. */
 const invitationOutbox = createRecordingMailer()
 
+/**
+ * s24 — **le compte d'un paiement invité**, tel que le point de composition le
+ * résout (ADR 047).
+ *
+ * Par défaut, une doublure qui enregistre : la plupart des cas de ce fichier
+ * mesurent l'ouverture du tunnel ou la promotion, pas la nature du lien
+ * envoyé. Le bloc « le lien envoyé à l'adresse du paiement » y branche la
+ * **vraie** règle (`apps/web/lib/guest-account.ts`) sur le **vrai** service
+ * d'authentification, contre la même base — sans quoi rien ne tient le fil
+ * entre « ce compte existe déjà » et « alors ce n'est pas un lien de mot de
+ * passe qui part ».
+ */
+const guestAccountLog: { readonly email: string; readonly created: boolean }[] = []
+const guestLinkLog: { readonly userId: string; readonly email: string; readonly created: boolean }[] = []
+const knownGuestAccounts = new Map<string, string>()
+
+let guestAccounts: GuestAccounts = {
+  accountFor: ({ email }) => {
+    const existing = knownGuestAccounts.get(email)
+    const userId = existing ?? `usr_guest_${knownGuestAccounts.size + 1}`
+
+    knownGuestAccounts.set(email, userId)
+    guestAccountLog.push({ email, created: existing === undefined })
+
+    return Promise.resolve({ userId, created: existing === undefined })
+  },
+  sendAccessLink: ({ account, email }) => {
+    guestLinkLog.push({ userId: account.userId, email, created: account.created })
+
+    return Promise.resolve()
+  },
+}
+
 interface RecordedCall {
   readonly url: string
   readonly body: string
@@ -362,12 +413,16 @@ const noPurchases = (): readonly (() => Response)[] => [
 ]
 
 const call = async (
-  path: 'checkout' | 'portal' | 'webhook',
+  path: 'checkout' | 'guestCheckout' | 'portal' | 'webhook',
   options: {
     readonly session?: { readonly userId: string; readonly roles: readonly string[] } | null
     readonly body?: unknown
     readonly raw?: string
     readonly signature?: string
+    /** s24 — l'en-tête d'où vient le seau de limitation de débit. */
+    readonly client?: string
+    /** s24 — le registre employé : celui de la suite, ou celui **sans** le module. */
+    readonly registry?: typeof registry
   } = {},
 ): Promise<Response> => {
   const url = `${APP_URL}${billingRoutePath(path)}`
@@ -375,7 +430,10 @@ const call = async (
     options.raw === undefined
       ? new Request(url, {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: {
+            'content-type': 'application/json',
+            ...(options.client === undefined ? {} : { 'x-forwarded-for': options.client }),
+          },
           body: JSON.stringify(options.body ?? {}),
         })
       : new Request(url, {
@@ -387,7 +445,7 @@ const call = async (
           body: options.raw,
         })
 
-  return await dispatchModuleRequest(registry, request, {
+  return await dispatchModuleRequest(options.registry ?? registry, request, {
     resolveSession: () => Promise.resolve(options.session ?? null),
   })
 }
@@ -542,6 +600,14 @@ const suiteBilling = (): ConfigureBillingOptions => ({
   seatsOf: () => Promise.resolve(seats),
   seatsOfScope: async (scope) => await scopeSeats(scope),
   emailOfScope: () => Promise.resolve('client@example.test'),
+  guestAccounts: {
+    accountFor: async (input) => await guestAccounts.accountFor(input),
+    sendAccessLink: async (input) => await guestAccounts.sendAccessLink(input),
+  },
+  // **La vraie règle de l'application** (constat F3 de la revue) : où repart un
+  // visiteur quand le canal anonyme est saturé se décide au point de
+  // composition, et c'est donc lui que ces cas mesurent.
+  guestFallbackUrl,
   now: () => clock,
   generateId: () => {
     sequence += 1
@@ -552,6 +618,7 @@ const suiteBilling = (): ConfigureBillingOptions => ({
 
 const cleanup = async (): Promise<void> => {
   await connection.db.execute(sql`delete from billing_customer`)
+  await connection.db.execute(sql`delete from billing_checkout_throttle`)
   await connection.db.execute(sql`delete from billing_webhook_event`)
   // Le journal des remboursements est **hors périmètre**, comme celui des
   // événements : il n'a pas de client, donc la cascade ne l'emporte pas. Sans
@@ -624,6 +691,25 @@ beforeEach(async () => {
     return true
   }
   scopeSeats = () => Promise.resolve(null)
+  guestAccountLog.length = 0
+  guestLinkLog.length = 0
+  knownGuestAccounts.clear()
+  guestAccounts = {
+    accountFor: ({ email }) => {
+      const existing = knownGuestAccounts.get(email)
+      const userId = existing ?? `usr_guest_${knownGuestAccounts.size + 1}`
+
+      knownGuestAccounts.set(email, userId)
+      guestAccountLog.push({ email, created: existing === undefined })
+
+      return Promise.resolve({ userId, created: existing === undefined })
+    },
+    sendAccessLink: ({ account, email }) => {
+      guestLinkLog.push({ userId: account.userId, email, created: account.created })
+
+      return Promise.resolve()
+    },
+  }
   clock = new Date('2026-09-01T12:00:00.000Z')
 
   if (databaseReachable) {
@@ -4454,25 +4540,27 @@ describe('la page publique de tarifs', () => {
     }
   })
 
-  it('mène un visiteur sans session à la connexion, en gardant son offre', async () => {
-    // Le quatrième critère, première moitié. Le retour est un chemin
-    // **interne** : c'est l'écran de connexion qui le met dans la forme
-    // publique de sa locale, une seule fois.
+  /**
+   * **s24 remplace le quatrième critère de s22.** La page ne mène plus le
+   * visiteur anonyme à la connexion : elle lui ouvre un tunnel.
+   *
+   * Ce que le cas garde de s22 : le déclencheur reste un `<form method="post">`
+   * dont le bouton est éteint jusqu'à l'hydratation, avec son `<noscript>` —
+   * les deux règles que tout formulaire du dépôt hérite.
+   */
+  it('ouvre le tunnel invité à un visiteur sans session, sans passer par la connexion', async () => {
     const outcome = await renderPricing({ available: true, session: null })
     const signIn = localeRouting.publicPath('/sign-in', defaultLocale)
 
-    for (const offer of billingOffers) {
-      const back = encodeURIComponent(`${PRICING_SCREEN_PATH}?offer=${offer.id}`)
+    // **Plus aucun détour par la connexion** : payer sans compte est le premier
+    // critère de s24.
+    expect(outcome.html).not.toContain(`href="${signIn}`)
 
-      expect(outcome.html, offer.id).toContain(`href="${signIn}?next=${back}"`)
-    }
-
-    // **Et aucun formulaire** : le déclencheur de l'application viserait une
-    // route `authenticated`, donc un 403 — du bruit, et un signal trompeur.
-    // L'avertissement « le tunnel exige JavaScript » est alors porté par
-    // l'écran, une seule fois, puisque plus aucun bouton ne le porte.
-    expect(occurrences(outcome.html, '<form')).toBe(0)
-    expect(occurrences(outcome.html, '<noscript>')).toBe(1)
+    // Un déclencheur par offre, chacun avec son avertissement « le tunnel exige
+    // JavaScript » — c'est le déclencheur qui le porte, plus l'écran.
+    expect(occurrences(outcome.html, '<form')).toBe(billingOffers.length)
+    expect(occurrences(outcome.html, '<noscript>')).toBe(billingOffers.length)
+    expect(occurrences(outcome.html, 'method="post"')).toBe(billingOffers.length)
   })
 
   it('repose l’offre choisie au retour de connexion, sans rien acheter', async () => {
@@ -4602,10 +4690,11 @@ describe('la page publique de tarifs', () => {
     for (const [index, offer] of priced.entries()) {
       const card = outcome.html.slice(boundaries[index] ?? 0, boundaries[index + 1] ?? undefined)
 
-      // Le prix **de cette offre**, sur la carte de cette offre.
+      // Le prix **de cette offre**, sur la carte de cette offre. L'identifiant
+      // que le bouton emporte, lui, ne vit plus dans le balisage depuis s24 —
+      // les deux branches passent par le déclencheur de l'application, dont les
+      // props sont appariées au prix par le cas suivant.
       expect(card, offer.id).toContain(offer.price)
-      // L'identifiant que le bouton emporte, sur la même carte.
-      expect(card, offer.id).toContain(`offer%3D${offer.id}`)
 
       // Et **aucun prix d'une autre offre** : sans cette moitié, une carte qui
       // afficherait tous les prix passerait.
@@ -4615,18 +4704,25 @@ describe('la page publique de tarifs', () => {
     }
   })
 
-  it('n’envoie qu’un identifiant d’offre au checkout, jamais un prix', async () => {
-    // L'autre moitié du second critère, pour un visiteur **connecté** : sa
-    // cible ne vit pas dans le balisage mais dans les props du déclencheur.
-    // C'est l'appariement au point de composition — l'offre dont le prix est
-    // affiché est celle dont l'identifiant partira.
+  it.each(['session', 'anonymous'] as const)(
+    'n’envoie qu’un identifiant d’offre au checkout, jamais un prix (%s)',
+    async (viewer) => {
+    // L'autre moitié du second critère : la cible d'un déclencheur ne vit pas
+    // dans le balisage mais dans ses props. C'est l'appariement au point de
+    // composition — l'offre dont le prix est affiché est celle dont
+    // l'identifiant partira.
+    //
+    // **Les deux états, dans la même exécution** (s24) : la route visée change
+    // — publique sans session, `authenticated` avec —, le corps envoyé ne
+    // change pas.
     const catalogue = parseBillingCatalogue([...billingOffers])
     const triggers = new Map<string, Record<string, unknown>>()
+    const signedIn = viewer === 'session'
 
     vi.resetModules()
     vi.doMock('../apps/web/lib/billing', () => ({ billing: { available: true } }))
     vi.doMock('../apps/web/lib/auth', () => ({
-      currentViewer: () => Promise.resolve({ session: aSession(), account: null }),
+      currentViewer: () => Promise.resolve({ session: signedIn ? aSession() : null, account: null }),
     }))
     vi.doMock('../apps/web/lib/i18n', () => ({
       appIntl: () =>
@@ -4670,6 +4766,12 @@ describe('la page publique de tarifs', () => {
         const trigger = triggers.get(offer.id) ?? {}
 
         expect(trigger['offerId'], offer.id).toBe(offer.id)
+        // La route visée dépend de l'état, et **d'un seul état** : un visiteur
+        // sans session vise la route publique de s24, un compte la route
+        // `authenticated` de s19 — dont la garde n'a pas bougé.
+        expect(trigger['action'], offer.id).toBe(
+          billingRoutePath(signedIn ? 'checkout' : 'guestCheckout'),
+        )
         // **Aucun montant, aucune devise, aucun prix de fournisseur** ne quitte
         // le navigateur : le corps du checkout est un `z.strictObject` à un
         // champ, et il refuserait ces clés plutôt que de les ignorer.
@@ -4684,7 +4786,8 @@ describe('la page publique de tarifs', () => {
       vi.doUnmock('../apps/web/lib/auth')
       vi.doUnmock('../apps/web/lib/i18n')
     }
-  })
+    },
+  )
 
   it('produit un retour que la règle de redirection accepte, et refuse l’absolu', () => {
     for (const offer of billingOffers) {
@@ -4696,5 +4799,1004 @@ describe('la page publique de tarifs', () => {
     for (const forged of ['https://evil.test/pricing', '//evil.test/pricing']) {
       expect(safeRedirectPath(forged, PRICING_SCREEN_PATH), forged).toBe(PRICING_SCREEN_PATH)
     }
+  })
+})
+
+/* -------------------------------------------------------------------------- *
+ * s24 — payer sans créer de compte d'abord
+ * -------------------------------------------------------------------------- */
+
+/**
+ * **Le périmètre invité existe au stockage, jamais dans le cœur** (ADR 047).
+ *
+ * Ce bloc mesure ce qui n'existe qu'assemblé : la route publique, la ligne
+ * client écrite avant tout webhook, la promotion, le rejeu, l'abandon. Les
+ * règles pures — la forme d'un identifiant invité, la normalisation de
+ * l'adresse — sont éprouvées chez elles
+ * (`packages/modules/billing/src/domain/guest.test.ts`).
+ */
+
+/** Les deux réponses du fournisseur à une ouverture de tunnel. */
+const checkoutResponses = (id = 'guest'): (() => Response)[] => [
+  () => json({ id: `cus_${id}`, object: 'customer' }),
+  () =>
+    json({
+      id: `cs_${id}`,
+      object: 'checkout.session',
+      url: `https://checkout.stripe.com/c/pay/cs_${id}`,
+      customer: `cus_${id}`,
+    }),
+]
+
+/** La ligne client, telle que la base la porte. */
+const storedCustomers = async (): Promise<
+  { readonly scope_kind: string; readonly scope_id: string; readonly provider_customer_id: string }[]
+> => {
+  const rows = await connection.db.execute<{
+    scope_kind: string
+    scope_id: string
+    provider_customer_id: string
+  }>(sql`select scope_kind, scope_id, provider_customer_id from billing_customer order by scope_id`)
+
+  return rows.rows
+}
+
+/**
+ * Une complétion de checkout, telle que le fournisseur l'enverrait.
+ *
+ * **Deux modes, et le second n'est pas une variante décorative** : le premier
+ * critère de la story dit « en abonnement **comme en paiement unique** », et ce
+ * sont deux formes d'événement distinctes — `checkout_completed` pour l'une,
+ * `purchase_paid` pour l'autre (constat F2 de la revue).
+ */
+const guestCompletion = (input: {
+  readonly id: string
+  readonly customer: string
+  readonly email: string | null
+  readonly created?: number
+  readonly mode?: 'subscription' | 'payment'
+  /** La session ouverte au checkout, quand l'achat en attente doit être retrouvé. */
+  readonly sessionId?: string
+}): string =>
+  eventPayload({
+    id: input.id,
+    type: 'checkout.session.completed',
+    created: input.created ?? Math.floor(clock.getTime() / 1000),
+    object: {
+      id: input.sessionId ?? `cs_${input.id}`,
+      object: 'checkout.session',
+      customer: input.customer,
+      client_reference_id: null,
+      ...(input.mode === 'payment'
+        ? {
+            mode: 'payment',
+            payment_status: 'paid',
+            payment_intent: `pi_${input.id}`,
+            amount_total: 49_000,
+            currency: 'eur',
+          }
+        : { mode: 'subscription', subscription: `sub_${input.id}` }),
+      ...(input.email === null ? {} : { customer_details: { email: input.email } }),
+    },
+  })
+
+describe.runIf(databaseReachable)('le checkout invité', () => {
+  it('ouvre un tunnel pour un visiteur sans compte, et la ligne client existe avant tout webhook', async () => {
+    // Critère 1, et ADR 034 : la ligne est écrite **à l'ouverture**, pas à la
+    // réception de l'événement. C'est ce qui fait qu'un
+    // `customer.subscription.created` livré en premier retrouve un
+    // propriétaire — un périmètre invité, mais un propriétaire.
+    responses = checkoutResponses()
+
+    const response = await call('guestCheckout', { body: { offerId: 'pro-monthly' } })
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({
+      url: 'https://checkout.stripe.com/c/pay/cs_guest',
+    })
+
+    const customers = await storedCustomers()
+
+    expect(customers).toHaveLength(1)
+    expect(customers[0]?.scope_kind).toBe('guest')
+    expect(isOpaqueGuestScopeId(customers[0]?.scope_id ?? '')).toBe(true)
+  })
+
+  it('ouvre aussi le tunnel d’une offre unique, avec son achat en attente', async () => {
+    // Critère 1, seconde moitié : « pour une offre en abonnement **comme en
+    // paiement unique** ». L'achat est ouvert avant l'URL (ADR 038 §1), sans
+    // quoi la confirmation ne saurait pas quelle offre a été payée.
+    responses = checkoutResponses('life')
+
+    const response = await call('guestCheckout', { body: { offerId: 'lifetime' } })
+
+    expect(response.status).toBe(200)
+    expect(await countRows('billing_purchase')).toBe(1)
+  })
+
+  it('n’envoie au fournisseur que le prix du catalogue, et aucune adresse', async () => {
+    responses = checkoutResponses()
+
+    await call('guestCheckout', { body: { offerId: 'pro-monthly' } })
+
+    const sent = new URLSearchParams(calls.at(-1)?.body ?? '')
+
+    expect(sent.get('line_items[0][price]')).toBe('price_pro_monthly')
+    expect(sent.get('line_items[0][quantity]')).toBe('1')
+    // Nous n'avons **aucune** adresse à donner : c'est le fournisseur qui la
+    // collecte, et elle revient par le webhook.
+    expect(sent.get('customer_email')).toBeNull()
+    // La référence est de diagnostic, et elle porte le préfixe qui la distingue
+    // d'un périmètre de compte.
+    expect(sent.get('client_reference_id')).toMatch(/^guest:[0-9a-f]{64}$/)
+  })
+
+  it('refuse une offre inconnue sans appeler le fournisseur, et n’écrit rien', async () => {
+    const response = await call('guestCheckout', { body: { offerId: 'inconnue' } })
+
+    expect(response.status).toBe(400)
+    expect(calls).toHaveLength(0)
+    expect(await countRows('billing_customer')).toBe(0)
+  })
+
+  it('refuse un corps qui prétend porter un prix, sans appeler le fournisseur', async () => {
+    const response = await call('guestCheckout', {
+      body: { offerId: 'pro-monthly', amount: 1, priceId: 'price_libre' },
+    })
+
+    expect(response.status).toBe(400)
+    expect(calls).toHaveLength(0)
+  })
+
+  it('donne un périmètre différent à chaque visiteur, tiré au hasard', async () => {
+    responses = [...checkoutResponses('a'), ...checkoutResponses('b')]
+
+    await call('guestCheckout', { body: { offerId: 'pro-monthly' } })
+    await call('guestCheckout', { body: { offerId: 'pro-monthly' } })
+
+    const customers = await storedCustomers()
+
+    expect(customers).toHaveLength(2)
+    expect(customers[0]?.scope_id).not.toBe(customers[1]?.scope_id)
+  })
+
+  /**
+   * **L'identifiant invité doit être imprévisible** (ADR 047).
+   *
+   * Il est écrit avant tout paiement, dans une ligne que le webhook retrouvera
+   * et promouvra : un compteur ou un horodatage permettrait de viser la ligne
+   * d'un autre. Le cas mesure le générateur **réellement livré**, pas celui que
+   * cette suite injecte — et il compare deux tirages **caractère par
+   * caractère** : deux valeurs voisines d'un compteur, d'un `Date.now()` ou
+   * d'un `Math.random()` mal étiré ne diffèrent que sur une poignée de
+   * positions, là où deux tirages de trente-deux octets diffèrent sur la
+   * quasi-totalité.
+   */
+  it('tire l’identifiant invité d’un générateur cryptographique, pas d’un compteur', () => {
+    const generate = createGuestScopeIdGenerator()
+    const drawn = Array.from({ length: 8 }, () => generate())
+
+    for (const value of drawn) {
+      expect(isOpaqueGuestScopeId(value), value).toBe(true)
+    }
+
+    expect(new Set(drawn).size).toBe(drawn.length)
+
+    // Deux tirages successifs diffèrent sur la **majorité** de leurs positions.
+    // La probabilité qu'un tirage honnête tombe sous ce seuil est
+    // astronomiquement faible ; un compteur ou un horodatage y échoue toujours.
+    for (let index = 1; index < drawn.length; index += 1) {
+      const previous = drawn[index - 1] ?? ''
+      const current = drawn[index] ?? ''
+      const differing = [...current].filter(
+        (character, position) => character !== previous[position],
+      ).length
+
+      expect(differing, `${previous} / ${current}`).toBeGreaterThan(32)
+    }
+  })
+})
+
+describe.runIf(databaseReachable)('la limitation de débit du checkout invité', () => {
+  /**
+   * **Le compteur est en base, donc partagé entre instances**
+   * (`docs/security.md` §7).
+   *
+   * Le cas est écrit pour que la mutation morde : la seconde moitié reconstruit
+   * le service — c'est-à-dire un **second processus**, avec sa propre mémoire —
+   * et exige que le seau soit déjà plein. Un compteur en mémoire de processus
+   * repartirait de zéro et laisserait passer.
+   */
+  it('refuse au-delà du seuil, et le compteur survit à un second processus', async () => {
+    const client = '203.0.113.7'
+
+    responses = Array.from({ length: GUEST_CHECKOUT_RATE_LIMIT.maxPerClient }, (_, index) =>
+      checkoutResponses(`rl${index}`),
+    ).flat()
+
+    for (let index = 0; index < GUEST_CHECKOUT_RATE_LIMIT.maxPerClient; index += 1) {
+      const allowed = await call('guestCheckout', { body: { offerId: 'pro-monthly' }, client })
+
+      expect(allowed.status, `ouverture ${index + 1}`).toBe(200)
+    }
+
+    // **Un second service sur la même base** : la mémoire du premier a disparu,
+    // le compteur non.
+    configureBilling(suiteBilling())
+
+    const refused = await call('guestCheckout', { body: { offerId: 'pro-monthly' }, client })
+
+    expect(refused.status).toBe(429)
+    await expect(refused.json()).resolves.toEqual({ error: BILLING_KEYS.refusal.rateLimited })
+    // Et **rien n'est parti** chez le fournisseur : le refus précède l'appel.
+    expect(calls).toHaveLength(GUEST_CHECKOUT_RATE_LIMIT.maxPerClient * 2)
+  })
+
+  it('compte par appelant : un seau plein n’en ferme pas un autre', async () => {
+    responses = Array.from({ length: GUEST_CHECKOUT_RATE_LIMIT.maxPerClient + 1 }, (_, index) =>
+      checkoutResponses(`sep${index}`),
+    ).flat()
+
+    for (let index = 0; index < GUEST_CHECKOUT_RATE_LIMIT.maxPerClient; index += 1) {
+      await call('guestCheckout', { body: { offerId: 'pro-monthly' }, client: '198.51.100.1' })
+    }
+
+    const other = await call('guestCheckout', {
+      body: { offerId: 'pro-monthly' },
+      client: '198.51.100.2',
+    })
+
+    expect(other.status).toBe(200)
+  })
+
+  /** Remplit le seau global de la fenêtre courante, `count` fois. */
+  const fillGlobalBucket = async (count: number): Promise<void> => {
+    const throttle = createDrizzleCheckoutThrottle(connection.db)
+    const windowStart = checkoutWindowStartOf(clock, GUEST_CHECKOUT_RATE_LIMIT.windowSeconds)
+
+    for (let index = 0; index < count; index += 1) {
+      await throttle.hit({ bucket: GUEST_CHECKOUT_GLOBAL_BUCKET, windowStart })
+    }
+  }
+
+  /**
+   * **Le coût total de la route est borné, et le second seau dégrade**
+   * (constat F3 de la revue).
+   *
+   * Le seau par appelant repose sur un en-tête que l'appelant écrit lui-même :
+   * qui le fait tourner n'est borné que par le coût de ses propres requêtes, et
+   * chaque ouverture crée un client **et** une session chez le fournisseur,
+   * plus une ligne `billing_customer` que rien n'effacera jamais (ADR 047).
+   *
+   * Le second seau ne refuse pas : au-delà du seuil, le visiteur repart par la
+   * connexion — le comportement d'avant s24. Le canal de vente reste ouvert,
+   * l'offre le suit (ADR 045), et rien n'est dépensé.
+   *
+   * Le cas remplit le seau global **à une ouverture près**, puis en joue une
+   * vraie : sans l'incrément que la route y pose, la suivante passerait.
+   */
+  it('borne le coût total : au-delà du seuil global, le tunnel invité repart par la connexion', async () => {
+    await fillGlobalBucket(GUEST_CHECKOUT_RATE_LIMIT.maxGlobal - 1)
+
+    responses = checkoutResponses('global')
+
+    const last = await call('guestCheckout', {
+      body: { offerId: 'pro-monthly' },
+      client: '198.51.100.10',
+    })
+
+    expect(last.status).toBe(200)
+    await expect(last.json()).resolves.toEqual({
+      url: 'https://checkout.stripe.com/c/pay/cs_global',
+    })
+
+    // Un **autre** appelant, dont le seau à lui est vide : ce qui l'arrête est
+    // le seau global, pas le sien.
+    const degraded = await call('guestCheckout', {
+      body: { offerId: 'pro-monthly' },
+      client: '198.51.100.11',
+    })
+
+    expect(degraded.status).toBe(200)
+
+    const url = new URL(((await degraded.json()) as { url: string }).url, APP_URL)
+
+    // La connexion, avec l'offre en poche : le visiteur peut toujours acheter.
+    expect(url.pathname.endsWith('/sign-in')).toBe(true)
+    expect(url.searchParams.get('next')).toBe(`${PRICING_SCREEN_PATH}?offer=pro-monthly`)
+
+    // **Rien n'a coûté** : aucun appel au fournisseur au-delà de l'ouverture
+    // permise, et aucune ligne de plus.
+    expect(calls).toHaveLength(2)
+    expect(await countRows('billing_customer')).toBe(1)
+  })
+
+  /**
+   * **La dégradation ne touche pas le chemin authentifié** (constat F3).
+   *
+   * C'est ce qui distingue ce second seau d'un refus global : saturé, il ne
+   * rend à personne le pouvoir de fermer la vente. Un compte identifié n'est
+   * soumis à aucun des deux seaux.
+   */
+  it('ne ferme pas le chemin authentifié quand le canal anonyme dégrade', async () => {
+    await fillGlobalBucket(GUEST_CHECKOUT_RATE_LIMIT.maxGlobal + 1)
+
+    responses = checkoutResponses('auth')
+
+    const response = await call('checkout', {
+      session: { userId: 'usr_titulaire', roles: [] },
+      body: { offerId: 'pro-monthly' },
+    })
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({
+      url: 'https://checkout.stripe.com/c/pay/cs_auth',
+    })
+  })
+
+  /**
+   * **Un martèlement refusé ne remplit pas le seau global.**
+   *
+   * L'ordre des deux seaux est la règle : le seau de l'appelant décide
+   * d'abord, et le seau global ne compte que ce qui a été **laissé passer**.
+   * Sinon un seul appelant, refusé cinq fois de suite, saturerait le seau
+   * global et enverrait tous les autres visiteurs à la connexion — c'est-à-dire
+   * exactement l'indisponibilité que le second seau existe pour refuser.
+   *
+   * L'arithmétique du cas : le seau global est rempli à six ouvertures du
+   * seuil, cinq sont consommées par les ouvertures permises, trois refus
+   * suivent. Comptés, ils porteraient le global au-dessus du seuil et le
+   * visiteur suivant partirait à la connexion ; non comptés, il obtient son
+   * tunnel.
+   */
+  it('ne compte dans le seau global que les ouvertures laissées passer', async () => {
+    const client = '203.0.113.20'
+
+    await fillGlobalBucket(GUEST_CHECKOUT_RATE_LIMIT.maxGlobal - GUEST_CHECKOUT_RATE_LIMIT.maxPerClient - 1)
+
+    responses = Array.from({ length: GUEST_CHECKOUT_RATE_LIMIT.maxPerClient + 1 }, (_, index) =>
+      checkoutResponses(`mart${index}`),
+    ).flat()
+
+    for (let index = 0; index < GUEST_CHECKOUT_RATE_LIMIT.maxPerClient; index += 1) {
+      expect((await call('guestCheckout', { body: { offerId: 'pro-monthly' }, client })).status).toBe(200)
+    }
+
+    for (let index = 0; index < 3; index += 1) {
+      expect((await call('guestCheckout', { body: { offerId: 'pro-monthly' }, client })).status).toBe(429)
+    }
+
+    const other = await call('guestCheckout', {
+      body: { offerId: 'pro-monthly' },
+      client: '203.0.113.21',
+    })
+
+    expect(other.status).toBe(200)
+    await expect(other.json()).resolves.toEqual({
+      url: `https://checkout.stripe.com/c/pay/cs_mart${GUEST_CHECKOUT_RATE_LIMIT.maxPerClient}`,
+    })
+  })
+})
+
+describe.runIf(databaseReachable)('la promotion d’une ligne invitée', () => {
+  /** Ouvre un tunnel invité et rend l'identifiant de client du fournisseur. */
+  const aGuestCheckout = async (id = 'guest'): Promise<string> => {
+    responses = checkoutResponses(id)
+
+    const response = await call('guestCheckout', { body: { offerId: 'pro-monthly' } })
+
+    expect(response.status).toBe(200)
+
+    return `cus_${id}`
+  }
+
+  it('crée le compte au webhook, lui rattache le périmètre, et envoie le lien', async () => {
+    // Critère 2 : le compte est créé **depuis le webhook**, jamais depuis la
+    // page de retour — le visiteur peut fermer son navigateur avant la
+    // redirection.
+    const customer = await aGuestCheckout()
+
+    const delivered = await deliver(
+      guestCompletion({ id: 'evt_g1', customer, email: 'Payeur@Example.test' }),
+    )
+
+    expect(delivered.status).toBe(200)
+
+    const customers = await storedCustomers()
+
+    expect(customers).toHaveLength(1)
+    expect(customers[0]?.scope_kind).toBe('user')
+    // L'adresse est **normalisée** avant de servir de clé de compte.
+    expect(guestAccountLog).toEqual([{ email: 'payeur@example.test', created: true }])
+    expect(customers[0]?.scope_id).toBe(knownGuestAccounts.get('payeur@example.test'))
+    expect(guestLinkLog).toHaveLength(1)
+    expect(guestLinkLog[0]?.created).toBe(true)
+  })
+
+  /**
+   * **L'autre moitié du critère 1 : le paiement unique** (constat F2 de la
+   * revue).
+   *
+   * La promotion est portée par **deux** formes d'événement — `checkout_completed`
+   * pour un abonnement, `purchase_paid` pour un achat unique — et seule la
+   * première était tenue par un cas : réduire la branche à `checkout_completed`
+   * laissait la suite entière et les parcours navigateur au vert, sur le seul
+   * chemin qui puisse encaisser le prix d'une licence à vie chez un anonyme.
+   *
+   * Le cas va jusqu'au **droit** (critère 2) : le compte créé par le webhook
+   * détient l'offre, ce qui est exactement ce que le gating de s21 lira.
+   */
+  it('promeut aussi un paiement unique invité, et le droit suit sur le compte créé', async () => {
+    responses = checkoutResponses('life')
+
+    const opened = await call('guestCheckout', { body: { offerId: 'lifetime' } })
+
+    expect(opened.status).toBe(200)
+
+    const delivered = await deliver(
+      guestCompletion({
+        id: 'evt_life',
+        // La session ouverte au checkout : c'est elle qui porte l'offre, et
+        // c'est par elle que l'achat en attente devient payé.
+        sessionId: 'cs_life',
+        customer: 'cus_life',
+        email: 'acheteur@example.test',
+        mode: 'payment',
+      }),
+    )
+
+    expect(delivered.status).toBe(200)
+
+    const customers = await storedCustomers()
+    const owner = knownGuestAccounts.get('acheteur@example.test')
+
+    expect(customers).toHaveLength(1)
+    expect(customers[0]?.scope_kind).toBe('user')
+    expect(customers[0]?.scope_id).toBe(owner)
+    expect(guestLinkLog).toEqual([
+      { userId: owner, email: 'acheteur@example.test', created: true },
+    ])
+
+    // **Le droit d'accès est rattaché au compte** : lu depuis son périmètre, et
+    // non depuis la ligne invitée.
+    currentScope = { kind: 'user', userId: owner ?? '' }
+
+    await expect(
+      requireBillingService().useCases.entitledOffers({
+        session: { userId: owner ?? '', roles: [] },
+      }),
+    ).resolves.toEqual(['lifetime'])
+  })
+
+  it('rattache le droit à un compte existant au lieu d’en créer un second', async () => {
+    // Critère 4.
+    knownGuestAccounts.set('titulaire@example.test', 'usr_deja_la')
+
+    const customer = await aGuestCheckout()
+
+    await deliver(guestCompletion({ id: 'evt_g2', customer, email: 'titulaire@example.test' }))
+
+    const customers = await storedCustomers()
+
+    expect(customers[0]?.scope_id).toBe('usr_deja_la')
+    expect(guestAccountLog).toEqual([{ email: 'titulaire@example.test', created: false }])
+    expect(guestLinkLog[0]?.created).toBe(false)
+  })
+
+  it('rejoué, ne crée ni second compte, ni second droit, ni second lien', async () => {
+    // Critère 6, et `docs/reliability.md` §1 : l'idempotence est prouvée en
+    // rejouant, pas affirmée en commentaire.
+    const customer = await aGuestCheckout()
+    const payload = guestCompletion({ id: 'evt_g3', customer, email: 'rejeu@example.test' })
+
+    const first = await deliver(payload)
+    const second = await deliver(payload)
+
+    await expect(first.json()).resolves.toMatchObject({ applied: true })
+    await expect(second.json()).resolves.toMatchObject({ applied: false })
+
+    expect(await countRows('billing_customer')).toBe(1)
+    expect(guestLinkLog).toHaveLength(1)
+    expect(new Set(guestAccountLog.map((entry) => entry.email))).toEqual(
+      new Set(['rejeu@example.test']),
+    )
+    expect(guestAccountLog.filter((entry) => entry.created)).toHaveLength(1)
+  })
+
+  /**
+   * **Le rejeu d'une promotion qui n'a pas eu lieu** (constat F4 de la revue).
+   *
+   * La situation, et elle n'est pas théorique : quelqu'un qui a déjà payé une
+   * fois sans se connecter paie une seconde fois. Son compte a déjà une ligne
+   * client, la clause `not exists` de la mise à jour **bloque** donc la seconde
+   * promotion — et la ligne reste invitée. Un rejeu de l'événement retrouve
+   * alors exactement le même état qu'à la première livraison : la garde
+   * applicative produit à nouveau une promotion non nulle, et le seul rempart
+   * qui reste est `applied`, c'est-à-dire le journal.
+   *
+   * Sans lui, un second lien d'accès repart à chaque rejeu — et le fournisseur
+   * rejoue tant qu'il n'a pas vu un 2xx.
+   */
+  it('ne renvoie pas de lien au rejeu d’un second paiement dont la promotion était bloquée', async () => {
+    const first = await aGuestCheckout('un')
+
+    await deliver(guestCompletion({ id: 'evt_f4_a', customer: first, email: 'deuxfois@example.test' }))
+
+    const second = await aGuestCheckout('deux')
+    const payload = guestCompletion({ id: 'evt_f4_b', customer: second, email: 'deuxfois@example.test' })
+
+    await expect((await deliver(payload)).json()).resolves.toMatchObject({ applied: true })
+    await expect((await deliver(payload)).json()).resolves.toMatchObject({ applied: false })
+
+    const customers = await storedCustomers()
+
+    // Un compte, **une** ligne client : la seconde reste invitée plutôt que de
+    // faire lever le webhook sur l'index d'unicité.
+    expect(customers.filter((row) => row.scope_kind === 'user')).toHaveLength(1)
+    expect(customers.filter((row) => row.scope_kind === 'guest')).toHaveLength(1)
+    // Et **un lien par livraison neuve**, jamais un de plus au rejeu.
+    expect(guestLinkLog).toHaveLength(2)
+  })
+
+  /**
+   * **Le filtre `scope_kind` de la promotion** (ADR 047).
+   *
+   * C'est la garde, et voici le défaut qu'elle ferme : un second
+   * `checkout.session.completed` sur le **même** client du fournisseur, portant
+   * une **autre** adresse, repointerait la ligne d'une personne déjà promue
+   * vers un autre compte — sa facturation, ses abonnements et son droit d'accès
+   * changeraient de propriétaire. Retirer `scope_kind = 'guest'` de la clause
+   * `where` fait rougir ce cas.
+   */
+  it('ne repointe pas vers un autre compte une ligne déjà promue', async () => {
+    const customer = await aGuestCheckout()
+
+    await deliver(guestCompletion({ id: 'evt_g4', customer, email: 'premier@example.test' }))
+
+    const owner = knownGuestAccounts.get('premier@example.test')
+
+    await deliver(guestCompletion({ id: 'evt_g5', customer, email: 'second@example.test' }))
+
+    const customers = await storedCustomers()
+
+    expect(customers).toHaveLength(1)
+    expect(customers[0]?.scope_id).toBe(owner)
+    // Et aucun lien n'est parti pour le second : rien n'a été promu.
+    expect(guestLinkLog).toHaveLength(1)
+  })
+
+  /**
+   * **La seconde garde, celle qui vit en base** (ADR 047).
+   *
+   * La garde applicative juste au-dessus refuse déjà de produire une promotion
+   * pour une ligne qui n'est plus invitée — mesuré : la neutraliser fait rougir
+   * deux cas. Mais elle lit puis écrit, et deux livraisons simultanées passent
+   * toutes les deux dans cette fenêtre. Ce cas-ci s'adresse **directement au
+   * stockage**, sans passer par elle, pour que le `where scope_kind = 'guest'`
+   * de la mise à jour soit lui aussi tenu par une commande — retiré, il rougit
+   * ici.
+   */
+  it('refuse en base de promouvoir une ligne qui n’est plus invitée', async () => {
+    const repository = createDrizzleBillingRepository(connection.db)
+    const customer = await aGuestCheckout('sql')
+
+    await repository.applyEvent({
+      eventId: 'evt_sql_1',
+      type: 'checkout_completed',
+      effect: { kind: 'none' },
+      promotion: { providerCustomerId: customer, userId: 'usr_premier' },
+    })
+
+    // La seconde promotion vise la **même** ligne, désormais rattachée à un
+    // compte : c'est exactement la prise de contrôle que la garde interdit.
+    await repository.applyEvent({
+      eventId: 'evt_sql_2',
+      type: 'checkout_completed',
+      effect: { kind: 'none' },
+      promotion: { providerCustomerId: customer, userId: 'usr_second' },
+    })
+
+    const customers = await storedCustomers()
+
+    expect(customers).toHaveLength(1)
+    expect(customers[0]?.scope_kind).toBe('user')
+    expect(customers[0]?.scope_id).toBe('usr_premier')
+  })
+
+  /**
+   * **Un compte n'a qu'une ligne client**, et la promotion ne peut pas violer
+   * cette unicité.
+   *
+   * Un visiteur qui paie deux fois sans se connecter ouvre deux tunnels
+   * invités, donc deux lignes. Promouvoir la seconde vers le même compte
+   * dépasserait l'index `(scope_kind, scope_id)` : la clause `not exists` de la
+   * mise à jour laisse alors la seconde ligne invitée plutôt que de faire lever
+   * le webhook — un 400 que le fournisseur rejouerait indéfiniment
+   * (`docs/reliability.md` §1).
+   */
+  it('laisse invitée la seconde ligne d’un compte qui en a déjà une', async () => {
+    const repository = createDrizzleBillingRepository(connection.db)
+    const first = await aGuestCheckout('deux-a')
+    const second = await aGuestCheckout('deux-b')
+
+    for (const providerCustomerId of [first, second]) {
+      await repository.applyEvent({
+        eventId: `evt_deux_${providerCustomerId}`,
+        type: 'checkout_completed',
+        effect: { kind: 'none' },
+        promotion: { providerCustomerId, userId: 'usr_deux_fois' },
+      })
+    }
+
+    const customers = await storedCustomers()
+
+    expect(customers).toHaveLength(2)
+    expect(customers.filter((row) => row.scope_kind === 'user')).toHaveLength(1)
+    expect(customers.filter((row) => row.scope_kind === 'guest')).toHaveLength(1)
+  })
+
+  it('journalise sans rien promouvoir quand l’adresse du paiement n’en est pas une', async () => {
+    // L'adresse vient d'une **frontière** : Zod, et aucune confiance implicite.
+    // Le paiement reste encaissé, la ligne reste invitée, et aucun compte n'est
+    // créé au hasard.
+    const customer = await aGuestCheckout()
+
+    await deliver(guestCompletion({ id: 'evt_g6', customer, email: 'pas-une-adresse' }))
+
+    const customers = await storedCustomers()
+
+    expect(customers[0]?.scope_kind).toBe('guest')
+    expect(guestAccountLog).toHaveLength(0)
+    expect(guestLinkLog).toHaveLength(0)
+  })
+
+  it('ne promeut pas la ligne d’un compte : un checkout authentifié reste intact', async () => {
+    // La garde vue de l'autre côté : `scope_kind = 'guest'` refuse aussi de
+    // toucher la ligne d'un périmètre réel, quelle que soit l'adresse portée
+    // par l'événement.
+    currentScope = { kind: 'user', userId: 'usr_titulaire' }
+    responses = checkoutResponses('auth')
+
+    await call('checkout', {
+      session: { userId: 'usr_titulaire', roles: [] },
+      body: { offerId: 'pro-monthly' },
+    })
+
+    await deliver(
+      guestCompletion({ id: 'evt_g7', customer: 'cus_auth', email: 'autre@example.test' }),
+    )
+
+    const customers = await storedCustomers()
+
+    expect(customers[0]?.scope_kind).toBe('user')
+    expect(customers[0]?.scope_id).toBe('usr_titulaire')
+    expect(guestLinkLog).toHaveLength(0)
+  })
+
+  it('un paiement abandonné ne crée ni compte ni droit d’accès', async () => {
+    // Critère 5. Ce qu'il laisse est une ligne client invitée — ni un compte,
+    // ni un droit —, et c'est la conséquence assumée de l'ADR 047.
+    await aGuestCheckout()
+
+    const customers = await storedCustomers()
+
+    expect(customers).toHaveLength(1)
+    expect(customers[0]?.scope_kind).toBe('guest')
+    expect(guestAccountLog).toHaveLength(0)
+    expect(guestLinkLog).toHaveLength(0)
+    expect(await countRows('billing_subscription')).toBe(0)
+  })
+
+  /**
+   * **Une ligne invitée ne devient jamais le périmètre d'un compte** (ADR 047).
+   *
+   * `pnpm billing:reconcile` est la seule commande qui parcourt les clients
+   * sans appelant, et c'est donc le seul endroit qui transforme deux colonnes
+   * de texte en `ModuleScope`. Sans le refus d'`accountScopeOfCustomer`, une
+   * ligne invitée y devient un `user:<jeton opaque>` — un compte que personne
+   * n'a créé — que la commande passe ensuite au compteur de sièges.
+   */
+  it('ne fabrique aucun périmètre de compte pour une ligne invitée à la réconciliation', async () => {
+    await aGuestCheckout()
+
+    const seen: ModuleScope[] = []
+
+    scopeSeats = (scope) => {
+      seen.push(scope)
+
+      return Promise.resolve(null)
+    }
+    responses = [...noPurchases(), () => json({ object: 'list', has_more: false, data: [] })]
+
+    const report = await requireBillingService().useCases.reconcile()
+
+    expect(report.customers).toBe(1)
+    expect(seen).toEqual([])
+  })
+})
+
+describe.runIf(databaseReachable)('la page de retour d’un paiement invité', () => {
+  /**
+   * **Aucune session n'est ouverte depuis la page de retour** (critère 7).
+   *
+   * Le cas rend l'écran réellement servi au retour — la page publique de
+   * tarifs, seul écran qu'un visiteur anonyme atteint — avec un identifiant de
+   * session de paiement **forgé** et avec un **authentique**, et exige la même
+   * chose des deux : aucune session en base, aucun cookie posé, et le même
+   * bandeau. C'est la discipline que s19 a posée pour `/billing`, étendue au
+   * parcours invité.
+   */
+  const renderReturn = async (
+    params: Record<string, string>,
+  ): Promise<{ readonly html: string; readonly sessions: number }> => {
+    const before = await countRows('auth_session')
+
+    vi.resetModules()
+    vi.doMock('../apps/web/lib/billing', () => ({ billing: { available: true } }))
+    vi.doMock('../apps/web/lib/auth', () => ({
+      currentViewer: () => Promise.resolve({ session: null, account: null }),
+    }))
+    vi.doMock('../apps/web/lib/i18n', () => ({
+      appIntl: () =>
+        Promise.resolve({
+          locale: defaultLocale,
+          t: (key: string) => key,
+          path: (pathname: string) => localeRouting.publicPath(pathname, defaultLocale),
+        }),
+    }))
+
+    try {
+      const { default: PricingPage } = (await import('../apps/web/app/pricing/page')) as {
+        default: (props: {
+          searchParams?: Promise<Record<string, string | string[] | undefined>>
+        }) => Promise<ReactNode>
+      }
+
+      const tree = await PricingPage({ searchParams: Promise.resolve(params) })
+
+      return {
+        html: renderToStaticMarkup(
+          createElement(NextIntlClientProvider, {
+            locale: defaultLocale,
+            messages: {},
+            timeZone: 'UTC',
+            onError: () => {},
+            getMessageFallback: ({ key }: { key: string }) => key,
+            children: tree,
+          }),
+        ),
+        sessions: (await countRows('auth_session')) - before,
+      }
+    } finally {
+      vi.doUnmock('../apps/web/lib/billing')
+      vi.doUnmock('../apps/web/lib/auth')
+      vi.doUnmock('../apps/web/lib/i18n')
+    }
+  }
+
+  it('n’ouvre aucune session, ni sur un identifiant forgé ni sur un authentique', async () => {
+    // Un compte réel existe : sans lui, « aucune session ouverte » serait vrai
+    // faute de quiconque à connecter, et la mutation — un écran qui ouvre une
+    // session au retour — n'aurait rien à quoi la rattacher.
+    await anAccount()
+
+    responses = checkoutResponses('ret')
+
+    await call('guestCheckout', { body: { offerId: 'pro-monthly' } })
+
+    const authentic = await renderReturn({
+      checkout: 'success',
+      session_id: 'cs_ret',
+    })
+    const forged = await renderReturn({
+      checkout: 'success',
+      session_id: 'cs_forge_par_un_tiers',
+    })
+
+    expect(authentic.sessions).toBe(0)
+    expect(forged.sessions).toBe(0)
+    // Le même bandeau dans les deux cas : l'identifiant n'est ni lu, ni cru.
+    expect(authentic.html).toContain(BILLING_KEYS.pricing.returnSuccess)
+    expect(forged.html).toContain(BILLING_KEYS.pricing.returnSuccess)
+    expect(authentic.html).toBe(forged.html)
+  })
+
+  it('dit l’abandon sans rien accorder', async () => {
+    const cancelled = await renderReturn({ checkout: 'cancelled' })
+
+    expect(cancelled.sessions).toBe(0)
+    expect(cancelled.html).toContain(BILLING_KEYS.pricing.returnCancelled)
+  })
+
+  it('n’affiche aucun bandeau sans paramètre de retour, ni sur une valeur inconnue', async () => {
+    for (const params of [{}, { checkout: 'peut-etre' }]) {
+      const rendered = await renderReturn(params as Record<string, string>)
+
+      expect(rendered.html).not.toContain(BILLING_KEYS.pricing.returnSuccess)
+      expect(rendered.html).not.toContain(BILLING_KEYS.pricing.returnCancelled)
+    }
+  })
+})
+
+describe.runIf(databaseReachable)('le lien envoyé à l’adresse du paiement', () => {
+  /**
+   * **La règle du point de composition, sur le vrai service d'authentification.**
+   *
+   * C'est là que le défaut vivrait : le module ne sait pas ce qu'est un mot de
+   * passe, et une mutation posée dans le module ne ferait rien rougir. Le
+   * courrier sortant est celui du port `Mailer`, donc la doublure voit **tous**
+   * les emails du produit — y compris celui qui ne devrait pas partir.
+   */
+  const outbox = createRecordingMailer()
+  let authService: AuthService
+  let rule: GuestAccounts
+
+  beforeAll(() => {
+    if (!databaseReachable) {
+      return
+    }
+
+    authService = configureAuth({
+      db: connection.db,
+      mailer: outbox,
+      secret: 'x'.repeat(32),
+      appUrl: APP_URL,
+      log: () => {},
+      runInBackground: (task) => {
+        void task
+      },
+    })
+
+    rule = guestAccountsOf(() => Promise.resolve(authService), {
+      appUrl: APP_URL,
+      generatePassword: () => `s24-${randomUUID()}-${randomUUID()}`,
+    })
+  })
+
+  beforeEach(() => {
+    outbox.reset()
+  })
+
+  it('crée le compte de l’adresse et lui envoie un lien de définition de mot de passe', async () => {
+    // Critère 3, branche « compte neuf ».
+    const email = `s19-guest-${randomUUID()}@example.test`
+    const account = await rule.accountFor({ email })
+
+    expect(account?.created).toBe(true)
+
+    await rule.sendAccessLink({ account: account ?? { userId: '', created: true }, email })
+
+    expect(outbox.sent.map((message) => message.template)).toEqual(['auth.reset-password'])
+    expect(outbox.sent[0]?.to).toBe(email)
+  })
+
+  /**
+   * **La décision de cette story, et la mutation qui la garde.**
+   *
+   * Faire partir un lien de définition de mot de passe ici transformerait un
+   * paiement — que n'importe qui peut faire, avec l'adresse de n'importe qui —
+   * en chemin de réinitialisation de mot de passe déclenchable par un tiers.
+   * Remplacer la branche par `requestPasswordReset` fait rougir ce cas.
+   */
+  it('n’envoie qu’un magic link à une adresse qui possède déjà un compte', async () => {
+    const email = `s19-guest-${randomUUID()}@example.test`
+
+    await connection.db
+      .insert(authUser)
+      .values({ id: `usr_s19_${randomUUID()}`, name: 'Titulaire', email, emailVerified: true })
+
+    const account = await rule.accountFor({ email })
+
+    expect(account?.created).toBe(false)
+
+    await rule.sendAccessLink({ account: account ?? { userId: '', created: false }, email })
+
+    expect(outbox.sent.map((message) => message.template)).toEqual(['auth.magic-link'])
+    // **Et rien d'autre** : aucun lien de définition de mot de passe n'a pu
+    // partir à côté, le port les verrait tous.
+    expect(
+      outbox.sent.filter((message) => message.template === 'auth.reset-password'),
+    ).toHaveLength(0)
+  })
+
+  it('retrouve le compte qu’elle vient de créer, sans en fabriquer un second', async () => {
+    const email = `s19-guest-${randomUUID()}@example.test`
+    const first = await rule.accountFor({ email })
+    const second = await rule.accountFor({ email })
+
+    expect(second?.userId).toBe(first?.userId)
+    expect(second?.created).toBe(false)
+
+    const rows = await connection.db.execute<{ count: number }>(
+      sql`select count(*)::int as count from auth_user where email = ${email}`,
+    )
+
+    expect(Number(rows.rows[0]?.count ?? 0)).toBe(1)
+  })
+})
+
+describe('le checkout invité quand le module est coupé', () => {
+  it('n’existe pas — 404, et non 403', async () => {
+    // Critère 8 : « aucune route de checkout anonyme n'existe ». Un 403 dirait
+    // que le chemin existe et qu'on n'y a pas droit ; le chemin n'est dans
+    // aucune table.
+    const response = await call('guestCheckout', {
+      body: { offerId: 'pro-monthly' },
+      registry: withoutBilling,
+    })
+
+    expect(response.status).toBe(404)
+  })
+
+  it('est déclaré public quand le module est monté, et c’est la seule route de paiement à l’être', async () => {
+    const guest = billingModule.routes.find((route) =>
+      route.path.endsWith('/billing/guest-checkout'),
+    )
+
+    expect(guest?.protection.level).toBe('public')
+    expect(guest?.method).toBe('POST')
+  })
+})
+
+describe('la simulation locale d’un tunnel invité', () => {
+  /**
+   * **Les deux moitiés de la référence invitée doivent s'accorder.**
+   *
+   * `@repo/payments-testing` ne dépend d'aucun module : il recopie la forme du
+   * préfixe. Ce fichier est le seul qui voie les deux, et il compare les deux
+   * écritures en les faisant se rencontrer — une session ouverte avec
+   * `guestScopeReference` doit se terminer par la porte invitée, et une session
+   * de compte ne le doit pas.
+   */
+  it('ne termine que les sessions invitées, et jamais celle d’un compte', async () => {
+    const local = createLocalPayments({ appUrl: APP_URL, webhookSecret: LOCAL_WEBHOOK_SECRET })
+
+    const guest = await local.createCheckout({
+      priceId: 'price_pro_monthly',
+      mode: 'subscription',
+      quantity: 1,
+      customerId: null,
+      customerEmail: null,
+      reference: guestScopeReference('a'.repeat(64)),
+      successUrl: `${APP_URL}/pricing?checkout=success`,
+      cancelUrl: `${APP_URL}/pricing?checkout=cancelled`,
+      trialPeriodDays: null,
+      locale: null,
+      idempotencyKey: 'checkout:guest:test',
+    })
+
+    const owned = await local.createCheckout({
+      priceId: 'price_pro_yearly',
+      mode: 'subscription',
+      quantity: 1,
+      customerId: null,
+      customerEmail: null,
+      reference: billingScopeReference({ kind: 'user', userId: 'usr_local' }),
+      successUrl: `${APP_URL}/billing?checkout=success`,
+      cancelUrl: `${APP_URL}/billing?checkout=cancelled`,
+      trialPeriodDays: null,
+      locale: null,
+      idempotencyKey: 'checkout:user:test',
+    })
+
+    expect(guest.ok && owned.ok).toBe(true)
+
+    if (!guest.ok || !owned.ok) {
+      return
+    }
+
+    expect(
+      local.completeGuestCheckout(guest.checkout.sessionId, 'payeur@example.test'),
+    ).not.toHaveLength(0)
+    // La porte invitée refuse la session d'un compte…
+    expect(local.completeGuestCheckout(owned.checkout.sessionId, 'payeur@example.test')).toEqual([])
+    // …et la porte des comptes refuse celle d'un invité, faute de périmètre qui
+    // puisse s'écrire `guest:`.
+    expect(
+      local.completeCheckout(
+        guest.checkout.sessionId,
+        billingScopeReference({ kind: 'user', userId: 'usr_local' }),
+      ),
+    ).toEqual([])
   })
 })

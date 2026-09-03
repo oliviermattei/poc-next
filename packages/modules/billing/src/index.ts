@@ -20,6 +20,7 @@ export { billingModule } from './module'
  * qui n'accepte que des exports de premier niveau.
  */
 export {
+  billingCheckoutThrottle,
   billingCustomer,
   billingPurchase,
   billingPurchaseSession,
@@ -42,6 +43,25 @@ export {
   type BillingOffer,
 } from './domain/offer'
 export { highlightedOfferId, selectedOfferOf } from './domain/pricing'
+export {
+  GUEST_SCOPE_KIND,
+  accountScopeOfCustomer,
+  guestPaymentEmailOf,
+  guestScopeReference,
+  isGuestScopeKind,
+  isOpaqueGuestScopeId,
+  type BillingScopeKind,
+} from './domain/guest'
+export {
+  GUEST_CHECKOUT_GLOBAL_BUCKET,
+  GUEST_CHECKOUT_RATE_LIMIT,
+  UNKNOWN_CHECKOUT_CLIENT,
+  checkoutClientOf,
+  checkoutWindowStartOf,
+  exceedsCheckoutRateLimit,
+  guestCheckoutBucket,
+} from './domain/checkout-throttle'
+export { createGuestScopeIdGenerator } from './infrastructure/guest-scope-id'
 export { billableSeats, offerSyncsSeats } from './domain/seats'
 export {
   PURCHASE_STATUSES,
@@ -85,12 +105,27 @@ export {
 } from './application/billing-use-cases'
 export type {
   BillingPermission,
+  GuestAccount,
+  GuestAccounts,
   ScopeEmailResolver,
   ScopeResolver,
   ScopeSeats,
   SeatCounter,
 } from './application/ports'
 export {
+  /**
+   * Exporté pour être **éprouvé au niveau du stockage** : la promotion d'une
+   * ligne invitée porte deux gardes en base (ADR 047), et une garde applicative
+   * posée au-dessus les rendrait inatteignables par un test qui passe par les
+   * routes — donc invérifiables par mutation.
+   */
+  createDrizzleBillingRepository,
+  /**
+   * Exporté pour la même raison : le seau **global** de la route publique se
+   * remplit en base, et un cas qui devrait l'atteindre par cinquante ouvertures
+   * réelles mesurerait surtout la patience de la suite.
+   */
+  createDrizzleCheckoutThrottle,
   purchaseReadOrder,
   subscriptionReadOrder,
 } from './infrastructure/drizzle-billing-repositories'

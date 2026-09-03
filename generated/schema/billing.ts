@@ -5,4 +5,4 @@
 // la seule forme que `drizzle-kit generate` sait lire (exports de premier
 // niveau uniquement).
 
-export { billingCustomer, billingPurchase, billingPurchaseSession, billingRefundedPayment, billingSubscription, billingWebhookEvent } from '@repo/module-billing'
+export { billingCheckoutThrottle, billingCustomer, billingPurchase, billingPurchaseSession, billingRefundedPayment, billingSubscription, billingWebhookEvent } from '@repo/module-billing'

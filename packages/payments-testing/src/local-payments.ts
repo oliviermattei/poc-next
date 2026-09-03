@@ -49,6 +49,16 @@ import Stripe from 'stripe'
 /** Le chemin, servi par l'application, où mène un checkout local. */
 export const LOCAL_CHECKOUT_PATH = '/api/billing-local-checkout'
 
+/**
+ * Le préfixe d'une référence de périmètre **invité** (s24, ADR 047).
+ *
+ * Recopié plutôt qu'importé : ce paquet n'est pas un module et ne dépend
+ * d'aucun. La forme est celle de `guestScopeReference`
+ * (`packages/modules/billing/src/domain/guest.ts`), et `tests/billing.test.ts`
+ * — le seul fichier qui voie les deux — compare les deux écritures.
+ */
+const GUEST_REFERENCE_PREFIX = 'guest:'
+
 /** Une livraison de webhook, telle que la route la recevrait du fournisseur. */
 export interface LocalWebhookDelivery {
   readonly payload: string
@@ -69,6 +79,24 @@ export interface LocalPayments extends Payments {
    * périmètre** : un simulateur ne lève pas plus qu'un port.
    */
   completeCheckout(sessionId: string, reference: string): readonly LocalWebhookDelivery[]
+
+  /**
+   * Termine une session **invitée** (s24) et rend ses livraisons.
+   *
+   * Distincte de `completeCheckout`, et la distinction est la garde : celle-ci
+   * ne termine que les sessions dont la référence est un périmètre invité, et
+   * l'autre ne termine que celles d'un périmètre de compte —
+   * `billingScopeReference` ne produit jamais de référence `guest:`. Aucune des
+   * deux ne peut donc servir à terminer la session de l'autre.
+   *
+   * `email` tient la place de l'adresse que la page hébergée du fournisseur
+   * aurait collectée. Le simulateur n'en invente pas la valeur : elle est
+   * décidée par l'appelant, comme le visiteur la déciderait.
+   *
+   * Rend une liste vide pour une session inconnue **ou** pour une session qui
+   * n'est pas invitée.
+   */
+  completeGuestCheckout(sessionId: string, email: string): readonly LocalWebhookDelivery[]
 }
 
 export interface LocalPaymentsOptions {
@@ -175,7 +203,10 @@ export function createLocalPayments(options: LocalPaymentsOptions): LocalPayment
    * la simulation n'en invente pas. L'historique affichera donc l'achat sans
    * son prix, ce qui est la vérité de ce qu'on sait ici.
    */
-  const completePurchase = (session: PendingSession): LocalWebhookDelivery => {
+  const completePurchase = (
+    session: PendingSession,
+    email: string | null,
+  ): LocalWebhookDelivery => {
     const paymentId = `pi_local_${session.id}`
 
     purchases.set(session.id, {
@@ -206,9 +237,96 @@ export function createLocalPayments(options: LocalPaymentsOptions): LocalPayment
           customer: session.customerId,
           payment_intent: paymentId,
           client_reference_id: session.reference,
+          // Ce que la page hébergée du fournisseur aurait collecté. Absent pour
+          // un checkout authentifié : nous connaissions déjà l'adresse.
+          ...(email === null ? {} : { customer_details: { email } }),
         },
       },
     })
+  }
+
+
+  /**
+   * Termine une session, quelle que soit sa nature.
+   *
+   * `email` n'est posé que pour un checkout **invité** : c'est la seule chose
+   * qu'une page hébergée collecte et que nous ne connaissions pas.
+   */
+  const complete = (session: PendingSession, email: string | null): readonly LocalWebhookDelivery[] => {
+    if (session.mode === 'payment') {
+      return [completePurchase(session, email)]
+    }
+
+      const trial = session.trialPeriodDays
+      const start = now()
+      const trialEnd = trial === null ? null : new Date(start.getTime() + trial * DAY_MS)
+      const periodEnd = new Date((trialEnd ?? start).getTime() + PERIOD_DAYS * DAY_MS)
+      const subscriptionId = `sub_local_${session.customerId}`
+
+      const subscription: Record<string, unknown> = {
+        id: subscriptionId,
+        object: 'subscription',
+        customer: session.customerId,
+        status: trial === null ? 'active' : 'trialing',
+        cancel_at_period_end: false,
+        trial_end: trialEnd === null ? null : seconds(trialEnd),
+        items: {
+          object: 'list',
+          data: [
+            {
+              id: `si_local_${session.customerId}`,
+              object: 'subscription_item',
+              quantity: session.quantity,
+              current_period_start: seconds(start),
+              current_period_end: seconds(periodEnd),
+              price: { id: session.priceId, object: 'price' },
+            },
+          ],
+        },
+      }
+
+      subscriptions.set(subscriptionId, subscription)
+
+      const created = seconds(start)
+
+      // **Volontairement dans le désordre** : le changement d'abonnement part
+      // avant la session qui l'a causé. C'est ce que le fournisseur peut faire,
+      // et ADR 034 dit pourquoi cela n'a plus d'importance ici.
+      return [
+        sign({
+          id: `evt_local_sub_${session.id}`,
+          object: 'event',
+          api_version: null,
+          created: created + 1,
+          livemode: false,
+          pending_webhooks: 0,
+          request: { id: null, idempotency_key: null },
+          type: 'customer.subscription.created',
+          data: { object: subscription },
+        }),
+        sign({
+          id: `evt_local_checkout_${session.id}`,
+          object: 'event',
+          api_version: null,
+          created,
+          livemode: false,
+          pending_webhooks: 0,
+          request: { id: null, idempotency_key: null },
+          type: 'checkout.session.completed',
+          data: {
+            object: {
+              id: session.id,
+              object: 'checkout.session',
+              mode: 'subscription',
+              customer: session.customerId,
+              subscription: subscriptionId,
+              client_reference_id: session.reference,
+              // Ce que la page hébergée du fournisseur aurait collecté (s24).
+              ...(email === null ? {} : { customer_details: { email } }),
+            },
+          },
+        }),
+      ]
   }
 
   return {
@@ -368,78 +486,19 @@ export function createLocalPayments(options: LocalPaymentsOptions): LocalPayment
         return []
       }
 
-      if (session.mode === 'payment') {
-        return [completePurchase(session)]
+      return complete(session, null)
+    },
+
+    completeGuestCheckout: (sessionId, email) => {
+      const session = sessions.get(sessionId)
+
+      // Session inconnue **ou** session d'un compte : rien, et les deux refus
+      // sont indiscernables.
+      if (session === undefined || !session.reference.startsWith(GUEST_REFERENCE_PREFIX)) {
+        return []
       }
 
-      const trial = session.trialPeriodDays
-      const start = now()
-      const trialEnd = trial === null ? null : new Date(start.getTime() + trial * DAY_MS)
-      const periodEnd = new Date((trialEnd ?? start).getTime() + PERIOD_DAYS * DAY_MS)
-      const subscriptionId = `sub_local_${session.customerId}`
-
-      const subscription: Record<string, unknown> = {
-        id: subscriptionId,
-        object: 'subscription',
-        customer: session.customerId,
-        status: trial === null ? 'active' : 'trialing',
-        cancel_at_period_end: false,
-        trial_end: trialEnd === null ? null : seconds(trialEnd),
-        items: {
-          object: 'list',
-          data: [
-            {
-              id: `si_local_${session.customerId}`,
-              object: 'subscription_item',
-              quantity: session.quantity,
-              current_period_start: seconds(start),
-              current_period_end: seconds(periodEnd),
-              price: { id: session.priceId, object: 'price' },
-            },
-          ],
-        },
-      }
-
-      subscriptions.set(subscriptionId, subscription)
-
-      const created = seconds(start)
-
-      // **Volontairement dans le désordre** : le changement d'abonnement part
-      // avant la session qui l'a causé. C'est ce que le fournisseur peut faire,
-      // et ADR 034 dit pourquoi cela n'a plus d'importance ici.
-      return [
-        sign({
-          id: `evt_local_sub_${sessionId}`,
-          object: 'event',
-          api_version: null,
-          created: created + 1,
-          livemode: false,
-          pending_webhooks: 0,
-          request: { id: null, idempotency_key: null },
-          type: 'customer.subscription.created',
-          data: { object: subscription },
-        }),
-        sign({
-          id: `evt_local_checkout_${sessionId}`,
-          object: 'event',
-          api_version: null,
-          created,
-          livemode: false,
-          pending_webhooks: 0,
-          request: { id: null, idempotency_key: null },
-          type: 'checkout.session.completed',
-          data: {
-            object: {
-              id: sessionId,
-              object: 'checkout.session',
-              mode: 'subscription',
-              customer: session.customerId,
-              subscription: subscriptionId,
-              client_reference_id: session.reference,
-            },
-          },
-        }),
-      ]
+      return complete(session, email)
     },
   }
 }

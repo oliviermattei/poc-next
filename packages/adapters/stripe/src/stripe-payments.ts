@@ -258,6 +258,34 @@ const PURCHASE_EVENTS = new Set([
 ])
 
 /**
+ * **L'adresse du payeur, telle que la session de checkout la porte** (s24).
+ *
+ * `customer_details.email` est ce que le fournisseur a collecté sur sa page
+ * hébergée ; `customer_email` est ce que *nous* lui avions donné à l'ouverture.
+ * Le premier prime : c'est celui qui existe pour un checkout invité, où nous
+ * n'avions aucune adresse à donner.
+ *
+ * Rien n'est vérifié ici : la valeur traverse telle quelle, et c'est le module
+ * qui la confronte à Zod avant d'en faire quoi que ce soit. Un adaptateur qui
+ * validerait à la place du domaine ferait exister la règle à deux endroits.
+ */
+function sessionEmail(object: Record<string, unknown>): string | null {
+  const details = object['customer_details']
+
+  if (typeof details === 'object' && details !== null) {
+    const email = (details as Record<string, unknown>)['email']
+
+    if (typeof email === 'string' && email !== '') {
+      return email
+    }
+  }
+
+  const given = object['customer_email']
+
+  return typeof given === 'string' && given !== '' ? given : null
+}
+
+/**
  * L'événement du fournisseur, ramené à la forme du port.
  *
  * `unhandled` est une **valeur**, pas une absence : un événement qu'on ne traite
@@ -283,6 +311,7 @@ function normalizeEvent(event: Stripe.Event): PaymentEvent {
       currency: typeof object['currency'] === 'string' ? object['currency'] : null,
       reference:
         typeof object['client_reference_id'] === 'string' ? object['client_reference_id'] : null,
+      customerEmail: sessionEmail(object),
     }
   }
 
@@ -319,6 +348,7 @@ function normalizeEvent(event: Stripe.Event): PaymentEvent {
       reference: typeof object['client_reference_id'] === 'string' ? object['client_reference_id'] : null,
       customerId: asId(object['customer']),
       subscriptionId: asId(object['subscription']),
+      customerEmail: sessionEmail(object),
     }
   }
 

@@ -168,6 +168,12 @@ test.describe('la facturation', () => {
    * (constat F7 de la revue) : le parcours ouvre une vraie session avec un
    * compte, puis présente son URL à un client **anonyme**. Sans la garde de
    * session, ce client-là terminait le paiement de quelqu'un d'autre.
+   *
+   * **Depuis s24, un anonyme n'est plus refusé d'office** : c'est lui que sert
+   * le tunnel invité. Le refus tient donc à la nature de la session — la porte
+   * invitée ne termine que les sessions dont le périmètre s'écrit `guest:`, et
+   * `billingScopeReference` n'en produit jamais. Le statut, lui, n'a pas
+   * changé : 404, indiscernable d'une session inconnue.
    */
   test('refuse le checkout simulé à qui n’a pas ouvert la session', async ({ page, request }) => {
     test.skip(!mounted, 'module de facturation coupé')
@@ -302,9 +308,21 @@ test.describe('la facturation', () => {
    * visiteur anonyme, et le choix d'offre survit à l'aller-retour par la
    * connexion.
    * ------------------------------------------------------------------------ */
-  test('mène un visiteur anonyme des tarifs à la connexion, son offre conservée', async ({
-    page,
-  }) => {
+  /**
+   * **s24 — payer sans créer de compte d'abord**, de bout en bout.
+   *
+   * Ce que ce parcours prouve et qu'aucun test de nœud ne peut prouver : un
+   * visiteur **sans session** part de la page publique, traverse le tunnel,
+   * revient sur un écran public, et son compte est créé **par le webhook** —
+   * la route de simulation fait passer les événements par la vraie route du
+   * module, signature comprise.
+   *
+   * Il prouve aussi les deux interdits : **aucune session** n'est ouverte au
+   * retour — le visiteur reste anonyme, la navigation ne lui montre pas de menu
+   * de compte —, et le seul chemin vers le compte est le **lien reçu par
+   * email**.
+   */
+  test('paie sans compte, et le compte naît du webhook — pas du retour', async ({ page }) => {
     test.skip(!mounted, 'module de facturation coupé')
 
     // L'entrée est **publique** : un visiteur sans session la voit, et elle
@@ -323,8 +341,8 @@ test.describe('la facturation', () => {
     const subscriptions = billingOffers.filter((offer) => offer.mode === 'subscription')
     const purchases = billingOffers.filter((offer) => offer.mode === 'one_time')
 
-    await expect(page.getByRole('link', { name: 'Souscrire' })).toHaveCount(subscriptions.length)
-    await expect(page.getByRole('link', { name: 'Acheter' })).toHaveCount(purchases.length)
+    await expect(page.getByRole('button', { name: 'Souscrire' })).toHaveCount(subscriptions.length)
+    await expect(page.getByRole('button', { name: 'Acheter' })).toHaveCount(purchases.length)
 
     // Le prix affiché est celui du catalogue, dans la langue servie.
     for (const offer of billingOffers) {
@@ -334,13 +352,41 @@ test.describe('la facturation', () => {
       ).toBeVisible()
     }
 
-    const chosen = subscriptions[0]?.id ?? ''
+    const sentSince = Date.now()
+    // L'aller vers la page hébergée simulée porte l'identifiant de session, et
+    // c'est de lui que le simulateur dérive l'adresse qu'une vraie page aurait
+    // collectée. Il faut donc l'attraper au passage : le retour, lui, est une
+    // URL publique qui ne porte rien.
+    const hosted = page.waitForRequest((request) =>
+      request.url().includes('/api/billing-local-checkout'),
+    )
 
-    await page.getByRole('link', { name: 'Souscrire' }).first().click()
+    await page.getByRole('button', { name: 'Souscrire' }).first().click()
 
-    // **L'offre traverse la connexion** — et elle ne déclenche rien : ADR 045
-    // repose le choix, il ne l'achète pas.
-    await expect(page).toHaveURL(signInRedirectedFrom(`${PRICING_SCREEN_PATH}?offer=${chosen}`))
+    const sessionId = new URL((await hosted).url()).searchParams.get('session') ?? ''
+
+    expect(sessionId).not.toBe('')
+
+    // **Le retour est public**, et il ne dit qu'une chose : la suite se passe
+    // dans la boîte mail. Il n'affirme **pas** que le paiement a abouti — cet
+    // écran ne lit rien (constat F7 de la revue).
+    await page.waitForURL(/\/pricing\?checkout=success/)
+    await expect(
+      page.getByRole('status').filter({ hasText: 'le lien qui ouvre votre compte' }),
+    ).toBeVisible()
+
+    // **Aucune session ouverte depuis la page de retour** (critère 7) : le
+    // visiteur est toujours anonyme, et `/billing` le renvoie à la connexion
+    // comme n'importe quel anonyme.
+    await page.goto('/billing')
+    await expect(page).toHaveURL(signInRedirectedFrom('/billing'))
+
+    // Le compte, lui, existe : il a été créé par le **webhook**. Le seul chemin
+    // qui y mène est le lien envoyé à l'adresse du paiement — ici celle que la
+    // page hébergée simulée a collectée.
+    const link = await linkSentTo(`${sessionId}@guest.local`, { since: sentSince })
+
+    expect(link).toContain('/reset-password?token=')
   })
 
   /**
@@ -363,8 +409,8 @@ test.describe('la facturation', () => {
     test.skip(!mounted, 'module de facturation coupé')
 
     const chosen = billingOffers.find((offer) => offer.mode === 'subscription')?.id ?? ''
-    // Un compte vérifié, **pas encore connecté** : le parcours part bien d'un
-    // visiteur anonyme.
+    // Un compte vérifié, **pas encore connecté** : la première moitié du cas
+    // part bien d'un visiteur anonyme.
     const email = anEmail('s22-resume')
 
     await signUp(page, email)
@@ -376,19 +422,22 @@ test.describe('la facturation', () => {
     // attendu, et non la carte mise en avant, qui est une autre offre.
     const resumed = page.locator('[aria-current="true"]')
 
-    await expect(resumed.getByRole('link', { name: 'Souscrire' })).toBeFocused()
+    // **Anonyme** : le déclencheur est le même bouton que pour un compte depuis
+    // s24 — il vise la route publique —, et il reçoit le focus une fois allumé.
+    await expect(resumed.getByRole('button', { name: 'Souscrire' })).toBeFocused()
+    await expect(resumed.getByRole('button', { name: 'Souscrire' })).toBeEnabled()
+    // **Et rien n'a été acheté** : l'URL est celle de la page de tarifs, pas
+    // celle d'une session de paiement. C'est tout l'ADR 045 — le paramètre
+    // repose le choix, le geste reste celui de la personne.
+    await expect(page).toHaveURL(urlOf(PRICING_SCREEN_PATH, `?offer=${chosen}`))
 
-    await resumed.getByRole('link', { name: 'Souscrire' }).click()
-    await expect(page).toHaveURL(signInRedirectedFrom(`${PRICING_SCREEN_PATH}?offer=${chosen}`))
-
+    await page.goto('/sign-in')
     await signIn(page, email)
+    await page.goto(`${publicPath(PRICING_SCREEN_PATH)}?offer=${chosen}`)
 
-    // De retour sur les tarifs, l'offre en poche — et **rien n'a été acheté** :
-    // l'URL est celle de la page de tarifs, pas celle d'une session de paiement.
+    // **Connecté** : même mise en évidence, même focus, et toujours aucun achat.
     await expect(page).toHaveURL(urlOf(PRICING_SCREEN_PATH, `?offer=${chosen}`))
     await expect(resumed.getByRole('button', { name: 'Souscrire' })).toBeFocused()
-    // Le bouton est **prêt** : le focus posé sur un bouton encore désactivé
-    // n'aurait servi à personne.
     await expect(resumed.getByRole('button', { name: 'Souscrire' })).toBeEnabled()
   })
 
