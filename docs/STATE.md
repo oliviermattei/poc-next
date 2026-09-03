@@ -4,29 +4,38 @@
 
 ## REPRENDRE ICI
 
-**s28-rate-limiting est BLOQUÉE en revue sur un `critical`**, worktree
+**s28-rate-limiting est BLOQUÉE en revue sur un second `critical`**, worktree
 `.worktrees/s28-rate-limiting`, branche `feature/s28-rate-limiting`, port
-PostgreSQL **5438**, commit `18dfb9d`. Un implémenteur a été relancé avec les
-constats ; s'il n'a pas rendu, relire `docs/reviews/s28-rate-limiting.md`
-(non suivi, dans le worktree) et reprendre les quatre points ci-dessous.
+PostgreSQL **5438**, commit `2cafa1c`. Un implémenteur a été relancé ; s'il n'a
+pas rendu, relire `docs/reviews/s28-rate-limiting.md` (non suivi, dans le
+worktree) — il porte les deux revues, l'une après l'autre.
 
-**Le `critical` en une phrase** : la convergence des compteurs a rendu `sweep`
-**global**. `marketing` et `billing` le lancent avec leur fenêtre de 600 s et
-effacent les seaux **par compte encore ouverts** de 3600 s — `passwordReset`,
-`magicLink`, `signUp`, `emailVerification`, `invitation`. Un **POST vide** sur
-`/marketing/contact` toutes les dix minutes suffit à ramener « 5 par heure » à
-« 5 par dix minutes ». Cause au **contrat du port** : `sweep(before: Date)` ne
-peut pas dire « fenêtre close » quand les seaux ont des durées différentes, et
-le schéma ne persiste jamais `window_seconds`.
+**Le premier `critical` est corrigé** et vérifié : `sweep(now)` compare un
+`expires_at` porté par chaque ligne, donc un module qui balaie sa fenêtre de
+600 s n'efface plus les seaux horaires d'un autre. Mutation de retour au
+balayage global : 3 rouges vitest + 2 rouges e2e.
 
-Trois majeurs avec : rien ne balaie si `marketing` et `billing` sont coupés
-(`jobs: []`) ; `twoFactor` a `maxPerSubject: null` alors que la configuration
-affirme que le seuil empêche de parcourir un million de codes ; et cinq fichiers
-portent encore « s28 supprimera la table », que l'ADR 050 refuse.
+**Le second `critical` est un contournement réel de la limitation 2FA.**
+`subjectOfCookie` fait correspondre le cookie de défi par **suffixe** et retient
+le **premier** couple, alors que Better Auth lit son cookie par **nom exact**
+(`dist/cookies/index.mjs:266`). Un leurre glissé devant —
+`Cookie: two_factor=<compteur>; __Secure-better-auth.two_factor=<le vrai défi>` —
+fait compter le limiteur sur une valeur que l'attaquant fait tourner, pendant que
+la bibliothèque valide le vrai défi. Mesuré : **200 tentatives, 0 refus** contre
+un seuil de 10. Et **quatre documents affirment l'inverse**, dont le tableau
+« ce qui est tenu » de `docs/security.md`, colonne `pnpm test` — qui ne rougit
+pas, son seul cas vérifiant l'inverse du risque.
 
-**Preuve exigée du correctif**, contre l'application démarrée et pas seulement au
-limiteur : cinq demandes de réinitialisation sur une adresse, un POST vide au
-formulaire, puis une sixième — elle doit rester **429**.
+Deux voies : lire par **nom exact** en dérivant le préfixe de la configuration
+d'authentification, ou **refuser quand plusieurs cookies correspondent**. Dans
+les deux cas, un cas de test doit poser le leurre **en tête** d'en-tête. Si la
+propriété ne peut pas être tenue, ce sont les quatre affirmations qui doivent
+partir.
+
+**Un majeur avec** : `pnpm test:e2e` se coupe lui-même au **troisième passage de
+la même heure** contre une base persistante — un passage coûte 41 des 120 du seau
+`signUp`, et l'échec ne nomme rien (un locator Playwright qui expire, ni 429 ni
+limitation). `AGENTS.md` doit gagner cette troisième cause d'échec.
 
 Après s28 : **s29** (blog MDX), **s30** (docs), **s31** (changelog), **s47**
 (limite de sièges, sortie de s23). Numéros d'ADR libres : **051 et suivants**.
