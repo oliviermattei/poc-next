@@ -4,32 +4,45 @@
 
 ## REPRENDRE ICI
 
-**Une voie, en série** : **s21-trials-and-gating**, worktree
-`.claude/worktrees/agent-a1cb10ded3429bf47`, branche `feature/s21-trials-and-gating`,
-base `s21`, port 3121, ADR réservés 043-044.
+**s28-rate-limiting est BLOQUÉE en revue sur un `critical`**, worktree
+`.worktrees/s28-rate-limiting`, branche `feature/s28-rate-limiting`, port
+PostgreSQL **5438**, commit `18dfb9d`. Un implémenteur a été relancé avec les
+constats ; s'il n'a pas rendu, relire `docs/reviews/s28-rate-limiting.md`
+(non suivi, dans le worktree) et reprendre les quatre points ci-dessous.
 
-C'est la première story menée en série. Après elle : **s39** (monitoring, dépend
-de s36), **s46** (écrans d'authentification), **s32** (notifications), **s37**
-(admin, dépend de s21).
+**Le `critical` en une phrase** : la convergence des compteurs a rendu `sweep`
+**global**. `marketing` et `billing` le lancent avec leur fenêtre de 600 s et
+effacent les seaux **par compte encore ouverts** de 3600 s — `passwordReset`,
+`magicLink`, `signUp`, `emailVerification`, `invitation`. Un **POST vide** sur
+`/marketing/contact` toutes les dix minutes suffit à ramener « 5 par heure » à
+« 5 par dix minutes ». Cause au **contrat du port** : `sweep(before: Date)` ne
+peut pas dire « fenêtre close » quand les seaux ont des durées différentes, et
+le schéma ne persiste jamais `window_seconds`.
 
-Candidates dont les dépendances sont satisfaites : **s21** (essais et gating,
-dépend de s20 — fusionnée), **s39** (monitoring, dépend de s36), **s46** (écrans
-d'authentification), **s32** (notifications), **s37** (admin, dépend de s21).
-Numéros d'ADR libres : **043 et suivants**.
+Trois majeurs avec : rien ne balaie si `marketing` et `billing` sont coupés
+(`jobs: []`) ; `twoFactor` a `maxPerSubject: null` alors que la configuration
+affirme que le seuil empêche de parcourir un million de codes ; et cinq fichiers
+portent encore « s28 supprimera la table », que l'ADR 050 refuse.
 
-Avant d'ouvrir une voie, vérifier le verdict de la CI :
-`gh run list --limit 3 --json status,conclusion,displayTitle`. Si la matrice
-`tous` / `socle` est verte, l'agent n'a plus à jouer les six commandes deux fois.
+**Preuve exigée du correctif**, contre l'application démarrée et pas seulement au
+limiteur : cinq demandes de réinitialisation sur une adresse, un POST vide au
+formulaire, puis une sixième — elle doit rester **429**.
+
+Après s28 : **s29** (blog MDX), **s30** (docs), **s31** (changelog), **s47**
+(limite de sièges, sortie de s23). Numéros d'ADR libres : **051 et suivants**.
 
 ## Où on en est
 
-| Story | État |
+| | |
 |---|---|
-| s01 → s20, s36, s41, s45 | **closes**, revues, correctifs appliqués |
-| s20 → s35, s37 → s44, s46 | à faire — 25 stories (s20 en cours) |
+| Stories closes | **30 sur 47** (s01 → s27, s36, s41, s45) |
+| En vol | s28, bloquée en revue |
+| Restantes | 17, dont s47 créée par la découpe de s23 |
+| Tests | **1912 + 8 sautés**, 87 parcours navigateur |
+| ADR | **50** (jusqu'à 050 ; 051 libre) |
 
-Tests : **1580 + 6 ignorés**, 80 parcours end-to-end, déterministes (`retries: 0`).
-ADR : **42** (jusqu'à 042 fusionnés ; 043 et suivants libres).
+Stratégie de ship : **auto**. `/ks-ship` fusionne en squash dès que le portail
+passe. Les PR fusionnées portent l'historique (#1 à #6).
 
 ## Environnement (à refaire après un redémarrage de session)
 
@@ -225,3 +238,107 @@ Décisions structurantes déjà prises : contrat de module à 13 clés (ADR 007)
 - Composants `Form`/`FormField` nommés par le design system, non construits — décision reportée (react-hook-form + Zod partagé côté client).
 - La CI n'a **jamais** tourné : aucun run GitHub Actions. Toutes les étapes ont été jouées localement.
 - Aucun déploiement réel, aucun envoi d'email réel (pas de clé Resend), aucune politique de sécurité du contenu (c'est s45).
+
+---
+
+# Session du 3 septembre 2026 — ce qu'elle a appris
+
+## Dettes ouvertes, par ordre d'urgence
+
+**1. `/pricing` est interdite d'indexation.** `seo.ts:92` construit la politique
+en `disallow: ['/']` avec un `allow` ancré par chemin, et `publicPaths` ne dérive
+que du module `marketing`. La page à plus forte intention commerciale d'un SaaS
+est invisible des moteurs. **Réponse structurelle** : dériver `publicPaths` de
+l'union des entrées de navigation `public` de **tous** les modules actifs —
+`billing` en déclare désormais une. Mérite une story.
+
+**2. Deux tables de compteur abandonnées, à supprimer plus tard.**
+`public_form_throttle` et `billing_checkout_throttle` sont vides et inertes
+depuis s28. Les supprimer **maintenant** casserait la version encore en ligne
+(socle fiabilité : « cesser d'écrire avant de supprimer »). Une story ultérieure,
+une fois qu'aucune version en service ne les écrit.
+
+**3. Aucun appel réel à Stripe n'a jamais été fait** sur s19, s22, s23, s24.
+Une clé de test a été fournie en session : trois prix réels existent dans le
+compte, et **deux charges utiles authentiques** ont été capturées hors dépôt
+(`customer.subscription.created`, `checkout.session.completed` en abonnement).
+Il manque le `checkout.session.completed` en **achat unique**, qui exige un
+paiement complété au navigateur. `tests/fixtures/stripe-events/` ne porte donc
+que son README, le job CI `parcours-dore` reste dormant, et
+`GOLDEN_PATH_PAYMENTS=recorded` échoue en nommant les trois natures manquantes —
+comportement voulu par l'ADR 048.
+
+**4. Le déploiement Coolify a été tenté pour de vrai et a échoué.**
+Créés sur `coolify.olm.re` : projet `killer-saas` (`3mfuy7xrnrlzlztprpajwfwl`),
+base PostgreSQL 16 `killer-saas-db` (`cqzsz7a1yorkth1xoyaogytc`, déployée),
+application `killer-saas-web` (`fhe4qxfivor4aawgwo3r4b2b`). Bon commit cloné,
+build pack Dockerfile, port 3000, quatre variables posées. **Échec après
+~150 s** ; l'API n'expose pas le journal, il faut le lire dans l'interface.
+Hypothèse principale : saturation mémoire pendant `next build`.
+**Le MCP Coolify ne sait pas créer** — lecture et cycle de vie seulement ;
+la création est passée par l'API REST.
+
+**5. Vercel n'a jamais été exercé** — aucun accès dans l'environnement.
+
+**6. `config/billing.ts` ne déclare aucune offre au siège**, donc tout le chemin
+d'écriture de s23 ne s'exécute jamais dans la configuration livrée. Et le
+**proratage** que l'ADR 046 déclare explicitement ne pas trancher n'a été vu par
+personne.
+
+## Modes d'échec silencieux rencontrés cette session
+
+Les chercher systématiquement — chacun a été trouvé par mutation, jamais par
+lecture.
+
+- **Un câblage de point de composition que rien ne tient.** Couper le fil entre
+  `organizations` et `billing` laissait **1708 tests verts** (s23). Un `grep` ne
+  suffit pas : il passe au vert sur un câblage qui épelle le bon nom en remettant
+  un objet inerte. Mesurer le **comportement**.
+- **Une ligne d'`auth` sans filet.** Supprimer le marquage de vérification
+  d'adresse laissait **1745 tests verts** (s24).
+- **Une moitié de critère sans test.** Le paiement unique invité fonctionnait et
+  n'était couvert par rien — sur le seul chemin qui encaisse 490 € d'un anonyme
+  (s24).
+- **`output: 'standalone'` supprime les gardes de démarrage.** Next sérialise la
+  configuration et n'exécute plus `next.config.ts` au lancement. Serveur démarré
+  sans aucune variable : `✓ Ready`, puis 503 pour toujours (s27). La garde vit
+  désormais dans `instrumentation.ts`, et le refus **sort du processus** — parce
+  qu'une exception y laisse Next vivant, répondant 500.
+- **`hashFiles` dans un `if:` de niveau job invalide tout le workflow.** GitHub
+  rejette le fichier entier ; ce dépôt n'en a qu'un, donc typecheck, lint, tests
+  **et le scan de secrets** tombent. Invisible à toute commande locale. Deux
+  gardes existent maintenant : `actionlint` en conteneur, et un test qui balaie
+  les `if:` de niveau job.
+- **Un baril généré vide injecte `default` comme une table.** Deux barils vides
+  se cognent bruyamment ; **un seul passe sans un mot** — défaut latent sur `dev`
+  jusqu'à s28. Corrigé dans `composeSchema`.
+- **Un seuil de débit trop serré est un déni de service.** Tous les visiteurs
+  derrière une même adresse partagent un seau : un NAT, un opérateur mobile, ou
+  un déploiement sans proxy de confiance, et le sixième visiteur de l'heure ne
+  peut plus s'inscrire (s28). Mesuré par les parcours navigateur, 26 échecs
+  sur 92.
+- **Une affirmation « mesurée » qui ne l'est pas.** « Une migration en échec
+  laisse la version précédente servir » était faux : la mesure d'origine avait
+  été faite sur un volume neuf, où aucune version précédente n'existait (s27).
+  Répétée dans cinq textes.
+
+## Deux erreurs de méthode à ne pas refaire
+
+**Mesurer dans un état mixte.** Un implémenteur a diagnostiqué un build cassé en
+restaurant un fichier de `dev` dans un arbre qui portait déjà son module — ni
+l'un ni l'autre. Il a conclu « préexistant sur `dev` » ; le build était **vert
+sur `dev`, rouge sur sa branche**. Toujours mesurer les deux séparément.
+
+**Écrire dans un worktree pendant que son gestionnaire l'installe.** Fait quatre
+fois dans cette session. La règle « un agent, un répertoire » vaut aussi pour le
+contexte principal : attendre la reddition avant d'écrire.
+
+## Ce que le régime de revue a produit
+
+Sept stories livrées, **deux ships bloqués sur `critical`**, et à chaque fois le
+défaut était invisible en lecture. Les revues qui ont trouvé le plus ont toutes
+fait la même chose : **prouver que leur propre suite tournait vraiment** (pointer
+`DATABASE_URL` sur un port mort et mesurer l'effondrement du nombre de cas),
+**vérifier les bibliothèques sur le paquet installé** plutôt que de mémoire, et
+**poser les mutations au site du défaut** — pas dans la garde qu'on veut voir
+rougir.
