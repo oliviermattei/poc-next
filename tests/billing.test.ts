@@ -5,6 +5,7 @@ import { parseEnv, type Env } from '@repo/config'
 import {
   buildRegistry,
   dispatchModuleRequest,
+  visibleNavigation,
   type ModuleScope,
   type ModuleSession,
 } from '@repo/core'
@@ -17,10 +18,14 @@ import {
 } from '@repo/db'
 import { createRecordingMailer } from '@repo/mailer-testing'
 import { createStripePayments } from '@repo/adapter-stripe'
-import { authModule, authUser } from '@repo/module-auth'
+import { authModule, authUser, safeRedirectPath } from '@repo/module-auth'
 import {
   BILLING_KEYS,
+  BILLING_SCREEN_PATH,
+  PRICING_SCREEN_PATH,
   billingModule,
+  formatOfferPrice,
+  offerById,
   billingRoutePath,
   billingPurchase,
   billingSubscription,
@@ -50,7 +55,8 @@ import {
 import { BillingScreen } from '@repo/module-billing/presentation'
 import { demoEnabledModule } from '@repo/module-demo-enabled'
 import { eq, sql } from 'drizzle-orm'
-import { createElement } from 'react'
+import { NextIntlClientProvider } from 'next-intl'
+import { createElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import Stripe from 'stripe'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -61,6 +67,7 @@ import { billingPermissionOf } from '../apps/web/lib/billing-permission'
 import { entitlements as appEntitlements } from '../apps/web/lib/entitlements'
 import { featureGates } from '../apps/web/lib/feature-gates'
 import { organizations as appOrganizations } from '../apps/web/lib/organizations'
+import { localeRouting } from '../apps/web/lib/locale-routing'
 import { billingOffers } from '../config/billing'
 import { appLocales, defaultLocale } from '../config/i18n'
 import { databaseUrl, isDatabaseReachable } from './fixtures/database'
@@ -3134,6 +3141,37 @@ describe('un module de facturation non activé', () => {
 })
 
 /* -------------------------------------------------------------------------- *
+ * s22 — l'entrée de navigation **publique** des tarifs.
+ *
+ * C'est la moitié « navigation » du sixième critère : le lien disparaît avec le
+ * module, **par déclaration** et sans qu'aucun composant ne porte de condition.
+ * L'autre moitié — la page répond 404 — vit plus bas, avec l'écran.
+ *
+ * Le niveau de protection n'est pas relu comme une donnée : ce qui est mesuré
+ * est ce qu'il **produit**, c'est-à-dire ce qu'un visiteur sans session voit.
+ * La règle elle-même (`satisfiesProtection`) est éprouvée chez elle, dans
+ * `packages/core/src/protection.test.ts` ; ici, un seul témoin par sens.
+ * -------------------------------------------------------------------------- */
+describe('l’entrée de navigation des tarifs', () => {
+  const hrefsFor = (built: typeof registry, session: ModuleSession | null): readonly string[] =>
+    visibleNavigation(built, session).map((entry) => entry.href)
+
+  it('s’affiche pour un visiteur sans session, contrairement à l’écran de facturation', () => {
+    const anonymous = hrefsFor(registry, null)
+
+    expect(anonymous).toContain(PRICING_SCREEN_PATH)
+    // Le témoin de refus, sur le **même** module : la facturation reste
+    // `authenticated`, et une entrée visible vers un écran qui redirige
+    // promettrait ce qu'elle ne tient pas.
+    expect(anonymous).not.toContain(BILLING_SCREEN_PATH)
+  })
+
+  it('disparaît avec le module, sans condition dans aucun composant', () => {
+    expect(hrefsFor(withoutBilling, null)).not.toContain(PRICING_SCREEN_PATH)
+  })
+})
+
+/* -------------------------------------------------------------------------- *
  * L'écran, sur ce qu'il **décide** — constat F5 de la revue.
  *
  * `OfferView.current` était calculé, typé, exporté… et jamais lu : l'offre déjà
@@ -3343,6 +3381,394 @@ describe('les traductions du module', () => {
       // Le critère est la **distinction** : six libellés identiques
       // satisferaient « chaque état a un texte » sans rien dire à personne.
       expect(new Set(titles).size, locale).toBe(states.length)
+    }
+  })
+})
+
+/* -------------------------------------------------------------------------- *
+ * s22 — la page **publique** de tarifs.
+ *
+ * Ce qui est mesuré ici n'existe qu'assemblé : le catalogue réel de
+ * `config/billing.ts`, l'écran du module, les déclencheurs de l'application et
+ * la garde `billing.available`. Les deux règles pures qu'il emploie — l'offre
+ * mise en avant et la périodicité — sont prouvées chez elles, dans
+ * `packages/modules/billing/src/domain/pricing.test.ts`, et ne sont pas rejouées.
+ *
+ * Le point de départ : **cette page n'a aucun effet de bord**. Elle lit un
+ * catalogue déjà validé au démarrage et rend du HTML ; la seule écriture
+ * possible est déclenchée par un clic, jamais par une URL (ADR 045).
+ * -------------------------------------------------------------------------- */
+describe('la page publique de tarifs', () => {
+  interface PricingRender {
+    readonly html: string
+    readonly digest: string | null
+  }
+
+  const aSession = (): ModuleSession => ({ userId: 'usr_s22', roles: [] })
+
+  /**
+   * Rend l'écran avec un point de composition **injecté**.
+   *
+   * L'injection permet d'éprouver les deux états — module monté et coupé —
+   * dans la même exécution, quelle que soit la configuration du dépôt. Un cas
+   * qui n'exercerait « module coupé » que lorsque `config/features.ts` le coupe
+   * ne prouverait rien le reste du temps.
+   *
+   * Ce qui est remplacé est le **contexte de requête** (session, langue) et la
+   * disponibilité du module — jamais une règle. Le catalogue reste celui de
+   * `config/billing.ts`, sauf quand un cas en fournit un autre : c'est ainsi
+   * que le premier critère — « ajouter une offre la fait apparaître » — se
+   * mesure sans toucher au fichier du projet.
+   */
+  const renderPricing = async (input: {
+    readonly available: boolean
+    readonly session: ModuleSession | null
+    readonly params?: Record<string, string | string[] | undefined>
+    readonly catalogue?: readonly unknown[]
+  }): Promise<PricingRender> => {
+    vi.resetModules()
+    vi.doMock('../apps/web/lib/billing', () => ({ billing: { available: input.available } }))
+    vi.doMock('../apps/web/lib/auth', () => ({
+      currentViewer: () => Promise.resolve({ session: input.session, account: null }),
+    }))
+    vi.doMock('../apps/web/lib/i18n', () => ({
+      appIntl: () =>
+        Promise.resolve({
+          locale: defaultLocale,
+          // La clé rendue telle quelle : ce fichier mesure ce que l'écran
+          // **décide**, pas ce qu'il écrit. Les textes sont éprouvés par
+          // `tests/rendered-text.test.ts`, qui rend cette page avec un vrai
+          // catalogue pseudo-locale.
+          t: (key: string) => key,
+          path: (pathname: string) => localeRouting.publicPath(pathname, defaultLocale),
+        }),
+    }))
+
+    if (input.catalogue !== undefined) {
+      const offers = parseBillingCatalogue([...input.catalogue])
+
+      vi.doMock('../apps/web/lib/billing-catalogue', () => ({ billingCatalogue: () => offers }))
+    }
+
+    try {
+      const { default: PricingPage } = (await import('../apps/web/app/pricing/page')) as {
+        default: (props: {
+          searchParams?: Promise<Record<string, string | string[] | undefined>>
+        }) => Promise<ReactNode>
+      }
+
+      const tree = await PricingPage({ searchParams: Promise.resolve(input.params ?? {}) })
+
+      return {
+        html: renderToStaticMarkup(
+          createElement(NextIntlClientProvider, {
+            locale: defaultLocale,
+            messages: {},
+            timeZone: 'UTC',
+            // Le déclencheur de l'application est un composant **client** : il
+            // traduit sa clé lui-même. Le repli la rend telle quelle, comme le
+            // `t` du serveur juste au-dessus.
+            onError: () => {},
+            getMessageFallback: ({ key }: { key: string }) => key,
+            children: tree,
+          }),
+        ),
+        digest: null,
+      }
+    } catch (error) {
+      const digest = (error as { digest?: unknown }).digest
+
+      if (typeof digest !== 'string') {
+        throw error
+      }
+
+      return { html: '', digest }
+    } finally {
+      vi.doUnmock('../apps/web/lib/billing')
+      vi.doUnmock('../apps/web/lib/auth')
+      vi.doUnmock('../apps/web/lib/i18n')
+      vi.doUnmock('../apps/web/lib/billing-catalogue')
+    }
+  }
+
+  /** Le nombre de fois qu'une chaîne apparaît dans un rendu. */
+  const occurrences = (html: string, needle: string): number => html.split(needle).length - 1
+
+  it('n’existe pas quand le module est coupé', async () => {
+    // La moitié « page » du sixième critère. L'autre — le lien qui disparaît —
+    // est mesurée plus haut, sur la navigation.
+    const outcome = await renderPricing({ available: false, session: null })
+
+    expect(outcome.digest).toContain('NEXT_HTTP_ERROR_FALLBACK;404')
+  })
+
+  it('rend une carte par offre du catalogue, sans que la page les connaisse', async () => {
+    // Le premier critère, mesuré sur **deux** catalogues : le nombre de cartes
+    // suit la configuration, il n'est écrit nulle part dans l'écran.
+    const served = await renderPricing({ available: true, session: null })
+
+    expect(served.digest).toBeNull()
+
+    for (const offer of billingOffers) {
+      expect(occurrences(served.html, offerNameKey(offer.id)), offer.id).toBe(1)
+    }
+
+    const narrowed = await renderPricing({
+      available: true,
+      session: null,
+      catalogue: [billingOffers[0]],
+    })
+
+    expect(occurrences(narrowed.html, offerNameKey(billingOffers[0]?.id ?? ''))).toBe(1)
+
+    // Et les offres retirées du catalogue ne sont plus rendues : sans cette
+    // moitié, le cas serait vert sur une page qui affiche toujours tout.
+    for (const offer of billingOffers.slice(1)) {
+      expect(occurrences(narrowed.html, offerNameKey(offer.id)), offer.id).toBe(0)
+    }
+  })
+
+  it('mène un visiteur sans session à la connexion, en gardant son offre', async () => {
+    // Le quatrième critère, première moitié. Le retour est un chemin
+    // **interne** : c'est l'écran de connexion qui le met dans la forme
+    // publique de sa locale, une seule fois.
+    const outcome = await renderPricing({ available: true, session: null })
+    const signIn = localeRouting.publicPath('/sign-in', defaultLocale)
+
+    for (const offer of billingOffers) {
+      const back = encodeURIComponent(`${PRICING_SCREEN_PATH}?offer=${offer.id}`)
+
+      expect(outcome.html, offer.id).toContain(`href="${signIn}?next=${back}"`)
+    }
+
+    // **Et aucun formulaire** : le déclencheur de l'application viserait une
+    // route `authenticated`, donc un 403 — du bruit, et un signal trompeur.
+    // L'avertissement « le tunnel exige JavaScript » est alors porté par
+    // l'écran, une seule fois, puisque plus aucun bouton ne le porte.
+    expect(occurrences(outcome.html, '<form')).toBe(0)
+    expect(occurrences(outcome.html, '<noscript>')).toBe(1)
+  })
+
+  it('repose l’offre choisie au retour de connexion, sans rien acheter', async () => {
+    // ADR 045 : `?offer=` met la carte en évidence et donne le focus à son
+    // bouton. Elle n'ouvre **pas** le tunnel — un lien forgé envoyé à quelqu'un
+    // de connecté créerait sinon une session de paiement à son nom.
+    const chosen = billingOffers[0]?.id ?? ''
+    const outcome = await renderPricing({
+      available: true,
+      session: aSession(),
+      params: { offer: chosen },
+    })
+
+    expect(outcome.digest).toBeNull()
+    expect(occurrences(outcome.html, 'aria-current="true"')).toBe(1)
+  })
+
+  /**
+   * **Ce que ce cas prouve, et ce qu'il ne prouve pas** — mesuré, pas supposé.
+   *
+   * Il prouve qu'un paramètre forgé ne provoque ni erreur, ni mise en évidence,
+   * ni écho dans le balisage. Il **ne prouve pas** que la confrontation au
+   * catalogue (`offerById`) soit nécessaire : remplacée par la valeur brute, le
+   * 2 septembre 2026, les sept cas de ce bloc restent verts — rien du rendu ne
+   * consomme un identifiant qui ne désigne aucune carte. Cette confrontation
+   * est donc une défense en profondeur, et ce cas est ce qui rougira le jour où
+   * quelqu'un réinjectera le paramètre quelque part.
+   *
+   * Ce qui bite aujourd'hui est le sens inverse, juste au-dessus : une
+   * sélection toujours nulle fait rougir « repose l'offre choisie ».
+   */
+  it('ignore un « offer » que le catalogue ne connaît pas, sans erreur ni écho', async () => {
+    for (const forged of ['inconnu', '../secret', '<img src=x onerror=alert(1)>', '']) {
+      const outcome = await renderPricing({
+        available: true,
+        session: null,
+        params: { offer: forged },
+      })
+
+      expect(outcome.digest, forged).toBeNull()
+      expect(occurrences(outcome.html, 'aria-current="true"'), forged).toBe(0)
+      // Et elle n'est **jamais réinjectée** dans le rendu, sous aucune forme.
+      if (forged !== '') {
+        expect(outcome.html, forged).not.toContain(forged)
+      }
+    }
+
+    // Une valeur répétée (`?offer=a&offer=b`) arrive en tableau : le schéma la
+    // refuse, comme toute forme que la page n'attend pas.
+    const repeated = await renderPricing({
+      available: true,
+      session: null,
+      params: { offer: [billingOffers[0]?.id ?? '', 'inconnu'] },
+    })
+
+    expect(repeated.digest).toBeNull()
+    expect(occurrences(repeated.html, 'aria-current="true"')).toBe(0)
+  })
+
+  it('ouvre le checkout pour un visiteur connecté, sans passer par la connexion', async () => {
+    // Le quatrième critère, seconde moitié : une session, donc le déclencheur
+    // de l'application — celui qui porte l'attente, le `<noscript>` et la
+    // désactivation avant hydratation.
+    const outcome = await renderPricing({ available: true, session: aSession() })
+    const signIn = localeRouting.publicPath('/sign-in', defaultLocale)
+
+    expect(outcome.digest).toBeNull()
+    // Un formulaire par offre — le déclencheur de l'application — et son
+    // avertissement « sans JavaScript, ce bouton reste éteint ».
+    expect(occurrences(outcome.html, '<form')).toBe(billingOffers.length)
+    expect(occurrences(outcome.html, '<noscript>')).toBe(billingOffers.length)
+    // Et plus aucun renvoi vers la connexion : le compte est déjà là.
+    expect(outcome.html).not.toContain(`href="${signIn}?next=`)
+  })
+
+  /**
+   * **Le retour de connexion est borné par la règle du module `auth`**, et ce
+   * cas est le témoin de cette page-là.
+   *
+   * La règle est énumérée chez elle
+   * (`packages/modules/auth/src/domain/auth-rules.test.ts`) : ce qui se mesure
+   * ici est que le `next` **produit** par cet écran la traverse sans être
+   * réécrit — donc que l'offre survit à l'aller-retour —, et qu'une cible
+   * forgée retombe sur le repli plutôt que de sortir du site.
+   */
+  /* ------------------------------------------------------------------------ *
+   * Le **second critère** : « les prix affichés sont ceux envoyés au checkout ».
+   *
+   * Ce qu'il prouve : sur chaque carte, le montant lu par un visiteur et
+   * l'identifiant d'offre que son bouton emporte désignent **la même ligne** de
+   * `config/billing.ts`. Une seconde liste de prix introduite dans l'écran, ou
+   * une carte qui afficherait le prix d'une autre offre, le fait rougir.
+   *
+   * **Ce qu'il ne prouve pas, et il faut le lire** : `config/billing.ts` dit que
+   * « `priceId` est ce qui fait foi ; `amount` et `currency` ne servent qu'à
+   * l'affichage ». Un `amount: 2900` en regard d'un prix Stripe à 39 € affiche
+   * un mensonge que **rien en local ne peut détecter** — les deux valeurs sont
+   * cohérentes entre elles et fausses ensemble. La divergence réellement
+   * dangereuse est locale ↔ fournisseur, et elle relève du régime « clés de
+   * test réelles hors CI », pas de ce fichier.
+   * ------------------------------------------------------------------------ */
+  it('affiche, sur chaque carte, le prix de l’offre que son bouton emporte', async () => {
+    const catalogue = parseBillingCatalogue([...billingOffers])
+    const priced = catalogue.map((offer) => ({
+      id: offer.id,
+      price: formatOfferPrice(offer, defaultLocale),
+    }))
+
+    // Garde contre l'inertie : deux offres au même prix rendraient la
+    // comparaison ci-dessous vraie par accident.
+    expect(new Set(priced.map((offer) => offer.price)).size).toBe(priced.length)
+    expect(priced.length).toBeGreaterThan(1)
+
+    // Le visiteur **sans session** : son bouton porte sa cible dans le
+    // balisage, donc l'appariement « prix affiché ↔ offre emportée » est
+    // entièrement observable sur le document servi.
+    const outcome = await renderPricing({ available: true, session: null })
+
+    expect(outcome.digest).toBeNull()
+
+    const boundaries = priced.map((offer) => outcome.html.indexOf(offerNameKey(offer.id)))
+
+    for (const [index, at] of boundaries.entries()) {
+      expect(at, priced[index]?.id).toBeGreaterThanOrEqual(0)
+    }
+
+    for (const [index, offer] of priced.entries()) {
+      const card = outcome.html.slice(boundaries[index] ?? 0, boundaries[index + 1] ?? undefined)
+
+      // Le prix **de cette offre**, sur la carte de cette offre.
+      expect(card, offer.id).toContain(offer.price)
+      // L'identifiant que le bouton emporte, sur la même carte.
+      expect(card, offer.id).toContain(`offer%3D${offer.id}`)
+
+      // Et **aucun prix d'une autre offre** : sans cette moitié, une carte qui
+      // afficherait tous les prix passerait.
+      for (const other of priced.filter((candidate) => candidate.id !== offer.id)) {
+        expect(card, `${offer.id} ← ${other.id}`).not.toContain(other.price)
+      }
+    }
+  })
+
+  it('n’envoie qu’un identifiant d’offre au checkout, jamais un prix', async () => {
+    // L'autre moitié du second critère, pour un visiteur **connecté** : sa
+    // cible ne vit pas dans le balisage mais dans les props du déclencheur.
+    // C'est l'appariement au point de composition — l'offre dont le prix est
+    // affiché est celle dont l'identifiant partira.
+    const catalogue = parseBillingCatalogue([...billingOffers])
+    const triggers = new Map<string, Record<string, unknown>>()
+
+    vi.resetModules()
+    vi.doMock('../apps/web/lib/billing', () => ({ billing: { available: true } }))
+    vi.doMock('../apps/web/lib/auth', () => ({
+      currentViewer: () => Promise.resolve({ session: aSession(), account: null }),
+    }))
+    vi.doMock('../apps/web/lib/i18n', () => ({
+      appIntl: () =>
+        Promise.resolve({
+          locale: defaultLocale,
+          t: (key: string) => key,
+          path: (pathname: string) => localeRouting.publicPath(pathname, defaultLocale),
+        }),
+    }))
+
+    try {
+      const { default: PricingPage } = (await import('../apps/web/app/pricing/page')) as {
+        default: (props: {
+          searchParams?: Promise<Record<string, string | string[] | undefined>>
+        }) => Promise<ReactNode>
+      }
+
+      const tree = (await PricingPage({ searchParams: Promise.resolve({}) })) as {
+        props: {
+          offers: readonly { readonly id: string; readonly price: string }[]
+          actions: Readonly<Record<string, { readonly props: Record<string, unknown> }>>
+        }
+      }
+
+      for (const [id, action] of Object.entries(tree.props.actions)) {
+        triggers.set(id, action.props)
+      }
+
+      // Le prix affiché de chaque offre, apparié à ce que son déclencheur envoie.
+      for (const offer of tree.props.offers) {
+        const source = offerById(catalogue, offer.id)
+
+        expect(source, offer.id).not.toBeNull()
+        expect(offer.price, offer.id).toBe(
+          formatOfferPrice(
+            { amount: source?.amount ?? -1, currency: source?.currency ?? '' },
+            defaultLocale,
+          ),
+        )
+
+        const trigger = triggers.get(offer.id) ?? {}
+
+        expect(trigger['offerId'], offer.id).toBe(offer.id)
+        // **Aucun montant, aucune devise, aucun prix de fournisseur** ne quitte
+        // le navigateur : le corps du checkout est un `z.strictObject` à un
+        // champ, et il refuserait ces clés plutôt que de les ignorer.
+        for (const forbidden of ['amount', 'currency', 'price', 'priceId']) {
+          expect(Object.keys(trigger), `${offer.id} / ${forbidden}`).not.toContain(forbidden)
+        }
+      }
+
+      expect(triggers.size).toBe(catalogue.length)
+    } finally {
+      vi.doUnmock('../apps/web/lib/billing')
+      vi.doUnmock('../apps/web/lib/auth')
+      vi.doUnmock('../apps/web/lib/i18n')
+    }
+  })
+
+  it('produit un retour que la règle de redirection accepte, et refuse l’absolu', () => {
+    for (const offer of billingOffers) {
+      const back = `${PRICING_SCREEN_PATH}?offer=${offer.id}`
+
+      expect(safeRedirectPath(back, '/'), offer.id).toBe(back)
+    }
+
+    for (const forged of ['https://evil.test/pricing', '//evil.test/pricing']) {
+      expect(safeRedirectPath(forged, PRICING_SCREEN_PATH), forged).toBe(PRICING_SCREEN_PATH)
     }
   })
 })

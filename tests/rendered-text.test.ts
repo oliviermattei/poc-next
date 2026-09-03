@@ -578,6 +578,21 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
 
     const config = pseudoRequestConfig(defaultLocale)
     const keys = new Set(catalogueKeys(defaultLocale))
+    /**
+     * s22 — les prix de la page de tarifs, **dérivés du catalogue livré** et
+     * jamais recopiés. Ce sont des données : elles s'affichent telles quelles et
+     * ne viennent d'aucun catalogue de traduction. Une offre ajoutée à
+     * `config/billing.ts` entre ici sans que personne n'y pense.
+     *
+     * Elles sont déclarées **sur les deux écrans de tarifs** et pas dans le jeu
+     * commun : blanchi partout, « 29,00 € » codé en dur dans n'importe quel
+     * autre écran ne rougirait plus.
+     */
+    const { formatOfferPrice } = await import('@repo/module-billing')
+    const { billingOffers } = await import('../config/billing')
+    const cataloguePrices = billingOffers.map((offer) =>
+      formatOfferPrice(offer, defaultLocale),
+    )
     const data = new Set([
       FIXTURE_NAME,
       FIXTURE_EMAIL,
@@ -681,6 +696,15 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       readonly ownDocument?: boolean
       /** Les props techniques que **cet** écran écrit, et qu'aucun autre n'hérite. */
       readonly technicalProps?: readonly string[]
+      /**
+       * Les **données** que cet écran affiche, et qu'aucun autre n'hérite.
+       *
+       * Même discipline que `technicalProps`, pour les nœuds de texte : une
+       * valeur blanchie globalement l'est sur les vingt-cinq écrans. Les prix du
+       * catalogue étaient entrés ainsi (s22) — un prix codé en dur ailleurs
+       * n'aurait plus rougi nulle part.
+       */
+      readonly screenData?: readonly string[]
       readonly render: () => Promise<ReactNode>
     }[] = [
       {
@@ -875,6 +899,63 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
 
           return (await import('../apps/web/app/premium/page')).default()
         },
+      },
+      {
+        // s22. La page **publique** de tarifs, rendue à un visiteur anonyme :
+        // c'est la branche qui porte le lien vers la connexion et
+        // l'avertissement « le tunnel exige JavaScript ». Elle refuse quand le
+        // module n'est pas monté, et le refus attendu est **dérivé** de l'état
+        // du module.
+        id: 'tarifs, visiteur anonyme',
+        file: 'pricing/page.tsx',
+        viewer: ANONYMOUS,
+        refuses: billingMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        // Le mode et la périodicité d'une offre, l'offre mise en avant et
+        // l'offre reposée : quatre valeurs **techniques** que l'écran écrit,
+        // jamais du texte. Déclarées **sur cet écran** — ailleurs, une prop
+        // nommée `mode` portant une chaîne fait toujours rougir, et le
+        // garde-fou de prose reste actif ici aussi (`interval="par mois"`
+        // rougirait).
+        technicalProps: [
+          'mode',
+          'interval',
+          'highlightedOfferId',
+          'selectedOfferId',
+          'labelKey',
+          'offerId',
+          'locale',
+        ],
+        // Les prix du catalogue livré, affichés **ici** et nulle part ailleurs.
+        screenData: cataloguePrices,
+        render: async () =>
+          (await import('../apps/web/app/pricing/page')).default({
+            // Une offre **inconnue** : la page l'ignore, et c'est la forme la
+            // plus fournie qui reste — aucune carte n'est mise en évidence,
+            // donc aucun texte ne disparaît du balayage.
+            searchParams: Promise.resolve({ offer: 'inconnu' }),
+          }),
+      },
+      {
+        // s22. Le second rendu du même fichier, **connecté** : le déclencheur
+        // de l'application prend la place du lien, et il porte deux textes que
+        // l'autre branche ne rend pas — son libellé et son propre `<noscript>`.
+        id: 'tarifs, visiteur connecté',
+        file: 'pricing/page.tsx',
+        viewer: SIGNED_IN,
+        refuses: billingMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        technicalProps: [
+          'mode',
+          'interval',
+          'highlightedOfferId',
+          'selectedOfferId',
+          'labelKey',
+          'offerId',
+          'locale',
+        ],
+        // Les prix du catalogue livré, affichés **ici** et nulle part ailleurs.
+        screenData: cataloguePrices,
+        render: async () =>
+          (await import('../apps/web/app/pricing/page')).default({ searchParams: noParams }),
       },
       {
         // s15. L'écran refuse quand le module n'est pas monté — comme une page
@@ -1166,6 +1247,10 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         ...new Set(
           offenders(observed, {
             ...rules,
+            data:
+              screen.screenData === undefined
+                ? rules.data
+                : new Set([...rules.data, ...screen.screenData]),
             screenProps: new Set(screen.technicalProps ?? []),
           }).map((offender) => `${screen.id} — ${offender}`),
         ),

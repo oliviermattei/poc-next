@@ -1,9 +1,18 @@
 # packages/modules/billing — règles locales
 
-Le module de facturation (s19, s20). Il possède les offres, les abonnements,
-**les achats uniques** et le webhook entrant du fournisseur de paiement. Il ne
-possède **ni** la page de tarifs publique (s22), **ni** le gating par offre
-(s21), **ni** les métriques de revenus (s38).
+Le module de facturation (s19, s20, s22). Il possède les offres, les
+abonnements, **les achats uniques**, le webhook entrant du fournisseur de
+paiement et **l'écran public de tarifs** (`PricingTable`). Il ne possède **ni**
+le gating par offre (s21), **ni** les métriques de revenus (s38).
+
+**Ce qu'il possède de la page de tarifs, exactement** : l'écran
+(`presentation/pricing-table.tsx`), les deux règles qui le nourrissent
+(`domain/pricing.ts`), ses clés de catalogue et l'entrée de navigation qui y
+mène. Le **fichier de page** (`apps/web/app/pricing/page.tsx`) reste à
+l'application, comme `/billing` : c'est elle qui lit `billing.available`, qui
+résout la session, qui formate le prix dans la langue servie et qui fournit les
+déclencheurs. La ligne d'avant disait que ce module ne possédait « pas la page
+de tarifs publique » ; elle était vraie avant s22 et fausse après.
 
 ## Ce qu'il faut savoir avant d'y toucher
 
@@ -208,6 +217,60 @@ indéfiniment. **Aucune table pour autant** : la trace est le cache, elle est
 reconstructible depuis le fournisseur (`listSubscriptions` rend `trialEnd`),
 donc `dataCategories`, `retention`, `purge` et `export` ne bougent pas.
 
+**L'entrée de navigation des tarifs est `public`** (s22). Balayage du
+3 septembre 2026 sur `billing-routes.ts` : **deux** déclarations
+`protection: { level: 'public' }` à ce jour — le webhook (`:172`) et cette entrée
+(`:214`). Aucune commande ne rougit le jour où une troisième apparaît : c'est un
+compte mesuré, pas une garantie. Comparer des offres ne demande aucun
+compte, et une offre qu'on ne voit pas ne se vend pas. `/billing` reste
+`authenticated` : une entrée visible vers un écran qui redirige promettrait ce
+qu'elle ne tient pas. Les deux disparaissent **avec le module**, par
+déclaration — aucun composant ne porte de condition.
+
+**L'écran de tarifs n'a aucun effet de bord, dans aucun état** (ADR 045). Il lit
+le catalogue déjà validé au démarrage et rend du HTML ; la seule écriture
+possible est déclenchée par un clic. `?offer=<id>` **repose** le choix d'une
+personne revenue de la connexion — carte en évidence, focus sur son
+déclencheur — et n'ouvre **jamais** le tunnel : un lien forgé créerait sinon une
+session de paiement au nom d'un tiers connecté. Le paramètre est validé par Zod
+puis confronté au catalogue (`selectedOfferOf`, `domain/pricing.ts`) ; inconnu,
+il est ignoré sans erreur.
+
+**Le focus tient par deux mécanismes différents, et la revue de s22 a mesuré
+pourquoi.** L'attribut `autofocus` que React rend dans le document servi est
+appliqué par le navigateur à l'analyse : cela suffit au **lien** du visiteur
+anonyme, cela ne fait rien du **bouton** du visiteur connecté, qui est désactivé
+jusqu'à l'hydratation — et rien ne reposait le focus au rallumage
+(`document.activeElement` restait `BODY`). Le déclencheur de l'application pose
+donc lui-même son focus après l'hydratation
+(`apps/web/app/use-focus-when-ready.ts`). La commande qui rougit si l'une des
+deux branches cesse de fonctionner est `pnpm test:e2e` — « rend le focus au
+bouton de l'offre reposée », `e2e/billing.spec.ts`, mesuré sur Chromium. Aucun
+test de nœud ne peut voir un focus : ne pas en écrire un.
+
+Deux conséquences à ne pas défaire :
+
+- **le catalogue n'est ni trié ni copié** par l'écran. `billingCatalogue()` le
+  mémorise pour tout le processus : le muter pour un affichage empoisonnerait
+  aussi le checkout ;
+- **le prix affiché et l'identifiant emporté viennent de la même offre**. C'est
+  le second critère de s22, et il est mesurable ; ce qui ne l'est pas, et qu'il
+  faut savoir, c'est la divergence entre `amount` et le prix réel chez le
+  fournisseur — les deux valeurs locales sont cohérentes entre elles et fausses
+  ensemble. Cette divergence-là relève du régime « clés de test réelles hors
+  CI ».
+
+**Aucune division mensuelle d'une offre annuelle.** `periodicityKeyOf` rend
+« par mois », « par an » ou « paiement unique », et rien d'autre : afficher
+« 24,17 €/mois » sous un prélèvement unique de 290 € par an est une affirmation
+que personne ne valide. La recherche de s22 avait laissé la question ouverte ;
+le plan l'a tranchée.
+
+**La mise en avant est dérivée, jamais déclarée.** `config/billing.ts` ne porte
+aucun champ `featured` — en ajouter un obligerait chaque projet à le
+renseigner : `highlightedOfferId` désigne la **dernière offre d'abonnement**, et
+`null` quand le catalogue n'en vend pas.
+
 **Ce module dit quelles offres un périmètre détient, jamais ce qu'elles
 ouvrent** (s21, ADR 043). `entitledOffers` est toute sa part du gating : la
 correspondance offre → fonctionnalité vit dans `config/gating.ts`, et la règle
@@ -278,6 +341,10 @@ permission, le nombre de sièges et l'adresse arrivent en fonctions injectées.
 
 ## Tests
 
+- `src/domain/pricing.test.ts` — les deux règles pures de la page de tarifs
+  (s22) : l'offre mise en avant et la périodicité affichée. Un second fichier
+  dans `domain/`, et c'est assumé : il éprouve une unité que
+  `billing-rules.test.ts` ne couvre pas, et la présentation ne les rejoue pas ;
 - `src/domain/billing-rules.test.ts` — les règles pures : le catalogue d'offres,
   l'accès, l'état affiché, l'ordre d'application, le prix formaté, **ce qu'un
   achat donne, ce qu'un remboursement révoque et l'accès consolidé**. Un seul
@@ -431,3 +498,46 @@ ligne pour la même offre ».
 
 Ces comptes sont ceux des cas passés au rouge, sur les mutations **posées** —
 pas un inventaire de ce qui est couvert.
+
+**s22 — la page publique de tarifs** — mêmes règles, mêmes comptes. Mesurés le
+3 septembre 2026, chaque mutation posée au site où vivrait le défaut :
+
+| Mutation | Rouges | Commande |
+|---|---|---|
+| l'entrée de navigation des tarifs passe `authenticated` | 1 | `vitest run tests/billing.test.ts -t 'entrée de navigation des tarifs'` (2 verts) |
+| la mise en avant ignore le mode de l'offre | 2 | `vitest run packages/modules/billing/src/domain/pricing.test.ts` (5 verts) |
+| l'achat unique s'affiche « par mois » | 1 | idem |
+| retirer `notFound()` sur `billing.available` | 1 | `vitest run tests/billing.test.ts -t 'la page publique de tarifs'` (9 verts) |
+| le lien de connexion rendu **aussi** à qui a une session | 1 | idem |
+| le déclencheur de checkout rendu **aussi** à un anonyme | 1 | idem |
+| le montant affiché remplacé par une constante, **dans le composant** | 1 | idem |
+| le montant affiché remplacé par une constante, **dans la page** | 2 | idem |
+| la carte affiche le prix de l'offre voisine | 2 | idem |
+| le bouton emporte toujours la première offre | 3 | idem |
+| `?offer=` n'est plus reposé du tout (sélection toujours nulle) | 1 | idem |
+
+Reprise après revue, mesurée le 3 septembre 2026 (suite entière à 1674 verts,
+`pnpm test:e2e` à 13 verts sur `e2e/billing.spec.ts`) :
+
+| Mutation | Rouges | Commande |
+|---|---|---|
+| **`?offer=` lu sans confrontation au catalogue** (`selectedOfferOf`, `domain/pricing.ts`) | 1 | `pnpm test` (1673 verts) |
+| le déclencheur connecté ne repose plus le focus (`ref={focus}` retiré) | 1 | `pnpm test:e2e e2e/billing.spec.ts` (12 verts) |
+| le lien anonyme ne repose plus le focus (`autoFocus` retiré) | 1 | idem |
+| les prix du catalogue ne sont plus déclarés sur l'écran de tarifs (`screenData`) | 1 | `pnpm test tests/rendered-text.test.ts` |
+
+La première ligne remplace une ligne à **0** : la confrontation au catalogue
+vivait dans l'écran, où la neutraliser ne changeait aucun rendu — rien du
+document ne consomme un identifiant qui ne désigne aucune carte, et la suite
+entière restait verte. Descendue dans le domaine, elle est à son site de défaut
+et elle mord. C'est la règle du dépôt appliquée : une mutation verte dit que le
+test est faux, pas que le code est bon.
+
+Les deux lignes de focus disent la même chose des **deux branches** de l'écran :
+le lien anonyme tient par l'attribut servi, le bouton connecté par le focus posé
+après hydratation. Elles ne sont mesurables que dans un navigateur.
+
+Les deux lignes du montant affiché se répondent : celle du **composant** est
+celle qui compte, parce que c'est là que le prix est réellement écrit à l'écran.
+Une mutation posée seulement dans la page aurait laissé croire à une couverture
+qu'un test de props n'aurait pas eue.

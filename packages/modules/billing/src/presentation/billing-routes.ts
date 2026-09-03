@@ -29,6 +29,16 @@ export const billingRoutePath = (path: keyof typeof PATHS): string =>
 export const BILLING_SCREEN_PATH = '/billing'
 
 /**
+ * L'écran **public** de tarifs (s22), servi par l'application lui aussi.
+ *
+ * Il ne s'ajoute pas à `PATHS` : ce n'est pas une route montée par le module,
+ * c'est une page de Next. Le module n'en connaît que le chemin, exactement
+ * comme `BILLING_SCREEN_PATH` — et c'est ce chemin que l'entrée de navigation
+ * ci-dessous désigne, jamais une route d'API.
+ */
+export const PRICING_SCREEN_PATH = '/pricing'
+
+/**
  * Ce que le navigateur a le droit d'envoyer pour ouvrir un checkout : **un
  * identifiant d'offre, et rien d'autre**.
  *
@@ -182,13 +192,27 @@ export function createBillingRoutes(service: BillingUseCasesAccess): readonly Mo
 }
 
 /**
- * L'entrée de navigation du module.
+ * Les entrées de navigation du module, et leurs deux publics.
  *
- * `authenticated` : la facturation n'est pas publique, et une entrée visible
- * pour un anonyme promettrait un écran qui le redirige. Le `href` est l'écran
- * servi par l'application, pas une route d'API — c'est une page réelle.
+ * `authenticated` pour la facturation : elle n'est pas publique, et une entrée
+ * visible pour un anonyme promettrait un écran qui le redirige.
+ *
+ * `public` pour les tarifs (s22) : comparer les offres ne demande aucun compte,
+ * et une offre qu'on ne voit pas ne se vend pas. Les deux `href` sont des écrans
+ * servis par l'application, pas des routes d'API — ce sont des pages réelles.
+ *
+ * Les deux disparaissent **avec le module**, sans qu'aucun composant ne porte de
+ * condition : c'est le sixième critère de la story, et il est tenu par le
+ * registre, pas par l'écran.
  */
 export const billingNavigation: readonly NavigationEntry[] = [
+  {
+    id: 'pricing',
+    href: PRICING_SCREEN_PATH,
+    labelKey: 'navigation.pricing',
+    order: 10,
+    protection: { level: 'public' },
+  },
   {
     id: 'billing',
     href: BILLING_SCREEN_PATH,

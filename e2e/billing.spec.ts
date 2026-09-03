@@ -1,11 +1,17 @@
 import { MODULE_ROUTE_PREFIX } from '@repo/core'
-import { billingRoutePath } from '@repo/module-billing'
+import {
+  PRICING_SCREEN_PATH,
+  billingRoutePath,
+  formatOfferPrice,
+} from '@repo/module-billing'
 import { demoEnabledModule, DEMO_PREMIUM_SCREEN_PATH } from '@repo/module-demo-enabled'
 import { expect, test } from '@playwright/test'
 
 import { billing } from '../apps/web/lib/billing'
-import { aSignedInAccount } from './support/account'
-import { signInRedirectedFrom, urlOf } from './support/locale'
+import { billingOffers } from '../config/billing'
+import { defaultLocale } from '../config/i18n'
+import { aSignedInAccount, anEmail, linkSentTo, signIn, signUp } from './support/account'
+import { publicPath, signInRedirectedFrom, urlOf } from './support/locale'
 
 /**
  * Le parcours de souscription, **de bout en bout et sans un octet vers
@@ -288,6 +294,112 @@ test.describe('la facturation', () => {
     ).toBeVisible()
   })
 
+  /* ------------------------------------------------------------------------ *
+   * s22 — la page **publique** de tarifs, dans un vrai navigateur.
+   *
+   * Ce que ce parcours prouve et qu'aucun test de nœud ne peut prouver : la
+   * page est servie sans session, l'entrée de navigation y mène pour un
+   * visiteur anonyme, et le choix d'offre survit à l'aller-retour par la
+   * connexion.
+   * ------------------------------------------------------------------------ */
+  test('mène un visiteur anonyme des tarifs à la connexion, son offre conservée', async ({
+    page,
+  }) => {
+    test.skip(!mounted, 'module de facturation coupé')
+
+    // L'entrée est **publique** : un visiteur sans session la voit, et elle
+    // mène à un écran — pas à du JSON.
+    await page.goto('/')
+    await page
+      .getByRole('navigation', { name: 'Modules' })
+      .getByRole('link', { name: 'Tarifs' })
+      .click()
+
+    await expect(page).toHaveURL(urlOf(PRICING_SCREEN_PATH))
+    await expect(page.getByRole('heading', { name: 'Nos offres', level: 1 })).toBeVisible()
+
+    // Une carte par offre du catalogue, et les libellés **dérivés** de leur
+    // mode : « Souscrire » pour un abonnement, « Acheter » pour un achat unique.
+    const subscriptions = billingOffers.filter((offer) => offer.mode === 'subscription')
+    const purchases = billingOffers.filter((offer) => offer.mode === 'one_time')
+
+    await expect(page.getByRole('link', { name: 'Souscrire' })).toHaveCount(subscriptions.length)
+    await expect(page.getByRole('link', { name: 'Acheter' })).toHaveCount(purchases.length)
+
+    // Le prix affiché est celui du catalogue, dans la langue servie.
+    for (const offer of billingOffers) {
+      await expect(
+        page.getByText(formatOfferPrice(offer, defaultLocale), { exact: true }),
+        offer.id,
+      ).toBeVisible()
+    }
+
+    const chosen = subscriptions[0]?.id ?? ''
+
+    await page.getByRole('link', { name: 'Souscrire' }).first().click()
+
+    // **L'offre traverse la connexion** — et elle ne déclenche rien : ADR 045
+    // repose le choix, il ne l'achète pas.
+    await expect(page).toHaveURL(signInRedirectedFrom(`${PRICING_SCREEN_PATH}?offer=${chosen}`))
+  })
+
+  /**
+   * s22 / ADR 045 — **l'offre reposée reprend le focus**, et il n'y a qu'un
+   * endroit où cela s'observe : un vrai navigateur.
+   *
+   * La revue de s22 a mesuré ici un `document.activeElement` resté sur `BODY`
+   * pendant que trois textes affirmaient le contraire — l'`autoFocus` de React
+   * ne pose rien sur un bouton **désactivé** (il l'est jusqu'à l'hydratation) ni
+   * sur un `<a>`. Le focus est donc posé par l'écran, après l'hydratation, et ce
+   * parcours est la commande qui rougit s'il disparaît.
+   *
+   * Les deux branches, dans la même exécution : le lien du visiteur anonyme,
+   * puis le bouton de la personne qui revient de la connexion — c'est celle-ci
+   * que l'ADR sert.
+   */
+  test('rend le focus au bouton de l’offre reposée, avant et après la connexion', async ({
+    page,
+  }) => {
+    test.skip(!mounted, 'module de facturation coupé')
+
+    const chosen = billingOffers.find((offer) => offer.mode === 'subscription')?.id ?? ''
+    // Un compte vérifié, **pas encore connecté** : le parcours part bien d'un
+    // visiteur anonyme.
+    const email = anEmail('s22-resume')
+
+    await signUp(page, email)
+    await page.goto(await linkSentTo(email))
+
+    await page.goto(`${publicPath(PRICING_SCREEN_PATH)}?offer=${chosen}`)
+
+    // La carte reposée se **nomme** : c'est elle qui porte le déclencheur
+    // attendu, et non la carte mise en avant, qui est une autre offre.
+    const resumed = page.locator('[aria-current="true"]')
+
+    await expect(resumed.getByRole('link', { name: 'Souscrire' })).toBeFocused()
+
+    await resumed.getByRole('link', { name: 'Souscrire' }).click()
+    await expect(page).toHaveURL(signInRedirectedFrom(`${PRICING_SCREEN_PATH}?offer=${chosen}`))
+
+    await signIn(page, email)
+
+    // De retour sur les tarifs, l'offre en poche — et **rien n'a été acheté** :
+    // l'URL est celle de la page de tarifs, pas celle d'une session de paiement.
+    await expect(page).toHaveURL(urlOf(PRICING_SCREEN_PATH, `?offer=${chosen}`))
+    await expect(resumed.getByRole('button', { name: 'Souscrire' })).toBeFocused()
+    // Le bouton est **prêt** : le focus posé sur un bouton encore désactivé
+    // n'aurait servi à personne.
+    await expect(resumed.getByRole('button', { name: 'Souscrire' })).toBeEnabled()
+  })
+
+  test('la page de tarifs n’existe pas quand le module est coupé', async ({ page }) => {
+    test.skip(mounted, 'module de facturation activé')
+
+    const response = await page.goto(PRICING_SCREEN_PATH)
+
+    expect(response?.status()).toBe(404)
+  })
+
   test('refuse un checkout anonyme, sans dire ce qui existe', async ({ request }) => {
     test.skip(!mounted, 'module de facturation coupé')
 
@@ -297,5 +409,29 @@ test.describe('la facturation', () => {
     })
 
     expect(response.status()).toBe(401)
+  })
+})
+
+/**
+ * s22 — la page de tarifs **sous 400 px**, comme tout écran livré depuis s08.
+ *
+ * Trois cartes côte à côte est exactement la mise en page qui déborde quand une
+ * boîte flexible garde son `min-width: auto`, et un prix est un contenu qui ne
+ * se coupe pas.
+ */
+test.describe('les tarifs sous 400 px', () => {
+  test.use({ viewport: { width: 380, height: 800 } })
+
+  test('ne débordent pas horizontalement', async ({ page }) => {
+    test.skip(!billing.available, 'module de facturation coupé')
+
+    await page.goto(PRICING_SCREEN_PATH)
+    await expect(page.getByRole('heading', { name: 'Nos offres', level: 1 })).toBeVisible()
+
+    const overflow = await page.evaluate<number>(
+      'document.documentElement.scrollWidth - document.documentElement.clientWidth',
+    )
+
+    expect(overflow, 'la page de tarifs déborde à 380 px').toBeLessThanOrEqual(0)
   })
 })
