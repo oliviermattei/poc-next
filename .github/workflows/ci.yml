@@ -176,6 +176,144 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
+  # **Y a-t-il quelque chose à rejouer ?** Ce job minuscule n'existe que pour
+  # répondre à cette question, et sa réponse arme le parcours doré ci-dessous.
+  #
+  # Pourquoi un job entier plutôt qu'un `if:` sur le parcours : `hashFiles` est
+  # **interdit dans un `if:` de job**, et l'y écrire ne se contente pas de ne
+  # jamais s'armer — GitHub rejette le **fichier entier** (« Unrecognized
+  # function: 'hashFiles' »). Ce dépôt n'a qu'un workflow : rejeté, il emporte
+  # `quality` (typage, lint, `pnpm test`, `pnpm test:e2e`, audit) **et** le scan
+  # de secrets, c'est-à-dire tout ce que le socle de sécurité exige de bloquant,
+  # sur chaque poussée. La cause est structurelle : un `if:` de job est évalué
+  # avant qu'une machine soit allouée et avant tout `checkout`, donc `hashFiles`
+  # n'a aucun espace de travail où résoudre son motif. GitHub n'y autorise que
+  # `github`, `needs`, `vars` et `inputs` — d'où `needs` ici.
+  #
+  # Mesuré par `actionlint` (image `rhysd/actionlint`) sur la version fautive :
+  # « calling function "hashFiles" is not allowed here », suivi des huit
+  # emplacements où elle l'est, tous des **étapes**.
+  # `tests/golden-path.test.ts` garde la règle dans `pnpm test`.
+  enregistrements:
+    name: Y a-t-il un enregistrement à rejouer ?
+    runs-on: ubuntu-latest
+
+    outputs:
+      presents: ${{ steps.sonde.outputs.presents }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # L'empreinte passe par une variable d'environnement plutôt que d'être
+      # interpolée dans le script : c'est la forme qui ne peut pas devenir une
+      # injection le jour où le motif changerait de source (socle de sécurité).
+      # Vide = aucun fichier ne correspond au motif.
+      - name: Chercher un enregistrement versionné
+        id: sonde
+        env:
+          EMPREINTE: ${{ hashFiles('tests/fixtures/stripe-events/*.json') }}
+        run: |
+          if [ -n "$EMPREINTE" ]; then
+            echo 'presents=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'presents=false' >> "$GITHUB_OUTPUT"
+          fi
+
+  parcours-dore:
+    name: Parcours doré (clone → premier paiement)
+    runs-on: ubuntu-latest
+
+    # **Le critère de succès n°1 du PRD, vérifié à chaque story et non une
+    # seule fois.** Un job à part, et pas une étape de `quality` : il clone le
+    # dépôt, l'installe et le migre depuis zéro, et la matrice le paierait deux
+    # fois pour rien — le parcours a besoin de la configuration livrée.
+    #
+    # **Il est armé par une donnée, pas par un drapeau** : la condition
+    # ci-dessous ne regarde ni une variable ni une étiquette, elle regarde la
+    # réponse du job `enregistrements` — s'il existe quelque chose à rejouer.
+    # Tant que `tests/fixtures/stripe-events/` ne porte aucun enregistrement, ce
+    # job **ne s'exécute pas** ; à la seconde où l'un est versionné, il
+    # s'exécute et il est **bloquant** — ni `continue-on-error`, ni régime de
+    # repli.
+    #
+    # Pourquoi pas rouge par construction en attendant : un contrôle requis
+    # rouge sur chaque PR, pour une raison étrangère au code de la PR, enseigne
+    # à ignorer la CI, et le premier réflexe suivant serait de le rendre non
+    # bloquant ou de le passer en `simulated` — rouvrant exactement la porte
+    # qu'ADR 048 ferme. Le régime `simulated` est refusé ici, exprès : une CI
+    # verte sur des formes que nous avons écrites nous-mêmes aurait cessé de
+    # vérifier ce qu'elle prétend vérifier.
+    #
+    # **Et donc : une CI verte ne prouve pas que ce dépôt ait été éprouvé contre
+    # les formes réelles de Stripe.** Il ne l'a jamais été — produire les
+    # enregistrements demande une exécution contre des clés de test réelles, un
+    # geste humain avec des secrets que le harnais n'a pas.
+    # `tests/fixtures/stripe-events/README.md` dit comment les capturer.
+    needs: enregistrements
+    if: ${{ needs.enregistrements.outputs.presents == 'true' }}
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: app
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d app"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # La commande crée **sa propre base** sur ce serveur : celle-ci ne sert
+      # qu'à savoir où il écoute.
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/app
+      # Le régime de la CI, et le seul qu'elle accepte : rejeu d'événements
+      # enregistrés, aucun appel sortant. Un enregistrement manquant fait
+      # échouer la commande **en le nommant**, jamais de repli (ADR 048).
+      GOLDEN_PATH_PAYMENTS: recorded
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # L'installation de l'arbre courant : elle sert à exécuter la commande,
+      # pas à mesurer l'amorçage — celui-ci se fait dans le clone temporaire que
+      # la commande crée, avec son propre `pnpm install`.
+      - name: Installer les dépendances
+        run: pnpm install --frozen-lockfile
+
+      - name: Installer le navigateur
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Parcours doré
+        run: pnpm test:golden-path
+
+      # Les traces vivent dans le clone temporaire, que la commande détruit :
+      # elle les en recopie ici avant de le supprimer (constat F8 de la revue).
+      # Pointer `playwright-report/` à la racine ne téléversait jamais rien.
+      #
+      # Hors de `test-results/`, qui est l'`outputDir` de Playwright et que
+      # `pnpm test:e2e` efface au démarrage. Le chemin est déclaré une seule
+      # fois (`FAILURE_TRACES_DIRECTORY`, `scripts/golden-path-regime.ts`) et
+      # `tests/golden-path.test.ts` vérifie qu'il vaut celui-ci.
+      - name: Traces du parcours doré en échec
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: traces-parcours-dore
+          path: test-results-parcours-dore/
+          retention-days: 7
+
   secrets:
     name: Scan de secrets
     runs-on: ubuntu-latest

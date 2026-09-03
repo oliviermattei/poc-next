@@ -11,14 +11,42 @@ parce que rien ici ne parle à un service tiers.
 | Outil | Ce qu'il fait | Quand |
 |---|---|---|
 | `createLocalPayments` | simule checkout, portail et événements de webhook, sans réseau | en développement et dans les parcours, sur demande explicite : `PAYMENTS_LOCAL_MODE=1` (`docs/reliability.md` §2) |
+| `simulatedCheckoutEvents` | les formes d'événement **écrites à la main** — la source par défaut de `createLocalPayments` | partout où la fidélité au fournisseur n'est pas le sujet |
+| `createRecordedCheckoutEvents` | rejoue des formes **enregistrées** chez le fournisseur, jetons remplis par l'exécution | régime enregistré (s25) : `PAYMENTS_RECORDED_EVENTS=<dossier>` |
+| `sanitizeStripeEvent` | l'inverse : un événement réel devient un enregistrement versionnable, identifiants remplacés par des jetons | à la capture, `GOLDEN_PATH_PAYMENTS=live` |
+| `readCapturedEvents` | lit les événements **bruts** à capturer : un fichier NDJSON (`stripe listen --print-json`) ou un dossier de `.json` ; un chemin absent est refusé en le nommant | à la capture |
 
-Il n'y a **pas** de doublure d'enregistrement ici, et c'est délibéré : en CI, les
-appels sortants sont doublés **au réseau**, dans le harnais de
-`@repo/adapter-stripe` et de `tests/billing.test.ts`
+**Les deux sources se distinguent dans ce qu'elles émettent**, et pas seulement
+dans le code qui les construit : `SIMULATED_EVENT_ID_PREFIX` (`evt_local_`) et
+`RECORDED_EVENT_ID_PREFIX` (`evt_rec_`) partent dans l'identifiant de chaque
+événement, que la route de webhook écrit dans son journal d'idempotence. C'est
+ce qui permet à `pnpm test:golden-path` d'exiger un **signal positif** du régime
+qu'il a demandé, au lieu de faire confiance à la transmission d'une variable
+d'environnement (constat F1 de la revue de s25). Les deux marques doivent rester
+distinctes ; `src/recorded-events.test.ts` le vérifie sur les deux producteurs.
+
+Il n'y a **pas** de doublure d'enregistrement du **réseau** ici, et c'est
+délibéré : en CI, les appels sortants sont doublés **au réseau**, dans le harnais
+de `@repo/adapter-stripe` et de `tests/billing.test.ts`
 (`Stripe.createFetchHttpClient(fetchDouble)`). C'est ce que le dépôt exige —
 « les doublures de test remplacent le réseau, jamais le SDK ». Une doublure de
 port en plus n'éprouverait ni la sérialisation, ni les en-têtes, ni la
 vérification de signature.
+
+Ce qui vit ici depuis s25 est autre chose : le **rejeu d'événements entrants**,
+c'est-à-dire l'autre moitié de la règle des deux régimes. Et il porte un
+interdit, ADR 048 :
+
+> **Un enregistrement absent fait échouer l'exécution en le nommant. Il n'existe
+> aucun repli du régime enregistré vers le simulateur.**
+
+`createRecordedCheckoutEvents` n'a aucune branche de secours : chaque appel
+commence par exiger son enregistrement. Le simulateur garde son emploi — le
+développement local, les parcours qui n'ont pas besoin de fidélité au
+fournisseur — et n'est **jamais substitué** à un enregistrement manquant. Un
+repli laisserait la CI verte en ayant cessé de vérifier ce qu'elle prétend
+vérifier, et un simulateur ne peut pas détecter sa propre dérive : le jour où le
+fournisseur renomme un champ, il reste vert pendant que la production casse.
 
 ## Ce que le mode local ne réimplémente pas
 
@@ -71,7 +99,9 @@ sessions ouvertes. C'est un simulateur, pas une base.
 - `stripe`, uniquement pour **signer** une charge utile
   (`Stripe.webhooks.generateTestHeaderString`) : produire une signature à la
   main ferait diverger le simulateur du schéma réel à la première évolution ;
-- `@repo/typescript-config` et `vitest`.
+- `@repo/typescript-config` et `vitest` ;
+- `node:fs` et `node:path`, pour **lire** un dossier d'enregistrements. C'est la
+  seule entrée-sortie de ce paquet, et elle est locale : aucun réseau.
 
 Aucun client HTTP, aucune lecture de `process.env` ni de `NODE_ENV` : le choix
 du mode se fait au point de composition (`apps/web/lib/billing.ts`) sur la
@@ -88,14 +118,27 @@ du mode se fait au point de composition (`apps/web/lib/billing.ts`) sur la
 
 ## Tests
 
-`src/payments-testing.test.ts`, à côté du code qu'il couvre. Un seul fichier :
-le coût d'une suite est dominé par le fichier, pas par l'assertion.
+`src/payments-testing.test.ts` pour le simulateur,
+`src/recorded-events.test.ts` pour le régime enregistré — à côté du code qu'ils
+couvrent. Deux fichiers, et pas plus : le coût d'une suite est dominé par le
+fichier, pas par l'assertion.
 
-**Ce qui a été prouvé par mutation** (sur les 18 cas de la suite) : faire lever
-le simulateur sur une session inconnue → 1 ; tirer un identifiant de client
-aléatoire au lieu de le dériver du périmètre → 1 ; **signer avec l'horloge
-injectée au lieu de l'horloge réelle → 6** ; rendre `payment_status: 'unpaid'`
-dans la session d'achat simulée → 1 (s20).
+**Ce que le second protège** (ADR 048) : qu'un enregistrement absent lève en
+nommant l'événement et le dossier, que rien ne soit rendu à sa place, qu'un
+jeton qu'aucune valeur ne remplit refuse plutôt que de partir vers la route de
+webhook, et que l'**aller-retour** « assainir puis rejouer » tienne. Ce
+dernier cas a trouvé un défaut le jour où il a été écrit : `sanitizeStripeEvent`
+produisait `{{requestId}}` et `{{idempotencyKey}}`, que le rejeu ne savait pas
+remplir.
+
+**Ce qui a été prouvé par mutation**, sur `src/payments-testing.test.ts` — le
+fichier est nommé plutôt que compté : le compte écrit ici était faux dès la
+story suivante (constat F7 de la revue de s25). Faire lever le simulateur sur
+une session inconnue → 1 rouge ; tirer un identifiant de client aléatoire au
+lieu de le dériver du périmètre → 1 ; **signer avec l'horloge injectée au lieu
+de l'horloge réelle → 6** ; rendre `payment_status: 'unpaid'` dans la session
+d'achat simulée → 1 (s20). Sur `src/recorded-events.test.ts` : remplacer un
+enregistrement manquant par une forme simulée → 3 (s25).
 
 Cette dernière n'est pas une mutation inventée : c'est le défaut que la suite a
 trouvé toute seule, un jour après avoir été écrite verte. Les deux horodatages

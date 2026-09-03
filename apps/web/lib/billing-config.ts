@@ -37,7 +37,20 @@ export const LOCAL_WEBHOOK_SECRET = 'payments-local-mode-not-a-secret'
 
 export type BillingConfig =
   | { readonly kind: 'provider'; readonly apiKey: string; readonly webhookSecret: string }
-  | { readonly kind: 'local'; readonly webhookSecret: string }
+  | {
+      readonly kind: 'local'
+      readonly webhookSecret: string
+      /**
+       * **Le dossier des formes enregistrées** (s25, ADR 048), quand le rejeu
+       * enregistré a été demandé — et seulement alors.
+       *
+       * Absent, les événements sont ceux du simulateur : c'est l'emploi
+       * historique du mode local, et il reste un choix explicite, jamais un
+       * repli. Présent, un enregistrement manquant fait échouer l'exécution en
+       * le nommant.
+       */
+      readonly recordedEventsDirectory?: string
+    }
 
 /** Une variable déclarée vide vaut absente, ici comme dans `parseEnv`. */
 const declared = (value: string | undefined): string | undefined => {
@@ -58,6 +71,26 @@ export function resolveBillingConfig(env: Env): BillingConfig {
   const apiKey = declared(env.STRIPE_SECRET_KEY)
   const webhookSecret = declared(env.STRIPE_WEBHOOK_SECRET)
   const local = declared(env.PAYMENTS_LOCAL_MODE) === PAYMENTS_LOCAL_MODE_ENABLED
+  const recorded = declared(env.PAYMENTS_RECORDED_EVENTS)
+
+  /**
+   * **Les deux régimes ne se mélangent pas** (ADR 048, et la note de la story
+   * s25 : c'est « la source d'échecs intermittents la plus classique sur ce
+   * type de harnais »).
+   *
+   * Posée sans le mode qui la rejoue, cette variable serait **sans effet** : le
+   * port serait le vrai fournisseur, aucun enregistrement ne serait rejoué, et
+   * personne ne le saurait. Un régime enregistré qui ne rejoue rien est
+   * exactement le silence que cette story existe pour fermer.
+   */
+  if (recorded !== undefined && !local) {
+    throw new Error(
+      `PAYMENTS_RECORDED_EVENTS est posé sans PAYMENTS_LOCAL_MODE=${PAYMENTS_LOCAL_MODE_ENABLED} : ` +
+        'le rejeu d’événements enregistrés n’a lieu que dans le mode local. Posée seule, cette ' +
+        'variable ne rejouerait rien et personne ne le verrait — les deux régimes d’intégration ' +
+        'tierce ne se mélangent jamais.',
+    )
+  }
 
   if (apiKey !== undefined && webhookSecret !== undefined) {
     if (local) {
@@ -93,7 +126,9 @@ export function resolveBillingConfig(env: Env): BillingConfig {
       )
     }
 
-    return { kind: 'local', webhookSecret: LOCAL_WEBHOOK_SECRET }
+    return recorded === undefined
+      ? { kind: 'local', webhookSecret: LOCAL_WEBHOOK_SECRET }
+      : { kind: 'local', webhookSecret: LOCAL_WEBHOOK_SECRET, recordedEventsDirectory: recorded }
   }
 
   throw new Error(

@@ -18,6 +18,12 @@ import type {
 } from '@repo/ports'
 import Stripe from 'stripe'
 
+import {
+  simulatedCheckoutEvents,
+  SIMULATED_EVENT_ID_PREFIX,
+  type CheckoutEvents,
+} from './checkout-events'
+
 /**
  * **Le mode local du port `Payments` — un outil, pas un fournisseur** (ADR 008).
  *
@@ -106,6 +112,16 @@ export interface LocalPaymentsOptions {
   readonly webhookSecret: string
   /** Injectée : une simulation qui lit l'horloge n'est pas reproductible. */
   readonly now?: () => Date
+  /**
+   * **D'où viennent les formes d'événement** (s25, ADR 048).
+   *
+   * Absente, ce sont les formes **simulées** — l'emploi historique de ce
+   * paquet, et celui que gardent les quinze parcours existants. Le régime
+   * enregistré passe ici sa propre source, qui **lève** quand un
+   * enregistrement manque : il n'existe aucun repli de l'une vers l'autre, et
+   * c'est tout l'intérêt de la couture.
+   */
+  readonly events?: CheckoutEvents
 }
 
 interface PendingSession {
@@ -138,6 +154,7 @@ const seconds = (date: Date): number => Math.floor(date.getTime() / 1000)
 
 export function createLocalPayments(options: LocalPaymentsOptions): LocalPayments {
   const now = options.now ?? (() => new Date())
+  const events = options.events ?? simulatedCheckoutEvents
   const sessions = new Map<string, PendingSession>()
   const subscriptions = new Map<string, Record<string, unknown>>()
   /** Les achats uniques terminés, pour la lecture de réconciliation. */
@@ -199,9 +216,9 @@ export function createLocalPayments(options: LocalPaymentsOptions): LocalPayment
    * exerce est la promotion de la ligne écrite à l'ouverture du checkout
    * (ADR 038 §1), à travers la vraie route de webhook.
    *
-   * `amount_total` reste **absent** : le port ne transporte aucun montant, et
-   * la simulation n'en invente pas. L'historique affichera donc l'achat sans
-   * son prix, ce qui est la vérité de ce qu'on sait ici.
+   * **La forme de l'événement vient de `events`**, jamais d'ici : simulée par
+   * défaut, enregistrée sous le régime enregistré (ADR 048). C'est la seule
+   * couture entre les deux, et elle ne comporte aucun repli.
    */
   const completePurchase = (
     session: PendingSession,
@@ -219,32 +236,17 @@ export function createLocalPayments(options: LocalPaymentsOptions): LocalPayment
       chargedAmount: null,
     })
 
-    return sign({
-      id: `evt_local_purchase_${session.id}`,
-      object: 'event',
-      api_version: null,
-      created: seconds(now()),
-      livemode: false,
-      pending_webhooks: 0,
-      request: { id: null, idempotency_key: null },
-      type: 'checkout.session.completed',
-      data: {
-        object: {
-          id: session.id,
-          object: 'checkout.session',
-          mode: 'payment',
-          payment_status: 'paid',
-          customer: session.customerId,
-          payment_intent: paymentId,
-          client_reference_id: session.reference,
-          // Ce que la page hébergée du fournisseur aurait collecté. Absent pour
-          // un checkout authentifié : nous connaissions déjà l'adresse.
-          ...(email === null ? {} : { customer_details: { email } }),
-        },
-      },
-    })
+    return sign(
+      events.purchase({
+        sessionId: session.id,
+        customerId: session.customerId,
+        paymentId,
+        reference: session.reference,
+        email,
+        createdAt: seconds(now()),
+      }),
+    )
   }
-
 
   /**
    * Termine une session, quelle que soit sa nature.
@@ -257,76 +259,33 @@ export function createLocalPayments(options: LocalPaymentsOptions): LocalPayment
       return [completePurchase(session, email)]
     }
 
-      const trial = session.trialPeriodDays
-      const start = now()
-      const trialEnd = trial === null ? null : new Date(start.getTime() + trial * DAY_MS)
-      const periodEnd = new Date((trialEnd ?? start).getTime() + PERIOD_DAYS * DAY_MS)
-      const subscriptionId = `sub_local_${session.customerId}`
+    const trial = session.trialPeriodDays
+    const start = now()
+    const trialEnd = trial === null ? null : new Date(start.getTime() + trial * DAY_MS)
+    const periodEnd = new Date((trialEnd ?? start).getTime() + PERIOD_DAYS * DAY_MS)
+    const subscriptionId = `sub_local_${session.customerId}`
 
-      const subscription: Record<string, unknown> = {
-        id: subscriptionId,
-        object: 'subscription',
-        customer: session.customerId,
-        status: trial === null ? 'active' : 'trialing',
-        cancel_at_period_end: false,
-        trial_end: trialEnd === null ? null : seconds(trialEnd),
-        items: {
-          object: 'list',
-          data: [
-            {
-              id: `si_local_${session.customerId}`,
-              object: 'subscription_item',
-              quantity: session.quantity,
-              current_period_start: seconds(start),
-              current_period_end: seconds(periodEnd),
-              price: { id: session.priceId, object: 'price' },
-            },
-          ],
-        },
-      }
+    const delivery = events.subscription({
+      sessionId: session.id,
+      customerId: session.customerId,
+      subscriptionId,
+      itemId: `si_local_${session.customerId}`,
+      priceId: session.priceId,
+      reference: session.reference,
+      email,
+      quantity: session.quantity,
+      createdAt: seconds(start),
+      trialEnd: trialEnd === null ? null : seconds(trialEnd),
+      periodStart: seconds(start),
+      periodEnd: seconds(periodEnd),
+    })
 
-      subscriptions.set(subscriptionId, subscription)
+    // **L'objet mémorisé est celui de la source**, pas une seconde écriture :
+    // deux provenances feraient deux vérités, et la lecture de réconciliation
+    // relirait celle qu'aucun webhook n'a livrée.
+    subscriptions.set(subscriptionId, delivery.subscription)
 
-      const created = seconds(start)
-
-      // **Volontairement dans le désordre** : le changement d'abonnement part
-      // avant la session qui l'a causé. C'est ce que le fournisseur peut faire,
-      // et ADR 034 dit pourquoi cela n'a plus d'importance ici.
-      return [
-        sign({
-          id: `evt_local_sub_${session.id}`,
-          object: 'event',
-          api_version: null,
-          created: created + 1,
-          livemode: false,
-          pending_webhooks: 0,
-          request: { id: null, idempotency_key: null },
-          type: 'customer.subscription.created',
-          data: { object: subscription },
-        }),
-        sign({
-          id: `evt_local_checkout_${session.id}`,
-          object: 'event',
-          api_version: null,
-          created,
-          livemode: false,
-          pending_webhooks: 0,
-          request: { id: null, idempotency_key: null },
-          type: 'checkout.session.completed',
-          data: {
-            object: {
-              id: session.id,
-              object: 'checkout.session',
-              mode: 'subscription',
-              customer: session.customerId,
-              subscription: subscriptionId,
-              client_reference_id: session.reference,
-              // Ce que la page hébergée du fournisseur aurait collecté (s24).
-              ...(email === null ? {} : { customer_details: { email } }),
-            },
-          },
-        }),
-      ]
+    return delivery.events.map((event) => sign(event))
   }
 
   return {
@@ -380,7 +339,7 @@ export function createLocalPayments(options: LocalPaymentsOptions): LocalPayment
         owned.map(async (subscription) =>
           await verifier.verifyWebhook(
             sign({
-              id: `evt_local_read_${String(subscription['id'])}`,
+              id: `${SIMULATED_EVENT_ID_PREFIX}read_${String(subscription['id'])}`,
               object: 'event',
               api_version: null,
               created: seconds(now()),
@@ -440,7 +399,7 @@ export function createLocalPayments(options: LocalPaymentsOptions): LocalPayment
       // simulation ne produit pas une forme à elle.
       const read = await verifier.verifyWebhook(
         sign({
-          id: `evt_local_seats_${input.subscriptionId}_${input.quantity}`,
+          id: `${SIMULATED_EVENT_ID_PREFIX}seats_${input.subscriptionId}_${input.quantity}`,
           object: 'event',
           api_version: null,
           created: seconds(now()),

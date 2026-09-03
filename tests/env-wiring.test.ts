@@ -641,19 +641,32 @@ describe('validation de l’environnement au démarrage du serveur', () => {
   /**
    * Les variables du job `quality`, lues dans le workflow.
    *
-   * Balayage volontairement étroit, et il est décrit plutôt que promis : il lit
-   * le **seul** bloc `env:` posé au niveau d'un job (indentation de quatre
-   * espaces), ses entrées nues ou entre guillemets, et ignore les commentaires.
-   * Il ne lit ni un `env:` d'étape, ni un `env:` du job `secrets` — il n'y en a
-   * aucun à ce jour, et s'il en naissait un, ce balayage ne le verrait pas.
+   * Balayage volontairement étroit, et il est décrit plutôt que promis : il
+   * cherche le job **nommé**, puis le premier bloc `env:` posé au niveau d'un
+   * job (indentation de quatre espaces) qui le suit, ses entrées nues ou entre
+   * guillemets, et ignore les commentaires. Il ne lit ni un `env:` d'étape, ni
+   * celui d'un autre job.
+   *
+   * L'ancrage sur le nom du job n'est pas décoratif (constat F6 de la revue de
+   * s25) : le workflow porte désormais **deux** blocs `env:` de job — `quality`
+   * et `parcours-dore` —, et une lecture qui prenait « le premier » aurait
+   * changé de sujet en silence le jour où les jobs seraient réordonnés.
    */
-  const readCiJobEnv = async (): Promise<Record<string, string>> => {
+  const readCiJobEnv = async (job = 'quality'): Promise<Record<string, string>> => {
     const lines = (await readFile(CI_WORKFLOW_PATH, 'utf8')).split('\n')
-    const start = lines.indexOf('    env:')
+    const declared = lines.indexOf(`  ${job}:`)
 
-    if (start === -1) {
-      throw new Error('Aucun bloc `env:` de job dans `.github/workflows/ci.yml`.')
+    if (declared === -1) {
+      throw new Error(`Aucun job \`${job}\` dans \`.github/workflows/ci.yml\`.`)
     }
+
+    const offset = lines.slice(declared).indexOf('    env:')
+
+    if (offset === -1) {
+      throw new Error(`Aucun bloc \`env:\` dans le job \`${job}\` de \`.github/workflows/ci.yml\`.`)
+    }
+
+    const start = declared + offset
 
     const collected: Record<string, string> = {}
 
