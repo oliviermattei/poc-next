@@ -22,6 +22,8 @@ blob-report/
 # Les traces du parcours doré, recopiées hors du clone temporaire avant sa
 # destruction. Hors de `test-results/`, que `pnpm test:e2e` efface au démarrage.
 test-results-parcours-dore/
+# Idem pour la recette du profil minimal (s26), qui clone elle aussi.
+test-results-profil-minimal/
 
 # Artefacts de build et de cache
 .next/

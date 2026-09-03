@@ -31,6 +31,7 @@ config/                    Configuration éditée par le propriétaire du projet
   features.ts              Modules activés (typé, validé au démarrage)
   billing.ts               Offres : mode, prix, intervalle, essai, siège
   gating.ts                Fonctionnalités réservées : quelles offres les ouvrent (ADR 043)
+  profiles.ts              Profils de configuration : quels modules optionnels un profil coupe (s26)
   marketing.ts             Sections de la page d'accueil, contenu et ordre
 packages/
   core/                    Contrat de module, registre, validation de configuration
@@ -116,6 +117,21 @@ Toutes les clés sont obligatoires dès le premier module, quitte à être vides
   **En CI, le job est armé par la donnée, jamais par un drapeau** : un job sonde cherche un enregistrement versionné (`hashFiles`, au niveau d'une **étape** — un `if:` de job est évalué avant tout `checkout` et GitHub y rejette la fonction, avec le fichier entier), et le parcours doré dépend de sa réponse. Tant que `tests/fixtures/stripe-events/` ne porte aucun enregistrement, il ne s'exécute pas ; à la première capture versionnée, il s'exécute et il est bloquant. `tests/golden-path.test.ts` garde les deux règles.
 
   **Un enregistrement absent fait échouer l'exécution en le nommant, jamais de repli sur le simulateur.** Un repli laisserait la CI verte en ayant cessé de vérifier ce qu'elle prétend vérifier ; c'est la même règle que « un port ne retombe jamais silencieusement sur un remplaçant local ». La commande **mesure** les trente minutes du PRD, elle ne les juge pas : un rouge à la trente-et-unième minute ferait d'une promesse commerciale une régression de CI. Elle n'entre pas dans `pnpm test:e2e` — chaque story paierait l'amorçage complet.
+- **Recette du profil minimal** (s26) : `pnpm test:minimal-profile` est le symétrique du parcours doré — celui-là prouve que le socle complet mène à un paiement, celle-ci que le socle réduit ne traîne rien (**critère de succès n°4 du PRD** : « aucune route morte, aucune entrée de nav orpheline, aucune table inutilisée »). Elle applique le profil de `config/profiles.ts` dans un **clone**, migre une **base créée pour l'exécution**, puis vérifie six choses : aucune route d'un module coupé ne répond, aucune entrée de navigation orpheline n'est rendue, aucune table d'un module coupé n'existe dans le **schéma réel** de la base (`information_schema`, jamais les fichiers de migration), la suite complète passe, ses **comptes** de cas exécutés et sautés sont journalisés, et l'inscription puis la connexion fonctionnent de bout en bout.
+
+  **Un profil ne déclare que la liste des modules coupés.** Tout le reste est dérivé du contrat que chaque module publie déjà (`routes`, `navigation`, `schema`), et le balayage porte sur **tout module non activé** — pas seulement sur ceux que le profil nomme, sinon un module que la configuration livrée n'active déjà pas passerait au travers. C'est ce qui rend vrai « ajouter un module désactivé au profil ne demande aucune modification du harnais » : c'est une ligne dans `config/profiles.ts`, et rien d'autre nulle part.
+
+  **Trois refus valent d'être connus**, parce qu'ils ferment autant de faux verts :
+
+  | Refus | Le faux vert qu'il ferme |
+  |---|---|
+  | balayage vide | des modules coupés qui ne déclarent ni route, ni entrée, ni table rendraient les vérifications vertes sans rien vérifier |
+  | table d'un module **activé** absente | sur une base qui n'a pas migré, l'absence des tables des modules coupés ne prouve rien |
+  | part de cas sautés au-delà de 5 % | une suite « verte » dont la moitié s'est sautée en silence ; le compte exécuté a en plus un plancher |
+
+  Elle travaille **dans une copie**, et le vérifie : `config/features.ts` est suivi par git, et une recette qui basculerait le dépôt puis mourrait laisserait un diff que personne n'a demandé (ADR 041). L'arbre de travail est comparé dès la fin de l'amorçage et à nouveau à la sortie, échec compris. Le clone ne reçoit **aucune variable d'application du poste** — la liste est dérivée du schéma d'environnement —, sans quoi le `.env` qu'il vient de dériver de `.env.example` serait recouvert par la configuration de la machine, et la recette mesurerait celle-ci.
+
+  Elle n'entre pas dans `pnpm test:e2e` — chaque story paierait le clone et l'installation —, et son job de CI est **bloquant, sans condition**.
 - **Commits** : un commit par story, message impératif en français, portant la recherche, le design et le plan de la story.
 
 ## Data model

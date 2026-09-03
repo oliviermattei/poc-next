@@ -314,6 +314,89 @@ jobs:
           path: test-results-parcours-dore/
           retention-days: 7
 
+  # **Le critère de succès n°4 du PRD, vérifié à chaque story** — « aucune route
+  # morte, aucune entrée de nav orpheline, aucune table inutilisée ».
+  #
+  # Un job à part, et pas une étape de `quality` : la recette clone le dépôt,
+  # l'installe et le migre depuis zéro sur une base créée pour l'exécution, et
+  # la matrice le paierait deux fois pour rien.
+  #
+  # **Il est bloquant, et sans condition** : aucun `if:` de niveau job ici. La
+  # question « y a-t-il quelque chose à vérifier ? » est répondue par la recette
+  # elle-même, qui refuse un balayage vide en nommant les modules coupés qui ne
+  # déclarent rien — donc l'armement est une donnée du dépôt, pas une expression
+  # de workflow. C'est aussi ce qui évite d'y écrire un `hashFiles` : au niveau
+  # d'un job, GitHub rejetterait le **fichier entier**, `quality` et le scan de
+  # secrets compris (voir le job `enregistrements` ci-dessus).
+  profil-minimal:
+    name: Profil minimal (aucune trace d'un module coupé)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: app
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d app"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # La recette crée **sa propre base** sur ce serveur : celle-ci ne sert
+      # qu'à savoir où il écoute.
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/app
+      # **Et rien d'autre.** Aucune variable d'application n'a sa place ici :
+      # `cloneEnvironment` retire du sous-processus tout ce que le schéma
+      # déclare (`ENV_KEYS`), précisément pour que la recette ne mesure pas la
+      # configuration du poste ou du runner. Une `EMAIL_LOCAL_CAPTURE` posée là
+      # n'atteindrait aucun processus — la capture des emails du critère 6 vient
+      # du `.env` du clone (dérivé de `.env.example`) et de `webServerEnv()`.
+      # `DATABASE_URL` échappe à la règle parce que la recette la lit
+      # elle-même, avant le clone, pour savoir où PostgreSQL écoute.
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # L'installation de l'arbre courant : elle sert à exécuter la commande,
+      # pas à mesurer quoi que ce soit — la recette réinstalle le clone qu'elle
+      # crée.
+      - name: Installer les dépendances
+        run: pnpm install --frozen-lockfile
+
+      - name: Installer le navigateur
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Recette du profil minimal
+        run: pnpm test:minimal-profile
+
+      # Les traces vivent dans le clone temporaire, que la recette détruit :
+      # elle les en recopie ici avant de le supprimer. Le chemin est déclaré une
+      # seule fois (`MINIMAL_PROFILE_TRACES_DIRECTORY`,
+      # `scripts/minimal-profile-rules.ts`) et `tests/minimal-profile.test.ts`
+      # vérifie qu'il vaut celui-ci — deux écritures divergentes redonneraient
+      # le constat F8 de s25, un téléversement qui pointe sur un dossier
+      # inexistant.
+      - name: Traces de la recette en échec
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: traces-profil-minimal
+          path: test-results-profil-minimal/
+          retention-days: 7
+
   secrets:
     name: Scan de secrets
     runs-on: ubuntu-latest
