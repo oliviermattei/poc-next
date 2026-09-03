@@ -117,7 +117,7 @@ agent and no main context may edit, checkout or stash in it.
 - A plan executes only if its frontmatter says `validated: yes` — set by the human validation checkpoint (/ks-plan or the orchestrator), never by the file merely existing. /ks-execute is fail-closed on it.
 
 ## Ship strategy
-Merge mode: manual   (manual | auto — default: manual)
+Merge mode: auto   (manual | auto — default: manual)
 - manual: /ks-ship opens the PR and stops. Merging is a human decision (review on GitHub, protected branch, CI). After the merge, rerun /ks-ship to confirm the deployment and clean up the branch.
 - auto: /ks-ship merges and deploys immediately after the gate. Only for solo flows where running /ks-ship IS the decision.
 
