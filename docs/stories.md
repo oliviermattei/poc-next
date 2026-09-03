@@ -628,7 +628,6 @@ Le parcours sans compte préalable est traité en s24-guest-checkout.
 - [ ] L'ajout d'un membre incrémente la quantité de l'abonnement Stripe ; son retrait la décrémente
 - [ ] La quantité facturée est toujours égale au nombre de membres actifs après toute opération d'ajout ou de retrait
 - [ ] Une invitation en attente n'est pas facturée ; elle le devient à son acceptation
-- [ ] Une limite de sièges peut être configurée sur une offre ; l'ajout d'un membre au-delà est refusé côté serveur avec un message nommant la limite atteinte
 - [ ] Un échec de synchronisation Stripe n'ajoute pas le membre : l'opération est atomique et rejouable
 - [ ] Une commande de réconciliation compare la quantité Stripe au nombre réel de membres et corrige l'écart
 - [ ] **Module non activé** : la facturation reste au forfait, aucune synchronisation de quantité n'a lieu, et aucune limite de sièges n'est appliquée
@@ -637,6 +636,8 @@ Le parcours sans compte préalable est traité en s24-guest-checkout.
 s21-trials-and-gating, s17-roles-permissions
 
 ### Agentic notes
+**Découpée après recherche (complexité mesurée 5, pas 4).** La limite de sièges est sortie en `s47-seat-limit` : c'est une règle de refus locale, sans état distribué, et la garder ici mettait quatre choses dures distinctes dans une seule revue. Ce qui reste tient sur un seul thème — garder deux systèmes cohérents.
+**Prémisse corrigée par la recherche** : le port `Payments` n'a aujourd'hui aucune méthode d'écriture après création (`packages/ports/src/payments.ts:380`). La quantité n'est transmise qu'au checkout. Cette story doit donc étendre le contrat de port avant toute logique métier.
 **Risque de complexité 4 : la cohérence entre le nombre de membres et la quantité Stripe.** État distribué entre deux systèmes ; toute opération doit être rejouable et réconciliable.
 Référence : Supastarter expose `seatBased` par offre ; MakerKit annonce siège, usage et forfait. L'usage reste au **cimetière**.
 Piège : sans commande de réconciliation, la dérive est silencieuse et ne se découvre qu'à la facture du client.
@@ -1241,3 +1242,26 @@ s08-app-shell, s09-i18n
 Constaté en revue de s09 : les cinq écrans rendent des `<form>`, `<input>` et `<button>` bruts, `<h1>` à 14 px, en build de production, dans les deux langues et les deux thèmes. Antérieur à s09, hors de son périmètre, jamais couvert par une story — s08 n'a habillé que le shell et le compte.
 Ce sont **les premiers écrans qu'un acheteur voit**. Le PRD vend un boilerplate prêt à l'emploi ; un tunnel d'authentification non stylé contredit la promesse avant toute autre considération.
 Piège : ne pas modifier le comportement. Les parcours de s07 asservissent des rôles ARIA et des textes ; les traduire en composants du design system doit préserver les rôles, sinon les assertions rougissent et on croira à une régression fonctionnelle.
+
+---
+
+## Story s47-seat-limit — Refuser un membre au-delà de la limite de sièges
+**As a** Propriétaire d'organisation **I want** qu'une limite de sièges soit respectée **so that** je ne dépasse pas l'offre que j'ai souscrite.
+
+### Complexity
+2
+
+### Acceptance criteria
+- [ ] Une limite de sièges peut être configurée sur une offre, et une offre sans limite reste illimitée
+- [ ] L'ajout d'un membre au-delà de la limite est refusé **côté serveur**, avec un message nommant la limite atteinte
+- [ ] Le refus porte sur l'acceptation d'une invitation, pas sur son envoi — cohérent avec s23, où une invitation en attente n'est pas facturée
+- [ ] Une limite abaissée sous le nombre de membres déjà présents n'expulse personne : elle refuse les ajouts suivants
+- [ ] **Module de facturation non activé** : aucune limite n'est appliquée
+
+### Dependencies
+s23-seat-billing, s17-roles-permissions
+
+### Agentic notes
+Sortie de s23 après recherche : c'est une règle d'autorisation locale, sans état distribué entre deux systèmes, et elle n'a pas besoin de la réconciliation qui protège s23.
+Le refus n'est pas un 404 : `docs/security.md` §3 réserve le 404 à la ressource d'autrui. Ici l'organisation est bien la sienne, seule l'opération est refusée — même raisonnement que s21 pour une fonctionnalité réservée.
+Piège : une limite abaissée en dessous de l'effectif existant. Expulser serait destructeur ; refuser les ajouts suivants est le seul comportement non destructeur.
