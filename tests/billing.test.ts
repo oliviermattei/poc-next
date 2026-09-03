@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { readdir, readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 
 import { parseEnv, type Env } from '@repo/config'
@@ -42,6 +43,7 @@ import {
   type BillingPermission,
   type BillingView,
   type ConfigureBillingOptions,
+  type ScopeSeats,
 } from '@repo/module-billing'
 import {
   configureOrganizations,
@@ -49,8 +51,10 @@ import {
   organizationMember,
   organizationsModule,
   resetOrganizationsService,
+  type ConfigureOrganizationsOptions,
   type OrganizationRole,
   type OrganizationsService,
+  type SeatSync,
 } from '@repo/module-organizations'
 import { BillingScreen } from '@repo/module-billing/presentation'
 import { demoEnabledModule } from '@repo/module-demo-enabled'
@@ -67,6 +71,7 @@ import { billingPermissionOf } from '../apps/web/lib/billing-permission'
 import { entitlements as appEntitlements } from '../apps/web/lib/entitlements'
 import { featureGates } from '../apps/web/lib/feature-gates'
 import { organizations as appOrganizations } from '../apps/web/lib/organizations'
+import { seatSyncOf, type SeatSyncBilling } from '../apps/web/lib/seat-sync'
 import { localeRouting } from '../apps/web/lib/locale-routing'
 import { billingOffers } from '../config/billing'
 import { appLocales, defaultLocale } from '../config/i18n'
@@ -269,9 +274,37 @@ let permission: BillingPermission = () => Promise.resolve(permitted)
 let seats = 1
 let organizationsService: OrganizationsService
 
+/**
+ * s23 — **ce que le module `organizations` fait traverser avant de valider une
+ * écriture d'appartenance** (ADR 046).
+ *
+ * Par défaut, un accord qui n'appelle personne : la plupart des cas de ce
+ * fichier mesurent autre chose. Le bloc « la quantité facturée suit les
+ * membres » y branche la **vraie** synchronisation, celle que
+ * `apps/web/lib/organizations.ts` compose.
+ */
+const seatSyncCalls: { organizationId: string; seats: number }[] = []
+let seatSync: SeatSync = async (change) => {
+  seatSyncCalls.push({ ...change })
+
+  return true
+}
+
+/** s23 — le nombre de membres que la réconciliation lira. `null` : aucun nombre. */
+let scopeSeats: ScopeSeats = () => Promise.resolve(null)
+
+/** Le courrier sortant du module `organizations` : c'est lui qui porte le jeton. */
+const invitationOutbox = createRecordingMailer()
+
 interface RecordedCall {
   readonly url: string
   readonly body: string
+  /**
+   * Les en-têtes que le SDK a posés — c'est là que vit la **clé
+   * d'idempotence** (s23). Sans elle, un cas ne peut pas distinguer « deux
+   * appels qui visent le même état » de « deux écritures ».
+   */
+  readonly headers: Record<string, string>
 }
 
 const calls: RecordedCall[] = []
@@ -283,7 +316,11 @@ let responses: (() => Response)[] = []
  * sérialisation, ni les en-têtes, ni le traitement de la réponse.
  */
 const fetchDouble: typeof fetch = async (input, init) => {
-  calls.push({ url: String(input), body: typeof init?.body === 'string' ? init.body : '' })
+  calls.push({
+    url: String(input),
+    body: typeof init?.body === 'string' ? init.body : '',
+    headers: Object.fromEntries(new Headers(init?.headers).entries()),
+  })
 
   const next = responses.shift()
 
@@ -503,6 +540,7 @@ const suiteBilling = (): ConfigureBillingOptions => ({
   ownerOf: () => Promise.resolve(currentScope),
   canManage: async (scope, userId) => await permission(scope, userId),
   seatsOf: () => Promise.resolve(seats),
+  seatsOfScope: async (scope) => await scopeSeats(scope),
   emailOfScope: () => Promise.resolve('client@example.test'),
   now: () => clock,
   generateId: () => {
@@ -545,10 +583,14 @@ beforeAll(async () => {
     db: connection.db,
     reservedSlugs: new Set(['account', 'sign-in']),
     generateId: (prefix: string) => `${prefix}_s19_${randomUUID()}`,
-    mailer: createRecordingMailer(),
+    mailer: invitationOutbox,
     appUrl: APP_URL,
     emailLocale: defaultLocale,
     now: () => clock,
+    // s23 : le module ne sait pas qu'il existe une facturation. Il sait qu'une
+    // écriture d'appartenance peut être refusée par l'extérieur, et il lui
+    // donne le nombre de membres qu'elle produirait.
+    seatSync: async (change) => await seatSync(change),
   })
 
   configureBilling(suiteBilling())
@@ -575,6 +617,13 @@ beforeEach(async () => {
   permitted = true
   permission = () => Promise.resolve(permitted)
   seats = 1
+  seatSyncCalls.length = 0
+  seatSync = async (change) => {
+    seatSyncCalls.push({ ...change })
+
+    return true
+  }
+  scopeSeats = () => Promise.resolve(null)
   clock = new Date('2026-09-01T12:00:00.000Z')
 
   if (databaseReachable) {
@@ -1734,6 +1783,27 @@ describe.runIf(compositionMeasurable)('le point de composition de l’applicatio
     // Un refus qui atteint la donnée ou le fournisseur n'est pas un refus.
     expect(calls).toEqual([])
     expect(await countRows('billing_customer')).toBe(0)
+  })
+
+  /**
+   * **Le compteur serveur et celui du checkout comptent la même chose** (s23).
+   *
+   * `seatsOf` — la quantité envoyée au fournisseur à l'ouverture d'un
+   * checkout — dérive de `organizations.view(userId).members`, la vue **du
+   * compte courant**. `countMembers(organizationId)` part d'un identifiant
+   * d'organisation, parce que la réconciliation n'a pas de compte. Deux
+   * chemins, un seul nombre : s'ils divergeaient, une facture corrigée par
+   * `pnpm billing:reconcile` contredirait celle ouverte au checkout.
+   */
+  it('compte les mêmes membres par l’organisation que par le compte', async () => {
+    const { other, organizationId } = await anOrganizationWithRole('owner')
+
+    const seen = (await appOrganizations.view(other.userId)).members.length
+
+    // Le propriétaire fondateur et le compte de ce cas : sans cette ligne, le
+    // cas serait vert sur deux zéros.
+    expect(seen).toBe(2)
+    expect(await appOrganizations.countMembers(organizationId)).toBe(seen)
   })
 
   it('donne au fournisseur l’adresse du compte qui ouvre le checkout', async () => {
@@ -3032,6 +3102,862 @@ describe.runIf(databaseReachable)('l’essai, une fois par périmètre', () => {
     // **Rien n'a bougé en base** : aucun webhook n'est arrivé, et c'est le
     // point. L'accès s'est fermé sur le temps seul.
     expect(await storedSubscription()).toEqual(stored)
+  })
+})
+
+/* -------------------------------------------------------------------------- *
+ * s23 — **la quantité facturée suit le nombre de membres** (ADR 046).
+ *
+ * Le bloc branche la vraie synchronisation : le module `organizations` écrit,
+ * compte ce qu'il a écrit, le donne au point de composition, et celui-ci le
+ * porte chez le fournisseur **avant** que la transaction soit validée. Ce qui
+ * est mesuré est donc ce que le **réseau** a vu partir, jamais un appel à une
+ * doublure de port.
+ *
+ * L'offre au siège est celle du catalogue de cette suite (`team-monthly`) : le
+ * catalogue livré n'en déclare aucune, et s23 n'a pas à en ajouter une —
+ * `perSeat` y est déjà un champ validé.
+ * -------------------------------------------------------------------------- */
+describe.runIf(databaseReachable)('la quantité facturée suit les membres', () => {
+  const SEAT_OFFER = CATALOGUE.find((offer) => offer.perSeat)
+  const CUSTOMER = 'cus_s23'
+  const SUBSCRIPTION = 'sub_s23'
+
+  /** Ce que le fournisseur répond à une relecture d'abonnement, puis à l'écriture. */
+  const seatWrite = (quantity: number): readonly (() => Response)[] => [
+    () =>
+      json(
+        subscriptionObject({
+          id: SUBSCRIPTION,
+          customer: CUSTOMER,
+          periodEnd: 1_800_000_000,
+          priceId: SEAT_OFFER?.priceId,
+          quantity: 1,
+        }),
+      ),
+    () =>
+      json(
+        subscriptionObject({
+          id: SUBSCRIPTION,
+          customer: CUSTOMER,
+          periodEnd: 1_800_000_000,
+          priceId: SEAT_OFFER?.priceId,
+          quantity,
+        }),
+      ),
+  ]
+
+  /** Les quantités **réellement** parties chez le fournisseur, dans l'ordre. */
+  const quantitiesSent = (): readonly string[] =>
+    calls
+      .map((entry) => new URLSearchParams(entry.body).get('items[0][quantity]'))
+      .filter((quantity): quantity is string => quantity !== null)
+
+  /** Les clés d'idempotence des **écritures de quantité**, dans l'ordre. */
+  const seatKeysSent = (): readonly string[] =>
+    calls
+      .filter((entry) => new URLSearchParams(entry.body).get('items[0][quantity]') !== null)
+      .map((entry) => entry.headers['idempotency-key'] ?? '')
+
+  /**
+   * Une organisation abonnée au siège : son propriétaire, son client chez le
+   * fournisseur, et un abonnement en cache à **une** place.
+   */
+  const anOrganizationOnSeats = async (): Promise<{
+    readonly owner: ModuleSession
+    readonly organizationId: string
+  }> => {
+    const owner = await anAccount()
+    const created = await organizationsService.useCases.createOrganization({
+      userId: owner.userId,
+      body: { name: 'Studio s23', slug: `s19-${randomUUID().slice(0, 8)}` },
+    })
+
+    expect(created.status).toBe('ok')
+
+    const organizationId =
+      (await organizationsService.useCases.viewOrganizations(owner.userId)).current?.id ?? ''
+
+    currentScope = { kind: 'organization', organizationId }
+
+    responses = [
+      () => json({ id: CUSTOMER, object: 'customer' }),
+      () =>
+        json({
+          id: 'cs_s23',
+          object: 'checkout.session',
+          url: 'https://checkout.stripe.com/c/pay/cs_s23',
+          customer: CUSTOMER,
+        }),
+    ]
+
+    expect(
+      (await call('checkout', { session: owner, body: { offerId: SEAT_OFFER?.id ?? '' } })).status,
+    ).toBe(200)
+
+    await deliver(
+      eventPayload({
+        id: `evt_s23_${randomUUID()}`,
+        type: 'customer.subscription.created',
+        created: 1_788_000_000,
+        object: subscriptionObject({
+          id: SUBSCRIPTION,
+          customer: CUSTOMER,
+          periodEnd: 1_800_000_000,
+          priceId: SEAT_OFFER?.priceId,
+          quantity: 1,
+        }),
+      }),
+    )
+
+    calls.length = 0
+
+    // **La vraie synchronisation**, celle que `apps/web/lib/organizations.ts`
+    // compose : le module rend le nombre de membres, le point de composition le
+    // porte chez le fournisseur, et un échec annule l'écriture.
+    seatSync = async ({ organizationId: id, seats: counted }) => {
+      seatSyncCalls.push({ organizationId: id, seats: counted })
+
+      const outcome = await requireBillingService().useCases.syncSeats({
+        scope: { kind: 'organization', organizationId: id },
+        seats: counted,
+      })
+
+      return outcome.status !== 'failed'
+    }
+
+    return { owner, organizationId }
+  }
+
+  /** Invite une adresse et rend le jeton du lien envoyé. */
+  const anInvitation = async (
+    owner: ModuleSession,
+    organizationId: string,
+  ): Promise<{ readonly guest: ModuleSession; readonly token: string }> => {
+    const email = `s19-seat-${randomUUID()}@example.test`
+    const guest = await anAccount(email)
+
+    expect(
+      (
+        await organizationsService.useCases.inviteMember({
+          userId: owner.userId,
+          body: { organizationId, email },
+        })
+      ).status,
+    ).toBe('ok')
+
+    const link = String(invitationOutbox.sent.at(-1)?.data['url'])
+
+    return { guest, token: new URL(link).searchParams.get('token') ?? '' }
+  }
+
+  const membersOf = async (organizationId: string): Promise<number> =>
+    await organizationsService.useCases.countMembers(organizationId)
+
+  it('déclare bien une offre facturée au siège', () => {
+    // Sans elle, tout ce bloc serait vert et vide.
+    expect(SEAT_OFFER?.mode).toBe('subscription')
+  })
+
+  it('porte la quantité chez le fournisseur à l’acceptation, jamais à l’invitation', async () => {
+    const { owner, organizationId } = await anOrganizationOnSeats()
+    const { guest, token } = await anInvitation(owner, organizationId)
+
+    // **Une invitation en attente n'est pas facturée** (critère 4) : elle vit
+    // dans une autre table, et rien n'a bougé chez le fournisseur.
+    expect(seatSyncCalls).toEqual([])
+    expect(quantitiesSent()).toEqual([])
+    expect(await membersOf(organizationId)).toBe(1)
+
+    responses = [...seatWrite(2)]
+
+    const accepted = await organizationsService.useCases.acceptInvitation({
+      userId: guest.userId,
+      body: { token },
+    })
+
+    expect(accepted.status).toBe('ok')
+    expect(await membersOf(organizationId)).toBe(2)
+    // La quantité visée est le nombre de membres **après** l'écriture.
+    expect(seatSyncCalls).toEqual([{ organizationId, seats: 2 }])
+    expect(quantitiesSent()).toEqual(['2'])
+  })
+
+  /**
+   * **Une invitation en attente n'occupe aucun siège** (critère 4), et le cas
+   * en laisse une *pendante pendant* qu'une autre est acceptée.
+   *
+   * C'est ce qui le distingue du cas précédent : là-bas, l'invitation acceptée
+   * cesse d'être en attente au moment même où l'on compte, si bien qu'un
+   * compteur qui additionnerait les invitations resterait vert. Ici, une
+   * invitation reste vivante, et un tel compteur enverrait trois.
+   */
+  it('ne facture pas l’invitation qui reste en attente', async () => {
+    const { owner, organizationId } = await anOrganizationOnSeats()
+    const accepted = await anInvitation(owner, organizationId)
+
+    // Une seconde invitation, **jamais acceptée** : elle reste en attente
+    // pendant toute la mesure.
+    await anInvitation(owner, organizationId)
+
+    responses = [...seatWrite(2)]
+
+    expect(
+      (
+        await organizationsService.useCases.acceptInvitation({
+          userId: accepted.guest.userId,
+          body: { token: accepted.token },
+        })
+      ).status,
+    ).toBe('ok')
+
+    // Deux membres, une invitation en attente : deux sièges.
+    expect(quantitiesSent()).toEqual(['2'])
+    expect(await membersOf(organizationId)).toBe(2)
+  })
+
+  it('n’ajoute pas le membre quand le fournisseur refuse', async () => {
+    const { owner, organizationId } = await anOrganizationOnSeats()
+    const { guest, token } = await anInvitation(owner, organizationId)
+
+    responses = [
+      () =>
+        json(
+          subscriptionObject({
+            id: SUBSCRIPTION,
+            customer: CUSTOMER,
+            periodEnd: 1_800_000_000,
+            priceId: SEAT_OFFER?.priceId,
+            quantity: 1,
+          }),
+        ),
+      () =>
+        new Response(JSON.stringify({ error: { type: 'api_error', message: 'panne' } }), {
+          status: 503,
+          headers: { 'content-type': 'application/json' },
+        }),
+    ]
+
+    const refused = await organizationsService.useCases.acceptInvitation({
+      userId: guest.userId,
+      body: { token },
+    })
+
+    // **Le critère 6** : atomique. Aucun membre ajouté, et le motif dit qu'il
+    // faut réessayer — pas que le lien serait invalide.
+    expect(refused).toEqual({ status: 'refused', refusal: 'seat_sync_unavailable' })
+    expect(await membersOf(organizationId)).toBe(1)
+
+    // **Et rejouable** : l'invitation n'a pas été consommée, le même lien
+    // fonctionne dès que le fournisseur répond.
+    responses = [...seatWrite(2)]
+
+    expect(
+      (
+        await organizationsService.useCases.acceptInvitation({
+          userId: guest.userId,
+          body: { token },
+        })
+      ).status,
+    ).toBe('ok')
+    expect(await membersOf(organizationId)).toBe(2)
+  })
+
+  /**
+   * **La clé d'idempotence porte la quantité visée, jamais un compteur.**
+   *
+   * C'est l'endroit où cette story peut facturer deux fois. Le cas mesure la
+   * clé **telle que le réseau la voit** : deux synchronisations qui visent le
+   * même état doivent être *le même appel* — sinon une réponse perdue et sa
+   * reprise écriraient deux fois —, et deux états différents doivent être deux
+   * appels — sinon le fournisseur rejouerait sa première réponse et la seconde
+   * correction n'aurait jamais lieu.
+   *
+   * Une clé dérivée d'un incrément, d'un instant ou d'un tirage échoue la
+   * première assertion ; une clé constante échoue la seconde.
+   */
+  it('dérive la clé d’idempotence de la quantité visée, jamais d’un compteur', async () => {
+    const { organizationId } = await anOrganizationOnSeats()
+    const scope: ModuleScope = { kind: 'organization', organizationId }
+    const sync = async (seats: number): Promise<void> => {
+      await requireBillingService().useCases.syncSeats({ scope, seats })
+    }
+
+    responses = [...seatWrite(2), ...seatWrite(2), ...seatWrite(3)]
+
+    await sync(2)
+    await sync(2)
+    await sync(3)
+
+    const keys = seatKeysSent()
+
+    expect(keys).toHaveLength(3)
+    // Même cible, même appel.
+    expect(keys[0]).toBe(keys[1])
+    // Cible différente, appel différent.
+    expect(keys[0]).not.toBe(keys[2])
+    // Et la cible **est** dans la clé : c'est elle qui la rend convergente.
+    expect(keys[0]?.endsWith(':2')).toBe(true)
+    expect(keys[2]?.endsWith(':3')).toBe(true)
+  })
+
+  it('n’ajoute pas une seconde appartenance au rejeu de l’acceptation', async () => {
+    const { owner, organizationId } = await anOrganizationOnSeats()
+    const { guest, token } = await anInvitation(owner, organizationId)
+
+    responses = [...seatWrite(2), ...seatWrite(2)]
+
+    await organizationsService.useCases.acceptInvitation({ userId: guest.userId, body: { token } })
+    await organizationsService.useCases.acceptInvitation({ userId: guest.userId, body: { token } })
+
+    expect(await membersOf(organizationId)).toBe(2)
+    expect(new Set(quantitiesSent())).toEqual(new Set(['2']))
+  })
+
+  it('décrémente au retrait, et la quantité égale toujours le nombre de membres', async () => {
+    const { owner, organizationId } = await anOrganizationOnSeats()
+
+    const first = await anInvitation(owner, organizationId)
+
+    responses = [...seatWrite(2)]
+    await organizationsService.useCases.acceptInvitation({
+      userId: first.guest.userId,
+      body: { token: first.token },
+    })
+
+    const second = await anInvitation(owner, organizationId)
+
+    responses = [...seatWrite(3)]
+    await organizationsService.useCases.acceptInvitation({
+      userId: second.guest.userId,
+      body: { token: second.token },
+    })
+
+    responses = [...seatWrite(2)]
+    expect(
+      (
+        await organizationsService.useCases.removeMember({
+          userId: owner.userId,
+          body: { organizationId, userId: second.guest.userId },
+        })
+      ).status,
+    ).toBe('ok')
+
+    // **Le critère 3** : après ajout, ajout, retrait, la dernière quantité
+    // partie est le nombre de membres.
+    expect(quantitiesSent()).toEqual(['2', '3', '2'])
+    expect(Number(quantitiesSent().at(-1))).toBe(await membersOf(organizationId))
+  })
+
+  it('ne retire pas le membre quand le fournisseur refuse le retrait', async () => {
+    const { owner, organizationId } = await anOrganizationOnSeats()
+    const { guest, token } = await anInvitation(owner, organizationId)
+
+    responses = [...seatWrite(2)]
+    await organizationsService.useCases.acceptInvitation({ userId: guest.userId, body: { token } })
+
+    responses = [
+      () =>
+        new Response(JSON.stringify({ error: { type: 'api_error', message: 'panne' } }), {
+          status: 503,
+          headers: { 'content-type': 'application/json' },
+        }),
+    ]
+
+    expect(
+      await organizationsService.useCases.removeMember({
+        userId: owner.userId,
+        body: { organizationId, userId: guest.userId },
+      }),
+    ).toEqual({ status: 'refused', refusal: 'seat_sync_unavailable' })
+    expect(await membersOf(organizationId)).toBe(2)
+  })
+
+  it('ne synchronise rien pour une offre au forfait', async () => {
+    const owner = await anAccount()
+
+    await organizationsService.useCases.createOrganization({
+      userId: owner.userId,
+      body: { name: 'Studio forfait', slug: `s19-${randomUUID().slice(0, 8)}` },
+    })
+
+    const organizationId =
+      (await organizationsService.useCases.viewOrganizations(owner.userId)).current?.id ?? ''
+
+    currentScope = { kind: 'organization', organizationId }
+
+    responses = [
+      () => json({ id: 'cus_s23_forfait', object: 'customer' }),
+      () =>
+        json({
+          id: 'cs_s23_forfait',
+          object: 'checkout.session',
+          url: 'https://checkout.stripe.com/c/pay/cs_s23_forfait',
+          customer: 'cus_s23_forfait',
+        }),
+    ]
+
+    await call('checkout', { session: owner, body: { offerId: 'pro-monthly' } })
+    await deliver(
+      eventPayload({
+        id: `evt_s23_forfait_${randomUUID()}`,
+        type: 'customer.subscription.created',
+        created: 1_788_000_000,
+        object: subscriptionObject({
+          id: 'sub_s23_forfait',
+          customer: 'cus_s23_forfait',
+          periodEnd: 1_800_000_000,
+          priceId: 'price_pro_monthly',
+        }),
+      }),
+    )
+
+    calls.length = 0
+    responses = []
+
+    // Le point de composition appelle quand même : c'est la **règle** du
+    // domaine qui décide, pas l'appelant.
+    expect(
+      await requireBillingService().useCases.syncSeats({
+        scope: { kind: 'organization', organizationId },
+        seats: 4,
+      }),
+    ).toEqual({ status: 'not_applicable' })
+    // **Aucun appel sortant** : vérifier l'absence d'appel, pas seulement
+    // l'absence d'erreur.
+    expect(calls).toEqual([])
+  })
+
+  /**
+   * **Le forfait du périmètre compte** (critère 8), mesuré sur un compte qui a
+   * bel et bien un abonnement au siège chez le fournisseur : sans la garde, la
+   * quantité partirait. Le cas ne mesure donc pas l'absence de client.
+   */
+  it('ne synchronise rien pour un périmètre compte, même abonné au siège', async () => {
+    const scope: ModuleScope = { kind: 'user', userId: 'usr_s23_seul' }
+
+    currentScope = scope
+    responses = [
+      () => json({ id: 'cus_s23_seul', object: 'customer' }),
+      () =>
+        json({
+          id: 'cs_s23_seul',
+          object: 'checkout.session',
+          url: 'https://checkout.stripe.com/c/pay/cs_s23_seul',
+          customer: 'cus_s23_seul',
+        }),
+    ]
+
+    await call('checkout', {
+      session: { userId: 'usr_s23_seul', roles: [] },
+      body: { offerId: SEAT_OFFER?.id ?? '' },
+    })
+    await deliver(
+      eventPayload({
+        id: `evt_s23_seul_${randomUUID()}`,
+        type: 'customer.subscription.created',
+        created: 1_788_000_000,
+        object: subscriptionObject({
+          id: 'sub_s23_seul',
+          customer: 'cus_s23_seul',
+          periodEnd: 1_800_000_000,
+          priceId: SEAT_OFFER?.priceId,
+        }),
+      }),
+    )
+
+    calls.length = 0
+    responses = []
+
+    expect(await requireBillingService().useCases.syncSeats({ scope, seats: 3 })).toEqual({
+      status: 'not_applicable',
+    })
+    // **Aucun appel sortant** : vérifier l'absence d'appel, pas seulement
+    // l'absence d'erreur.
+    expect(calls).toEqual([])
+  })
+})
+
+/* -------------------------------------------------------------------------- *
+ * s23 — **la réconciliation corrige la quantité, et dans l'autre sens**.
+ *
+ * L'ADR 034 fait du local un cache du fournisseur : le statut, la période et
+ * l'offre viennent de lui. L'ADR 046 **inverse ce sens pour le seul champ
+ * quantité** : le nombre de membres fait foi, et la quantité du fournisseur y
+ * est ramenée. Un agent qui appliquerait la doctrine générale écraserait le
+ * nombre de membres par la quantité Stripe, c'est-à-dire propagerait l'erreur
+ * au lieu de la corriger.
+ * -------------------------------------------------------------------------- */
+describe.runIf(databaseReachable)('la réconciliation des sièges', () => {
+  const SEAT_OFFER = CATALOGUE.find((offer) => offer.perSeat)
+  const CUSTOMER = 'cus_s23r'
+  const SUBSCRIPTION = 'sub_s23r'
+
+  const providerSubscription = (quantity: number): Record<string, unknown> =>
+    subscriptionObject({
+      id: SUBSCRIPTION,
+      customer: CUSTOMER,
+      periodEnd: 1_800_000_000,
+      priceId: SEAT_OFFER?.priceId,
+      quantity,
+    })
+
+  /** Le client et son abonnement au siège, connus du cache. */
+  const anOrganizationOnSeats = async (providerQuantity: number): Promise<void> => {
+    currentScope = { kind: 'organization', organizationId: 'org_s23r' }
+
+    responses = [
+      () => json({ id: CUSTOMER, object: 'customer' }),
+      () =>
+        json({
+          id: 'cs_s23r',
+          object: 'checkout.session',
+          url: 'https://checkout.stripe.com/c/pay/cs_s23r',
+          customer: CUSTOMER,
+        }),
+    ]
+
+    await call('checkout', {
+      session: { userId: 'usr_s23r', roles: [] },
+      body: { offerId: SEAT_OFFER?.id ?? '' },
+    })
+
+    await deliver(
+      eventPayload({
+        id: `evt_s23r_${randomUUID()}`,
+        type: 'customer.subscription.created',
+        created: 1_788_000_000,
+        object: providerSubscription(providerQuantity),
+      }),
+    )
+
+    calls.length = 0
+  }
+
+  /** Ce que le fournisseur répond : les achats, puis les abonnements. */
+  const providerSees = (quantity: number): (() => Response)[] => [
+    ...noPurchases(),
+    () => json({ object: 'list', has_more: false, data: [providerSubscription(quantity)] }),
+  ]
+
+  const quantitiesWritten = (): readonly string[] =>
+    calls
+      .map((entry) => new URLSearchParams(entry.body).get('items[0][quantity]'))
+      .filter((quantity): quantity is string => quantity !== null)
+
+  /**
+   * **Toute tentative de toucher à cet abonnement**, relecture comprise.
+   *
+   * Mesurer les seules quantités parties ne suffit pas : corriger la quantité
+   * commence par relire l'abonnement, et une relecture en échec laisserait
+   * `quantitiesWritten()` vide alors que la commande *a bien décidé* de baisser
+   * la facture. Ce qui doit rester vide, c'est la tentative.
+   */
+  const seatCallAttempts = (): readonly string[] =>
+    calls
+      .filter((entry) => entry.url.includes(`/v1/subscriptions/${SUBSCRIPTION}`))
+      .map((entry) => entry.url)
+
+  it('ramène la quantité du fournisseur au nombre de membres, puis ne change plus rien', async () => {
+    await anOrganizationOnSeats(1)
+
+    // Trois membres en base, un seul siège facturé : l'écart que la commande
+    // existe pour fermer.
+    scopeSeats = () => Promise.resolve(3)
+    responses = [...providerSees(1), () => json(providerSubscription(1)), () => json(providerSubscription(3))]
+
+    const first = await requireBillingService().useCases.reconcile()
+
+    expect(first.changed).toBeGreaterThan(0)
+    expect(quantitiesWritten()).toEqual(['3'])
+
+    // **Rejouée** : le fournisseur dit désormais trois, le nombre de membres
+    // aussi. Rien n'est réécrit, et aucune écriture ne part.
+    calls.length = 0
+    responses = [...providerSees(3)]
+
+    expect(await requireBillingService().useCases.reconcile()).toEqual({
+      customers: 1,
+      changed: 0,
+    })
+    expect(quantitiesWritten()).toEqual([])
+  })
+
+  /**
+   * **Le défaut de facturation silencieux** que la recherche redoute.
+   *
+   * Une lecture des membres en échec — base en cours de migration, organisation
+   * à demi supprimée — ne doit pas faire *baisser* une facture. Elle interrompt
+   * la commande, qui se relance.
+   */
+  it('ne baisse aucune quantité quand la lecture des membres échoue', async () => {
+    await anOrganizationOnSeats(5)
+
+    scopeSeats = () => Promise.reject(new Error('la base ne répond pas'))
+    responses = [...providerSees(5)]
+
+    await expect(requireBillingService().useCases.reconcile()).rejects.toThrow()
+
+    // Aucune écriture de quantité n'est partie : ni cinq, ni un, ni zéro. Et
+    // aucune correction n'a même été **tentée**.
+    expect(quantitiesWritten()).toEqual([])
+    expect(seatCallAttempts()).toEqual([])
+  })
+
+  it('ne baisse aucune quantité quand l’organisation ne rend aucun membre', async () => {
+    await anOrganizationOnSeats(5)
+
+    // Zéro n'est pas un état : aucune organisation n'a zéro membre, puisque sa
+    // création écrit l'appartenance de son créateur dans la même transaction.
+    scopeSeats = () => Promise.resolve(0)
+    responses = [...providerSees(5)]
+
+    await requireBillingService().useCases.reconcile()
+
+    expect(quantitiesWritten()).toEqual([])
+    expect(seatCallAttempts()).toEqual([])
+  })
+
+  it('ne touche pas à la quantité d’une offre au forfait', async () => {
+    currentScope = { kind: 'organization', organizationId: 'org_s23r_forfait' }
+    responses = [
+      () => json({ id: 'cus_s23r_forfait', object: 'customer' }),
+      () =>
+        json({
+          id: 'cs_s23r_forfait',
+          object: 'checkout.session',
+          url: 'https://checkout.stripe.com/c/pay/cs_s23r_forfait',
+          customer: 'cus_s23r_forfait',
+        }),
+    ]
+
+    await call('checkout', {
+      session: { userId: 'usr_s23r', roles: [] },
+      body: { offerId: 'pro-monthly' },
+    })
+
+    calls.length = 0
+    scopeSeats = () => Promise.resolve(9)
+    responses = [
+      ...noPurchases(),
+      () =>
+        json({
+          object: 'list',
+          has_more: false,
+          data: [
+            subscriptionObject({
+              id: 'sub_s23r_forfait',
+              customer: 'cus_s23r_forfait',
+              periodEnd: 1_800_000_000,
+              priceId: 'price_pro_monthly',
+              quantity: 1,
+            }),
+          ],
+        }),
+    ]
+
+    await requireBillingService().useCases.reconcile()
+
+    expect(quantitiesWritten()).toEqual([])
+  })
+})
+
+/* -------------------------------------------------------------------------- *
+ * s23 — **le forfait**, c'est-à-dire ce qui se passe quand il n'y a rien à
+ * facturer (critère 8).
+ *
+ * La règle est dans `apps/web/lib/seat-sync.ts` plutôt qu'au point de
+ * composition, et pour la raison mesurée deux fois par les revues de s19 : une
+ * règle écrite dans `lib/organizations.ts` ne peut être neutralisée par aucun
+ * cas, faute de pouvoir être construite à côté.
+ * -------------------------------------------------------------------------- */
+describe('la synchronisation des sièges quand il n’y a rien à facturer', () => {
+  /** Une facturation qui **crie** si on l'interroge. */
+  const forbidden: SeatSyncBilling['syncSeats'] = () => {
+    throw new Error('La facturation ne doit pas être interrogée ici.')
+  }
+
+  it('laisse passer l’écriture, module de facturation coupé, sans rien demander', async () => {
+    const sync = seatSyncOf(async () => ({ available: false, syncSeats: forbidden }))
+
+    expect(await sync({ organizationId: 'org_s23', seats: 4 })).toBe(true)
+  })
+
+  it('laisse passer l’écriture quand il n’y a rien à synchroniser', async () => {
+    const sync = seatSyncOf(async () => ({
+      available: true,
+      syncSeats: () => Promise.resolve({ status: 'not_applicable' }),
+    }))
+
+    expect(await sync({ organizationId: 'org_s23', seats: 4 })).toBe(true)
+  })
+
+  it('annule l’écriture quand le fournisseur a échoué', async () => {
+    const sync = seatSyncOf(async () => ({
+      available: true,
+      syncSeats: () => Promise.resolve({ status: 'failed' }),
+    }))
+
+    expect(await sync({ organizationId: 'org_s23', seats: 4 })).toBe(false)
+  })
+
+  it('transmet le périmètre organisation et la quantité visée, jamais un delta', async () => {
+    const asked: unknown[] = []
+    const sync = seatSyncOf(async () => ({
+      available: true,
+      syncSeats: async (input) => {
+        asked.push(input)
+
+        return { status: 'synced', quantity: input.seats }
+      },
+    }))
+
+    await sync({ organizationId: 'org_s23', seats: 4 })
+
+    expect(asked).toEqual([{ scope: { kind: 'organization', organizationId: 'org_s23' }, seats: 4 }])
+  })
+})
+
+/* -------------------------------------------------------------------------- *
+ * s23 — **le fil**, et non plus la règle : ce que le point de composition de
+ * l'application accroche réellement au module des organisations.
+ *
+ * Le bloc précédent éprouve `seatSyncOf` ; celui-ci éprouve que
+ * `apps/web/lib/organizations.ts` s'en serve. La distinction a été mesurée : la
+ * revue de s23 a remplacé `seatSync: seatSyncOf(…)` par
+ * `() => Promise.resolve(true)` **au point de composition** et a obtenu la suite
+ * entière au vert, `pnpm test:e2e` compris (constat F1) — l'application aurait
+ * accepté des invitations sans jamais rien porter chez le fournisseur, et le
+ * critère 6 aurait disparu en silence. C'est la leçon de s19, reposée une fois
+ * de plus : une mutation posée ailleurs qu'au site du défaut ne prouve rien.
+ *
+ * La mesure prend le `seatSync` que le point de composition **donne au
+ * module** — en interceptant `provideOrganizations`, qui dit comment construire
+ * sans construire — puis le branche sur une facturation qui échoue : c'est le
+ * seul sens dans lequel un fil coupé se distingue d'un fil branché. Un fil coupé
+ * rend `true` sans interroger personne ; le vrai fil rend `false` et porte le
+ * périmètre organisation.
+ *
+ * Ni base ni service : rien n'est construit, et la connexion est doublée pour
+ * qu'aucun pool ne survive au cas.
+ * -------------------------------------------------------------------------- */
+describe.runIf(appOrganizations.available)('le fil des sièges au point de composition', () => {
+  it('accroche au module la synchronisation qui interroge vraiment la facturation', async () => {
+    const asked: unknown[] = []
+    const provided: (() => ConfigureOrganizationsOptions)[] = []
+
+    // Le point de composition lit l'environnement pour construire le mailer et
+    // l'URL publique. Le job de CI ne les pose pas : il ne monte aucun serveur.
+    vi.stubEnv('DATABASE_URL', 'postgres://s23:s23@127.0.0.1:5432/s23')
+    vi.stubEnv('AUTH_SECRET', 'x'.repeat(40))
+    vi.stubEnv('APP_URL', APP_URL)
+    vi.stubEnv('RESEND_API_KEY', '')
+    vi.stubEnv('EMAIL_FROM', '')
+    vi.stubEnv('EMAIL_LOCAL_CAPTURE', '1')
+
+    vi.resetModules()
+    vi.doMock('@repo/module-organizations', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('@repo/module-organizations')>()
+
+      return {
+        ...actual,
+        provideOrganizations: (factory: () => ConfigureOrganizationsOptions) => {
+          provided.push(factory)
+        },
+      }
+    })
+    vi.doMock('@repo/db', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('@repo/db')>()
+
+      // La connexion n'est pas ce qui est mesuré, et l'ouvrir ici laisserait un
+      // second pool derrière ce cas.
+      return { ...actual, getDatabase: () => ({ db: {} }) }
+    })
+    vi.doMock('../apps/web/lib/billing', () => ({
+      billing: {
+        available: true,
+        syncSeats: (input: unknown) => {
+          asked.push(input)
+
+          return Promise.resolve({ status: 'failed' })
+        },
+      },
+    }))
+
+    try {
+      const { organizations } = await import('../apps/web/lib/organizations')
+
+      organizations.prepare()
+
+      // Sans cette garde, le cas serait vert sur une fabrique jamais posée.
+      expect(provided).toHaveLength(1)
+
+      const options = provided[0]?.()
+
+      // Le fournisseur a échoué : l'écriture d'appartenance doit être annulée.
+      expect(await options?.seatSync({ organizationId: 'org_s23_fil', seats: 4 })).toBe(false)
+      // Et la facturation de l'application a bien été interrogée, avec le
+      // périmètre organisation et la quantité visée.
+      expect(asked).toEqual([
+        { scope: { kind: 'organization', organizationId: 'org_s23_fil' }, seats: 4 },
+      ])
+    } finally {
+      vi.doUnmock('@repo/module-organizations')
+      vi.doUnmock('@repo/db')
+      vi.doUnmock('../apps/web/lib/billing')
+      vi.resetModules()
+      vi.unstubAllEnvs()
+    }
+  })
+})
+
+/* -------------------------------------------------------------------------- *
+ * s23 — **le compteur serveur n'est atteignable par aucune requête**.
+ *
+ * `organizations.countMembers(organizationId)` est la seule lecture de tout le
+ * dépôt qui parte d'un identifiant d'organisation nu, et c'est exactement la
+ * forme que la porte de lecture de s15 ferme. Elle existe pour un unique
+ * appelant sans session — `pnpm billing:reconcile` —, et l'invariant est qu'elle
+ * n'ait aucun autre chemin.
+ *
+ * Ce que ce cas balaie, dit plutôt que sous-entendu : les fichiers `.ts` et
+ * `.tsx` de `apps/web/app` (les écrans et les routes de l'application) et de la
+ * couche `presentation` du module `organizations`. Il ne balaie pas les autres
+ * packages : `countMembers` n'y est pas importable, le module n'exposant que son
+ * service.
+ * -------------------------------------------------------------------------- */
+describe('le compteur serveur de membres', () => {
+  const filesUnder = async (directory: string): Promise<readonly string[]> => {
+    const entries = await readdir(directory, { withFileTypes: true, recursive: true })
+
+    return entries
+      .filter((entry) => entry.isFile() && /\.tsx?$/.test(entry.name))
+      .map((entry) => `${entry.parentPath}/${entry.name}`)
+  }
+
+  it('n’est nommé par aucun écran ni aucune route', async () => {
+    const swept = [
+      ...(await filesUnder(fileURLToPath(new URL('../apps/web/app', import.meta.url)))),
+      ...(await filesUnder(
+        fileURLToPath(
+          new URL('../packages/modules/organizations/src/presentation', import.meta.url),
+        ),
+      )),
+    ]
+
+    // Sans cette garde, le cas serait vert sur un balayage vide.
+    expect(swept.length).toBeGreaterThan(10)
+
+    const naming = (
+      await Promise.all(
+        swept.map(async (file) => ({
+          file,
+          mentions: (await readFile(file, 'utf8')).includes('countMembers'),
+        })),
+      )
+    ).filter((entry) => entry.mentions)
+
+    expect(naming.map((entry) => entry.file)).toEqual([])
   })
 })
 

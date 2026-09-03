@@ -268,6 +268,12 @@ beforeAll(async () => {
     emailLocale: defaultLocale,
     now: () => clock,
     securityLog: (event) => securityEvents.push(event),
+    // s23 — ce que la nouvelle taille de l'organisation traverse avant qu'une
+    // écriture d'appartenance soit validée (ADR 046). Ici, un accord : cette
+    // suite mesure les organisations, pas la facturation. Le refus et la
+    // quantité qui en part sont éprouvés dans `tests/billing.test.ts`, où le
+    // vrai couplage est branché.
+    seatSync: () => Promise.resolve(true),
   })
 })
 

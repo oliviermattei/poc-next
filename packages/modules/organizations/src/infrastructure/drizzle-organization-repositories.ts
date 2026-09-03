@@ -1,7 +1,13 @@
 import { and, eq, gt, isNull, ne, notInArray, or, sql } from 'drizzle-orm'
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core'
 
-import type { InvitationOutcome, OrganizationRepository, SlugOutcome } from '../application/ports'
+import {
+  SeatSyncRefusedError,
+  type InvitationOutcome,
+  type OrganizationRepository,
+  type SeatSync,
+  type SlugOutcome,
+} from '../application/ports'
 import { FOUNDER_ROLE, SUCCEEDED_OWNER_ROLE } from '../domain/organization'
 import {
   organization,
@@ -9,7 +15,7 @@ import {
   organizationInvitation,
   organizationMember,
 } from '../schema'
-import { createScopedReads } from './scoped-reads'
+import { countMembersOf, createScopedReads } from './scoped-reads'
 import { lockOrganizationMembership } from './transaction-locks'
 
 /**
@@ -28,13 +34,17 @@ import { lockOrganizationMembership } from './transaction-locks'
  * conditionnel suivi d'une insertion idempotente, et les deux doivent tomber
  * ensemble. `delete` et `execute` s'y ajoutent au tour de correction : le
  * retrait d'un membre prend un verrou consultatif porté par la transaction
- * (`transaction-locks.ts`) avant son ordre conditionnel. `select` n'y est
- * **pas** — une lecture de transaction devrait passer par la porte de lecture,
- * et il n'y en a aucune ici.
+ * (`transaction-locks.ts`) avant son ordre conditionnel.
+ *
+ * **`select` s'y ajoute en s23**, et c'est la seule lecture de transaction du
+ * module : la quantité facturée est le nombre de membres **après** l'écriture,
+ * et il n'y a qu'un endroit d'où ce nombre soit exact — à l'intérieur de la
+ * transaction qui vient de l'écrire. Le lire après validation le lirait après
+ * qu'une autre écriture a pu passer.
  */
 type TransactionalWriter = Pick<
   PgDatabase<PgQueryResultHKT>,
-  'insert' | 'update' | 'delete' | 'execute'
+  'select' | 'insert' | 'update' | 'delete' | 'execute'
 >
 
 export type OrganizationsDatabase = Pick<
@@ -95,6 +105,12 @@ const isSlugConflict = (error: unknown): boolean => violates(error, SLUG_CONSTRA
 
 export function createDrizzleOrganizationRepository(
   db: OrganizationsDatabase,
+  /**
+   * Ce que la nouvelle taille de l'organisation doit traverser **avant** que
+   * l'écriture soit validée (s23, ADR 046). Reçu, jamais construit : ce module
+   * ne sait pas qu'il existe une facturation.
+   */
+  seatSync: SeatSync,
 ): OrganizationRepository {
   /**
    * **Les lectures ne sont pas écrites ici**, et `pnpm lint` l'impose.
@@ -105,6 +121,81 @@ export function createDrizzleOrganizationRepository(
    * constat F2 de la revue de s15 — une garde qu'aucune commande ne tenait.
    */
   const reads = createScopedReads(db)
+
+  /**
+   * Le nombre de membres **tel que la transaction en cours le voit** (s23).
+   *
+   * Il compte `organization_member`, et rien d'autre : une invitation en
+   * attente vit dans `organization_invitation` et n'occupe aucun siège
+   * (critère 4). Ajouter cette table ici facturerait des personnes qui n'ont
+   * pas encore cliqué.
+   *
+   * La lecture elle-même vit dans `scoped-reads.ts`, la porte unique du module :
+   * `pnpm lint` refuse `select` et `from` dans ce fichier-ci, et c'est cette
+   * règle qui garde la surface de lecture du module à un seul endroit.
+   */
+  const seatsInTransaction = async (
+    transaction: TransactionalWriter,
+    organizationId: string,
+  ): Promise<number> => await countMembersOf({ kind: 'organization', organizationId }, transaction)
+
+  /**
+   * **L'ordre des deux écritures** (ADR 046), écrit une fois pour les deux
+   * appelants qui changent la taille d'une organisation.
+   *
+   * La séquence est : la transaction a déjà écrit, elle n'est **pas** validée ;
+   * on compte ce qu'elle a produit ; on porte ce nombre chez le fournisseur ; un
+   * refus lève, ce qui annule tout.
+   *
+   * **Ce que cet ordre coûte, et à qui.** Un échec du fournisseur n'ajoute ni ne
+   * retire personne — c'est le critère 6. En revanche, si la **validation
+   * locale** échoue après un succès distant, le fournisseur compte un siège que
+   * la base ne porte pas : le client est surfacturé d'un siège. Ce résidu est
+   * assumé et borné (ADR 046) ; il se détecte et se corrige par
+   * `pnpm billing:reconcile`, qui ramène la quantité au nombre de membres. Le
+   * `commit` qui suit ce commentaire est donc l'endroit exact où la décision se
+   * paie, et l'ordre inverse — valider puis synchroniser — contredirait le
+   * critère mot pour mot.
+   *
+   * **Ce que cette transaction tient ouvert, chiffré** — l'ADR parle d'« un
+   * aller-retour HTTP », la séquence livrée en tient davantage :
+   *
+   * - **deux** appels sortants, pas un : l'écriture de la quantité relit
+   *   l'abonnement avant de l'écrire (la quantité vit sur sa **ligne**, dont
+   *   l'identifiant n'est connu que par lecture). Chacun porte son propre budget
+   *   de reprise — deux essais de 4 s séparés d'un recul d'au plus 300 ms
+   *   (`apps/web/lib/billing.ts`) —, soit ~8,3 s par appel et **~16,6 s pour les
+   *   deux**, transaction ouverte pendant tout ce temps ;
+   * - une **seconde connexion du même pool** : la synchronisation lit le client
+   *   et ses abonnements pendant que cette transaction en retient une
+   *   (`packages/db/src/client.ts` : `max: 10`, `connectionTimeoutMillis:
+   *   5_000`). La concurrence utile des écritures d'appartenance tombe à cinq,
+   *   la sixième attend 5 s puis échoue ;
+   * - au **retrait** — pas à l'acceptation —, le verrou consultatif de
+   *   l'organisation est tenu pendant toute cette attente.
+   *
+   * Le pire cas dépasse donc les dix secondes de fonction serverless que
+   * `apps/web/lib/billing.ts` invoque pour dimensionner ce budget. La
+   * dégradation reste saine : l'épuisement du pool lève une exception qui n'est
+   * pas un `SeatSyncRefusedError`, elle remonte et annule — rien n'est corrompu,
+   * personne n'est surfacturé. Ce coût est **raisonné, pas observé** : aucune
+   * mesure de concurrence n'a été faite.
+   */
+  const syncSeatsBeforeCommit = async (
+    transaction: TransactionalWriter,
+    organizationId: string,
+  ): Promise<void> => {
+    const accepted = await seatSync({
+      organizationId,
+      seats: await seatsInTransaction(transaction, organizationId),
+    })
+
+    if (!accepted) {
+      // Lever **est** l'annulation : rien de ce que cette transaction a écrit
+      // ne sera validé. Le cas d'usage ramène l'exception à un refus nommé.
+      throw new SeatSyncRefusedError()
+    }
+  }
 
   return {
     findMembership: async ({ userId, organizationId }) =>
@@ -191,6 +282,9 @@ export function createDrizzleOrganizationRepository(
       // où une suppression table par table oublie celle qu'on ajoute ensuite.
       await db.delete(organization).where(eq(organization.id, organizationId))
     },
+
+    countMembersOf: async (organizationId) =>
+      await countMembersOf({ kind: 'organization', organizationId }, db),
 
     listMembersOf: async (organizationId) =>
       await reads.membersOf({ kind: 'organization', organizationId }),
@@ -372,6 +466,10 @@ export function createDrizzleOrganizationRepository(
             target: [organizationMember.organizationId, organizationMember.userId],
           })
 
+        // **La quantité part avant que l'adhésion soit validée** (ADR 046) : un
+        // refus du fournisseur lève ici, et l'invitation redevient consommable.
+        await syncSeatsBeforeCommit(transaction, consumed.organizationId)
+
         return { organizationId: consumed.organizationId }
       })
     },
@@ -418,7 +516,21 @@ export function createDrizzleOrganizationRepository(
           )
           .returning({ id: organizationMember.id })
 
-        return removed.length > 0
+        if (removed.length === 0) {
+          // Rien n'a été retiré : la taille n'a pas changé, il n'y a rien à
+          // porter chez le fournisseur. Appeler quand même ferait un appel
+          // sortant par refus.
+          return false
+        }
+
+        // **Le même ordre qu'à l'acceptation**, et pour la même raison : un
+        // fournisseur muet ne doit pas retirer un membre en silence. Le résidu
+        // s'inverse ici — une validation locale en échec après un succès
+        // distant sous-facture d'un siège au lieu de surfacturer —, et c'est le
+        // sens le moins coûteux pour le client.
+        await syncSeatsBeforeCommit(transaction, access.organizationId)
+
+        return true
       })
     },
 

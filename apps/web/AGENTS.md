@@ -540,6 +540,19 @@ en-tête `Host`, sans quoi un lien d'invitation pourrait pointer vers le domaine
 d'un attaquant —, et la locale **du site**, parce qu'un destinataire dont rien
 n'est connu n'en a pas d'autre.
 
+Depuis s23, il lui donne aussi la **synchronisation des sièges** (`seatSync`,
+construite par `lib/seat-sync.ts`) — et c'est, de tout ce que ce fichier
+transmet, la seule dépendance qui puisse **annuler** une écriture
+d'appartenance : la taille de l'organisation part chez le fournisseur de
+paiement **avant** que l'écriture qui l'a changée soit validée, et un
+fournisseur en panne n'ajoute ni ne retire personne (ADR 046). Elle est
+**obligatoire** dans `configureOrganizations` — un point de composition qui
+l'oublierait ne compile pas —, et un projet sans facturation rend `true` : ne
+rien avoir à faire est un succès. Le module, lui, ignore qu'il existe une
+facturation (`requires: []`, ADR 034) ; l'import de `lib/billing.ts` est
+**différé**, parce que celui-ci importe `lib/organizations.ts` pour
+`dataOwnerOf` et qu'un import statique en sens inverse fermerait le cycle.
+
 C'est aussi ce fichier qui donne au module deux choses qu'il ne peut pas se
 procurer : la **connexion** (ADR 020) et les **identifiants publics réservés**.
 Ces derniers sont dérivés — segments de tête de la navigation du registre,
@@ -631,7 +644,7 @@ déjà donnée à `app/public-form.tsx` : il appelle `fetch`, et `eslint.config.
 refuse un appel réseau dans un module hors de sa porte bornée.
 ## Le montage de la facturation (s19)
 
-Quatre fichiers, sur le modèle exact du mailer — **une règle par fichier, et le
+Cinq fichiers, sur le modèle exact du mailer — **une règle par fichier, et le
 montage à part** :
 
 - `lib/billing-config.ts` porte la **règle du fournisseur** — quelle
@@ -650,6 +663,16 @@ montage à part** :
   séparé pour être branché, dans `tests/billing.test.ts`, sur la vraie vue de ce
   module avec un rôle réel en base — neutralisé en `return true`, il laissait
   sinon la suite entière verte (constat F3) ;
+- `lib/seat-sync.ts` (s23) porte **ce que la nouvelle taille d'une organisation
+  doit traverser avant que l'écriture qui l'a changée soit validée** : facturation
+  coupée, périmètre sans client ou offre au forfait laissent passer ; un échec du
+  fournisseur **annule** l'écriture. Il est séparé pour la raison qui a sorti la
+  permission — écrite dans `lib/organizations.ts`, la règle n'aurait été
+  neutralisable par aucun cas. Son **fil**, lui, est mesuré à part :
+  `tests/billing.test.ts` prend le `seatSync` que `lib/organizations.ts` donne
+  réellement au module et le branche sur une facturation qui échoue. Sans ce
+  cas-là, couper le fil au point de composition laissait la suite entière verte,
+  parcours Playwright compris (constat F1 de la revue de s23) ;
 - `lib/billing.ts` **construit** l'implémentation correspondante. C'est le seul
   fichier de l'application qui connaisse `@repo/module-billing`,
   `@repo/adapter-stripe` et `@repo/payments-testing`.

@@ -42,6 +42,7 @@
 - Les échecs définitifs de jobs, de webhooks et de synchronisations externes sont visibles sans lire les journaux bruts.
 - Une garde de démarrage ne protège que les plateformes qui exécutent réellement un démarrage : en serverless et en `output: 'standalone'`, la validation d'environnement de Next n'est pas rejouée à la requête, et une variable malformée dégrade en 503 silencieux — c'est la sonde de santé, pas le démarrage, qui doit alors le signaler.
 - Toute divergence possible avec un système externe possède une **commande de réconciliation** — c'est le cas de la quantité de sièges facturés face au nombre réel de membres.
+- Cette commande réconcilie **dans les deux sens, selon le champ** (ADR 046). Le statut, la période et l'offre viennent du fournisseur, qui fait foi (ADR 034) ; la **quantité de sièges** va vers lui, parce que le nombre de membres est ce qui fait foi et que la quantité en est dérivée. Deux gardes en découlent : la commande n'efface jamais, et elle ne **baisse** aucune quantité sur une lecture de membres en échec ou vide — un silence de notre base interrompt la réconciliation au lieu de réduire une facture.
 
 ## Comment une story démontre sa conformité
 

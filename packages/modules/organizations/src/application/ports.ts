@@ -78,6 +78,17 @@ export interface OrganizationRepository {
   /** Les membres d'une organisation, pour l'export du périmètre organisation. */
   listMembersOf(organizationId: string): Promise<readonly MembershipRecord[]>
 
+  /**
+   * **Le nombre de membres d'une organisation** — la quantité que s23 facture.
+   *
+   * Distincte de `listMembersOf(…).length`, et ce n'est pas de l'optimisation :
+   * elle emploie **la même requête** que celle qui compte à l'intérieur de la
+   * transaction d'ajout ou de retrait (`countMembersOf`, dans la porte de
+   * lecture). Deux comptages écrits séparément divergeraient, et le premier à
+   * diverger serait celui qui facture.
+   */
+  countMembersOf(organizationId: string): Promise<number>
+
   /* ----------------------------------------------------------------------- *
    * s16 — l'invitation, l'acceptation, le retrait.
    *
@@ -277,6 +288,46 @@ export interface InvitationRecord {
 
 /** Ce que rend une écriture d'invitation dont l'adresse peut déjà être invitée. */
 export type InvitationOutcome = 'ok' | 'already_invited'
+
+/**
+ * **Ce que la nouvelle taille de l'organisation doit avoir traversé avant que
+ * l'écriture qui l'a changée soit validée** (s23, ADR 046).
+ *
+ * Ce module ne sait pas qu'il existe une facturation, et il ne doit pas
+ * l'apprendre : `requires: []` du module `billing` est une décision (ADR 034).
+ * Il sait seulement qu'une **écriture d'appartenance peut être refusée par
+ * l'extérieur**, et il lui donne le nombre de membres qu'elle produirait.
+ *
+ * `seats` est un **nombre de membres**, jamais un delta : c'est ce qui rend
+ * l'opération rejouable — deux appels qui visent la même taille sont le même
+ * appel.
+ *
+ * `false` annule l'écriture. Le point de composition qui n'a rien à
+ * synchroniser rend `true` : ne rien avoir à faire est un succès.
+ */
+export type SeatSync = (change: {
+  readonly organizationId: string
+  readonly seats: number
+}) => Promise<boolean>
+
+/**
+ * Le refus d'un `SeatSync`, **transporté par une exception** — et c'est le
+ * mécanisme, pas un style.
+ *
+ * La séquence de l'ADR 046 tient l'appel sortant **à l'intérieur** de la
+ * transaction : lever est la seule manière d'annuler ce que la transaction a
+ * déjà écrit. Le cas d'usage l'attrape aussitôt et la ramène à un refus nommé,
+ * si bien qu'aucun appelant ne voit passer une exception.
+ */
+export class SeatSyncRefusedError extends Error {
+  constructor() {
+    super(
+      'La taille de l’organisation n’a pas pu être portée chez le fournisseur : ' +
+        'l’écriture a été annulée (ADR 046).',
+    )
+    this.name = 'SeatSyncRefusedError'
+  }
+}
 
 export interface OrganizationsDependencies {
   readonly repository: OrganizationRepository

@@ -21,6 +21,26 @@ est chez le fournisseur ; `pnpm billing:reconcile` réécrit le cache depuis lui
 Aucune règle ne doit supposer qu'une colonne est à jour — `grantsAccess` prévoit
 explicitement le retard d'un webhook.
 
+**Sauf pour la quantité de sièges, où le sens s'inverse** (s23, ADR 046). C'est
+le seul champ du module dont la vérité est **locale** : le nombre de membres de
+l'organisation. La quantité détenue par le fournisseur en est *dérivée*, si bien
+qu'un écart est une erreur chez lui, pas chez nous — et `reconcile` la corrige
+en écrivant **vers** le fournisseur. Un agent qui appliquerait la doctrine
+générale de l'ADR 034 à ce champ écraserait le nombre de membres par la quantité
+Stripe, c'est-à-dire propagerait l'erreur au lieu de la corriger.
+
+Deux gardes en découlent, et elles sont éprouvées par mutation dans
+`tests/billing.test.ts` :
+
+- **la clé d'idempotence porte la quantité visée**, jamais un incrément
+  (`seatIdempotencyKey`). Un delta rejoué facture deux fois ; une cible rejouée
+  converge ;
+- **aucune quantité ne baisse sur une lecture de membres en échec ou vide**
+  (`billableSeats`, `domain/seats.ts`). Zéro membre n'est pas un état — une
+  organisation naît avec son fondateur —, c'est une lecture partielle, et un
+  silence de la base doit interrompre la réconciliation, pas réduire une
+  facture.
+
 **`requires: []`, et c'est une décision.** Un abonnement appartient tantôt à une
 organisation, tantôt à un compte, selon la configuration. Déclarer
 `organizations` en requis rendrait la facturation impossible sans multi-tenant.
@@ -326,7 +346,8 @@ permission, le nombre de sièges et l'adresse arrivent en fonctions injectées.
 - de **prix, de montant, de devise ou de mode lus d'une requête** : le
   navigateur envoie un identifiant d'offre, et rien d'autre — `mode: 'payment'`
   est résolu du catalogue, jamais reçu ;
-- de **quantité reçue du client** : les sièges sont résolus côté serveur ;
+- de **quantité reçue du client** : les sièges sont résolus côté serveur, et
+  `syncSeats` reçoit une **cible**, jamais un delta ;
 - d'appel `fetch` : `eslint.config.ts` le refuse, et le port porte déjà le délai
   d'attente et les reprises ;
 - de comparaison de rôle : la matrice s'écrit une fois, dans

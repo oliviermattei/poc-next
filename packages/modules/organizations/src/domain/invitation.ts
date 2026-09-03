@@ -113,6 +113,15 @@ export type InvitationRefusal =
   | 'last_owner'
   /** La personne visée n'est pas membre de cette organisation. */
   | 'not_a_member'
+  /**
+   * La taille de l'organisation n'a pas pu être portée chez le fournisseur de
+   * paiement, et l'écriture a donc été annulée (s23, ADR 046).
+   *
+   * Un motif à part, et il n'est pas cosmétique : dire « lien invalide » à
+   * quelqu'un dont l'invitation est parfaitement vivante l'enverrait en
+   * demander une nouvelle, indéfiniment. Ici, réessayer est la bonne action.
+   */
+  | 'seat_sync_unavailable'
 
 /** Les motifs que l'écran des organisations sait rendre. */
 export const INVITATION_REFUSALS = [
@@ -128,6 +137,7 @@ export const INVITATION_REFUSALS = [
   'invitation_other_recipient',
   'last_owner',
   'not_a_member',
+  'seat_sync_unavailable',
 ] as const satisfies readonly InvitationRefusal[]
 
 /**
@@ -143,6 +153,10 @@ export const ACCEPT_REFUSALS = [
   'invitation_revoked',
   'invitation_accepted',
   'invitation_other_recipient',
+  // s23 : l'acceptation a été annulée faute d'avoir pu porter la nouvelle
+  // taille chez le fournisseur. L'écran d'acceptation doit savoir le dire —
+  // c'est le seul de ses motifs sur lequel réessayer a du sens.
+  'seat_sync_unavailable',
 ] as const satisfies readonly InvitationRefusal[]
 
 export type InvitationEmailParse =

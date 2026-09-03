@@ -303,6 +303,23 @@ export type BillingPermission = (scope: ModuleScope, userId: string) => Promise<
 export type SeatCounter = (scope: ModuleScope, userId: string) => Promise<number>
 
 /**
+ * Le nombre de membres d'un périmètre **sans appelant** — la lecture dont la
+ * réconciliation a besoin (s23).
+ *
+ * Distincte de `SeatCounter`, et la distinction est le point : `SeatCounter`
+ * répond « les membres de l'organisation **courante de ce compte** », ce qui
+ * suppose un compte. `pnpm billing:reconcile` n'en a pas : elle parcourt les
+ * clients du fournisseur et doit compter les membres des organisations qu'ils
+ * désignent. Fusionner les deux obligerait à inventer un appelant, ou à ouvrir
+ * une lecture par identifiant sur une route — la porte que s15 ferme.
+ *
+ * `null` veut dire **« aucun nombre »**, jamais « zéro » : périmètre compte,
+ * module `organizations` coupé, organisation inconnue. C'est
+ * `billableSeats` (`domain/seats.ts`) qui en fait une quantité, ou pas.
+ */
+export type ScopeSeats = (scope: ModuleScope) => Promise<number | null>
+
+/**
  * L'adresse à laquelle le fournisseur écrira, ou `null`. Sert à créer le client.
  *
  * Elle reçoit **aussi l'appelant**, comme `canManage` et `seatsOf`, et pour la

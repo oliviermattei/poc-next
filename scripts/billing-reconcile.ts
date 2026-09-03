@@ -10,6 +10,18 @@ import { loadRootEnv } from '@repo/config/server'
  * deux événements partagent une seconde, ou quand un abonnement est créé depuis
  * le tableau de bord du fournisseur.
  *
+ * **Elle réconcilie dans les deux sens, selon le champ** (s23, ADR 046). Le
+ * statut, la période et l'offre viennent du fournisseur et réécrivent le cache.
+ * La **quantité de sièges**, elle, va vers le fournisseur : le nombre de membres
+ * fait foi, et la quantité en est dérivée. C'est aussi ce qui fait de cette
+ * commande le filet de l'ADR 046 — l'ordre d'écriture qu'il fixe laisse un
+ * résidu de surfacturation d'un siège, et c'est ici qu'il se corrige.
+ *
+ * Deux gardes, et elles ne sont pas décoratives : la commande **n'efface
+ * jamais**, et elle ne **baisse** aucune quantité sur une lecture de membres en
+ * échec — un silence de notre base l'interrompt plutôt que de réduire une
+ * facture.
+ *
  * Elle est **rejouable sans effet supplémentaire** : la seconde exécution
  * n'écrit rien, et c'est le compte rendu qui le dit. `tests/billing.test.ts` le
  * prouve en l'exécutant deux fois.
@@ -34,7 +46,8 @@ const report = await billing.reconcile()
 
 console.log(
   `Réconciliation terminée : ${report.customers} client(s) relu(s), ` +
-    `${report.changed} abonnement(s) réécrit(s).`,
+    `${report.changed} correction(s) — cache réécrit ou quantité de sièges portée ` +
+    'chez le fournisseur.',
 )
 
 // Une seconde exécution doit rendre « 0 abonnement réécrit ». C'est la

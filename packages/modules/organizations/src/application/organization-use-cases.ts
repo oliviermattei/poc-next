@@ -38,7 +38,7 @@ import {
   type OrganizationPermissions,
 } from '../domain/permissions'
 import { authorizeOrganization, type OrganizationAccess } from './organization-access'
-import type { OrganizationsDependencies } from './ports'
+import { SeatSyncRefusedError, type OrganizationsDependencies } from './ports'
 
 /**
  * Les cas d'usage du module : créer, basculer, renommer, décrire, purger,
@@ -194,6 +194,22 @@ export interface OrganizationsUseCases {
   }): Promise<OrganizationOutcome>
   viewOrganizations(userId: string): Promise<OrganizationsView>
   activeOrganizationId(userId: string): Promise<string | null>
+  /**
+   * Le nombre de membres d'une organisation **nommée** — s23.
+   *
+   * Elle prend un identifiant nu, ce qu'aucune autre opération de ce module ne
+   * fait, et cela demande d'être justifié plutôt que subi : la commande de
+   * réconciliation (`pnpm billing:reconcile`) n'a **pas de session**. Elle
+   * parcourt les clients du fournisseur de paiement et doit compter les membres
+   * des organisations qu'ils désignent ; `viewOrganizations` répondrait « les
+   * membres de l'organisation courante *de ce compte* », qui n'existe pas ici.
+   *
+   * **Elle n'est branchée sur aucune route**, et c'est la condition de son
+   * existence : la lecture par identifiant est précisément la porte que s15
+   * ferme. `tests/billing.test.ts` le vérifie sur le disque plutôt que de
+   * l'affirmer.
+   */
+  countMembers(organizationId: string): Promise<number>
   /* --------------------------------------------------------------------- *
    * s16
    * --------------------------------------------------------------------- */
@@ -284,6 +300,31 @@ const attemptedRoleChange = (
  * une chaîne d'un mégaoctet serait hachée avant d'être rejetée.
  */
 const INVITATION_TOKEN = z.object({ token: z.string().trim().min(1).max(256) })
+
+/**
+ * Le refus d'un `SeatSync`, ramené à une **valeur** aussitôt qu'il sort de la
+ * transaction (s23, ADR 046).
+ *
+ * L'exception n'existe que pour annuler ce que la transaction a écrit : c'est
+ * le seul mécanisme d'annulation qu'une transaction offre. Elle ne remonte pas
+ * plus haut — au-dessus de cette ligne, un refus est une donnée comme les
+ * autres, et le compilateur oblige l'appelant à le traiter.
+ */
+const SEAT_SYNC_REFUSED = Symbol('seat_sync_refused')
+
+const refusingSeatSync = async <T>(
+  write: () => Promise<T>,
+): Promise<T | typeof SEAT_SYNC_REFUSED> => {
+  try {
+    return await write()
+  } catch (error) {
+    if (error instanceof SeatSyncRefusedError) {
+      return SEAT_SYNC_REFUSED
+    }
+
+    throw error
+  }
+}
 
 export function createOrganizationsUseCases(
   dependencies: OrganizationsDependencies,
@@ -557,6 +598,16 @@ export function createOrganizationsUseCases(
 
     activeOrganizationId: async (userId) => await repository.findActiveOrganizationId(userId),
 
+    /**
+     * **Les membres, et eux seuls.**
+     *
+     * Une invitation en attente n'est pas un membre : elle vit dans une autre
+     * table (`organization_invitation`), et c'est ce qui rend le critère 4 de
+     * s23 vrai par construction. Y ajouter les invitations facturerait des
+     * sièges que personne n'occupe.
+     */
+    countMembers: async (organizationId) => await repository.countMembersOf(organizationId),
+
     inviteMember: async ({ userId, body }) => {
       // L'autorisation **d'abord** : un non-membre n'apprend rien de son corps de
       // requête, pas même qu'il était mal formé.
@@ -705,13 +756,22 @@ export function createOrganizationsUseCases(
       // l'empreinte, l'adresse du destinataire et les trois conditions de vie,
       // donc un second appel — concurrent ou rejoué — ne trouve plus rien. C'est
       // la même discipline que `consume` du module `auth`.
-      const consumed = await repository.consumeInvitation({
-        tokenHash,
-        email: normalizeEmail(email),
-        userId,
-        membershipId: generateId('mbr'),
-        now: now(),
-      })
+      const consumed = await refusingSeatSync(async () =>
+        await repository.consumeInvitation({
+          tokenHash,
+          email: normalizeEmail(email),
+          userId,
+          membershipId: generateId('mbr'),
+          now: now(),
+        }),
+      )
+
+      if (consumed === SEAT_SYNC_REFUSED) {
+        // **Rien n'a été écrit** (ADR 046) : l'invitation est toujours vivante,
+        // et réessayer est la bonne action. Lui répondre « lien invalide »
+        // l'enverrait en demander une nouvelle pour rien.
+        return { status: 'refused', refusal: 'seat_sync_unavailable' }
+      }
 
       if (consumed === null) {
         // Rien n'a été consommé : on **relit** pour dire pourquoi. Un refus
@@ -765,10 +825,16 @@ export function createOrganizationsUseCases(
       // deux vérités, et laisserait la fenêtre où la cible devient propriétaire
       // entre la lecture et la suppression. La lecture ne sert donc qu'à
       // **nommer** le refus, et seulement s'il y en a un.
-      const removed = await repository.removeMember(access, {
-        userId: target,
-        unremovableRoles: unremovableRolesFor(access, target),
-      })
+      const removed = await refusingSeatSync(async () =>
+        await repository.removeMember(access, {
+          userId: target,
+          unremovableRoles: unremovableRolesFor(access, target),
+        }),
+      )
+
+      if (removed === SEAT_SYNC_REFUSED) {
+        return { status: 'refused', refusal: 'seat_sync_unavailable' }
+      }
 
       if (removed) {
         return { status: 'ok', organizationId: access.organizationId }

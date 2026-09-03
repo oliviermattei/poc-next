@@ -292,3 +292,64 @@ describe('le reste du port en mode local', () => {
     expect(!verified.ok && verified.error.code).toBe('invalid_signature')
   })
 })
+
+describe('la quantité d’un abonnement, en mode local', () => {
+  /** Ouvre le checkout, le termine, et rend l'abonnement simulé. */
+  const anOpenSubscription = async (payments: ReturnType<typeof options>) => {
+    const opened = await payments.createCheckout({ ...CHECKOUT, trialPeriodDays: null })
+    const sessionId = new URL(opened.ok ? opened.checkout.url : '').searchParams.get('session') ?? ''
+
+    payments.completeCheckout(sessionId, CHECKOUT.reference)
+
+    const listed = await payments.listSubscriptions({
+      customerId: opened.ok ? opened.checkout.customerId : '',
+    })
+
+    return { payments, subscription: listed.ok ? listed.subscriptions[0] : undefined }
+  }
+
+  it('mémorise la quantité visée, sans le moindre appel sortant', async () => {
+    // La simulation est construite avec un `fetch` qui lève : si cette écriture
+    // touchait le réseau, le cas ne serait pas seulement rouge, il serait
+    // bruyant.
+    const { payments, subscription } = await anOpenSubscription(options())
+
+    const written = await payments.updateSubscriptionQuantity({
+      subscriptionId: subscription?.id ?? '',
+      quantity: 5,
+      idempotencyKey: 'seats:organization:org_1:5',
+    })
+
+    expect(written.ok && written.subscription.quantity).toBe(5)
+
+    const relu = await payments.listSubscriptions({ customerId: subscription?.customerId ?? '' })
+
+    expect(relu.ok && relu.subscriptions[0]?.quantity).toBe(5)
+  })
+
+  it('converge au rejeu au lieu de compter deux fois', async () => {
+    const { payments, subscription } = await anOpenSubscription(options())
+    const target = {
+      subscriptionId: subscription?.id ?? '',
+      quantity: 3,
+      idempotencyKey: 'seats:organization:org_1:3',
+    }
+
+    await payments.updateSubscriptionQuantity(target)
+    await payments.updateSubscriptionQuantity(target)
+
+    const relu = await payments.listSubscriptions({ customerId: subscription?.customerId ?? '' })
+
+    expect(relu.ok && relu.subscriptions[0]?.quantity).toBe(3)
+  })
+
+  it('rend un échec pour un abonnement inconnu, au lieu de lever', async () => {
+    const written = await options().updateSubscriptionQuantity({
+      subscriptionId: 'sub_local_inconnu',
+      quantity: 2,
+      idempotencyKey: 'seats:inconnu:2',
+    })
+
+    expect(!written.ok && written.error.code).toBe('not_found')
+  })
+})

@@ -7,6 +7,7 @@ import type {
   BillingPermission,
   ScopeEmailResolver,
   ScopeResolver,
+  ScopeSeats,
   SeatCounter,
 } from '../application/ports'
 import type { BillingCatalogue } from '../domain/offer'
@@ -41,6 +42,14 @@ export interface ConfigureBillingOptions {
   readonly ownerOf: ScopeResolver
   readonly canManage: BillingPermission
   readonly seatsOf: SeatCounter
+  /**
+   * Le nombre de membres d'un périmètre, **sans appelant** (s23).
+   *
+   * Obligatoire, jamais optionnelle avec un repli : un point de composition qui
+   * l'oublierait laisserait `pnpm billing:reconcile` incapable de corriger une
+   * quantité, et cette dérive ne se découvre qu'à la facture du client.
+   */
+  readonly seatsOfScope: ScopeSeats
   readonly emailOfScope: ScopeEmailResolver
   readonly now?: () => Date
   readonly generateId?: () => string
@@ -72,6 +81,7 @@ const build = (options: ConfigureBillingOptions): BillingService => ({
     ownerOf: options.ownerOf,
     canManage: options.canManage,
     seatsOf: options.seatsOf,
+    seatsOfScope: options.seatsOfScope,
     emailOfScope: options.emailOfScope,
     now: options.now ?? (() => new Date()),
     generateId: options.generateId ?? (() => randomUUID()),

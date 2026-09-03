@@ -45,6 +45,8 @@ Un décompte se lit, il ne s'écrit pas.
 | **Le renvoi et le retrait n'agissent que dans l'organisation autorisée** | `organization_id` est dans le prédicat des deux écritures, comme pour la révocation | `tests/organizations.test.ts` — « refuse de renvoyer l'invitation d'une autre organisation » et « refuse de retirer un membre d'une autre organisation » |
 | **L'adresse invitée s'efface avec le compte qui la porte** | `purge({kind:'user'})` lit l'adresse sur le compte, puis efface les invitations qui la portent, dans toutes les organisations ; la catégorie `invitation` est déclarée et sa rétention est `erase` | `tests/organizations.test.ts` — « efface l'adresse invitée avec le compte qui la porte » |
 | **Aucun `GET` ne consomme un jeton** | la route d'acceptation est un `POST` ; l'écran d'atterrissage rend un `<form method="post">` | `tests/organizations.test.ts` — un `GET` sur le chemin d'acceptation répond 404 et l'invitation reste en attente |
+| **Un changement de taille passe chez l'extérieur avant d'être validé — sur les deux écritures où ce l'est jusqu'ici** | `consumeInvitation` et `removeMember` comptent les membres **dans leur transaction**, appellent le `SeatSync` injecté, et lèvent `SeatSyncRefusedError` — donc annulent — sur un refus (s23, ADR 046). Le module ignore qu'il existe une facturation : le couplage est au point de composition. **Balayées : les quatre écritures du module qui changent le nombre de lignes de `organization_member`.** Les deux ci-dessus synchronisent ; `deleteMembershipsOf(userId)` — le retrait d'une personne de **toutes** ses organisations, atteint par `purge({kind:'user'})` — **ne synchronise rien**, et `deleteOrganization` non plus (l'organisation entière disparaît, ses appartenances par cascade). Le premier des deux est le piège de la story qui supprimera un compte (s34) : aujourd'hui aucun défaut n'est expédié — `purgeModules` (`@repo/core`) n'a **aucun appelant hors des tests** —, mais qui câblera la suppression de compte sans l'accrocher laissera un siège facturé jusqu'à `pnpm billing:reconcile` | `tests/billing.test.ts` — « n'ajoute pas le membre quand le fournisseur refuse » et « ne retire pas le membre quand le fournisseur refuse le retrait » : **2 rouges** quand le refus cesse d'annuler. **Rien ne mesure les deux autres sites** — il n'y a rien à y mesurer tant que personne ne les appelle |
+| **Une invitation en attente n'occupe aucun siège** | `countMembersOf` compte `organization_member`, et rien d'autre ; les invitations vivent dans une autre table | `tests/billing.test.ts` — « ne facture pas l'invitation qui reste en attente » : **3 rouges** quand le comptage y ajoute les invitations vivantes |
 
 **Ce que la porte de lecture ne tient pas**, et il faut le lire avant de s'y
 fier : la règle de lint ne lit pas le SQL. À l'intérieur de `scoped-reads.ts`,
@@ -54,7 +56,10 @@ sept prédicats** : `membershipOf`, `activeOrganizationIdOf`,
 `memberIdentitiesOf`, `liveInvitationsOf`, `invitationsIssuedSince` (le
 périmètre et la fenêtre), `invitationByDigest`, plus ceux du renvoi et du
 retrait par leurs écritures ; `membershipsOf`, `membersOf` et
-`invitationsAddressedTo` ne le sont pas. Et un appel dont le nom de méthode
+`invitationsAddressedTo` ne le sont pas. `countMembersOf` (s23) n'est pas un
+prédicat de propriété mais un **comptage** : il ne sert aucune donnée à un
+appelant, il produit la quantité facturée, et ce que sa mutation doit faire
+rougir est dans `tests/billing.test.ts`. Et un appel dont le nom de méthode
 n'est pas visible à la syntaxe (`const { select } = db`) échappe au sélecteur.
 La garde **borne la surface à relire à un fichier** ; elle ne remplace pas la
 relecture.
@@ -74,6 +79,37 @@ mesurée : un fichier neuf lisant `organization` par un identifiant du corps de
 la requête passait `typecheck`, `lint` et 811 tests. C'est le genre de phrase
 qui fait qu'un agent suivant cesse de chercher (ADR 013). Ce tableau dit ce que
 chaque commande refuse, et rien de plus.
+
+## Ce qu'une écriture d'appartenance tient ouvert (s23, ADR 046)
+
+L'ADR accepte qu'« une transaction reste ouverte le temps d'un aller-retour
+HTTP ». Ce que le code livré tient est **plus cher que cette phrase**, et le
+prix est écrit ici parce qu'un ADR est immuable :
+
+- **deux** allers-retours, pas un : `updateSubscriptionQuantity`
+  (`@repo/adapter-stripe`) relit l'abonnement — la quantité vit sur sa **ligne**,
+  dont l'identifiant n'est connu que par lecture — puis l'écrit. Chacun a son
+  propre budget de reprise (`apps/web/lib/billing.ts` : deux essais de 4 s,
+  séparés d'un recul d'au plus 300 ms), soit **~8,3 s par appel et ~16,6 s pour
+  les deux**, transaction ouverte pendant tout ce temps ;
+- une **seconde connexion du même pool** : la synchronisation lit le client et
+  ses abonnements (`customerForScope`, `subscriptionsOfCustomer`) sur une autre
+  connexion pendant que la transaction en retient une. Le pool de
+  `packages/db/src/client.ts` vaut `max: 10` et `connectionTimeoutMillis: 5_000`
+  — la concurrence utile des écritures d'appartenance tombe donc à **cinq**, la
+  sixième attend 5 s puis échoue ;
+- sur le **retrait** seulement, le verrou consultatif de l'organisation
+  (`lockOrganizationMembership`) est tenu pendant toute cette attente : les
+  retraits et rétrogradations de la **même** organisation se mettent en file
+  derrière. L'acceptation d'invitation, elle, ne prend pas ce verrou.
+
+Le pire cas dépasse donc les **dix secondes d'une fonction serverless** que
+`apps/web/lib/billing.ts` invoque précisément pour dimensionner son budget. Le
+mode de défaillance reste sain — l'épuisement du pool lève une exception qui
+n'est **pas** un `SeatSyncRefusedError` : elle remonte et annule, rien n'est
+corrompu et personne n'est surfacturé — mais c'est une dégradation réelle, et
+elle est **raisonnée, pas observée** : personne n'a encore lancé une douzaine
+d'acceptations simultanées contre un fournisseur lent.
 
 ## Deux choses qui ressemblent à des bugs et n'en sont pas
 

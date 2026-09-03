@@ -11,6 +11,8 @@ import type {
   ListSubscriptionsResult,
   PaymentPurchase,
   Payments,
+  UpdateSubscriptionQuantityInput,
+  UpdateSubscriptionQuantityResult,
   VerifyWebhookInput,
   VerifyWebhookResult,
 } from '@repo/ports'
@@ -280,6 +282,64 @@ export function createLocalPayments(options: LocalPaymentsOptions): LocalPayment
           entry.ok && entry.event.kind === 'subscription_changed' ? [entry.event.subscription] : [],
         ),
       }
+    },
+
+    /**
+     * **La seule écriture de la simulation** (s23, ADR 046).
+     *
+     * Elle mémorise la quantité **visée** sur l'abonnement simulé, sans le
+     * moindre appel sortant — le `fetch` injecté du vérificateur lève, ce qui
+     * rendrait bruyante toute tentative. Un rejeu de la même cible converge :
+     * c'est une affectation, jamais un incrément, et c'est exactement ce que la
+     * clé d'idempotence garantit chez le vrai fournisseur.
+     *
+     * Abonnement inconnu : un échec, jamais une exception — un simulateur ne
+     * lève pas plus qu'un port.
+     */
+    updateSubscriptionQuantity: async (
+      input: UpdateSubscriptionQuantityInput,
+    ): Promise<UpdateSubscriptionQuantityResult> => {
+      const subscription = subscriptions.get(input.subscriptionId)
+
+      if (subscription === undefined) {
+        return {
+          ok: false,
+          error: {
+            code: 'not_found',
+            message: 'aucun abonnement simulé ne porte cet identifiant',
+            attempts: 1,
+          },
+        }
+      }
+
+      const items = (subscription['items'] as { data?: Record<string, unknown>[] }).data ?? []
+
+      for (const item of items) {
+        item['quantity'] = input.quantity
+      }
+
+      // La normalisation est **celle de l'adaptateur**, comme partout ici : la
+      // simulation ne produit pas une forme à elle.
+      const read = await verifier.verifyWebhook(
+        sign({
+          id: `evt_local_seats_${input.subscriptionId}_${input.quantity}`,
+          object: 'event',
+          api_version: null,
+          created: seconds(now()),
+          livemode: false,
+          pending_webhooks: 0,
+          request: { id: null, idempotency_key: input.idempotencyKey },
+          type: 'customer.subscription.updated',
+          data: { object: subscription },
+        }),
+      )
+
+      return read.ok && read.event.kind === 'subscription_changed'
+        ? { ok: true, subscription: read.event.subscription }
+        : {
+            ok: false,
+            error: { code: 'invalid_request', message: 'abonnement illisible', attempts: 1 },
+          }
     },
 
     /**

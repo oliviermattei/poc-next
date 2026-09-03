@@ -185,6 +185,38 @@ export interface ScopedReads {
   ): Promise<readonly InvitationRecord[]>
 }
 
+/**
+ * **Le nombre de membres d'une organisation** — la quantité que s23 facture.
+ *
+ * Une fonction libre plutôt qu'une méthode de `ScopedReads`, et c'est la seule
+ * de ce fichier : elle reçoit son lecteur en second paramètre parce que
+ * l'appelant qui compte est une **transaction en cours** (ADR 046). Le nombre
+ * doit être celui que l'écriture vient de produire, avant qu'elle soit validée ;
+ * le lire sur la connexion le lirait sur l'état d'avant, ou sur un état qu'une
+ * autre transaction a déjà changé.
+ *
+ * Elle est ici, dans la porte de lecture, pour la raison qui a fait exister
+ * cette porte : `pnpm lint` refuse `select` et `from` partout ailleurs dans le
+ * module, si bien que la surface à relire pour savoir *ce que ce module lit*
+ * tient toujours dans ce fichier.
+ *
+ * **Elle compte `organization_member`, et rien d'autre.** Une invitation en
+ * attente n'occupe pas de siège : elle vit dans `organization_invitation`, et
+ * c'est ce qui rend le critère 4 de s23 vrai par construction plutôt que par
+ * filtrage.
+ */
+export async function countMembersOf(
+  scope: PlatformOrganizationScope,
+  reader: ReadableDatabase,
+): Promise<number> {
+  const [row] = await reader
+    .select({ members: count() })
+    .from(organizationMember)
+    .where(eq(organizationMember.organizationId, scope.organizationId))
+
+  return row?.members ?? 0
+}
+
 export function createScopedReads(db: ReadableDatabase): ScopedReads {
   /** La jointure de base : une appartenance et l'organisation qu'elle désigne. */
   const membershipQuery = () =>
