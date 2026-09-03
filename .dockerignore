@@ -1,0 +1,42 @@
+# **Ce qui n'entre jamais dans le contexte de build.**
+#
+# Un secret dans un artefact de build est un manquement au socle de sécurité
+# (`docs/security.md` §5) : il survit dans une couche d'image, dans un registre,
+# et dans tout ce qui repart de cette image. Le premier bloc ci-dessous rend la
+# faute structurellement impossible — le fichier n'est jamais copié, quoi
+# qu'écrive un `COPY . .`. `tests/deployment.test.ts` le vérifie.
+#
+# Rien n'est réintroduit par une négation : une exception ici (`!.env.example`)
+# rouvrirait exactement le trou que ce fichier ferme.
+**/.env
+**/.env.*
+
+# Rien de ce qui porte une clé, un jeton ou un certificat.
+**/*.pem
+**/*.key
+**/id_rsa*
+**/.npmrc
+**/.aws
+**/.ssh
+
+# Ce que l'image reconstruit elle-même : recopier le `node_modules` du poste
+# mêlerait des binaires natifs macOS à une image Linux.
+**/node_modules
+**/.next
+**/dist
+**/.turbo
+**/*.tsbuildinfo
+
+# L'historique, les worktrees des stories, les artefacts de test et les données
+# locales — aucun n'a de rôle dans une image de production.
+.git
+.github
+.worktrees
+.mail
+.storage
+.storage-e2e
+playwright-report
+blob-report
+test-results
+test-results-parcours-dore
+test-results-profil-minimal

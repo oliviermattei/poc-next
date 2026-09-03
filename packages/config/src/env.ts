@@ -519,11 +519,18 @@ export interface AssertStartupEnvOptions {
  * Le build est exempté : `next build` s'exécute sans les variables d'exécution,
  * en CI comme en conteneur.
  *
- * Deux frontières connues, mesurées en revue de s01 (N15, N16) :
- * - la garde ne couvre que le **démarrage auto-hébergé**. En serverless (Vercel)
- *   comme en `output: 'standalone'`, `next.config.ts` n'est pas exécuté à la
- *   requête : une variable malformée s'y déploie sans bruit et dégrade en 503
- *   silencieux. La sonde `/api/health` reste alors le seul signal ;
+ * Deux frontières connues, mesurées en revue de s01 (N15, N16). La première a
+ * changé de nature en s27 (ADR 049) :
+ * - **`next.config.ts` n'est pas le point de démarrage en production.** En
+ *   `output: 'standalone'` comme en serverless, il n'est pas chargé au démarrage
+ *   du serveur : la configuration y est sérialisée dans `server.js`. La garde
+ *   est donc appelée **aussi** par `apps/web/instrumentation.ts`, que Next
+ *   exécute une fois par instance de serveur — et l'image de production refuse
+ *   alors de démarrer en nommant la variable fautive, au lieu de dégrader en 503
+ *   silencieux. Ce qui reste vrai en serverless : `instrumentation.ts` s'y
+ *   exécute, mais aucun orchestrateur n'y lit de code de sortie ; la sonde
+ *   `/api/health` y demeure le signal, et ce point-là n'a pas été mesuré sur
+ *   Vercel ;
  * - `next info` charge la configuration avec sa propre phase, non exemptée : la
  *   commande de diagnostic s'interrompt précisément quand l'environnement est
  *   cassé. Contournement : `SKIP_ENV_VALIDATION=1 next info`.

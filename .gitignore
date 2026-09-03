@@ -1,6 +1,9 @@
 node_modules/
 .env
 .env.local
+# La configuration de la pile de production (s27), que l'exploitant rédige
+# d'après la checklist de `docs/deployment.md`. Elle porte de vrais secrets.
+.env.production
 .DS_Store
 .worktrees/
 

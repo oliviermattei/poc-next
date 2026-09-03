@@ -1,0 +1,138 @@
+# **La pile de production** : l'application, sa base, et les migrations entre
+# les deux (s27).
+#
+#   docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+#
+# Ce fichier n'est **pas** `docker-compose.yml`, qui ne sert qu'une base de
+# développement sur le port du poste. Ici, la base n'est publiée sur aucun port :
+# elle n'est jointe que depuis le réseau de la pile. Seule l'application sort, et
+# sur un port que l'exploitant choisit.
+#
+# Aucun secret n'est écrit ici. Tout vient de l'environnement d'interpolation —
+# `.env.production` passé en `--env-file`, un `.env` posé à côté du fichier, ou
+# les variables exportées par la plateforme. `.dockerignore` empêche ces
+# fichiers d'entrer dans l'image, `.gitignore` les empêche d'entrer dans le
+# dépôt, et la checklist qui les décrit vit dans `docs/deployment.md`.
+
+# **La configuration des conteneurs, par l'interpolation et par elle seule.**
+#
+# Un `env_file` ne sert que l'exploitant qui écrit un fichier. Une plateforme
+# qui *exporte* ses variables — le chemin que le guide Coolify recommande —
+# interpole correctement `${APP_PORT}` et ne donne **rien** aux conteneurs.
+# Mesuré aussi, et c'est ce qui interdit de cumuler les deux mécanismes : une
+# entrée `environment: - CLE` dont la variable n'est pas posée à l'interpolation
+# **efface** la valeur venue d'`env_file`, et la variable disparaît de
+# l'environnement du conteneur.
+#
+# Une seule voie, donc, alimentée par les trois chemins qui existent :
+#
+#   docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+#   # ou un `.env` à côté du fichier, que Compose lit de lui-même
+#   # ou des variables exportées par la plateforme
+#
+# Une variable non posée s'interpole en chaîne vide, que `packages/config`
+# traite comme absente (`withoutBlanks`) : le conteneur refuse alors de démarrer
+# en la nommant, ce qui est le comportement voulu.
+#
+# `NODE_ENV` fait exception, parce que vide elle vaudrait `development` et que
+# les modes locaux redeviendraient acceptables. Mesuré : le serveur autonome de
+# Next la **repose lui-même** à `production` — un conteneur `web` dont
+# l'environnement porte `NODE_ENV=development` refuse quand même de démarrer sur
+# `STORAGE_LOCAL_DIRECTORY … avec NODE_ENV=production`. Le conteneur de
+# migration, lui, n'a pas ce filet : c'est pour lui que le défaut compte.
+#
+# La liste est comparée à `ENV_KEYS` par `tests/deployment.test.ts`, dans les
+# deux sens : elle ne peut ni oublier une variable du schéma, ni en nommer une
+# qui n'existe plus.
+x-application-environment: &application-environment
+  NODE_ENV: ${NODE_ENV:-production}
+  DATABASE_URL: ${DATABASE_URL:-}
+  RESEND_API_KEY: ${RESEND_API_KEY:-}
+  EMAIL_LOCAL_CAPTURE: ${EMAIL_LOCAL_CAPTURE:-}
+  I18N_MISSING_KEY_PROBE: ${I18N_MISSING_KEY_PROBE:-}
+  CONSENT_SCRIPT_PROBE: ${CONSENT_SCRIPT_PROBE:-}
+  AUTH_SECRET: ${AUTH_SECRET:-}
+  APP_URL: ${APP_URL:-}
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+  GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+  GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+  OAUTH_LOCAL_PROVIDER: ${OAUTH_LOCAL_PROVIDER:-}
+  PAYMENTS_RECORDED_EVENTS: ${PAYMENTS_RECORDED_EVENTS:-}
+  STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-}
+  STORAGE_S3_REGION: ${STORAGE_S3_REGION:-}
+  STORAGE_S3_ACCESS_KEY_ID: ${STORAGE_S3_ACCESS_KEY_ID:-}
+  STORAGE_S3_SECRET_ACCESS_KEY: ${STORAGE_S3_SECRET_ACCESS_KEY:-}
+  STORAGE_S3_ENDPOINT: ${STORAGE_S3_ENDPOINT:-}
+  STORAGE_LOCAL_DIRECTORY: ${STORAGE_LOCAL_DIRECTORY:-}
+  STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+  STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+  PAYMENTS_LOCAL_MODE: ${PAYMENTS_LOCAL_MODE:-}
+  EMAIL_FROM: ${EMAIL_FROM:-}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?renseignez POSTGRES_USER dans .env.production}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?renseignez POSTGRES_PASSWORD dans .env.production}
+      POSTGRES_DB: ${POSTGRES_DB:-app}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # Ce qui arme la dépendance des migrations : sans lui, elles démarreraient
+      # sur une base qui n'écoute pas encore et échoueraient sur une connexion
+      # refusée — un échec de déploiement dû à l'ordre, pas au schéma.
+      test:
+        ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-app}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # **Les migrations, avant le basculement du trafic** (critère 3).
+  #
+  # Un conteneur qui joue `pnpm db:migrate` puis sort. Son code de sortie est
+  # tout le mécanisme : `web` en dépend par `service_completed_successfully`,
+  # donc une migration en échec **empêche la nouvelle version de démarrer**, et
+  # aucun trafic n'atteint un schéma à moitié appliqué. `restart: "no"` : une
+  # migration qu'on relance en boucle masquerait l'échec.
+  #
+  # **Ce n'est pas une continuité de service.** Mesuré sur une pile déjà en
+  # service : `up -d --build` détruit le conteneur `web` précédent *avant* de
+  # jouer `migrate`, si bien qu'une migration en échec laisse la pile sans rien
+  # qui réponde. Pour ne pas couper, jouer les migrations seules d'abord —
+  # `docker compose ... run --rm migrate` — et ne lancer l'`up` que si elles
+  # passent (`docs/deployment.md`).
+  migrate:
+    build:
+      context: .
+      target: migrator
+    # La même configuration que `web` — exactement ce que faisait l'`env_file`
+    # unique que ce bloc remplace. `pnpm db:migrate` n'exige que `DATABASE_URL`
+    # (vérifié sur le schéma : `getEnv({ DATABASE_URL })` seul est accepté),
+    # mais lui tailler une liste à part ferait diverger deux listes pour une
+    # seule vérité, et la prochaine variable n'irait qu'à moitié.
+    environment: *application-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  web:
+    build:
+      context: .
+      target: runner
+    environment: *application-environment
+    ports:
+      - '${APP_PORT:-3000}:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
