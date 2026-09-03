@@ -5,6 +5,7 @@ import type { Payments } from '@repo/ports'
 import { createBillingUseCases, type BillingUseCases } from '../application/billing-use-cases'
 import type {
   BillingPermission,
+  GuestAccounts,
   ScopeEmailResolver,
   ScopeResolver,
   ScopeSeats,
@@ -13,8 +14,10 @@ import type {
 import type { BillingCatalogue } from '../domain/offer'
 import {
   createDrizzleBillingRepository,
+  createDrizzleCheckoutThrottle,
   type BillingDatabase,
 } from './drizzle-billing-repositories'
+import { createGuestScopeIdGenerator } from './guest-scope-id'
 
 /**
  * Le service du module, **construit à la première requête**, pas à l'import.
@@ -51,8 +54,39 @@ export interface ConfigureBillingOptions {
    */
   readonly seatsOfScope: ScopeSeats
   readonly emailOfScope: ScopeEmailResolver
+  /**
+   * **Le compte d'un paiement invité** (s24, ADR 047).
+   *
+   * Obligatoire, jamais optionnelle avec un repli : un point de composition qui
+   * l'oublierait laisserait la route publique de checkout ouverte et le webhook
+   * incapable de rattacher le paiement à qui que ce soit — un client prélevé
+   * sans compte, et rien pour le dire.
+   */
+  readonly guestAccounts: GuestAccounts
+  /**
+   * **Où repart un visiteur quand le canal anonyme est saturé** (constat F3 de
+   * la revue de s24).
+   *
+   * Obligatoire pour la même raison que la précédente : un point de
+   * composition qui l'oublierait laisserait la seule dégradation de la route
+   * publique sans destination, et le seau global ne pourrait plus que refuser.
+   */
+  readonly guestFallbackUrl: (input: {
+    readonly offerId: string
+    readonly locale: string | null
+  }) => string
   readonly now?: () => Date
   readonly generateId?: () => string
+  /**
+   * L'identifiant d'un périmètre invité (ADR 047).
+   *
+   * Par défaut, **un tirage cryptographique de trente-deux octets**. Il est
+   * distinct de `generateId` — que les suites remplacent volontiers par un
+   * compteur — parce qu'un identifiant invité prévisible permettrait de viser
+   * la ligne d'un autre, et de faire promouvoir son paiement vers son propre
+   * compte.
+   */
+  readonly generateGuestScopeId?: () => string
 }
 
 export interface BillingService {
@@ -83,8 +117,12 @@ const build = (options: ConfigureBillingOptions): BillingService => ({
     seatsOf: options.seatsOf,
     seatsOfScope: options.seatsOfScope,
     emailOfScope: options.emailOfScope,
+    throttle: createDrizzleCheckoutThrottle(options.db),
+    guestFallbackUrl: options.guestFallbackUrl,
+    guestAccounts: options.guestAccounts,
     now: options.now ?? (() => new Date()),
     generateId: options.generateId ?? (() => randomUUID()),
+    generateGuestScopeId: options.generateGuestScopeId ?? createGuestScopeIdGenerator(),
   }),
 })
 

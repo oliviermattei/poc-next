@@ -778,6 +778,68 @@ voudrait un formulaire natif vers le fournisseur devra déclarer ces origines,
 avec la justification écrite qu'exige `docs/security.md` §1 — voir
 `docs/research/s19-subscribe-stripe.md` §7.
 
+## Le paiement d'un visiteur sans compte (s24)
+
+Un sixième fichier rejoint les cinq du montage de la facturation, et il porte
+**une** règle : `lib/guest-account.ts` — quel compte reçoit un paiement invité,
+et **quel lien lui est envoyé**.
+
+Il est ici, et pas dans le module, parce que `billing` ne déclare aucun
+`requires` (ADR 034) et ne connaît pas `auth` : créer un compte depuis le
+webhook ne peut se faire qu'au point de composition, comme `seatsOf`,
+`emailOfScope` et `seatSync`. Il est séparé de `lib/billing.ts` pour la raison
+qui a déjà sorti la permission : branché dans `tests/billing.test.ts` sur le
+**vrai** service d'authentification et le **vrai** port `Mailer`, il est
+neutralisable — et il rougit.
+
+| L'adresse du paiement | Ce qui part |
+|---|---|
+| **aucun compte** | un lien de **définition de mot de passe** |
+| **un compte existe déjà** | un **magic link**, et rien d'autre |
+
+**La seconde ligne n'est pas négociable.** N'importe qui peut payer en
+saisissant l'adresse d'un tiers : envoyer alors un lien de définition de mot de
+passe transformerait un paiement en chemin de réinitialisation déclenchable par
+un tiers, sans possession du mot de passe actuel. La boîte mail reste la
+barrière dans les deux cas, mais l'un ne fait que connecter le titulaire,
+l'autre écrase son secret.
+
+**Aucune session n'est jamais ouverte au retour de paiement.** Ni depuis un
+paramètre d'URL, ni depuis un identifiant de session de paiement. La page de
+retour d'un visiteur anonyme est la page **publique** de tarifs — `/billing`
+exige une session, et il n'en a pas — et elle n'y affiche qu'un **bandeau** :
+elle ne lit pas la base, ne pose aucun cookie, et rend exactement la même chose
+pour un `session_id` authentique et pour un forgé. C'est la discipline que s19 a
+posée pour `/billing`, étendue au parcours invité (critère 7). L'état réel est
+écrit par le **webhook**, et il se lit sur `/billing` une fois la personne
+connectée par le lien reçu.
+
+**Le déclencheur des tarifs vise deux routes, et une seule garde a changé.**
+Sans session, `BillingAction` poste sur la route **publique** du module ; avec
+une session, sur la route `authenticated` de s19, dont la garde n'a pas bougé.
+Le corps est identique — un identifiant d'offre, une langue. La page ne mène
+donc plus le visiteur anonyme à la connexion : c'était le quatrième critère de
+s22, et s24 le remplace.
+
+**Sauf quand le canal anonyme est saturé** (constat F3 de la revue de s24). La
+route publique porte un second seau de limitation de débit, sans clé, qui borne
+le **coût total** — chaque ouverture crée un client et une session chez le
+fournisseur, plus une ligne que rien n'effacera. Plein, il ne refuse pas : le
+module rend l'URL de `guestFallbackUrl` (`lib/billing.ts`), c'est-à-dire
+`/sign-in?next=/pricing?offer=…` — le déclencheur d'avant s24, exactement. Le
+navigateur y va par le même `window.location.assign` que vers le fournisseur :
+aucune branche de plus dans `app/billing-actions.tsx`, et rien à traduire. La
+locale du corps de requête passe par `resolveLocale` avant d'entrer dans cette
+URL : une valeur venue du navigateur ne compose jamais un chemin de notre
+origine.
+
+`lib/guest-account.ts` est aussi **la seule exception nommée** de la garde
+« aucun répartiteur de webhooks dans `apps/web` »
+(`tests/module-registry.test.ts`) : il passe une requête à la surface
+pass-through du module `auth` (`AuthService.handle`), ce qui n'est pas une
+répartition — aucun contrat de module n'y est lu. L'exception est nommée plutôt
+que le motif élargi, et le test vérifie que le fichier existe encore.
+
 ## Le gating par offre (s21)
 
 Deux fichiers, sur le modèle du catalogue et de la permission de facturation —

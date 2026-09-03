@@ -837,9 +837,38 @@ describe('webhook déclaré par un module', () => {
     /** Appeler un gestionnaire de webhook : c'est cela, répartir. */
     const invokes = (path: string): boolean => /\.handle\s*\(/.test(readFileSync(path, 'utf8'))
 
+    /**
+     * **La seule exception, nommée** (s24).
+     *
+     * `lib/guest-account.ts` passe une requête à la surface pass-through du
+     * module `auth` (`AuthService.handle`) pour créer le compte d'un paiement
+     * invité — le module `billing` ne connaît pas `auth` (ADR 034). Ce n'est
+     * pas une répartition de webhook : aucun contrat de module n'y est lu, et
+     * la sonde `.webhooks` ci-dessous continue de le vérifier pour ce fichier
+     * comme pour les autres.
+     *
+     * Nommée plutôt qu'élargie : un motif assoupli laisserait passer le
+     * répartiteur que ce cas existe pour interdire, et personne ne le verrait.
+     * L'existence du fichier est vérifiée juste après — une exception qui ne
+     * désigne plus rien doit disparaître.
+     *
+     * **Ce que cette exception coûte, et le seuil à surveiller** (constat F8 de
+     * la revue de s24) : `/\.handle\s*\(/` ne distingue pas une répartition
+     * d'un appel pass-through — c'est désormais ce commentaire, et non le
+     * motif, qui porte la différence. Une **deuxième** exception veut dire que
+     * le motif ne décrit plus ce qu'il cherche : il faudra alors reconnaître la
+     * répartition à ce qu'elle lit (`.webhooks` d'un contrat de module) plutôt
+     * qu'au nom de la méthode appelée, et non allonger la liste.
+     */
+    const PASS_THROUGH = join(REPO_ROOT, 'apps/web/lib/guest-account.ts')
+
+    expect(application, 'l’exception nommée ne désigne plus aucun fichier').toContain(PASS_THROUGH)
+
     const dispatching = [
       ...application.filter(
-        (path) => invokes(path) || /\.webhooks\b/.test(readFileSync(path, 'utf8')),
+        (path) =>
+          (invokes(path) && path !== PASS_THROUGH) ||
+          /\.webhooks\b/.test(readFileSync(path, 'utf8')),
       ),
       ...core.filter(invokes),
     ]

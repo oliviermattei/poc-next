@@ -1,5 +1,6 @@
 import type { ModuleScope } from '@repo/core'
 
+import type { BillingScopeKind } from '../domain/guest'
 import type { PurchaseStatus } from '../domain/purchase'
 import type { SubscriptionStatus } from '../domain/subscription'
 
@@ -11,10 +12,18 @@ import type { SubscriptionStatus } from '../domain/subscription'
  * Aucun de ces ports ne connaît une requête HTTP, un en-tête ou une table.
  */
 
-/** Le lien entre un périmètre du produit et un client du fournisseur. */
+/**
+ * Le lien entre un périmètre du produit et un client du fournisseur.
+ *
+ * `scopeKind` porte **trois** valeurs et non deux (ADR 047) : `user`,
+ * `organization`, et `guest` — le périmètre d'un visiteur qui paie sans compte,
+ * qui n'existe qu'au stockage. `ModuleScope` en garde deux, et
+ * `accountScopeOfCustomer` (`domain/guest.ts`) est le seul passage de l'un à
+ * l'autre : il refuse l'invité plutôt que d'en faire un compte imaginaire.
+ */
 export interface BillingCustomerRecord {
   readonly id: string
-  readonly scopeKind: ModuleScope['kind']
+  readonly scopeKind: BillingScopeKind
   readonly scopeId: string
   readonly providerCustomerId: string
 }
@@ -159,6 +168,23 @@ export interface BillingRepository {
     readonly providerCustomerId: string
   }): Promise<BillingCustomerRecord>
 
+  /**
+   * Rattache un client du fournisseur à un périmètre **invité** (ADR 047).
+   *
+   * Distincte de `linkCustomer`, et la distinction est le point : `linkCustomer`
+   * prend un `ModuleScope`, qui n'a que deux formes et n'en aura pas de
+   * troisième. Le périmètre invité n'existe qu'ici, en deux colonnes de texte.
+   *
+   * Elle est appelée **à l'ouverture du tunnel**, comme sa voisine : c'est ce
+   * qui préserve la garantie d'ordre de l'ADR 034 pour un visiteur qui n'a pas
+   * encore de compte.
+   */
+  linkGuestCustomer(input: {
+    readonly id: string
+    readonly guestScopeId: string
+    readonly providerCustomerId: string
+  }): Promise<BillingCustomerRecord>
+
   /** Le périmètre auquel ce client du fournisseur appartient, ou `null`. */
   customerByProviderId(providerCustomerId: string): Promise<BillingCustomerRecord | null>
 
@@ -222,6 +248,16 @@ export interface BillingRepository {
     readonly eventId: string
     readonly type: string
     readonly effect: BillingEffect
+    /**
+     * La **promotion** d'une ligne invitée vers un compte (ADR 047), appliquée
+     * dans la **même transaction** que le journal et l'effet.
+     *
+     * Elle s'ajoute à l'effet plutôt que d'en être un : un achat unique invité
+     * porte les deux à la fois — la ligne d'achat passe à « payé » *et* la
+     * ligne client change de périmètre —, et un événement ne journalise qu'une
+     * fois.
+     */
+    readonly promotion?: GuestPromotion | null
   }): Promise<boolean>
 
   /** Tous les clients connus. Point d'entrée de la réconciliation. */
@@ -328,3 +364,69 @@ export type ScopeSeats = (scope: ModuleScope) => Promise<number | null>
  * l'adresse vient — il ne connaît ni `auth`, ni `organizations`.
  */
 export type ScopeEmailResolver = (scope: ModuleScope, userId: string) => Promise<string | null>
+
+/**
+ * **La promotion d'une ligne invitée vers un compte** (ADR 047).
+ *
+ * Une mise à jour, jamais une insertion : la ligne existe depuis l'ouverture du
+ * tunnel, et `provider_customer_id` — sur lequel tout événement résout son
+ * propriétaire — ne change pas. C'est ce qui préserve intacte la garantie
+ * d'ordre de l'ADR 034.
+ */
+export interface GuestPromotion {
+  readonly providerCustomerId: string
+  readonly userId: string
+}
+
+/**
+ * **Le compteur partagé entre instances de la route publique de checkout**
+ * (`docs/security.md` §7).
+ *
+ * `hit` **incrémente et rend le compte** en une seule opération : lire puis
+ * écrire laisserait deux instances observer le même compte et le dépasser
+ * toutes les deux. La fenêtre est décidée par l'appelant — le domaine
+ * l'aligne — et l'implémentation condense la clé avant de l'écrire.
+ */
+export interface CheckoutThrottle {
+  hit(input: { readonly bucket: string; readonly windowStart: Date }): Promise<number>
+
+  /**
+   * Efface les seaux dont la fenêtre est **close**, et rend le nombre de lignes
+   * effacées.
+   *
+   * Sans lui, la table ne se vide jamais : un seau par identifiant d'appelant,
+   * et l'identifiant vient d'un en-tête que le client écrit lui-même. Il rend
+   * le compte parce qu'une purge se **prouve en l'exécutant**
+   * (`docs/reliability.md` §1), pas en la déclarant.
+   */
+  sweep(before: Date): Promise<number>
+}
+
+/** Le compte auquel un paiement invité est rattaché (ADR 047). */
+export interface GuestAccount {
+  readonly userId: string
+  /** Le compte **vient d'être créé**, ou existait déjà (critère 4 de s24). */
+  readonly created: boolean
+}
+
+/**
+ * **Le compte d'un paiement invité, résolu par le point de composition.**
+ *
+ * Le module `billing` ne déclare aucun `requires` (ADR 034) et ne connaît pas
+ * `auth` : créer un compte depuis le webhook ne peut donc pas se faire ici.
+ * C'est la même forme que `seatsOf` et `seatSync` (s23) — le module dit ce dont
+ * il a besoin, l'application sait comment le fournir.
+ *
+ * `accountFor` est **idempotent par l'adresse** : un événement rejoué retrouve
+ * le compte au lieu d'en fabriquer un second (critère 6). `sendAccessLink`
+ * n'est appelée que lorsque la promotion a **réellement** eu lieu, et c'est
+ * elle qui décide de la nature du lien — jamais le module, qui ne sait pas ce
+ * qu'est un mot de passe.
+ */
+export interface GuestAccounts {
+  accountFor(input: { readonly email: string }): Promise<GuestAccount | null>
+  sendAccessLink(input: {
+    readonly account: GuestAccount
+    readonly email: string
+  }): Promise<void>
+}

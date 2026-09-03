@@ -16,6 +16,19 @@ import {
   type BillingMode,
   type BillingOffer,
 } from '../domain/offer'
+import {
+  checkoutWindowStartOf,
+  exceedsCheckoutRateLimit,
+  guestCheckoutBucket,
+  GUEST_CHECKOUT_GLOBAL_BUCKET,
+  GUEST_CHECKOUT_RATE_LIMIT,
+} from '../domain/checkout-throttle'
+import {
+  accountScopeOfCustomer,
+  guestPaymentEmailOf,
+  guestScopeReference,
+  isGuestScopeKind,
+} from '../domain/guest'
 import { billableSeats, offerSyncsSeats } from '../domain/seats'
 import {
   entitledOfferIds,
@@ -36,6 +49,10 @@ import type {
   BillingEffect,
   BillingPermission,
   BillingRepository,
+  CheckoutThrottle,
+  GuestAccount,
+  GuestAccounts,
+  GuestPromotion,
   PurchaseRecord,
   BillingCustomerRecord,
   ScopeEmailResolver,
@@ -89,6 +106,15 @@ export type CheckoutRefusal =
   | 'provider_unavailable'
 
 export type PortalRefusal = 'forbidden' | 'no_customer' | 'provider_unavailable'
+
+/**
+ * Les refus du checkout **invité** (s24).
+ *
+ * Trois, et aucun n'est `forbidden` : la route est publique, il n'y a personne
+ * à autoriser. `rate_limited` est le seul refus neuf du dépôt sur un chemin de
+ * paiement — c'est le prix d'ouvrir une route publique qui appelle un tiers.
+ */
+export type GuestCheckoutRefusal = 'unknown_offer' | 'rate_limited' | 'provider_unavailable'
 
 export type RedirectOutcome<TRefusal> =
   | { readonly ok: true; readonly url: string }
@@ -218,8 +244,39 @@ export interface BillingDependencies {
    */
   readonly seatsOfScope: ScopeSeats
   readonly emailOfScope: ScopeEmailResolver
+  /**
+   * **Le compteur partagé** de la route publique de checkout (s24,
+   * `docs/security.md` §7). En base, jamais en mémoire de processus.
+   */
+  readonly throttle: CheckoutThrottle
+  /**
+   * **Où repart un visiteur quand le canal anonyme est saturé** (constat F3 de
+   * la revue de s24).
+   *
+   * Le seau global ne refuse pas, il dégrade : au-delà du seuil, le tunnel
+   * n'est pas ouvert et le navigateur part vers cette adresse. Elle est fournie
+   * par le point de composition parce que ce module ne connaît pas `auth` et
+   * ignore ce qu'est un écran de connexion — la même raison que
+   * `guestAccounts`. L'offre voyage avec, pour être reposée au retour
+   * (ADR 045).
+   */
+  readonly guestFallbackUrl: (input: {
+    readonly offerId: string
+    readonly locale: string | null
+  }) => string
+  /**
+   * **Le compte d'un paiement invité**, résolu par le point de composition
+   * (s24, ADR 047) : ce module ne connaît pas `auth`.
+   */
+  readonly guestAccounts: GuestAccounts
   readonly now: () => Date
   readonly generateId: () => string
+  /**
+   * L'identifiant d'un périmètre invité — **un tirage cryptographique**
+   * (ADR 047), distinct de `generateId` pour qu'aucune suite ne puisse le
+   * remplacer par un compteur sans le dire.
+   */
+  readonly generateGuestScopeId: () => string
 }
 
 export interface BillingUseCases {
@@ -228,6 +285,27 @@ export interface BillingUseCases {
     readonly offerId: string
     readonly locale: string | null
   }): Promise<RedirectOutcome<CheckoutRefusal>>
+  /**
+   * **Ouvrir un tunnel sans compte** (s24, critère 1).
+   *
+   * Une entrée **voisine** d'`openCheckout`, jamais un assouplissement de
+   * celle-ci : `openCheckout` exige une session et une permission, et affaiblir
+   * cette garde pour servir l'anonyme mettrait en danger le chemin authentifié.
+   *
+   * `client` est ce que le serveur croit savoir de l'appelant — un en-tête,
+   * donc falsifiable. Il ne sert qu'au seau de limitation de débit, jamais à
+   * une autorisation.
+   *
+   * L'URL rendue est **la destination suivante du navigateur**, et ce n'est pas
+   * toujours celle du fournisseur : quand le seau global est saturé, c'est
+   * celle de `guestFallbackUrl` — la connexion, avec l'offre en poche. Rien
+   * n'est alors ouvert ni écrit.
+   */
+  openGuestCheckout(input: {
+    readonly offerId: string
+    readonly locale: string | null
+    readonly client: string
+  }): Promise<RedirectOutcome<GuestCheckoutRefusal>>
   openPortal(input: {
     readonly session: { readonly userId: string; readonly roles: readonly string[] }
   }): Promise<RedirectOutcome<PortalRefusal>>
@@ -295,16 +373,18 @@ export const billingScopeReference = (scope: ModuleScope): string =>
 const referenceOf = billingScopeReference
 
 /**
- * Le périmètre que désigne une ligne client — **jamais reçu d'une requête**.
+ * Le périmètre que désigne une ligne client — **jamais reçu d'une requête**, et
+ * `null` pour un invité.
  *
  * Il est reconstruit depuis ce que nous avons écrit à l'ouverture du checkout,
  * pour la seule commande qui parcourt les clients sans appelant :
- * `pnpm billing:reconcile`.
+ * `pnpm billing:reconcile`. La règle vit dans le `domain` (`accountScopeOfCustomer`)
+ * parce que c'est la règle d'ADR 047 : une ligne invitée n'est le périmètre
+ * d'aucun compte, et la reconstruire en `user:<jeton>` fabriquerait un compte
+ * que personne n'a créé.
  */
-const scopeOfCustomer = (customer: BillingCustomerRecord): ModuleScope =>
-  customer.scopeKind === 'organization'
-    ? { kind: 'organization', organizationId: customer.scopeId }
-    : { kind: 'user', userId: customer.scopeId }
+const scopeOfCustomer = (customer: BillingCustomerRecord): ModuleScope | null =>
+  accountScopeOfCustomer(customer)
 
 /**
  * **La clé d'idempotence d'une correction de quantité** (s23, ADR 046).
@@ -394,8 +474,12 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
     seatsOf,
     seatsOfScope,
     emailOfScope,
+    throttle,
+    guestFallbackUrl,
+    guestAccounts,
     now,
     generateId,
+    generateGuestScopeId,
   } = dependencies
 
   const returnUrl = (query: string): string => `${appUrl}/billing${query}`
@@ -538,7 +622,168 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
     return { kind: 'none' }
   }
 
+  /**
+   * **Le retour d'un paiement invité** — la page publique de tarifs.
+   *
+   * Pas `/billing` : cet écran-là exige une session, et le visiteur n'en a
+   * aucune. Le paramètre n'accorde rien et n'ouvre rien ; l'état vient de la
+   * base, écrite par le webhook, et il se lit une fois la personne connectée
+   * par le lien reçu — c'est la discipline que s19 a posée pour `/billing`
+   * (« un `?checkout=success` forgé n'affiche qu'un bandeau »), étendue au
+   * parcours invité (critère 7).
+   */
+  const guestReturnUrl = (query: string): string => `${appUrl}/pricing${query}`
+
+  /**
+   * **La promotion d'une ligne invitée**, décidée avant d'ouvrir la
+   * transaction (ADR 047).
+   *
+   * Trois refus, et chacun laisse l'événement journalisé sans rien promouvoir :
+   * pas de client chez nous, une ligne qui n'est pas invitée — donc déjà
+   * promue, ou celle d'un compte —, une adresse que la frontière refuse.
+   *
+   * Le compte est résolu **par le point de composition**, et cette résolution
+   * est idempotente par l'adresse : un rejeu retrouve le compte au lieu d'en
+   * créer un second (critère 6). C'est là, hors de la contrainte d'unicité de
+   * `provider_customer_id`, qu'un second compte pourrait naître — et c'est pour
+   * cela que l'idempotence y est une exigence écrite, pas un espoir.
+   */
+  const guestPromotionFor = async (
+    customerId: string | null,
+    email: unknown,
+  ): Promise<{ readonly promotion: GuestPromotion; readonly email: string; readonly account: GuestAccount } | null> => {
+    if (customerId === null) {
+      return null
+    }
+
+    const customer = await repository.customerByProviderId(customerId)
+
+    if (customer === null || !isGuestScopeKind(customer.scopeKind)) {
+      return null
+    }
+
+    const address = guestPaymentEmailOf(email)
+
+    if (address === null) {
+      return null
+    }
+
+    const account = await guestAccounts.accountFor({ email: address })
+
+    return account === null
+      ? null
+      : { promotion: { providerCustomerId: customerId, userId: account.userId }, email: address, account }
+  }
+
   return {
+    /**
+     * **Le tunnel d'un visiteur sans compte** (s24, critères 1 et 5).
+     *
+     * L'ordre des trois écritures est celui de l'ADR 034, et il ne se
+     * réarrange pas : limitation de débit, puis appel au fournisseur, puis
+     * **ligne client écrite avant que l'URL ne parte**. Un
+     * `customer.subscription.created` arrivé avant le
+     * `checkout.session.completed` retrouve donc son propriétaire — un
+     * périmètre invité, mais un propriétaire.
+     *
+     * Ce qu'un paiement **abandonné** laisse : cette ligne invitée, orpheline.
+     * Ni un compte, ni un droit d'accès — c'est le critère 5, et c'est la
+     * conséquence assumée de l'ADR 047.
+     */
+    openGuestCheckout: async ({ offerId, locale, client }) => {
+      const at = now()
+      const windowStart = checkoutWindowStartOf(at, GUEST_CHECKOUT_RATE_LIMIT.windowSeconds)
+      const hits = await throttle.hit({ bucket: guestCheckoutBucket(client), windowStart })
+
+      // Les fenêtres closes n'ont plus de lecteur : sans ce balayage, la table
+      // garde un seau par identifiant d'appelant pour l'éternité.
+      await throttle.sweep(windowStart)
+
+      if (exceedsCheckoutRateLimit(hits, GUEST_CHECKOUT_RATE_LIMIT.maxPerClient)) {
+        return { ok: false, reason: 'rate_limited' }
+      }
+
+      // **Le prix ne vient pas du client** : la même règle qu'au chemin
+      // authentifié, et elle vaut d'autant plus ici qu'il n'y a personne
+      // derrière l'appel.
+      const offer: BillingOffer | null = offerById(catalogue, offerId)
+
+      if (offer === null) {
+        return { ok: false, reason: 'unknown_offer' }
+      }
+
+      /**
+       * **Le second seau, celui qui borne le coût total** (constat F3 de la
+       * revue de s24).
+       *
+       * Il est compté **après** les deux refus, et jamais avant : le seau
+       * global ne doit contenir que ce qui allait réellement coûter quelque
+       * chose. Y compter les martèlements refusés rendrait à un seul appelant
+       * le pouvoir d'envoyer tous les autres visiteurs à la connexion.
+       *
+       * Saturé, il **dégrade** au lieu de refuser : le tunnel anonyme n'est pas
+       * ouvert — donc rien n'est créé, ni chez le fournisseur, ni ici — et le
+       * visiteur repart par la connexion avec son offre en poche, ce qui était
+       * le comportement d'avant s24. Où mène cette porte est décidé par le
+       * point de composition : ce module ne connaît pas `auth` et ne sait pas
+       * ce qu'est un écran de connexion.
+       */
+      const globalHits = await throttle.hit({
+        bucket: GUEST_CHECKOUT_GLOBAL_BUCKET,
+        windowStart,
+      })
+
+      if (exceedsCheckoutRateLimit(globalHits, GUEST_CHECKOUT_RATE_LIMIT.maxGlobal)) {
+        return { ok: true, url: guestFallbackUrl({ offerId: offer.id, locale }) }
+      }
+
+      const guestScopeId = generateGuestScopeId()
+      const reference = guestScopeReference(guestScopeId)
+      const mode: CheckoutMode = offer.mode === 'one_time' ? 'payment' : 'subscription'
+
+      const checkout = await payments.createCheckout({
+        priceId: offer.priceId,
+        mode,
+        // **Jamais de siège pour un invité** : il n'a pas d'organisation, et une
+        // quantité reçue du navigateur serait un prix reçu du navigateur.
+        quantity: 1,
+        customerId: null,
+        // **Aucune adresse** : nous n'en avons pas. C'est le fournisseur qui la
+        // collecte, et c'est elle qui reviendra dans l'événement.
+        customerEmail: null,
+        reference,
+        successUrl: guestReturnUrl('?checkout=success'),
+        cancelUrl: guestReturnUrl('?checkout=cancelled'),
+        // **L'essai entier** : ce périmètre n'a aucun abonnement, puisqu'il
+        // vient de naître (ADR 044).
+        trialPeriodDays: trialDaysFor(offer.trialDays, []),
+        locale,
+        idempotencyKey: `checkout:${reference}:${offer.id}`,
+      })
+
+      if (!checkout.ok) {
+        return { ok: false, reason: 'provider_unavailable' }
+      }
+
+      const customer = await repository.linkGuestCustomer({
+        id: generateId(),
+        guestScopeId,
+        providerCustomerId: checkout.checkout.customerId,
+      })
+
+      if (offer.mode === 'one_time') {
+        await repository.openPurchase({
+          id: generateId(),
+          billingCustomerId: customer.id,
+          offerId: offer.id,
+          priceId: offer.priceId,
+          providerSessionId: checkout.checkout.sessionId,
+        })
+      }
+
+      return { ok: true, url: checkout.checkout.url }
+    },
+
     openCheckout: async ({ session, offerId, locale }) => {
       const scope = await ownerOf(session)
 
@@ -700,11 +945,40 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
       }
 
       const event = verified.event
+
+      /**
+       * **La promotion d'une ligne invitée** (s24, ADR 047).
+       *
+       * Les deux formes de complétion la portent : `checkout_completed` pour un
+       * abonnement, `purchase_paid` pour un achat unique. C'est la **seule**
+       * différence entre le parcours invité et le parcours authentifié à la
+       * réception d'un événement — la ligne client, elle, existe depuis
+       * l'ouverture du tunnel dans les deux cas (ADR 034).
+       */
+      const promoted =
+        event.kind === 'checkout_completed' || event.kind === 'purchase_paid'
+          ? await guestPromotionFor(event.customerId, event.customerEmail)
+          : null
+
       const applied = await repository.applyEvent({
         eventId: event.id,
         type: event.kind === 'unhandled' ? event.type : event.kind,
         effect: await effectOf(event),
+        promotion: promoted?.promotion ?? null,
       })
+
+      /**
+       * **Le lien part une fois, et seulement si la promotion a eu lieu.**
+       *
+       * `applied` vaut `false` sur un rejeu — l'identifiant d'événement était
+       * déjà journalisé —, et un second email pour un paiement déjà traité est
+       * exactement ce que le critère 6 refuse. La nature du lien est décidée
+       * par le point de composition : ce module ne sait pas ce qu'est un mot de
+       * passe.
+       */
+      if (applied && promoted !== null) {
+        await guestAccounts.sendAccessLink({ account: promoted.account, email: promoted.email })
+      }
 
       return { ok: true, applied, eventId: event.id }
     },
@@ -926,12 +1200,23 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
          * facture. C'est la même prudence que « la réconciliation n'efface
          * jamais », appliquée au sens opposé.
          */
+        /**
+         * `null` pour une ligne **invitée** (ADR 047) : un paiement dont le
+         * webhook n'a pas encore promu la ligne n'appartient à aucun compte.
+         * Ses abonnements se réconcilient quand même — ils sont bien à ce
+         * client —, mais aucun nombre de membres ne les concerne, et lui
+         * fabriquer un `user:<jeton>` ferait interroger le compteur de sièges
+         * sur un compte qui n'existe pas.
+         */
         const scope = scopeOfCustomer(customer)
-        const seats = await seatsOfScope(scope)
+        const seats = scope === null ? null : await seatsOfScope(scope)
         const aligned: PaymentSubscription[] = []
 
         for (const subscription of listed.subscriptions) {
-          const corrected = await alignSeats(subscription, scope, seats, at)
+          const corrected =
+            scope === null
+              ? { subscription, written: false }
+              : await alignSeats(subscription, scope, seats, at)
 
           aligned.push(corrected.subscription)
           changed += corrected.written ? 1 : 0

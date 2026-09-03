@@ -10,6 +10,8 @@
   "pricing.empty.title": "Aucune offre n’est proposée",
   "pricing.empty.description": "Le catalogue de config/billing.ts est vide : déclarez au moins une offre pour ouvrir la souscription.",
   "pricing.noscript": "Activez JavaScript pour souscrire : le paiement s’ouvre chez notre prestataire.",
+  "pricing.return.success": "Retour du tunnel de paiement. Cette page ne lit pas l’état de votre paiement : s’il a abouti, un email part à l’adresse indiquée, et il contient le lien qui ouvre votre compte.",
+  "pricing.return.cancelled": "Tunnel de paiement quitté. Si aucun paiement n’a abouti, rien n’a été prélevé et aucun compte n’a été créé.",
   "title": "Facturation",
   "description": "Gérez votre abonnement, votre moyen de paiement et vos factures.",
   "subscription.title": "Votre abonnement",
@@ -63,5 +65,6 @@
   "refusal.noCustomer": "Aucun abonnement n’a encore été ouvert pour ce périmètre.",
   "refusal.alreadySubscribed": "Un abonnement est déjà en cours pour ce périmètre. Changez d’offre depuis « Gérer la facturation ».",
   "refusal.alreadyPurchased": "Vous possédez déjà cet achat. Il n’expire pas : rien à racheter.",
+  "refusal.rateLimited": "Trop de tentatives de paiement depuis cet appareil. Réessayez dans quelques minutes.",
   "refusal.failed": "L’opération a échoué. Réessayez dans un instant."
 }

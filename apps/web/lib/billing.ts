@@ -1,9 +1,10 @@
 import { createStripePayments } from '@repo/adapter-stripe'
 import { getEnv } from '@repo/config'
-import type { ModuleScope, ModuleSession } from '@repo/core'
+import { resolveLocale, type ModuleScope, type ModuleSession } from '@repo/core'
 import { getDatabase } from '@repo/db'
 import {
   BILLING_SCREEN_PATH,
+  PRICING_SCREEN_PATH,
   billingModule,
   billingRoutePath,
   EMPTY_BILLING_VIEW,
@@ -17,10 +18,14 @@ import {
 import { createLocalPayments, LOCAL_CHECKOUT_PATH, type LocalPayments } from '@repo/payments-testing'
 import type { Payments } from '@repo/ports'
 
+import { randomBytes } from 'node:crypto'
+
 import { resolveAuthConfig } from './auth-config'
 import { billingCatalogue } from './billing-catalogue'
 import { billingPermissionOf } from './billing-permission'
 import { resolveBillingConfig } from './billing-config'
+import { guestAccountsOf } from './guest-account'
+import { localeRouting } from './locale-routing'
 import { moduleRegistry } from './module-registry'
 import { dataOwnerOf, organizations } from './organizations'
 
@@ -211,7 +216,57 @@ const provide = (runtime: BillingRuntime = {}): void => {
     seatsOf,
     seatsOfScope,
     emailOfScope,
+    // **Le compte d'un paiement invité** (s24, ADR 047). La règle vit dans
+    // `lib/guest-account.ts` — quel lien part à quelle adresse —, et pas ici :
+    // c'est ce qui permet de la brancher, dans `tests/billing.test.ts`, sur le
+    // **vrai** service d'authentification, contre une vraie base. Une mutation
+    // qui enverrait un lien de définition de mot de passe à un compte existant
+    // rougit alors là où elle vivrait.
+    guestAccounts,
+    // **La dégradation du canal anonyme** (constat F3 de la revue de s24) : le
+    // module dit *que* le tunnel n'est pas ouvert, l'application dit *où* le
+    // visiteur repart.
+    guestFallbackUrl,
   }))
+}
+
+/**
+ * **Où repart un visiteur quand le canal anonyme de vente est saturé**
+ * (constat F3 de la revue de s24).
+ *
+ * La connexion, avec l'offre en poche : c'est exactement le déclencheur
+ * anonyme d'avant s24 (`git show dev:apps/web/app/pricing/page.tsx`), et c'est
+ * ce qui distingue une dégradation d'un refus — le canal de vente reste
+ * ouvert, le visiteur revient sur `/pricing` avec sa carte reposée (ADR 045),
+ * et le chemin authentifié n'a rien vu passer.
+ *
+ * La destination est décidée **ici** et pas dans le module : `billing` ne
+ * connaît pas `auth`, ne déclare aucun `requires` (ADR 034) et ignore
+ * jusqu'au préfixe de locale des URL.
+ *
+ * **La locale vient du navigateur** — c'est un champ du corps de la requête —
+ * et elle n'entre jamais telle quelle dans une URL que nous rendons :
+ * `resolveLocale` la ramène à une locale réellement servie, ou à celle du site.
+ * Sans cela, `?locale=../evil` composerait un chemin de notre propre origine.
+ */
+export const guestFallbackUrl = ({
+  offerId,
+  locale,
+}: {
+  readonly offerId: string
+  readonly locale: string | null
+}): string => {
+  const chosen = resolveLocale({
+    locales: localeRouting.locales,
+    defaultLocale: localeRouting.defaultLocale,
+    candidate: locale,
+  })
+  // Écrit **sur une ligne** : le balayage de textes en dur de
+  // `tests/i18n.test.ts` lit un gabarit coupé en deux comme une chaîne
+  // affichée, et il a raison de se méfier des gabarits.
+  const back = `${PRICING_SCREEN_PATH}?offer=${encodeURIComponent(offerId)}`
+
+  return `${localeRouting.publicPath('/sign-in', chosen)}?next=${encodeURIComponent(back)}`
 }
 
 /**
@@ -224,6 +279,36 @@ const provide = (runtime: BillingRuntime = {}): void => {
  * Ce fichier ne fait que lui donner la source des rôles.
  */
 const canManage = billingPermissionOf(organizations)
+
+/**
+ * **Le compte d'un paiement invité** (s24, ADR 047).
+ *
+ * L'import de `lib/auth` est **différé**, pour la raison déjà donnée à
+ * `emailOfScope` : `lib/auth.ts` importe `next/headers`, et ce fichier-ci est
+ * chargé hors de Next par `e2e/billing.spec.ts` et par
+ * `scripts/billing-reconcile.ts`.
+ *
+ * Le mot de passe posé sur un compte neuf est **tiré du générateur
+ * cryptographique du système**, il n'est écrit nulle part et ne part dans aucun
+ * email : il n'existe que pour ouvrir le parcours « définir mon mot de passe »,
+ * que la bibliothèque réserve aux comptes portant un justificatif.
+ */
+const guestAccounts = guestAccountsOf(
+  async () => {
+    const { appAuth } = await import('./auth')
+
+    return appAuth()
+  },
+  {
+    get appUrl() {
+      return resolveAuthConfig(getEnv()).appUrl
+    },
+    // Trente-deux octets, jamais montrés : ce n'est pas un secret que quelqu'un
+    // doit retenir, c'est un justificatif de remplacement que le premier usage
+    // du lien écrase.
+    generatePassword: () => randomBytes(32).toString('base64url'),
+  },
+)
 
 /**
  * Le nombre de sièges d'un périmètre, résolu **côté serveur**.

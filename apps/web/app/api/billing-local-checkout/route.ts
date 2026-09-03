@@ -45,6 +45,33 @@ export const runtime = 'nodejs'
 /** Zod à la frontière, y compris sur un paramètre d'URL (`docs/security.md` §4). */
 const SESSION_ID = z.string().min(1).max(200)
 
+/** Idem pour l'adresse que la page hébergée simulée collecte (s24). */
+const GUEST_EMAIL = z.string().trim().toLowerCase().min(3).max(254).pipe(z.email())
+
+/**
+ * Fait passer les livraisons par la **vraie** route de webhook du module, par
+ * le **vrai** répartiteur : rien n'est court-circuité. Les requêtes sont
+ * construites ici, elles ne passent pas par le réseau.
+ */
+const deliverAll = async (
+  deliveries: readonly { readonly payload: string; readonly signature: string }[],
+  request: Request,
+): Promise<void> => {
+  for (const delivery of deliveries) {
+    await dispatchModuleRequest(
+      moduleRegistry,
+      new Request(`${new URL(request.url).origin}${billingRoutePath('webhook')}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'stripe-signature': delivery.signature,
+        },
+        body: delivery.payload,
+      }),
+    )
+  }
+}
+
 export async function GET(request: Request): Promise<Response> {
   const local = billing.localCheckout()
 
@@ -64,30 +91,54 @@ export async function GET(request: Request): Promise<Response> {
   const { session } = await currentViewer()
   const scope = session === null ? null : await dataOwnerOf(session)
 
-  if (scope === null) {
-    return new Response(null, { status: 404 })
-  }
-
   prepareModuleServices()
+
+  /**
+   * **Le tunnel invité** (s24) : aucune session, donc aucun périmètre à
+   * comparer — il n'y a personne à qui comparer.
+   *
+   * Ce que le simulateur termine ici, il ne le termine que si la session porte
+   * une référence **invitée** : `billingScopeReference` ne produit jamais de
+   * `guest:`, si bien qu'aucun des deux chemins ne peut terminer la session de
+   * l'autre.
+   *
+   * L'adresse tient la place de celle que la page hébergée du fournisseur
+   * collecterait. Elle est **dérivée de la session** par défaut, pour qu'un
+   * parcours puisse la retrouver sans rien saisir, et remplaçable par un
+   * paramètre pour éprouver la branche « cette adresse a déjà un compte ». Rien
+   * de tout cela n'existe hors du mode local, qui est refusé en production.
+   *
+   * **Aucune session n'est ouverte ici**, ni pour l'invité ni pour personne :
+   * ce qui arrive au visiteur est un lien envoyé à son adresse.
+   */
+  if (scope === null) {
+    const email = GUEST_EMAIL.safeParse(
+      new URL(request.url).searchParams.get('email') ?? `${parsed.data}@guest.local`,
+    )
+
+    if (!email.success) {
+      return new Response(null, { status: 404 })
+    }
+
+    const guestDeliveries = local.completeGuestCheckout(parsed.data, email.data)
+
+    // **404 quand rien n'a été terminé** — session inconnue, ou session d'un
+    // compte : le refus garde exactement la forme qu'il avait avant s24, et les
+    // cas restent indiscernables. Une réponse qui les distinguerait dirait à un
+    // anonyme qu'une session existe pour quelqu'un d'autre (constat F7 de la
+    // revue de s19).
+    if (guestDeliveries.length === 0) {
+      return new Response(null, { status: 404 })
+    }
+
+    await deliverAll(guestDeliveries, request)
+
+    return Response.redirect(new URL('/pricing?checkout=success', request.url), 303)
+  }
 
   const deliveries = local.completeCheckout(parsed.data, billingScopeReference(scope))
 
-  for (const delivery of deliveries) {
-    // La **vraie** route du module, par le **vrai** répartiteur : rien n'est
-    // court-circuité. La requête est construite ici, elle ne passe pas par le
-    // réseau.
-    await dispatchModuleRequest(
-      moduleRegistry,
-      new Request(`${new URL(request.url).origin}${billingRoutePath('webhook')}`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'stripe-signature': delivery.signature,
-        },
-        body: delivery.payload,
-      }),
-    )
-  }
+  await deliverAll(deliveries, request)
 
   const outcome = deliveries.length === 0 ? 'cancelled' : 'success'
 

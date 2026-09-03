@@ -33,7 +33,20 @@ Deux conséquences qu'il ne faut pas défaire :
   au lieu de « ce lien a déjà servi », et rien ne l'invalide avant son
   expiration. `emailVerification.sendVerificationEmail` reste donc **absent** de
   la configuration, et le parcours passe par le magasin de jetons à usage unique
-  du module ;
+  du module. **Deux chemins écrivent cette marque depuis s24**, et il faut les
+  connaître tous les deux : le lien de vérification, et la **consommation d'un
+  lien de réinitialisation de mot de passe** (`onPasswordReset`
+  → `users.markEmailVerified`). Le second existe parce qu'un compte créé par un
+  paiement invité (ADR 047) n'a jamais reçu d'email d'inscription et resterait
+  autrement incapable de se connecter ; il vaut pour **tous** les comptes du
+  produit, pas seulement pour ceux-là. Ce qui le rend légitime est que le lien
+  ne part que vers l'adresse du compte — donc **le jeu de greffons monté**, et
+  rien d'autre : `better-auth@1.7.2` appelle `onPasswordReset` depuis trois
+  sites, dont un greffon `phoneNumber` qui prouverait la possession d'un
+  **numéro**. Monter ce greffon-là oblige à rouvrir la ligne ; le commentaire
+  d'`auth-use-cases.ts` porte le tableau des trois appelants, et le cas de
+  `tests/auth.test.ts` (« rend l'adresse vérifiée en consommant un lien de
+  réinitialisation ») ne couvre que le premier ;
 - **l'envoi de l'email de réinitialisation est différé.**
   `advanced.backgroundTasks.handler` est branché sur `runInBackground` ; sans
   lui, `runInBackgroundOrAwait` **attend** la promesse, donc seul un compte

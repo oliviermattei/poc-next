@@ -1,18 +1,23 @@
+import { createHash } from 'node:crypto'
+
 import type { ModuleScope } from '@repo/core'
-import { and, desc, eq, isNull, lte, ne, or, sql, type SQL } from 'drizzle-orm'
+import { and, desc, eq, isNull, lt, lte, ne, or, sql, type SQL } from 'drizzle-orm'
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core'
 
 import type {
   BillingCustomerRecord,
   BillingRepository,
+  CheckoutThrottle,
   PurchaseReconcileWrite,
   PurchaseRecord,
   SubscriptionRecord,
   SubscriptionWrite,
 } from '../application/ports'
+import { GUEST_SCOPE_KIND } from '../domain/guest'
 import { reconciledPurchaseStatus, type PurchaseStatus } from '../domain/purchase'
 import type { SubscriptionStatus } from '../domain/subscription'
 import {
+  billingCheckoutThrottle,
   billingCustomer,
   billingPurchase,
   billingPurchaseSession,
@@ -283,6 +288,55 @@ export function createDrizzleBillingRepository(db: BillingDatabase): BillingRepo
       return existing
     },
 
+    /**
+     * **Le client d'un périmètre invité** (ADR 047).
+     *
+     * La même contrainte d'unicité que `linkCustomer`, et la même raison : deux
+     * ouvertures simultanées ne doivent pas produire deux clients. Le périmètre
+     * étant tiré au hasard à chaque ouverture, le conflit ne peut venir que
+     * d'un rejeu de la **même** ouverture — et il converge alors sur la ligne
+     * déjà écrite.
+     */
+    linkGuestCustomer: async ({ id, guestScopeId, providerCustomerId }) => {
+      const rows = await db
+        .insert(billingCustomer)
+        .values({
+          id,
+          scopeKind: GUEST_SCOPE_KIND,
+          scopeId: guestScopeId,
+          providerCustomerId,
+        })
+        .onConflictDoNothing({ target: [billingCustomer.scopeKind, billingCustomer.scopeId] })
+        .returning(CUSTOMER_COLUMNS)
+
+      const inserted = asCustomer(rows[0])
+
+      if (inserted !== null) {
+        return inserted
+      }
+
+      const existing = await db
+        .select(CUSTOMER_COLUMNS)
+        .from(billingCustomer)
+        .where(
+          and(
+            eq(billingCustomer.scopeKind, GUEST_SCOPE_KIND),
+            eq(billingCustomer.scopeId, guestScopeId),
+          ),
+        )
+        .limit(1)
+
+      const found = asCustomer(existing[0])
+
+      if (found === null) {
+        // Inatteignable par construction : le conflit signifie qu'une ligne
+        // existe. Levé plutôt que replié, pour qu'un défaut de schéma se voie.
+        throw new Error('billing_customer : conflit sur un périmètre invité introuvable')
+      }
+
+      return found
+    },
+
     customerByProviderId: async (providerCustomerId) => {
       const rows = await db
         .select(CUSTOMER_COLUMNS)
@@ -444,8 +498,21 @@ export function createDrizzleBillingRepository(db: BillingDatabase): BillingRepo
      * Un effet en échec annule aussi le journal : le rejeu du fournisseur reste
      * possible. Sans cela, un événement à demi traité serait refusé pour
      * toujours.
+     *
+     * **Ce que ce `return false` n'est tenu par aucune commande** (constat F5
+     * de la revue de s24, à l'intention de la story qui reprendra le journal —
+     * s28 pour la limitation de débit, ou celle qui touchera au rejeu) : le
+     * déplacer **après** la promotion et les effets ne fait rougir aucun cas à
+     * ce jour. L'inertie du rejeu ne s'écroule pas pour autant — elle est
+     * portée en propre par les deux gardes de l'écriture juste en dessous
+     * (`scope_kind = 'guest'` et `not exists`), et par les `onConflictDoUpdate`
+     * des effets, toutes prouvées rouges par mutation. Autrement dit : ce
+     * `return` est une **économie**, pas la garantie ; `docs/reliability.md` §1
+     * s'appuie pourtant sur ce journal, et le jour où un effet non idempotent
+     * entrera dans cette transaction, il faudra le tenir par un cas — mesurer
+     * qu'un rejeu n'applique rien, et pas seulement qu'il rend `applied: false`.
      */
-    applyEvent: async ({ eventId, type, effect }) =>
+    applyEvent: async ({ eventId, type, effect, promotion }) =>
       await db.transaction(async (tx) => {
         const journal = await tx
           .insert(billingWebhookEvent)
@@ -455,6 +522,43 @@ export function createDrizzleBillingRepository(db: BillingDatabase): BillingRepo
 
         if (journal.length === 0) {
           return false
+        }
+
+        if (promotion !== undefined && promotion !== null) {
+          /**
+           * **La promotion d'une ligne invitée** (ADR 047), dans la
+           * transaction du journal.
+           *
+           * Trois clauses, et aucune n'est décorative :
+           *
+           * - `provider_customer_id` désigne la ligne. Il ne change **pas** :
+           *   c'est ce qui préserve la garantie d'ordre de l'ADR 034 ;
+           * - `scope_kind = 'guest'` est **la** garde. Sans elle, un second
+           *   `checkout.session.completed` sur le même client — avec une autre
+           *   adresse — repointerait vers un autre compte la ligne d'une
+           *   personne déjà promue : sa facturation, ses abonnements et son
+           *   droit d'accès changeraient de propriétaire. Elle est aussi ce qui
+           *   rend le rejeu inerte au niveau de la base, et pas seulement au
+           *   niveau du code ;
+           * - le `not exists` évite la **violation d'unicité** quand ce compte
+           *   a déjà une ligne client — un visiteur qui paie deux fois sans se
+           *   connecter en produit une seconde. Sans lui, l'index
+           *   `(scope_kind, scope_id)` ferait lever le webhook, donc un 400
+           *   rejoué indéfiniment par le fournisseur, ce que
+           *   `docs/reliability.md` §1 interdit. La ligne reste alors invitée,
+           *   et son paiement n'est pas perdu : il est chez le fournisseur, et
+           *   la réconciliation le voit.
+           */
+          await tx
+            .update(billingCustomer)
+            .set({ scopeKind: 'user', scopeId: promotion.userId })
+            .where(
+              and(
+                eq(billingCustomer.providerCustomerId, promotion.providerCustomerId),
+                eq(billingCustomer.scopeKind, GUEST_SCOPE_KIND),
+                sql`not exists (select 1 from ${billingCustomer} as taken where taken.scope_kind = 'user' and taken.scope_id = ${promotion.userId})`,
+              ),
+            )
         }
 
         if (effect.kind === 'subscription') {
@@ -793,6 +897,56 @@ export function createDrizzleBillingRepository(db: BillingDatabase): BillingRepo
         .delete(billingCustomer)
         .where(and(eq(billingCustomer.scopeKind, kind), eq(billingCustomer.scopeId, id)))
         .returning({ id: billingCustomer.id })
+
+      return rows.length
+    },
+  }
+}
+
+/**
+ * **Le compteur partagé de la route publique de checkout** (s24,
+ * `docs/security.md` §7).
+ *
+ * Une seule instruction atomique par appel : `insert … on conflict do update`
+ * remet le compte à un quand la fenêtre a changé, l'incrémente sinon. Lire puis
+ * écrire laisserait deux instances observer le même compte et dépasser toutes
+ * les deux.
+ *
+ * Le seau est **condensé** avant d'être écrit : l'identifiant d'appelant — une
+ * adresse IP, quand un en-tête en donne une — n'entre jamais en clair dans la
+ * base. Ce n'est pas de la pseudonymisation forte, et il faut le dire : un
+ * condensat SHA-256 non salé d'une adresse IPv4 se retrouve par force brute. La
+ * propriété obtenue est bornée — la table ne **contient** pas d'adresse — et
+ * c'est la même que celle de `public_form_throttle`.
+ */
+export function createDrizzleCheckoutThrottle(db: BillingDatabase): CheckoutThrottle {
+  const digestOf = (key: string): string => createHash('sha256').update(key).digest('hex')
+
+  return {
+    hit: async ({ bucket, windowStart }) => {
+      const rows = await db
+        .insert(billingCheckoutThrottle)
+        .values({ bucket: digestOf(bucket), windowStartedAt: windowStart, hits: 1 })
+        .onConflictDoUpdate({
+          target: billingCheckoutThrottle.bucket,
+          set: {
+            hits: sql`case when ${billingCheckoutThrottle.windowStartedAt} = excluded.window_started_at then ${billingCheckoutThrottle.hits} + 1 else 1 end`,
+            windowStartedAt: sql`excluded.window_started_at`,
+          },
+        })
+        .returning({ hits: billingCheckoutThrottle.hits })
+
+      return rows[0]?.hits ?? 1
+    },
+
+    sweep: async (before) => {
+      // Une fenêtre close n'a plus de lecteur : `hit` ne consulte que la
+      // fenêtre en cours, et repart à un dès qu'elle change. L'effacement porte
+      // sur `window_started_at`, indexée pour cela.
+      const rows = await db
+        .delete(billingCheckoutThrottle)
+        .where(lt(billingCheckoutThrottle.windowStartedAt, before))
+        .returning({ bucket: billingCheckoutThrottle.bucket })
 
       return rows.length
     },

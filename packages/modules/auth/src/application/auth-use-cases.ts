@@ -375,6 +375,43 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
         value: userId,
       })
 
+      /**
+       * **Consommer ce lien prouve la possession de la boîte** — donc l'adresse
+       * est vérifiée (s24).
+       *
+       * Le lien de réinitialisation ne part que vers l'adresse du compte ; le
+       * consommer demande de l'avoir lue. C'est exactement la preuve que
+       * `verifyEmail` exige, obtenue par un autre chemin, et le greffon
+       * magic-link fait déjà de même à la connexion
+       * (`revokeUnprovenAccountAccess`, `better-auth@1.7.2`).
+       *
+       * Sans cela, un compte créé sans que personne ne s'inscrive — celui d'un
+       * paiement invité (ADR 047) — resterait non vérifié après avoir défini
+       * son mot de passe, et `requireEmailVerification` refuserait sa
+       * connexion : un lien qui ne mène nulle part. Le marquage ne peut que
+       * rendre une adresse prouvée, jamais l'inverse.
+       *
+       * **Ce qui rend la phrase ci-dessus vraie est le jeu de greffons monté,
+       * et rien d'autre** (constat F1 de la revue de s24). Relevé le
+       * 3 septembre 2026 dans `better-auth@1.7.2` en lisant la bibliothèque,
+       * `onPasswordReset` a **trois** appelants :
+       *
+       * | Appelant | Ce qui prouve la possession | Monté ici ? |
+       * |---|---|---|
+       * | `dist/api/routes/password.mjs:172` | un lien envoyé à l'**adresse** | oui |
+       * | `dist/plugins/email-otp/routes.mjs:601` | un code envoyé à l'**adresse** | non |
+       * | `dist/plugins/phone-number/routes.mjs:484` | un code envoyé à un **numéro** | non |
+       *
+       * Le troisième ne prouve rien de la boîte mail. Le jour où une story
+       * monte `phoneNumber`, une réinitialisation par téléphone marquerait
+       * l'adresse vérifiée, ce commentaire deviendrait faux et **rien ne
+       * rougirait** : le cas de `tests/auth.test.ts` passe par le premier
+       * appelant. Monter un greffon de réinitialisation supplémentaire oblige
+       * donc à rouvrir cette ligne — au minimum pour distinguer la preuve
+       * apportée.
+       */
+      await users.markEmailVerified(userId)
+
       log(
         describeSecurityEvent({
           event: 'auth.password_reset_succeeded',

@@ -424,8 +424,61 @@ describe('la vérification de signature', () => {
         reference: 'organization:org_1',
         customerId: 'cus_1',
         subscriptionId: 'sub_1',
+        customerEmail: null,
       },
     })
+  })
+
+  /**
+   * **L'adresse du payeur** (s24) — la seule chose qu'un checkout invité
+   * rapporte de son visiteur.
+   *
+   * `customer_details.email` est ce que la page hébergée a collecté ;
+   * `customer_email` est ce que *nous* avions donné à l'ouverture. Le premier
+   * prime, parce qu'il est le seul qui existe pour un paiement sans compte —
+   * lire le second en priorité rendrait `null` exactement dans le cas que la
+   * story sert.
+   */
+  it('porte l’adresse collectée par le fournisseur, et préfère celle du payeur', async () => {
+    const { fetchDouble } = harness([() => json(200, {}), () => json(200, {})])
+    const payments = createStripePayments(options(fetchDouble))
+
+    const collected = payloadOf({
+      ...CHECKOUT_EVENT,
+      data: {
+        object: {
+          ...(CHECKOUT_EVENT.data as { object: Record<string, unknown> }).object,
+          customer_email: 'donnee@example.test',
+          customer_details: { email: 'payeur@example.test' },
+        },
+      },
+    })
+
+    const first = await payments.verifyWebhook({
+      payload: collected,
+      signature: sign(collected),
+    })
+
+    expect(first.ok && first.event.kind === 'checkout_completed' && first.event.customerEmail).toBe(
+      'payeur@example.test',
+    )
+
+    // Sans page hébergée, c'est l'adresse que nous avions donnée qui reste.
+    const given = payloadOf({
+      ...CHECKOUT_EVENT,
+      data: {
+        object: {
+          ...(CHECKOUT_EVENT.data as { object: Record<string, unknown> }).object,
+          customer_email: 'donnee@example.test',
+        },
+      },
+    })
+
+    const second = await payments.verifyWebhook({ payload: given, signature: sign(given) })
+
+    expect(
+      second.ok && second.event.kind === 'checkout_completed' && second.event.customerEmail,
+    ).toBe('donnee@example.test')
   })
 
   it('refuse une signature forgée, sans rien lire de la charge utile', async () => {
@@ -603,6 +656,7 @@ describe('la vérification de signature', () => {
       amountTotal: 49_000,
       currency: 'eur',
       reference: 'organization:org_1',
+      customerEmail: null,
     })
   })
 

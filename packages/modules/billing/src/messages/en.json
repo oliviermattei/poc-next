@@ -10,6 +10,8 @@
   "pricing.empty.title": "No plan is offered",
   "pricing.empty.description": "The catalogue in config/billing.ts is empty: declare at least one plan to open subscriptions.",
   "pricing.noscript": "Enable JavaScript to subscribe: checkout opens at our payment provider.",
+  "pricing.return.success": "Back from checkout. This page does not read your payment status: if the payment went through, an email is on its way to the address you provided, and it holds the link that opens your account.",
+  "pricing.return.cancelled": "You left checkout. If no payment went through, nothing was charged and no account was created.",
   "title": "Billing",
   "description": "Manage your subscription, payment method and invoices.",
   "subscription.title": "Your subscription",
@@ -63,5 +65,6 @@
   "refusal.noCustomer": "No subscription has been opened for this scope yet.",
   "refusal.alreadySubscribed": "A subscription is already running for this scope. Change plan from “Manage billing”.",
   "refusal.alreadyPurchased": "You already own this purchase. It does not expire — nothing to buy again.",
+  "refusal.rateLimited": "Too many payment attempts from this device. Try again in a few minutes.",
   "refusal.failed": "The operation failed. Try again in a moment."
 }

@@ -2,6 +2,7 @@ import { MODULE_ROUTE_PREFIX, type ModuleRoute, type NavigationEntry } from '@re
 import { z } from 'zod'
 
 import type { BillingUseCases } from '../application/billing-use-cases'
+import { checkoutClientOf } from '../domain/checkout-throttle'
 import { BILLING_KEYS } from '../domain/message-keys'
 
 /**
@@ -17,6 +18,16 @@ import { BILLING_KEYS } from '../domain/message-keys'
 
 const PATHS = {
   checkout: '/billing/checkout',
+  /**
+   * **Le tunnel d'un visiteur sans compte** (s24, critère 1) — la première
+   * route de paiement **publique** du dépôt.
+   *
+   * Un chemin distinct, et non un assouplissement de `/billing/checkout` : ce
+   * dernier garde sa garde de session, et l'anonyme a sa propre entrée. Module
+   * coupé, ce chemin n'est dans aucune table et le répartiteur répond **404**,
+   * jamais 403 — c'est le huitième critère de la story.
+   */
+  guestCheckout: '/billing/guest-checkout',
   portal: '/billing/portal',
   webhook: '/billing/webhook',
 } as const
@@ -57,6 +68,18 @@ const refuse = (key: string, status: number): Response =>
   // La clé de catalogue, jamais une phrase : c'est l'écran qui traduit, et le
   // corps ne dit rien du fournisseur ni de l'état interne.
   Response.json({ error: key }, { status })
+
+/**
+ * Les refus du checkout **invité**, et leurs statuts.
+ *
+ * `429` pour la limitation de débit : le seul refus de ce dépôt sur un chemin
+ * de paiement, et il dit ce qu'il est — l'appelant peut réessayer plus tard.
+ */
+const GUEST_CHECKOUT_REFUSALS = {
+  unknown_offer: { key: BILLING_KEYS.refusal.unknownOffer, status: 400 },
+  rate_limited: { key: BILLING_KEYS.refusal.rateLimited, status: 429 },
+  provider_unavailable: { key: BILLING_KEYS.refusal.providerUnavailable, status: 502 },
+} as const
 
 const CHECKOUT_REFUSALS = {
   forbidden: { key: BILLING_KEYS.refusal.forbidden, status: 403 },
@@ -125,6 +148,52 @@ export function createBillingRoutes(service: BillingUseCasesAccess): readonly Mo
         // plus dans `config/security.ts`. Le navigateur navigue lui-même
         // (`window.location.assign`), ce qu'aucune directive livrée ne borne.
         // Voir `docs/research/s19-subscribe-stripe.md` §7.
+        return Response.json({ url: outcome.url }, { status: 200 })
+      },
+    },
+    {
+      /**
+       * **Le checkout d'un visiteur sans compte** (s24).
+       *
+       * `public`, et c'est une surface d'abus : elle ouvre une session chez le
+       * fournisseur pour un appelant dont on ne sait rien. Sa garde est la
+       * **limitation de débit**, comptée en base et donc partagée entre
+       * instances (`docs/security.md` §7) — un compteur en mémoire de processus
+       * se contournerait en scalant horizontalement.
+       *
+       * Le corps est le **même** que celui du chemin authentifié : un
+       * identifiant d'offre, une langue, et rien d'autre. Aucun périmètre,
+       * aucune adresse, aucun montant — l'adresse est collectée par le
+       * fournisseur sur sa page, et elle revient par le webhook.
+       */
+      method: 'POST',
+      path: PATHS.guestCheckout,
+      protection: { level: 'public' },
+      handler: async (request) => {
+        const parsed = checkoutBodySchema.safeParse(await request.json().catch(() => null))
+
+        if (!parsed.success) {
+          return refuse(BILLING_KEYS.refusal.unknownOffer, 400)
+        }
+
+        const outcome = await service().useCases.openGuestCheckout({
+          offerId: parsed.data.offerId,
+          locale: parsed.data.locale ?? null,
+          // Ce que le serveur croit savoir de l'appelant — un en-tête, donc
+          // falsifiable. Il ne sert qu'au seau de limitation, jamais à une
+          // autorisation : il n'y a personne à autoriser sur cette route.
+          client: checkoutClientOf(request.headers),
+        })
+
+        if (!outcome.ok) {
+          const refusal = GUEST_CHECKOUT_REFUSALS[outcome.reason]
+
+          return refuse(refusal.key, refusal.status)
+        }
+
+        // **L'URL est rendue, pas suivie** : la même raison qu'au chemin
+        // authentifié — une redirection 303 vers le fournisseur serait soumise
+        // à `form-action 'self'`.
         return Response.json({ url: outcome.url }, { status: 200 })
       },
     },
