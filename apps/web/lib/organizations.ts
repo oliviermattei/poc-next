@@ -19,6 +19,7 @@ import { resolveAuthConfig } from './auth-config'
 import { localeRouting } from './locale-routing'
 import { createAppMailer } from './mailer'
 import { moduleRegistry } from './module-registry'
+import { seatSyncOf } from './seat-sync'
 
 /**
  * Le point de composition des organisations — le cinquième du même modèle,
@@ -81,6 +82,24 @@ export interface OrganizationsFeature {
    * alors 404, comme `/organizations`.
    */
   readonly invitation: (token: string) => Promise<InvitationPreview | null>
+  /**
+   * **Le nombre de membres d'une organisation nommée** — s23, et il ne
+   * ressemble à rien d'autre dans ce fichier.
+   *
+   * Tout le reste ici part d'un compte : `view(userId)`,
+   * `activeOrganizationId(userId)`. Celle-ci part d'un identifiant
+   * d'organisation, ce qui est exactement la forme de lecture que la porte de
+   * s15 ferme — et c'est pourquoi elle est **serveur seulement** : aucune route
+   * ne l'appelle, aucun écran ne la lit, et rien ne lui transmet une valeur
+   * venue du navigateur. Son unique appelant est `pnpm billing:reconcile`, qui
+   * n'a pas de session et doit pourtant compter les membres des organisations
+   * que le fournisseur de paiement lui nomme.
+   *
+   * `null` module coupé : il n'y a alors **aucun nombre**, ce qui n'est pas
+   * « zéro » — et la différence décide si une facture peut baisser
+   * (`billableSeats`, `@repo/module-billing`).
+   */
+  readonly countMembers: (organizationId: string) => Promise<number | null>
 }
 
 /**
@@ -95,6 +114,7 @@ const ABSENT_ORGANIZATIONS: OrganizationsFeature = {
   activeOrganizationId: () => Promise.resolve(null),
   view: () => Promise.resolve(EMPTY_ORGANIZATIONS_VIEW),
   invitation: () => Promise.resolve(null),
+  countMembers: () => Promise.resolve(null),
 }
 
 /**
@@ -200,6 +220,19 @@ const provide = (): void => {
     // n'a pas de requête, donc pas de préférence. La règle est celle du module
     // `auth` (`AuthService.localeOf`), appliquée ici sans le détour.
     emailLocale: localeRouting.defaultLocale,
+    // **La taille de l'organisation part chez le fournisseur de paiement avant
+    // que l'écriture qui l'a changée soit validée** (s23, ADR 046).
+    //
+    // Le module ne sait pas qu'il existe une facturation — `requires: []` du
+    // module `billing` est une décision (ADR 034) —, et il n'a pas à
+    // l'apprendre : le couplage est **ici**, au point de composition, comme
+    // celui du mailer. La règle, elle, vit dans `lib/seat-sync.ts`, pour la
+    // raison qui a sorti `canManage` de ce fichier : ce qui est écrit ici n'est
+    // neutralisable par aucun test.
+    //
+    // **L'import est différé** : `lib/billing.ts` importe ce fichier-ci (pour
+    // `dataOwnerOf`), et un import statique en sens inverse fermerait le cycle.
+    seatSync: seatSyncOf(async () => (await import('./billing')).billing),
   }))
 }
 
@@ -218,6 +251,8 @@ export const organizations: OrganizationsFeature = mounted
       view: async (userId) => await organizationsService().useCases.viewOrganizations(userId),
       invitation: async (token) =>
         await organizationsService().useCases.describeInvitation(token),
+      countMembers: async (organizationId) =>
+        await organizationsService().useCases.countMembers(organizationId),
     }
   : ABSENT_ORGANIZATIONS
 

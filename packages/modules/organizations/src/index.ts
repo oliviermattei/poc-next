@@ -51,7 +51,12 @@ export {
   type MembershipRecord,
   type OrganizationAccess,
 } from './application/organization-access'
-export type { OrganizationRepository, SecurityLog, SlugOutcome } from './application/ports'
+export type {
+  OrganizationRepository,
+  SeatSync,
+  SecurityLog,
+  SlugOutcome,
+} from './application/ports'
 export type {
   OrganizationSecurityEvent,
   OrganizationSecurityEventName,

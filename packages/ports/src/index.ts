@@ -27,6 +27,8 @@ export type {
   PaymentStatus,
   PaymentSubscription,
   PortalSession,
+  UpdateSubscriptionQuantityInput,
+  UpdateSubscriptionQuantityResult,
   VerifyWebhookInput,
   VerifyWebhookResult,
 } from './payments'

@@ -38,7 +38,16 @@ export interface BillingOffer {
   readonly interval: BillingInterval | null
   /** Période d'essai en jours, ou `null`. Jamais reçue du client. */
   readonly trialDays: number | null
-  /** Facturation au siège : la quantité suit le nombre de membres. */
+  /**
+   * Facturation au siège : la quantité suit le nombre de membres.
+   *
+   * **Sans effet sur une offre `one_time`** — un achat unique n'a pas de
+   * quantité à suivre dans le temps, et `offerSyncsSeats` (`domain/seats.ts`)
+   * rend `false` sur cette combinaison : le champ est alors accepté par le
+   * catalogue et **ne produit rien**, silencieusement. Le poser sur un achat
+   * unique n'est donc pas une erreur de configuration, c'est un vœu sans
+   * conséquence.
+   */
   readonly perSeat: boolean
 }
 

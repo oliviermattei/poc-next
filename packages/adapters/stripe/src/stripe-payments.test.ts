@@ -860,6 +860,166 @@ describe('la lecture pour la réconciliation', () => {
   })
 })
 
+/* -------------------------------------------------------------------------- *
+ * s23 — **la seule écriture du port après la création** (ADR 046).
+ *
+ * Ce qui est mesuré ici est ce que le **réseau** voit partir : la quantité
+ * visée, posée sur la ligne de l'abonnement, sous la clé d'idempotence reçue.
+ * -------------------------------------------------------------------------- */
+describe('la quantité d’un abonnement existant', () => {
+  const withQuantity = (quantity: number): Record<string, unknown> =>
+    subscriptionPayload({
+      items: {
+        object: 'list',
+        data: [
+          {
+            id: 'si_1',
+            object: 'subscription_item',
+            quantity,
+            current_period_end: PERIOD_END,
+            current_period_start: PERIOD_END - 2_592_000,
+            price: { id: 'price_pro_monthly', object: 'price' },
+          },
+        ],
+      },
+    })
+
+  const TARGET = {
+    subscriptionId: 'sub_1',
+    quantity: 7,
+    idempotencyKey: 'seats:organization:org_1:sub_1:7',
+  } as const
+
+  it('relit l’abonnement puis pose la quantité visée sur sa ligne', async () => {
+    const { calls, fetchDouble } = harness([
+      () => json(200, withQuantity(3)),
+      () => json(200, withQuantity(7)),
+    ])
+    const payments = createStripePayments(options(fetchDouble))
+
+    const result = await payments.updateSubscriptionQuantity(TARGET)
+
+    expect(result.ok && result.subscription.quantity).toBe(7)
+
+    // La relecture est une lecture : elle ne porte pas de clé d'idempotence, le
+    // fournisseur les ignore sur un GET.
+    expect(calls[0]?.method).toBe('GET')
+    expect(calls[0]?.url).toBe('https://api.stripe.com/v1/subscriptions/sub_1')
+
+    const write = calls[1]
+
+    expect(write?.method).toBe('POST')
+    expect(write?.url).toBe('https://api.stripe.com/v1/subscriptions/sub_1')
+    expect(write?.headers['idempotency-key']).toBe('seats:organization:org_1:sub_1:7')
+
+    const sent = new URLSearchParams(write?.body ?? '')
+
+    // La **ligne** porte la quantité : `SubscriptionUpdateParams` n'a pas de
+    // `quantity` de premier niveau dans `stripe@22.6.1` (mesuré sur le paquet
+    // installé). C'est pourquoi la relecture existe — il faut l'identifiant de
+    // la ligne.
+    expect(sent.get('items[0][id]')).toBe('si_1')
+    // **La cible, jamais un delta** : un rejeu de cet appel converge.
+    expect(sent.get('items[0][quantity]')).toBe('7')
+  })
+
+  it('refuse un abonnement à plusieurs lignes sans rien écrire', async () => {
+    // La ligne à corriger serait un choix, et un choix silencieux facturerait
+    // la mauvaise. Le repli est **fermé** : on refuse.
+    const { calls, fetchDouble } = harness([
+      () =>
+        json(200, {
+          ...subscriptionPayload(),
+          items: {
+            object: 'list',
+            data: [
+              {
+                id: 'si_1',
+                object: 'subscription_item',
+                quantity: 3,
+                current_period_end: PERIOD_END,
+                current_period_start: PERIOD_END - 2_592_000,
+                price: { id: 'price_pro_monthly', object: 'price' },
+              },
+              {
+                id: 'si_2',
+                object: 'subscription_item',
+                quantity: 1,
+                current_period_end: PERIOD_END,
+                current_period_start: PERIOD_END - 2_592_000,
+                price: { id: 'price_addon', object: 'price' },
+              },
+            ],
+          },
+        }),
+    ])
+    const payments = createStripePayments(options(fetchDouble))
+
+    const result = await payments.updateSubscriptionQuantity(TARGET)
+
+    expect(!result.ok && result.error.code).toBe('invalid_request')
+    // Une seule requête : la lecture. Rien n'est parti en écriture.
+    expect(calls).toHaveLength(1)
+    expect(calls.every((call) => call.method === 'GET')).toBe(true)
+  })
+
+  it('rejoue une panne du fournisseur, jamais un refus de validation', async () => {
+    const definitive = harness([
+      () => json(200, withQuantity(3)),
+      () =>
+        json(400, {
+          error: { type: 'invalid_request_error', message: 'Invalid quantity' },
+        }),
+    ])
+    const refused = await createStripePayments(
+      options(definitive.fetchDouble),
+    ).updateSubscriptionQuantity(TARGET)
+
+    expect(!refused.ok && refused.error).toMatchObject({ code: 'invalid_request', attempts: 1 })
+    // Lecture + une seule écriture : `docs/reliability.md` §3 interdit de
+    // rejouer une erreur de validation.
+    expect(definitive.calls).toHaveLength(2)
+
+    const transient = harness([
+      () => json(200, withQuantity(3)),
+      () => json(503, { error: { type: 'api_error', message: 'down' } }),
+      () => json(200, withQuantity(7)),
+    ])
+    const recovered = await createStripePayments(
+      options(transient.fetchDouble),
+    ).updateSubscriptionQuantity(TARGET)
+
+    expect(recovered.ok && recovered.subscription.quantity).toBe(7)
+    expect(transient.calls).toHaveLength(3)
+    // La reprise garde la **même** clé : une réponse perdue ne doit pas écrire
+    // deux fois.
+    expect(
+      new Set(transient.calls.slice(1).map((call) => call.headers['idempotency-key'])),
+    ).toEqual(new Set(['seats:organization:org_1:sub_1:7']))
+  })
+
+  /**
+   * **Le résultat est discriminé, et le compilateur le tient.**
+   *
+   * La garantie n'est pas exécutable par `pnpm test` : c'est `pnpm typecheck`
+   * qui échoue quand elle tombe. Le `@ts-expect-error` ci-dessous est donc la
+   * mesure — retirer la branche d'échec du type le fait passer au vert, donc
+   * fait échouer la compilation ici.
+   */
+  it('n’expose l’abonnement qu’après que l’appelant a regardé `ok`', async () => {
+    const { fetchDouble } = harness([() => json(401, { error: { type: 'invalid_request_error' } })])
+    const result = await createStripePayments(
+      options(fetchDouble, { maxAttempts: 1 }),
+    ).updateSubscriptionQuantity(TARGET)
+
+    // @ts-expect-error — sans regarder `ok`, `subscription` n'existe pas.
+    const forced: unknown = result.subscription
+
+    expect(forced).toBeUndefined()
+    expect(result.ok).toBe(false)
+  })
+})
+
 describe('l’adaptateur ne rejette jamais', () => {
   it('rend un échec même si le SDK lève une erreur qui n’est pas la sienne', async () => {
     const exploding: typeof fetch = () => {

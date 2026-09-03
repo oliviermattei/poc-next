@@ -96,3 +96,18 @@ pour les deux fournisseurs livrés, `packages/mailer-testing/src/*.test.ts` et
   l'implémentation : c'est ce qui permet de rejouer un checkout sans en ouvrir
   deux, et de **compter les tirages** dans un test — la mutation qui manquait à
   s06 (revue, F2).
+- **Une écriture, une seule, et elle est arrivée en s23** :
+  `updateSubscriptionQuantity`. Jusque-là ce port ne savait qu'ouvrir, lire et
+  vérifier ; la quantité ne partait qu'une fois, à l'ouverture du tunnel de
+  paiement. Facturer au nombre de membres demande de la corriger sur un
+  abonnement existant.
+
+  Ce que son entrée impose, et pourquoi : elle porte la quantité **visée**,
+  jamais un incrément. Un delta rejoué compte deux fois, une cible rejouée
+  converge (`docs/reliability.md` §1, ADR 046). Le port ne peut pas forcer
+  l'appelant à dériver sa clé d'idempotence de cette cible, mais il refuse
+  d'exprimer autre chose qu'une cible — et c'est `tests/billing.test.ts` qui
+  mesure la clé telle que le réseau la voit.
+
+  Ce qu'elle ne porte pas : le **proratage**. C'est un choix de facturation, il
+  appartient au fournisseur et à sa configuration (ADR 046).

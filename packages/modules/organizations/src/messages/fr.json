@@ -71,5 +71,6 @@
   "error.invitation_accepted": "Cette invitation a déjà été acceptée.",
   "error.invitation_other_recipient": "Ce lien a été envoyé à une autre adresse. Connectez-vous avec l’adresse invitée.",
   "error.last_owner": "Une organisation garde toujours au moins un propriétaire.",
-  "error.not_a_member": "Cette personne n’est pas membre de l’organisation."
+  "error.not_a_member": "Cette personne n’est pas membre de l’organisation.",
+  "error.seat_sync_unavailable": "La facturation n’a pas pu être mise à jour : rien n’a été modifié. Réessayez dans un instant."
 }

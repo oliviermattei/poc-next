@@ -46,6 +46,15 @@ les lui passer depuis un navigateur. Le simulateur n'en invente donc pas : un
 achat terminé en mode local rend `amountTotal: null`, et l'écran affiche l'achat
 sans son prix. C'est la vérité de ce qu'on sait ici, pas un chiffre fabriqué.
 
+**La quantité au siège s'applique à toutes les lignes** (s23), et c'est la
+divergence assumée entre ce simulateur et l'adaptateur : `updateSubscriptionQuantity`
+écrit `input.quantity` sur **chaque** ligne de l'abonnement simulé, là où
+`@repo/adapter-stripe` **refuse** un abonnement qui n'en porte pas exactement une
+(`invalid_request` — deviner laquelle porte les sièges facturerait la mauvaise).
+La divergence est inatteignable aujourd'hui : le simulateur ne fabrique qu'une
+seule ligne. Elle le deviendrait le jour où il en fabriquerait deux, et c'est
+alors le refus du vrai fournisseur qu'il faudrait simuler, pas la boucle.
+
 **Le mode paiement produit un seul événement** (`checkout.session.completed`,
 `mode: 'payment'`, `payment_status: 'paid'`), là où l'abonnement en produit deux
 volontairement désordonnés : il n'y a pas de second objet à décrire, donc pas de

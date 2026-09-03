@@ -1,5 +1,11 @@
 import type { ModuleExportPayload, ModuleScope } from '@repo/core'
-import type { CheckoutMode, PaymentEvent, Payments, PaymentStatus } from '@repo/ports'
+import type {
+  CheckoutMode,
+  PaymentEvent,
+  Payments,
+  PaymentStatus,
+  PaymentSubscription,
+} from '@repo/ports'
 
 import {
   formatOfferPrice,
@@ -10,6 +16,7 @@ import {
   type BillingMode,
   type BillingOffer,
 } from '../domain/offer'
+import { billableSeats, offerSyncsSeats } from '../domain/seats'
 import {
   entitledOfferIds,
   grantsBillingAccess,
@@ -30,8 +37,10 @@ import type {
   BillingPermission,
   BillingRepository,
   PurchaseRecord,
+  BillingCustomerRecord,
   ScopeEmailResolver,
   ScopeResolver,
+  ScopeSeats,
   SeatCounter,
   SubscriptionWrite,
 } from './ports'
@@ -183,6 +192,17 @@ export const EMPTY_BILLING_VIEW: BillingView = {
   canOpenPortal: false,
 }
 
+/**
+ * Ce que la synchronisation d'une quantité de sièges rend (s23).
+ *
+ * Trois issues, et la distinction entre les deux dernières est tout l'enjeu :
+ * `not_applicable` laisse l'écriture locale se valider, `failed` l'annule.
+ */
+export type SeatSyncOutcome =
+  | { readonly status: 'synced'; readonly quantity: number }
+  | { readonly status: 'not_applicable' }
+  | { readonly status: 'failed' }
+
 export interface BillingDependencies {
   readonly repository: BillingRepository
   readonly payments: Payments
@@ -192,6 +212,11 @@ export interface BillingDependencies {
   readonly ownerOf: ScopeResolver
   readonly canManage: BillingPermission
   readonly seatsOf: SeatCounter
+  /**
+   * Le nombre de membres d'un périmètre **sans appelant** (s23) : ce dont la
+   * réconciliation a besoin, et que `seatsOf` ne sait pas donner.
+   */
+  readonly seatsOfScope: ScopeSeats
   readonly emailOfScope: ScopeEmailResolver
   readonly now: () => Date
   readonly generateId: () => string
@@ -229,6 +254,26 @@ export interface BillingUseCases {
   entitledOffers(input: {
     readonly session: { readonly userId: string; readonly roles: readonly string[] }
   }): Promise<readonly string[]>
+  /**
+   * **Porte la quantité facturée au nombre de membres visé** (s23, ADR 046).
+   *
+   * Appelée par le point de composition **à l'intérieur** de la transaction qui
+   * vient d'ajouter ou de retirer une appartenance, et avant qu'elle soit
+   * validée : `failed` annule cette transaction, si bien qu'un fournisseur muet
+   * n'ajoute ni ne retire personne (critère 6).
+   *
+   * `seats` est une **cible**, jamais un delta, et la clé d'idempotence en
+   * dérive : un rejeu converge au lieu de compter deux fois
+   * (`docs/reliability.md` §1).
+   *
+   * `not_applicable` n'est pas un échec — c'est le forfait : pas de client, pas
+   * d'abonnement vivant, une offre qui n'est pas facturée au siège, ou un
+   * périmètre compte. Ne rien avoir à faire ne doit annuler aucune écriture.
+   */
+  syncSeats(input: {
+    readonly scope: ModuleScope
+    readonly seats: number
+  }): Promise<SeatSyncOutcome>
   /** Réconcilie le cache avec le fournisseur. Rend le nombre de lignes changées. */
   reconcile(): Promise<{ readonly customers: number; readonly changed: number }>
   purge(scope: ModuleScope): Promise<void>
@@ -248,6 +293,33 @@ export const billingScopeReference = (scope: ModuleScope): string =>
   scope.kind === 'organization' ? `organization:${scope.organizationId}` : `user:${scope.userId}`
 
 const referenceOf = billingScopeReference
+
+/**
+ * Le périmètre que désigne une ligne client — **jamais reçu d'une requête**.
+ *
+ * Il est reconstruit depuis ce que nous avons écrit à l'ouverture du checkout,
+ * pour la seule commande qui parcourt les clients sans appelant :
+ * `pnpm billing:reconcile`.
+ */
+const scopeOfCustomer = (customer: BillingCustomerRecord): ModuleScope =>
+  customer.scopeKind === 'organization'
+    ? { kind: 'organization', organizationId: customer.scopeId }
+    : { kind: 'user', userId: customer.scopeId }
+
+/**
+ * **La clé d'idempotence d'une correction de quantité** (s23, ADR 046).
+ *
+ * Elle est dérivée d'un **état visé** — le périmètre, l'abonnement, la
+ * quantité —, exactement comme `checkout:…` l'est du périmètre et de l'offre.
+ * Une clé qui porterait un compteur, un instant ou un delta ferait de deux
+ * appels identiques deux écritures : le rejeu compterait deux fois au lieu de
+ * converger, et c'est précisément ce que `docs/reliability.md` §1 interdit.
+ */
+const seatIdempotencyKey = (
+  scope: ModuleScope,
+  providerSubscriptionId: string,
+  quantity: number,
+): string => `seats:${referenceOf(scope)}:${providerSubscriptionId}:${quantity}`
 
 const writeFrom = (
   subscription: {
@@ -320,12 +392,69 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
     ownerOf,
     canManage,
     seatsOf,
+    seatsOfScope,
     emailOfScope,
     now,
     generateId,
   } = dependencies
 
   const returnUrl = (query: string): string => `${appUrl}/billing${query}`
+
+  /**
+   * **Ramène la quantité du fournisseur au nombre de membres**, ou laisse
+   * l'abonnement tel quel (s23, ADR 046).
+   *
+   * Quatre raisons de ne rien écrire, et la première est celle qui compte :
+   * `billableSeats` refuse une lecture qui n'a rien rendu, si bien qu'aucune
+   * facture ne baisse sur un silence. Les trois autres — offre au forfait,
+   * offre inconnue du catalogue, abonnement qui n'accorde plus rien — sont des
+   * abonnements qu'il n'y a pas lieu de corriger.
+   *
+   * L'écriture en échec n'est pas fatale : elle laisse l'abonnement dans l'état
+   * que le fournisseur a dit, la commande continue, et le prochain passage
+   * réessaiera. Une réconciliation qui s'arrêterait au premier client
+   * injoignable n'en réconcilierait jamais aucun autre.
+   */
+  const alignSeats = async (
+    subscription: PaymentSubscription,
+    scope: ModuleScope,
+    members: number | null,
+    at: Date,
+  ): Promise<{
+    readonly subscription: PaymentSubscription
+    readonly written: boolean
+  }> => {
+    const quantity = billableSeats(members)
+    const offer = offerForPrice(catalogue, subscription.priceId)
+
+    if (quantity === null || offer === null || !offerSyncsSeats(offer)) {
+      return { subscription, written: false }
+    }
+
+    const snapshot = {
+      status: DOMAIN_STATUS[subscription.status],
+      currentPeriodEnd: subscription.currentPeriodEnd,
+      cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+      trialEnd: subscription.trialEnd,
+    }
+
+    if (quantity === subscription.quantity || !grantsAccess(snapshot, at)) {
+      return { subscription, written: false }
+    }
+
+    const written = await payments.updateSubscriptionQuantity({
+      subscriptionId: subscription.id,
+      quantity,
+      // **La même clé que celle de la synchronisation à l'écriture** : une
+      // correction et une acceptation qui visent la même quantité sont le même
+      // appel, et le rejeu converge.
+      idempotencyKey: seatIdempotencyKey(scope, subscription.id, quantity),
+    })
+
+    return written.ok
+      ? { subscription: written.subscription, written: true }
+      : { subscription, written: false }
+  }
 
   /**
    * L'effet d'un événement vérifié.
@@ -668,6 +797,69 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
     },
 
     /**
+     * **La quantité facturée, portée au nombre de membres visé** (s23, ADR 046).
+     *
+     * Elle est appelée dans la transaction qui vient d'écrire l'appartenance et
+     * *avant* sa validation : c'est ce qui rend le critère 6 vrai — un
+     * fournisseur en panne n'ajoute personne. Le prix de cet ordre est écrit là
+     * où il se paie, dans
+     * `packages/modules/organizations/src/infrastructure/drizzle-organization-repositories.ts`.
+     *
+     * Quatre raisons de ne rien faire, et aucune n'est un échec : périmètre
+     * compte, pas de client, pas d'abonnement vivant, offre qui ne suit pas les
+     * sièges. Les confondre avec un échec annulerait des écritures parfaitement
+     * légitimes.
+     */
+    syncSeats: async ({ scope, seats }) => {
+      // **Le forfait** (critère 8) : un périmètre compte n'a pas de membres, et
+      // le module `organizations` peut être coupé. Rien à synchroniser.
+      if (scope.kind !== 'organization') {
+        return { status: 'not_applicable' }
+      }
+
+      const quantity = billableSeats(seats)
+
+      if (quantity === null) {
+        return { status: 'not_applicable' }
+      }
+
+      const customer = await repository.customerForScope(scope)
+
+      if (customer === null) {
+        return { status: 'not_applicable' }
+      }
+
+      const at = now()
+      const current = currentSubscriptionOf(
+        await repository.subscriptionsOfCustomer(customer.id),
+        at,
+      )
+
+      // Un abonnement qui n'accorde plus rien ne se corrige pas : le facturer
+      // au nombre de membres rouvrirait une ligne annulée.
+      if (current === null || !grantsAccess(current, at)) {
+        return { status: 'not_applicable' }
+      }
+
+      const offer = offerForPrice(catalogue, current.priceId)
+
+      if (offer === null || !offerSyncsSeats(offer)) {
+        return { status: 'not_applicable' }
+      }
+
+      const written = await payments.updateSubscriptionQuantity({
+        subscriptionId: current.providerSubscriptionId,
+        // **La cible, jamais un delta.**
+        quantity,
+        idempotencyKey: seatIdempotencyKey(scope, current.providerSubscriptionId, quantity),
+      })
+
+      // L'échec est une **valeur**, et le compilateur oblige à la regarder :
+      // c'est elle qui annule la transaction de l'appelant.
+      return written.ok ? { status: 'synced', quantity } : { status: 'failed' }
+    },
+
+    /**
      * **La commande de réconciliation** (`docs/reliability.md` §5).
      *
      * Ce que nous stockons est un cache : il diverge quand un webhook se perd,
@@ -718,9 +910,36 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
           continue
         }
 
+        /**
+         * **Ici le sens de la vérité s'inverse, et pour ce seul champ**
+         * (ADR 046).
+         *
+         * Partout ailleurs dans cette commande, le fournisseur fait foi et le
+         * cache est réécrit (ADR 034). Pour la quantité d'une offre facturée au
+         * siège, c'est **le nombre de membres** qui fait foi : la quantité est
+         * une valeur dérivée, et un écart est une erreur *chez le
+         * fournisseur*, pas chez nous. Réécrire le nombre de membres avec la
+         * quantité Stripe propagerait l'erreur au lieu de la corriger.
+         *
+         * La lecture des membres **peut lever**, et on la laisse faire : un
+         * silence de notre base interrompt la commande, il ne réduit pas une
+         * facture. C'est la même prudence que « la réconciliation n'efface
+         * jamais », appliquée au sens opposé.
+         */
+        const scope = scopeOfCustomer(customer)
+        const seats = await seatsOfScope(scope)
+        const aligned: PaymentSubscription[] = []
+
+        for (const subscription of listed.subscriptions) {
+          const corrected = await alignSeats(subscription, scope, seats, at)
+
+          aligned.push(corrected.subscription)
+          changed += corrected.written ? 1 : 0
+        }
+
         changed += await repository.replaceSubscriptions({
           billingCustomerId: customer.id,
-          subscriptions: listed.subscriptions.map((subscription) =>
+          subscriptions: aligned.map((subscription) =>
             writeFrom(subscription, {
               billingCustomerId: customer.id,
               catalogue,

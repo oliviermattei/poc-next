@@ -218,6 +218,42 @@ export type ListSubscriptionsResult =
   | { readonly ok: true; readonly subscriptions: readonly PaymentSubscription[] }
   | { readonly ok: false; readonly error: PaymentsError }
 
+/**
+ * **La seule écriture de ce port après la création** (s23, ADR 046).
+ *
+ * Jusqu'ici la quantité n'était transmise qu'une fois, à l'ouverture du tunnel
+ * de paiement. Facturer au nombre de membres demande de la corriger sur un
+ * abonnement **existant** : c'est une opération de plus au contrat, pas un
+ * détail d'implémentation.
+ *
+ * `quantity` est la quantité **visée**, jamais un incrément, et ce n'est pas un
+ * goût de style : un delta rejoué compte deux fois, une cible rejouée converge.
+ * La même règle vaut pour `idempotencyKey`, qui doit être dérivée de la cible —
+ * le port ne peut pas l'imposer, mais il peut refuser d'exprimer autre chose
+ * qu'une cible.
+ *
+ * Le proratage n'est pas dans cette entrée : c'est un choix de facturation, il
+ * appartient au fournisseur et à sa configuration (ADR 046, « ce que cet ADR ne
+ * tranche pas »).
+ */
+export interface UpdateSubscriptionQuantityInput {
+  readonly subscriptionId: string
+  /** La quantité **visée**. Un delta n'a pas de place ici. */
+  readonly quantity: number
+  /**
+   * Clé d'idempotence de **cet** appel, injectée — comme celle du checkout.
+   *
+   * Une seule clé pour toutes les tentatives d'un appel
+   * (`docs/reliability.md` §1), et elle porte la quantité visée : deux appels
+   * qui veulent le même état sont le même appel.
+   */
+  readonly idempotencyKey: string
+}
+
+export type UpdateSubscriptionQuantityResult =
+  | { readonly ok: true; readonly subscription: PaymentSubscription }
+  | { readonly ok: false; readonly error: PaymentsError }
+
 /* -------------------------------------------------------------------------- *
  * Achat unique
  * -------------------------------------------------------------------------- */
@@ -368,6 +404,8 @@ export type PaymentsOperation =
   | 'verify_webhook'
   | 'list_subscriptions'
   | 'list_purchases'
+  /** La seule écriture post-création : la quantité de sièges (s23). */
+  | 'update_subscription_quantity'
 
 /**
  * La seule surface que le code métier appelle pour parler au fournisseur de
@@ -383,6 +421,16 @@ export interface Payments {
   verifyWebhook(input: VerifyWebhookInput): Promise<VerifyWebhookResult>
   listSubscriptions(input: ListSubscriptionsInput): Promise<ListSubscriptionsResult>
   listPurchases(input: ListPurchasesInput): Promise<ListPurchasesResult>
+  /**
+   * Porte la quantité d'un abonnement **existant** à la valeur visée (s23).
+   *
+   * Comme les cinq autres, elle ne lève pas : l'échec est une valeur, et c'est
+   * précisément ce qui rend l'atomicité de l'ADR 046 exprimable — l'appelant ne
+   * *peut pas* valider son écriture locale sans avoir regardé `ok`.
+   */
+  updateSubscriptionQuantity(
+    input: UpdateSubscriptionQuantityInput,
+  ): Promise<UpdateSubscriptionQuantityResult>
 }
 
 /**

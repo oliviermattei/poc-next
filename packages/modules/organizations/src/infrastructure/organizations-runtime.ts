@@ -6,7 +6,7 @@ import {
   createOrganizationsUseCases,
   type OrganizationsUseCases,
 } from '../application/organization-use-cases'
-import type { InvitationTokenFactory, SecurityLog } from '../application/ports'
+import type { InvitationTokenFactory, SeatSync, SecurityLog } from '../application/ports'
 import { consoleSecurityLog } from './console-security-log'
 import {
   createDrizzleOrganizationRepository,
@@ -57,6 +57,17 @@ export interface ConfigureOrganizationsOptions {
    * journal qu'aucun cas ne peut lire. Par défaut, la sortie standard.
    */
   readonly securityLog?: SecurityLog
+  /**
+   * Ce que la nouvelle taille de l'organisation doit traverser **avant** que
+   * l'écriture qui l'a changée soit validée (s23, ADR 046).
+   *
+   * **Obligatoire, jamais optionnelle avec un repli permissif** : un point de
+   * composition qui l'oublierait laisserait la facturation dériver en silence,
+   * et cette dérive ne se découvre qu'à la facture du client. Le compilateur
+   * réclame donc la ligne. Un projet sans facturation la rend `true` — ne rien
+   * avoir à faire est un succès.
+   */
+  readonly seatSync: SeatSync
 }
 
 export interface OrganizationsService {
@@ -80,7 +91,7 @@ const defaultIdGenerator = (prefix: string): string => `${prefix}_${randomUUID()
 
 const build = (options: ConfigureOrganizationsOptions): OrganizationsService => ({
   useCases: createOrganizationsUseCases({
-    repository: createDrizzleOrganizationRepository(options.db),
+    repository: createDrizzleOrganizationRepository(options.db, options.seatSync),
     reservedSlugs: options.reservedSlugs,
     generateId: options.generateId ?? defaultIdGenerator,
     mailer: options.mailer,

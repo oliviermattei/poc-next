@@ -42,6 +42,7 @@ export {
   type BillingOffer,
 } from './domain/offer'
 export { highlightedOfferId, selectedOfferOf } from './domain/pricing'
+export { billableSeats, offerSyncsSeats } from './domain/seats'
 export {
   PURCHASE_STATUSES,
   grantsBillingAccess,
@@ -77,6 +78,7 @@ export {
   billingScopeReference,
   type BillingUseCases,
   type BillingView,
+  type SeatSyncOutcome,
   type OfferView,
   type PurchaseView,
   type SubscriptionView,
@@ -85,6 +87,7 @@ export type {
   BillingPermission,
   ScopeEmailResolver,
   ScopeResolver,
+  ScopeSeats,
   SeatCounter,
 } from './application/ports'
 export {

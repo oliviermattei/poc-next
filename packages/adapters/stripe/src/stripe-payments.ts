@@ -15,6 +15,7 @@ import type {
   PaymentsOperation,
   PaymentStatus,
   PaymentSubscription,
+  UpdateSubscriptionQuantityResult,
   VerifyWebhookInput,
   VerifyWebhookResult,
 } from '@repo/ports'
@@ -190,6 +191,28 @@ function normalizeSubscription(raw: unknown): PaymentSubscription {
     cancelAtPeriodEnd: object['cancel_at_period_end'] === true,
     trialEnd: secondsToDate(object['trial_end']),
   }
+}
+
+/**
+ * L'identifiant de la **ligne unique** d'un abonnement, ou `null`.
+ *
+ * `SubscriptionUpdateParams` de `stripe@22.6.1` ne porte pas de `quantity` de
+ * premier niveau : la quantité vit sur la ligne (mesuré sur le paquet
+ * installé). Corriger un abonnement au siège demande donc son identifiant de
+ * ligne, que seule une relecture donne.
+ *
+ * `null` dès qu'il y en a plusieurs, et le repli est **fermé** : choisir
+ * laquelle corriger serait une décision de facturation prise en silence par un
+ * adaptateur.
+ */
+const soleItemIdOf = (raw: unknown): string | null => {
+  const items = (raw as { items?: { data?: unknown } } | null)?.items?.data
+
+  if (!Array.isArray(items) || items.length !== 1) {
+    return null
+  }
+
+  return asId((items[0] as { id?: unknown }).id)
 }
 
 const asNumber = (value: unknown): number | null =>
@@ -555,6 +578,71 @@ export function createStripePayments(options: StripePaymentsOptions): Payments {
      * réconciliation n'efface jamais, donc une lecture partielle ne coupe
      * personne, et la commande se relance.
      */
+    /**
+     * **La seule écriture de ce port après la création** (s23, ADR 046).
+     *
+     * Deux appels, et le premier n'est pas une commodité : la quantité vit sur
+     * la **ligne** de l'abonnement, et son identifiant n'est connu que par
+     * relecture. La lecture est un GET — le fournisseur ignore les clés
+     * d'idempotence dessus —, l'écriture porte celle que l'appelant a posée, et
+     * elle vaut pour toutes ses tentatives.
+     *
+     * Le **proratage** est laissé au fournisseur : c'est un choix de
+     * facturation, pas d'architecture (ADR 046, « ce que cet ADR ne tranche
+     * pas »). Le poser ici le rendrait invisible à qui édite la configuration.
+     */
+    updateSubscriptionQuantity: async (input): Promise<UpdateSubscriptionQuantityResult> => {
+      const read = await run('update_subscription_quantity', async () =>
+        await client.subscriptions.retrieve(input.subscriptionId),
+      )
+
+      if (!read.ok) {
+        return { ok: false, error: read.error }
+      }
+
+      const itemId = soleItemIdOf(read.value)
+
+      if (itemId === null) {
+        // Rien n'est écrit : un abonnement à plusieurs lignes ne dit pas
+        // laquelle porte les sièges, et deviner facturerait la mauvaise.
+        return {
+          ok: false,
+          error: failure(
+            'invalid_request',
+            'l’abonnement ne porte pas exactement une ligne : la quantité au siège est ambiguë',
+            1,
+          ),
+        }
+      }
+
+      const written = await run('update_subscription_quantity', async () =>
+        await client.subscriptions.update(
+          input.subscriptionId,
+          { items: [{ id: itemId, quantity: input.quantity }] },
+          // **Une seule clé pour toutes les tentatives**, et elle porte la
+          // quantité **visée** : un rejeu converge au lieu de compter deux fois.
+          { idempotencyKey: input.idempotencyKey },
+        ),
+      )
+
+      if (!written.ok) {
+        return { ok: false, error: written.error }
+      }
+
+      try {
+        return { ok: true, subscription: normalizeSubscription(written.value) }
+      } catch (error) {
+        return {
+          ok: false,
+          error: failure(
+            'invalid_request',
+            error instanceof Error ? error.message : 'abonnement illisible',
+            1,
+          ),
+        }
+      }
+    },
+
     listSubscriptions: async (input: ListSubscriptionsInput): Promise<ListSubscriptionsResult> => {
       const subscriptions: PaymentSubscription[] = []
       let startingAfter: string | undefined

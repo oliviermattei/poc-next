@@ -71,5 +71,6 @@
   "error.invitation_accepted": "This invitation has already been accepted.",
   "error.invitation_other_recipient": "This link was sent to another address. Sign in with the invited address.",
   "error.last_owner": "An organization always keeps at least one owner.",
-  "error.not_a_member": "This person is not a member of the organization."
+  "error.not_a_member": "This person is not a member of the organization.",
+  "error.seat_sync_unavailable": "Billing could not be updated, so nothing was changed. Please try again in a moment."
 }

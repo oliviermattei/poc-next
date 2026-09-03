@@ -12,6 +12,7 @@ import {
   type BillingService,
   type BillingView,
   type ConfigureBillingOptions,
+  type SeatSyncOutcome,
 } from '@repo/module-billing'
 import { createLocalPayments, LOCAL_CHECKOUT_PATH, type LocalPayments } from '@repo/payments-testing'
 import type { Payments } from '@repo/ports'
@@ -98,6 +99,19 @@ export interface BillingFeature {
    */
   readonly reconcile: () => Promise<{ readonly customers: number; readonly changed: number }>
   /**
+   * **Porte la quantité facturée au nombre de membres visé** (s23, ADR 046).
+   *
+   * Appelée par `lib/organizations.ts` **dans** la transaction qui vient
+   * d'écrire une appartenance, avant sa validation : `failed` l'annule. Module
+   * coupé, elle rend `not_applicable` sans ouvrir de connexion — un projet qui
+   * ne vend rien n'a pas de quantité à corriger, et l'ajout du membre se
+   * valide.
+   */
+  readonly syncSeats: (input: {
+    readonly scope: ModuleScope
+    readonly seats: number
+  }) => Promise<SeatSyncOutcome>
+  /**
    * Le simulateur, ou `null`.
    *
    * Non `null` **uniquement** en mode local : c'est ce qui monte
@@ -120,6 +134,7 @@ const ABSENT_BILLING: BillingFeature = {
   view: () => Promise.resolve(EMPTY_BILLING_VIEW),
   entitledOffers: () => Promise.resolve([]),
   reconcile: () => Promise.resolve({ customers: 0, changed: 0 }),
+  syncSeats: () => Promise.resolve({ status: 'not_applicable' }),
   localCheckout: () => null,
 }
 
@@ -194,6 +209,7 @@ const provide = (runtime: BillingRuntime = {}): void => {
     ownerOf: (session) => dataOwnerOf(session),
     canManage,
     seatsOf,
+    seatsOfScope,
     emailOfScope,
   }))
 }
@@ -227,6 +243,32 @@ const seatsOf = async (scope: ModuleScope, userId: string): Promise<number> => {
   const view = await organizations.view(userId)
 
   return Math.max(1, view.members.length)
+}
+
+/**
+ * **Le nombre de membres d'un périmètre, sans appelant** — ce dont
+ * `pnpm billing:reconcile` a besoin (s23).
+ *
+ * Distincte de `seatsOf` juste au-dessus, et la distinction est le point :
+ * `seatsOf` répond « les membres de l'organisation **courante de ce compte** »,
+ * ce qui suppose un compte. La réconciliation n'en a pas — elle parcourt les
+ * clients du fournisseur. Elle passe donc par le compteur **serveur** de
+ * `lib/organizations.ts`, qu'aucune route n'appelle.
+ *
+ * `null` veut dire **« aucun nombre »**, jamais « zéro » : périmètre compte, ou
+ * module `organizations` coupé. Le forfait est le repli (critère 8), et
+ * `billableSeats` refuse d'en faire une quantité — une facture ne baisse pas
+ * sur un silence.
+ *
+ * Une lecture de la base **en échec lève**, et c'est voulu : elle interrompt la
+ * réconciliation au lieu de la laisser réduire une quantité sur un silence.
+ */
+const seatsOfScope = async (scope: ModuleScope): Promise<number | null> => {
+  if (scope.kind !== 'organization') {
+    return null
+  }
+
+  return await organizations.countMembers(scope.organizationId)
 }
 
 /**
@@ -273,6 +315,7 @@ export const billing: BillingFeature = mounted
       view: async (session, locale) => await billingService().useCases.view({ session, locale }),
       entitledOffers: async (session) => await billingService().useCases.entitledOffers({ session }),
       reconcile: async () => await billingService().useCases.reconcile(),
+      syncSeats: async (input) => await billingService().useCases.syncSeats(input),
       localCheckout: () => {
         // Lu à l'appel, pas à l'import : c'est la construction du port qui
         // décide, et elle est différée comme tout le reste.

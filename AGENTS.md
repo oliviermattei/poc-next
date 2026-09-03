@@ -186,7 +186,7 @@ est de la documentation, pas une règle.
 | `pnpm db:generate` | génère les migrations SQL depuis le schéma | jamais `push` : la génération est la seule voie |
 | `pnpm db:migrate` | applique les migrations, deux fois de suite sans effet supplémentaire | une migration en échec |
 | `pnpm db:seed` | données de développement, rejouables | un seed non idempotent |
-| `pnpm billing:reconcile` | réconcilie l'état d'abonnement avec le fournisseur de paiement, et le rejeu ne réécrit rien (`docs/reliability.md` §5) | une lecture du fournisseur en échec — la commande **n'efface jamais** : un silence du tiers ne doit pas couper un client qui paie. Module `billing` coupé, elle le dit et sort |
+| `pnpm billing:reconcile` | réconcilie l'état d'abonnement avec le fournisseur de paiement, et le rejeu ne réécrit rien (`docs/reliability.md` §5). Elle réconcilie **dans les deux sens selon le champ** (ADR 046) : le statut vient du fournisseur, la **quantité de sièges** va vers lui, le nombre de membres faisant foi | une lecture du fournisseur en échec — la commande **n'efface jamais** : un silence du tiers ne doit pas couper un client qui paie. Une lecture des **membres** en échec l'interrompt, plutôt que de baisser une quantité. Module `billing` coupé, elle le dit et sort |
 | `pnpm ks` | le CLI de modules : `list` et `toggle` (aussi `npx ks`) | un module inconnu, un requis manquant, un dépendant encore activé, ou une régénération en échec — la configuration est alors restaurée |
 
 Le scan de secrets n'a pas de script npm : il tourne en CI par l'action
