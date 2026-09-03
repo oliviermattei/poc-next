@@ -109,7 +109,58 @@ const request = async (path: string): Promise<void> => {
   await fetch(`${BASE_URL}${path}`, { redirect: 'follow' })
 }
 
+/**
+ * **Vide le compteur de débit avant la suite** (s28).
+ *
+ * Sans cela, `pnpm test:e2e` se coupe lui-même : toutes ses requêtes viennent
+ * d'une seule adresse (`::1`), et un passage complet consomme 41 des 120
+ * inscriptions horaires par appelant. Le **troisième** passage d'une même heure
+ * contre une base persistante échouait donc à l'inscription — mesuré par la
+ * revue, `sha256('/auth/sign-up/email:client:::1')` à 122 passages.
+ *
+ * Ce qui en faisait un piège plutôt qu'une gêne : le message ne nommait rien. Un
+ * locator qui expire, ni 429 ni mention de limitation, ce qui se lit comme une
+ * instabilité du harnais et envoie chercher au mauvais endroit. La CI n'était
+ * verte que par accident de conception — chaque branche y part d'une base neuve.
+ *
+ * Le nettoyage porte sur la **seule** table du compteur, et il est fait ici
+ * plutôt que dans une spec : c'est un état partagé par tous les parcours, pas
+ * par l'un d'eux. Il ne masque rien de ce que la limitation doit prouver —
+ * `e2e/rate-limiting.spec.ts` remplit ses propres seaux et les mesure.
+ */
+const clearRateLimitStore = async (): Promise<void> => {
+  const { createDatabaseClient } = await import('@repo/db')
+  const { getEnv } = await import('@repo/config')
+  const { loadRootEnv } = await import('@repo/config/server')
+
+  loadRootEnv()
+
+  const connection = createDatabaseClient({
+    connectionString: getEnv().DATABASE_URL,
+    maxConnections: 1,
+  })
+
+  try {
+    const { sql } = await import('drizzle-orm')
+
+    // La table peut ne pas exister encore — base neuve dont les migrations n'ont
+    // pas tourné. `truncate` lèverait ; `to_regclass` rend `null` sans bruit, et
+    // il n'y a alors rien à vider.
+    await connection.db.execute(
+      sql`do $$ begin
+            if to_regclass('rate_limit_window') is not null then
+              truncate table rate_limit_window;
+            end if;
+          end $$`,
+    )
+  } finally {
+    await connection.close()
+  }
+}
+
 const globalSetup = async (): Promise<void> => {
+  await clearRateLimitStore()
+
   const targets = await warmUpTargets()
   const started = Date.now()
 

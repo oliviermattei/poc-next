@@ -3,6 +3,7 @@
 import { useTranslations } from 'next-intl'
 import { useState, type FormEvent } from 'react'
 
+import { retryAfterMinutes, type RefusalMessage } from './refusal-message'
 import { useHydrated } from './use-hydrated'
 
 /**
@@ -72,30 +73,49 @@ export interface AuthFormProps {
  * dans le refus, quel qu'il soit, et l'écran de connexion porte le lien vers
  * `/verify-email`, dont la route de renvoi répond la même chose que l'adresse
  * existe ou non.
+ *
+ * **429 est une classe à part depuis s28**, et c'est un défaut mesuré qui l'a
+ * imposée : la limitation de débit refuse au **répartiteur**, donc sans
+ * atteindre la route, et ce refus tombait dans le repli « Demande invalide.
+ * Vérifiez les informations saisies. » — on disait à quelqu'un dont la saisie
+ * est correcte qu'elle ne l'est pas, en l'invitant à recommencer, c'est-à-dire
+ * à faire exactement ce que la limitation demande de ne pas faire. La classe
+ * `throttled` est celle de `app/public-form.tsx` depuis s11 ; elle est étendue
+ * ici, pas réinventée.
+ *
+ * Exportée parce que c'est **ici** que le défaut vivait :
+ * `tests/rate-limiting.test.ts` la neutralise à sa propre ligne, et
+ * `e2e/rate-limiting.spec.ts` lit ensuite l'alerte dans un navigateur.
  */
-const messageKeyFor = (status: number): string => {
+export const authRefusalOf = (status: number, minutes: number | null): RefusalMessage => {
+  if (status === 429) {
+    return minutes === null
+      ? { key: 'app.auth.error.throttled', minutes: null }
+      : { key: 'app.auth.error.throttledIn', minutes }
+  }
+
   if (status === 401) {
-    return 'app.auth.error.unauthorized'
+    return { key: 'app.auth.error.unauthorized', minutes: null }
   }
 
   if (status === 502) {
-    return 'app.auth.error.mail'
+    return { key: 'app.auth.error.mail', minutes: null }
   }
 
-  return 'app.auth.error.invalid'
+  return { key: 'app.auth.error.invalid', minutes: null }
 }
 
 export function AuthForm(props: AuthFormProps) {
   const t = useTranslations()
   const hydrated = useHydrated()
-  const [errorKey, setErrorKey] = useState<string | null>(null)
+  const [refusal, setRefusal] = useState<RefusalMessage | null>(null)
   const [done, setDone] = useState(false)
   const [pending, setPending] = useState(false)
 
   const submit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault()
     setPending(true)
-    setErrorKey(null)
+    setRefusal(null)
 
     const entries = Object.fromEntries(new FormData(event.currentTarget).entries())
     const response = await fetch(props.action, {
@@ -107,7 +127,7 @@ export function AuthForm(props: AuthFormProps) {
     setPending(false)
 
     if (!response.ok) {
-      setErrorKey(messageKeyFor(response.status))
+      setRefusal(authRefusalOf(response.status, retryAfterMinutes(response)))
 
       return
     }
@@ -151,7 +171,9 @@ export function AuthForm(props: AuthFormProps) {
           />
         </p>
       ))}
-      {errorKey === null ? null : <p role="alert">{t(errorKey)}</p>}
+      {refusal === null ? null : (
+        <p role="alert">{t(refusal.key, { minutes: refusal.minutes ?? 0 })}</p>
+      )}
       <button type="submit" disabled={pending || !hydrated}>
         {t(props.submitLabelKey)}
       </button>

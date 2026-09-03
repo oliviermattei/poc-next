@@ -169,6 +169,7 @@ export function createBillingRoutes(service: BillingUseCasesAccess): readonly Mo
       method: 'POST',
       path: PATHS.guestCheckout,
       protection: { level: 'public' },
+      rateLimit: { policy: 'guestCheckout' },
       handler: async (request) => {
         const parsed = checkoutBodySchema.safeParse(await request.json().catch(() => null))
 
@@ -239,6 +240,13 @@ export function createBillingRoutes(service: BillingUseCasesAccess): readonly Mo
       method: 'POST',
       path: PATHS.webhook,
       protection: { level: 'public' },
+      /**
+       * **Large, et il faut dire pourquoi** (s28) : le fournisseur rejoue en
+       * rafale après une panne, et un seuil serré transformerait sa reprise en
+       * pertes d'événements. La signature reste vérifiée avant tout effet ; la
+       * limitation n'est ici que le plafond de coût d'un flot non signé.
+       */
+      rateLimit: { policy: 'webhook' },
       handler: async (request) => {
         const signature = request.headers.get('stripe-signature') ?? ''
         const payload = await request.text()

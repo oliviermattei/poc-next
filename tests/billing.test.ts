@@ -5,7 +5,6 @@ import { fileURLToPath } from 'node:url'
 import { parseEnv, type Env } from '@repo/config'
 import {
   buildRegistry,
-  dispatchModuleRequest,
   visibleNavigation,
   type ModuleScope,
   type ModuleSession,
@@ -41,7 +40,7 @@ import {
   checkoutWindowStartOf,
   configureBilling,
   createDrizzleBillingRepository,
-  createDrizzleCheckoutThrottle,
+  createSharedCheckoutThrottle,
   createGuestScopeIdGenerator,
   guestScopeReference,
   GUEST_CHECKOUT_GLOBAL_BUCKET,
@@ -94,6 +93,9 @@ import { localeRouting } from '../apps/web/lib/locale-routing'
 import { billingOffers } from '../config/billing'
 import { appLocales, defaultLocale } from '../config/i18n'
 import { databaseUrl, isDatabaseReachable } from './fixtures/database'
+import type { RateLimiter } from '@repo/ports'
+
+import { createMemoryRateLimiter, dispatchAllowingRateLimit } from './fixtures/rate-limit'
 
 /**
  * Le câblage de la facturation, éprouvé là où il traverse les packages.
@@ -445,7 +447,7 @@ const call = async (
           body: options.raw,
         })
 
-  return await dispatchModuleRequest(options.registry ?? registry, request, {
+  return await dispatchAllowingRateLimit(options.registry ?? registry, request, {
     resolveSession: () => Promise.resolve(options.session ?? null),
   })
 }
@@ -590,9 +592,29 @@ const anOrganizationWithRole = async (
  * autre chose. Le bloc « le point de composition de l'application » le remplace
  * par celui que `apps/web/lib/billing.ts` compose, puis le repose ici.
  */
+/**
+ * Le compteur de la suite : une **indirection stable** au-dessus d'un magasin
+ * remplaçable.
+ *
+ * Le service du module est construit une fois et capture ce qu'on lui donne ;
+ * remplacer directement la valeur ne l'atteindrait pas, et le compteur d'un cas
+ * déborderait sur le suivant — ce que faisait auparavant le `delete from
+ * billing_checkout_throttle` du nettoyage.
+ */
+let suiteRateLimitStore = createMemoryRateLimiter()
+const suiteRateLimiter: RateLimiter = {
+  consume: async (input) => await suiteRateLimitStore.consume(input),
+  sweep: async (before) => await suiteRateLimitStore.sweep(before),
+}
+
 const suiteBilling = (): ConfigureBillingOptions => ({
   db: connection.db,
   payments,
+  // s28 : le compteur est celui du port partagé. `billing_checkout_throttle`
+  // n'est plus écrite, et cette suite mesure la **règle** du module — les deux
+  // seaux et la dégradation —, pas la persistance du compteur, qui est prouvée
+  // contre un vrai PostgreSQL dans `tests/rate-limiting.test.ts`.
+  rateLimiter: suiteRateLimiter,
   catalogue: CATALOGUE,
   appUrl: APP_URL,
   ownerOf: () => Promise.resolve(currentScope),
@@ -618,7 +640,9 @@ const suiteBilling = (): ConfigureBillingOptions => ({
 
 const cleanup = async (): Promise<void> => {
   await connection.db.execute(sql`delete from billing_customer`)
-  await connection.db.execute(sql`delete from billing_checkout_throttle`)
+  // Le compteur de la suite est en mémoire depuis s28 : on remplace son magasin
+  // au lieu de vider une table. `billing_checkout_throttle` n'est plus écrite.
+  suiteRateLimitStore = createMemoryRateLimiter()
   await connection.db.execute(sql`delete from billing_webhook_event`)
   // Le journal des remboursements est **hors périmètre**, comme celui des
   // événements : il n'a pas de client, donc la cascade ne l'emporte pas. Sans
@@ -4133,7 +4157,7 @@ describe('un module de facturation non activé', () => {
   })
 
   it('n’expose aucune route : le webhook déclaré répond 404', async () => {
-    const response = await dispatchModuleRequest(
+    const response = await dispatchAllowingRateLimit(
       withoutBilling,
       new Request(`${APP_URL}${billingRoutePath('webhook')}`, { method: 'POST', body: '{}' }),
     )
@@ -5051,11 +5075,18 @@ describe.runIf(databaseReachable)('la limitation de débit du checkout invité',
 
   /** Remplit le seau global de la fenêtre courante, `count` fois. */
   const fillGlobalBucket = async (count: number): Promise<void> => {
-    const throttle = createDrizzleCheckoutThrottle(connection.db)
+    const throttle = createSharedCheckoutThrottle({
+      limiter: suiteRateLimiter,
+      windowSeconds: GUEST_CHECKOUT_RATE_LIMIT.windowSeconds,
+    })
     const windowStart = checkoutWindowStartOf(clock, GUEST_CHECKOUT_RATE_LIMIT.windowSeconds)
 
     for (let index = 0; index < count; index += 1) {
-      await throttle.hit({ bucket: GUEST_CHECKOUT_GLOBAL_BUCKET, windowStart })
+      await throttle.hit({
+        bucket: GUEST_CHECKOUT_GLOBAL_BUCKET,
+        max: GUEST_CHECKOUT_RATE_LIMIT.maxGlobal,
+        windowStart,
+      })
     }
   }
 

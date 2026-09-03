@@ -210,6 +210,80 @@ le code qui cesse de l'écrire casse la version encore en ligne.
 
 ---
 
+## Le proxy inverse, et pourquoi il n'est pas optionnel (s28)
+
+La limitation de débit compte par appelant, et l'appelant est identifié par
+`x-forwarded-for` — **un en-tête que le client écrit lui-même**. L'application ne
+peut pas savoir si elle a été écrite par un relais de confiance ou par
+l'attaquant : elle lit le **premier** maillon de la chaîne, ce qui est le bon
+choix derrière un proxy et le pire hors de lui.
+
+Trois conséquences, et il faut les avoir en tête avant de mettre en ligne :
+
+| Sans proxy de confiance devant | Effet |
+|---|---|
+| L'appelant pose l'en-tête qu'il veut | le seau par appelant ne le rencontre **jamais** |
+| L'appelant pose l'adresse de quelqu'un d'autre | il **brûle le seau** de cette personne |
+| Aucun en-tête n'est posé | tout le monde partage un seul seau, celui d'`unknown` |
+
+**Ce qui protège vraiment ne dépend d'aucun en-tête** : le seau par **compte
+visé** (`maxPerSubject` dans `config/security.ts`), qui compte la connexion par
+adresse tentée, l'inscription et la réinitialisation par adresse, la double
+authentification par cookie de défi signé, **lu par nom exact et à la valeur que
+le serveur lit** (une lecture par suffixe se contourne avec un leurre, et une
+valeur brute se scinde en la ré-encodant — l'en-tête `Cookie` est écrit par
+l'appelant, ADR 051). C'est écrit ici parce que le seuil par
+appelant, lu seul, donne une fausse impression de sécurité.
+
+**Le seul point d'entrée où le seau partagé touche un tiers : le webhook.**
+`/billing/webhook` est publique, donc comptée sur le seau de l'appelant. Sans
+relais devant, Stripe tombe dans le seau `unknown` — **le même** que n'importe
+qui d'autre —, si bien qu'une inondation anonyme peut pousser ses livraisons en
+429. Les trois lignes du tableau se lisent du point de vue d'un visiteur ; celle-ci
+se lit du point de vue d'un fournisseur, qui ne réessaie pas indéfiniment. La
+décision est de l'assumer, pour trois raisons :
+
+- cela **dégrade** au lieu de casser : un 429 est un échec de livraison que
+  Stripe rejoue avec son propre repli, le `Retry-After` que ce dépôt renvoie est
+  honnête, la signature reste vérifiée avant tout effet, et le traitement est
+  idempotent par identifiant d'événement — un rejeu ne produit rien de plus ;
+- la politique `webhook` est **la plus large de toutes** (600 par minute contre
+  120 pour le filet par défaut), délibérément, et `tests/rate-limiting.test.ts`
+  le vérifie : ce tiers-là ne doit jamais être le premier refusé ;
+- les deux réponses de code étaient pires — ne pas limiter du tout un point
+  d'entrée public viole le socle de sécurité, et vérifier la signature dans le
+  limiteur ferait entrer le secret du fournisseur dans le chemin de la
+  limitation, avant le gestionnaire (ADR 051 refuse le même geste pour le cookie
+  de défi).
+
+**La vraie réponse est ici, dans cette section** : derrière un relais qui écrase
+`x-forwarded-for`, les adresses de Stripe ont leur propre seau, et une inondation
+anonyme ne le touche plus. **Jamais mesuré** : aucun fournisseur réel n'a rejoué
+de rafale après panne contre ce dépôt.
+
+**Ce que le proxy doit faire** : **écraser** `x-forwarded-for`, jamais y ajouter.
+Un proxy qui concatène laisse l'appelant écrire le premier maillon, c'est-à-dire
+exactement la valeur que l'application retient.
+
+- **Traefik** (le défaut de Coolify) : `--entrypoints.web.forwardedHeaders.insecure=false`
+  et `--entrypoints.web.forwardedHeaders.trustedIPs=<vos relais>`. Sans
+  `trustedIPs`, Traefik fait confiance à ce qu'il reçoit.
+- **nginx** : `proxy_set_header X-Forwarded-For $remote_addr;` — `$remote_addr`,
+  **pas** `$proxy_add_x_forwarded_for`, qui concatène la valeur du client.
+- **Caddy** : `reverse_proxy` écrit `X-Forwarded-For` à partir de l'adresse de
+  pair ; ne pas ajouter de `header_up X-Forwarded-For` qui la remplacerait.
+- **Vercel** : la plateforme réécrit l'en-tête ; rien à faire.
+
+**La pile `docker-compose.prod.yml` de ce dépôt expose Next directement** et ne
+contient aucun proxy : c'est le mode « je mets un relais devant », qui est celui
+de Coolify. Publier ce port sur l'Internet sans relais laisse les trois lignes du
+tableau ci-dessus s'appliquer.
+
+**Non vérifié ici, et il faut le dire** : aucun proxy inverse réel n'a été
+exercé pendant s28 — `x-forwarded-for` était toujours absent ou écrit par le
+test. Confirmer au premier déploiement que le relais **écrase** l'en-tête est une
+recette manuelle.
+
 ## Les variables de l’application
 
 **Cette liste est comparée au schéma par `tests/deployment.test.ts`, dans les

@@ -48,6 +48,43 @@ L'ordre d'application vient du **graphe des requis**, rendu par `buildRegistry` 
 un module requis migre avant son dépendant. Jamais l'ordre alphabétique, jamais
 celui de `config/features.ts`.
 
+### Le baril d'un module sans table, et l'artefact d'interop (s28)
+
+`pnpm db:generate` écrit `export {}` pour un module qui ne déclare aucune table —
+c'est le cas de `consent`, `i18n` et `mcp-server`. La forme que `composeSchema`
+en reçoit **dépend du chargeur**, et c'est le piège :
+
+- en ESM (l'application, `pnpm test`, `tsx`), `import * as consent` rend un
+  espace de noms **vide** ;
+- matérialisé en CommonJS — ce que fait le chargeur de `next.config.ts` —, il
+  rend `{ default: …, __esModule: true }`.
+
+**Mesuré le 3 septembre 2026** en instrumentant `composeSchema` pendant
+`pnpm build` : `consent` et `i18n` arrivaient tous deux avec la seule clé
+`default`. Prises pour des tables, ces clés produisaient deux fautes :
+
+1. **deux** barils vides entraient en collision sur `default`, et le démarrage
+   échouait en accusant deux modules qui ne déclarent rien ;
+2. **un seul** baril vide n'échouait pas : `default` entrait dans `appSchema`
+   comme une table et partait au constructeur de requêtes relationnelles de
+   Drizzle, en silence.
+
+Le défaut était **latent depuis le premier baril vide** : aucun chemin ne
+chargeait `@repo/db` sous ce chargeur-là, si bien qu'aucune commande ne le
+voyait. s28 en a ouvert un — `apps/web/lib/rate-limit.ts`, atteint par
+`lib/startup.ts`, lui-même chargé par `next.config.ts` — et l'a fait sortir.
+
+`composeSchema` ignore donc `default` et `__esModule`, **sauf** si la valeur est
+une vraie table Drizzle : dans ce cas elle refuse en nommant le module, plutôt
+que d'avaler une déclaration. Le générateur de barils n'écrit jamais d'export par
+défaut.
+
+| Ce qui est tenu | Ce qui échoue si on le viole |
+|---|---|
+| Un baril vide n'apporte aucune table, quel que soit le chargeur | `pnpm build`, et `tests/migrations.test.ts` |
+| Deux barils vides n'entrent pas en collision | idem |
+| Une table exportée par défaut est refusée, pas avalée | `tests/migrations.test.ts` |
+
 ## Imports autorisés
 
 - `drizzle-orm` et `pg` — le pilote ne sort pas de ce package ;

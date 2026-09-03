@@ -59,13 +59,14 @@ export const publicSubscription = pgTable(
 )
 
 /**
- * Le compteur de la limitation de débit — **partagé entre instances**.
+ * Le compteur de la limitation de débit des formulaires publics (s11) —
+ * **abandonné depuis s28**.
  *
  * `docs/security.md` §7 exige une limite « partagée entre instances » ; un
  * compteur en mémoire de processus se contourne en scalant horizontalement,
- * c'est le piège que la note de s28 nomme. Une ligne par seau et par fenêtre,
- * incrémentée par **une seule** instruction atomique
- * (`infrastructure/drizzle-public-forms.ts`).
+ * c'est le piège que s28 a généralisé. Une ligne par seau et par fenêtre,
+ * incrémentée par une seule instruction atomique — la forme que
+ * `rate_limit_window` porte désormais pour tout le dépôt.
  *
  * `bucket` est un **condensat** : l'identifiant d'appelant — une adresse IP,
  * quand un en-tête en donne une — n'entre jamais en clair dans cette table.
@@ -74,10 +75,13 @@ export const publicSubscription = pgTable(
  * compte. La question reste discutable, et elle est écrite comme telle dans
  * `docs/research/s11-public-forms.md` §6.4.
  *
- * **Dette nommée** : la limitation de débit appartient à s28
- * (`docs/architecture.md`). Cette table porte volontairement un autre nom que
- * la `rate_limit_window` que s28 déclarera, et s28 devra la supprimer après
- * avoir fait converger les deux points d'entrée vers son port.
+ * **Abandonnée par s28, et volontairement pas supprimée.** Le compteur a
+ * convergé vers le port partagé (ADR 050) : **plus rien n'écrit ici**. La table
+ * reste parce que `docs/reliability.md` impose de cesser d'écrire **avant** de
+ * supprimer, et que la version encore en ligne l'écrit pendant une bascule — s27
+ * a mesuré qu'elle n'est pas instantanée. Sa suppression est une **story
+ * ultérieure** ; `tests/rate-limiting.test.ts` refuse à la fois qu'on la
+ * réécrive et qu'on la supprime ici.
  */
 export const publicFormThrottle = pgTable(
   'public_form_throttle',

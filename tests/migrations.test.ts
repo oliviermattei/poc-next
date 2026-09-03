@@ -41,6 +41,71 @@ describe('composition des schémas de modules', () => {
       ]),
     ).toThrowError(/customer.*billing.*crm|billing.*crm.*customer/s)
   })
+
+  /**
+   * **Le baril d'un module sans table n'apporte aucune table** — y compris quand
+   * le chargeur le matérialise en CommonJS.
+   *
+   * `pnpm db:generate` écrit `export {}` pour un module qui ne déclare aucune
+   * table (`generated/schema/consent.ts`, `…/i18n.ts`, `…/mcp-server.ts`). En
+   * ESM, `import * as consent` rend alors un espace de noms **vide**. Sous le
+   * chargeur de `next.config.ts`, il rend `{ default: … }` : l'artefact d'interop
+   * CommonJS, qui n'est pas une déclaration du module.
+   *
+   * **Mesuré le 3 septembre 2026**, en instrumentant `composeSchema` pendant
+   * `pnpm build` : `consent` et `i18n` arrivaient tous deux avec la seule clé
+   * `default`. Deux conséquences, et la seconde est la pire :
+   *
+   * 1. **deux** barils vides entrent en collision sur `default`, et le démarrage
+   *    échoue en accusant deux modules qui ne déclarent rien ;
+   * 2. **un seul** baril vide ne déclenche rien du tout : `default` entre dans
+   *    `appSchema` comme s'il était une table, et part au constructeur de
+   *    requêtes relationnelles de Drizzle. C'est silencieux, et c'était déjà le
+   *    cas avant s28 — aucun chemin ne chargeait `@repo/db` sous ce
+   *    chargeur-là, si bien que personne ne l'avait vu.
+   *
+   * La commande qui échoue si cette règle est violée : `pnpm build`, et ces cas.
+   */
+  describe('les artefacts d’interop d’un baril vide', () => {
+    /** La forme mesurée : un espace de noms dont `default` est l'objet d'exports. */
+    const emptyBarrelUnderInterop = (): Record<string, unknown> => {
+      const namespace: Record<string, unknown> = {}
+
+      namespace['default'] = namespace
+      namespace['__esModule'] = true
+
+      return namespace
+    }
+
+    it('n’entre pas dans le schéma composé quand un seul module a un baril vide', () => {
+      const composed = composeSchema([
+        { id: 'consent', schema: emptyBarrelUnderInterop() },
+        { id: 'storage', schema: { file: 'file-table' } },
+      ])
+
+      expect(composed).toEqual({ file: 'file-table' })
+    })
+
+    it('ne fait pas entrer deux barils vides en collision', () => {
+      // La régression exacte qui a cassé `pnpm build` : deux modules sans
+      // table s'accusaient de déclarer « default » tous les deux.
+      expect(() =>
+        composeSchema([
+          { id: 'consent', schema: emptyBarrelUnderInterop() },
+          { id: 'i18n', schema: emptyBarrelUnderInterop() },
+        ]),
+      ).not.toThrow()
+    })
+
+    it('refuse en revanche une **vraie** table exportée par défaut, en nommant le module', () => {
+      // On ignore l'artefact, jamais une déclaration. Un baril qui exporterait
+      // réellement une table par défaut serait avalé en silence sans ce refus —
+      // et le générateur de barils n'en produit jamais.
+      expect(() =>
+        composeSchema([{ id: 'fixtures', schema: { default: fixtureItem } }]),
+      ).toThrowError(/fixtures/)
+    })
+  })
 })
 
 describe('exécution des migrations', () => {

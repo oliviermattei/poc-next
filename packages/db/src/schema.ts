@@ -20,6 +20,8 @@
  * ---------------------------------------------------------------------------
  */
 
+import { is, Table } from 'drizzle-orm'
+
 import { enabledModuleSchemas } from '../../../generated/schema'
 
 export interface ModuleSchema<
@@ -59,10 +61,47 @@ export class SchemaCollisionError extends Error {
 }
 
 /**
+ * **Les clés qu'un chargeur ajoute, et qu'aucun module ne déclare.**
+ *
+ * `pnpm db:generate` écrit `export {}` dans le baril d'un module qui n'a pas de
+ * table. En ESM, `import * as consent` rend alors un espace de noms **vide** ;
+ * matérialisé en CommonJS — ce que fait le chargeur de `next.config.ts` —, il
+ * rend `{ default: …, __esModule: true }`. Ces deux clés sont un artefact
+ * d'interop, pas une déclaration : `composeSchema` compose « les tables
+ * exportées par le module », et le module n'exporte rien.
+ *
+ * **Mesuré le 3 septembre 2026** en instrumentant cette fonction pendant
+ * `pnpm build` : `consent` et `i18n` arrivaient tous deux avec la seule clé
+ * `default`. Les prendre pour des tables produisait deux fautes, et la seconde
+ * est la pire :
+ *
+ * 1. **deux** barils vides entraient en collision sur `default`, et le
+ *    démarrage échouait en accusant deux modules qui ne déclarent rien ;
+ * 2. **un seul** baril vide ne déclenchait rien : `default` entrait dans
+ *    `appSchema` comme une table et partait au constructeur de requêtes
+ *    relationnelles de Drizzle, en silence.
+ *
+ * Le défaut est latent depuis le premier baril vide ; il n'était visible
+ * d'aucun chemin tant qu'aucun import ne chargeait `@repo/db` sous ce
+ * chargeur-là. s28 en a ouvert un (`apps/web/lib/rate-limit.ts`, atteint par
+ * `lib/startup.ts`, lui-même chargé par `next.config.ts`) et l'a fait sortir.
+ *
+ * La commande qui échoue si la règle est violée : `pnpm build`, et les cas de
+ * `tests/migrations.test.ts`.
+ */
+const LOADER_ARTIFACT_KEYS = new Set(['default', '__esModule'])
+
+/**
  * Assemble les schémas des modules activés en un schéma unique.
  *
  * Deux modules qui déclarent le même nom sont un conflit, pas une surcharge :
  * l'écrasement silencieux produirait des migrations fausses.
+ *
+ * Les artefacts d'interop du chargeur sont **ignorés**, jamais avalés : si l'un
+ * d'eux porte une vraie table Drizzle — c'est-à-dire si un module exporte une
+ * table par défaut, ce que le générateur de barils ne produit jamais —, la
+ * composition **refuse** en nommant le module, plutôt que de la perdre en
+ * silence.
  */
 export function composeSchema<const TModules extends readonly ModuleSchema[]>(
   modules: TModules,
@@ -72,6 +111,18 @@ export function composeSchema<const TModules extends readonly ModuleSchema[]>(
 
   for (const module of modules) {
     for (const [name, table] of Object.entries(module.schema)) {
+      if (LOADER_ARTIFACT_KEYS.has(name)) {
+        if (is(table, Table)) {
+          throw new SchemaCollisionError(
+            `Module "${module.id}" exports a Drizzle table as "${name}". A table must be a ` +
+              'named export: "default" and "__esModule" are module-loader artifacts, and are ' +
+              'ignored by schema composition.',
+          )
+        }
+
+        continue
+      }
+
       const owner = owners.get(name)
 
       if (owner !== undefined) {

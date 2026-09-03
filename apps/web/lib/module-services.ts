@@ -8,6 +8,7 @@ import { localeRouting } from './locale-routing'
 import { createAppMailer } from './mailer'
 import { marketingSite } from './marketing'
 import { organizations } from './organizations'
+import { appRateLimiter } from './rate-limit'
 import { storage } from './storage'
 
 /**
@@ -49,6 +50,9 @@ const provideMarketingForms = (): void => {
   provideMarketing(() => ({
     db: getDatabase().db,
     mailer: createAppMailer(),
+    // s28 : le compteur **partagé**. Le module garde sa règle des deux seaux —
+    // dont celui qui dégrade —, mais il ne tient plus sa propre table.
+    rateLimiter: appRateLimiter(),
     forms,
     locales: localeRouting.locales,
     defaultLocale: localeRouting.defaultLocale,

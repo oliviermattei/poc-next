@@ -1,13 +1,10 @@
-import { createHash } from 'node:crypto'
-
 import type { ModuleScope } from '@repo/core'
-import { and, desc, eq, isNull, lt, lte, ne, or, sql, type SQL } from 'drizzle-orm'
+import { and, desc, eq, isNull, lte, ne, or, sql, type SQL } from 'drizzle-orm'
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core'
 
 import type {
   BillingCustomerRecord,
   BillingRepository,
-  CheckoutThrottle,
   PurchaseReconcileWrite,
   PurchaseRecord,
   SubscriptionRecord,
@@ -17,7 +14,6 @@ import { GUEST_SCOPE_KIND } from '../domain/guest'
 import { reconciledPurchaseStatus, type PurchaseStatus } from '../domain/purchase'
 import type { SubscriptionStatus } from '../domain/subscription'
 import {
-  billingCheckoutThrottle,
   billingCustomer,
   billingPurchase,
   billingPurchaseSession,
@@ -904,51 +900,14 @@ export function createDrizzleBillingRepository(db: BillingDatabase): BillingRepo
 }
 
 /**
- * **Le compteur partagé de la route publique de checkout** (s24,
- * `docs/security.md` §7).
+ * **`billing_checkout_throttle` n'est plus écrite** (s28).
  *
- * Une seule instruction atomique par appel : `insert … on conflict do update`
- * remet le compte à un quand la fenêtre a changé, l'incrémente sinon. Lire puis
- * écrire laisserait deux instances observer le même compte et dépasser toutes
- * les deux.
- *
- * Le seau est **condensé** avant d'être écrit : l'identifiant d'appelant — une
- * adresse IP, quand un en-tête en donne une — n'entre jamais en clair dans la
- * base. Ce n'est pas de la pseudonymisation forte, et il faut le dire : un
- * condensat SHA-256 non salé d'une adresse IPv4 se retrouve par force brute. La
- * propriété obtenue est bornée — la table ne **contient** pas d'adresse — et
- * c'est la même que celle de `public_form_throttle`.
+ * `createDrizzleCheckoutThrottle` vivait ici et y écrivait. Le compteur a
+ * convergé vers le port partagé (`shared-checkout-throttle.ts`), et la table
+ * reste en place, **vide et inerte**. L'en-tête de son `pgTable` porte la
+ * consigne d'origine et dit pourquoi elle n'a pas été suivie :
+ * `docs/reliability.md` impose de cesser d'écrire avant de retirer une table, et
+ * la version encore en ligne l'écrit pendant un basculement. C'est une story
+ * ultérieure (ADR 050). Ne la faites pas ici, et n'écrivez pas un second
+ * compteur.
  */
-export function createDrizzleCheckoutThrottle(db: BillingDatabase): CheckoutThrottle {
-  const digestOf = (key: string): string => createHash('sha256').update(key).digest('hex')
-
-  return {
-    hit: async ({ bucket, windowStart }) => {
-      const rows = await db
-        .insert(billingCheckoutThrottle)
-        .values({ bucket: digestOf(bucket), windowStartedAt: windowStart, hits: 1 })
-        .onConflictDoUpdate({
-          target: billingCheckoutThrottle.bucket,
-          set: {
-            hits: sql`case when ${billingCheckoutThrottle.windowStartedAt} = excluded.window_started_at then ${billingCheckoutThrottle.hits} + 1 else 1 end`,
-            windowStartedAt: sql`excluded.window_started_at`,
-          },
-        })
-        .returning({ hits: billingCheckoutThrottle.hits })
-
-      return rows[0]?.hits ?? 1
-    },
-
-    sweep: async (before) => {
-      // Une fenêtre close n'a plus de lecteur : `hit` ne consulte que la
-      // fenêtre en cours, et repart à un dès qu'elle change. L'effacement porte
-      // sur `window_started_at`, indexée pour cela.
-      const rows = await db
-        .delete(billingCheckoutThrottle)
-        .where(lt(billingCheckoutThrottle.windowStartedAt, before))
-        .returning({ bucket: billingCheckoutThrottle.bucket })
-
-      return rows.length
-    },
-  }
-}

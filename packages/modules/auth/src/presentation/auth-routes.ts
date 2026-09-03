@@ -28,6 +28,7 @@ import {
   type AnyOAuthProviderId,
 } from '../domain/oauth'
 import { safeRedirectPath } from '../domain/redirect'
+import { TWO_FACTOR_CHALLENGE_COOKIES } from '../domain/two-factor'
 import {
   TWO_FACTOR_REFUSAL_STATUS,
   TWO_FACTOR_SCREEN,
@@ -735,6 +736,7 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
       method: 'POST',
       path: PATHS.signUp,
       protection: { level: 'public' },
+      rateLimit: { policy: 'signUp', subjectField: 'email' },
       handler: async (request) =>
         await refuseInvalid(async () => {
           const auth = service()
@@ -773,6 +775,7 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
       method: 'POST',
       path: PATHS.signIn,
       protection: { level: 'public' },
+      rateLimit: { policy: 'signIn', subjectField: 'email' },
       handler: async (request) =>
         await refuseInvalid(async () => {
           const auth = service()
@@ -838,6 +841,7 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
       method: 'POST',
       path: PATHS.magicLink,
       protection: { level: 'public' },
+      rateLimit: { policy: 'magicLink', subjectField: 'email' },
       handler: async (request) =>
         await refuseInvalid(async () => {
           const auth = service()
@@ -862,6 +866,7 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
       method: 'GET',
       path: PATHS.magicLinkVerify,
       protection: { level: 'public' },
+      rateLimit: { policy: 'magicLink' },
       handler: async (request) => {
         const auth = service()
         const response = await auth.handle(request)
@@ -895,6 +900,7 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
       method: 'POST',
       path: PATHS.sendVerificationEmail,
       protection: { level: 'public' },
+      rateLimit: { policy: 'emailVerification', subjectField: 'email' },
       handler: async (request) =>
         await refuseInvalid(async () => {
           const auth = service()
@@ -918,6 +924,7 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
       method: 'GET',
       path: PATHS.verifyEmail,
       protection: { level: 'public' },
+      rateLimit: { policy: 'emailVerification' },
       handler: async (request) => {
         const token = new URL(request.url).searchParams.get('token') ?? ''
         const outcome = await service().useCases.verifyEmail(token)
@@ -931,6 +938,7 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
       method: 'GET',
       path: PATHS.verifyEmailChange,
       protection: { level: 'public' },
+      rateLimit: { policy: 'emailVerification' },
       handler: async (request) => {
         const token = new URL(request.url).searchParams.get('token') ?? ''
         const outcome = await service().useCases.confirmEmailChange(token)
@@ -944,6 +952,7 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
       method: 'POST',
       path: PATHS.requestPasswordReset,
       protection: { level: 'public' },
+      rateLimit: { policy: 'passwordReset', subjectField: 'email' },
       handler: async (request) =>
         await refuseInvalid(async () => {
           const auth = service()
@@ -956,6 +965,7 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
       method: 'POST',
       path: PATHS.resetPassword,
       protection: { level: 'public' },
+      rateLimit: { policy: 'passwordReset' },
       handler: async (request) => await service().handle(request),
     },
     {
@@ -1128,6 +1138,7 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
       // défi. Déclarer la route `authenticated` fermerait la seconde.
       path: PATHS.twoFactorVerify,
       protection: { level: 'public' },
+      rateLimit: { policy: 'twoFactor', subjectCookies: TWO_FACTOR_CHALLENGE_COOKIES },
       handler: async (request, context) => {
         const auth = service()
         const body = (await jsonBody(request)) as { readonly code?: unknown } | null
@@ -1159,6 +1170,7 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
       // moyen de **terminer une connexion**, et il n'y a pas encore de session.
       path: PATHS.twoFactorBackupCode,
       protection: { level: 'public' },
+      rateLimit: { policy: 'twoFactor', subjectCookies: TWO_FACTOR_CHALLENGE_COOKIES },
       handler: async (request, context) => {
         const auth = service()
         const body = (await jsonBody(request)) as { readonly code?: unknown } | null
@@ -1389,6 +1401,7 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
       // détient. Il n'y a donc rien à révéler (`docs/security.md` §7).
       path: PATHS.passkeyAuthenticateOptions,
       protection: { level: 'public' },
+      rateLimit: { policy: 'passkey' },
       handler: async (request) => {
         const stripped = new URL(request.url)
 
@@ -1403,6 +1416,7 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
       method: 'POST',
       path: PATHS.passkeyAuthenticate,
       protection: { level: 'public' },
+      rateLimit: { policy: 'passkey' },
       handler: async (request) => {
         const auth = service()
         const body = (await jsonBody(request)) as { readonly response?: unknown } | null

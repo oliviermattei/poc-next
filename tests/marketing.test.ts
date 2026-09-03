@@ -2,7 +2,7 @@ import { readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { buildRegistry, dispatchModuleRequest, resolveEnabledModules } from '@repo/core'
+import { buildRegistry, resolveEnabledModules } from '@repo/core'
 import {
   createDatabaseClient,
   listDatabaseTables,
@@ -26,7 +26,6 @@ import {
 import {
   configureMarketing,
   createDrizzlePublicSubscriptions,
-  createDrizzleSubmissionThrottle,
   marketingRoutePath,
   resetMarketingService,
 } from '@repo/module-marketing'
@@ -49,6 +48,9 @@ import { availableModules } from '../config/features'
 import { appLocales } from '../config/i18n'
 import { marketingConfiguration } from '../config/marketing'
 import { databaseUrl, isDatabaseReachable } from './fixtures/database'
+import type { RateLimiter } from '@repo/ports'
+
+import { createMemoryRateLimiter, dispatchAllowingRateLimit } from './fixtures/rate-limit'
 import { markerFor, pseudoRequestConfig } from './fixtures/pseudo-locale'
 import { ANONYMOUS, SIGNED_IN, type ViewerFixture } from './fixtures/screen-viewer'
 
@@ -429,13 +431,13 @@ describe('le module marketing coupé', () => {
     // Critère 4 de s11. La comparaison porte sur **le statut et le corps** : un
     // 404 « spécial module coupé » dirait qu'il y a quelque chose à cet
     // endroit. Ce qui est mesuré, c'est l'indiscernabilité.
-    const invented = await dispatchModuleRequest(
+    const invented = await dispatchAllowingRateLimit(
       withoutMarketing,
       new Request('https://app.test/api/modules/marketing/chemin-invente', { method: 'POST' }),
     )
 
     for (const path of MARKETING_FORM_PATHS) {
-      const response = await dispatchModuleRequest(
+      const response = await dispatchAllowingRateLimit(
         withoutMarketing,
         new Request(`https://app.test${path}`, { method: 'POST' }),
       )
@@ -1149,82 +1151,16 @@ describe.skipIf(!databaseReachable)('les tables du site public, sur une base ré
       expect(await repository.listByEmail('course@example.test')).toEqual([])
     })
 
-    it('compte les soumissions d’une fenêtre, et repart à un dans la suivante', async () => {
-      await runModuleMigrations({ db: connection.db, plan: planFor([marketingModule.id]) })
-
-      const throttle = createDrizzleSubmissionThrottle(connection.db)
-      const bucket = { key: 'contact:client:1.2.3.4', max: 3 }
-      const first = new Date('2026-08-31T10:00:00.000Z')
-      const second = new Date('2026-08-31T10:10:00.000Z')
-
-      expect(await throttle.hit({ bucket, windowStart: first })).toBe(1)
-      expect(await throttle.hit({ bucket, windowStart: first })).toBe(2)
-      // Fenêtre suivante : le compteur repart, il ne s'additionne pas.
-      expect(await throttle.hit({ bucket, windowStart: second })).toBe(1)
-
-      // Deux seaux ne se mélangent pas.
-      expect(
-        await throttle.hit({ bucket: { key: 'contact:all', max: 9 }, windowStart: second }),
-      ).toBe(1)
-
-      const stored = await connection.db.execute<{ bucket: string }>(
-        sql`select bucket from public_form_throttle`,
-      )
-
-      // **Aucune adresse en clair dans la table** : la clé est condensée avant
-      // d'être écrite (`docs/research/s11-public-forms.md` §6.4).
-      for (const row of stored.rows) {
-        expect(row.bucket).not.toContain('1.2.3.4')
-        expect(row.bucket).not.toContain('contact')
-      }
-
-      await connection.db.execute(sql`delete from public_form_throttle`)
-    })
-
-    it('n’accumule pas les seaux : ceux d’une fenêtre close sont effacés', async () => {
-      /**
-       * **La croissance de la table, mesurée puis refermée** (constat F1).
-       *
-       * Un seau par identifiant d'appelant, et l'identifiant vient d'un en-tête
-       * que le client écrit : 500 identifiants distincts donnaient 500 lignes,
-       * et rien ne les reprenait. L'effacement se **prouve en l'exécutant**
-       * (`docs/reliability.md` §1), pas en le déclarant dans un commentaire —
-       * c'est exactement l'affirmation que le module portait et qui était fausse.
-       */
-      await runModuleMigrations({ db: connection.db, plan: planFor([marketingModule.id]) })
-      await connection.db.execute(sql`delete from public_form_throttle`)
-
-      const throttle = createDrizzleSubmissionThrottle(connection.db)
-      const closed = new Date('2026-08-31T09:00:00.000Z')
-      const current = new Date('2026-08-31T09:10:00.000Z')
-
-      const rowCount = async (): Promise<number> => {
-        const counted = await connection.db.execute<{ count: number }>(
-          sql`select count(*)::int as count from public_form_throttle`,
-        )
-
-        return Number(counted.rows[0]?.count ?? 0)
-      }
-
-      await Promise.all(
-        Array.from({ length: 500 }, async (_unused, index) =>
-          await throttle.hit({
-            bucket: { key: `newsletter:client:198.51.100.${index}`, max: 5 },
-            windowStart: closed,
-          }),
-        ),
-      )
-
-      expect(await rowCount()).toBe(500)
-
-      // Un seau de la fenêtre **en cours** : il ne doit pas être emporté.
-      await throttle.hit({ bucket: { key: 'newsletter:all', max: 200 }, windowStart: current })
-
-      expect(await throttle.sweep(current)).toBe(500)
-      expect(await rowCount()).toBe(1)
-
-      await connection.db.execute(sql`delete from public_form_throttle`)
-    })
+    /**
+     * **Les deux cas du compteur de ce module ont été retirés en s28.**
+     *
+     * Ils mesuraient `createDrizzleSubmissionThrottle` sur `public_form_throttle` :
+     * comptage atomique, condensat, effacement des fenêtres closes. Cette
+     * implémentation n'existe plus — le compteur a convergé vers le port
+     * partagé, et les trois propriétés sont mesurées contre un vrai PostgreSQL
+     * dans `tests/rate-limiting.test.ts`, sur `rate_limit_window`. Les garder
+     * ici aurait entretenu un filet sur une table que plus personne n'écrit.
+     */
   })
 
   /**
@@ -1241,8 +1177,25 @@ describe.skipIf(!databaseReachable)('les tables du site public, sur une base ré
 
     const mailer = createRecordingMailer()
 
+    /**
+     * **Une indirection stable au-dessus d'un magasin remplaçable** (s28).
+     *
+     * Le service du module est construit une fois et capture ce qu'on lui
+     * donne : remplacer la valeur ne l'atteindrait pas. Remplacer le magasin
+     * derrière l'indirection est ce qui tient la place du
+     * `delete from public_form_throttle` d'avant.
+     */
+    let routesRateLimitStore = createMemoryRateLimiter()
+    const routesRateLimiter: RateLimiter = {
+      consume: async (input) => await routesRateLimitStore.consume(input),
+      sweep: async (before) => await routesRateLimitStore.sweep(before),
+    }
+    const resetRateLimit = (): void => {
+      routesRateLimitStore = createMemoryRateLimiter()
+    }
+
     const post = async (path: string, body: unknown): Promise<Response> =>
-      await dispatchModuleRequest(
+      await dispatchAllowingRateLimit(
         withMarketing,
         new Request(`https://app.test${path}`, {
           method: 'POST',
@@ -1257,6 +1210,10 @@ describe.skipIf(!databaseReachable)('les tables du site public, sur une base ré
       configureMarketing({
         db: connection.db,
         mailer,
+        // s28 : le compteur est celui du port partagé, en mémoire pour cette
+        // suite. `public_form_throttle` n'est plus écrite — et le magasin se
+        // remplace entre les cas, là où on vidait la table auparavant.
+        rateLimiter: routesRateLimiter,
         forms: marketingConfiguration.forms,
         locales: [...appLocales],
         defaultLocale: appLocales[0],
@@ -1279,7 +1236,6 @@ describe.skipIf(!databaseReachable)('les tables du site public, sur une base ré
     afterAll(async () => {
       resetMarketingService()
       await connection.db.execute(sql`delete from public_subscription`)
-      await connection.db.execute(sql`delete from public_form_throttle`)
     })
 
     it('répond **exactement pareil** à une adresse nouvelle, connue ou malformée', async () => {
@@ -1330,7 +1286,7 @@ describe.skipIf(!databaseReachable)('les tables du site public, sur une base ré
       // Les cas précédents ont déjà rempli le seau de cet appelant : la
       // fenêtre est remise à zéro pour que ce cas mesure le seuil, et non ce
       // qu'il reste du seuil.
-      await connection.db.execute(sql`delete from public_form_throttle`)
+      resetRateLimit()
 
       const { maxPerClient } = marketingConfiguration.forms.rateLimit
       const statuses: number[] = []
@@ -1359,7 +1315,7 @@ describe.skipIf(!databaseReachable)('les tables du site public, sur une base ré
       // appelés, pas les cas d'usage : c'est ce chemin-là que le registre
       // empruntera en s34/s35, et il peut être débranché sans que les cas
       // d'usage ne bougent.
-      await connection.db.execute(sql`delete from public_form_throttle`)
+      resetRateLimit()
       await post(marketingRoutePath('newsletter'), { email: 'contrat@example.test' })
 
       const scope = { kind: 'user', userId: 'u-contrat' } as const

@@ -60,6 +60,20 @@ publique, seul son usage est réservé. Un appelant qui prendrait
 pourquoi il n'y a qu'un appelant côté serveur, et que le refus est éprouvé au
 répartiteur (`tests/module-registry.test.ts`).
 
+**Le répartiteur porte aussi la limitation de débit** (s28, ADR 050), et il est
+**fail-closed** comme sur les fonctionnalités réservées : `routeIsRateLimited`
+dit qu'une route est limitée dès qu'elle est `public` **ou** qu'elle déclare un
+`rateLimit`, et sans `DispatchOptions.rateLimit` branché, une telle route répond
+**429 avec `Retry-After`**. La couverture est donc **dérivée du registre**, jamais
+énumérée : une route publique ajoutée demain est limitée sans que personne y
+pense. `@repo/core` ne compte rien et ne connaît aucun seuil — il reçoit un garde,
+comme il reçoit `resolveSession` et `resolveFeatures`. C'est aussi ce qui rend la
+limitation neutralisable **par injection uniquement**, sans variable
+d'environnement exploitable en production. L'ordre est une règle : la limitation
+vient **après** l'appariement de la route — un chemin inconnu répond 404 sans
+toucher au compteur, sinon n'importe quelle URL inventée y écrirait une ligne —
+et **avant** la résolution de session, qui lit la base à chaque requête.
+
 Une entrée de navigation `entitlement` reste **visible** à toute session, et
 c'est une décision : le critère de s21 demande une invitation à souscrire, pas
 une disparition.

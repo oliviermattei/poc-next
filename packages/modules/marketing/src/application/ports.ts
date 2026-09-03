@@ -98,8 +98,14 @@ export interface SubmissionThrottle {
   }): Promise<number>
 
   /**
-   * Efface les seaux dont la fenêtre est **close**, et rend le nombre de lignes
-   * effacées.
+   * Efface les seaux dont **leur propre** fenêtre est close à cet instant.
+   *
+   * Le paramètre est l'**instant présent**, pas une borne : le magasin est
+   * partagé depuis s28 et ses seaux n'ont pas la même durée, si bien qu'une
+   * borne « efface tout ce qui précède » effaçait les seaux longs encore ouverts
+   * des autres routes (constat C1 de la revue de s28). C'est la ligne qui porte
+   * son échéance ; un instant passé ne peut que retarder la récupération, jamais
+   * effacer un seau ouvert.
    *
    * Sans lui, la table ne se vide jamais : un seau par identifiant d'appelant,
    * et l'identifiant vient d'un en-tête que le client écrit lui-même. Le
@@ -110,7 +116,7 @@ export interface SubmissionThrottle {
    * Il rend le compte parce qu'une purge se **prouve en l'exécutant**
    * (`docs/reliability.md` §1), pas en la déclarant.
    */
-  sweep(before: Date): Promise<number>
+  sweep(now: Date): Promise<number>
 }
 
 /**

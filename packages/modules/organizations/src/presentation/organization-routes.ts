@@ -1,4 +1,9 @@
-import { MODULE_ROUTE_PREFIX, type ModuleRoute, type NavigationEntry } from '@repo/core'
+import {
+  MODULE_ROUTE_PREFIX,
+  type ModuleRoute,
+  type NavigationEntry,
+  type RouteRateLimit,
+} from '@repo/core'
 
 import type {
   OrganizationOutcome,
@@ -171,10 +176,22 @@ export function createOrganizationRoutes(
       useCases: OrganizationsUseCases,
       input: { readonly userId: string; readonly body: unknown },
     ) => Promise<OrganizationOutcome>,
+    /**
+     * **Une session n'est pas une limite** (s28, critère 2).
+     *
+     * Le répartiteur limite d'office toute route **publique** ; une route
+     * authentifiée ne l'est que si elle le demande. L'invitation le demande :
+     * chaque passage envoie un email vers une adresse que l'appelant choisit,
+     * et un compte légitime suffit à en arroser mille. Le seau par compte visé
+     * borne ce qu'une même adresse peut recevoir, toutes organisations
+     * confondues.
+     */
+    rateLimit?: RouteRateLimit,
   ): ModuleRoute => ({
     method: 'POST',
     path,
     protection: { level: 'authenticated' },
+    ...(rateLimit === undefined ? {} : { rateLimit }),
     handler: async (request, context) => {
       // Le répartiteur garantit la session sur une route `authenticated` ; ce
       // refus est la ceinture, et il ne coûte rien.
@@ -226,10 +243,14 @@ export function createOrganizationRoutes(
     submit(PATHS.create, async (useCases, input) => await useCases.createOrganization(input)),
     submit(PATHS.switch, async (useCases, input) => await useCases.switchOrganization(input)),
     submit(PATHS.update, async (useCases, input) => await useCases.renameOrganization(input)),
-    submit(PATHS.invite, async (useCases, input) => await useCases.inviteMember(input)),
+    submit(PATHS.invite, async (useCases, input) => await useCases.inviteMember(input), {
+      policy: 'invitation',
+      subjectField: 'email',
+    }),
     submit(
       PATHS.resendInvitation,
       async (useCases, input) => await useCases.resendInvitation(input),
+      { policy: 'invitation' },
     ),
     submit(
       PATHS.revokeInvitation,

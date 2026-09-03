@@ -99,6 +99,13 @@ export function createStorageRoutes(
     method: 'POST',
     path: PATHS.presignAvatar,
     protection: { level: 'authenticated' },
+    /**
+     * **Le téléversement est limité bien qu'il soit authentifié** (s28,
+     * critère 2). Une session n'est pas une limite : chaque passage signe une
+     * URL et réserve une clé chez le fournisseur, et un compte légitime suffit
+     * à en faire des milliers.
+     */
+    rateLimit: { policy: 'upload' },
     handler: async (request, context) => {
       if (context.session === null) {
         return notFound()
@@ -130,6 +137,13 @@ export function createStorageRoutes(
     method: 'POST',
     path: PATHS.confirmAvatar,
     protection: { level: 'authenticated' },
+    /**
+     * **Le téléversement est limité bien qu'il soit authentifié** (s28,
+     * critère 2). Une session n'est pas une limite : chaque passage signe une
+     * URL et réserve une clé chez le fournisseur, et un compte légitime suffit
+     * à en faire des milliers.
+     */
+    rateLimit: { policy: 'upload' },
     handler: async (request, context) => {
       if (context.session === null) {
         return notFound()
@@ -232,6 +246,13 @@ export function createStorageRoutes(
     method: 'PUT',
     path: PATHS.localUpload,
     protection: { level: 'authenticated' },
+    /**
+     * **Le téléversement est limité bien qu'il soit authentifié** (s28,
+     * critère 2). Une session n'est pas une limite : chaque passage signe une
+     * URL et réserve une clé chez le fournisseur, et un compte légitime suffit
+     * à en faire des milliers.
+     */
+    rateLimit: { policy: 'upload' },
     handler: async (request, context) => {
       if (context.session === null) {
         return notFound()

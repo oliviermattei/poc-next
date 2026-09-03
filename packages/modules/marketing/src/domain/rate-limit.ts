@@ -4,26 +4,28 @@ import type { PublicFormId } from './public-forms'
  * La limitation de débit des formulaires publics — **la règle, pas le
  * compteur**.
  *
- * Le compteur est en base (`infrastructure/drizzle-public-forms.ts`), donc
- * **partagé entre instances** : `docs/security.md` §7 l'exige, et la note de
- * s28 nomme le piège qu'un compteur en mémoire de processus tend — il se
+ * Le compteur est en base (`infrastructure/shared-submission-throttle.ts`, sur
+ * le port partagé de s28), donc **partagé entre instances** :
+ * `docs/security.md` §7 l'exige, et un compteur en mémoire de processus se
  * contourne en scalant horizontalement. Ce fichier ne fait que dire quelles
  * fenêtres et quels seaux existent ; il n'ouvre rien et ne compte rien.
  *
- * **Dette assumée, à reprendre en s28** : la limitation de débit appartient à
- * cette story-là (`docs/security.md` §7, `docs/architecture.md`,
- * `packages/modules/marketing/AGENTS.md`). Elle est livrée ici parce que ce sont
- * les premiers points d'entrée publics du dépôt et qu'ils ne peuvent pas rester
- * ouverts sans limite. Rien de ce fichier ne prend le nom de s28 : ni port
- * `RateLimiter`, ni module `ratelimit`, ni table `rate_limit_window`. s28 fera
- * converger les deux et supprimera la table de ce module.
+ * **La convergence a eu lieu en s28** (ADR 050). Le compteur de ce module est
+ * désormais le port partagé — `infrastructure/shared-submission-throttle.ts` le
+ * branche, et `public_form_throttle` n'est plus écrite. Ce qui reste ici est la
+ * **règle** : deux seaux qui ne portent pas le même verdict, dont celui du
+ * formulaire entier qui **dégrade** au lieu de refuser (constat F2 de la revue
+ * de s11) — une nuance que le répartiteur, qui ne connaît que « autorisé » et
+ * « 429 », ne sait pas exprimer. La table abandonnée n'est pas supprimée : voir
+ * `schema.ts` et l'ADR 050.
  *
  * **Fenêtre fixe, pas fenêtre glissante.** Une fenêtre glissante demande de
  * garder chaque soumission ; une fenêtre fixe tient en une ligne par seau et une
  * seule instruction atomique. Le prix est connu et borné : à cheval sur deux
  * fenêtres, un appelant peut passer deux fois le seuil. C'est acceptable pour
  * un formulaire de contact, ce ne le serait pas pour du bourrage
- * d'identifiants — que s28 traitera avec sa propre forme.
+ * d'identifiants — que s28 traite avec son seau par **compte visé**, dont la
+ * cible ne dépend d'aucun en-tête.
  */
 
 export interface RateLimitPolicy {

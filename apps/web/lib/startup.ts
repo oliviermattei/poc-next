@@ -7,6 +7,7 @@ import { resolveBillingConfig } from './billing-config'
 import { assertFeatureGates } from './feature-gates'
 import { resolveMailerConfig } from './mailer-config'
 import { resolveOAuthConfig } from './oauth-config'
+import { assertRateLimitConfiguration } from './rate-limit'
 import { resolveStorageConfig } from './storage-config'
 
 /** Le module de facturation est-il activé ? La configuration décide, pas un `if` épars. */
@@ -71,6 +72,16 @@ export function assertStartupConfiguration(
   // facturation retire seulement la confrontation au catalogue, qui n'aurait
   // alors plus de sens.
   assertFeatureGates()
+
+  // **Les seuils de limitation de débit** (s28, ADR 050), sans condition de
+  // phase et pour la même raison : c'est un fichier de configuration, donc du
+  // code, et aucune variable d'environnement n'y entre. Trois fautes y sont
+  // refusées : un seuil nul ou négatif — qui n'est pas « aucune limite », il
+  // n'existe aucun moyen de désactiver la limitation —, une route qui nomme une
+  // politique inconnue — elle serait servie sans limite —, et un captcha activé
+  // dont l'origine n'est pas déclarée dans la politique de sécurité du contenu,
+  // que le navigateur bloquerait en fermant le formulaire sans un mot.
+  assertRateLimitConfiguration()
 
   if (env === undefined) {
     return

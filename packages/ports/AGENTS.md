@@ -3,20 +3,29 @@
 Les **interfaces** des dépendances externes (ADR 006, ADR 008). Rien d'autre.
 
 Un port décrit ce dont le code métier a besoin ; l'implémentation vit dans
-`packages/adapters/<provider>`, et une seule est livrée par port. `Mailer` est
-le premier ; `Storage` (s18) est le deuxième et le premier héritier du gabarit ;
-paiement (s19), jobs (s33), analytique et monitoring (s39) suivront **le même**,
+`packages/adapters/<provider>`, et une seule est livrée par port. Quatre fichiers
+de capacité à ce jour, dans l'ordre où ils sont arrivés : `mailer.ts` (`Mailer`,
+s06) pose le gabarit, `storage.ts` (`Storage`, s18) en est le premier héritier,
+`payments.ts` (`Payments`, s19, Stripe) le second, `rate-limit.ts`
+(`RateLimiter`, s28) le troisième — et le seul dont l'implémentation ne soit pas
+un tiers. Jobs (s33), analytique et monitoring (s39) suivront **le même gabarit**,
 alors il est écrit ici plutôt que déduit :
-le premier, `Payments` le second (s19, Stripe) ; storage (s18), jobs (s33),
-analytique et monitoring (s39) suivent **le même gabarit**, alors il est écrit
-ici plutôt que déduit :
+
+*(La liste est celle de `src/` au moment où ces lignes sont écrites, et
+`tests/agents-md.test.ts` la **dérive du disque**. Ce que la commande tient
+exactement : un cinquième port dont le **nom de fichier** n'est cité nulle part
+ici fait rougir `pnpm test`. Ce qu'elle ne tient pas, et qui reste à l'auteur :
+qu'il ait sa section, sa ligne au tableau de la forme du journal, et son
+exception au socle si son échec ne dégrade pas. La phrase disait « non
+documenté » ; elle ne vaut que « non nommé », et c'est le constat m2 de la
+quatrième revue.)*
 
 | Choix | Ce qui le motive |
 |---|---|
 | Un fichier par capacité, un seul package | un port n'a aucune dépendance d'exécution : un package par port multiplierait les manifestes sans rien isoler. Ce qu'il faut isoler, c'est un SDK — donc un package par **adapter** |
-| L'opération rend un résultat discriminé, elle ne lève pas | une exception remonte par défaut : l'appelant qui l'oublie rend un 500. `ok` oblige à regarder l'échec avant de lire le succès. `docs/reliability.md` §2 : une panne de tiers **dégrade** |
+| L'opération rend un résultat discriminé, elle ne lève pas | une exception remonte par défaut : l'appelant qui l'oublie rend un 500. `ok` oblige à regarder l'échec avant de lire le succès. `docs/reliability.md` §2 : une panne de tiers **dégrade** — **sauf pour `rate-limit.ts`, une exception assumée et écrite** (voir plus bas) |
 | Les collaborateurs sont injectés (rendu, journal, horloge, hasard) | c'est ce qui rend un adapter testable sans réseau, et ce qui interdit qu'une implémentation soit choisie par `NODE_ENV` |
-| La forme du journal est **fermée** | `docs/security.md` §5 : `MailerLogRecord` n'a aucun champ où mettre un destinataire, un sujet, un corps ou une clé. `StorageLogRecord` n'en a aucun où mettre une clé d'objet — qui porte l'identifiant du propriétaire —, un octet ou une URL signée. Le compilateur tient la moitié de la garantie ; l'assainissement du `message` du fournisseur tient l'autre, et se prouve par mutation |
+| La forme du journal est **fermée** | `docs/security.md` §5 : `MailerLogRecord` n'a aucun champ où mettre un destinataire, un sujet, un corps ou une clé. `StorageLogRecord` n'en a aucun où mettre une clé d'objet — qui porte l'identifiant du propriétaire —, un octet ou une URL signée. `RateLimitLogRecord` n'en a aucun où mettre un corps de requête, un mot de passe, un jeton, une adresse email ou la clé du seau : il porte l'IP et la route **en clair** — c'est le critère 6 de s28 —, et **lequel** des deux seaux a refusé, jamais sa valeur. Le compilateur tient la moitié de la garantie ; l'assainissement du `message` du fournisseur tient l'autre, et se prouve par mutation |
 
 ## Ce que `Storage` ajoute au gabarit, et pourquoi
 
@@ -49,6 +58,36 @@ Ce que ce port **ne peut pas** garantir, et qui est donc écrit : `contentType`
 et `contentLength` sont liés à la signature, mais aucune signature ne lie un
 en-tête à un contenu. Vérifier que les octets sont réellement une image est le
 travail de l'appelant, après téléversement, par `read`.
+
+## Ce que `rate-limit.ts` ajoute au gabarit, et pourquoi
+
+Le **quatrième** port (s28, ADR 050), et le premier dont l'implémentation n'est
+pas un tiers : c'est **la base de l'application** (`packages/modules/rate-limit`,
+un module du socle, parce que le dépôt n'a qu'un mécanisme pour qu'une table ait
+un propriétaire et une migration). Trois choses le distinguent du gabarit, et
+elles doivent être lues avant d'y toucher :
+
+- **son échec ne dégrade pas, il refuse.** C'est l'exception assumée à
+  `docs/reliability.md` §2, écrite ici parce que la règle la plus proche du code
+  disait l'inverse (constat m1 de la troisième revue de s28). Le motif : ce
+  « tiers » est notre propre base, et si elle est absente la connexion ne
+  fonctionne pas davantage — les sessions y vivent. Refuser ne coûte donc aucune
+  disponibilité réelle, alors que laisser passer ferait disparaître la protection
+  au moment exact où l'application est fragile. La décision est **chez
+  l'appelant** (`createRouteRateLimitGuard`, ADR 050), pas dans le port : ce
+  fichier ne fait que rendre `store_unavailable` comme une valeur ;
+- **il n'a pas de mode local**, à la différence des autres ports, et pour une
+  raison qui n'est pas un oubli : il n'a **pas de clé**. Le repli explicite que
+  `AGENTS.md` racine impose (`EMAIL_LOCAL_CAPTURE=1` et ses pareils) existe pour
+  qu'un port sans clé de fournisseur reste utilisable localement ; ici il n'y a
+  rien à remplacer, et une variable qui éteindrait la limitation **est** une
+  porte (critère 8 de s28). La neutralisation se fait **par injection**, dans un
+  test ;
+- **`sweep(now)` prend l'instant présent, jamais une borne.** Le magasin est
+  partagé par toutes les routes et les seaux n'ont pas la même durée : une borne
+  « efface tout ce qui précède » ne peut pas dire si une ligne est close, et
+  effaçait les seaux longs encore ouverts des autres routes. C'est la **ligne**
+  qui porte son échéance.
 
 ## Imports autorisés
 

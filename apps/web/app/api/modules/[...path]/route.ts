@@ -4,6 +4,7 @@ import { resolveModuleSession } from '../../../../lib/auth'
 import { entitlements } from '../../../../lib/entitlements'
 import { moduleRegistry } from '../../../../lib/module-registry'
 import { prepareModuleServices } from '../../../../lib/module-services'
+import { rateLimitGuard } from '../../../../lib/rate-limit'
 
 /**
  * **Le** point de montage des routes de modules.
@@ -40,6 +41,11 @@ const handle = (request: Request): Promise<Response> => {
     // fail-closed — retirer cette ligne refuse toute route réservée en 403,
     // jamais l'inverse.
     resolveFeatures: entitlements.featuresOf,
+    // **La limitation de débit** (s28, ADR 050), du même côté de la dépendance
+    // que la session : `@repo/core` ne sait ni compter, ni où sont les seuils.
+    // Le répartiteur est fail-closed — retirer cette ligne fait répondre 429 à
+    // toute route publique, jamais l'inverse.
+    rateLimit: rateLimitGuard(),
   })
 }
 

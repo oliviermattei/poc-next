@@ -12,10 +12,12 @@
  * **La forme est celle de `marketing`** — fenêtre fixe, une ligne par seau,
  * une seule instruction atomique — et elle est **recopiée**, pas importée : le
  * module `billing` ne déclare aucun `requires` (ADR 034) et ne connaît pas
- * `marketing`. La dette de convergence est celle que `marketing` nomme déjà :
- * s28 possède la limitation de débit, fera converger les points d'entrée vers
- * son port et supprimera les deux tables. Rien ici ne prend le nom de s28 : ni
- * port `RateLimiter`, ni table `rate_limit_window`.
+ * `marketing`. **La convergence a eu lieu en s28** (ADR 050) : le compteur est
+ * désormais le port partagé (`infrastructure/shared-checkout-throttle.ts`), et
+ * `billing_checkout_throttle` n'est plus écrite. Ce qui reste ici est la
+ * **règle** — les deux seaux et leur dégradation —, que le répartiteur ne sait
+ * pas exprimer. Les deux tables abandonnées **ne sont pas supprimées** : voir
+ * l'en-tête de `schema.ts` et l'ADR 050.
  *
  * **Deux seaux, et ils ne disent pas la même chose** — la même leçon que
  * `marketing`, apprise deux fois (constat F2 de la revue de s11, constat F3 de

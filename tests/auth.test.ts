@@ -1,7 +1,7 @@
 import { createHmac, randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 
-import { buildRegistry, dispatchModuleRequest, MODULE_ROUTE_PREFIX } from '@repo/core'
+import { buildRegistry, MODULE_ROUTE_PREFIX } from '@repo/core'
 import {
   createDatabaseClient,
   listDatabaseTables,
@@ -33,6 +33,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { SecurityEventRecord } from '@repo/module-auth'
 import { databaseUrl, isDatabaseReachable } from './fixtures/database'
 import { createVirtualAuthenticator } from './fixtures/webauthn'
+import { dispatchAllowingRateLimit } from './fixtures/rate-limit'
 
 /**
  * L'authentification, éprouvée **contre une vraie base** et à travers le
@@ -236,7 +237,7 @@ const call = async (path: string, options: CallOptions = {}): Promise<Response> 
     headers.set('authorization', options.authorization)
   }
 
-  return await dispatchModuleRequest(
+  return await dispatchAllowingRateLimit(
     registry,
     new Request(`${APP_URL}${AUTH_PREFIX}${path}`, {
       method: options.method ?? (options.body === undefined ? 'GET' : 'POST'),
@@ -450,7 +451,7 @@ describe.skipIf(!databaseReachable)('frontière — tout email passe par le port
 
     try {
       const email = anEmail()
-      const response = await dispatchModuleRequest(
+      const response = await dispatchAllowingRateLimit(
         registry,
         new Request(`${APP_URL}${AUTH_PREFIX}/sign-up/email`, {
           method: 'POST',
@@ -1147,7 +1148,7 @@ describe.skipIf(!databaseReachable)('module non configuré', () => {
 
     try {
       await expect(
-        dispatchModuleRequest(
+        dispatchAllowingRateLimit(
           registry,
           new Request(`${APP_URL}${AUTH_PREFIX}/sign-in/email`, {
             method: 'POST',

@@ -120,6 +120,7 @@ export function createPublicFormRoutes(
       method: 'POST',
       path: PATHS.contact,
       protection: { level: 'public' },
+      rateLimit: { policy: 'publicForm' },
       handler: async (request) =>
         await handle(request, async (useCases, submission) =>
           await useCases.submitContact(submission),
@@ -129,6 +130,7 @@ export function createPublicFormRoutes(
       method: 'POST',
       path: PATHS.newsletter,
       protection: { level: 'public' },
+      rateLimit: { policy: 'publicForm' },
       handler: async (request) =>
         await handle(request, async (useCases, submission) =>
           await useCases.subscribeToNewsletter(submission),

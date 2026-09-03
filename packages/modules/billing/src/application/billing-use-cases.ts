@@ -693,7 +693,11 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
     openGuestCheckout: async ({ offerId, locale, client }) => {
       const at = now()
       const windowStart = checkoutWindowStartOf(at, GUEST_CHECKOUT_RATE_LIMIT.windowSeconds)
-      const hits = await throttle.hit({ bucket: guestCheckoutBucket(client), windowStart })
+      const hits = await throttle.hit({
+        bucket: guestCheckoutBucket(client),
+        max: GUEST_CHECKOUT_RATE_LIMIT.maxPerClient,
+        windowStart,
+      })
 
       // Les fenêtres closes n'ont plus de lecteur : sans ce balayage, la table
       // garde un seau par identifiant d'appelant pour l'éternité.
@@ -730,6 +734,7 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
        */
       const globalHits = await throttle.hit({
         bucket: GUEST_CHECKOUT_GLOBAL_BUCKET,
+        max: GUEST_CHECKOUT_RATE_LIMIT.maxGlobal,
         windowStart,
       })
 

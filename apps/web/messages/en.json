@@ -32,6 +32,8 @@
   "app.auth.error.unauthorized": "Invalid credentials. If your address is not verified yet, request a new link.",
   "app.auth.error.mail": "The email could not be sent. Try again in a moment.",
   "app.auth.error.invalid": "Invalid request. Check the information you entered.",
+  "app.auth.error.throttled": "Too many attempts. Try again in a few minutes.",
+  "app.auth.error.throttledIn": "Too many attempts. Try again in {minutes, plural, one {# minute} other {# minutes}}.",
   "app.signIn.title": "Sign in",
   "app.signIn.submit": "Sign in",
   "app.signIn.verified": "Your address is verified. You can sign in.",
@@ -167,5 +169,7 @@
   "app.twoFactor.error.invalid": "That code is not valid.",
   "app.twoFactor.error.restart": "This verification expired. Start signing in again.",
   "app.twoFactor.error.used": "That code has already been used. Wait for the next one your app shows.",
+  "app.twoFactor.error.throttled": "Too many attempts. Your code is not the problem: try again in a few minutes.",
+  "app.twoFactor.error.throttledIn": "Too many attempts. Your code is not the problem: try again in {minutes, plural, one {# minute} other {# minutes}}.",
   "app.twoFactor.links.signIn": "Back to sign-in"
 }

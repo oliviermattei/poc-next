@@ -165,16 +165,38 @@ Deux règles structurantes :
 |---|---|---|---|
 | Email transactionnel | `Mailer` | Resend | s06 |
 
-**Forme du port, posée en s06 et valable pour les cinq suivants** : un port ne lève jamais, il rend un résultat discriminé (`{ok:true,…} | {ok:false,error}`). Une exception remonte aussi à l'appelant, mais *par défaut* — celui qui l'oublie rend un 500 et rien dans le type ne le lui rappelle. Le résultat discriminé impose la gestion au compilateur. Les doublures de test remplacent le **réseau**, jamais le SDK : la sérialisation, les en-têtes et le traitement de la réponse du fournisseur restent exercés.
+**Forme du port, posée en s06 et valable pour les suivants** : un port ne lève jamais, il rend un résultat discriminé (`{ok:true,…} | {ok:false,error}`). Une exception remonte aussi à l'appelant, mais *par défaut* — celui qui l'oublie rend un 500 et rien dans le type ne le lui rappelle. Le résultat discriminé impose la gestion au compilateur. Les doublures de test remplacent le **réseau**, jamais le SDK : la sérialisation, les en-têtes et le traitement de la réponse du fournisseur restent exercés.
 | Authentification | — (bibliothèque) | Better Auth | s07 |
 | Fichiers | `Storage` | S3 / Cloudflare R2 (API compatible S3) | s18 |
 | Paiement | `Payments` | Stripe (checkout, portail, webhooks) | s19 |
 | Jobs et cron | `Jobs` | Inngest, avec repli synchrone si le module est coupé | s33 |
 | Erreurs | `Monitoring` | Sentry (source maps au build) | s39 |
 | Analytique | `Analytics` | PostHog, chargée après consentement | s39 |
-| Limitation de débit | `RateLimiter` | Compteur PostgreSQL, Redis documenté | s28 |
+| Limitation de débit | `RateLimiter` | Compteur PostgreSQL (`rate_limit_window`), une seule implémentation | s28 |
 
 Chaque port doit fonctionner en développement local **sans clé d'API** : capture locale des emails, stockage sur disque, jobs synchrones, analytique inerte.
+
+**`RateLimiter` est le quatrième port livré** (s28, ADR 050), et le seul dont le
+« fournisseur » est la base de l'application. Trois conséquences le distinguent
+des trois autres, et elles sont écrites parce qu'elles dérogent :
+
+- **il n'a pas de mode local sans clé**, parce qu'il n'a pas de clé : son magasin
+  est `DATABASE_URL`, déjà exigée de toute application qui démarre ;
+- **un magasin indisponible refuse**, là où le socle de fiabilité fait dégrader
+  un tiers absent. Le raisonnement complet est dans l'ADR 050 : si la base est
+  absente, la connexion ne fonctionne pas davantage — les sessions y vivent ;
+- **il est appelé par le répartiteur, pas par les modules.** `dispatchModuleRequest`
+  limite toute route **publique** du registre, plus toute route qui déclare un
+  `rateLimit`, et il est **fail-closed** : sans garde injecté, une route limitée
+  répond 429. La couverture est donc dérivée du registre, jamais énumérée — et
+  neutralisable **par injection uniquement**, sans variable d'environnement
+  (critère 8 de la story).
+
+Sa table appartient au module `rate-limit`, **du socle non désactivable** : le
+dépôt n'a qu'un mécanisme pour qu'une table ait un propriétaire, une migration et
+un journal de migration. `public_form_throttle` (s11) et
+`billing_checkout_throttle` (s24) ne sont plus écrites et restent en place,
+inertes ; leur suppression est une story ultérieure (ADR 050).
 
 ## Design / UX
 
@@ -210,7 +232,7 @@ Conséquence directe sur le contrat de module : une route déclarée par un modu
 
 - **s03 est la story la plus risquée du projet.** Le contrat de module conditionne les quarante suivantes.
 - **Le lint de frontières est ce qui sépare une architecture d'une intention.** S'il est désactivé, la clean architecture disparaît en quelques stories.
-- **La limitation de débit arrive en s28.** Tous les états livrables antérieurs exposent inscription, invitations, téléversement et checkout anonyme sans limite : ne pas mettre un projet réel en production avant cette story.
+- **La limitation de débit est livrée (s28, ADR 050).** Les états livrables antérieurs à cette story exposaient inscription, invitations, téléversement et checkout anonyme sans limite. Ce qui reste ouvert : le **captcha est encadré mais pas branché** — aucun fournisseur n'est livré —, et les deux tables de compteur d'avant s28 attendent la story qui les supprimera.
 - **`e2e/modules.spec.ts` n'est pas agnostique à la configuration** : le fichier échoue quand les deux modules de démonstration sont activés (`expect(disabledModules.length).toBeGreaterThan(0)`). La suite Vitest, elle, est agnostique depuis le correctif F7 de s04. **À traiter avant s26** : une recette de modularité qui doit exclure un fichier de test ou tolérer des rouges connus cesse de prouver quoi que ce soit.
 - **Trou d'accessibilité assumé depuis s02** : `eslint-config-next` a dû être abandonné (il tire `eslint-plugin-react@7.37.5`, qui appelle une API supprimée par ESLint 10 et interrompt le lint). Remplacé par `@next/eslint-plugin-next` et `eslint-plugin-react-hooks`. **`jsx-a11y` n'est donc plus couvert.** Vérifié en s08 : aucune version compatible ESLint 10 n'existe (dernière publication 6.10.2, octobre 2024, pair plafonné à `^9`). L'accessibilité repose donc sur les primitives Radix, sur des assertions de rôle et de navigation au clavier dans les parcours, et sur la vérification visuelle tracée en revue — c'est écrit dans `packages/ui/AGENTS.md`. À rétablir dès qu'une version compatible paraît.
 - **ADR 006 n'est enforcé qu'à moitié** : la règle de dépendance entre couches l'est, la **pureté du `domain`** (aucun framework, aucun ORM, aucun SDK) ne l'est pas encore. Le mécanisme réel est `boundaries/dependencies` avec un sélecteur `to: { module: { origin, source } }` **et `checkAllOrigins: true`** — sans cette option, qui vaut `false` par défaut, les dépendances externes ne sont jamais examinées et la règle est inerte (mesuré en s03 dans `dist/Rules/Dependencies.js`). `boundaries/external` est déprécié ; la liste de refus est tranchée en s03, avec le premier module réel.

@@ -125,10 +125,16 @@ export {
    * remplit en base, et un cas qui devrait l'atteindre par cinquante ouvertures
    * réelles mesurerait surtout la patience de la suite.
    */
-  createDrizzleCheckoutThrottle,
   purchaseReadOrder,
   subscriptionReadOrder,
 } from './infrastructure/drizzle-billing-repositories'
+/**
+ * Exporté pour la même raison que ci-dessus : le seau **global** de la route
+ * publique se remplit à travers le port partagé (s28), et un cas qui devrait
+ * l'atteindre par cinquante ouvertures réelles mesurerait surtout la patience
+ * de la suite.
+ */
+export { createSharedCheckoutThrottle } from './infrastructure/shared-checkout-throttle'
 export {
   BillingNotConfiguredError,
   configureBilling,

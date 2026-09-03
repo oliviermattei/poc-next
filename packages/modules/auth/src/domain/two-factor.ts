@@ -137,3 +137,34 @@ export function twoFactorRefusal(status: number): TwoFactorRefusal | null {
  * donne une fausse impression de couverture : elle est retirée, et ce
  * paragraphe est ce qui empêche de la réécrire.
  */
+
+/**
+ * **Les noms exacts du cookie de défi**, tels que la bibliothèque les construit.
+ *
+ * Ils servent à la limitation de débit (s28) : le seau qui borne l'énumération
+ * des six chiffres est compté **sur ce cookie**, parce qu'il est le seul
+ * identifiant de la cible que le serveur ait posé et signé — la route est
+ * publique par construction (le défi n'a pas encore de session) et son corps ne
+ * porte que le code.
+ *
+ * **Deux noms, et il faut les deux.** `createCookieGetter` compose
+ * `${secureCookiePrefix}${cookiePrefix}.${nom}`, où `secureCookiePrefix` vaut
+ * `__Secure-` dès que l'URL publique est en HTTPS ou que l'on est en
+ * production, et rien sinon. La déclaration de route est faite à l'import de
+ * `config/features.ts`, sans environnement : elle ne peut pas savoir lequel des
+ * deux s'appliquera. Elle les déclare donc tous les deux, et la limitation
+ * **refuse** si la requête en présente plus d'un — deviner rouvrirait le
+ * contournement par leurre que la re-revue de s28 a mesuré.
+ *
+ * **Ce que cette liste suppose, et la commande qui échoue sinon** : que ce dépôt
+ * ne configure ni `advanced.cookiePrefix`, ni `advanced.cookies.two_factor.name`.
+ * `tests/rate-limiting.test.ts` lit `better-auth-service.ts` et rougit si l'un
+ * des deux apparaît — sans quoi le nom réel changerait en silence et le seau ne
+ * compterait plus rien.
+ */
+export const TWO_FACTOR_CHALLENGE_COOKIE_NAME = 'two_factor'
+
+export const TWO_FACTOR_CHALLENGE_COOKIES = [
+  `__Secure-better-auth.${TWO_FACTOR_CHALLENGE_COOKIE_NAME}`,
+  `better-auth.${TWO_FACTOR_CHALLENGE_COOKIE_NAME}`,
+] as const

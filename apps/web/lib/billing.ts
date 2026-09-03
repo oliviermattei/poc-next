@@ -34,6 +34,7 @@ import { guestAccountsOf } from './guest-account'
 import { localeRouting } from './locale-routing'
 import { moduleRegistry } from './module-registry'
 import { dataOwnerOf, organizations } from './organizations'
+import { appRateLimiter } from './rate-limit'
 
 /**
  * Le point de composition de la facturation — le sixième du même modèle, après
@@ -221,6 +222,9 @@ const provide = (runtime: BillingRuntime = {}): void => {
   provideBilling(() => ({
     db: runtime.db ?? getDatabase().db,
     payments: runtime.payments ?? paymentsOf(),
+    // s28 : le compteur **partagé**. Le module garde sa règle des deux seaux —
+    // dont le seau global qui dégrade —, mais il ne tient plus sa propre table.
+    rateLimiter: appRateLimiter(),
     // Le catalogue **déjà validé** — la même fonction que celle que
     // `next.config.ts` appelle au démarrage : le module ne lit jamais
     // `config/billing.ts`.

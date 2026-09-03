@@ -32,6 +32,8 @@
   "app.auth.error.unauthorized": "Identifiants invalides. Si votre adresse n’est pas encore vérifiée, demandez un nouveau lien.",
   "app.auth.error.mail": "L’email n’a pas pu être envoyé. Réessayez dans un instant.",
   "app.auth.error.invalid": "Demande invalide. Vérifiez les informations saisies.",
+  "app.auth.error.throttled": "Trop de tentatives. Réessayez dans quelques minutes.",
+  "app.auth.error.throttledIn": "Trop de tentatives. Réessayez dans {minutes, plural, one {# minute} other {# minutes}}.",
   "app.signIn.title": "Se connecter",
   "app.signIn.submit": "Se connecter",
   "app.signIn.verified": "Votre adresse est vérifiée. Vous pouvez vous connecter.",
@@ -167,5 +169,7 @@
   "app.twoFactor.error.invalid": "Ce code n’est pas valide.",
   "app.twoFactor.error.restart": "Cette vérification a expiré. Recommencez la connexion.",
   "app.twoFactor.error.used": "Ce code a déjà servi. Attendez celui que votre application affichera ensuite.",
+  "app.twoFactor.error.throttled": "Trop de tentatives. Votre code n’est pas en cause : réessayez dans quelques minutes.",
+  "app.twoFactor.error.throttledIn": "Trop de tentatives. Votre code n’est pas en cause : réessayez dans {minutes, plural, one {# minute} other {# minutes}}.",
   "app.twoFactor.links.signIn": "Revenir à la connexion"
 }

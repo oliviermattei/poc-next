@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
-import type { Payments } from '@repo/ports'
+import type { Payments, RateLimiter } from '@repo/ports'
 
 import { createBillingUseCases, type BillingUseCases } from '../application/billing-use-cases'
 import type {
@@ -11,13 +11,14 @@ import type {
   ScopeSeats,
   SeatCounter,
 } from '../application/ports'
+import { GUEST_CHECKOUT_RATE_LIMIT } from '../domain/checkout-throttle'
 import type { BillingCatalogue } from '../domain/offer'
 import {
   createDrizzleBillingRepository,
-  createDrizzleCheckoutThrottle,
   type BillingDatabase,
 } from './drizzle-billing-repositories'
 import { createGuestScopeIdGenerator } from './guest-scope-id'
+import { createSharedCheckoutThrottle } from './shared-checkout-throttle'
 
 /**
  * Le service du module, **construit à la première requête**, pas à l'import.
@@ -38,6 +39,14 @@ export interface ConfigureBillingOptions {
   readonly db: BillingDatabase
   /** Le **port**, jamais un fournisseur : le module ignore qui l'implémente. */
   readonly payments: Payments
+  /**
+   * Le compteur **partagé** du dépôt (s28, ADR 050).
+   *
+   * Obligatoire : facultatif, il aurait laissé un point de composition retomber
+   * silencieusement sur un compteur local, c'est-à-dire sur la duplication que
+   * cette story supprime.
+   */
+  readonly rateLimiter: RateLimiter
   /** Le catalogue **validé**. Le module ne lit pas `config/billing.ts`. */
   readonly catalogue: BillingCatalogue
   /** L'URL publique, jamais déduite d'un en-tête `Host`. */
@@ -117,7 +126,12 @@ const build = (options: ConfigureBillingOptions): BillingService => ({
     seatsOf: options.seatsOf,
     seatsOfScope: options.seatsOfScope,
     emailOfScope: options.emailOfScope,
-    throttle: createDrizzleCheckoutThrottle(options.db),
+    // s28 : le compteur est celui du port partagé. `billing_checkout_throttle`
+    // n'est plus écrite — la règle des deux seaux, elle, reste ici.
+    throttle: createSharedCheckoutThrottle({
+      limiter: options.rateLimiter,
+      windowSeconds: GUEST_CHECKOUT_RATE_LIMIT.windowSeconds,
+    }),
     guestFallbackUrl: options.guestFallbackUrl,
     guestAccounts: options.guestAccounts,
     now: options.now ?? (() => new Date()),
