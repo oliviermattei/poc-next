@@ -177,6 +177,25 @@ const envShape = {
    */
   OAUTH_LOCAL_PROVIDER: z.literal(OAUTH_LOCAL_PROVIDER_ENABLED).optional(),
   /**
+   * **Le dossier des événements enregistrés** que le mode local rejoue au lieu
+   * de les fabriquer (s25, ADR 048).
+   *
+   * Elle n'a de sens qu'avec `PAYMENTS_LOCAL_MODE=1`, et
+   * `apps/web/lib/billing-config.ts` refuse le démarrage si elle est posée
+   * seule : posée à côté d'une clé de fournisseur, elle serait **sans effet**,
+   * et personne ne saurait que le rejeu n'a pas eu lieu.
+   *
+   * Ce qu'elle change : les charges utiles de webhook viennent de formes
+   * capturées chez le fournisseur, pas d'un simulateur écrit à la main. Un
+   * enregistrement attendu mais absent **fait échouer l'exécution en le
+   * nommant** — il n'existe aucun repli vers le simulateur, sans quoi la CI
+   * resterait verte en ayant cessé de vérifier ce qu'elle prétend vérifier.
+   *
+   * Elle n'est posée que par `pnpm test:golden-path`, jamais par un `.env` de
+   * poste.
+   */
+  PAYMENTS_RECORDED_EVENTS: z.string().min(1).optional(),
+  /**
    * Le seau de fichiers (s18) : S3, ou toute API compatible — R2, MinIO,
    * Spaces. **Optionnelles par groupe**, comme les paires OAuth.
    *

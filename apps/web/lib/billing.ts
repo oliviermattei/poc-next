@@ -15,7 +15,13 @@ import {
   type ConfigureBillingOptions,
   type SeatSyncOutcome,
 } from '@repo/module-billing'
-import { createLocalPayments, LOCAL_CHECKOUT_PATH, type LocalPayments } from '@repo/payments-testing'
+import {
+  createLocalPayments,
+  createRecordedCheckoutEvents,
+  LOCAL_CHECKOUT_PATH,
+  readRecordings,
+  type LocalPayments,
+} from '@repo/payments-testing'
 import type { Payments } from '@repo/ports'
 
 import { randomBytes } from 'node:crypto'
@@ -171,7 +177,19 @@ const paymentsOf = (): Payments => {
     // **Le mode local est un outil, pas un second fournisseur** (ADR 008).
     // Il est choisi sur la configuration — jamais sur `NODE_ENV` —, et
     // `resolveBillingConfig` refuse le drapeau sous `NODE_ENV=production`.
-    localPayments = createLocalPayments({ appUrl, webhookSecret: config.webhookSecret })
+    //
+    // **Les formes d'événement, elles, ont deux provenances** (s25, ADR 048) :
+    // simulées par défaut, enregistrées quand le dossier a été demandé. La
+    // seconde ne retombe **jamais** sur la première — un enregistrement absent
+    // fait échouer la terminaison du checkout en le nommant, ce que
+    // `createRecordedCheckoutEvents` garantit.
+    localPayments = createLocalPayments({
+      appUrl,
+      webhookSecret: config.webhookSecret,
+      ...(config.recordedEventsDirectory === undefined
+        ? {}
+        : { events: createRecordedCheckoutEvents(readRecordings(config.recordedEventsDirectory)) }),
+    })
     payments = localPayments
 
     return payments

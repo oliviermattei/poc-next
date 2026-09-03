@@ -103,6 +103,19 @@ Toutes les clés sont obligatoires dès le premier module, quitte à être vides
 - **Erreurs** : jamais de message distinguant « compte inconnu » de « mot de passe invalide ». Un accès à une ressource d'une autre organisation renvoie 404, jamais 403.
 - **Permissions** : vérifiées côté serveur. Masquer un bouton n'est pas une permission.
 - **Tests** : Vitest pour le domaine et l'application, Playwright pour les parcours. Deux régimes d'intégration tierce, jamais mélangés — doublure d'enregistrement et rejeu d'événements en CI (bloquants), clés de test réelles hors CI avant chaque ship.
+- **Parcours doré** (s25, ADR 048) : `pnpm test:golden-path` mesure « clone → premier paiement » — clone local, `.env` depuis l'exemple, installation, migration et seed sur une **base créée pour l'exécution**, puis le parcours au navigateur et ses deux variantes. Le régime de paiement est **obligatoire et explicite** (`GOLDEN_PATH_PAYMENTS=recorded | simulated | live`) :
+
+  | Régime | Ce qu'il joue | Où |
+  |---|---|---|
+  | `recorded` | des **formes enregistrées** chez le fournisseur, aucun appel sortant | CI (bloquant) et poste |
+  | `simulated` | les formes **écrites à la main** de `@repo/payments-testing` | poste seulement — **refusé en CI** |
+  | `live` | les **clés de test** réelles, et c'est lui qui **capture** les enregistrements — il **n'exécute pas le scénario** | poste, avant chaque ship — **jamais en CI** |
+
+  **Le régime demandé doit se lire dans ce que le serveur a traité** : les événements écrits par la route de webhook portent la marque de leur source (`evt_rec_…` pour un rejeu, `evt_local_…` pour le simulateur), et la commande exige d'y retrouver celle du régime demandé. Sans ce signal positif, une exécution annonçant `recorded` pouvait être verte en ayant tourné sur le simulateur, la variable n'étant transmise au serveur par rien que personne ne gardait.
+
+  **En CI, le job est armé par la donnée, jamais par un drapeau** : un job sonde cherche un enregistrement versionné (`hashFiles`, au niveau d'une **étape** — un `if:` de job est évalué avant tout `checkout` et GitHub y rejette la fonction, avec le fichier entier), et le parcours doré dépend de sa réponse. Tant que `tests/fixtures/stripe-events/` ne porte aucun enregistrement, il ne s'exécute pas ; à la première capture versionnée, il s'exécute et il est bloquant. `tests/golden-path.test.ts` garde les deux règles.
+
+  **Un enregistrement absent fait échouer l'exécution en le nommant, jamais de repli sur le simulateur.** Un repli laisserait la CI verte en ayant cessé de vérifier ce qu'elle prétend vérifier ; c'est la même règle que « un port ne retombe jamais silencieusement sur un remplaçant local ». La commande **mesure** les trente minutes du PRD, elle ne les juge pas : un rouge à la trente-et-unième minute ferait d'une promesse commerciale une régression de CI. Elle n'entre pas dans `pnpm test:e2e` — chaque story paierait l'amorçage complet.
 - **Commits** : un commit par story, message impératif en français, portant la recherche, le design et le plan de la story.
 
 ## Data model
