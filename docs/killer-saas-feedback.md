@@ -386,6 +386,51 @@ qu'on propose, où est le patch, et son état.
   et devient un disque plein sur trente — exactement la trajectoire que P7 a
   déjà documentée pour les worktrees.
 
+## P16 — Une voie de recherche unique et réutilisée, au lieu d'un atelier complet par story
+
+- **Aujourd'hui** — chaque story reçoit son worktree dès la **recherche**, avec
+  `pnpm install` complet et, dans les faits, une base de données. P15 a montré
+  que la base ne sert à rien à cette phase ; ce qui suit chiffre le reste.
+- **Mesuré le 04/09** — `node_modules` d'un worktree : **827 Mo**. Trois voies
+  ouvertes : **2,8 Go**. Un volume PostgreSQL par story : ~70 Mo. Un appel du
+  `worktree-manager` : **~36 000 tokens**. Soit environ **900 Mo et 36 k tokens
+  par story**, dont la phase de recherche n'utilise ni le conteneur, ni sa copie
+  privée de `node_modules` — elle lit des fichiers et exécute au plus un script
+  jetable. Sur les stories restantes au moment d'écrire, c'est la moitié du coût
+  de provisionnement engagée pour une phase en lecture seule.
+- **Proposé** — **une voie de recherche unique**, par exemple
+  `.worktrees/_recherche`, créée une fois et réutilisée :
+
+  1. dépendances installées **une seule fois** (827 Mo au total, pas par story) ;
+  2. **aucun conteneur**, jamais — et si une recherche en avait réellement besoin
+     un jour, elle démarre celui qui existe déjà plutôt que d'en créer un ;
+  3. pour chaque story : créer `feature/<id>` depuis la branche par défaut,
+     écrire `docs/research/<id>.md`, commiter, **pousser**, puis revenir à la
+     branche par défaut pour la story suivante ;
+  4. la voie d'exécution part de la branche **déjà poussée** ; c'est là, et là
+     seulement, que le worktree dédié et la base apparaissent, et ils
+     disparaissent à la fusion (P7, P15).
+
+- **Ce que ça achète en plus, et qui n'était pas le but** — pousser la branche
+  dès la recherche rend la **péremption visible**. Une recherche écrite contre un
+  état de la branche par défaut qui a bougé depuis devient fausse en silence ;
+  une branche poussée, elle, diverge **et git le dit**. Le rebase avant exécution
+  cesse d'être une discipline et devient une étape que l'outil réclame.
+- **La réserve, à traiter avant d'appliquer** — `AGENTS.md` interdit aujourd'hui
+  d'improviser un `git switch`, `git checkout` ou `git stash` dans un worktree, et
+  la voie de recherche **change de branche par construction**. La règle a été
+  écrite pour empêcher un agent de story de dériver hors de sa branche ; elle
+  n'anticipe pas une voie dont c'est le métier. Appliquer P16 demande donc
+  d'écrire la dérogation **en la nommant** — une voie déclarée, un seul agent à la
+  fois dedans, jamais de travail de story — sinon la proposition contredit une
+  règle contraignante, ce qui est pire que le gaspillage qu'elle corrige.
+- **Ce que ça ne change pas** — deux exécutions **simultanées** gardent leurs
+  bases séparées (P15) : la course inter-fichiers sur `auth_session` le prouve
+  déjà à l'échelle d'un seul passage.
+- **État** — proposé, non appliqué. Prérequis : la dérogation d'`AGENTS.md`
+  ci-dessus. **Candidat fort à remonter** : le gaspillage est invisible sur une
+  story et vaut plusieurs gigaoctets sur trente.
+
 ---
 
 # Observations sans proposition ferme
@@ -491,6 +536,7 @@ qu'on propose, où est le patch, et son état.
 | 04/09 | Scan de secrets jamais vert sur une demande de fusion, 403 avant de scanner | `pull-requests: read` sur le job, cause écrite sur place | P8 |
 | 04/09 | CI de `dev` rouge depuis cinq commits, jamais regardée par le pipeline | lire l'état de la branche cible avant d'ouvrir la fusion | — |
 | 04/09 | Cinq bases PostgreSQL, une seule utilisée ; deux créées pour des recherches en lecture seule | provisionner par phase, pas par story | P15 |
+| 04/09 | 827 Mo de `node_modules` et ~36 k tokens par story, pour une phase en lecture seule | une voie de recherche unique et réutilisée | P16 |
 
 ---
 
