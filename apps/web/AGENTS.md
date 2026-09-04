@@ -215,6 +215,28 @@ Trois composants, `app/auth-form.tsx`, `app/account/account-form.tsx` et
   déterministe — Playwright attend un contrôle actionnable, là où il cliquait
   dans le vide une fois sur trois.
 
+**Un 429 n'est pas une saisie fautive** (s28). La limitation de débit refuse au
+**répartiteur**, avant tout gestionnaire : aucune route n'est appelée, et le
+corps du refus est `{"error":"rate_limited"}`. Les formulaires classent donc le
+**statut** avant le corps. `app/public-form.tsx` le fait depuis s11 (classe
+`throttled`) ; `app/auth-form.tsx` et `app/two-factor/two-factor-form.tsx` l'ont
+rejoint en s28, par `app/refusal-message.ts`. Deux décisions y sont écrites
+plutôt que devinées :
+
+- **l'attente affichée vient de l'en-tête `Retry-After`**, jamais d'un compte à
+  rebours du navigateur ni d'une recopie de `config/security.ts` — deux sources
+  divergeraient au premier seuil modifié ;
+- **elle est arrondie à la minute supérieure**, parce que les fenêtres livrées
+  vont de 60 s à 3 600 s et qu'une attente annoncée trop courte fait réessayer
+  trop tôt. Un en-tête absent ou illisible n'affiche **aucun** chiffre : c'est
+  la formulation que `app/public-form.tsx` porte depuis s11.
+
+Le défaut que cela ferme est mesuré (constat M1 de la troisième revue de s28) :
+à quatre essais par défi, le premier refus qu'un utilisateur légitime rencontre
+sur `/two-factor` est le 429, et l'écran lui répondait « Ce code n'est pas
+valide. » — sur un code **juste**. `tests/rate-limiting.test.ts` tient la
+classification, `e2e/rate-limiting.spec.ts` tient ce que l'alerte affiche.
+
 **Un bouton éteint doit dire pourquoi.** Sans JavaScript, la règle ci-dessus le
 laisse éteint pour toujours : `app/public-form.tsx` porte donc un `<noscript>`
 qui l'explique, mesuré sous le build de production (constat F5 de la revue de

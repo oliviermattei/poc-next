@@ -2,8 +2,8 @@
  * Interfaces des dépendances externes (`docs/architecture.md`).
  *
  * Un fichier par capacité, et tous sur le même gabarit : `mailer` d'abord (s06),
- * `storage` ensuite (s18), `payments` (s19) ; jobs, analytique et monitoring
- * suivront.
+ * `storage` ensuite (s18), `payments` (s19), `rate-limit` (s28) ; jobs,
+ * analytique et monitoring suivront.
  */
 export type {
   Checkout,
@@ -44,6 +44,19 @@ export type {
   SendEmailInput,
   SendEmailResult,
 } from './mailer'
+
+export type {
+  ConsumeRateLimitInput,
+  ConsumeRateLimitResult,
+  RateLimitBucketRequest,
+  RateLimitBucketState,
+  RateLimiter,
+  RateLimitError,
+  RateLimitErrorCode,
+  RateLimitLogger,
+  RateLimitLogRecord,
+  SweepRateLimitResult,
+} from './rate-limit'
 
 export type {
   PresignUploadInput,

@@ -42,6 +42,8 @@ export {
 } from './domain/oauth'
 export { safeRedirectPath } from './domain/redirect'
 export {
+  TWO_FACTOR_CHALLENGE_COOKIES,
+  TWO_FACTOR_CHALLENGE_COOKIE_NAME,
   type TwoFactorFailureClass,
 } from './domain/two-factor'
 export {

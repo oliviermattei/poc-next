@@ -158,6 +158,61 @@ export function buildRegistry(configuration: {
  */
 export const MODULE_ROUTE_PREFIX = '/api/modules'
 
+/**
+ * **Ce que le garde de limitation rend au répartiteur** (s28, ADR 050).
+ *
+ * Volontairement pauvre : autorisé ou non, et dans combien de secondes
+ * réessayer. Le répartiteur ne sait ni quel seau a refusé, ni de combien — il
+ * n'en a pas besoin, et une réponse publique n'a rien à en dire
+ * (`docs/security.md` §7).
+ */
+export interface RouteRateLimitVerdict {
+  readonly allowed: boolean
+  /** Ce que porte l'en-tête `Retry-After`. Doit suivre la fenêtre réelle. */
+  readonly retryAfterSeconds: number
+}
+
+/**
+ * Le garde de limitation, **injecté** comme `resolveSession` et
+ * `resolveFeatures`.
+ *
+ * Même sens de dépendance, et pour la même raison : `@repo/core` ne connaît ni
+ * `config/security.ts`, ni la base, ni le module qui compte. Il reçoit la
+ * réponse du point de composition de l'application.
+ *
+ * C'est aussi ce qui rend la limitation **neutralisable par injection dans les
+ * tests, sans variable d'environnement exploitable en production** (critère 8
+ * de s28). Une neutralisation par variable serait une porte ; celle-ci n'existe
+ * pas hors du processus de test, qui construit son propre garde.
+ */
+export type RouteRateLimitGuard = (input: {
+  readonly route: RegistryRoute
+  readonly request: Request
+}) => Promise<RouteRateLimitVerdict>
+
+/**
+ * **Quelles routes sont limitées** — dérivé, jamais énuméré.
+ *
+ * Toute route **publique** l'est, qu'elle le déclare ou non : c'est ce qui rend
+ * impossible d'en oublier une, et c'est la propriété que
+ * `tests/rate-limiting.test.ts` compte au lieu de la supposer. Une route non
+ * publique ne l'est que si elle le demande — l'invitation et le téléversement
+ * le demandent, parce qu'une session n'est pas une limite.
+ */
+export const routeIsRateLimited = (route: ModuleRoute): boolean =>
+  route.rateLimit !== undefined || route.protection.level === 'public'
+
+/**
+ * Ce que rend un refus quand **aucun garde n'est branché**.
+ *
+ * Le répartiteur est fail-closed sur la limitation comme il l'est sur les
+ * fonctionnalités réservées : pas de garde, pas de passage. Un défaut inverse —
+ * laisser passer — ferait d'un oubli de câblage une absence totale de
+ * limitation que rien ne signalerait, en production comprise. Ici, l'oubli est
+ * immédiatement visible : toutes les routes publiques répondent 429.
+ */
+const RETRY_AFTER_WITHOUT_GUARD = 60
+
 export interface DispatchOptions {
   /**
    * Résout la session de l'appelant. Absent, personne n'est authentifié : toute
@@ -180,8 +235,26 @@ export interface DispatchOptions {
    * gratuitement ce que le produit vend, et personne ne s'en apercevrait.
    */
   readonly resolveFeatures?: (session: ModuleSession) => Promise<ReadonlySet<string>>
+  /**
+   * Le garde de limitation de débit (s28). **Fail-closed** : absent, toute
+   * route limitée répond 429.
+   */
+  readonly rateLimit?: RouteRateLimitGuard
   readonly prefix?: string
 }
+
+/**
+ * Le refus de limitation : **429 avec `Retry-After`** (critère 1 de s28).
+ *
+ * La valeur suit la fenêtre réelle, elle n'est pas une constante — un
+ * `Retry-After` figé ment, et un client honnête qui le croit réessaie trop tôt.
+ * Le corps ne dit rien d'autre : ni quel seau a refusé, ni de combien.
+ */
+const tooManyRequests = (retryAfterSeconds: number): Response =>
+  Response.json(
+    { error: 'rate_limited' },
+    { status: 429, headers: { 'retry-after': String(retryAfterSeconds) } },
+  )
 
 const refuse = (error: string, status: number): Response =>
   // Aucun détail : ni le module, ni la raison exacte. Une réponse d'erreur
@@ -223,6 +296,30 @@ export async function dispatchModuleRequest(
 
   if (route === undefined) {
     return refuse('not_found', 404)
+  }
+
+  /**
+   * **La limitation vient avant tout le reste** (s28), et l'ordre est la règle.
+   *
+   * Avant la résolution de session : celle-ci lit la base à chaque requête, et
+   * c'est précisément le coût qu'un martèlement cherche à faire payer. Avant le
+   * gestionnaire, donc avant la bibliothèque d'authentification : le refus
+   * n'atteint ni la règle métier, ni la persistance.
+   *
+   * Après l'appariement de la route, en revanche : un chemin qui n'existe pas
+   * répond 404 sans toucher au compteur. L'inverse ferait du magasin une
+   * surface d'attaque à part entière — n'importe quelle URL inventée y écrirait
+   * une ligne.
+   */
+  if (routeIsRateLimited(route)) {
+    const verdict = (await options.rateLimit?.({ route, request })) ?? {
+      allowed: false,
+      retryAfterSeconds: RETRY_AFTER_WITHOUT_GUARD,
+    }
+
+    if (!verdict.allowed) {
+      return tooManyRequests(verdict.retryAfterSeconds)
+    }
   }
 
   const session = (await options.resolveSession?.(request)) ?? null

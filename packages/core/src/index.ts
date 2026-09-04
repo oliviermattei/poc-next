@@ -16,6 +16,7 @@ export {
   type NavigationEntry,
   type RetentionAction,
   type RouteProtection,
+  type RouteRateLimit,
   type WebhookEvent,
   type WebhookHandler,
 } from './module'
@@ -25,6 +26,7 @@ export {
   exportModules,
   purgeModules,
   qualifyMessageKey,
+  routeIsRateLimited,
   MODULE_ROUTE_PREFIX,
   type DispatchOptions,
   type ModuleRegistry,
@@ -33,6 +35,8 @@ export {
   type RegistryNavigationEntry,
   type RegistryRoute,
   type RegistryWebhookHandler,
+  type RouteRateLimitGuard,
+  type RouteRateLimitVerdict,
 } from './registry'
 export {
   resolveLocale,

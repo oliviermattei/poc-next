@@ -157,6 +157,16 @@ ADR 032. **L'asymétrie est le cœur de la story**, et elle a deux motifs mesur�
   émise pour un membre, elle continue de valoir après son départ. La lecture
   servie par l'application relit l'appartenance à chaque requête.
 
+## Une session n'est pas une limite (s28, ADR 050)
+
+Les trois routes d'écriture — présignature, confirmation, téléversement local —
+sont **authentifiées** et pourtant limitées en débit : elles déclarent un
+`rateLimit` au contrat, ce que le répartiteur applique. Chaque passage signe une
+URL et réserve une clé chez le fournisseur, et un compte légitime suffit à en
+faire des milliers. La protection par défaut du répartiteur ne couvre que les
+routes **publiques** ; ces trois-là le demandent. Les seuils sont dans
+`config/security.ts` (politique `upload`), jamais ici.
+
 ## La route de téléversement local
 
 `PUT /api/modules/storage/local-upload` est déclarée en permanence — une route

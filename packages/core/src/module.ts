@@ -94,10 +94,79 @@ export interface ModuleRouteContext {
  * 005) arrive avec la couche API, et inventer ici un second mécanisme de
  * routage serait à jeter.
  */
+/**
+ * **La limitation de débit d'une route** (s28, ADR 050).
+ *
+ * Facultative, et cette asymétrie avec `protection` est délibérée : toute route
+ * **publique** est limitée qu'elle le déclare ou non, par la politique
+ * `default`. La couverture est donc **dérivée du registre**, jamais d'une liste
+ * à tenir à jour — une route publique ajoutée demain est limitée sans que
+ * personne y pense, et l'oubli n'est pas un mode d'échec possible.
+ *
+ * Ce champ sert à dire autre chose que le défaut :
+ *
+ * - **une politique nommée**, quand le défaut ne convient pas — un webhook que
+ *   le fournisseur rejoue en rafale, un formulaire public plus serré ;
+ * - **le compte visé**, sans lequel il n'y a pas de double limitation. C'est le
+ *   seul moyen d'arrêter le bourrage d'identifiants distribué : dix mille
+ *   adresses, un essai chacune, sur le même compte — chaque seau d'appelant
+ *   reste sous son seuil ;
+ * - **une route non publique à limiter quand même** — l'invitation et le
+ *   téléversement sont authentifiés et nommés par la story ; une session n'est
+ *   pas une limite.
+ *
+ * Le nom de la politique est une `string` et non une union : les seuils vivent
+ * dans `config/security.ts`, que `@repo/core` ne lit pas. Un nom inconnu est
+ * refusé **au démarrage** par `assertPoliciesCoverRoutes`, qui nomme la route.
+ */
+export interface RouteRateLimit {
+  /** Nom de la politique, résolue dans `config/security.ts`. */
+  readonly policy: string
+  /**
+   * Le champ du corps qui porte le compte visé — `email` sur la connexion.
+   *
+   * Absent, seul le seau de l'appelant compte. Présent et vide dans la requête,
+   * de même : inventer une valeur créerait un seau que personne ne partage,
+   * c'est-à-dire aucune limite.
+   */
+  readonly subjectField?: string
+  /**
+   * Les **noms exacts** des cookies qui peuvent porter le compte visé, quand le
+   * corps ne le porte pas.
+   *
+   * La vérification de double authentification n'envoie qu'un code à six
+   * chiffres et n'a délibérément pas de session : sans cela, son seul seau
+   * serait celui de l'appelant, c'est-à-dire un en-tête que l'attaquant écrit.
+   * Le cookie de défi, lui, est posé et signé par le serveur.
+   *
+   * **Des noms exacts, et non un suffixe.** Une correspondance par suffixe se
+   * contourne par un leurre posé en tête de l'en-tête `Cookie`, que l'appelant
+   * écrit intégralement : le limiteur compte le leurre pendant que la
+   * bibliothèque valide le vrai cookie. C'est le constat C1 de la re-revue de
+   * s28, mesuré contre l'application démarrée.
+   *
+   * Plusieurs noms sont déclarés parce que le nom réel dépend d'une
+   * configuration que la déclaration de route ne connaît pas — elle est faite à
+   * l'import, sans environnement. Quand **plus d'un** est présent dans la
+   * requête, la limitation **refuse** au lieu de choisir : deviner rouvrirait le
+   * contournement dans la moitié des déploiements.
+   *
+   * **Le nom exact ne suffit pas : la valeur doit l'être aussi.** Le constat M1
+   * de la troisième revue de s28 a montré la même faute sur l'autre axe — le
+   * limiteur bucketisait la sous-chaîne brute quand le serveur lit une valeur
+   * déguillemetée puis décodée. Ce que le seau porte est la valeur **telle que
+   * le serveur la lira** ; c'est le module de limitation qui la produit, et
+   * c'est là que la règle est écrite (`packages/modules/rate-limit/AGENTS.md`).
+   */
+  readonly subjectCookies?: readonly string[]
+}
+
 export interface ModuleRoute {
   readonly method: HttpMethod
   readonly path: string
   readonly protection: RouteProtection
+  /** Voir `RouteRateLimit`. Absent sur une route publique : politique `default`. */
+  readonly rateLimit?: RouteRateLimit
   readonly handler: (
     request: Request,
     context: ModuleRouteContext,

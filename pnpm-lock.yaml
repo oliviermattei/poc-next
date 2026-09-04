@@ -71,6 +71,9 @@ importers:
       '@repo/module-organizations':
         specifier: workspace:*
         version: link:packages/modules/organizations
+      '@repo/module-rate-limit':
+        specifier: workspace:*
+        version: link:packages/modules/rate-limit
       '@repo/module-storage':
         specifier: workspace:*
         version: link:packages/modules/storage
@@ -746,6 +749,31 @@ importers:
       react:
         specifier: ^19.2.0
         version: 19.2.8
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+
+  packages/modules/rate-limit:
+    dependencies:
+      '@repo/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@repo/ports':
+        specifier: workspace:*
+        version: link:../../ports
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@types/pg@8.23.1)(kysely@0.29.5)(pg@8.23.0)
+      zod:
+        specifier: ^4.5.0
+        version: 4.5.4
+    devDependencies:
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../../../tooling/typescript
+      '@types/node':
+        specifier: ^22
+        version: 22.20.1
       typescript:
         specifier: ^7.0.2
         version: 7.0.2

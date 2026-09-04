@@ -6,7 +6,6 @@ import { fileURLToPath } from 'node:url'
 import {
   MODULE_ROUTE_PREFIX,
   buildRegistry,
-  dispatchModuleRequest,
   resolveLocale,
   singleLocaleRouting,
   type AnyModuleDefinition,
@@ -29,6 +28,7 @@ import { proxy } from '../apps/web/proxy'
 import { availableModules, enabledModules, requiredModules } from '../config/features'
 import { appLocales, defaultLocale } from '../config/i18n'
 import { FIXTURE_CONSENT_SCRIPTS } from './fixtures/screen-viewer'
+import { dispatchAllowingRateLimit } from './fixtures/rate-limit'
 
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url))
 
@@ -971,7 +971,7 @@ const moduleRouteSetCookies = async (): Promise<readonly string[]> => {
     const collected: string[] = []
 
     for (const route of moduleRegistry.routes) {
-      const response = await dispatchModuleRequest(
+      const response = await dispatchAllowingRateLimit(
         moduleRegistry,
         new Request(`https://example.test${MODULE_ROUTE_PREFIX}${route.path}`, {
           method: route.method,

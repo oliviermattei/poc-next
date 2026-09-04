@@ -88,9 +88,9 @@ export type {
 export {
   createDrizzleContactMessages,
   createDrizzlePublicSubscriptions,
-  createDrizzleSubmissionThrottle,
   type MarketingDatabase,
 } from './infrastructure/drizzle-public-forms'
+export { createSharedSubmissionThrottle } from './infrastructure/shared-submission-throttle'
 export {
   createPublicFormRoutes,
   marketingRoutePath,

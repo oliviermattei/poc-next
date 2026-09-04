@@ -78,33 +78,65 @@
 
 - Événements de sécurité journalisés avec leur acteur : connexion, échec de connexion, réinitialisation, changement de second facteur, impersonation, changement de rôle, suppression de compte.
 - Données sensibles filtrées avant tout envoi à un service tiers ; le filtrage est **testé**, pas seulement configuré.
-- Limitation de débit sur tout point d'entrée public, partagée entre instances (s28).
-  **Deux compteurs existent avant s28** : `public_form_throttle` (formulaires
-  publics, s11) et `billing_checkout_throttle` (checkout invité, s24).
+- Limitation de débit sur tout point d'entrée public, partagée entre instances —
+  **livrée par s28** (ADR 050, dont l'ADR 051 supersède la seule clause du seau
+  de défi 2FA). Le relevé daté qui tenait cette ligne a été remplacé par une
+  **garde exécutable**, ce qu'il annonçait lui-même :
 
-  **Relevé du 3 septembre 2026**, et c'est un relevé, pas un inventaire :
-  `grep -rn "level: 'public'" packages apps` (hors `node_modules` et hors
-  fichiers de test) rend **30** occurrences, dont **1** définition de type
-  (`packages/core/src/module.ts`) et **4** entrées de *navigation* (accueil
-  marketing, tarifs, et les deux modules de démonstration). Restent **25 routes
-  publiques déclarées**, balayées une à une :
-
-  | Routes | Limitées en débit | Ce qui les garde autrement |
+  | Ce qui est tenu | Où | Ce qui échoue si on le viole |
   |---|---|---|
-  | `marketing` : `POST /contact`, `POST /newsletter` | **oui** (s11) | champ piège, seau qui dégrade |
-  | `billing` : `POST /billing/guest-checkout` | **oui** (s24) | seau par appelant *et* seau global qui dégrade |
-  | `billing` : `POST /billing/webhook` | non | **signature** vérifiée avant tout effet, journal par identifiant d'événement |
-  | `auth` : 18 routes (inscription, connexion, magic link, vérification, réinitialisation, OAuth, second facteur, passkeys) | non | indistinguabilité des refus, jetons à usage unique, envoi différé |
-  | `consent` : `POST /consent/decide` | non | **écrit un cookie**, jamais la base (ADR 035) |
-  | `demo-enabled` : `GET /demo-enabled/items` | non | lecture seule, module de démonstration |
-  | `demo-disabled` : `GET /demo-disabled/notes` | non | lecture seule, module coupé par défaut |
+  | Toute route **publique** du catalogue est limitée, sans qu'aucune ne soit nommée | `routeIsRateLimited` (`@repo/core`), dérivé du registre | `pnpm test` (`tests/rate-limiting.test.ts`) |
+  | Les huit points d'entrée que la story énumère sont couverts, et le **compte** est assertionné | idem, plus les déclarations `rateLimit` des modules | `pnpm test` |
+  | La **double limitation** de la connexion — par appelant **et** par compte visé | `createRouteRateLimitGuard` | `pnpm test` — dix mille adresses distinctes contre le même compte |
+  | Le compteur est **partagé entre instances** | `rate_limit_window`, une instruction atomique | `pnpm test` — deux connexions distinctes contre un vrai PostgreSQL |
+  | Les seuils viennent de la configuration, et un seuil nul est **refusé au démarrage** | `config/security.ts`, `parseRateLimitPolicies` | `pnpm dev`, `pnpm test` |
+  | **Aucune variable d'environnement** ne désactive la limitation | balayage **dérivé du disque** — tout `packages/modules/rate-limit/`, plus quatre chemins nommés — doublé d'une recherche d'interrupteur (`DISABLE_*`, `SKIP_*`, `BYPASS_*`) dans toutes les sources de production | `pnpm test` — le balayage assertionne son propre plancher, si bien qu'un chemin qui disparaîtrait sans être remplacé rougit |
+  | Le dépassement répond **429 avec `Retry-After`**, et la valeur suit la fenêtre réelle | `dispatchModuleRequest` | `pnpm test` |
+  | Le magasin indisponible **refuse** | `createRouteRateLimitGuard` (ADR 050) | `pnpm test` |
+  | Un balayage n'efface qu'un seau dont **sa propre** fenêtre est close | `expires_at` porté par la ligne | `pnpm test` — un seau horaire survit au balayage d'une fenêtre de dix minutes |
+  | La récupération ne dépend d'**aucun module optionnel** | le garde balaie, et le module déclare une tâche planifiée | `pnpm test` |
+  | L'énumération des codes de double authentification est bornée **par défi**, pas par en-tête | `subjectCookies` (noms **exacts**) sur les deux routes de vérification | `pnpm test`, `pnpm test:e2e` — le leurre de cookie est posé **en tête** dans les deux |
+  | Le seau compte **la valeur que le serveur lit** : guillemets encadrants retirés, `%XX` décodé, jamais deux normalisations | `subjectOfCookies` (`packages/modules/rate-limit`), qui refait les gestes de `better-call@1.4.0/dist/cookies.mjs:19-40` | `pnpm test`, `pnpm test:e2e` — le **même défi ré-encodé** à chaque essai doit refuser au seuil |
+  | Deux cookies de défi déclarés dans la même requête ⇒ **refus**, jamais un choix | `createRouteRateLimitGuard` | `pnpm test` |
+  | Le seuil de ce dépôt mord **avant** le plafond par défi de la bibliothèque, qui est le second filet | `twoFactor.maxPerSubject` (4) contre `beginAttempt(5)` de `better-auth@1.7.2` | `pnpm test` — le plafond est **dérivé de la bibliothèque installée**, donc une version qui le déplace rougit |
 
-  Aucune commande ne tient ce tableau : il se refait avec la commande ci-dessus,
-  et il sera faux dès qu'une story ajoutera une route publique. s28 possède la
-  limitation de débit : elle fera converger les deux compteurs vers son port,
-  supprimera les deux tables, et c'est à ce moment-là que le relevé doit devenir
-  une garde exécutable.
-- Protection anti-automatisation sur les formulaires publics : captcha activable, pièges à robots, seuils configurables.
+  **Mesure du 3 septembre 2026**, dérivée du registre et non d'un `grep` : le
+  catalogue complet — modules non activés compris — déclare **26 routes
+  publiques** (`auth` 19, `billing` 2, `consent` 1, `marketing` 2,
+  `demo-enabled` 1, `demo-disabled` 1) et **31 points d'entrée limités**, les
+  cinq autres étant des routes authentifiées que la story nomme : invitation,
+  relance d'invitation, et les trois du téléversement. Ce sont des planchers
+  assertionnés, pas un inventaire de ce qui existe.
+
+  **Ce que « tout point d'entrée public » veut dire ici** : toute route servie
+  par le **répartiteur de modules**. Cinq fichiers de route Next vivent en
+  dehors (`find apps/web/app/api -name route.ts`, moins le répartiteur) et ne
+  sont **pas** limités :
+
+  | Route hors répartiteur | Pourquoi elle n'est pas limitée |
+  |---|---|
+  | `/api/health` | sonde de disponibilité : un limiteur qui la refuse signale une panne qu'il a lui-même provoquée. Aucune entrée utilisateur, aucune écriture |
+  | `/api/csp-report` | dépôt de rapports envoyés par le navigateur, pas par un formulaire |
+  | `/api/i18n-probe` | **404 en production** |
+  | `/api/consent-probe/[script]` | **404 en production** |
+  | `/api/billing-local-checkout` | **404 en production** (mode local uniquement) |
+
+  Le **compte** est assertionné par `tests/rate-limiting.test.ts` : une sixième
+  route hors répartiteur force la décision au lieu d'hériter du silence.
+
+  **Les deux compteurs d'avant s28** — `public_form_throttle` (s11) et
+  `billing_checkout_throttle` (s24) — ne sont **plus écrits**. Leurs tables
+  restent en place, vides et inertes : `docs/reliability.md` impose de cesser
+  d'écrire avant de supprimer, et la version encore en ligne les écrit pendant
+  une bascule. Leur suppression est une story ultérieure ; un test refuse à la
+  fois qu'on les réécrive et qu'on les supprime ici.
+- Protection anti-automatisation sur les formulaires publics : pièges à robots
+  (`marketing`, s11) et seuils configurables (`config/security.ts`, s28). Le
+  **captcha est encadré mais pas livré** : `config/security.ts` le déclare coupé,
+  et le démarrage refuse de l'activer tant que son origine n'est pas déclarée
+  dans la politique de sécurité du contenu — le navigateur bloquerait sinon le
+  widget et fermerait le formulaire sans un mot. **Aucun fournisseur n'est
+  branché** : c'est un manque nommé, pas une fonctionnalité.
 - Aucune information exploitable dans une réponse d'erreur publique : pas d'énumération de comptes, pas de différence de temps de réponse observable.
 
 ## Comment une story démontre sa conformité

@@ -465,6 +465,18 @@ jobs:
     name: Scan de secrets
     runs-on: ubuntu-latest
 
+    # Sur un événement `pull_request`, l'action appelle
+    # `GET /repos/:owner/:repo/pulls/:number/commits` pour scanner la plage de la
+    # demande de fusion. Sans `pull-requests: read`, le jeton par défaut répond
+    # **403 « Resource not accessible by integration »** et l'action meurt *avant*
+    # de scanner : un job rouge qui n'a rien vérifié. Mesuré sur les demandes de
+    # fusion 4, 5, 6 et 7 — rouge à chaque fois sur `pull_request`, verte à chaque
+    # fois sur `push`, sur le même commit. Trois stories ont été fusionnées
+    # au-dessus de ce rouge.
+    permissions:
+      contents: read
+      pull-requests: read
+
     steps:
       # `fetch-depth: 0` : le scan porte sur l'historique, pas sur l'instantané.
       - uses: actions/checkout@v7

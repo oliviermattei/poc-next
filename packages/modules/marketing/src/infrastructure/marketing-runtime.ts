@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import { resolveLocale } from '@repo/core'
-import type { Mailer } from '@repo/ports'
+import type { Mailer, RateLimiter } from '@repo/ports'
 
 import {
   createPublicFormsUseCases,
@@ -12,9 +12,9 @@ import type { MarketingForms } from '../domain/marketing-config'
 import {
   createDrizzleContactMessages,
   createDrizzlePublicSubscriptions,
-  createDrizzleSubmissionThrottle,
   type MarketingDatabase,
 } from './drizzle-public-forms'
+import { createSharedSubmissionThrottle } from './shared-submission-throttle'
 
 /**
  * Le service du module, **construit à la première requête**, pas à l'import.
@@ -36,6 +36,14 @@ export interface ConfigureMarketingOptions {
   /** Connexion Drizzle, fournie par le point de composition (jamais lue ici). */
   readonly db: MarketingDatabase
   readonly mailer: Mailer
+  /**
+   * Le compteur **partagé** du dépôt (s28, ADR 050).
+   *
+   * Obligatoire, et le mot compte : facultatif, il aurait laissé un point de
+   * composition retomber silencieusement sur un compteur local, c'est-à-dire
+   * sur la duplication que cette story supprime.
+   */
+  readonly rateLimiter: RateLimiter
   /** Destinataire du contact, source d'inscription et seuils : de `config/marketing.ts`. */
   readonly forms: MarketingForms
   /** Les langues servies, pour que l'email parte dans celle de la requête. */
@@ -78,7 +86,12 @@ const build = (options: ConfigureMarketingOptions): MarketingService => {
     useCases: createPublicFormsUseCases({
       contactMessages: createDrizzleContactMessages(options.db),
       subscriptions: createDrizzlePublicSubscriptions(options.db),
-      throttle: createDrizzleSubmissionThrottle(options.db),
+      // s28 : le compteur est celui du port partagé. `public_form_throttle`
+      // n'est plus écrite — la règle des deux seaux, elle, reste ici.
+      throttle: createSharedSubmissionThrottle({
+        limiter: options.rateLimiter,
+        windowSeconds: options.forms.rateLimit.windowSeconds,
+      }),
       mailer: options.mailer,
       forms: options.forms,
       now: options.now ?? (() => new Date()),

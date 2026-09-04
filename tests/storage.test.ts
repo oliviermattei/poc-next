@@ -7,7 +7,6 @@ import { join } from 'node:path'
 import {
   buildRegistry,
   defineModule,
-  dispatchModuleRequest,
   exportModules,
   purgeModules,
   type ModuleScope,
@@ -39,6 +38,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { appLocales } from '../config/i18n'
 import { databaseUrl, isDatabaseReachable } from './fixtures/database'
+import { dispatchAllowingRateLimit } from './fixtures/rate-limit'
 
 /**
  * Le stockage de fichiers, éprouvé **contre une vraie base et un vrai disque**,
@@ -196,7 +196,7 @@ const call = async (
           body: JSON.stringify(options.body),
         })
 
-  return await dispatchModuleRequest(target, request, {
+  return await dispatchAllowingRateLimit(target, request, {
     resolveSession: () => Promise.resolve(options.session ?? null),
   })
 }
@@ -700,7 +700,7 @@ describe.runIf(databaseReachable)('la route de téléversement local', () => {
     // `config/security.ts`, où `connect-src 'self'` refuserait un domaine tiers.
     expect(upload.url.startsWith('/api/modules/storage/local-upload?')).toBe(true)
 
-    const stored = await dispatchModuleRequest(
+    const stored = await dispatchAllowingRateLimit(
       registry,
       new Request(new URL(upload.url, APP_URL), {
         method: 'PUT',

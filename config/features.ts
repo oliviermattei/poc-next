@@ -8,6 +8,7 @@ import { i18nModule } from '@repo/module-i18n'
 import { marketingModule } from '@repo/module-marketing'
 import { mcpServerModule } from '@repo/module-mcp-server'
 import { organizationsModule } from '@repo/module-organizations'
+import { rateLimitModule } from '@repo/module-rate-limit'
 import { storageModule } from '@repo/module-storage'
 
 /**
@@ -38,6 +39,7 @@ export const availableModules = [
   marketingModule,
   mcpServerModule,
   organizationsModule,
+  rateLimitModule,
   storageModule,
   demoEnabledModule,
   demoDisabledModule,
@@ -65,7 +67,7 @@ export type AvailableModuleId = ModuleIdOf<typeof availableModules>
  * Y ajouter un identifiant est une décision de produit, pas une commodité :
  * c'est retirer à l'utilisateur du boilerplate le droit de couper ce module.
  */
-export const requiredModules = ['auth'] as const satisfies readonly AvailableModuleId[]
+export const requiredModules = ['auth', 'rate-limit'] as const satisfies readonly AvailableModuleId[]
 
 /**
  * Les modules activés.
@@ -82,6 +84,7 @@ export const enabledModules = [
   'marketing',
   'mcp-server',
   'organizations',
+  'rate-limit',
   'storage',
   'demo-enabled',
 ] as const satisfies readonly AvailableModuleId[]

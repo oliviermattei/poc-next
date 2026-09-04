@@ -48,7 +48,7 @@ principal, comme `organization-routes.ts` du module voisin.
 |---|---|
 | `public_subscription` | une adresse, sa **source**, sa langue. Unicité **en base** sur `(source, email)` : c'est elle, et pas une vérification préalable, qui rend une seconde soumission sans effet (`docs/reliability.md` §1). La table est **partagée** avec la liste d'attente de s42, qui déclarera sa propre source — un second modèle d'inscription est interdit par la story |
 | `contact_message` | le message reçu, **écrit avant d'être envoyé**. `delivered_at` vide = reçu, pas parti : c'est la trace qui permet de rattraper ce que le fournisseur n'a pas pris. Catégorie déclarée au contrat, donc exportée et effacée |
-| `public_form_throttle` | le compteur de débit, une ligne par seau et par fenêtre. La clé est un **condensat** : aucune adresse IP n'entre en clair. Les lignes d'une fenêtre **close** sont effacées à la première soumission de la suivante |
+| `public_form_throttle` | **abandonnée depuis s28, jamais supprimée.** Elle portait le compteur de débit ; ce module compte désormais à travers le port partagé (`@repo/ports`, ADR 050) et **n'écrit plus une ligne ici**. La table reste déclarée parce que `docs/reliability.md` impose de cesser d'écrire avant de supprimer, et que la version encore en ligne l'écrit pendant une bascule. Sa suppression est une story ultérieure — `tests/rate-limiting.test.ts` refuse à la fois qu'on la réécrive et qu'on la supprime ici |
 
 | Route | Ce qu'elle rend |
 |---|---|
@@ -74,24 +74,25 @@ un attribut `style` : `style-src-attr` est la seule directive de la politique de
 sécurité du contenu qui ignore les nonces (`packages/ui/AGENTS.md`), et un style
 en ligne serait refusé en production.
 
-### La limitation de débit est ici, et elle appartient à s28
+### La limitation de débit a convergé en s28 — la règle reste, le compteur est parti
 
-`docs/security.md` §7, `docs/architecture.md` et la version précédente de ce
-fichier renvoient tous la limitation de débit à **s28**. Elle est livrée ici
-parce que ces deux routes sont les premiers points d'entrée publics du dépôt et
-qu'elles ne pouvaient pas rester sans limite. Ce qui a été fait pour que la
-convergence reste possible :
+Ce module a porté le premier compteur de débit du dépôt (s11), parce que ses deux
+routes étaient les premiers points d'entrée publics. **s28 l'a absorbé** (ADR 050) :
 
-- **aucun nom de s28 n'est pris** : ni port `RateLimiter`, ni module
-  `ratelimit`, ni table `rate_limit_window` ;
-- le compteur est **en base**, donc partagé entre instances — c'est la forme que
-  s28 généralisera, pas un compteur en mémoire de processus ;
-- la fenêtre est **fixe**, pas glissante : une ligne par seau, une seule
-  instruction atomique. Le prix est écrit dans `domain/rate-limit.ts` — à cheval
-  sur deux fenêtres, un appelant peut passer deux fois le seuil.
+- le **compteur** est le port partagé, et `public_form_throttle` n'est plus
+  écrite. `infrastructure/shared-submission-throttle.ts` branche l'un sur
+  l'autre ; le point de composition de l'application injecte le limiteur ;
+- le **répartiteur** limite en plus ces deux routes d'office, par la politique
+  `publicForm` de `config/security.ts` — toute route publique du registre l'est,
+  sans qu'aucune ne soit nommée ;
+- la **règle de ce module reste ici**, et c'est pour cela qu'elle n'a pas été
+  supprimée : ses deux seaux ne portent pas le même verdict, et celui du
+  formulaire entier **dégrade** — il suspend l'envoi sortant sans refuser la
+  soumission (constat F2 de la revue de s11). Le répartiteur ne connaît que
+  « autorisé » et « 429 » : il ne sait pas exprimer une dégradation.
 
-**Ce que s28 devra faire** : faire converger ces deux points d'entrée vers son
-port, puis supprimer `public_form_throttle`.
+**Ce qu'il ne faut pas faire ici** : supprimer `public_form_throttle` (voir le
+tableau ci-dessus), ni réintroduire un compteur local — le port est le seul.
 
 **Limite connue, et non refermée ici** : l'identifiant d'appelant vient de
 `x-forwarded-for`, que n'importe qui peut écrire hors d'un proxy de confiance.
@@ -126,9 +127,10 @@ est falsifiable. C'est un échange, et il est assumé : l'ancien comportement
 convertissait un risque de stockage en **certitude d'indisponibilité** pour tous
 les visiteurs, et c'est ce que la revue a refusé. La fermeture réelle est un
 identifiant infalsifiable — un nombre de sauts de proxy configuré —, qui demande
-une adresse de pair que la pile n'offre pas et qui appartient à s28.
-`public_form_throttle`, elle, reste bornée : ses lignes ne survivent pas à leur
-fenêtre.
+une adresse de pair que la pile n'offre pas — et que s28 n'a pas fermée non
+plus : elle a répondu au même risque par un **second seau, par compte visé**,
+qui ne dépend d'aucun en-tête. Le compteur, lui, reste borné : ses lignes ne
+survivent pas à leur fenêtre.
 
 **Écart de temps de réponse résiduel, mesuré et non exploitable.** La revue a
 mesuré, serveur de production chaud, 40 tirs entrelacés : adresse nouvelle
@@ -165,7 +167,8 @@ paramètres de compte de l'application.
   livrée ne le servirait, et un lien mort dans un email est pire qu'un lien
   absent. Le texte dit quoi faire à la place ;
 - **un captcha** : `docs/security.md` §7 le veut « activable », et
-  `config/security.ts` réserve déjà ses sources pour s28.
+  `config/security.ts` porte depuis s28 les seuils et le drapeau de captcha —
+  coupé, et sans fournisseur branché.
 
 ## Imports autorisés
 

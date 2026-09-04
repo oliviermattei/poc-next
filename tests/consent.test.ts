@@ -1,4 +1,4 @@
-import { buildRegistry, dispatchModuleRequest } from '@repo/core'
+import { buildRegistry } from '@repo/core'
 import {
   CONSENT_CATEGORIES,
   CONSENT_COOKIE,
@@ -22,6 +22,7 @@ import { moduleRegistry } from '../apps/web/lib/module-registry'
 import { availableModules, enabledModules, requiredModules } from '../config/features'
 import { appLocales, defaultLocale } from '../config/i18n'
 import { ANONYMOUS, FIXTURE_CONSENT_SCRIPTS, SIGNED_IN, viewerState } from './fixtures/screen-viewer'
+import { dispatchAllowingRateLimit } from './fixtures/rate-limit'
 
 /* ------------------------------------------------------------------------- *
  * Ce qui est remplacé pour rendre deux écrans, et rien de plus : la base et le
@@ -166,7 +167,7 @@ const submit = async (
     }
   }
 
-  return await dispatchModuleRequest(
+  return await dispatchAllowingRateLimit(
     moduleRegistry,
     new Request(DECIDE_URL, {
       method: 'POST',
@@ -234,7 +235,7 @@ describe('la route de décision', () => {
       locales: [...appLocales],
     })
 
-    const response = await dispatchModuleRequest(
+    const response = await dispatchAllowingRateLimit(
       withoutConsent,
       new Request(DECIDE_URL, { method: 'POST' }),
     )

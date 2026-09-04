@@ -6,6 +6,7 @@ import { currentViewer } from '../../../lib/auth'
 import { billing, billingRoutePath } from '../../../lib/billing'
 import { moduleRegistry } from '../../../lib/module-registry'
 import { prepareModuleServices } from '../../../lib/module-services'
+import { rateLimitGuard } from '../../../lib/rate-limit'
 import { dataOwnerOf } from '../../../lib/organizations'
 
 /**
@@ -68,6 +69,10 @@ const deliverAll = async (
         },
         body: delivery.payload,
       }),
+      // Le webhook est une route publique : le répartiteur la limite, et il est
+      // fail-closed. Sans ce garde, le simulateur du mode local se ferait
+      // refuser ses propres livraisons.
+      { rateLimit: rateLimitGuard() },
     )
   }
 }

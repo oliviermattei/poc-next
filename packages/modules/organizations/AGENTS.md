@@ -111,6 +111,17 @@ corrompu et personne n'est surfacturé — mais c'est une dégradation réelle, 
 elle est **raisonnée, pas observée** : personne n'a encore lancé une douzaine
 d'acceptations simultanées contre un fournisseur lent.
 
+## Une session n'est pas une limite (s28, ADR 050)
+
+L'invitation et sa relance sont **authentifiées** et pourtant limitées en débit :
+elles déclarent un `rateLimit` au contrat, ce que le répartiteur applique. Un
+compte légitime suffit sinon à arroser mille adresses d'emails d'invitation, et
+la protection par défaut du répartiteur ne couvre que les routes **publiques**.
+
+L'invitation porte en plus un seau **par compte visé** (`subjectField: 'email'`),
+qui borne ce qu'une même adresse peut recevoir toutes organisations confondues.
+Les seuils sont dans `config/security.ts` (politique `invitation`), jamais ici.
+
 ## Deux choses qui ressemblent à des bugs et n'en sont pas
 
 **Un `member` peut quitter l'organisation**, alors que le critère 2 dit qu'il ne

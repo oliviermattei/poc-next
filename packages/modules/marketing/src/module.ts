@@ -53,9 +53,10 @@ const marketingNavigation: readonly NavigationEntry[] = [
  * Ce qui reste dehors, et pourquoi : `contact_message`, que
  * `docs/architecture.md` attribue à ce module, n'est pas livrée — aucun critère
  * de s11 ne l'écrit ni ne la lit (`docs/research/s11-public-forms.md` §6.1). La
- * limitation de débit appartient à s28 ; elle est livrée ici parce que ces deux
- * routes sont les premiers points d'entrée publics du dépôt, et s28 devra faire
- * converger les deux (recherche §1).
+ * limitation de débit a été livrée ici parce que ces deux routes étaient les
+ * premiers points d'entrée publics du dépôt ; **s28 a fait converger le
+ * compteur** vers son port (ADR 050). La règle des deux seaux reste ce module,
+ * `public_form_throttle` n'est plus écrite, et elle n'est pas supprimée.
  */
 export const marketingModule = defineModule({
   id: MARKETING_MODULE_ID,

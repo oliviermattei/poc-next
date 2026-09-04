@@ -1,6 +1,4 @@
-import { createHash } from 'node:crypto'
-
-import { eq, lt, sql } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core'
 
 import type {
@@ -8,9 +6,8 @@ import type {
   ContactMessageRepository,
   PublicSubscriptionRecord,
   PublicSubscriptionRepository,
-  SubmissionThrottle,
 } from '../application/ports'
-import { contactMessage, publicFormThrottle, publicSubscription } from '../schema'
+import { contactMessage, publicSubscription } from '../schema'
 
 /**
  * Les repositories du module, sur **ses** tables.
@@ -26,22 +23,6 @@ export type MarketingDatabase = Pick<
   PgDatabase<PgQueryResultHKT>,
   'select' | 'insert' | 'update' | 'delete'
 >
-
-/**
- * Le condensat sous lequel un seau est écrit.
- *
- * L'identifiant d'appelant — une adresse IP quand un en-tête en donne une —
- * n'entre **jamais en clair** dans la base : ce serait une donnée personnelle
- * stockée pour compter, dans une table que personne ne purge. Le condensat
- * suffit au comptage, qui n'a besoin que d'égalité.
- *
- * Ce n'est pas de la pseudonymisation forte, et il faut le dire : un condensat
- * SHA-256 non salé d'une adresse IPv4 se retrouve par force brute. La propriété
- * obtenue est bornée — la table ne **contient** pas d'adresse — et elle est
- * écrite comme telle dans `docs/research/s11-public-forms.md` §6.4. s28, qui
- * possède la limitation de débit, héritera de la question.
- */
-const digestOf = (key: string): string => createHash('sha256').update(key).digest('hex')
 
 export function createDrizzlePublicSubscriptions(
   db: MarketingDatabase,
@@ -90,73 +71,18 @@ export function createDrizzlePublicSubscriptions(
   }
 }
 
-export function createDrizzleSubmissionThrottle(db: MarketingDatabase): SubmissionThrottle {
-  return {
-    hit: async ({ bucket, windowStart }) => {
-      /**
-       * **Une seule instruction**, donc atomique et partagée entre instances
-       * (`docs/security.md` §7).
-       *
-       * Lire puis écrire laisserait deux instances observer le même compte et
-       * le dépasser toutes les deux ; c'est le mode d'échec que le socle de
-       * fiabilité appelle « une simple vérification préalable ».
-       *
-       * Le `case` fait la bascule de fenêtre : même fenêtre, on incrémente ;
-       * fenêtre différente, on repart à un. Une ligne par seau, donc, et jamais
-       * deux pour le même seau.
-       *
-       * **Ce que cela ne dit pas** : le nombre de seaux. Il y en a un par
-       * identifiant d'appelant, et cet identifiant vient d'un en-tête que le
-       * client écrit lui-même — la revue de s11 a mesuré 500 identifiants
-       * distincts, 500 lignes, et rien pour les reprendre (constat F1). Ce que
-       * le fichier affirmait alors — « la table ne grandit pas avec le temps » —
-       * était faux. La borne est celle-ci, et elle est mesurée dans
-       * `tests/marketing.test.ts` : les lignes d'une fenêtre **close** sont
-       * effacées par `sweep` à la première soumission de la fenêtre suivante,
-       * si bien que la table ne porte jamais plus que ce qu'une fenêtre a vu.
-       */
-      const rows = await db
-        .insert(publicFormThrottle)
-        .values({ bucket: digestOf(bucket.key), windowStartedAt: windowStart, hits: 1 })
-        .onConflictDoUpdate({
-          target: publicFormThrottle.bucket,
-          set: {
-            hits: sql`case when ${publicFormThrottle.windowStartedAt} = excluded.window_started_at then ${publicFormThrottle.hits} + 1 else 1 end`,
-            windowStartedAt: sql`excluded.window_started_at`,
-          },
-        })
-        .returning({ hits: publicFormThrottle.hits })
-
-      return rows[0]?.hits ?? 1
-    },
-
-    sweep: async (before) => {
-      /**
-       * Une fenêtre close n'a plus de lecteur : `hit` ne consulte que la
-       * fenêtre en cours, et repart à un dès qu'elle change. Ces lignes ne
-       * servent donc plus à rien — les garder ne fait qu'entretenir un condensat
-       * d'adresse pour l'éternité.
-       *
-       * L'effacement porte sur `window_started_at`, indexée pour cela : sans
-       * l'index, chaque bascule de fenêtre balaierait la table entière.
-       */
-      const rows = await db
-        .delete(publicFormThrottle)
-        .where(lt(publicFormThrottle.windowStartedAt, before))
-        .returning({ bucket: publicFormThrottle.bucket })
-
-      return rows.length
-    },
-  }
-}
-
 /**
- * Les messages de contact, écrits **avant** l'envoi.
+ * **`public_form_throttle` n'est plus écrite** (s28).
  *
- * Deux opérations et deux seulement sur le chemin d'une soumission : écrire,
- * puis marquer remis. Rien ne lit la table sur ce chemin — c'est la purge et
- * l'export du contrat qui la lisent, pour le périmètre d'un compte.
+ * `createDrizzleSubmissionThrottle` vivait ici et y écrivait. Le compteur a
+ * convergé vers le port partagé (`shared-submission-throttle.ts`), et la table
+ * reste en place, **vide et inerte** : `docs/reliability.md` impose de cesser
+ * d'écrire avant de supprimer, et la version encore en ligne l'écrit toujours
+ * pendant un basculement — que s27 a mesuré non instantané. Sa suppression est
+ * une story ultérieure (ADR 050). Ne la faites pas ici, et n'écrivez pas un
+ * second compteur.
  */
+
 export function createDrizzleContactMessages(db: MarketingDatabase): ContactMessageRepository {
   return {
     record: async (input) => {

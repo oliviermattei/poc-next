@@ -401,6 +401,22 @@ la porte est décidé par le point de composition (`guestFallbackUrl`,
 `apps/web/lib/billing.ts`) : ce module ne connaît pas `auth`. Le raisonnement
 complet est dans `domain/checkout-throttle.ts`.
 
+**Depuis s28, le compteur n'est plus le sien** (ADR 050).
+`billing_checkout_throttle` **n'est plus écrite** : ce module compte à travers le
+port partagé (`infrastructure/shared-checkout-throttle.ts`), et le répartiteur
+limite en plus la route publique par la politique `guestCheckout` de
+`config/security.ts`. La **règle** ci-dessus reste ici, parce que sa dégradation
+— repartir par la connexion plutôt que refuser — n'est pas exprimable par un
+répartiteur qui ne connaît que « autorisé » et « 429 ».
+
+Le commentaire du schéma disait que s28 « devra la supprimer » : **ce n'est pas
+ce qui a été fait**, et c'est délibéré. `docs/reliability.md` impose de cesser
+d'écrire avant de supprimer, et s27 a mesuré qu'un déploiement compose détruit le
+conteneur en service avant de migrer — la version encore en ligne écrit toujours
+dans l'ancienne table pendant la bascule. La table reste donc déclarée, vide et
+inerte ; sa suppression est une story ultérieure, et `tests/rate-limiting.test.ts`
+refuse à la fois qu'on la réécrive et qu'on la supprime ici.
+
 **`openCheckout` n'a pas été assoupli.** Le chemin authentifié garde sa garde de
 session et sa permission ; l'anonyme a **sa propre entrée**
 (`openGuestCheckout`). Affaiblir la première pour servir la seconde mettrait le

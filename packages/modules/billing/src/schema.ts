@@ -369,7 +369,7 @@ export const billingWebhookEvent = pgTable('billing_webhook_event', {
 
 /**
  * **Le compteur de la limitation de débit du checkout invité** (s24) —
- * partagé entre instances.
+ * **abandonné depuis s28**.
  *
  * `docs/security.md` §7 exige une limite « partagée entre instances » sur tout
  * point d'entrée public ; un compteur en mémoire de processus se contourne en
@@ -383,11 +383,17 @@ export const billingWebhookEvent = pgTable('billing_webhook_event', {
  * contrat : aucune requête de ce module ne peut relier une de ces lignes à un
  * compte.
  *
- * **Dette nommée**, la même que celle de `public_form_throttle` : la limitation
- * de débit appartient à s28 (`docs/architecture.md`). Cette table porte
- * volontairement un autre nom que la `rate_limit_window` que s28 déclarera, et
- * s28 devra la supprimer après avoir fait converger les points d'entrée vers
- * son port.
+ * **Abandonnée par s28, et volontairement pas supprimée.** Le compteur a
+ * convergé vers le port partagé (ADR 050) : **plus rien n'écrit ici**. La table
+ * reste parce que `docs/reliability.md` impose de cesser d'écrire **avant** de
+ * supprimer, et que la version encore en ligne l'écrit pendant une bascule — s27
+ * a mesuré qu'elle n'est pas instantanée. Sa suppression est une **story
+ * ultérieure** ; `tests/rate-limiting.test.ts` refuse à la fois qu'on la
+ * réécrive et qu'on la supprime ici.
+ *
+ * **Ce commentaire disait le contraire** — « s28 devra la supprimer ». La
+ * recherche de s28 a écarté cette consigne : la suivre aurait cassé la version
+ * encore en service pendant la bascule.
  */
 export const billingCheckoutThrottle = pgTable(
   'billing_checkout_throttle',

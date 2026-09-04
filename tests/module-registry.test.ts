@@ -14,7 +14,6 @@ import { fileURLToPath } from 'node:url'
 
 import {
   buildRegistry,
-  dispatchModuleRequest,
   entitlementFeatureOf,
   MODULE_ROUTE_PREFIX,
   purgeModules,
@@ -31,6 +30,7 @@ import { describe, expect, it } from 'vitest'
 
 import { availableModules, enabledModules, requiredModules } from '../config/features'
 import { appLocales } from '../config/i18n'
+import { dispatchAllowingRateLimit } from './fixtures/rate-limit'
 
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url))
 
@@ -81,6 +81,11 @@ describe('contraintes du contrat portées par le compilateur', () => {
     // client ne compile pas — retirer la marque de type le ferait compiler, et
     // ce cas rougirait.
     ['un accès à une organisation fabriqué à la main', 'forged-organization-access.ts'],
+    // s28 : le quatrième port hérite du contrat commun — aucune méthode ne
+    // lève, l'échec est une valeur discriminée. Lire le succès sans avoir
+    // écarté l'échec ne compile pas, si bien qu'un magasin indisponible ne peut
+    // pas être « oublié » et laissé passer par distraction (ADR 050).
+    ['un échec du port de limitation non traité', 'unhandled-rate-limit-failure.ts'],
   ])('refuse %s', (_case, fixture) => {
     expect(diagnostics).toContain(fixture)
   })
@@ -530,14 +535,14 @@ const countItemsOf = async (ownerId: string): Promise<number> => {
 
 describe('acheminement des requêtes vers les modules activés', () => {
   it('sert la route publique du module activé', async () => {
-    const response = await dispatchModuleRequest(demoRegistry, requestTo('/demo-enabled/items'))
+    const response = await dispatchAllowingRateLimit(demoRegistry, requestTo('/demo-enabled/items'))
 
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toHaveProperty('items')
   })
 
   it('répond 404 sur un chemin qu’aucun module activé ne déclare', async () => {
-    const response = await dispatchModuleRequest(demoRegistry, requestTo('/demo-enabled/inconnu'))
+    const response = await dispatchAllowingRateLimit(demoRegistry, requestTo('/demo-enabled/inconnu'))
 
     expect(response.status).toBe(404)
   })
@@ -547,7 +552,7 @@ describe('acheminement des requêtes vers les modules activés', () => {
     // acceptées sur ce chemin, ce que le §7 du socle de sécurité refuse. Le
     // comportement est épinglé ici pour que chaque module en hérite sciemment,
     // et non par accident de mise en œuvre.
-    const response = await dispatchModuleRequest(
+    const response = await dispatchAllowingRateLimit(
       demoRegistry,
       requestTo('/demo-enabled/admin/report', { method: 'DELETE' }),
       asAdmin,
@@ -559,7 +564,7 @@ describe('acheminement des requêtes vers les modules activés', () => {
   it('refuse une route authentifiée sans session, et n’écrit rien', async () => {
     const before = await countItemsOf('u-member')
 
-    const response = await dispatchModuleRequest(
+    const response = await dispatchAllowingRateLimit(
       demoRegistry,
       requestTo('/demo-enabled/items', {
         method: 'POST',
@@ -574,7 +579,7 @@ describe('acheminement des requêtes vers les modules activés', () => {
   })
 
   it('refuse une route réservée à un rôle quand la session ne l’a pas', async () => {
-    const response = await dispatchModuleRequest(
+    const response = await dispatchAllowingRateLimit(
       demoRegistry,
       requestTo('/demo-enabled/admin/report'),
       asMember,
@@ -585,7 +590,7 @@ describe('acheminement des requêtes vers les modules activés', () => {
   })
 
   it('sert la route réservée à un rôle quand la session le porte', async () => {
-    const response = await dispatchModuleRequest(
+    const response = await dispatchAllowingRateLimit(
       demoRegistry,
       requestTo('/demo-enabled/admin/report'),
       asAdmin,
@@ -596,7 +601,7 @@ describe('acheminement des requêtes vers les modules activés', () => {
   })
 
   it('crée un élément quand la session est là', async () => {
-    const response = await dispatchModuleRequest(
+    const response = await dispatchAllowingRateLimit(
       demoRegistry,
       requestTo('/demo-enabled/items', {
         method: 'POST',
@@ -628,7 +633,7 @@ describe('une route réservée à une offre payante', () => {
   })
 
   it('refuse un appel anonyme en 401 : sans session, il n’y a pas de périmètre', async () => {
-    const response = await dispatchModuleRequest(demoRegistry, premium(), {
+    const response = await dispatchAllowingRateLimit(demoRegistry, premium(), {
       resolveFeatures: () => Promise.resolve(new Set([DEMO_PREMIUM_FEATURE])),
     })
 
@@ -642,7 +647,7 @@ describe('une route réservée à une offre payante', () => {
    * acceptable pour une garde de facturation.
    */
   it('refuse en 403 quand aucun résolveur de droits n’est branché', async () => {
-    const response = await dispatchModuleRequest(demoRegistry, premium(), asMember)
+    const response = await dispatchAllowingRateLimit(demoRegistry, premium(), asMember)
 
     expect(response.status).toBe(403)
     // Le gestionnaire n'est pas appelé : le refus n'atteint pas la règle métier.
@@ -650,20 +655,20 @@ describe('une route réservée à une offre payante', () => {
   })
 
   it('refuse en 403 la session qui ne détient aucune offre ouvrant la fonctionnalité', async () => {
-    const response = await dispatchModuleRequest(demoRegistry, premium(), granting())
+    const response = await dispatchAllowingRateLimit(demoRegistry, premium(), granting())
 
     expect(response.status).toBe(403)
     await expect(response.json()).resolves.not.toHaveProperty('count')
   })
 
   it('refuse en 403 la session qui détient une **autre** fonctionnalité', async () => {
-    const response = await dispatchModuleRequest(demoRegistry, premium(), granting('exports'))
+    const response = await dispatchAllowingRateLimit(demoRegistry, premium(), granting('exports'))
 
     expect(response.status).toBe(403)
   })
 
   it('sert la route à la session dont le périmètre ouvre la fonctionnalité', async () => {
-    const response = await dispatchModuleRequest(
+    const response = await dispatchAllowingRateLimit(
       demoRegistry,
       premium(),
       granting(DEMO_PREMIUM_FEATURE),
@@ -714,7 +719,7 @@ describe('les entrées de navigation du module de démonstration', () => {
         return
       }
 
-      const response = await dispatchModuleRequest(
+      const response = await dispatchAllowingRateLimit(
         demoRegistry,
         new Request(`http://localhost${href}`),
         {
@@ -751,7 +756,7 @@ describe('règle métier du module de démonstration', () => {
   it('refuse un titre vide au bord aussi, sans rien écrire', async () => {
     const before = await countItemsOf('u-admin')
 
-    const response = await dispatchModuleRequest(
+    const response = await dispatchAllowingRateLimit(
       demoRegistry,
       requestTo('/demo-enabled/items', { method: 'POST', body: JSON.stringify({ title: ' ' }) }),
       asAdmin,

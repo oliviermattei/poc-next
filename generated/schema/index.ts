@@ -14,6 +14,7 @@ import * as i18n from './i18n'
 import * as marketing from './marketing'
 import * as mcpServer from './mcp-server'
 import * as organizations from './organizations'
+import * as rateLimit from './rate-limit'
 import * as storage from './storage'
 
 export const enabledModuleSchemas = [
@@ -25,5 +26,6 @@ export const enabledModuleSchemas = [
   { id: 'marketing', schema: marketing },
   { id: 'mcp-server', schema: mcpServer },
   { id: 'organizations', schema: organizations },
+  { id: 'rate-limit', schema: rateLimit },
   { id: 'storage', schema: storage },
 ] as const satisfies readonly ModuleSchema[]

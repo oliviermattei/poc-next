@@ -5,7 +5,6 @@ import { fileURLToPath } from 'node:url'
 
 import {
   buildRegistry,
-  dispatchModuleRequest,
   MODULE_ROUTE_PREFIX,
   resolveDataOwner,
   type ModuleSession,
@@ -48,6 +47,7 @@ import { flatMessagesFor } from '../apps/web/lib/messages'
 import { appLocales, defaultLocale } from '../config/i18n'
 import { availableModules } from '../config/features'
 import { databaseUrl, isDatabaseReachable } from './fixtures/database'
+import { dispatchAllowingRateLimit } from './fixtures/rate-limit'
 
 /**
  * La multi-tenance, éprouvée **contre une vraie base** et à travers le
@@ -229,7 +229,7 @@ const call = async (
           body: JSON.stringify(body),
         })
 
-  return await dispatchModuleRequest(registry, request, {
+  return await dispatchAllowingRateLimit(registry, request, {
     resolveSession: () => Promise.resolve(options.session ?? null),
   })
 }
@@ -946,7 +946,7 @@ describe.runIf(databaseReachable)('l’acceptation d’une invitation', () => {
     // usage unique avant que l'invité ne l'ouvre.
     const { guest, token } = await anInvitation()
 
-    const opened = await dispatchModuleRequest(
+    const opened = await dispatchAllowingRateLimit(
       registry,
       new Request(`${APP_URL}${organizationRoutePath('acceptInvitation')}?token=${token}`, {
         method: 'GET',
@@ -2205,7 +2205,7 @@ describe('un module `organizations` non activé', () => {
 
   it('n’expose aucune route : chacune de ses URL répond 404', async () => {
     for (const route of organizationsModule.routes) {
-      const response = await dispatchModuleRequest(
+      const response = await dispatchAllowingRateLimit(
         withoutOrganizations,
         new Request(`${APP_URL}${MODULE_ROUTE_PREFIX}${route.path}`, { method: route.method }),
         { resolveSession: () => Promise.resolve({ userId: 'usr_1', roles: [] }) },

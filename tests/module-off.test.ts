@@ -1,6 +1,5 @@
 import {
   buildRegistry,
-  dispatchModuleRequest,
   exportModules,
   MODULE_ROUTE_PREFIX,
   purgeModules,
@@ -13,6 +12,7 @@ import { GET } from '../apps/web/app/api/modules/[...path]/route'
 import { moduleRegistry } from '../apps/web/lib/module-registry'
 import { availableModules, enabledModules } from '../config/features'
 import { appLocales } from '../config/i18n'
+import { dispatchAllowingRateLimit } from './fixtures/rate-limit'
 
 /**
  * Ce que devient un module que la configuration ne nomme pas.
@@ -55,7 +55,7 @@ describe('un module non activé', () => {
   it('n’expose aucune route : l’URL déclarée répond 404', async () => {
     const declared = demoDisabledModule.routes[0]?.path ?? ''
 
-    const response = await dispatchModuleRequest(withoutDemoDisabled, requestTo(declared))
+    const response = await dispatchAllowingRateLimit(withoutDemoDisabled, requestTo(declared))
 
     expect(response.status).toBe(404)
     // Et surtout : pas la charge utile du module. Un 404 qui aurait exécuté le

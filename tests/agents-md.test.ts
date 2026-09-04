@@ -136,6 +136,31 @@ describe('AGENTS.md par package (ADR 013)', () => {
       expect(content).toContain(dependency)
     }
   })
+
+  /**
+   * **Constat m1 de la troisième revue de s28** : le quatrième port
+   * (`rate-limit.ts`) est arrivé sans que la règle qui vit **à côté** de lui en
+   * dise un mot — pas de section, pas de ligne dans le tableau de la forme du
+   * journal, et une ligne « une panne de tiers **dégrade** » que ce port
+   * contredit délibérément. L'agent qui lit la règle la plus proche du code y
+   * lisait l'inverse de la décision.
+   *
+   * La liste est **dérivée du disque** : un cinquième port non documenté rougit,
+   * là où une énumération écrite à la main serait restée verte.
+   */
+  it('packages/ports/AGENTS.md nomme chacun des fichiers de capacité de `src/`', () => {
+    const capabilities = readdirSync(join(REPO_ROOT, 'packages/ports/src'))
+      .filter((entry) => entry.endsWith('.ts') && entry !== 'index.ts')
+      .filter((entry) => !entry.endsWith('.test.ts'))
+    const content = read('packages/ports', 'AGENTS.md')
+
+    // Un balayage vide passerait pour une raison qui n'en est pas une (s26).
+    expect(capabilities.length).toBeGreaterThanOrEqual(4)
+
+    for (const capability of capabilities) {
+      expect(content, `packages/ports/AGENTS.md ne dit rien de ${capability}`).toContain(capability)
+    }
+  })
 })
 
 /**
