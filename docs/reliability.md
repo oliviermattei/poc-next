@@ -27,6 +27,16 @@
 - Les reprises suivent un recul exponentiel avec dispersion, et un nombre maximal d'essais ; au-delà, l'échec est définitif, journalisé et visible.
 - Les reprises ne s'appliquent qu'aux erreurs transitoires. Rejouer une erreur de validation est un défaut, pas une précaution.
 - Le pool de connexions à la base est dimensionné par configuration, jamais figé dans le code.
+- **Un contrôle bloquant qui interroge un tiers reprend, lui aussi.** `pnpm run audit` interroge le
+  registre : sans reprise, une panne réseau le faisait rougir du premier coup (s48), et une porte
+  qui rougit pour une panne finit par s'ignorer. Elle fait **trois tentatives au plus** — donc deux
+  rejeux —, avec recul exponentiel, dispersion et plafond, **uniquement** sur la branche « l'audit
+  n'a pas eu lieu » : jamais un document d'avis lu correctement, qu'il bloque ou non, le rejouer
+  serait un vert obtenu par patience. La distinction entre les deux est celle de
+  `scripts/audit-exceptions.ts`, et c'est elle qui rend la reprise sûre. L'appel lui-même porte un
+  **délai d'attente explicite** (`AUDIT_TIMEOUT_MS`, soixante secondes contre ~1,4 s pour un audit
+  nominal mesuré sur ce dépôt) : sans lui, un registre qui accepte la connexion sans répondre tenait
+  le job ~4 minutes, et trois tentatives auraient triplé cette attente.
 
 ## 4. Migrations et compatibilité
 

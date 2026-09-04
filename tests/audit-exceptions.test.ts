@@ -7,6 +7,11 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import {
+  AUDIT_ATTEMPTS,
+  AUDIT_TIMEOUT_MS,
+  AUDIT_TIMEOUT_VARIABLE,
+  auditBackoffMs,
+  auditTimeoutMs,
   parseAuditExceptions,
   readAuditReport,
   readAuditRun,
@@ -249,6 +254,23 @@ describe('issue de `pnpm audit --json`', () => {
   })
 })
 
+describe('l’attente entre deux tentatives d’audit', () => {
+  const politique = { baseMs: 500, maxMs: 4_000 }
+
+  it('croît exponentiellement, disperse, et plafonne', () => {
+    // Sans dispersion, toutes les instances qui échouent sur la même panne
+    // rejouent à la même milliseconde ; sans plafond, l'attente se paie dans le
+    // temps d'un job (`docs/reliability.md` §3).
+    expect(auditBackoffMs(1, { ...politique, random: () => 1 })).toBe(500)
+    expect(auditBackoffMs(2, { ...politique, random: () => 1 })).toBe(1_000)
+    expect(auditBackoffMs(9, { ...politique, random: () => 1 })).toBe(4_000)
+
+    // La dispersion « à moitié » : jamais une reprise immédiate, qui viderait le
+    // recul de son sens dès le premier essai.
+    expect(auditBackoffMs(1, { ...politique, random: () => 0 })).toBe(250)
+  })
+})
+
 /**
  * Le câblage, et non plus la règle : `scripts/audit.ts` sort-il en échec ?
  *
@@ -305,5 +327,195 @@ describe('`scripts/audit.ts` face à un `pnpm audit` en panne', () => {
 
     expect(result.stderr).toBe('')
     expect(result.status).toBe(0)
+  })
+
+  /**
+   * **La reprise, et ce qu'elle ne doit jamais rejouer** (s48).
+   *
+   * Constat d'ouverture de s48 : un `ERR_SOCKET_TIMEOUT` du registre faisait
+   * rougir la porte du premier coup, et une CI rouge pour une panne réseau finit
+   * par s'ignorer — c'est le chemin par lequel un contrôle bloquant devient
+   * décoratif. La reprise s'applique donc à la branche « l'audit n'a pas eu
+   * lieu », et à elle seule : rejouer un document d'avis valide reviendrait à le
+   * rendre vert à force de patience.
+   *
+   * Le double remplace le **réseau** — un `pnpm` posé sur le `PATH` —, jamais la
+   * logique de décision. Chaque appel étant un processus, le compteur vit sur le
+   * disque.
+   */
+  const runWithScriptedPnpm = (
+    responses: readonly { readonly stdout: string; readonly exitCode: number }[],
+  ) => {
+    const directory = mkdtempSync(join(tmpdir(), 'audit-stub-'))
+    const counter = join(directory, 'appels')
+
+    responses.forEach((response, index) => {
+      writeFileSync(join(directory, `reponse-${index + 1}.json`), response.stdout)
+      writeFileSync(join(directory, `reponse-${index + 1}.code`), String(response.exitCode))
+    })
+
+    const stub = join(directory, 'pnpm')
+
+    writeFileSync(
+      stub,
+      [
+        '#!/bin/sh',
+        `n=$(cat "${counter}" 2>/dev/null || echo 0)`,
+        'n=$((n+1))',
+        `echo "$n" > "${counter}"`,
+        // Au-delà des réponses écrites, la dernière est rejouée : un cas qui veut
+        // épuiser les tentatives n'a pas à savoir combien il y en a.
+        `f="${directory}/reponse-$n"`,
+        `[ -f "$f.json" ] || f="${directory}/reponse-${responses.length}"`,
+        'cat "$f.json"',
+        'exit "$(cat "$f.code")"',
+        '',
+      ].join('\n'),
+    )
+    chmodSync(stub, 0o755)
+
+    const result = spawnSync(TSX, [SCRIPT], {
+      encoding: 'utf8',
+      env: { ...process.env, PATH: `${directory}:${process.env.PATH ?? ''}` },
+    })
+
+    return { ...result, appels: Number(readFileSync(counter, 'utf8').trim()) }
+  }
+
+  const panne = (code: string) => ({
+    stdout: JSON.stringify({ error: { code, message: 'request to registry failed' } }),
+    exitCode: 1,
+  })
+
+  const rapport = (severity: string) => ({
+    stdout: JSON.stringify({
+      advisories: {
+        '1102341': { severity, module_name: 'esbuild', github_advisory_id: 'GHSA-67mh-4wv8-2f99' },
+      },
+    }),
+    exitCode: 1,
+  })
+
+  it('rejoue une panne de registre et rend une seule issue, verte, quand elle cesse', () => {
+    const result = runWithScriptedPnpm([
+      panne('ERR_SOCKET_TIMEOUT'),
+      panne('ERR_SOCKET_TIMEOUT'),
+      { stdout: JSON.stringify({ advisories: {} }), exitCode: 0 },
+    ])
+
+    expect(result.appels).toBe(3)
+    expect(result.status).toBe(0)
+    // Une seule issue : la panne traversée ne laisse aucun refus derrière elle,
+    // et le succès n'est annoncé qu'une fois.
+    expect(result.stderr).not.toContain('Audit refusé')
+    expect(result.stdout.match(/aucun au seuil/g)).toHaveLength(1)
+  })
+
+  it('épuise ses tentatives sur une panne qui dure, et nomme leur nombre', () => {
+    const result = runWithScriptedPnpm([panne('ERR_SOCKET_TIMEOUT')])
+
+    expect(result.appels).toBe(AUDIT_ATTEMPTS)
+    expect(result.status).not.toBe(0)
+    // Le nombre d'essais est dans le message : sans lui, un lecteur ne distingue
+    // pas une panne persistante d'une porte qui n'a pas rejoué.
+    expect(`${result.stdout}${result.stderr}`).toMatch(
+      new RegExp(`refusé.*${String(AUDIT_ATTEMPTS)} tentatives`),
+    )
+    expect(`${result.stdout}${result.stderr}`).toContain('ERR_SOCKET_TIMEOUT')
+    expect(result.stdout).not.toContain('aucun au seuil')
+  })
+
+  it('ne rejoue jamais un document d’avis, qu’il bloque ou non', () => {
+    // **Le cœur de la reprise** : ce qui la rend sûre est la distinction que
+    // `readAuditRun` porte déjà. Rejouer un rapport d'avis serait attendre qu'il
+    // change d'avis — au mieux du temps perdu, au pire un vert obtenu par
+    // patience si le registre finissait par ne plus répondre.
+    const sousLeSeuil = runWithScriptedPnpm([rapport('moderate')])
+
+    expect(sousLeSeuil.appels).toBe(1)
+    expect(sousLeSeuil.status).toBe(0)
+
+    const bloquant = runWithScriptedPnpm([rapport('high')])
+
+    expect(bloquant.appels).toBe(1)
+    expect(bloquant.status).not.toBe(0)
+  })
+
+  /**
+   * **Le délai d'attente, là où il manque** : sur l'appel lui-même.
+   *
+   * Un `pnpm audit` qui ne répond jamais bloquait le job jusqu'à ce que le
+   * registre coupe la connexion de lui-même (~4 minutes, mesurées à la
+   * recherche). Le délai en fait une panne comme une autre : coupée, rejouée,
+   * puis refusée en nommant les tentatives.
+   */
+  it('coupe un `pnpm audit` qui ne répond pas, et le traite comme une panne', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'audit-stub-'))
+    const counter = join(directory, 'appels')
+    const stub = join(directory, 'pnpm')
+
+    writeFileSync(
+      stub,
+      [
+        '#!/bin/sh',
+        `n=$(cat "${counter}" 2>/dev/null || echo 0)`,
+        'n=$((n+1))',
+        `echo "$n" > "${counter}"`,
+        // Le registre qui accepte la connexion et ne répond jamais.
+        'sleep 30',
+        '',
+      ].join('\n'),
+    )
+    chmodSync(stub, 0o755)
+
+    const result = spawnSync(TSX, [SCRIPT], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PATH: `${directory}:${process.env.PATH ?? ''}`,
+        [AUDIT_TIMEOUT_VARIABLE]: '300',
+      },
+      // Le délai de ce processus-ci n'est pas celui qu'on éprouve : il borne le
+      // cas si le script cessait d'en poser un, au lieu de le faire pendre.
+      timeout: 20_000,
+    })
+
+    expect(Number(readFileSync(counter, 'utf8').trim())).toBe(AUDIT_ATTEMPTS)
+    expect(result.status).not.toBe(0)
+    expect(`${result.stdout ?? ''}${result.stderr ?? ''}`).toMatch(/délai d'attente|300 ms/)
+    expect(result.stdout ?? '').not.toContain('aucun au seuil')
+  })
+})
+
+/**
+ * **Le délai d'attente de l'appel** (`docs/reliability.md` §3, première puce :
+ * « Tout appel réseau sortant porte un délai d'attente explicite »).
+ *
+ * Constat de la revue de s48 : `spawnSync` n'en posait aucun, et la recherche
+ * avait mesuré ~4 minutes avant qu'un `ERR_SOCKET_TIMEOUT` tombe de lui-même.
+ * Avec trois tentatives, cette story faisait passer le pire cas à ~12 minutes de
+ * job — c'est elle qui a triplé le coût, c'est donc elle qui pose le délai.
+ *
+ * Le délai est **injectable**, pour la raison qui vaut déjà pour la dispersion
+ * du recul : une attente qu'on ne peut pas raccourcir est une attente qu'aucun
+ * test ne peut éprouver. Une valeur illisible est **refusée**, jamais lue comme
+ * « pas de délai ».
+ */
+describe('le délai d’attente de `pnpm audit`', () => {
+  it('vaut la valeur du dépôt quand rien n’est posé', () => {
+    expect(auditTimeoutMs(undefined)).toBe(AUDIT_TIMEOUT_MS)
+    expect(auditTimeoutMs('')).toBe(AUDIT_TIMEOUT_MS)
+  })
+
+  it('honore une durée entière et strictement positive', () => {
+    expect(auditTimeoutMs('250')).toBe(250)
+  })
+
+  it('refuse une valeur illisible ou nulle, en nommant la variable', () => {
+    // Une valeur illisible relue en « pas de délai » rendrait la puce de §3
+    // fausse au moment précis où quelqu'un croit l'avoir réglée.
+    for (const value of ['zéro', '0', '-1', '1.5']) {
+      expect(() => auditTimeoutMs(value)).toThrowError(new RegExp(AUDIT_TIMEOUT_VARIABLE))
+    }
   })
 })

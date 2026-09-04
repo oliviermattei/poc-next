@@ -15,6 +15,7 @@
     "test:e2e": "playwright test",
     "test:golden-path": "tsx scripts/golden-path.ts",
     "test:minimal-profile": "tsx scripts/minimal-profile.ts",
+    "test:socle": "tsx scripts/socle.ts",
     "typecheck": "tsc --noEmit && turbo run typecheck",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix --max-warnings=0",

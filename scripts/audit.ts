@@ -3,6 +3,11 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import {
+  AUDIT_ATTEMPTS,
+  AUDIT_BACKOFF,
+  AUDIT_TIMEOUT_VARIABLE,
+  auditBackoffMs,
+  auditTimeoutMs,
   AuditExceptionError,
   AuditRunError,
   parseAuditExceptions,
@@ -29,14 +34,24 @@ const loadExceptions = (now: Date): AuditException[] => {
   return parseAuditExceptions(raw, now)
 }
 
-const runPnpmAudit = (): AuditAdvisory[] => {
+const attemptAudit = (timeoutMs: number): AuditAdvisory[] => {
   const result = spawnSync('pnpm', ['audit', '--json'], {
     encoding: 'utf8',
     maxBuffer: 32 * 1024 * 1024,
+    // **Le délai d'attente explicite** (`docs/reliability.md` §3) : sans lui, un
+    // registre qui accepte la connexion et ne répond pas tient le job jusqu'à ce
+    // qu'il coupe de lui-même — ~4 minutes, mesurées à la recherche de s48.
+    timeout: timeoutMs,
   })
 
   if (result.error !== undefined) {
-    throw new AuditRunError(`\`pnpm audit\` n'a pas pu être lancé : ${result.error.message}`)
+    const timedOut = (result.error as NodeJS.ErrnoException).code === 'ETIMEDOUT'
+
+    throw new AuditRunError(
+      timedOut
+        ? `\`pnpm audit\` n'a pas répondu dans le délai d'attente de ${timeoutMs} ms.`
+        : `\`pnpm audit\` n'a pas pu être lancé : ${result.error.message}`,
+    )
   }
 
   // Le code de sortie et la forme du document sont lus ensemble : `pnpm audit`
@@ -44,6 +59,56 @@ const runPnpmAudit = (): AuditAdvisory[] => {
   // pas pu auditer (`{"error":{…}}`). Les confondre revenait à traiter une
   // panne de registre comme une absence de vulnérabilité.
   return readAuditRun(result)
+}
+
+/**
+ * Attente **bloquante**, et c'est délibéré : ce script est synchrone de bout en
+ * bout (`spawnSync`), et le rendre asynchrone pour une attente qui n'existe que
+ * sur la branche de panne ferait payer une réécriture à tout le reste.
+ */
+const sleep = (milliseconds: number): void => {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds)
+}
+
+/**
+ * L'audit, **rejoué tant qu'il n'a pas eu lieu** — et jamais au-delà.
+ *
+ * La boucle ne rattrape qu'`AuditRunError`, c'est-à-dire la seule branche « je
+ * n'ai pas pu auditer » : une panne de registre, une sortie vide, un document
+ * illisible, un `pnpm` qu'on n'a pas pu lancer. Un rapport d'avis lu correctement
+ * **sort de la boucle au premier essai**, qu'il bloque ou non — le rejouer
+ * reviendrait à espérer qu'il change d'avis, ce qui est la définition même d'un
+ * vert obtenu par patience.
+ */
+const runPnpmAudit = (timeoutMs: number): AuditAdvisory[] => {
+  let last: AuditRunError | undefined
+
+  for (let attempt = 1; attempt <= AUDIT_ATTEMPTS; attempt += 1) {
+    try {
+      return attemptAudit(timeoutMs)
+    } catch (error) {
+      if (!(error instanceof AuditRunError)) {
+        throw error
+      }
+
+      last = error
+
+      if (attempt < AUDIT_ATTEMPTS) {
+        const waitMs = auditBackoffMs(attempt, AUDIT_BACKOFF)
+
+        console.error(
+          `Audit — tentative ${attempt}/${AUDIT_ATTEMPTS} : ${error.message} ` +
+            `Nouvel essai dans ${waitMs} ms.`,
+        )
+
+        sleep(waitMs)
+      }
+    }
+  }
+
+  throw new AuditRunError(
+    `après ${AUDIT_ATTEMPTS} tentatives : ${last?.message ?? 'cause inconnue'}`,
+  )
 }
 
 const main = (): number => {
@@ -66,7 +131,10 @@ const main = (): number => {
   let advisories: AuditAdvisory[]
 
   try {
-    advisories = runPnpmAudit()
+    // Le délai est résolu **hors** de la boucle : une variable malformée est un
+    // refus de configuration, pas une panne, et la rejouer trois fois n'y
+    // changerait rien.
+    advisories = runPnpmAudit(auditTimeoutMs(process.env[AUDIT_TIMEOUT_VARIABLE]))
   } catch (error) {
     if (error instanceof AuditRunError) {
       console.error(`Audit refusé — ${error.message}`)

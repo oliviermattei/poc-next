@@ -282,7 +282,124 @@ describe('l’état réel de la copie, confronté au profil calculé', () => {
  * lequel est *dérivé*, jamais écrit — puis vérifie que le balayage grandit
  * exactement de ce que ce module déclare. Un harnais qui nommerait des modules
  * en dur rendrait le même balayage dans les deux cas, et ce cas rougirait.
+ *
+ * ## La précondition, et ce qu'on en fait quand la configuration ne la tient pas
+ *
+ * Cette preuve demande un module **coupable** : hors socle, hors profil livré,
+ * requis par personne, et déclarant à la fois une route, une entrée de
+ * navigation et une table — sans les trois, les écarts mesurés plus bas
+ * vaudraient zéro. Elle demande **en plus** que la configuration courante
+ * l'active.
+ *
+ * Or la CI joue deux configurations (`.github/workflows/ci.yml`), et la seconde
+ * coupe précisément le seul module que la configuration livrée active et qui
+ * tienne les six premiers critères. Sous cette branche-là il n'existe aucun
+ * candidat, et le `toBeDefined()` qui vivait ici tombait : cinq commits de CI
+ * rouge, constat d'ouverture de s48.
+ *
+ * Le remède n'est ni le saut (`it.skipIf` : un cas vert qui n'a rien vérifié),
+ * ni le nom du module écrit en dur (le défaut même que ce cas existe pour
+ * attraper), mais la **séparation des deux moitiés du prédicat** (ADR 052) :
+ *
+ * - six critères ne dépendent que de l'annuaire — « ce module serait coupable
+ *   si la configuration l'activait ». C'est un invariant, vrai sous les deux
+ *   configurations, et un cas ci-dessous l'affirme ;
+ * - le septième dépend de la configuration — « et elle l'active ». Tenu, la
+ *   preuve tourne ; non tenu, l'absence est **dérivée** : chaque module de
+ *   l'annuaire est expliqué par au moins un critère nommé, et le décompte des
+ *   expliqués égale la taille de l'annuaire.
  */
+interface CritèreDeGénéricité {
+  /** Le nom est la moitié utile : c'est lui qui explique une absence. */
+  readonly nom: string
+  readonly tient: (module: ProfileModule) => boolean
+}
+
+interface ContexteDeGénéricité {
+  readonly available: readonly ProfileModule[]
+  readonly enabled: readonly string[]
+  readonly required: readonly string[]
+  readonly cut: readonly string[]
+}
+
+/** Le seul critère qui change d'une branche de la matrice de CI à l'autre. */
+const CRITÈRE_D_ACTIVATION = 'activé par la configuration'
+
+const critèresDeGénéricité = (context: ContexteDeGénéricité): readonly CritèreDeGénéricité[] => [
+  {
+    nom: 'hors du socle non désactivable',
+    tient: (module) => !context.required.includes(module.id),
+  },
+  { nom: 'hors du profil livré', tient: (module) => !context.cut.includes(module.id) },
+  {
+    nom: 'requis par aucun module de l’annuaire',
+    tient: (module) => context.available.every((other) => !other.requires.includes(module.id)),
+  },
+  { nom: 'déclare au moins une route', tient: (module) => module.routes.length > 0 },
+  {
+    nom: 'déclare au moins une entrée de navigation',
+    tient: (module) => module.navigation.length > 0,
+  },
+  { nom: 'déclare au moins une table', tient: (module) => moduleTableNames(module).length > 0 },
+]
+
+/**
+ * Les modules que **l'annuaire seul** rend coupables : la configuration n'entre
+ * pas dans ce calcul, et c'est tout l'intérêt.
+ */
+const modulesCoupables = (context: ContexteDeGénéricité): readonly ProfileModule[] => {
+  const critères = critèresDeGénéricité(context)
+
+  return context.available.filter((module) => critères.every((critère) => critère.tient(module)))
+}
+
+interface ManqueDeGénéricité {
+  readonly moduleId: string
+  /** Ce qui manque à ce module. Jamais vide sur la branche « explication ». */
+  readonly manquants: readonly string[]
+}
+
+type VerdictDeGénéricité =
+  | {
+      readonly branche: 'preuve'
+      readonly extra: ProfileModule
+      readonly coupables: readonly string[]
+    }
+  | {
+      readonly branche: 'explication'
+      readonly manques: readonly ManqueDeGénéricité[]
+      readonly coupables: readonly string[]
+    }
+
+/**
+ * La preuve, ou l'explication de son absence — jamais un silence.
+ *
+ * `coupables` est rendu dans les deux branches : c'est ce qui distingue « la
+ * configuration n'offre pas de candidat » de « l'annuaire n'en contient
+ * aucun », et seule la seconde serait un défaut du dépôt.
+ */
+const verdictDeGénéricité = (context: ContexteDeGénéricité): VerdictDeGénéricité => {
+  const critères = critèresDeGénéricité(context)
+  const coupables = modulesCoupables(context)
+  const extra = coupables.find((module) => context.enabled.includes(module.id))
+
+  if (extra !== undefined) {
+    return { branche: 'preuve', extra, coupables: coupables.map((module) => module.id) }
+  }
+
+  return {
+    branche: 'explication',
+    coupables: coupables.map((module) => module.id),
+    manques: context.available.map((module) => ({
+      moduleId: module.id,
+      manquants: [
+        ...critères.filter((critère) => !critère.tient(module)).map((critère) => critère.nom),
+        ...(context.enabled.includes(module.id) ? [] : [CRITÈRE_D_ACTIVATION]),
+      ],
+    })),
+  }
+}
+
 describe('la généricité, éprouvée sur l’annuaire réel (critère 8)', () => {
   const context = {
     available: [...availableModules],
@@ -298,24 +415,12 @@ describe('la généricité, éprouvée sur l’annuaire réel (critère 8)', () 
 
   const livré = sweepOf([...minimalProfile.cut])
 
-  /**
-   * Le module que le profil supplémentaire coupera, **choisi par dérivation** :
-   * le premier module activé, hors socle, hors profil, qui déclare quelque
-   * chose. Écrire son nom ici rendrait ce test faux au module suivant, ce qui
-   * est exactement le défaut qu'il existe pour attraper.
-   */
-  const extra = availableModules.find(
-    (module) =>
-      enabledModules.includes(module.id as (typeof enabledModules)[number]) &&
-      !requiredModules.includes(module.id as (typeof requiredModules)[number]) &&
-      !minimalProfile.cut.includes(module.id as (typeof minimalProfile.cut)[number]) &&
-      availableModules.every((other) => !other.requires.includes(module.id)) &&
-      // Il doit déclarer dans les **trois** catégories, sans quoi les écarts
-      // mesurés plus bas vaudraient zéro et ne prouveraient rien.
-      module.routes.length > 0 &&
-      module.navigation.length > 0 &&
-      moduleTableNames(module).length > 0,
-  )
+  const contexte: ContexteDeGénéricité = {
+    available: [...availableModules],
+    enabled: [...enabledModules],
+    required: [...requiredModules],
+    cut: [...minimalProfile.cut],
+  }
 
   it('balaie, sous le profil livré, un nombre de déclarations non nul dans les trois catégories', () => {
     // Le compte, et pas seulement l'absence : un balayage de zéro route, zéro
@@ -353,27 +458,137 @@ describe('la généricité, éprouvée sur l’annuaire réel (critère 8)', () 
     }
   })
 
-  it('traite un profil d’un module de plus sans qu’une ligne du harnais change', () => {
-    expect(extra, 'aucun module activé n’est coupable pour éprouver la généricité').toBeDefined()
+  /**
+   * **L'invariant d'annuaire** — la propriété qui rend la preuve possible, et
+   * qui ne dépend d'aucune configuration.
+   *
+   * Sans lui, la branche « aucun candidat » serait une capitulation : elle
+   * expliquerait l'absence sans jamais dire si le dépôt garde de quoi la lever.
+   * Avec lui, l'absence est toujours celle d'une **configuration**, jamais
+   * celle de l'annuaire — et un dépôt qui perdrait son dernier module coupable
+   * l'apprend ici, sous les deux branches de la matrice.
+   *
+   * Le second plancher n'est pas décoratif : un prédicat relâché jusqu'à
+   * accepter tout l'annuaire tiendrait le premier et ne discriminerait plus
+   * rien.
+   */
+  it('porte au moins un module que la seule activation rendrait coupable, et en écarte d’autres', () => {
+    const coupables = modulesCoupables(contexte).map((module) => module.id)
 
-    const augmenté = sweepOf([...minimalProfile.cut, extra?.id ?? ''])
+    expect(
+      coupables,
+      'aucun module de l’annuaire ne pourrait éprouver la généricité, quelle que soit la configuration',
+    ).not.toEqual([])
 
-    expect(new Set(augmenté.cutModuleIds)).toEqual(
-      new Set([...livré.cutModuleIds, extra?.id]),
-    )
-    expect(augmenté.routes.length).toBe(livré.routes.length + (extra?.routes.length ?? 0))
-    expect(augmenté.navigation.length).toBe(
-      livré.navigation.length + (extra?.navigation.length ?? 0),
-    )
-    expect(augmenté.absentTables.length).toBe(
-      livré.absentTables.length + (extra === undefined ? 0 : moduleTableNames(extra).length),
-    )
-    // Et la contrepartie, qui est ce qui rend l'assertion précédente non
-    // triviale : ce qui sort du balayage des coupés entre dans celui des
-    // activés attendus.
-    expect(augmenté.presentTables.length).toBe(
-      livré.presentTables.length - (extra === undefined ? 0 : moduleTableNames(extra).length),
-    )
+    expect(
+      coupables.length,
+      'le prédicat accepte tout l’annuaire : il ne distingue plus rien',
+    ).toBeLessThan(availableModules.length)
+  })
+
+  it('traite un profil d’un module de plus sans qu’une ligne du harnais change, ou explique module par module l’absence de candidat', () => {
+    const verdict = verdictDeGénéricité(contexte)
+
+    if (verdict.branche === 'preuve') {
+      const extra = verdict.extra
+      const augmenté = sweepOf([...minimalProfile.cut, extra.id])
+
+      expect(new Set(augmenté.cutModuleIds)).toEqual(new Set([...livré.cutModuleIds, extra.id]))
+      expect(augmenté.routes.length).toBe(livré.routes.length + extra.routes.length)
+      expect(augmenté.navigation.length).toBe(livré.navigation.length + extra.navigation.length)
+      expect(augmenté.absentTables.length).toBe(
+        livré.absentTables.length + moduleTableNames(extra).length,
+      )
+      // Et la contrepartie, qui est ce qui rend l'assertion précédente non
+      // triviale : ce qui sort du balayage des coupés entre dans celui des
+      // activés attendus.
+      expect(augmenté.presentTables.length).toBe(
+        livré.presentTables.length - moduleTableNames(extra).length,
+      )
+    } else {
+      // **L'absence, dérivée plutôt que subie.** Chaque module de l'annuaire —
+      // le décompte le dit, aucun n'est omis — échoue sur au moins un critère
+      // nommé, et l'annuaire garde de quoi lever l'absence.
+      expect(verdict.manques.map((manque) => manque.moduleId)).toEqual(
+        availableModules.map((module) => module.id),
+      )
+
+      for (const manque of verdict.manques) {
+        expect(
+          manque.manquants,
+          `${manque.moduleId} n’est expliqué par aucun critère : l’absence de candidat n’est pas dérivée`,
+        ).not.toEqual([])
+      }
+
+      expect(verdict.coupables).not.toEqual([])
+    }
+  })
+})
+
+/**
+ * **Les deux branches du verdict, jouées l'une et l'autre à chaque exécution.**
+ *
+ * Sur l'annuaire réel, une seule tourne — celle que la configuration décide —,
+ * et l'autre serait du code mort qu'aucune exécution n'éprouverait : c'est
+ * exactement la façon dont une branche d'absence devient un faux vert. Les cas
+ * ci-dessous les jouent sur l'annuaire d'essai, donc sous les deux branches de
+ * la matrice de CI.
+ */
+describe('le verdict de généricité, ses deux branches (critère 8)', () => {
+  const contexte = (enabled: readonly string[]): ContexteDeGénéricité => ({
+    available: [...ESSAI],
+    enabled,
+    required: ['auth'],
+    cut: [],
+  })
+
+  it('rend la preuve, et le module sur lequel elle porte, quand la configuration en active un', () => {
+    const verdict = verdictDeGénéricité(contexte(['auth', 'alpha', 'beta']))
+
+    expect(verdict.branche).toBe('preuve')
+    expect(verdict.branche === 'preuve' ? verdict.extra.id : undefined).toBe('alpha')
+  })
+
+  it('explique chaque module par un critère nommé quand la configuration n’en active aucun', () => {
+    const verdict = verdictDeGénéricité(contexte(['auth']))
+
+    expect(verdict.branche).toBe('explication')
+
+    const manques = verdict.branche === 'explication' ? verdict.manques : []
+
+    // Le décompte d'abord : une explication qui laisserait tomber un module
+    // rendrait l'absence aussi silencieuse qu'un saut.
+    expect(manques.map((manque) => manque.moduleId)).toEqual(ESSAI.map((module) => module.id))
+
+    for (const manque of manques) {
+      expect(manque.manquants, `${manque.moduleId} n’est expliqué par aucun critère`).not.toEqual([])
+    }
+
+    // Et les critères sont **les bons** : le module que seule l'activation
+    // écarte n'est expliqué que par elle, celui qui ne déclare rien l'est par
+    // ce qu'il ne déclare pas.
+    expect(manques.find((manque) => manque.moduleId === 'alpha')?.manquants).toEqual([
+      CRITÈRE_D_ACTIVATION,
+    ])
+    expect(manques.find((manque) => manque.moduleId === 'gamma')?.manquants).toEqual([
+      'déclare au moins une entrée de navigation',
+      'déclare au moins une table',
+      CRITÈRE_D_ACTIVATION,
+    ])
+  })
+
+  /**
+   * **La capacité de l'annuaire ne bouge pas avec la configuration.**
+   *
+   * C'est la propriété qui rend la branche « explication » honnête plutôt que
+   * résignée : la même liste de coupables sous une configuration qui en active
+   * un et sous une qui n'en active aucun.
+   */
+  it('rend les mêmes modules coupables, que la configuration les active ou non', () => {
+    const activés = verdictDeGénéricité(contexte(['auth', 'alpha', 'beta'])).coupables
+
+    expect(activés).not.toEqual([])
+    expect(verdictDeGénéricité(contexte(['auth'])).coupables).toEqual(activés)
   })
 })
 
