@@ -431,6 +431,53 @@ qu'on propose, où est le patch, et son état.
   ci-dessus. **Candidat fort à remonter** : le gaspillage est invisible sur une
   story et vaut plusieurs gigaoctets sur trente.
 
+## P17 — La recherche se commite sur la branche par défaut ; le plan et la revue restent sur la branche
+
+- **Aujourd'hui** — `AGENTS.md:136` range `docs/research/<id>.md` avec le plan et
+  la revue : « committed on `feature/<id>` … **Every PR carries its own research,
+  design, plan and review.** » C'est cette ligne, et elle seule, qui oblige à
+  créer une branche **avant de pouvoir chercher** — donc tout le mécanisme que
+  P16 propose pour rendre ça économique.
+- **Ce que le PRD demande réellement** — angle 3, `docs/prd.md:87` : « sa
+  recherche, son plan, ses tests et sa revue **versionnés dans `docs/`** ».
+  *Versionnés dans le dépôt*, pas *portés par la demande de fusion*. La
+  contrainte de branche est un durcissement d'`AGENTS.md`, pas une exigence du
+  cadrage.
+- **La distinction qui tranche** — la recherche documente le **terrain avant le
+  changement** ; le plan et la revue documentent **le changement**. Le plan
+  décide ce qu'on va faire du diff, la revue le juge : les deux sont couplés à la
+  branche et doivent y rester. La recherche est un instantané du dépôt tel qu'il
+  est, et **elle reste vraie même si la story est abandonnée ou annulée**. C'est
+  la seule des trois dont le contenu ne dépend pas du diff.
+- **Ce que la version stricte achetait, et ce qu'on perd vraiment** :
+  1. *atomicité du revert* — annuler la story emporterait sa recherche. Perte
+     réelle mais faible, par la distinction ci-dessus : une recherche décrit le
+     terrain, pas le code livré ;
+  2. *correction en cours de cycle* — sur une branche, une recherche fausse
+     s'amende dans le commit unique et n'atterrit que juste. Sur la branche par
+     défaut, la version fausse est déjà publique. **Mais c'est aussi ce qui la
+     fait corriger plus tôt** : deux recherches se sont révélées à moitié fausses
+     le 04/09 (la prémisse de l'audit en s48, le compte de l'invariant en s29),
+     et les deux ont été relevées par la phase suivante, pas par la fusion ;
+  3. *le relecteur voit le raisonnement dans le diff* — ne vaut que pour un
+     humain sur GitHub : `/ks-review` lit le **fichier**, jamais le diff.
+- **Proposé** — déplacer **la recherche seule** vers la branche par défaut, comme
+  les documents de cadrage. Le plan, le design et la revue ne bougent pas. Effet :
+  la recherche n'a plus besoin de branche, donc plus besoin de worktree, donc
+  **P16 devient inutile** — plus de voie de recherche à créer, plus de dérogation
+  à écrire dans `AGENTS.md` sur le changement de branche. Une story peut être
+  recherchée des semaines avant d'être écrite, et sa recherche profite à toutes
+  les autres en attendant.
+- **Ce qu'il faut écrire en même temps** — la recherche gagne alors la même
+  obligation que les autres documents de cadrage : **dater ce contre quoi elle a
+  été vérifiée** (le commit de la branche par défaut), pour qu'un lecteur sache
+  si elle a été doublée par une fusion. Sans cette ligne, on remplace une
+  péremption visible par une péremption muette, ce qui serait un mauvais échange.
+- **État** — proposé, non appliqué : déplacer une ligne d'`AGENTS.md` engage tout
+  le dépôt. **Rend P16 caduque si retenue** — et c'est la bonne nouvelle : la
+  proposition la moins chère est celle qui supprime le besoin, pas celle qui
+  l'outille.
+
 ---
 
 # Observations sans proposition ferme
@@ -537,6 +584,7 @@ qu'on propose, où est le patch, et son état.
 | 04/09 | CI de `dev` rouge depuis cinq commits, jamais regardée par le pipeline | lire l'état de la branche cible avant d'ouvrir la fusion | — |
 | 04/09 | Cinq bases PostgreSQL, une seule utilisée ; deux créées pour des recherches en lecture seule | provisionner par phase, pas par story | P15 |
 | 04/09 | 827 Mo de `node_modules` et ~36 k tokens par story, pour une phase en lecture seule | une voie de recherche unique et réutilisée | P16 |
+| 04/09 | La contrainte de brancher avant de chercher vient d'`AGENTS.md`, pas du PRD | commiter la recherche sur la branche par défaut | P17 |
 
 ---
 
