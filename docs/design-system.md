@@ -99,6 +99,41 @@ Correspondance avec les états de facturation (s19, s21) : essai en cours → `i
 | `small` | 0.75rem / 400 | Aide sous un champ, horodatage, métadonnée |
 | `mono` | 0.875rem | Blocs de code de la documentation (s30) et du changelog (s31) |
 
+#### Échelle de prose — un corps d'article long (s29)
+
+Les huit rôles ci-dessus décrivent une **interface**. Aucun ne décrit un corps
+d'article : titres internes enchaînés, paragraphes, listes, citations, liens
+dans le texte, images, blocs de code. C'est le manque n°1 relevé par le design
+de `s29-blog-mdx`, et il concerne trois stories — s29 (blog), s30
+(documentation) et s31 (changelog) rendront toutes du MDX.
+
+L'échelle ci-dessous est **dérivée** des rôles existants et de l'échelle
+d'espacement Tailwind : elle n'introduit ni taille, ni graisse, ni couleur, ni
+rayon qui ne soit déjà déclaré plus haut. Chaque ligne dit de quoi elle dérive,
+et c'est cette colonne qui la rend vérifiable — une entrée qui ne dériverait de
+rien serait une seconde typographie, pas une extension.
+
+| Élément du corps | Rendu | Dérivé de |
+|---|---|---|
+| Paragraphe | `body-lg`, `text-foreground`, blocs séparés par `space-y-4` | `body-lg` (« texte des pages marketing et de la documentation ») + échelle d'espacement |
+| Titre interne de niveau 2 | `h2`, précédé de `mt-10` | rôle `h2` + échelle d'espacement |
+| Titre interne de niveau 3 | `h3`, précédé de `mt-8` | rôle `h3` + échelle d'espacement |
+| Titre interne de niveau 4 | `body-lg` en graisse 600 | `body-lg` + la graisse que `h1`/`h2`/`h3` emploient déjà |
+| Liste (à puces, numérotée) | `body-lg`, retrait `pl-6`, items espacés de `space-y-2` | `body-lg` + échelle d'espacement |
+| Citation | `body-lg`, `text-muted-foreground`, filet gauche `border-l-2 border-border`, `pl-4` | `body-lg` + jetons `muted-foreground` et `border` |
+| Lien dans le texte | couleur du texte, `underline underline-offset-4` | aucun jeton nouveau : le soulignement porte l'affordance, pas une couleur |
+| Code en ligne | `mono`, `bg-muted`, `rounded-sm`, `px-1.5 py-0.5` | rôle `mono` + jeton `muted` + `--radius-sm` |
+| Bloc de code | `mono`, `bg-muted`, `border border-border`, `rounded-lg`, `p-4`, défilement horizontal | rôle `mono` + « le défilement horizontal reste réservé aux blocs de code de la documentation » (§ Responsive) |
+| Image | pleine largeur du corps, `rounded-lg`, `border border-border` | « élévation par bordure et fond » + `--radius-lg` |
+| Séparation de section | le composant `Separator` | composant existant |
+| **Mesure de ligne** | corps borné à `max-w-2xl` (42 rem) | échelle de largeurs Tailwind par défaut, comme l'échelle d'espacement l'est déjà. C'est le manque n°4 du design de s29, tranché ici : une ligne de texte long non bornée devient illisible au-delà de ~90 caractères |
+
+Ce que cette échelle **ne** couvre pas, et qui reste un manque à signaler : les
+tableaux à l'intérieur d'un corps d'article (le système a `Table`, mais rien ne
+dit comment il se compose dans de la prose), et les notes de bas de page. Les
+deux sont absents du contenu de s29 ; les combler à l'avance livrerait des
+règles que personne n'a exercées.
+
 ### Espacement, formes, élévation
 - Échelle d'espacement Tailwind par défaut (base 0.25rem). Rythme vertical des sections marketing : `py-16` en mobile, `py-24` au-delà.
 - `--radius: 0.5rem`, avec les dérivés `sm = radius - 4px`, `md = radius - 2px`, `lg = radius`, `xl = radius + 4px`.
@@ -152,6 +187,7 @@ Exception de sécurité : sur les écrans d'authentification, un identifiant inc
 
 ### États
 - **Chargement** : `Skeleton` reproduisant la forme du contenu attendu. Jamais de spinner plein écran, jamais de saut de mise en page.
+  - **Manque signalé (s29), non comblé** : un squelette suppose une frontière `Suspense`, donc un `loading.tsx`, et celui-ci fait pousser la coquille de la page **avant** qu'elle n'ait décidé — un `notFound()` arrive alors après le statut, et la route répond 200. Mesuré sur `/blog/<slug inconnu>` (`e2e/blog.spec.ts:132`). L'état de chargement est donc **inatteignable** sur toute route dont l'existence est décidée dans le corps de la page, tant que le système ne dit pas comment tenir les deux. Le refus prime : c'est le socle de sécurité.
 - **Vide** : `EmptyState` avec l'action qui sort de cet état. Un tableau vide sans action est un écran cassé.
 - **Erreur** : message expliquant quoi faire, plus un moyen de réessayer. Jamais de code technique brut.
 - **Succès** : un `Toaster` pour une action asynchrone, un changement d'état visible pour une action locale. Pas les deux.

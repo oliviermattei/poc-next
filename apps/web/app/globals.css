@@ -12,6 +12,19 @@
 @source '../app';
 @source '../lib';
 
+/*
+ * `mdx-components.tsx` vit à la racine de l'application, là où Next le cherche
+ * (s29) : il n'est ni dans `app/`, ni dans `lib/`. Il ne porte aujourd'hui
+ * aucune classe — il ne fait que rendre la table de composants du module —,
+ * mais `tests/design-system.test.ts` exige qu'un `.tsx` du dépôt soit couvert
+ * par une source déclarée, et c'est la bonne exigence : le jour où il en
+ * portera une, elle produira une règle.
+ *
+ * Un **motif** (`*.tsx`) et non le nom du fichier : une source sans `*` est un
+ * dossier pour Tailwind comme pour la garde, et ne matcherait aucun fichier.
+ */
+@source '../*.tsx';
+
 /**
  * Les composants des modules activés.
  *

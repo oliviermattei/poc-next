@@ -1,0 +1,21 @@
+{
+  "navigation.blog": "Blog",
+  "list.title": "Blog",
+  "list.description": "What we learn while building, published as we go.",
+  "list.tags.label": "Filter by tag",
+  "list.tags.all": "All",
+  "list.empty.title": "No article yet",
+  "list.empty.description": "Nothing has been published here yet. Come back soon.",
+  "list.empty.action": "Back to home",
+  "list.emptyTag.title": "No article in this tag",
+  "list.emptyTag.description": "Nothing is published under this tag in this language.",
+  "list.emptyTag.action": "See all articles",
+  "pagination.label": "Article pages",
+  "pagination.previous": "Previous page",
+  "pagination.next": "Next page",
+  "pagination.page": "Page {page}",
+  "article.back": "Blog",
+  "article.backToList": "All articles",
+  "article.tags.label": "Article tags",
+  "article.author.label": "Author"
+}

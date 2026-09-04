@@ -21,12 +21,18 @@ import type { AvailableModuleId } from './features'
  *
  * ## Le profil minimal, et pourquoi ces trois-là
  *
- * Ils portent les trois promesses de modularité que le PRD vend séparément —
- * le multi-tenant, la facturation, le multilingue —, et ce sont les trois que
+ * Ils portent les promesses de modularité que le PRD vend séparément — le
+ * multi-tenant, la facturation, le multilingue —, et ce sont les trois que
  * personne n'avait jamais coupés **ensemble**. Chaque story de module éprouve
- * son propre « off » ; la recette de s26 éprouve les trois à la fois, sur une
- * base vierge, et vérifie qu'il n'en reste ni route, ni entrée de navigation,
- * ni table.
+ * son propre « off » ; la recette de s26 les éprouve à la fois, sur une base
+ * vierge, et vérifie qu'il n'en reste ni route, ni entrée de navigation, ni
+ * table.
+ *
+ * `blog` les a rejoints en s29, et pour la raison exacte qui fait exister ce
+ * fichier : son critère « module non activé, aucune route de blog et le lien
+ * disparaît de la navigation publique » n'était vérifié par **aucune
+ * exécution** tant qu'aucun profil ne le coupait. Le coût est d'une ligne, ce
+ * qui est précisément la promesse.
  *
  * `pnpm test:minimal-profile` joue ce profil dans une **copie** du dépôt : il
  * n'est pas la configuration livrée, et éditer cette liste ne change rien à
@@ -41,5 +47,5 @@ export interface ModuleProfileDeclaration {
 
 export const minimalProfile = {
   id: 'minimal',
-  cut: ['organizations', 'billing', 'i18n'],
+  cut: ['organizations', 'billing', 'i18n', 'blog'],
 } as const satisfies ModuleProfileDeclaration

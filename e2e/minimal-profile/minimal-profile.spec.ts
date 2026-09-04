@@ -141,6 +141,63 @@ test('la navigation anonyme ne contient que des entrées de modules activés (cr
 })
 
 /**
+ * **L'écran vers lequel pointait l'entrée coupée, demandé sur HTTP** (critère 3).
+ *
+ * Le cas précédent mesure que l'entrée n'est pas **rendue**. Ce n'est pas la
+ * même garantie que « l'écran n'existe pas » : une entrée absente d'un menu
+ * reste une adresse qu'un signet, un moteur ou un lien externe demande, et le
+ * critère du PRD dit **404**, pas « invisible ».
+ *
+ * Le balayage des routes ci-dessus ne couvre pas ces adresses-là : il ne
+ * connaît que les routes du contrat (`MODULE_ROUTE_PREFIX`), et un module dont
+ * l'écran est une page de `apps/web/app` déclare `routes: []`. Mesuré en revue
+ * de s29 — le blog n'était vérifié par **aucune** requête HTTP dans la
+ * configuration où il est coupé, si bien qu'une frontière de chargement posée
+ * au-dessus de sa liste aurait servi 200 sans faire rougir une seule commande
+ * du dépôt (voir `apps/web/AGENTS.md`, « Le montage du blog »).
+ *
+ * **Rien ici ne nomme un module** : les adresses sont celles que le contrat des
+ * modules coupés déclare, comme partout ailleurs dans ce fichier.
+ */
+test('l’écran d’une entrée de navigation coupée répond 404 sur HTTP (critère 3)', async ({
+  request,
+}) => {
+  expect(sweep.navigation.length).toBeGreaterThan(0)
+
+  for (const entry of sweep.navigation) {
+    const href = publicPath(entry.href)
+    const response = await request.get(href)
+
+    expect(response.status(), `${entry.moduleId} ${entry.entryId} ${href}`).toBe(404)
+  }
+
+  // **Le contrôle positif, sur le même montage** — même raison qu'au-dessus :
+  // une application entièrement morte rendrait les 404 ci-dessus verts pour la
+  // pire des raisons. Les écrans des modules **activés**, eux, répondent : leur
+  // page, ou la redirection vers la connexion quand ils sont protégés.
+  const served: string[] = []
+
+  for (const entry of moduleRegistry.navigation) {
+    const response = await request.get(publicPath(entry.href))
+
+    if (response.status() !== 404) {
+      served.push(`${entry.moduleId} ${entry.id} → ${response.status()}`)
+    }
+  }
+
+  expect(
+    served.length,
+    `aucune des ${moduleRegistry.navigation.length} entrée(s) de navigation des modules activés ` +
+      'ne répond : le montage est mort, et les 404 ci-dessus ne prouvent rien',
+  ).toBeGreaterThan(0)
+
+  console.log(
+    `Écrans des entrées coupées — ${sweep.navigation.length} adresse(s) vérifiées en 404 ; ` +
+      `contrôle positif : ${served.join(' ; ')}.`,
+  )
+})
+
+/**
  * **Le produit réduit reste utilisable** (critère 6).
  *
  * `auth` est au socle, donc toujours présent ; ce parcours est ce qui prouve

@@ -1,0 +1,35 @@
+---
+title: Un test vert qui ne vérifie rien
+description: Comment un prédicat satisfait par un seul module devient un nom écrit en dur.
+date: 2026-02-28
+author: Olivier Mattei
+tags: [ingénierie, coulisses]
+---
+
+Le prédicat sélectionnait le premier module activé, hors socle, qui déclarait à la fois des routes, une entrée de navigation et une table. Il était écrit ainsi pour ne nommer personne.
+
+Un seul module du dépôt le satisfaisait. Le prédicat le nommait donc, sans que personne puisse le voir.
+
+## Ce que la mutation a montré
+
+Neutraliser la garde à l'endroit du défaut est la seule mesure qui compte. Posée ailleurs, elle prouve que le code voisin fonctionne.
+
+Trois symptômes reviennent :
+
+- une liste dérivée d'un seul élément, qui se lit comme une règle générale ;
+- un compte écrit à la main dans un commentaire, que rien ne recalcule ;
+- une exception nommée « temporaire » et datée de rien.
+
+### La règle qui en sort
+
+> Une garde qui ne s'exécute jamais dans la configuration où elle mord est de la documentation.
+
+Le correctif tient en une ligne : dériver l'ensemble balayé, puis refuser un balayage vide.
+
+```ts
+if (swept.length === 0) {
+  throw new Error('Balayage vide : la vérification ne vérifie rien.')
+}
+```
+
+Le reste — la liste des modules, l'ordre, les noms — se dérive. Rien ne se recopie.

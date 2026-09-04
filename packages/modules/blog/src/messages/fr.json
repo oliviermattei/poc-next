@@ -1,0 +1,21 @@
+{
+  "navigation.blog": "Blog",
+  "list.title": "Blog",
+  "list.description": "Ce que nous apprenons en construisant, publié au fil de l’eau.",
+  "list.tags.label": "Filtrer par tag",
+  "list.tags.all": "Tous",
+  "list.empty.title": "Aucun article pour l’instant",
+  "list.empty.description": "Rien n’est encore publié ici. Revenez bientôt.",
+  "list.empty.action": "Retour à l’accueil",
+  "list.emptyTag.title": "Aucun article dans ce tag",
+  "list.emptyTag.description": "Rien n’est publié sous ce tag dans cette langue.",
+  "list.emptyTag.action": "Voir tous les articles",
+  "pagination.label": "Pages d’articles",
+  "pagination.previous": "Page précédente",
+  "pagination.next": "Page suivante",
+  "pagination.page": "Page {page}",
+  "article.back": "Blog",
+  "article.backToList": "Tous les articles",
+  "article.tags.label": "Tags de l’article",
+  "article.author.label": "Auteur"
+}

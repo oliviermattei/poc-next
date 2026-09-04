@@ -72,6 +72,7 @@ export {
   type OrgSwitcherProps,
 } from './composed/org-switcher'
 export { PageHeader, type PageHeaderProps } from './composed/page-header'
+export { Pagination, type PaginationProps } from './composed/pagination'
 export {
   Sidebar,
   SidebarBrand,

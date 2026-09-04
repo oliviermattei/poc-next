@@ -1,3 +1,4 @@
+import createMDX from '@next/mdx'
 import { loadRootEnv } from '@repo/config/server'
 import type { NextConfig } from 'next'
 import createNextIntlPlugin from 'next-intl/plugin'
@@ -28,6 +29,7 @@ const nextConfig: NextConfig = {
     '@repo/db',
     '@repo/module-auth',
     '@repo/module-billing',
+    '@repo/module-blog',
     '@repo/module-demo-disabled',
     '@repo/module-demo-enabled',
     '@repo/module-i18n',
@@ -35,6 +37,28 @@ const nextConfig: NextConfig = {
   ],
   // Le pilote PostgreSQL reste externe au bundle serveur.
   serverExternalPackages: ['pg'],
+  /**
+   * Le dossier des articles, embarqué dans la sortie autonome (s29).
+   *
+   * Le **corps** d'un article est compilé par le bundler, donc tracé tout seul.
+   * Son **en-tête**, lui, est lu par `node:fs` à l'amorçage du serveur
+   * (`apps/web/lib/blog.ts`).
+   *
+   * **Ce qui a été mesuré, plutôt que déduit** : retirer ces deux lignes ne
+   * change rien aujourd'hui. Les cinq `.mdx` sont toujours dans
+   * `.next/standalone/content/blog/` après un `pnpm build` complet sans elles,
+   * parce que `resolve(process.cwd(), …)` (`lib/blog.ts:48`) fait tracer **le
+   * projet entier** — le build l'annonce lui-même (« Dynamic filesystem access
+   * causes tracing of the whole project »). C'est donc une **assurance dont
+   * l'effet est masqué**, pas une garantie observable, et **aucun test ne la
+   * surveille** : aucun ne le peut tant que son retrait ne change rien. Elle
+   * deviendra porteuse le jour où ce traçage large sera resserré (ADR 053,
+   * « À surveiller »).
+   */
+  outputFileTracingIncludes: {
+    '/blog': ['../../content/blog/**/*.mdx'],
+    '/blog/[slug]': ['../../content/blog/**/*.mdx'],
+  },
 }
 
 /**
@@ -44,6 +68,21 @@ const nextConfig: NextConfig = {
  * critère « module coupé, routes sans préfixe » serait inatteignable.
  */
 const withNextIntl = createNextIntlPlugin('./i18n/request.ts')
+
+/**
+ * Le compilateur MDX (ADR 053) : **au build, jamais à l'exécution**.
+ *
+ * `remark-frontmatter` retire le bloc `---` du corps rendu. Sans lui, MDX en
+ * ferait un trait horizontal suivi du YAML en texte : l'en-tête s'afficherait
+ * en haut de chaque article.
+ *
+ * Les greffons sont nommés par **chaîne** : sous Turbopack, la configuration
+ * des règles de loader est sérialisée, et une fonction importée ne s'y
+ * transporte pas.
+ */
+const withMDX = createMDX({
+  options: { remarkPlugins: [['remark-frontmatter', ['yaml']]] },
+})
 
 /**
  * Configuration exportée en fonction, et non en objet, pour recevoir la phase.
@@ -67,5 +106,5 @@ const withNextIntl = createNextIntlPlugin('./i18n/request.ts')
 export default function config(phase: string): NextConfig {
   assertStartupConfiguration({ phase })
 
-  return withNextIntl(nextConfig)
+  return withMDX(withNextIntl(nextConfig))
 }

@@ -1,4 +1,4 @@
-import { readdirSync, statSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -663,6 +663,89 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
      * pose. Le droit, lui, est piloté par la fixture : il ne dépend pas de la
      * configuration du dépôt.
      */
+    /**
+     * **Le blog** (s29) — la première source de contenu par **fichier** du
+     * dépôt. Son texte ne vient d'aucun catalogue, et c'est structurel : un
+     * article est écrit par le propriétaire du dépôt, comme les prix de
+     * `config/billing.ts` sont écrits par lui.
+     *
+     * Tout est donc **dérivé du contenu livré**, jamais recopié : les en-têtes
+     * viennent du catalogue d'articles, le corps est relu sur le disque. Un
+     * article ajouté entre ici sans que personne n'y pense ; un texte écrit en
+     * dur dans un composant du blog, lui, reste un défaut.
+     */
+    const { blogCatalog } = await import('../apps/web/lib/blog')
+    const { formatArticleDate } = await import('@repo/module-blog')
+    const { initialsOf } = await import('@repo/ui')
+    const blogMounted = blogCatalog.index !== null
+    /** Le slug rendu par le cas « article » — celui du contenu livré. */
+    const BLOG_SLUG = 'un-test-vert-qui-ne-verifie-rien'
+    const shippedArticles = blogCatalog.articles.filter(
+      (article) => article.locale === defaultLocale,
+    )
+    const blogListData = shippedArticles.flatMap((article) => [
+      article.title,
+      article.description,
+      article.author,
+      article.date,
+      formatArticleDate(article),
+      ...article.tags,
+    ])
+    /**
+     * Le corps d'un article, **relu sur le disque** et ramené à ce que le rendu
+     * produit comme nœuds de texte.
+     *
+     * La dérivation ne couvre que ce que ce contenu-ci emploie : paragraphes,
+     * titres, items de liste, citations et blocs de code — c'est-à-dire du
+     * balisage **ligne par ligne**. Un article portant du balisage en ligne
+     * (lien, emphase, code) découperait ses nœuds autrement, et ce cas rougirait
+     * en le disant. C'est voulu : la garde ne s'élargit pas toute seule.
+     */
+    const articleBodyStrings = (source: string): readonly string[] => {
+      const body = source.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '')
+      const found: string[] = []
+      let fenced: string[] | null = null
+
+      for (const line of body.split('\n')) {
+        if (line.startsWith('```')) {
+          if (fenced === null) {
+            fenced = []
+          } else {
+            found.push(fenced.join('\n'))
+            fenced = null
+          }
+
+          continue
+        }
+
+        if (fenced !== null) {
+          fenced.push(line)
+
+          continue
+        }
+
+        const text = line.replace(/^(#{1,6}\s+|[-*]\s+|>\s+)/, '').trim()
+
+        if (text !== '') {
+          found.push(text)
+        }
+      }
+
+      return found
+    }
+    const blogArticleData = blogMounted
+      ? [
+          ...blogListData,
+          initialsOf(shippedArticles[0]?.author ?? ''),
+          ...articleBodyStrings(
+            readFileSync(
+              join(REPO_ROOT, 'content/blog', defaultLocale, `${BLOG_SLUG}.mdx`),
+              'utf8',
+            ),
+          ),
+        ]
+      : []
+
     const { featureGates } = await import('../apps/web/lib/feature-gates')
     const { DEMO_PREMIUM_FEATURE } = await import('@repo/module-demo-enabled')
     const premiumGated = featureGates().some((gate) => gate.id === DEMO_PREMIUM_FEATURE)
@@ -1137,6 +1220,49 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         render: async () =>
           (await import('../apps/web/app/verify-email/page')).default({
             searchParams: Promise.resolve({ error: 'expired' }),
+          }),
+      },
+      {
+        // s29. La liste des articles, **publique**. Elle refuse quand le module
+        // n'est pas monté, comme une page légale dont le slug n'est pas
+        // déclaré, et le refus attendu est **dérivé** de l'état du module.
+        id: 'blog, la liste',
+        file: 'blog/page.tsx',
+        viewer: ANONYMOUS,
+        refuses: blogMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        technicalProps: ['contactRecipient', 'newsletterSource', 'activeTag', 'slug'],
+        screenData: blogListData,
+        render: async () =>
+          (await import('../apps/web/app/blog/page')).default({ searchParams: noParams }),
+      },
+      {
+        // Le second rendu du même fichier : un tag qu'aucun article ne porte.
+        // C'est le seul chemin vers le second état vide — « aucun article dans
+        // ce tag » —, et ses trois textes sortiraient du filet sans lui.
+        id: 'blog, un tag sans article',
+        file: 'blog/page.tsx',
+        viewer: ANONYMOUS,
+        refuses: blogMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        technicalProps: ['contactRecipient', 'newsletterSource', 'activeTag', 'slug'],
+        screenData: blogListData,
+        render: async () =>
+          (await import('../apps/web/app/blog/page')).default({
+            searchParams: Promise.resolve({ tag: 'inconnu' }),
+          }),
+      },
+      {
+        // s29. Un article. Son **corps** est du MDX compilé (ADR 053) : le seul
+        // texte de cet écran qui ne vienne ni d'un catalogue ni d'une donnée
+        // d'en-tête, et il est dérivé du fichier livré.
+        id: 'blog, un article',
+        file: 'blog/[slug]/page.tsx',
+        viewer: ANONYMOUS,
+        refuses: blogMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        technicalProps: ['contactRecipient', 'newsletterSource', 'slug'],
+        screenData: blogArticleData,
+        render: async () =>
+          (await import('../apps/web/app/blog/[slug]/page')).default({
+            params: Promise.resolve({ slug: BLOG_SLUG }),
           }),
       },
       {
