@@ -555,6 +555,24 @@ qu'on propose, où est le patch, et son état.
   rapport de revue est traité comme une vérité. Piste : rendre explicite qu'un
   implémenteur peut **réfuter un constat par la mesure**, comme il peut réfuter
   une consigne — trois réfutations de consigne se sont révélées justes.
+- **Une mutation verte trouvée *pendant* l'implémentation vaut mieux que la même
+  trouvée en revue, et le dépôt n'a pas de mot pour ça.** En s29, deux mutations
+  sont restées vertes et l'implémenteur a corrigé **les tests, pas le code** : le
+  cas « clé de frontmatter inconnue » était satisfait par un champ *manquant*,
+  donc `strict()` n'était jamais exercé ; et la mutation du tri restait verte
+  parce que `readdirSync` rend des noms déjà triés qui coïncidaient avec l'ordre
+  des dates — la fixture ordonne désormais les noms **contre** les dates, et le
+  commentaire le dit. C'est exactement la règle du dépôt appliquée par celui qui
+  écrit, avant que quiconque ne le lui demande. Le skill parle de mutations
+  vertes comme d'un aveu à ne pas taire ; il pourrait les nommer comme un
+  **livrable** de la phase d'exécution : « combien de mutations ont été posées,
+  combien sont restées vertes, et ce qui a changé à cause d'elles ».
+- **Un invariant qu'aucune mutation ne peut atteindre doit être écrit comme tel.**
+  Toujours en s29 : le départage par slug à dates égales n'est pas couvrable,
+  parce que `readdirSync` rend déjà des noms triés sur les systèmes de fichiers
+  essayés — aucune fixture ne peut mettre la règle en défaut. L'implémenteur l'a
+  écrit **dans le fichier**, pas dans son rapport. C'est la bonne place : le
+  rapport disparaît, le code reste.
 - **Les mutations vertes déclarées** sont un signal de qualité, pas un aveu :
   trois voies ont signalé d'elles-mêmes une mutation restée verte plutôt que de
   la taire. Le skill pourrait le dire explicitement pour l'encourager.
