@@ -478,6 +478,46 @@ qu'on propose, où est le patch, et son état.
   proposition la moins chère est celle qui supprime le besoin, pas celle qui
   l'outille.
 
+## P18 — La recherche de la story suivante se fait pendant la revue de la courante, dans un worktree nu
+
+- **Aujourd'hui** — les phases s'enchaînent en file : recherche, design, plan,
+  exécution, revue, ship, puis on recommence. La revue est la phase la plus
+  longue et celle où le contexte principal **n'a rien à faire** : mesuré le
+  04/09, entre 18 et 31 minutes par ronde, et s28 en a demandé cinq.
+- **Proposé — quand la revue de la story N démarre, la recherche de la story N+1
+  démarre aussi**, dans un worktree **nu** :
+  - pas de conteneur, jamais (P15) ;
+  - **pas de `pnpm install` par défaut**. Mesuré : un worktree complet pèse
+    **836 Mo**, dont **827 Mo** de `node_modules` ; l'arbre source seul fait
+    **9 Mo** sur 887 fichiers suivis. Une recherche lit des fichiers ; celle de
+    s32 n'a rien exécuté, celle de s29 a eu besoin des dépendances pour **un**
+    script jetable. Donc installation **à la demande**, quand la recherche doit
+    exécuter quelque chose, et pas avant.
+  - Coût d'une voie de recherche : **9 Mo** au lieu de 836.
+- **La garde, sans laquelle la règle fabrique des recherches fausses** — la
+  recherche de N+1 se fait contre une branche par défaut qui **ne contient pas
+  encore** la story N. Si les deux touchent les mêmes points d'ancrage, la
+  recherche naît périmée, et périmée en silence. Donc : **ne mettre en file que
+  des stories dont la surface est disjointe de celle en revue**, et le vérifier
+  au lieu de le supposer.
+  - *Exemple qui marche, 04/09* : s48 (CI, `scripts/`, harnais) pendant que s29
+    (marketing, plan de site, CSP) et s32 (mailer, notifications) étaient
+    recherchées — trois surfaces disjointes.
+  - *Exemple à ne pas faire* : s30 et s31 pendant s29. Les trois partagent le
+    pipeline MDX, et c'est **s29 qui le crée** : les rechercher avant produirait
+    deux documents décrivant un dépôt qui n'existe pas encore.
+  - Les dépendances déclarées de `docs/stories.md` sont un bon premier filtre,
+    mais elles ne suffisent pas : deux stories sans dépendance déclarée peuvent
+    partager des fichiers.
+- **Ce que ça compose avec** — si P17 est retenue (recherche commitée sur la
+  branche par défaut), le worktree disparaît aussi et il ne reste que la règle
+  d'ordonnancement. P18 est donc utile **dans les deux cas** : elle dit *quand*
+  chercher, là où P15 à P17 disent *avec quoi*.
+- **État** — l'ordonnancement a été appliqué le 04/09 (recherches de s29 et s32
+  pendant la revue de s48) et il a tenu : les deux ont trouvé une décision
+  structurelle que le plan aurait sinon découverte trop tard. Le worktree nu
+  n'est pas encore appliqué — les deux voies ouvertes portent leurs 827 Mo.
+
 ---
 
 # Observations sans proposition ferme
@@ -585,6 +625,7 @@ qu'on propose, où est le patch, et son état.
 | 04/09 | Cinq bases PostgreSQL, une seule utilisée ; deux créées pour des recherches en lecture seule | provisionner par phase, pas par story | P15 |
 | 04/09 | 827 Mo de `node_modules` et ~36 k tokens par story, pour une phase en lecture seule | une voie de recherche unique et réutilisée | P16 |
 | 04/09 | La contrainte de brancher avant de chercher vient d'`AGENTS.md`, pas du PRD | commiter la recherche sur la branche par défaut | P17 |
+| 04/09 | La revue bloque 18 à 31 min par ronde, contexte principal inoccupé | chercher la story suivante pendant, worktree nu à 9 Mo | P18 |
 
 ---
 
