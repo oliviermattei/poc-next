@@ -1265,3 +1265,49 @@ s23-seat-billing, s17-roles-permissions
 Sortie de s23 après recherche : c'est une règle d'autorisation locale, sans état distribué entre deux systèmes, et elle n'a pas besoin de la réconciliation qui protège s23.
 Le refus n'est pas un 404 : `docs/security.md` §3 réserve le 404 à la ressource d'autrui. Ici l'organisation est bien la sienne, seule l'opération est refusée — même raisonnement que s21 pour une fonctionnalité réservée.
 Piège : une limite abaissée en dessous de l'effectif existant. Expulser serait destructeur ; refuser les ajouts suivants est le seul comportement non destructeur.
+
+---
+
+## Story s48-ci-verte — Rendre la CI verte sur la branche par défaut
+**As a** Agent ou humain qui reprend le dépôt **I want** que la CI de la branche par défaut soit verte **so that** un rouge signifie enfin quelque chose.
+
+### Complexity
+2
+
+### Acceptance criteria
+- [ ] `pnpm test` passe sous **les deux** configurations de la matrice, et la configuration socle est jouable par une commande locale documentée — aujourd'hui elle n'existe qu'en CI
+- [ ] L'assertion de généricité du critère 8 (`tests/minimal-profile.test.ts`) soit tient sous la configuration socle, soit déclare **pourquoi** elle ne peut pas y tenir — et cette déclaration est elle-même vérifiée : un saut silencieux est refusé
+- [ ] `pnpm run audit` distingue **un échec réseau d'un avis de sécurité** : reprise avec attente croissante sur le premier, échec nommé sur le second. Une indisponibilité du registre ne doit ni rougir la porte, ni la rendre verte par défaut
+- [ ] La CI de la branche par défaut est verte, vérifiée sur un run réel, et l'état est lu **par événement** (`push` et `pull_request`), jamais au rollup
+- [ ] Aucun contrôle n'est retiré, désactivé ni rendu non bloquant pour atteindre le vert
+
+### Dependencies
+s02-quality-harness, s26-minimal-profile-check
+
+### Agentic notes
+Mesuré le 04/09 : les cinq derniers runs de `dev` échouent. Deux causes distinctes, aucune imputable à la story en vol au moment du constat.
+La première est réelle : `extra` (`tests/minimal-profile.test.ts:307`) cherche le premier module **activé, hors socle, hors profil**, non requis par un autre, déclarant à la fois des routes, de la navigation et des tables. La configuration socle coupe `marketing`, `organizations` et `i18n` par `pnpm ks toggle` : le candidat que le test trouve sous « tous » disparaît, et l'assertion `toBeDefined()` tombe. Le test n'a donc **jamais** été jouable dans cette moitié de la matrice. Établir lequel des cinq critères élimine chaque module restant est le travail de la recherche.
+La seconde est une fragilité : `pnpm run audit` tombe en `ERR_SOCKET_TIMEOUT` vers `registry.npmjs.org` sans aucune reprise — observé trois fois le 04/09, deux en local, une en CI.
+Piège nommé par `docs/killer-saas-feedback.md` (P8) : la sortie facile est de rendre le contrôle non bloquant. C'est exactement le mode d'échec que le dépôt a déjà subi — un scan de secrets rouge sur chaque demande de fusion pendant trois stories, parce qu'un job homonyme vert le rendait invisible.
+
+---
+
+## Story s49-contraste-des-alertes — Rendre les quatre variantes d'alerte lisibles
+**As a** Utilisateur **I want** pouvoir lire un message d'alerte **so that** je comprenne pourquoi l'application me refuse quelque chose.
+
+### Complexity
+2
+
+### Acceptance criteria
+- [ ] Les quatre variantes d'`Alert` (`destructive`, `warning`, `info`, `success`) atteignent au moins **4,5 : 1** de contraste texte sur fond, en clair **et** en sombre
+- [ ] Une commande calcule ces contrastes **depuis les jetons** et rougit si l'un d'eux repasse sous le seuil — un jeton retouché plus tard doit faire échouer la porte, pas se voir à l'œil
+- [ ] Aucun jeton ni composant inventé hors `docs/design-system.md` ; les valeurs retenues y sont consignées avec leur contraste mesuré
+- [ ] Les écrans qui emploient déjà ces variantes sont rendus dans les deux thèmes et vérifiés, sans changement de leur code
+
+### Dependencies
+s09-i18n
+
+### Agentic notes
+Mesuré en revue de s28 (cinquième ronde), en mode clair, texte sur fond de la variante au-dessus du fond de carte : `destructive` 3,99 : 1 · `info` 3,24 : 1 · `success` 3,03 : 1 · **`warning` 1,83 : 1**. Les quatre sont sous le seuil AA ; `warning` est même sous 3 : 1. En sombre, `warning` donne 7,23 : 1 — le défaut est **le mode clair seul**.
+Le calcul de la revue est OKLCH→sRGB→WCAG, fait à la main : le confirmer avec un outil d'audit fait partie du travail, pas de la reprise du chiffre.
+Ça compte parce que s28 a déplacé un refus d'authentification de `destructive` vers `warning` : le message est désormais la seule explication qu'un utilisateur bloqué reçoit, dans la variante la moins lisible des quatre.

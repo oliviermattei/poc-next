@@ -372,12 +372,17 @@ qu'on propose, où est le patch, et son état.
 - **Les mutations vertes déclarées** sont un signal de qualité, pas un aveu :
   trois voies ont signalé d'elles-mêmes une mutation restée verte plutôt que de
   la taire. Le skill pourrait le dire explicitement pour l'encourager.
-- **Un `major` accepté à la porte n'a nulle part où aller.** La porte est
-  mécanique et ne bloque que sur `critical` ; un `major` laissé au ship est
-  écrit dans le rapport de revue, qui part avec la demande de fusion. Aucun
-  fichier ne le reprend, aucune story ne le porte. « À corriger au prochain
-  cycle » s'évapore le jour de la fusion. Piste : un `major` non corrigé
-  ouvre une entrée dans `docs/stories.md`, ou la porte le refuse.
+- **Un constat accepté à la porte n'a de domicile que si quelqu'un pense à lui
+  en ouvrir un.** La porte est mécanique et ne bloque que sur `critical` ; ce
+  qu'on laisse passer est écrit dans le rapport de revue, qui part avec la
+  demande de fusion, et rien ne l'en ressort. Le dépôt sait pourtant le faire
+  quand il y pense : `s46-auth-screens-design` est née d'un constat de la revue
+  de s09, `s47-seat-limit` d'une recherche de s23. Mais c'est un geste, pas une
+  étape — la revue de s28 a produit quatre mineurs dont deux n'avaient aucune
+  story au moment de la fusion, et il a fallu les créer après coup (s48, s49).
+  Piste : faire de l'ouverture d'une entrée dans `docs/stories.md` une sortie
+  explicite de `/ks-review` pour tout constat non corrigé, plutôt qu'une bonne
+  habitude.
 - **Deux tours de correction d'affilée ont chacun produit un `major` né du tour
   précédent.** Corriger le nom du cookie a laissé la valeur ; corriger la valeur
   et le seuil a déplacé le premier refus vers un écran qui ne savait pas le
