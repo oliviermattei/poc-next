@@ -594,6 +594,31 @@ qu'on propose, où est le patch, et son état.
   aucune étape, ne regarde si la branche par défaut est verte**. Piste : `/ks-ship`
   lit l'état de la CI de la branche cible avant d'ouvrir la demande de fusion, et
   le dit — fusionner dans du rouge doit être une décision, pas un défaut.
+- **Trois stories d'affilée butent sur la même absence du contrat de module.**
+  Recherches menées le 04/09, sur des surfaces sans rapport entre elles : s29 a
+  besoin qu'un module de contenu alimente `sitemap.xml`, s32 d'un point
+  d'émission qui **survive à la coupure** du module qui le porte, s37 d'un refus
+  à la connexion pour un compte banni par un module optionnel. Chaque fois, un
+  module optionnel doit se greffer sur un chemin du **socle**, et les quatorze
+  clés du contrat n'ont pas de fente pour ça. Chaque fois, la voie *(a)* est un
+  import nommé de plus dans l'application — c'est ce que fait déjà
+  `apps/web/app/sitemap.ts` avec `marketing` —, et la voie *(b)* est une clé de
+  plus au contrat, dont `AGENTS.md` annonce le coût : « adding one later means
+  reopening every module already written ». À trois occurrences, ce n'est plus
+  une coïncidence : c'est un manque d'architecture, et le payer **une fois** vaut
+  mieux que de le contourner trois fois. Piste : une story de cadrage qui tranche
+  avant s29, plutôt qu'un ADR par story qui déciderait la même chose trois fois
+  sans le savoir.
+- **Une note de complexité posée sur une phrase de la story se paie plus tard.**
+  s37 est notée 3 dans `docs/stories.md`, sur la foi de « le plugin `admin` de
+  Better Auth fournit tout, le travail réel est l'interface ». La recherche l'a
+  relevée à **5, découpe requise** : les plugins réellement configurés sont
+  `magicLink`, `passkey` et `withTwoFactorOnEverySignIn`, et surtout **s15 n'a
+  pas adopté le plugin `organization`** pour la feature la plus proche — le dépôt
+  avait donc déjà tranché dans l'autre sens. Même famille que s48, dont la story
+  affirmait une distinction que `scripts/audit.ts` tenait déjà. La note de
+  complexité est écrite avant d'ouvrir un fichier ; c'est la recherche qui la
+  vaut, et l'écart va dans les deux sens.
 - **Un échec de parcours navigateur en CI n'est pas imputable tant qu'on n'a pas
   lu le journal.** Sur la demande de fusion 7, deux parcours ont échoué dans un
   run et zéro dans l'autre, **au même commit**. L'hypothèse évidente était le
