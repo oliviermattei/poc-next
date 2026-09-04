@@ -524,6 +524,16 @@ qu'on propose, où est le patch, et son état.
 
 # Observations sans proposition ferme
 
+- **La découpe faite au plan arrive plus tard que celle faite à la recherche, mais
+  elle arrive.** s29 a été découpée le 04/09 **au moment d'écrire son plan**, pas
+  à la recherche : c'est le décompte des tâches — treize — qui a déclenché la
+  règle du skill (« si le plan dépasse une dizaine de tâches, la story est trop
+  grosse »). La recherche avait pourtant *proposé* la ligne de coupe, sans la
+  trancher, parce que la note de complexité était 4 et que le gabarit ne réclame
+  une découpe qu'à 5. Piste : un verdict de 4 assorti d'une proposition de coupe
+  devrait être traité comme une question à trancher **à la recherche**, pas
+  reportée au plan — le plan la tranche de toute façon, mais après avoir été
+  écrit à moitié.
 - **Le découpage des stories.** Deux stories ont dépassé 66 fichiers en un
   commit (s18, s19), et dans les deux cas les constats critiques étaient des
   **oublis de câblage** qu'un découpage aurait exposés plus tôt. La complexité

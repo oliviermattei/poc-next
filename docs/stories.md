@@ -786,11 +786,9 @@ Piège : limiter par IP seule est insuffisant contre le bourrage d'identifiants 
 - [ ] Un fichier MDX déposé dans le dossier des articles apparaît dans la liste du blog après build, sans autre intervention
 - [ ] Un article expose titre, description, date, auteur et tags depuis son frontmatter ; un frontmatter invalide fait échouer le build avec le nom du fichier fautif
 - [ ] La liste est paginée et filtrable par tag
-- [ ] Chaque article génère ses balises méta et Open Graph, et une image Open Graph par défaut si aucune n'est fournie
-- [ ] Un flux RSS est généré et valide
+- [ ] Chaque article génère ses balises méta et Open Graph à partir de son frontmatter
 - [ ] i18n activée, un article sans traduction dans la locale courante n'apparaît pas dans cette locale ; i18n non activée, tous les articles sont servis dans la langue par défaut
-- [ ] Les articles sont référencés dans `sitemap.xml`
-- [ ] **Module non activé** : aucune route de blog, aucun flux RSS, et le lien disparaît de la navigation publique
+- [ ] **Module non activé** : aucune route de blog, et le lien disparaît de la navigation publique
 
 ### Dependencies
 s10-marketing-site, s09-i18n
@@ -798,7 +796,8 @@ s10-marketing-site, s09-i18n
 ### Agentic notes
 Parité Supastarter (MDX multilingue), MakerKit (Markdoc) et ShipFast.
 Pose le pipeline MDX réutilisé par s30 et s31.
-**Décision de cadrage tranchée pour cette story (04/09), à porter par un ADR** : `apps/web/app/sitemap.ts` **et** `apps/web/app/robots.ts` importent `@repo/module-marketing` par son nom, et le contrat de module n'a aucune clé pour qu'un module contribue des URL. Un second import nommé ici en appellerait un troisième en s30. La story ajoute donc **une quinzième clé au contrat** — la contribution d'URL au plan de site, dérivée comme `navigation` l'est déjà, mais **calculée** puisque les URL d'articles sont du contenu découvert au build, pas des déclarations statiques. Coût mesuré : le type, l'agrégation au registre, **onze éditions d'une ligne** (chaque module la déclare, vide s'il n'y contribue pas), et les tests. La forme symétrique — un chemin du **socle** qui consulte un module optionnel avec une absence définie — n'est **pas** tranchée ici : elle reste ouverte pour s32, qui sera la première à l'exiger.
+**Découpée le 04/09** : la syndication — flux RSS, image Open Graph par défaut, et la contribution au plan de site avec la quinzième clé du contrat — part en `s53-blog-syndication`. Le plan de cette story dépassait treize tâches, et la décision structurelle méritait son propre cycle de revue. Ce qui reste ici close seul : on publie un fichier, on le lit.
+**Manque du design system à trancher au plan** : `docs/designs/s29-blog-mdx.md` signale que le corps rendu du MDX n'a aucune échelle typographique déclarée — huit rôles d'interface, aucun pour de la prose longue. C'est le seul manque qui bloque le rendu de l'article, et il sert aussi s30 et s31.
 Piège : le rendu MDX ne doit pas exécuter de composant applicatif nécessitant une session.
 
 ---
@@ -1386,3 +1385,29 @@ Les trois ont été rencontrés pendant s50 et **délibérément non corrigés**
 `tests/audit-exceptions.test.ts` rend `expected 2 to be 3` — deux tentatives au lieu de `AUDIT_ATTEMPTS` avant que le `timeout: 20_000` du `spawnSync` extérieur ne coupe. 1 rouge sur 4 exécutions complètes sous charge, **6/6 vert en isolation**. C'est du code de s48.
 `e2e/rate-limiting.spec.ts:38` : 1 rouge sur 11 suites, 24 vertes en isolation. `e2e/oauth.spec.ts:97` : 1 rouge sur 11, 5 vertes en isolation. Les deux ne sont apparus que sous le régime local à quatre travailleurs ; la CI en utilise **un** — l'explication est plausible et **non établie**.
 Piège, le même que s50 : rendre le rouge plus rare n'est pas le rendre juste. Et si l'un des trois se révèle être une course réelle du produit et non du test, c'est un défaut à traiter comme tel, pas à stabiliser.
+
+---
+
+## Story s53-blog-syndication — Faire trouver les articles
+**As a** Dev **I want** que mes articles soient syndiqués et indexés **so that** le canal d'acquisition organique fonctionne réellement.
+
+### Complexity
+3
+
+### Acceptance criteria
+- [ ] Un flux RSS est généré et **valide** au sens d'un validateur, pas d'une assertion maison
+- [ ] Une image Open Graph par défaut est servie quand l'article n'en fournit pas
+- [ ] Les articles sont référencés dans `sitemap.xml`, **et le mécanisme est dérivé** : ni `sitemap.ts` ni `robots.ts` ne connaissent un module de plus par son nom
+- [ ] Chaque module de l'annuaire déclare la nouvelle clé, vide s'il n'y contribue pas — un module qui l'omettrait ne compile pas
+- [ ] **Module non activé** : aucun flux, aucune URL d'article dans le plan de site, et la clé vide ne casse rien
+- [ ] i18n activée, le plan de site porte les alternates par locale comme le fait déjà le site marketing
+
+### Dependencies
+s29-blog-mdx, s10-marketing-site
+
+### Agentic notes
+**Décision de cadrage tranchée le 04/09, à porter par un ADR de cette story.** `apps/web/app/sitemap.ts` **et** `apps/web/app/robots.ts` importent `@repo/module-marketing` par son nom, et les quatorze clés du contrat n'en prévoient aucune pour qu'un module contribue des URL. Un second import nommé ici en appellerait un troisième en s30. La story ajoute donc **une quinzième clé** — la contribution d'URL au plan de site, dérivée comme `navigation` l'est déjà, mais **calculée** puisque les URL d'articles sont du contenu découvert au build, pas des déclarations statiques.
+Coût mesuré le 04/09 : le type, l'agrégation au registre, **onze éditions d'une ligne** (les quatorze clés sont toutes obligatoires, aucune optionnelle — un module minimal comme `mcp-server` les déclare toutes, vides), et les tests. La phrase d'`AGENTS.md` « adding one later means reopening every module already written » décrit une **discipline**, pas une semaine de travail.
+La forme symétrique — un chemin du **socle** qui consulte un module optionnel avec une absence définie — n'est **pas** tranchée ici : elle reste ouverte pour s32, qui sera la première à l'exiger, et s37 en héritera.
+Piège : `apps/web/app/sitemap.ts` porte `export const dynamic = 'force-dynamic'` pour une raison mesurée — un plan de site figé au build porterait `undefined` dans chaque URL, faute d'`APP_URL` validée à ce moment. Toute contribution hérite de cette contrainte.
+L'image Open Graph par défaut est un **manque du design system** signalé par `docs/designs/s29-blog-mdx.md` : ni gabarit, ni dimensions, ni jetons applicables. À trancher : image statique unique, ou gabarit dérivé des jetons.
