@@ -1311,3 +1311,27 @@ s09-i18n
 Mesuré en revue de s28 (cinquième ronde), en mode clair, texte sur fond de la variante au-dessus du fond de carte : `destructive` 3,99 : 1 · `info` 3,24 : 1 · `success` 3,03 : 1 · **`warning` 1,83 : 1**. Les quatre sont sous le seuil AA ; `warning` est même sous 3 : 1. En sombre, `warning` donne 7,23 : 1 — le défaut est **le mode clair seul**.
 Le calcul de la revue est OKLCH→sRGB→WCAG, fait à la main : le confirmer avec un outil d'audit fait partie du travail, pas de la reprise du chiffre.
 Ça compte parce que s28 a déplacé un refus d'authentification de `destructive` vers `warning` : le message est désormais la seule explication qu'un utilisateur bloqué reçoit, dans la variante la moins lisible des quatre.
+
+---
+
+## Story s50-tests-deterministes — Rendre déterministes les deux tests de facturation intermittents
+**As a** Agent ou humain qui lit la CI **I want** qu'un rouge signifie une régression **so that** je n'apprenne pas à ignorer la porte.
+
+### Complexity
+2
+
+### Acceptance criteria
+- [ ] `tests/billing.test.ts` n'assère plus un delta **global** de `auth_session` : la propriété est mesurée sur le périmètre du cas, et le cas rougit toujours si une session est ouverte là où il n'en faut aucune
+- [ ] `e2e/billing.spec.ts:406` ne dépend plus d'une course entre une redirection et une navigation : la navigation attend l'état qu'elle exige au lieu de le supposer
+- [ ] Les deux tests passent **dix fois de suite**, et le compte est journalisé — une stabilité se déclare avec son nombre de passages, jamais par impression
+- [ ] Aucune assertion perdue : la mutation qui neutralise la propriété visée rougit toujours, et le nombre de cas exécutés ne baisse pas
+- [ ] La cause retenue pour chacun est **écrite à l'endroit du test**, avec la mesure qui l'établit
+
+### Dependencies
+s19-subscribe-stripe
+
+### Agentic notes
+Mesuré pendant s48. `tests/billing.test.ts:5627` (« n'ouvre aucune session, ni sur un identifiant forgé ni sur un authentique ») compare `(await countRows('auth_session')) - before` — un delta **global**, sur une base partagée, pendant que les autres fichiers tournent en parallèle. Cumul de trois relectures indépendantes : **3 rouges sur 23 exécutions complètes**, soit ~13 %.
+`e2e/billing.spec.ts:406` échoue en `net::ERR_ABORTED` sur `page.goto` juste après `signIn`, à la même URL à chaque fois. Il a rougi sur les demandes de fusion 7 et 8, **jamais sur `dev`** (0 sur 3). L'écart de conditions vaut d'être vérifié avant d'être corrigé : une PR déclenche **deux runs complets simultanés** (`push` **et** `pull_request`) là où `dev` n'en lance qu'un — la charge doublée est une hypothèse, pas une conclusion. Vérifié pendant s48 : la limitation de débit n'est **pas** en cause (le seul `rate_limit.exceeded` du journal tombe quatre minutes après l'échec, sur une adresse forgée par le parcours de limitation lui-même).
+Piège : la sortie facile est d'ajouter une reprise Playwright ou d'élargir un délai. Les deux rendraient le rouge plus rare sans le rendre faux — c'est le mode d'échec que `docs/killer-saas-feedback.md` (P8) documente déjà.
+Si l'enquête confirme que la duplication des runs de CI est la cause de l'intermittence navigateur, la réduire est une décision d'infrastructure à prendre pour elle-même : elle double aussi le coût de chaque demande de fusion.
