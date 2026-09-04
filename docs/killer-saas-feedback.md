@@ -594,6 +594,25 @@ qu'on propose, où est le patch, et son état.
   aucune étape, ne regarde si la branche par défaut est verte**. Piste : `/ks-ship`
   lit l'état de la CI de la branche cible avant d'ouvrir la demande de fusion, et
   le dit — fusionner dans du rouge doit être une décision, pas un défaut.
+- **L'étape qui devait capturer les traces d'échec n'a jamais rien capturé.**
+  Trouvé en s50, en allant chercher la trace d'un parcours rouge : le job
+  `Traces des parcours en échec` archive `playwright-report/`, alors que les
+  traces de ce dépôt vivent dans `test-results/`. Le journal du job dit
+  `No files were found with the provided path`, et l'étape est verte — un
+  `upload-artifact` qui ne trouve rien ne rougit pas. Conséquence : depuis que la
+  CI existe, **aucun échec de parcours n'a laissé de trace exploitable**, et
+  chaque diagnostic a dû être refait en local. Même famille que le scan de
+  secrets de s28 : un filet qu'on croit posé, qui ne rougit jamais parce qu'il ne
+  s'exécute pas vraiment. Piste : une étape d'archivage dont le chemin est
+  **dérivé** de la configuration Playwright, et qui échoue si elle ne trouve rien
+  alors qu'un parcours a rougi.
+- **Une note de recherche peut se tromper sur un compte, et le compte se propage.**
+  La recherche de s50 écrivait « `signIn` a 10 appelants dans 5 fichiers » ; il y
+  en a **17 dans 7 fichiers** — le balayage n'avait couvert que `e2e/*.spec.ts`,
+  oubliant les supports et `golden-path`. Relevé par l'implémenteur, qui a
+  recompté avant de modifier. C'est la règle « dire ce qui a été balayé, et sur
+  combien de cas » appliquée à l'envers : la recherche avait annoncé un compte
+  sans dire sur quel périmètre elle l'avait pris.
 - **Un critère d'acceptation qui dépend de tout le dépôt ne peut pas être fermé
   par une story.** s48 portait « la CI de la branche par défaut est verte sur un
   run réel ». Elle a réparé ses deux causes — mesuré sur `dev` après fusion : la
