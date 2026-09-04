@@ -344,6 +344,48 @@ qu'on propose, où est le patch, et son état.
   qui ajoutera une limitation, un pare-feu applicatif ou une garde de
   maintenance rencontrera la même chose.
 
+## P15 — Une phase ne provisionne que ce qu'elle utilise
+
+- **Aujourd'hui** — `/ks-research` impose de créer le worktree avant toute
+  lecture, et le `worktree-manager` importe les `.env` et installe les
+  dépendances. C'est tout ce que le skill demande : ses 43 lignes ne
+  mentionnent **ni base de données, ni port, ni migration**.
+- **Mesuré le 04/09** — cinq conteneurs PostgreSQL tournaient en même temps,
+  **un seul travaillait**. Deux avaient été créés pour des *recherches*, qui
+  sont en lecture seule : celle de s29 a fait des `grep`, ouvert des fichiers et
+  exécuté **un** script jetable important `config/features.ts` — elle ne s'est
+  jamais connectée à une base. Un troisième survivait à la fusion de s28. À côté,
+  six volumes orphelins de stories fusionnées, **395 Mo**, et le compteur monte
+  d'environ 70 Mo par story.
+- **Où était la faute** — pas dans la méthode : dans les consignes écrites à
+  chaque appel du `worktree-manager` (« this story needs a working PostgreSQL »,
+  « allocate a free port », « run the migrations »). L'agent a fait exactement ce
+  qu'on lui demandait. C'est un défaut d'appelant, pas d'outil, et c'est la
+  raison pour laquelle il a duré : rien ne le signalait.
+- **Ce qui a une vraie contrainte, et qu'il ne faut pas casser en corrigeant** —
+  deux implémenteurs qui lancent `pnpm test` **en même temps** sur une même base
+  se télescopent. La preuve est dans le dépôt : `tests/billing.test.ts` rougit
+  déjà par intermittence sur un delta **global** de `auth_session`, parce que les
+  fichiers d'un **seul** passage se courent après sur une base ; mesuré à 2
+  rouges sur 9 exécutions. Deux voies simultanées rendraient cet intermittent
+  permanent.
+- **Proposé** — provisionner par phase, pas par story :
+
+  | Phase | Worktree | Base |
+  |---|---|---|
+  | Recherche | non — lecture seule sur la branche par défaut ; le document se commite au moment de l'exécution | **non** |
+  | Design | non | non |
+  | Plan | non | non |
+  | Exécution, revue | oui | oui, **le temps des tests** |
+
+  Et une base **par voie simultanée**, pas par story : en exécution séquentielle,
+  une seule suffit et se réutilise. La suppression du conteneur et du volume
+  rejoint la procédure de fusion, là où P7 a déjà mis celle du worktree.
+- **État** — corrigé côté appelant dès le constat (trois conteneurs arrêtés,
+  aucun détruit). **Candidat à remonter** : le coût est invisible sur une story
+  et devient un disque plein sur trente — exactement la trajectoire que P7 a
+  déjà documentée pour les worktrees.
+
 ---
 
 # Observations sans proposition ferme
@@ -448,6 +490,7 @@ qu'on propose, où est le patch, et son état.
 | 04/09 | Un test intermittent déclaré stable sur trois passages, rouge sur cinq | déclarer une stabilité avec son nombre de passages | — |
 | 04/09 | Scan de secrets jamais vert sur une demande de fusion, 403 avant de scanner | `pull-requests: read` sur le job, cause écrite sur place | P8 |
 | 04/09 | CI de `dev` rouge depuis cinq commits, jamais regardée par le pipeline | lire l'état de la branche cible avant d'ouvrir la fusion | — |
+| 04/09 | Cinq bases PostgreSQL, une seule utilisée ; deux créées pour des recherches en lecture seule | provisionner par phase, pas par story | P15 |
 
 ---
 
