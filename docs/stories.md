@@ -1372,7 +1372,7 @@ Même famille que le scan de secrets de s28 : **une étape de CI dont le succès
 
 ### Acceptance criteria
 - [ ] `tests/audit-exceptions.test.ts` (« coupe un `pnpm audit` qui ne répond pas ») ne dépend plus d'une course entre le délai du faux processus et celui de la suite
-- [ ] `e2e/rate-limiting.spec.ts:38` et `e2e/oauth.spec.ts:97` ne dépendent plus du nombre de travailleurs Playwright
+- [ ] `e2e/rate-limiting.spec.ts:38` et **la paire** `e2e/oauth.spec.ts:30`/`:97` ne dépendent plus du nombre de travailleurs Playwright
 - [ ] Les trois passent **dix fois de suite sous le régime qui les faisait rougir** — quatre travailleurs en local —, et le compte est journalisé
 - [ ] Aucune reprise, aucun délai élargi, aucun saut : la mutation qui neutralise la propriété visée rougit toujours
 - [ ] La cause de chacun est écrite à l'endroit du test, avec la mesure qui l'établit
@@ -1383,7 +1383,8 @@ s48-ci-verte, s28-rate-limiting, s12-oauth-signin
 ### Agentic notes
 Les trois ont été rencontrés pendant s50 et **délibérément non corrigés** : l'interdit de cette story disait de nommer sans élargir.
 `tests/audit-exceptions.test.ts` rend `expected 2 to be 3` — deux tentatives au lieu de `AUDIT_ATTEMPTS` avant que le `timeout: 20_000` du `spawnSync` extérieur ne coupe. 1 rouge sur 4 exécutions complètes sous charge, **6/6 vert en isolation**. C'est du code de s48.
-`e2e/rate-limiting.spec.ts:38` : 1 rouge sur 11 suites, 24 vertes en isolation. `e2e/oauth.spec.ts:97` : 1 rouge sur 11, 5 vertes en isolation. Les deux ne sont apparus que sous le régime local à quatre travailleurs ; la CI en utilise **un** — l'explication est plausible et **non établie**.
+`e2e/rate-limiting.spec.ts:38` : 1 rouge sur 11 suites, 24 vertes en isolation. `e2e/oauth.spec.ts` : 1 rouge sur 11, 5 vertes en isolation.
+**Corrigé le 05/09, revue de s29** : la liste ne nommait que `:97`, or **la paire est `:30`/`:97`** — les deux cas pilotent le fournisseur OAuth local, qui rend toujours la même identité, et celui qui perd la course d'insertion échoue sur `duplicate key value violates unique constraint "auth_user_email_key"`. Une liste qui nomme un cas sur deux se lit comme vérifiée, et le second n'aurait été corrigé par personne. La cause est donc **connue** pour cette paire : ce n'est pas une course de charge, c'est une identité partagée. Les deux ne sont apparus que sous le régime local à quatre travailleurs ; la CI en utilise **un** — l'explication est plausible et **non établie**.
 Piège, le même que s50 : rendre le rouge plus rare n'est pas le rendre juste. Et si l'un des trois se révèle être une course réelle du produit et non du test, c'est un défaut à traiter comme tel, pas à stabiliser.
 
 ---

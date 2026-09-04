@@ -4,70 +4,53 @@
 
 ## REPRENDRE ICI
 
-**La CI de `dev` est verte.** Run `33907155613`, commit `64f2cd3`, lu **par
-événement** (`dev` ne reçoit que des `push`, un seul run) : les deux
-configurations de matrice, le scan de secrets, l'image de production et le
-profil minimal passent tous. Les deux runs précédents échouaient — la bascule est
-nette et attribuable.
+**s29-blog-mdx est fusionnée** (demande de fusion 10, squash `b0dda43`) — le
+douzième module, et la première story de fonctionnalité après trois stories de
+harnais. Worktree, branche, conteneur et volume supprimés.
 
-**C'est s50 qui a fermé le dernier critère d'acceptation de s48.** s48 avait
-réparé ses deux causes (l'assertion du critère 8 sous la configuration socle, et
-`pnpm run audit` sans reprise) mais ne pouvait pas fermer « la CI est verte » :
-ce critère dépendait de tests appartenant à d'autres stories. Leçon écrite dans
-`docs/killer-saas-feedback.md` : un critère qui dépend de tout le dépôt ne se
-ferme pas depuis une story.
+**La suite immédiate est `s53-blog-syndication`, et elle n'est pas optionnelle.**
+`robots.txt` interdit `/blog` et le plan de site l'ignore : le blog est livré,
+activé, lisible — et introuvable. C'est le prix assumé de la découpe de s29, et
+s53 porte désormais le critère explicite « `robots.txt` autorise `/blog` ». Elle
+porte aussi la **quinzième clé du contrat de module**, pour la forme
+contributive.
 
-**Ce que s50 a corrigé, trois mécanismes distincts** — et le troisième n'était
-pas celui qu'on croyait :
+**Trois choses que s29 laisse au dépôt, au-delà de son périmètre :**
 
-1. un **compte global** de `auth_session` dans `tests/billing.test.ts`, remplacé
-   par deux sondes sur le chemin réellement emprunté ;
-2. `signIn` qui **n'attendait rien**, désormais achevé sur « la page a quitté
-   l'écran de connexion » — le signal le plus lâche qui soit correct, donc valable
-   pour le tableau de bord, `?next=` et l'écran de second facteur ;
-3. un **sommeil qui ne protégeait rien** dans le parcours 2FA (0 à 10,1 s, deux
-   fois, une exécution sur trois) alors que la fenêtre TOTP offre 30 à 60 s de
-   marge. Le parcours passe de ~31 s à 7,6 s en local, et son amplitude de 18,7 s
-   à 0,9 s.
+1. **Un `loading.tsx` transforme un `notFound()` en HTTP 200.** La coquille est
+   vidée avant que la page ne décide. Mesuré sur trois placements ; un groupe de
+   routes scope bien la frontière, contrairement à ce qu'on a d'abord écrit. La
+   contrainte **attend s30 et s31 au même endroit**.
+2. **Une garde générique le referme** : toute adresse de navigation déclarée par
+   un module coupé doit répondre **404 sur une requête HTTP réelle**
+   (`e2e/minimal-profile/minimal-profile.spec.ts`). Dérivée du contrat, ne
+   nommant aucun module, cinq adresses aujourd'hui, avec **son propre plancher**
+   — le plancher partagé de la recette l'aurait laissée passer.
+3. **L'échelle de prose** est posée dans `docs/design-system.md`, dérivée des
+   huit rôles existants. s30 et s31 en héritent.
 
-**Une marge à surveiller.** Sur le runner, le parcours 2FA prend **15,8 s** en
-« tous » et **20,6 s** en socle, pour un budget de 30 s. La revue avait posé le
-seuil d'alerte à 20 s : il est franchi. C'est vert, mais moins large que la
-projection ne le laissait attendre — si un rouge revient là, la marge est la
-première chose à regarder.
+**Ce qui n'est pas livré, et sa case le dit** : l'état de chargement de la liste.
+Le squelette a été retiré, et `packages/ui/src/components/skeleton.tsx` avec lui.
 
-**Deux dettes ouvertes en stories** plutôt qu'en notes :
+**Deux manquements de procédure du contexte principal, écrits dans le rapport de
+revue** : le rapport du premier tour n'avait pas été écrit avant d'enchaîner sur
+le correctif, et il a ensuite été écrit dans le worktree pendant qu'un relecteur
+y mesurait. Les deux sont enregistrés dans `docs/killer-saas-feedback.md`.
 
-- **`s51-traces-des-echecs`** — l'étape qui archive les traces téléverse
-  `playwright-report/` alors qu'elles vivent dans `test-results/`. Elle n'a
-  **jamais** rien capturé et reste verte. Deuxième occurrence en deux stories de
-  la même classe : **une étape de CI dont le succès ne prouve pas l'exécution**.
-- **`s52-derniers-intermittents`** — trois tests rencontrés pendant s50 et
-  délibérément non corrigés : `tests/audit-exceptions.test.ts` (code de s48),
-  `e2e/rate-limiting.spec.ts:38`, `e2e/oauth.spec.ts:97`.
+**Cinq recherches d'avance sont sur `dev`**, prêtes à planifier : `s32` (4),
+`s37` (**5, découpe requise en s37a/b/c**), `s47` (2), `s49` (2) — et `s53`, qui
+n'en a pas encore.
 
-**Quatre recherches d'avance sont sur `dev`**, prêtes à planifier :
-`s29-blog-mdx` (4), `s32-notifications-inapp` (4), `s37-admin-users` (**5, découpe
-requise en s37a/b/c**), `s49-contraste-des-alertes` (2).
-
-**Deux décisions de cadrage prises le 04/09 :**
-
-- la **recherche est un document de cadrage** et se commite sur la branche par
-  défaut, avec l'obligation de dater le commit vérifié (`AGENTS.md`) ;
-- **s29 ajoute la quinzième clé** au contrat de module, pour la forme
-  *contributive* (un module alimente le plan de site). La forme symétrique — un
-  chemin du socle qui consulte un module optionnel — reste ouverte pour **s32**.
-
-Premier numéro d'ADR libre : **053**.
+Premier numéro d'ADR libre : **054**.
 
 ## Où on en est
 
 | | |
 |---|---|
-| Stories closes | **33 sur 52** (s01 → s28, s36, s41, s45, s48, s50) |
-| En vol | aucune — CI verte, quatre recherches d'avance prêtes à planifier |
-| Restantes | 19 — dont s49, s51 et s52, nées de constats de revue |
-| Tests | **1970 + 8 sautés**, 100 parcours navigateur (78 joués sous socle) |
+| Stories closes | **34 sur 53** (s01 → s29, s36, s41, s45, s48, s50) |
+| En vol | aucune — s53 est la suite immédiate |
+| Restantes | 19 — dont s49, s51, s52 et s53, nées de constats de revue |
+| Tests | **2030 + 8 sautés**, 105 parcours navigateur |
 | ADR | **50** (jusqu'à 050 ; 051 libre) |
 
 Stratégie de ship : **auto**. `/ks-ship` fusionne en squash dès que le portail
