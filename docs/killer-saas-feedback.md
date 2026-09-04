@@ -113,6 +113,20 @@ qu'on propose, où est le patch, et son état.
   par défaut et jamais configuré ici, en est un quatrième axe), et « un
   cinquième port **non documenté** fait rougir `pnpm test` » alors que la
   commande n'exige que la présence de la **chaîne du nom de fichier**.
+- **Mesuré une nouvelle fois en s29, avec un angle que les précédents n'avaient
+  pas** — l'affirmation ne se contentait pas d'être invérifiable, elle **nommait
+  un test qui n'existe pas**. L'ADR 053 écrivait « `tests/deployment.test.ts` en
+  garde la trace » : `grep -rn outputFileTracing tests/` rend **zéro**
+  occurrence. Et la garantie voisine, écrite dans `apps/web/AGENTS.md`, était
+  fausse au fond : la ligne de configuration retirée, le build embarque
+  **toujours** les fichiers, parce qu'un `resolve(process.cwd(), …)` fait tracer
+  le projet entier — l'avertissement du build le dit lui-même. Deux phrases,
+  deux endroits qu'un agent lit en premier, toutes deux fausses, et l'une citant
+  une commande comme preuve. **Citer un nom de fichier de test est plus
+  dangereux que de ne rien citer** : le lecteur suivant ne va pas le chercher.
+  Piste : une règle exécutable qui vérifie que tout nom de fichier de test cité
+  dans un ADR ou un `AGENTS.md` existe réellement — c'est mécanique, et ça
+  aurait attrapé celui-ci.
 - **La contre-mesure qui a marché, et qui est généralisable** — au lieu d'écrire
   le plafond de la dépendance, le test le **dérive du paquet installé**
   (`beginAttempt\((\d+)\)` lu dans le `dist/`), et compare le seuil du dépôt à
