@@ -1340,3 +1340,49 @@ Piège : la sortie facile est d'ajouter une reprise Playwright ou d'élargir un 
 Si l'enquête confirme que la duplication des runs de CI est la cause de l'intermittence navigateur, la réduire est une décision d'infrastructure à prendre pour elle-même : elle double aussi le coût de chaque demande de fusion.
 **Troisième cas, ajouté après la fusion de s48** : `e2e/two-factor.spec.ts:126` (« activation, connexion par code, puis connexion par code de secours ») dépasse son délai de 30 s. Observé sur la demande de fusion 7 puis sur le run de `dev` du 04/09, sous la configuration socle. Même famille que les deux autres, autre surface (s13).
 **Ces trois tests sont ce qui sépare aujourd'hui `dev` d'une CI verte** : au run `33894919551`, les deux suites unitaires passent (1970/8 sous « tous », 1965/13 sous socle) et les deux jobs de matrice n'échouent que sur un parcours navigateur chacun. C'est donc cette story, et elle seule, qui referme le dernier critère d'acceptation de s48.
+
+---
+
+## Story s51-traces-des-echecs — Archiver les traces des parcours en échec
+**As a** Agent ou humain qui diagnostique un rouge de CI **I want** que la trace du parcours échoué soit récupérable **so that** je ne recommence pas chaque diagnostic par une reproduction locale.
+
+### Complexity
+1
+
+### Acceptance criteria
+- [ ] Un parcours en échec laisse une trace **téléchargeable** depuis le run de CI, vérifié sur un échec réel ou provoqué
+- [ ] Le chemin archivé est **dérivé** de la configuration Playwright, jamais recopié — un changement d'`outputDir` ne doit pas rendre l'étape muette
+- [ ] L'étape **échoue** si elle ne trouve rien alors qu'un parcours a rougi : un archivage vide ne doit plus être vert
+- [ ] La même garantie vaut pour les deux configurations de la matrice
+
+### Dependencies
+s02-quality-harness
+
+### Agentic notes
+Constaté en s50, en allant chercher la trace d'un parcours rouge : `.github/workflows/ci.yml:176` téléverse `playwright-report/` alors que les traces de ce dépôt vivent dans `test-results/`. Le journal du job dit `No files were found with the provided path` et l'étape reste **verte** — un `upload-artifact` qui ne trouve rien ne rougit pas. Depuis que la CI existe, aucun échec de parcours n'a donc laissé de trace exploitable.
+Le même fichier porte déjà le correctif à la ligne 303 pour le parcours doré, avec le commentaire qui l'explique : le défaut est connu et isolé, il n'a simplement jamais été reporté ici.
+Même famille que le scan de secrets de s28 : **une étape de CI dont le succès ne prouve pas l'exécution**. C'est la deuxième occurrence en deux stories ; le troisième critère ci-dessus est ce qui empêche la troisième.
+
+---
+
+## Story s52-derniers-intermittents — Fermer les trois intermittents restants
+**As a** Agent ou humain qui lit la CI **I want** qu'aucun test ne rougisse au hasard **so that** un rouge signifie toujours une régression.
+
+### Complexity
+2
+
+### Acceptance criteria
+- [ ] `tests/audit-exceptions.test.ts` (« coupe un `pnpm audit` qui ne répond pas ») ne dépend plus d'une course entre le délai du faux processus et celui de la suite
+- [ ] `e2e/rate-limiting.spec.ts:38` et `e2e/oauth.spec.ts:97` ne dépendent plus du nombre de travailleurs Playwright
+- [ ] Les trois passent **dix fois de suite sous le régime qui les faisait rougir** — quatre travailleurs en local —, et le compte est journalisé
+- [ ] Aucune reprise, aucun délai élargi, aucun saut : la mutation qui neutralise la propriété visée rougit toujours
+- [ ] La cause de chacun est écrite à l'endroit du test, avec la mesure qui l'établit
+
+### Dependencies
+s48-ci-verte, s28-rate-limiting, s12-oauth-signin
+
+### Agentic notes
+Les trois ont été rencontrés pendant s50 et **délibérément non corrigés** : l'interdit de cette story disait de nommer sans élargir.
+`tests/audit-exceptions.test.ts` rend `expected 2 to be 3` — deux tentatives au lieu de `AUDIT_ATTEMPTS` avant que le `timeout: 20_000` du `spawnSync` extérieur ne coupe. 1 rouge sur 4 exécutions complètes sous charge, **6/6 vert en isolation**. C'est du code de s48.
+`e2e/rate-limiting.spec.ts:38` : 1 rouge sur 11 suites, 24 vertes en isolation. `e2e/oauth.spec.ts:97` : 1 rouge sur 11, 5 vertes en isolation. Les deux ne sont apparus que sous le régime local à quatre travailleurs ; la CI en utilise **un** — l'explication est plausible et **non établie**.
+Piège, le même que s50 : rendre le rouge plus rare n'est pas le rendre juste. Et si l'un des trois se révèle être une course réelle du produit et non du test, c'est un défaut à traiter comme tel, pas à stabiliser.

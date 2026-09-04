@@ -4,71 +4,69 @@
 
 ## REPRENDRE ICI
 
-**s48-ci-verte est fusionnée** (demande de fusion 8, squash `fa0099e`, 04/09).
-Worktree, branche, conteneur **et volume** supprimés — la procédure de fusion
-inclut désormais le nettoyage du projet compose, pas seulement du worktree.
+**La CI de `dev` est verte.** Run `33907155613`, commit `64f2cd3`, lu **par
+événement** (`dev` ne reçoit que des `push`, un seul run) : les deux
+configurations de matrice, le scan de secrets, l'image de production et le
+profil minimal passent tous. Les deux runs précédents échouaient — la bascule est
+nette et attribuable.
 
-**Ce que s48 a réparé**, et qui était rouge depuis au moins cinq commits :
+**C'est s50 qui a fermé le dernier critère d'acceptation de s48.** s48 avait
+réparé ses deux causes (l'assertion du critère 8 sous la configuration socle, et
+`pnpm run audit` sans reprise) mais ne pouvait pas fermer « la CI est verte » :
+ce critère dépendait de tests appartenant à d'autres stories. Leçon écrite dans
+`docs/killer-saas-feedback.md` : un critère qui dépend de tout le dépôt ne se
+ferme pas depuis une story.
 
-1. `tests/minimal-profile.test.ts`, critère 8 — le prédicat n'avait **qu'un seul
-   candidat dans tout le dépôt** (`marketing`), et la branche `socle` de la
-   matrice coupe précisément celui-là. Le test avait été écrit pour ne pas nommer
-   de module ; un prédicat qu'un seul module satisfait est un nom déguisé.
-   Fermé par un verdict discriminé (`preuve` | `explication`) et un invariant
-   indépendant de la configuration. **ADR 052.**
-2. `pnpm run audit` — aucune reprise sur une panne de registre, et aucun délai
-   d'attente. Trois tentatives au plus sur la seule branche de panne, jamais sur
-   un avis, plus un délai de 60 s.
+**Ce que s50 a corrigé, trois mécanismes distincts** — et le troisième n'était
+pas celui qu'on croyait :
 
-**Nouvelle commande : `pnpm test:socle`.** Elle rejoue la seconde branche de la
-matrice dans une copie, avec **la liste des étapes dérivée du workflow** — 13
-étapes `run:`, 10 rejouées, 3 exclues avec leur raison. Une 14ᵉ étape ajoutée au
-job fait rougir un test en la nommant. Elle a immédiatement servi : rejouer les
-parcours sous socle a révélé un rouge **déterministe** que personne n'avait
-jamais joué hors runner.
+1. un **compte global** de `auth_session` dans `tests/billing.test.ts`, remplacé
+   par deux sondes sur le chemin réellement emprunté ;
+2. `signIn` qui **n'attendait rien**, désormais achevé sur « la page a quitté
+   l'écran de connexion » — le signal le plus lâche qui soit correct, donc valable
+   pour le tableau de bord, `?next=` et l'écran de second facteur ;
+3. un **sommeil qui ne protégeait rien** dans le parcours 2FA (0 à 10,1 s, deux
+   fois, une exécution sur trois) alors que la fenêtre TOTP offre 30 à 60 s de
+   marge. Le parcours passe de ~31 s à 7,6 s en local, et son amplitude de 18,7 s
+   à 0,9 s.
 
-**La CI de `dev` est encore rouge, et le dernier critère de s48 n'est pas tenu.**
-Mesuré au run `33894919551` : les deux suites unitaires passent (1970/8 sous
-« tous », **1965/13 sous socle** — l'assertion du critère 8 est bien réparée), et
-chaque job de matrice n'échoue plus que sur **un parcours navigateur**. C'est
-`s50-tests-deterministes` qui referme ce critère, pas s48.
+**Une marge à surveiller.** Sur le runner, le parcours 2FA prend **15,8 s** en
+« tous » et **20,6 s** en socle, pour un budget de 30 s. La revue avait posé le
+seuil d'alerte à 20 s : il est franchi. C'est vert, mais moins large que la
+projection ne le laissait attendre — si un rouge revient là, la marge est la
+première chose à regarder.
 
-**Trois tests intermittents, ouverts en `s50-tests-deterministes`** — `tests/billing.test.ts:5627` (delta **global** sur `auth_session`, 3 rouges sur
-23 exécutions), `e2e/billing.spec.ts:406` (`net::ERR_ABORTED` après `signIn`) et
-`e2e/two-factor.spec.ts:126` (délai de 30 s dépassé, sous socle).
+**Deux dettes ouvertes en stories** plutôt qu'en notes :
 
-**Trois pièges de séance, à ne pas réapprendre :**
+- **`s51-traces-des-echecs`** — l'étape qui archive les traces téléverse
+  `playwright-report/` alors qu'elles vivent dans `test-results/`. Elle n'a
+  **jamais** rien capturé et reste verte. Deuxième occurrence en deux stories de
+  la même classe : **une étape de CI dont le succès ne prouve pas l'exécution**.
+- **`s52-derniers-intermittents`** — trois tests rencontrés pendant s50 et
+  délibérément non corrigés : `tests/audit-exceptions.test.ts` (code de s48),
+  `e2e/rate-limiting.spec.ts:38`, `e2e/oauth.spec.ts:97`.
 
-- **Ne rien pousser sur `dev` pendant qu'on observe un run de CI** : le groupe de
-  concurrence annule le run en cours. Perdu une fois le 04/09.
-- **Lire l'état de la CI par événement, jamais au rollup.** Une PR déclenche
-  **deux** runs complets (`push` et `pull_request`) ; un job homonyme vert peut
-  masquer un rouge. C'est ce qui a caché pendant trois stories un scan de secrets
-  qui échouait avant même de scanner.
-- **Une recherche ne se connecte à aucune base.** Ne pas provisionner de
-  conteneur pour elle (P15) ; un worktree nu coûte 9 Mo contre 836 (P18).
+**Quatre recherches d'avance sont sur `dev`**, prêtes à planifier :
+`s29-blog-mdx` (4), `s32-notifications-inapp` (4), `s37-admin-users` (**5, découpe
+requise en s37a/b/c**), `s49-contraste-des-alertes` (2).
 
-**Trois recherches d'avance sont écrites**, sur leurs branches respectives, sans
-plan : `s29-blog-mdx` (complexité relevée 3 → 4), `s32-notifications-inapp`
-(3 → 4), `s37-admin-users` (3 → **5, découpe requise en s37a/b/c**).
+**Deux décisions de cadrage prises le 04/09 :**
 
-**Le signal qui dépasse ces trois stories** : chacune bute sur la même absence —
-un module optionnel doit se greffer sur un chemin du socle, et les quatorze clés
-du contrat n'ont pas de fente pour ça (plan de site pour s29, point d'émission
-pour s32, refus à la connexion pour s37). Payer une quinzième clé **une fois**
-vaut mieux que la contourner trois fois. Une story de cadrage avant s29 est la
-piste écrite dans `docs/killer-saas-feedback.md`.
+- la **recherche est un document de cadrage** et se commite sur la branche par
+  défaut, avec l'obligation de dater le commit vérifié (`AGENTS.md`) ;
+- **s29 ajoute la quinzième clé** au contrat de module, pour la forme
+  *contributive* (un module alimente le plan de site). La forme symétrique — un
+  chemin du socle qui consulte un module optionnel — reste ouverte pour **s32**.
 
-Premier numéro d'ADR libre : **053** — 050 et 051 sont arrivés avec s28, 052 avec
-s48.
+Premier numéro d'ADR libre : **053**.
 
 ## Où on en est
 
 | | |
 |---|---|
-| Stories closes | **32 sur 50** (s01 → s28, s36, s41, s45, s48) |
-| En vol | aucune — trois recherches d'avance écrites, aucune planifiée |
-| Restantes | 18 — dont s49 et s50, nées de constats de revue |
+| Stories closes | **33 sur 52** (s01 → s28, s36, s41, s45, s48, s50) |
+| En vol | aucune — CI verte, quatre recherches d'avance prêtes à planifier |
+| Restantes | 19 — dont s49, s51 et s52, nées de constats de revue |
 | Tests | **1970 + 8 sautés**, 100 parcours navigateur (78 joués sous socle) |
 | ADR | **50** (jusqu'à 050 ; 051 libre) |
 
