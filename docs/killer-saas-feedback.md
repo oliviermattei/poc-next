@@ -578,6 +578,28 @@ qu'on propose, où est le patch, et son état.
   rapport de revue est traité comme une vérité. Piste : rendre explicite qu'un
   implémenteur peut **réfuter un constat par la mesure**, comme il peut réfuter
   une consigne — trois réfutations de consigne se sont révélées justes.
+- **Corriger une affirmation fausse à deux endroits en laisse une au troisième,
+  et le troisième est celui du code.** En s29, une garantie mesurée fausse était
+  écrite dans un ADR, dans un `AGENTS.md`, **et en commentaire au-dessus de la
+  ligne de configuration concernée**. Les deux premières ont été corrigées ; la
+  troisième — celle qu'ouvre exactement l'agent qui viendrait toucher ce
+  fichier — est restée. Et la note qui rendait compte du correctif écrivait
+  « les **deux** phrases », un compte au-dessus d'une liste plus longue : le
+  défaut de P4 réintroduit *à l'intérieur* de sa propre correction. Piste : quand
+  une affirmation est jugée fausse, la chercher par son **contenu** dans tout le
+  dépôt avant de la corriger quelque part — pas par la liste des endroits où on
+  se souvient de l'avoir écrite.
+- **Un mécanisme faux au service d'une conclusion juste est plus dangereux qu'un
+  mécanisme absent.** Toujours en s29 : la conclusion « la liste ne peut pas
+  avoir d'état de chargement sans perdre son 404 » est exacte et vérifiée. Le
+  *mécanisme* écrit pour la justifier — « la frontière d'un segment couvre ses
+  enfants, aucun placement ne sauve les deux » — a été **réfuté en cinq minutes**
+  par la revue, qui a montré qu'un groupe de routes scope bien la frontière. Un
+  lecteur qui infirme le mécanisme conclura que la contrainte entière est du
+  folklore, et posera le repli. Le coût n'est pas théorique : la garde
+  exécutable ne mordait que sur deux des trois placements, si bien que le repli
+  scopé aurait servi une page en 200 là où elle doit rendre 404, **sans qu'une
+  seule commande rougisse**.
 - **Un confort d'interface peut désarmer une règle de sécurité, sans que rien ne
   le dise.** Mesuré en s29 : poser un `loading.tsx` sur un segment fait vider la
   coquille vers le client **avant** que la page ne décide, si bien qu'un
@@ -612,6 +634,17 @@ qu'on propose, où est le patch, et son état.
 - **Les mutations vertes déclarées** sont un signal de qualité, pas un aveu :
   trois voies ont signalé d'elles-mêmes une mutation restée verte plutôt que de
   la taire. Le skill pourrait le dire explicitement pour l'encourager.
+- **Le rapport de revue peut ne jamais être écrit, et rien ne le signale avant
+  le ship.** En s29, le contexte principal a reçu le corps du rapport du premier
+  tour et a enchaîné directement sur le correctif : `docs/reviews/s29-blog-mdx.md`
+  n'existait ni dans le worktree, ni sur la branche par défaut, ni dans
+  l'historique. Le second relecteur l'a découvert et a dû juger contre un résumé
+  au lieu du texte — donc sans pouvoir vérifier les constats que ce résumé
+  omettait. La porte de `/ks-ship` aurait fini par le refuser, mais **deux tours
+  plus tard**. Piste : `/ks-review` écrit le fichier **avant** de rendre la main,
+  ou `/ks-execute` en mode correctif refuse de démarrer si le rapport qu'il est
+  censé corriger n'existe pas — c'est la même règle fail-closed que la porte,
+  appliquée une étape plus tôt.
 - **Un constat accepté à la porte n'a de domicile que si quelqu'un pense à lui
   en ouvrir un.** La porte est mécanique et ne bloque que sur `critical` ; ce
   qu'on laisse passer est écrit dans le rapport de revue, qui part avec la
