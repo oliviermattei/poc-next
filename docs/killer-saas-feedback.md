@@ -473,8 +473,10 @@ qu'on propose, où est le patch, et son état.
   été vérifiée** (le commit de la branche par défaut), pour qu'un lecteur sache
   si elle a été doublée par une fusion. Sans cette ligne, on remplace une
   péremption visible par une péremption muette, ce qui serait un mauvais échange.
-- **État** — proposé, non appliqué : déplacer une ligne d'`AGENTS.md` engage tout
-  le dépôt. **Rend P16 caduque si retenue** — et c'est la bonne nouvelle : la
+- **État** — **appliquée le 04/09** : `AGENTS.md` range désormais la recherche avec
+  les documents de cadrage, avec l'obligation de dater le commit vérifié, et
+  `templates/research.md` porte la ligne. Les quatre recherches d'avance ont été
+  rapatriées. **Rend P16 caduque** — et c'est la bonne nouvelle : la
   proposition la moins chère est celle qui supprime le besoin, pas celle qui
   l'outille.
 

@@ -1,5 +1,8 @@
 # Research — Story <id>
 
+> Vérifiée contre la branche par défaut au commit `<sha>`, en lecture seule.
+> <Ce que la recherche a exécuté, s'il y a lieu — sinon : aucune base, aucun conteneur.>
+
 ## The five structuring facts
 <the five facts that change what gets built. One line each, with file:line.
  A reader who stops here must still know what the story really is.>

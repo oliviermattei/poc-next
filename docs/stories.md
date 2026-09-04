@@ -798,6 +798,7 @@ s10-marketing-site, s09-i18n
 ### Agentic notes
 Parité Supastarter (MDX multilingue), MakerKit (Markdoc) et ShipFast.
 Pose le pipeline MDX réutilisé par s30 et s31.
+**Décision de cadrage tranchée pour cette story (04/09), à porter par un ADR** : `apps/web/app/sitemap.ts` **et** `apps/web/app/robots.ts` importent `@repo/module-marketing` par son nom, et le contrat de module n'a aucune clé pour qu'un module contribue des URL. Un second import nommé ici en appellerait un troisième en s30. La story ajoute donc **une quinzième clé au contrat** — la contribution d'URL au plan de site, dérivée comme `navigation` l'est déjà, mais **calculée** puisque les URL d'articles sont du contenu découvert au build, pas des déclarations statiques. Coût mesuré : le type, l'agrégation au registre, **onze éditions d'une ligne** (chaque module la déclare, vide s'il n'y contribue pas), et les tests. La forme symétrique — un chemin du **socle** qui consulte un module optionnel avec une absence définie — n'est **pas** tranchée ici : elle reste ouverte pour s32, qui sera la première à l'exiger.
 Piège : le rendu MDX ne doit pas exécuter de composant applicatif nécessitant une session.
 
 ---
@@ -870,6 +871,7 @@ s17-roles-permissions, s06-transactional-emails
 
 ### Agentic notes
 Le temps réel (websockets, `NEXT_PUBLIC_REALTIME_NOTIFICATIONS` chez MakerKit) est au **cimetière** du PRD : lecture au chargement et à la navigation uniquement.
+**Décision de cadrage laissée ouverte pour cette story (04/09)** : le critère 7 — « module non activé, les types déclarés retombent sur un envoi email direct » — exige un point d'émission qui **survit à la coupure du module**, donc un chemin du socle qui consulte un module optionnel avec une absence définie. s37 a le même besoin (la connexion doit refuser un compte banni par un module optionnel). s29 a tranché la forme **contributive** (un module alimente le plan de site) sans trancher celle-ci, délibérément : concevoir un mécanisme de capacité sur deux besoins non implémentés serait la généralisation que le cimetière du PRD refuse. C'est donc **cette story** qui la tranche, avec un ADR, en sachant que s37 en héritera.
 **Portée du critère sur le mailer** : la règle vise les emails **de notification**, pas tout appel au mailer. Les emails transactionnels d'authentification (vérification, magic link, réinitialisation), l'invitation de s16, le lien de mot de passe de s24, la confirmation de suppression de s34 et le lien d'export de s35 restent des appels directs légitimes et ne doivent pas être refactorés ici.
 
 ---
