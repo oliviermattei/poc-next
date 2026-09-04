@@ -4,50 +4,58 @@
 
 ## REPRENDRE ICI
 
-**s28-rate-limiting est BLOQUÉE en revue sur un second `critical`**, worktree
-`.worktrees/s28-rate-limiting`, branche `feature/s28-rate-limiting`, port
-PostgreSQL **5438**, commit `2cafa1c`. Un implémenteur a été relancé ; s'il n'a
-pas rendu, relire `docs/reviews/s28-rate-limiting.md` (non suivi, dans le
-worktree) — il porte les deux revues, l'une après l'autre.
+**s28-rate-limiting est fusionnée** (demande de fusion 7, squash `aba452b`,
+04/09). Worktree supprimé, branche effacée localement et à distance. Le rapport
+de revue — cinq rondes, deux `critical` et deux `major` fermés — est dans
+`docs/reviews/s28-rate-limiting.md`, sur `dev`.
 
-**Le premier `critical` est corrigé** et vérifié : `sweep(now)` compare un
-`expires_at` porté par chaque ligne, donc un module qui balaie sa fenêtre de
-600 s n'efface plus les seaux horaires d'un autre. Mutation de retour au
-balayage global : 3 rouges vitest + 2 rouges e2e.
+**La CI de `dev` est rouge, et elle l'était déjà avant s28.** C'est le premier
+travail à faire, avant toute nouvelle story. Deux causes, distinctes :
 
-**Le second `critical` est un contournement réel de la limitation 2FA.**
-`subjectOfCookie` fait correspondre le cookie de défi par **suffixe** et retient
-le **premier** couple, alors que Better Auth lit son cookie par **nom exact**
-(`dist/cookies/index.mjs:266`). Un leurre glissé devant —
-`Cookie: two_factor=<compteur>; __Secure-better-auth.two_factor=<le vrai défi>` —
-fait compter le limiteur sur une valeur que l'attaquant fait tourner, pendant que
-la bibliothèque valide le vrai défi. Mesuré : **200 tentatives, 0 refus** contre
-un seuil de 10. Et **quatre documents affirment l'inverse**, dont le tableau
-« ce qui est tenu » de `docs/security.md`, colonne `pnpm test` — qui ne rougit
-pas, son seul cas vérifiant l'inverse du risque.
+1. **`tests/minimal-profile.test.ts`, critère 8** — « aucun module activé n'est
+   coupable pour éprouver la généricité : expected undefined to be defined ».
+   Défaut réel, présent au moins depuis `42d9f88`. Il ne rougit **que** sous la
+   branche `socle` de la matrice de CI : aucune commande locale ne le joue, et
+   `pnpm test:minimal-profile` **n'est pas** cette suite-là. Pour le reproduire,
+   il faut jouer `pnpm test` avec la configuration socle de `config/features.ts`.
+2. **`pnpm run audit`** — `ERR_SOCKET_TIMEOUT` vers `registry.npmjs.org`, **sans
+   aucune reprise**, donc un aléa réseau devient un rouge de porte. Observé trois
+   fois le 04/09 : deux en local, une en CI sur `dev`.
 
-Deux voies : lire par **nom exact** en dérivant le préfixe de la configuration
-d'authentification, ou **refuser quand plusieurs cookies correspondent**. Dans
-les deux cas, un cas de test doit poser le leurre **en tête** d'en-tête. Si la
-propriété ne peut pas être tenue, ce sont les quatre affirmations qui doivent
-partir.
+**Un troisième défaut de CI a été corrigé au passage** (commit `730e492`, dans la
+fusion de s28) : le scan de secrets n'avait **jamais** été vert sur une demande de
+fusion. Sans `pull-requests: read`, `gitleaks-action` prend un 403 et meurt avant
+de scanner, tout en passant sur l'événement `push` du même commit — donc trois
+stories ont été fusionnées au-dessus d'un rouge que personne ne voyait. Vérifier
+l'état **par événement**, jamais le rollup.
 
-**Un majeur avec** : `pnpm test:e2e` se coupe lui-même au **troisième passage de
-la même heure** contre une base persistante — un passage coûte 41 des 120 du seau
-`signUp`, et l'échec ne nomme rien (un locator Playwright qui expire, ni 429 ni
-limitation). `AGENTS.md` doit gagner cette troisième cause d'échec.
+**Deux constats d'apparence, antérieurs à s28, qu'aucune story ne porte encore :**
 
-Après s28 : **s29** (blog MDX), **s30** (docs), **s31** (changelog), **s47**
-(limite de sièges, sortie de s23). Numéros d'ADR libres : **051 et suivants**.
+- Les cinq écrans d'`apps/web/app/auth-form.tsx` rendent du **HTML sans une seule
+  classe** depuis s07 — titre, libellé, champ, bouton et message de refus. La
+  coquille applicative est stylée, le CSS charge : c'est le composant qui n'émet
+  rien.
+- La variante `Alert warning` est à **1,83 : 1** de contraste en mode clair (les
+  quatre variantes sont sous le 4,5 : 1 de WCAG AA ; `warning` est même sous
+  3 : 1). En mode sombre, 7,23 : 1. Calculé depuis les jetons, pas mesuré à la
+  pipette.
+
+**Un test intermittent, non attribué** : `tests/billing.test.ts:5627`, un delta
+global sur `auth_session` mesuré à travers un rendu de page — 1 rouge sur 15
+passages. Le rendre local au périmètre du cas touche la suite de s19.
+
+Ensuite : **s29** (blog MDX), **s30** (docs), **s31** (changelog), **s47**
+(limite de sièges, sortie de s23). Premier numéro d'ADR libre : **052** — les 050
+et 051 sont arrivés avec s28.
 
 ## Où on en est
 
 | | |
 |---|---|
-| Stories closes | **30 sur 47** (s01 → s27, s36, s41, s45) |
-| En vol | s28, bloquée en revue |
-| Restantes | 17, dont s47 créée par la découpe de s23 |
-| Tests | **1912 + 8 sautés**, 87 parcours navigateur |
+| Stories closes | **31 sur 47** (s01 → s28, s36, s41, s45) |
+| En vol | aucune — la CI de `dev` est à réparer avant la suivante |
+| Restantes | 16, dont s47 créée par la découpe de s23 |
+| Tests | **1946 + 8 sautés**, 92 parcours navigateur |
 | ADR | **50** (jusqu'à 050 ; 051 libre) |
 
 Stratégie de ship : **auto**. `/ks-ship` fusionne en squash dès que le portail

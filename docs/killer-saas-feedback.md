@@ -13,10 +13,15 @@
 ## Le terrain
 
 Un boilerplate SaaS complet mené par le pipeline, sans coder hors pipeline. Au
-moment d'écrire : **20 stories sur 46 closes**, 1469 tests unitaires + 79
-parcours navigateur déterministes, 37 ADR, six modules optionnels, deux
+moment d'écrire : **30 stories sur 47 closes** et une trente-et-unième en vol
+(s28, limitation de débit), 48 ADR sur `dev`, six modules optionnels, deux
 configurations de modules vérifiées. Pile : Next 16, React 19, TypeScript 7,
 Tailwind v4, Drizzle, Better Auth, Stripe, Playwright, Vitest.
+
+Les comptes de tests sont donnés **par branche**, parce qu'ils bougent à chaque
+story : sur `feature/s28-rate-limiting`, 1941 tests unitaires et 90 parcours
+navigateur, mesurés en cinq passages complets pour la suite unitaire et trois
+pour les parcours.
 
 L'échantillon est ce qui donne du poids aux propositions : **14 tests faux** et
 **7 défauts invisibles aux commandes** ont été trouvés, chacun daté et mesuré.
@@ -96,8 +101,29 @@ qu'on propose, où est le patch, et son état.
   (onze sur six fichiers), « dix-huit invariants » (vingt), « trois
   opérations » (quatre). Cinq affirmations fausses, chacune lue comme vérifiée
   par l'agent suivant.
+- **Mesuré à nouveau en s28, et c'est le cas le plus cher** — « c'est
+  `maxPerSubject` qui borne l'énumération 2FA » était écrit en **cinq endroits**
+  (`config/security.ts`, `docs/security.md` §7, `packages/core/src/module.ts`,
+  un ADR, un `AGENTS.md` de module) et tenu par **zéro commande** : le seuil
+  livré valait 10 alors que la bibliothèque détruit le défi à 5, donc il ne
+  pouvait jamais mordre le premier. La ligne vivait dans un tableau intitulé
+  « ce qui échoue si on le viole », colonne `pnpm test` — et `pnpm test` était
+  vert. Deux autres au même endroit : « **deux** plafonds bornent l'énumération
+  2FA » (il y en a trois — le verrouillage par compte de la bibliothèque, actif
+  par défaut et jamais configuré ici, en est un quatrième axe), et « un
+  cinquième port **non documenté** fait rougir `pnpm test` » alors que la
+  commande n'exige que la présence de la **chaîne du nom de fichier**.
+- **La contre-mesure qui a marché, et qui est généralisable** — au lieu d'écrire
+  le plafond de la dépendance, le test le **dérive du paquet installé**
+  (`beginAttempt\((\d+)\)` lu dans le `dist/`), et compare le seuil du dépôt à
+  la valeur trouvée. Une montée de version qui déplace le plafond rougit au lieu
+  de laisser la phrase pourrir. Le test est **fail-closed** : si le chemin
+  n'existe pas, la lecture lève au lieu de verdir. C'est la forme la plus forte
+  de « dériver plutôt qu'écrire » rencontrée jusqu'ici, parce qu'elle dérive
+  d'un tiers, pas du dépôt.
 - **Proposé** — étendre la question aux affirmations, et préférer **dériver** un
-  compte plutôt que l'écrire.
+  compte plutôt que l'écrire — y compris depuis une dépendance installée quand
+  c'est elle qui tient la garantie.
 - **Patch** — `.claude/skills/tdd-skill/SKILL.md` (`cb72268`).
 - **État** — appliqué ici.
 
@@ -170,6 +196,29 @@ qu'on propose, où est le patch, et son état.
 - **Patch** — `.gitleaks.toml` (`313d553`).
 - **État** — appliqué ici. **Candidat à remonter dans le gabarit de projet.**
 
+- **Mesuré à nouveau, et bien pire, le 04/09** — le scan de secrets n'a **jamais**
+  été vert sur une demande de fusion. Sur l'événement `pull_request`,
+  `gitleaks-action` appelle `GET /repos/:owner/:repo/pulls/:number/commits` ; sans
+  `pull-requests: read`, le jeton par défaut répond **403 « Resource not
+  accessible by integration »** et l'action meurt **avant de scanner**. Le job
+  rougissait donc en 8 secondes sans avoir rien vérifié, tout en passant sur
+  l'événement `push` du **même commit**, où il scanne l'historique entier.
+  Vérifié sur les demandes de fusion **4, 5, 6 et 7** : rouge à chaque fois d'un
+  côté, verte à chaque fois de l'autre. **Trois stories ont été fusionnées
+  au-dessus de ce rouge** sans que personne le relève.
+- **Ce que ça dit du mode d'échec** — P8 supposait qu'un contrôle qui rougit
+  toujours finit *désarmé* par décision. Ici il n'a même pas été désarmé : il est
+  resté armé, rouge, et **contourné en silence**, parce qu'un second job du même
+  nom était vert à côté. Deux exécutions homonymes suffisent à rendre un rouge
+  invisible.
+- **Correctif** — `permissions: { contents: read, pull-requests: read }` sur le
+  job, avec la cause écrite en commentaire à l'endroit du défaut (commit
+  `730e492`, fusionné avec s28).
+- **Proposé, en plus de P8** — avant de fusionner, lire l'état des contrôles
+  **par événement**, pas le rollup : un `pass` et un `fail` portant le même nom
+  ne sont pas un contrôle instable, ce sont deux contrôles différents dont un est
+  cassé.
+
 ## P9 — Le harnais déclare ce dont il a besoin, jamais le `.env` d'un poste
 
 - **Aujourd'hui** — rien ne l'impose.
@@ -237,6 +286,64 @@ qu'on propose, où est le patch, et son état.
 - **État** — appliqué ici. **Candidat fort à remonter** : tout projet du gabarit
   a ce défaut, et il ne se voit que le jour où la CI tourne.
 
+## P13 — Le préambule d'une suite doit être prouvé porteur, pas supposé
+
+- **Aujourd'hui** — rien n'oblige un préambule de suite à être vérifié. P12 a
+  fait naître un préambule qui **réchauffe** les routes ; personne n'a demandé
+  ce qui arrive à l'état **partagé** que la suite elle-même remplit.
+- **Mesuré** — dès qu'un compteur partagé est persistant, la suite se limite
+  elle-même. Après un passage complet, le seau de l'inscription portait **41**
+  passages pour un seuil de 120 sur une fenêtre horaire : le **troisième**
+  passage d'une même heure franchit la borne. Sans nettoyage, le deuxième
+  passage échoue déjà et le troisième tombe à **53 verts sur 89**, puis, mesuré
+  autrement, **62 verts sur 89 avec 27 rouges** — et **pas un seul rouge ne
+  nomme la limitation** : ce sont des localisateurs qui expirent. Le symptôme ne
+  désigne jamais la cause.
+- **Ce qui a rendu le préambule sûr** — il vide la table **avant** le premier
+  parcours, sous garde `to_regclass` pour qu'une base sans migration ne fasse
+  pas planter la suite au lieu de la faire rougir.
+- **Ce qui a rendu le préambule *crédible*** — il a été **muté** : nettoyage
+  désactivé et le seau amené à la borne, la suite tombe. Un préambule qu'on ne
+  mute pas est une ligne de code qu'on croit utile.
+- **Proposé** — quand une story introduit un état partagé et persistant, sa
+  définition de terminé inclut : le préambule qui le remet à zéro, **et** la
+  mutation qui prouve que ce préambule porte. Formulation générale : *tout ce
+  qu'une suite écrit dans un état partagé, elle le remet à zéro avant de
+  mesurer, et elle le prouve.*
+- **État** — appliqué en s28 (`e2e/support/warm-up.ts`). **Candidat à remonter**
+  : le défaut n'existe qu'à partir du jour où un projet a un compteur partagé,
+  et il se présente alors comme une suite instable, jamais comme une limitation.
+
+## P14 — Un garde transverse qui ajoute un refus doit être classé par chaque écran qu'il atteint
+
+- **Aujourd'hui** — le pipeline vérifie qu'un garde **refuse**. Rien ne vérifie
+  ce que l'utilisateur **lit** quand il refuse.
+- **Mesuré** — s28 pose un limiteur au répartiteur, en amont des gestionnaires.
+  Le 429 court-circuite donc le mappage de refus des gestionnaires. Les
+  formulaires d'authentification connaissaient trois classes (`restart`, `used`,
+  repli `invalid`) : `rate_limited` tombe dans le repli, et l'écran annonce
+  « **Ce code n'est pas valide** » à un utilisateur dont le code est **correct**,
+  jusqu'à 300 s, en l'invitant implicitement à réessayer — exactement ce qu'une
+  limitation demande de ne pas faire. Le `Retry-After` que le serveur calcule
+  honnêtement n'est jamais montré.
+- **Le détail qui fait la proposition** — ce défaut n'existait pas tant que le
+  seuil était **au-dessus** de celui de la bibliothèque : le refus venait alors
+  du gestionnaire, correctement traduit. C'est le **correctif de sécurité** de
+  la ronde précédente, en abaissant le seuil, qui a déplacé le premier refus
+  d'une couche à l'autre et rendu le trou atteignable. Un correctif juste sur
+  son axe peut ouvrir un défaut sur un autre.
+- **Ce que le dépôt savait déjà** — la classe de refus `throttled` existait
+  depuis s11 sur les formulaires publics. Le motif était là ; la story ne l'a
+  pas étendu aux écrans que son propre garde venait d'atteindre.
+- **Proposé** — quand une story ajoute un refus **transverse**, sa définition de
+  terminé inclut l'inventaire **dérivé** des écrans qui peuvent désormais le
+  recevoir, et un cas par écran qui vérifie ce que l'utilisateur **lit**, pas
+  seulement le code de statut. Un cas qui n'assère que le 429 est un test plus
+  vert que son nom.
+- **État** — corrigé en s28. **Candidat à remonter** : tout projet du gabarit
+  qui ajoutera une limitation, un pare-feu applicatif ou une garde de
+  maintenance rencontrera la même chose.
+
 ---
 
 # Observations sans proposition ferme
@@ -265,6 +372,57 @@ qu'on propose, où est le patch, et son état.
 - **Les mutations vertes déclarées** sont un signal de qualité, pas un aveu :
   trois voies ont signalé d'elles-mêmes une mutation restée verte plutôt que de
   la taire. Le skill pourrait le dire explicitement pour l'encourager.
+- **Un `major` accepté à la porte n'a nulle part où aller.** La porte est
+  mécanique et ne bloque que sur `critical` ; un `major` laissé au ship est
+  écrit dans le rapport de revue, qui part avec la demande de fusion. Aucun
+  fichier ne le reprend, aucune story ne le porte. « À corriger au prochain
+  cycle » s'évapore le jour de la fusion. Piste : un `major` non corrigé
+  ouvre une entrée dans `docs/stories.md`, ou la porte le refuse.
+- **Deux tours de correction d'affilée ont chacun produit un `major` né du tour
+  précédent.** Corriger le nom du cookie a laissé la valeur ; corriger la valeur
+  et le seuil a déplacé le premier refus vers un écran qui ne savait pas le
+  dire. Ce n'est pas un signe de mauvaise correction — chaque tour a fermé son
+  constat, prouvé par mutation — mais de constats **empilés sur un même axe**.
+  Piste : quand une revue trouve « X et Y ne lisent pas la même chose », le
+  correctif doit couvrir **tous** les axes de normalisation de la référence,
+  pas celui que le constat cite ; et le tour de correction doit être borné
+  d'avance, sinon le pipeline boucle poliment.
+- **Une déclaration de stabilité a besoin d'un nombre de passages.** Un test
+  rouge intermittent a été jugé « reporté et stable » sur **trois** passages
+  complets ; sur **cinq**, il tire (1 rouge sur 5). Trois passages ne suffisent
+  pas à déclarer stable une porte de CI. La règle du dépôt sur l'exhaustivité
+  s'applique aussi aux mesures de stabilité : dire *sur combien de passages*.
+- **Une dépendance peut écrire du balisage adressé à l'agent dans un flux que
+  l'agent lit.** `stripe@22.6.1` (`stripe/cjs/stripe.core.js:138-146`) détecte
+  `CLAUDECODE` dans l'environnement et écrit sur stderr
+  `<claude-code-hint v="1" type="plugin" value="stripe@claude-plugins-official" />`,
+  qui a traversé la sortie du serveur de dev jusque dans les journaux Playwright.
+  Ce n'est pas hostile — c'est de la recommandation de plugin — mais la forme est
+  celle d'une injection. L'implémenteur l'a traité comme du texte de terminal non
+  fiable et n'a rien changé, ce qui est la bonne réponse. À noter comme classe :
+  la sortie d'outil n'est pas de la donnée neutre du seul fait qu'elle vient
+  d'un paquet installé.
+
+- **La CI de la branche par défaut était rouge depuis au moins cinq commits, et
+  le pipeline ne l'a jamais regardée.** Constaté le 04/09 : les cinq derniers
+  runs de `dev` échouent, pour deux causes distinctes. La première est un vrai
+  défaut — `tests/minimal-profile.test.ts`, critère 8, « aucun module activé
+  n'est coupable pour éprouver la généricité » — qui ne rougit **que** sous la
+  branche `socle` de la matrice, donc qu'aucune commande locale ne joue. La
+  seconde est `pnpm run audit`, qui tombe en `ERR_SOCKET_TIMEOUT` vers
+  `registry.npmjs.org` **sans aucune reprise** : un aléa réseau y devient un
+  rouge de porte. Le pipeline vérifie qu'une story passe sa revue ; **rien, à
+  aucune étape, ne regarde si la branche par défaut est verte**. Piste : `/ks-ship`
+  lit l'état de la CI de la branche cible avant d'ouvrir la demande de fusion, et
+  le dit — fusionner dans du rouge doit être une décision, pas un défaut.
+- **Un échec de parcours navigateur en CI n'est pas imputable tant qu'on n'a pas
+  lu le journal.** Sur la demande de fusion 7, deux parcours ont échoué dans un
+  run et zéro dans l'autre, **au même commit**. L'hypothèse évidente était le
+  seuil que la story venait d'abaisser ; le journal dit `locator.fill: Test
+  timeout of 30000ms exceeded` et `net::ERR_ABORTED`, et le message de refus que
+  la story ajoute n'apparaît **nulle part**. La bonne réponse à un rouge
+  plausible est de chercher sa signature dans le journal, pas de l'attribuer à la
+  modification la plus récente.
 
 ---
 
@@ -279,6 +437,12 @@ qu'on propose, où est le patch, et son état.
 | 01/09 | Mutation déplacée annoncée « 1 rouge », défaut resté vert | mutation à l'endroit du défaut | P1 |
 | 01/09 | Scan de secrets rouge dès le premier jour sur des doublures | `.gitleaks.toml` vérifié par mutation | P8 |
 | 01/09 | Disque plein : douze worktrees de stories fusionnées | suppression dans la procédure de fusion | P7 |
+| 04/09 | Une garantie de sécurité écrite en cinq endroits, tenue par zéro commande | seuil abaissé sous le plafond du tiers, plafond **dérivé** du paquet installé | P4 |
+| 04/09 | La suite e2e se limitait elle-même dès le deuxième passage | préambule qui vide le compteur partagé, **prouvé par mutation** | P13 |
+| 04/09 | Un 429 affiché « votre code est invalide » à un code correct | classe de refus `throttled` étendue aux écrans que le garde atteint | P14 |
+| 04/09 | Un test intermittent déclaré stable sur trois passages, rouge sur cinq | déclarer une stabilité avec son nombre de passages | — |
+| 04/09 | Scan de secrets jamais vert sur une demande de fusion, 403 avant de scanner | `pull-requests: read` sur le job, cause écrite sur place | P8 |
+| 04/09 | CI de `dev` rouge depuis cinq commits, jamais regardée par le pipeline | lire l'état de la branche cible avant d'ouvrir la fusion | — |
 
 ---
 
