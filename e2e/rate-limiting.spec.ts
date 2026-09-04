@@ -4,6 +4,7 @@ import { marketingRoutePath } from '@repo/module-marketing'
 import { expect, test } from '@playwright/test'
 
 import { BASE_URL } from '../playwright.config'
+import { marketingSite } from '../apps/web/lib/marketing'
 import { rateLimitPolicies } from '../config/security'
 import { anEmail } from './support/account'
 import { clickOnce } from './support/interaction'
@@ -26,6 +27,13 @@ import { clickOnce } from './support/interaction'
 const SIGN_IN = `${MODULE_ROUTE_PREFIX}/auth/sign-in/email`
 
 const signInPolicy = rateLimitPolicies.signIn
+
+/**
+ * La configuration sert-elle des pages publiques — donc les formulaires qui vont
+ * avec ? Dérivé de `marketingSite`, dont les listes sont vides quand le module
+ * est coupé ; c'est le prédicat qu'utilise déjà `e2e/public-forms.spec.ts`.
+ */
+const servesPublicPages = marketingSite.sections.length > 0
 
 test('la connexion est bloquée après N tentatives sur le même compte, depuis N adresses différentes', async ({
   request,
@@ -124,7 +132,14 @@ test('un formulaire public soumis à vide ne remet pas à zéro le seau horaire 
 
   // Il est refusé pour son propre compte — corps invalide ou débit —, ce qui
   // n'a aucune importance : le balayage a déjà eu lieu quand la validation parle.
-  expect([200, 400, 429]).toContain(emptyPost.status())
+  //
+  // **Dans une configuration qui ne sert aucune page publique, le geste n'existe
+  // pas** : la route répond 404, et l'attendu est dérivé de la configuration
+  // plutôt que recopié — même idiome que `e2e/public-forms.spec.ts`. C'est la
+  // branche `socle` de la matrice de CI, et ce cas y échouait : personne n'avait
+  // jamais joué `pnpm test:e2e` sous cette configuration hors du runner (s48).
+  // Le cas reste **exécuté** dans les deux, et la propriété qui suit aussi.
+  expect(servesPublicPages ? [200, 400, 429] : [404]).toContain(emptyPost.status())
 
   // Et la réinitialisation reste bloquée. C'est toute la propriété.
   expect((await reset(98)).status()).toBe(429)

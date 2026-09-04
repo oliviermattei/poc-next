@@ -51,6 +51,97 @@ export class AuditRunError extends Error {
   }
 }
 
+/**
+ * **La reprise, quand l'audit n'a pas pu avoir lieu** (s48, `docs/reliability.md` §3).
+ *
+ * Le registre n'est pas toujours joignable : un `ERR_SOCKET_TIMEOUT` faisait
+ * rougir la porte du premier coup, et une CI rouge pour une panne réseau finit
+ * par s'ignorer — c'est le chemin par lequel un contrôle bloquant devient
+ * décoratif.
+ *
+ * Ce qui se rejoue est **uniquement** la branche « l'audit n'a pas eu lieu »,
+ * celle qu'`AuditRunError` désigne : rejouer un document d'avis valide serait
+ * attendre qu'il change d'avis. C'est la distinction que `readAuditRun` porte
+ * déjà qui rend cette reprise sûre ; sans elle, elle serait exactement le
+ * défaut qu'elle prétend corriger.
+ *
+ * Trois tentatives, pas plus : au-delà, un job de CI paie une panne durable en
+ * minutes d'attente pour finir par le même refus.
+ */
+export const AUDIT_ATTEMPTS = 3
+
+/**
+ * **Le délai d'attente de l'appel** (`docs/reliability.md` §3 : « Tout appel
+ * réseau sortant porte un délai d'attente explicite. Aucun appel sans délai. »).
+ *
+ * Soixante secondes, et le rapport de grandeur est la justification : un audit
+ * nominal répond ici en **~1,4 s** (mesuré, `pnpm run audit` sur ce dépôt,
+ * `tsx` compris), donc le délai laisse quarante fois cette marge avant de
+ * conclure à une panne. Il borne surtout le pire cas : trois tentatives coupées
+ * à 60 s coûtent ~3 minutes, soit **moins** que les ~4 minutes qu'un
+ * `ERR_SOCKET_TIMEOUT` mettait à tomber tout seul avant la reprise (mesure de la
+ * recherche de s48). La reprise ne coûte donc pas plus cher que la panne qu'elle
+ * remplace — c'est ce qui rend les deux tenables ensemble.
+ */
+export const AUDIT_TIMEOUT_MS = 60_000
+
+/** La variable qui raccourcit le délai. Nommée ici, lue par `scripts/audit.ts`. */
+export const AUDIT_TIMEOUT_VARIABLE = 'AUDIT_TIMEOUT_MS'
+
+/**
+ * Le délai retenu pour cette exécution.
+ *
+ * Injectable pour la raison qui vaut déjà pour la dispersion du recul : une
+ * attente d'une minute qu'on ne peut pas raccourcir est une attente qu'aucun
+ * test ne peut éprouver — et un délai que rien n'éprouve retombe en douceur au
+ * rang de commentaire.
+ *
+ * Une valeur illisible, nulle ou négative est **refusée**. La lire comme « pas
+ * de délai » rouvrirait exactement le défaut, au moment précis où quelqu'un
+ * croit l'avoir réglé.
+ */
+export function auditTimeoutMs(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === '') {
+    return AUDIT_TIMEOUT_MS
+  }
+
+  const parsed = Number(raw)
+
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new AuditRunError(
+      `${AUDIT_TIMEOUT_VARIABLE} vaut ${describe(raw)} : un délai d'attente en millisecondes, ` +
+        "entier et strictement positif, est attendu. Une valeur illisible ne vaut pas « aucun délai ».",
+    )
+  }
+
+  return parsed
+}
+
+export interface AuditBackoff {
+  readonly baseMs: number
+  readonly maxMs: number
+  /** Injecté : une attente aléatoire non injectée est une attente non testable. */
+  readonly random?: () => number
+}
+
+export const AUDIT_BACKOFF: AuditBackoff = { baseMs: 500, maxMs: 4_000 }
+
+/**
+ * Recul exponentiel **avec dispersion**, plafonné — même forme que
+ * `outboundBackoffMs` (`packages/modules/auth/src/domain/outbound.ts`) et pour
+ * les mêmes raisons : la dispersion « à moitié », qui n'autorise pas une reprise
+ * immédiate, et un plafond, parce que ces attentes se paient dans le temps d'un
+ * job.
+ *
+ * `attempt` vaut 1 pour la première reprise.
+ */
+export function auditBackoffMs(attempt: number, backoff: AuditBackoff): number {
+  const exponential = Math.min(backoff.maxMs, backoff.baseMs * 2 ** (attempt - 1))
+  const random = backoff.random ?? Math.random
+
+  return Math.round(exponential / 2 + random() * (exponential / 2))
+}
+
 /** Sévérités qui bloquent au seuil « élevé ». */
 export const BLOCKING_SEVERITIES = ['high', 'critical']
 
