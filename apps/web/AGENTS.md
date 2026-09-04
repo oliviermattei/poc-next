@@ -25,20 +25,30 @@ module (`packages/modules/<module>/src/domain`).
   `lib/billing.ts`, qui est le point de composition de la facturation (s19) ;
 - les modules du projet, **uniquement** parce que `config/features.ts` les
   référence : `@repo/module-auth`, `@repo/module-billing`,
+  `@repo/module-blog`,
   `@repo/module-consent`, `@repo/module-i18n`, `@repo/module-marketing`,
   `@repo/module-organizations`, `@repo/module-storage`,
-  `@repo/module-demo-enabled` et `@repo/module-demo-disabled` aujourd'hui. Sept
-  fichiers font exception et importent un module directement — `lib/auth.ts`, le
-  point de composition de l'authentification, `lib/locale-routing.ts`, celui de
-  l'i18n, `lib/marketing.ts`, celui du site public, `lib/organizations.ts`,
+  `@repo/module-demo-enabled` et `@repo/module-demo-disabled` aujourd'hui. Les
+  **points de composition** font exception et importent leur module directement
+  — `lib/auth.ts`, celui de l'authentification, `lib/locale-routing.ts`, celui
+  de l'i18n, `lib/marketing.ts`, celui du site public, `lib/organizations.ts`,
   celui des organisations, `lib/storage.ts`, celui du stockage,
-  `lib/billing.ts`, celui de la facturation, et `lib/consent.ts`, celui du
-  consentement (voir plus bas). Les écrans du site public, des organisations, de
+  `lib/billing.ts`, celui de la facturation, `lib/consent.ts`, celui du
+  consentement, et `lib/blog.ts`, celui du blog (voir plus bas). **Aucun nombre
+  n'est écrit ici, et c'est délibéré** : la phrase annonçait « sept » au-dessus
+  de huit noms, la story qui a ajouté le huitième n'ayant pas touché au
+  décompte. D'autres fichiers de `lib/` importent un module **déjà monté** pour
+  en composer un service — `lib/billing-catalogue.ts`, `lib/billing-permission.ts`,
+  `lib/blog-body.tsx`, `lib/guest-account.ts`, `lib/module-services.ts`,
+  `lib/rate-limit.ts` (le seau de limitation de débit, s28) et `lib/seat-sync.ts`.
+  La liste qui fait foi est **dérivée du disque** par `tests/agents-md.test.ts` :
+  un fichier de `lib/` qui importe un module sans être nommé ici fait rougir
+  `pnpm test`. Les écrans du site public, des organisations, de
   la facturation, des cookies, ainsi que le shell, importent en plus le second
   point d'entrée de leur module (`@repo/module-marketing/presentation`,
   `@repo/module-organizations/presentation`,
   `@repo/module-billing/presentation`,
-  `@repo/module-consent/presentation`) : ses composants React n'ont pas
+  `@repo/module-consent/presentation`, `@repo/module-blog/presentation`) : ses composants React n'ont pas
   leur place dans le barril que lit `config/features.ts`, qu'aucun outil du
   dépôt ne compile en JSX (**ADR 024**, la règle de tout module à composants) ;
 - `zod` pour valider les entrées de route — le paramètre `[document]` des pages
@@ -466,6 +476,124 @@ supposé, et en deux moitiés (`tests/marketing.test.ts`) :
 Ce que cette mesure ne couvre pas, et qui est dit plutôt que sous-entendu : un
 composant **client** exécuté dans le navigateur ne passe par aucun de ces deux
 chemins — il n'a pas d'accès à la base, par construction.
+
+## Le montage du blog (s29)
+
+Deux fichiers, sur le modèle exact du site public :
+
+- `lib/blog.ts` porte le **choix** — le module `blog` est-il monté ? C'est le
+  seul fichier de l'application qui connaisse `@repo/module-blog`. Il rend un
+  `BlogCatalog` dont la **forme est la même dans les deux états** : `index` vaut
+  `null` quand le module est coupé, et les deux écrans répondent alors 404 sur
+  une **donnée**, jamais sur un identifiant de module ;
+- `lib/blog-body.tsx` charge le **corps** d'un article, compilé par le bundler
+  (ADR 053). Il est appelé par la page, qui l'attend : ce n'est délibérément pas
+  un composant asynchrone — un composant qui suspend au milieu de l'arbre n'est
+  pas rendable par `renderToStaticMarkup`, que `tests/rendered-text.test.ts`
+  emploie pour balayer tous les écrans.
+
+| | module activé | module coupé |
+|---|---|---|
+| `/blog` | la liste, filtrable et paginée | **404** |
+| `/blog/<slug>` | l'article, s'il existe **dans cette langue** | **404** |
+| entrée de navigation | « Blog » | absente, avec le module |
+
+**Aucun `loading.tsx` au-dessus d'un écran de blog, et voici la raison exacte.**
+L'état « Chargement » de `docs/design-system.md` passe par un squelette, donc
+par une frontière `Suspense`, donc par un `loading.tsx`. Un `loading.tsx` fait
+**flusher la coquille de la page avant que celle-ci n'ait décidé** : le statut
+HTTP est écrit à ce moment-là, et le `notFound()` de la page arrive trop tard.
+
+La conséquence est qu'un écran qui doit pouvoir **refuser** ne peut pas porter
+de repli au-dessus de lui. Les deux écrans du blog sont dans ce cas : l'article
+refuse un slug inconnu, et **la liste refuse quand le module est coupé**.
+
+Mesuré sur `next dev` le 4 septembre 2026, sur les trois placements essayés :
+
+| `loading.tsx` posé sur | `/blog`, module activé | `/blog/<slug inconnu>` | `/blog`, module coupé |
+|---|---|---|---|
+| nulle part (l'état livré) | 200 | **404** | **404** |
+| `app/blog/` | 200 | **200** | 200 |
+| `app/blog/(index)/`, la liste seule | 200, repli dans le corps | **404** | **200**, repli dans le corps |
+
+**La troisième ligne corrige ce que s29 avait d'abord écrit.** La première
+formulation disait « la frontière d'un segment couvre ses enfants, aucun
+placement ne sauve les deux » — c'est faux, et réfutable en cinq minutes : un
+groupe de routes ne couvre que la liste, le repli y est bel et bien engagé (il
+apparaît dans le corps servi), et l'article garde son 404. Ce qui condamne le
+repli n'est pas la portée de la frontière, c'est que **la liste elle-même est un
+écran qui refuse**.
+
+Le 404 est un critère de la story et une règle du socle de sécurité (une
+ressource qu'on ne sert pas ne s'annonce pas) ; l'état de chargement, lui, est
+une amélioration de confort. Le squelette a donc été **retiré** plutôt que
+laissé sans consommateur, et `@repo/ui` n'expose plus `Skeleton` — le composant
+reviendra avec le premier écran qui peut suspendre sans avoir à refuser.
+**C'est un manque du design system à signaler, pas à combler d'office** : les
+deux exigences se contredisent sur toute route dont l'existence est décidée dans
+le corps de la page (constat F3 de la revue de s29).
+
+**Deux commandes tiennent cette règle, une par configuration de modules**, et il
+faut les deux — une garde qui ne mord que dans une configuration est une garde
+que la CI peut ne jamais exécuter :
+
+- module **activé** : `e2e/blog.spec.ts:132` — `/blog/<slug inconnu>` doit
+  répondre 404. Il rougit sur la deuxième ligne du tableau, pas sur la
+  troisième ;
+- module **coupé** : `e2e/minimal-profile/minimal-profile.spec.ts`, « l'écran
+  d'une entrée de navigation coupée répond 404 sur HTTP » — une vraie requête
+  sur chaque `href` déclaré par un module coupé. Il rougit sur la troisième
+  ligne. Ajouté par la troisième revue de s29, qui a mesuré le trou : le blog
+  déclare `routes: []`, donc le balayage de routes de `pnpm test:minimal-profile`
+  ne le touchait pas, la garde de navigation ne vérifie que le **rendu** de
+  l'entrée, et `tests/blog.test.ts` appelle la fonction de page directement — ce
+  qui court-circuite toute frontière `Suspense`. Les trois restaient vertes
+  pendant que `/blog` servait 200 avec une coquille.
+
+**Ce que rien ne garde encore, et il faut le savoir avant d'y compter** :
+`e2e/support/warm-up.ts` refuse aujourd'hui un segment de groupe de routes, ce
+qui fait échouer tout Playwright dès qu'on en ajoute un — mais son message
+invite explicitement à le traduire, et une fois traduit il ne dit plus rien.
+`tests/rendered-text.test.ts` demande de même une mise à jour de déclaration,
+pas une preuve de statut. Aucun des deux n'est la garde ; la garde est la
+requête HTTP ci-dessus.
+
+**Trois choses ne se devinent pas.**
+
+1. **Le MDX est compilé au build, jamais évalué à l'exécution** (ADR 053). La
+   politique de sécurité du contenu n'accorde `'unsafe-eval'` qu'en
+   développement ; toute brique qui construit un composant par `new Function`
+   est disqualifiée avant comparaison. Aucun `dangerouslySetInnerHTML` non plus,
+   nulle part — `tests/blog.test.ts` balaie le module et ces fichiers.
+2. **Le contenu est lu par `node:fs` à l'amorçage**, donc pendant `pnpm build` :
+   un frontmatter invalide fait échouer le build **en nommant le fichier**.
+   `next.config.ts` déclare `outputFileTracingIncludes` pour `content/blog`, et
+   voici ce qui a été **mesuré** plutôt que déduit : retirer ces deux lignes ne
+   change rien aujourd'hui. Les cinq `.mdx` sont toujours dans
+   `.next/standalone/content/blog/` après un `pnpm build` sans elles, parce que
+   `resolve(process.cwd(), …)` (`lib/blog.ts:48`) fait tracer **le projet
+   entier** — le build l'annonce lui-même (« Dynamic filesystem access causes
+   tracing of the whole project »). La déclaration est une **assurance dont
+   l'effet est masqué**, pas une garantie observable, et **aucun test ne la
+   surveille** : aucun ne le peut tant que son retrait ne change rien. Elle
+   deviendra porteuse le jour où ce traçage large sera resserré (ADR 053, « À
+   surveiller »).
+3. **Les locales passées au module sont celles que l'application *sert***
+   (`localeRouting.locales`), pas celles qu'elle *déclare* (`appLocales`). Les
+   secondes ne servent qu'à refuser un dossier de contenu que personne ne
+   servira jamais. `config/i18n.ts:5-7` documente le défaut que la confusion
+   inverse a déjà coûté au dépôt. **Ce câblage ne mord que lorsque `i18n` est
+   coupé** : `tests/blog.test.ts` porte le cas, `pnpm test:socle` l'exécute.
+
+Le segment `blog` est **réservé** dans `lib/organizations.ts`, comme tout écran
+servi par l'application : ses fichiers existent sur le disque même quand le
+module est coupé, et c'est du disque que `tests/organizations.test.ts` dérive.
+
+**Ce que cette story ne fait pas, et volontairement** : ni flux RSS, ni image
+Open Graph par défaut, ni contribution au plan de site — `apps/web/app/sitemap.ts`
+et `apps/web/app/robots.ts` ne connaissent pas le blog, donc `robots.txt`
+**n'autorise pas** `/blog`. C'est `s53-blog-syndication`, qui doit trancher au
+passage s'il faut une quinzième clé au contrat de module.
 
 ## Les en-têtes de sécurité et la politique de sécurité du contenu (s45)
 

@@ -161,6 +161,32 @@ describe('AGENTS.md par package (ADR 013)', () => {
       expect(content, `packages/ports/AGENTS.md ne dit rien de ${capability}`).toContain(capability)
     }
   })
+
+  /**
+   * **Constat F4 de la revue de s29** : `apps/web/AGENTS.md` annonçait « Sept
+   * fichiers font exception » au-dessus d'une liste qui en comptait huit — la
+   * story avait ajouté le huitième sans toucher au nombre. Un décompte écrit à
+   * la main périme en silence, et le lecteur suivant le lit comme vérifié.
+   *
+   * La liste est donc **dérivée du disque** : tout fichier de `apps/web/lib`
+   * qui importe un module doit être nommé dans la règle qui vit à côté de lui,
+   * sous sa forme exacte entre accents graves — un nom contenu dans un autre
+   * (`lib/blog.ts` dans `lib/blog-body.tsx`) passerait sinon pour couvert. Ce
+   * que ce cas ne dit pas : ce que la prose **raconte** de chaque fichier.
+   */
+  it('apps/web/AGENTS.md nomme chaque fichier de `lib/` qui importe un module', () => {
+    const importers = readdirSync(join(REPO_ROOT, 'apps/web/lib'))
+      .filter((entry) => /\.tsx?$/.test(entry) && !/\.test\.tsx?$/.test(entry))
+      .filter((entry) => read('apps/web/lib', entry).includes('@repo/module-'))
+    const content = read('apps/web', 'AGENTS.md')
+
+    // Un balayage vide passerait pour une raison qui n'en est pas une (s26).
+    expect(importers.length).toBeGreaterThanOrEqual(8)
+
+    for (const file of importers) {
+      expect(content, `apps/web/AGENTS.md ne dit rien de lib/${file}`).toContain(`\`lib/${file}\``)
+    }
+  })
 })
 
 /**

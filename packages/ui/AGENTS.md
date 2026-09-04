@@ -148,15 +148,26 @@ Ceux que s08 utilise réellement, et rien de plus — copier l'inventaire comple
 
 | Copiés | `Accordion`, `Alert`, `Badge`, `Button`, `Card`, `Checkbox`, `DropdownMenu`, `Input`, `Label`, `Separator`, `Sheet`, `Textarea` |
 | --- | --- |
-| Composés maison | `CookieBanner`, `EmptyState`, `LocaleSwitcher`, `MarketingSection`, `OrgSwitcher`, `PageHeader`, `Sidebar` / `SidebarNav`, `ThemeProvider`, `ThemeToggle` |
+| Composés maison | `CookieBanner`, `EmptyState`, `LocaleSwitcher`, `MarketingSection`, `OrgSwitcher`, `PageHeader`, `Pagination`, `Sidebar` / `SidebarNav`, `ThemeProvider`, `ThemeToggle` |
 
 Le reste de l'inventaire de `docs/design-system.md` — `Form`, `Table`,
 `DataTable`, `Tabs`, `Toaster`, `Command`, `AlertDialog`, `Avatar`, `Tooltip`,
-`Popover`, `Skeleton`, `Progress`, `ScrollArea`, `Breadcrumb`, `Pagination`,
+`Popover`, `Skeleton`, `Progress`, `ScrollArea`, `Breadcrumb`,
 `RadioGroup`, `Select`, `Switch`,
 `ConfirmDialog`, et les composés des stories à venir — **n'est pas encore
-copié**. C'est la liste au 2 septembre 2026, révisée par s10, s11, s18 puis
-s36 ; le document fait foi, pas ce tableau.
+copié**. C'est la liste au 2 septembre 2026, révisée par s10, s11, s18, s36
+puis s29 ; le document fait foi, pas ce tableau — **et ce tableau a déjà été
+pris en défaut deux fois**, ce qui est la raison de la phrase précédente :
+
+- `Pagination` y est resté « non copié » alors que **s29** le livrait et
+  l'exportait. Corrigé ici : il est **composé maison**, pas copié de shadcn/ui —
+  des liens plutôt que des boutons, la page courante distinguée par la primaire
+  et par `aria-current` ;
+- `Avatar` y figure encore alors que le baril l'exporte depuis **s18**. Ce
+  décalage est **antérieur à s29** et n'a pas été corrigé par elle : il est
+  signalé plutôt que tu, pour que le lecteur suivant ne lise pas cette liste
+  comme vérifiée. Aucune commande ne confronte ce tableau au baril — c'est
+  précisément ce qui les laisse dériver.
 
 `Checkbox` et `CookieBanner` sont arrivés avec **s36**, que le document attribue
 nommément au second (« Bannière de consentement (s36) »).

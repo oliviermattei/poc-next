@@ -142,6 +142,12 @@ const APPLICATION_SEGMENTS = [
   // `tests/organizations.test.ts` dérive les segments du disque, pas du
   // registre.
   'billing',
+  // Les deux écrans du blog (s29) : ils sont aussi dérivés de la navigation du
+  // registre, mais leurs fichiers existent sur le disque **même quand le
+  // module `blog` est coupé** — et c'est du disque que
+  // `tests/organizations.test.ts` dérive. Même raison que `billing` juste
+  // au-dessus, mesurée par `pnpm test:minimal-profile`, qui coupe ce module.
+  'blog',
   // L'écran de contact du site public (s11) : un segment que l'application
   // sert, donc un identifiant qu'aucune organisation ne peut prendre.
   'contact',

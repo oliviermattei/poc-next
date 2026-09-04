@@ -1,0 +1,17 @@
+---
+title: A green test that checks nothing
+description: How a predicate satisfied by a single module becomes a hardcoded name.
+date: 2026-02-28
+author: Olivier Mattei
+tags: [engineering, backstage]
+---
+
+The predicate selected the first enabled module, outside the core, declaring routes, a navigation entry and a table. It was written that way so it would name nobody.
+
+Exactly one module in the repository satisfied it. The predicate named that module, and nobody could see it.
+
+## What the mutation showed
+
+Neutralising a guard at the site of the defect is the only measurement that counts. Posted anywhere else, it proves the neighbouring code works.
+
+> A guard that never runs in the configuration where it bites is documentation.

@@ -1,0 +1,21 @@
+---
+title: Pourquoi nous avons supprimé notre file d'attente
+description: Trois mois de production plus tard, la file coûtait plus cher qu'elle ne rapportait.
+date: 2026-03-12
+author: Olivier Mattei
+tags: [ingénierie]
+---
+
+La file avait été ajoutée pour absorber les pics. Les pics n'ont jamais eu lieu, et la file, elle, a produit tout ce qu'une file produit : des messages en double, un ordre non garanti, et un tableau de bord de plus à regarder.
+
+## Ce qu'elle nous coûtait vraiment
+
+Un envoi d'email prenait 40 ms en direct. Passé par la file, il prenait entre 200 ms et onze minutes, selon l'humeur du consommateur. Personne ne savait dire laquelle des deux valeurs était la normale.
+
+La documentation disait « asynchrone ». L'utilisateur, lui, lisait « rien ne s'est passé ».
+
+## Ce que nous avons gardé
+
+Le traitement différé reste utile pour ce qui *doit* survivre à un redémarrage. Voir [la page de contact](/contact) si vous voulez en discuter.
+
+Tout le reste est redevenu un appel direct, avec un délai d'attente explicite et une reprise bornée.

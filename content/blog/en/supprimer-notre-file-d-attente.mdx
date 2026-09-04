@@ -1,0 +1,11 @@
+---
+title: Why we deleted our queue
+description: Three months into production, the queue cost more than it returned.
+date: 2026-03-12
+author: Olivier Mattei
+tags: [engineering]
+---
+
+The queue had been added to absorb spikes. The spikes never came, and the queue produced everything a queue produces: duplicate messages, no ordering guarantee, and one more dashboard to watch.
+
+Sending an email took 40 ms directly. Through the queue it took anywhere between 200 ms and eleven minutes.

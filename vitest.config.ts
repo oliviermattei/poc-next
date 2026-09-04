@@ -1,9 +1,23 @@
 import { fileURLToPath } from 'node:url'
+
+import mdx from '@mdx-js/rollup'
+import remarkFrontmatter from 'remark-frontmatter'
 import { defineConfig } from 'vitest/config'
 
 const resolveFromRoot = (path: string) => fileURLToPath(new URL(path, import.meta.url))
 
 export default defineConfig({
+  /**
+   * Le compilateur MDX de la suite (s29).
+   *
+   * `tests/rendered-text.test.ts` rend **tous** les écrans de l'application, la
+   * page d'article comprise, et celle-ci importe un `.mdx`. Sans ce greffon,
+   * Vitest lit le fichier comme du JavaScript et le rendu échoue avant tout
+   * assert. C'est le même compilateur que celui du bundler de Next
+   * (`@mdx-js/*`, ADR 053) et le même greffon de frontmatter : deux pipelines
+   * différents divergeraient sur le premier article un peu riche.
+   */
+  plugins: [mdx({ remarkPlugins: [remarkFrontmatter] })],
   // `apps/web` compile en `jsx: "preserve"` — c'est Next qui transforme le JSX
   // dans l'application. Vitest, lui, exécute les écrans directement : sans
   // cette ligne il lit le `tsconfig.json` le plus proche du fichier, y trouve

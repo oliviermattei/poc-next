@@ -8,6 +8,7 @@
 import type { ModuleSchema } from '@repo/db'
 import * as auth from './auth'
 import * as billing from './billing'
+import * as blog from './blog'
 import * as consent from './consent'
 import * as demoEnabled from './demo-enabled'
 import * as i18n from './i18n'
@@ -20,6 +21,7 @@ import * as storage from './storage'
 export const enabledModuleSchemas = [
   { id: 'auth', schema: auth },
   { id: 'billing', schema: billing },
+  { id: 'blog', schema: blog },
   { id: 'consent', schema: consent },
   { id: 'demo-enabled', schema: demoEnabled },
   { id: 'i18n', schema: i18n },
