@@ -4,58 +4,72 @@
 
 ## REPRENDRE ICI
 
-**s28-rate-limiting est fusionnée** (demande de fusion 7, squash `aba452b`,
-04/09). Worktree supprimé, branche effacée localement et à distance. Le rapport
-de revue — cinq rondes, deux `critical` et deux `major` fermés — est dans
-`docs/reviews/s28-rate-limiting.md`, sur `dev`.
+**s48-ci-verte est fusionnée** (demande de fusion 8, squash `fa0099e`, 04/09).
+Worktree, branche, conteneur **et volume** supprimés — la procédure de fusion
+inclut désormais le nettoyage du projet compose, pas seulement du worktree.
 
-**La CI de `dev` est rouge, et elle l'était déjà avant s28.** C'est le premier
-travail à faire, avant toute nouvelle story. Deux causes, distinctes :
+**Ce que s48 a réparé**, et qui était rouge depuis au moins cinq commits :
 
-1. **`tests/minimal-profile.test.ts`, critère 8** — « aucun module activé n'est
-   coupable pour éprouver la généricité : expected undefined to be defined ».
-   Défaut réel, présent au moins depuis `42d9f88`. Il ne rougit **que** sous la
-   branche `socle` de la matrice de CI : aucune commande locale ne le joue, et
-   `pnpm test:minimal-profile` **n'est pas** cette suite-là. Pour le reproduire,
-   il faut jouer `pnpm test` avec la configuration socle de `config/features.ts`.
-2. **`pnpm run audit`** — `ERR_SOCKET_TIMEOUT` vers `registry.npmjs.org`, **sans
-   aucune reprise**, donc un aléa réseau devient un rouge de porte. Observé trois
-   fois le 04/09 : deux en local, une en CI sur `dev`.
+1. `tests/minimal-profile.test.ts`, critère 8 — le prédicat n'avait **qu'un seul
+   candidat dans tout le dépôt** (`marketing`), et la branche `socle` de la
+   matrice coupe précisément celui-là. Le test avait été écrit pour ne pas nommer
+   de module ; un prédicat qu'un seul module satisfait est un nom déguisé.
+   Fermé par un verdict discriminé (`preuve` | `explication`) et un invariant
+   indépendant de la configuration. **ADR 052.**
+2. `pnpm run audit` — aucune reprise sur une panne de registre, et aucun délai
+   d'attente. Trois tentatives au plus sur la seule branche de panne, jamais sur
+   un avis, plus un délai de 60 s.
 
-**Un troisième défaut de CI a été corrigé au passage** (commit `730e492`, dans la
-fusion de s28) : le scan de secrets n'avait **jamais** été vert sur une demande de
-fusion. Sans `pull-requests: read`, `gitleaks-action` prend un 403 et meurt avant
-de scanner, tout en passant sur l'événement `push` du même commit — donc trois
-stories ont été fusionnées au-dessus d'un rouge que personne ne voyait. Vérifier
-l'état **par événement**, jamais le rollup.
+**Nouvelle commande : `pnpm test:socle`.** Elle rejoue la seconde branche de la
+matrice dans une copie, avec **la liste des étapes dérivée du workflow** — 13
+étapes `run:`, 10 rejouées, 3 exclues avec leur raison. Une 14ᵉ étape ajoutée au
+job fait rougir un test en la nommant. Elle a immédiatement servi : rejouer les
+parcours sous socle a révélé un rouge **déterministe** que personne n'avait
+jamais joué hors runner.
 
-**Deux constats d'apparence, antérieurs à s28, qu'aucune story ne porte encore :**
+**La CI de `dev` est encore rouge, et le dernier critère de s48 n'est pas tenu.**
+Mesuré au run `33894919551` : les deux suites unitaires passent (1970/8 sous
+« tous », **1965/13 sous socle** — l'assertion du critère 8 est bien réparée), et
+chaque job de matrice n'échoue plus que sur **un parcours navigateur**. C'est
+`s50-tests-deterministes` qui referme ce critère, pas s48.
 
-- Les cinq écrans d'`apps/web/app/auth-form.tsx` rendent du **HTML sans une seule
-  classe** depuis s07 — titre, libellé, champ, bouton et message de refus. La
-  coquille applicative est stylée, le CSS charge : c'est le composant qui n'émet
-  rien.
-- La variante `Alert warning` est à **1,83 : 1** de contraste en mode clair (les
-  quatre variantes sont sous le 4,5 : 1 de WCAG AA ; `warning` est même sous
-  3 : 1). En mode sombre, 7,23 : 1. Calculé depuis les jetons, pas mesuré à la
-  pipette.
+**Trois tests intermittents, ouverts en `s50-tests-deterministes`** — `tests/billing.test.ts:5627` (delta **global** sur `auth_session`, 3 rouges sur
+23 exécutions), `e2e/billing.spec.ts:406` (`net::ERR_ABORTED` après `signIn`) et
+`e2e/two-factor.spec.ts:126` (délai de 30 s dépassé, sous socle).
 
-**Un test intermittent, non attribué** : `tests/billing.test.ts:5627`, un delta
-global sur `auth_session` mesuré à travers un rendu de page — 1 rouge sur 15
-passages. Le rendre local au périmètre du cas touche la suite de s19.
+**Trois pièges de séance, à ne pas réapprendre :**
 
-Ensuite : **s29** (blog MDX), **s30** (docs), **s31** (changelog), **s47**
-(limite de sièges, sortie de s23). Premier numéro d'ADR libre : **052** — les 050
-et 051 sont arrivés avec s28.
+- **Ne rien pousser sur `dev` pendant qu'on observe un run de CI** : le groupe de
+  concurrence annule le run en cours. Perdu une fois le 04/09.
+- **Lire l'état de la CI par événement, jamais au rollup.** Une PR déclenche
+  **deux** runs complets (`push` et `pull_request`) ; un job homonyme vert peut
+  masquer un rouge. C'est ce qui a caché pendant trois stories un scan de secrets
+  qui échouait avant même de scanner.
+- **Une recherche ne se connecte à aucune base.** Ne pas provisionner de
+  conteneur pour elle (P15) ; un worktree nu coûte 9 Mo contre 836 (P18).
+
+**Trois recherches d'avance sont écrites**, sur leurs branches respectives, sans
+plan : `s29-blog-mdx` (complexité relevée 3 → 4), `s32-notifications-inapp`
+(3 → 4), `s37-admin-users` (3 → **5, découpe requise en s37a/b/c**).
+
+**Le signal qui dépasse ces trois stories** : chacune bute sur la même absence —
+un module optionnel doit se greffer sur un chemin du socle, et les quatorze clés
+du contrat n'ont pas de fente pour ça (plan de site pour s29, point d'émission
+pour s32, refus à la connexion pour s37). Payer une quinzième clé **une fois**
+vaut mieux que la contourner trois fois. Une story de cadrage avant s29 est la
+piste écrite dans `docs/killer-saas-feedback.md`.
+
+Premier numéro d'ADR libre : **053** — 050 et 051 sont arrivés avec s28, 052 avec
+s48.
 
 ## Où on en est
 
 | | |
 |---|---|
-| Stories closes | **31 sur 47** (s01 → s28, s36, s41, s45) |
-| En vol | aucune — la CI de `dev` est à réparer avant la suivante |
-| Restantes | 16, dont s47 créée par la découpe de s23 |
-| Tests | **1946 + 8 sautés**, 92 parcours navigateur |
+| Stories closes | **32 sur 50** (s01 → s28, s36, s41, s45, s48) |
+| En vol | aucune — trois recherches d'avance écrites, aucune planifiée |
+| Restantes | 18 — dont s49 et s50, nées de constats de revue |
+| Tests | **1970 + 8 sautés**, 100 parcours navigateur (78 joués sous socle) |
 | ADR | **50** (jusqu'à 050 ; 051 libre) |
 
 Stratégie de ship : **auto**. `/ks-ship` fusionne en squash dès que le portail

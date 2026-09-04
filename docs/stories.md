@@ -558,7 +558,7 @@ Piège : l'abonnement se rattache soit à l'utilisateur, soit à l'organisation,
 - [ ] Les webhooks de paiement unique sont idempotents : un événement rejoué n'accorde pas un second droit
 
 ### Dependencies
-s19-subscribe-stripe
+s19-subscribe-stripe, s13-two-factor
 
 ### Agentic notes
 Nommé dans la ligne Billing du périmètre PRD (« one-time »). Fait partie du module de facturation : son état off est celui de s19.
@@ -1314,7 +1314,7 @@ Le calcul de la revue est OKLCH→sRGB→WCAG, fait à la main : le confirmer av
 
 ---
 
-## Story s50-tests-deterministes — Rendre déterministes les deux tests de facturation intermittents
+## Story s50-tests-deterministes — Rendre déterministes les trois tests intermittents
 **As a** Agent ou humain qui lit la CI **I want** qu'un rouge signifie une régression **so that** je n'apprenne pas à ignorer la porte.
 
 ### Complexity
@@ -1323,15 +1323,18 @@ Le calcul de la revue est OKLCH→sRGB→WCAG, fait à la main : le confirmer av
 ### Acceptance criteria
 - [ ] `tests/billing.test.ts` n'assère plus un delta **global** de `auth_session` : la propriété est mesurée sur le périmètre du cas, et le cas rougit toujours si une session est ouverte là où il n'en faut aucune
 - [ ] `e2e/billing.spec.ts:406` ne dépend plus d'une course entre une redirection et une navigation : la navigation attend l'état qu'elle exige au lieu de le supposer
-- [ ] Les deux tests passent **dix fois de suite**, et le compte est journalisé — une stabilité se déclare avec son nombre de passages, jamais par impression
+- [ ] `e2e/two-factor.spec.ts:126` ne dépasse plus son délai de 30 s : ce que le parcours attend est identifié et attendu explicitement, plutôt que supposé arrivé
+- [ ] Les trois tests passent **dix fois de suite**, et le compte est journalisé — une stabilité se déclare avec son nombre de passages, jamais par impression
 - [ ] Aucune assertion perdue : la mutation qui neutralise la propriété visée rougit toujours, et le nombre de cas exécutés ne baisse pas
 - [ ] La cause retenue pour chacun est **écrite à l'endroit du test**, avec la mesure qui l'établit
 
 ### Dependencies
-s19-subscribe-stripe
+s19-subscribe-stripe, s13-two-factor
 
 ### Agentic notes
 Mesuré pendant s48. `tests/billing.test.ts:5627` (« n'ouvre aucune session, ni sur un identifiant forgé ni sur un authentique ») compare `(await countRows('auth_session')) - before` — un delta **global**, sur une base partagée, pendant que les autres fichiers tournent en parallèle. Cumul de trois relectures indépendantes : **3 rouges sur 23 exécutions complètes**, soit ~13 %.
 `e2e/billing.spec.ts:406` échoue en `net::ERR_ABORTED` sur `page.goto` juste après `signIn`, à la même URL à chaque fois. Il a rougi sur les demandes de fusion 7 et 8, **jamais sur `dev`** (0 sur 3). L'écart de conditions vaut d'être vérifié avant d'être corrigé : une PR déclenche **deux runs complets simultanés** (`push` **et** `pull_request`) là où `dev` n'en lance qu'un — la charge doublée est une hypothèse, pas une conclusion. Vérifié pendant s48 : la limitation de débit n'est **pas** en cause (le seul `rate_limit.exceeded` du journal tombe quatre minutes après l'échec, sur une adresse forgée par le parcours de limitation lui-même).
 Piège : la sortie facile est d'ajouter une reprise Playwright ou d'élargir un délai. Les deux rendraient le rouge plus rare sans le rendre faux — c'est le mode d'échec que `docs/killer-saas-feedback.md` (P8) documente déjà.
 Si l'enquête confirme que la duplication des runs de CI est la cause de l'intermittence navigateur, la réduire est une décision d'infrastructure à prendre pour elle-même : elle double aussi le coût de chaque demande de fusion.
+**Troisième cas, ajouté après la fusion de s48** : `e2e/two-factor.spec.ts:126` (« activation, connexion par code, puis connexion par code de secours ») dépasse son délai de 30 s. Observé sur la demande de fusion 7 puis sur le run de `dev` du 04/09, sous la configuration socle. Même famille que les deux autres, autre surface (s13).
+**Ces trois tests sont ce qui sépare aujourd'hui `dev` d'une CI verte** : au run `33894919551`, les deux suites unitaires passent (1970/8 sous « tous », 1965/13 sous socle) et les deux jobs de matrice n'échouent que sur un parcours navigateur chacun. C'est donc cette story, et elle seule, qui referme le dernier critère d'acceptation de s48.

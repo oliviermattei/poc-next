@@ -594,6 +594,17 @@ qu'on propose, où est le patch, et son état.
   aucune étape, ne regarde si la branche par défaut est verte**. Piste : `/ks-ship`
   lit l'état de la CI de la branche cible avant d'ouvrir la demande de fusion, et
   le dit — fusionner dans du rouge doit être une décision, pas un défaut.
+- **Un critère d'acceptation qui dépend de tout le dépôt ne peut pas être fermé
+  par une story.** s48 portait « la CI de la branche par défaut est verte sur un
+  run réel ». Elle a réparé ses deux causes — mesuré sur `dev` après fusion : la
+  suite unitaire passe sous **les deux** configurations, 1965/13 sous socle, là
+  où l'assertion du critère 8 rougissait depuis cinq commits. Et le critère reste
+  **non tenu**, parce que deux parcours navigateur appartenant à d'autres stories
+  (s19 et s13) rougissent par intermittence. Aucune quantité de travail dans s48
+  ne pouvait le fermer. Piste : un critère de ce genre appartient à une story de
+  **recette**, ou doit être formulé sur ce que la story contrôle — « les causes
+  nommées ne rougissent plus », pas « tout est vert ». Sinon on livre une story
+  dont la définition de terminé dépend du hasard d'un autre fichier.
 - **Trois stories d'affilée butent sur la même absence du contrat de module.**
   Recherches menées le 04/09, sur des surfaces sans rapport entre elles : s29 a
   besoin qu'un module de contenu alimente `sitemap.xml`, s32 d'un point
