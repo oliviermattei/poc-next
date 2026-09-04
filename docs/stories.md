@@ -870,7 +870,7 @@ s17-roles-permissions, s06-transactional-emails
 
 ### Agentic notes
 Le temps réel (websockets, `NEXT_PUBLIC_REALTIME_NOTIFICATIONS` chez MakerKit) est au **cimetière** du PRD : lecture au chargement et à la navigation uniquement.
-**Décision de cadrage laissée ouverte pour cette story (04/09)** : le critère 7 — « module non activé, les types déclarés retombent sur un envoi email direct » — exige un point d'émission qui **survit à la coupure du module**, donc un chemin du socle qui consulte un module optionnel avec une absence définie. s37 a le même besoin (la connexion doit refuser un compte banni par un module optionnel). s29 a tranché la forme **contributive** (un module alimente le plan de site) sans trancher celle-ci, délibérément : concevoir un mécanisme de capacité sur deux besoins non implémentés serait la généralisation que le cimetière du PRD refuse. C'est donc **cette story** qui la tranche, avec un ADR, en sachant que s37 en héritera.
+**Décision de cadrage laissée ouverte pour cette story (04/09)** : le critère 7 — « module non activé, les types déclarés retombent sur un envoi email direct » — exige un point d'émission qui **survit à la coupure du module**, donc un chemin du socle qui consulte un module optionnel avec une absence définie. s37 a le même besoin (la connexion doit refuser un compte banni par un module optionnel). s53 tranche la forme **contributive** (un module alimente le plan de site) sans trancher celle-ci, délibérément : concevoir un mécanisme de capacité sur deux besoins non implémentés serait la généralisation que le cimetière du PRD refuse. C'est donc **cette story** qui la tranche, avec un ADR, en sachant que s37 en héritera.
 **Portée du critère sur le mailer** : la règle vise les emails **de notification**, pas tout appel au mailer. Les emails transactionnels d'authentification (vérification, magic link, réinitialisation), l'invitation de s16, le lien de mot de passe de s24, la confirmation de suppression de s34 et le lien d'export de s35 restent des appels directs légitimes et ne doivent pas être refactorés ici.
 
 ---
@@ -1395,6 +1395,7 @@ Piège, le même que s50 : rendre le rouge plus rare n'est pas le rendre juste. 
 3
 
 ### Acceptance criteria
+- [ ] **`robots.txt` autorise `/blog`** — aujourd'hui il l'interdit, et le blog livré par s29 est donc servi sans pouvoir être indexé
 - [ ] Un flux RSS est généré et **valide** au sens d'un validateur, pas d'une assertion maison
 - [ ] Une image Open Graph par défaut est servie quand l'article n'en fournit pas
 - [ ] Les articles sont référencés dans `sitemap.xml`, **et le mécanisme est dérivé** : ni `sitemap.ts` ni `robots.ts` ne connaissent un module de plus par son nom
@@ -1410,4 +1411,5 @@ s29-blog-mdx, s10-marketing-site
 Coût mesuré le 04/09 : le type, l'agrégation au registre, **onze éditions d'une ligne** (les quatorze clés sont toutes obligatoires, aucune optionnelle — un module minimal comme `mcp-server` les déclare toutes, vides), et les tests. La phrase d'`AGENTS.md` « adding one later means reopening every module already written » décrit une **discipline**, pas une semaine de travail.
 La forme symétrique — un chemin du **socle** qui consulte un module optionnel avec une absence définie — n'est **pas** tranchée ici : elle reste ouverte pour s32, qui sera la première à l'exiger, et s37 en héritera.
 Piège : `apps/web/app/sitemap.ts` porte `export const dynamic = 'force-dynamic'` pour une raison mesurée — un plan de site figé au build porterait `undefined` dans chaque URL, faute d'`APP_URL` validée à ce moment. Toute contribution hérite de cette contrainte.
+**Le trou que la découpe a laissé, relevé en revue de s29 (04/09)** : `marketingRobotsPolicy` rend `disallow: ['/']` plus un `allow` dérivé des seuls `marketingSite.publicPaths`. `/blog` n'y est pas, donc le blog **livré et activé** est interdit d'indexation. Ni s29 ni la première rédaction de s53 ne portaient ce critère — il est ajouté ci-dessus. Tant que cette story n'est pas livrée, le canal d'acquisition que s29 construit ne fonctionne pas : **elle est la suite immédiate de s29, pas une story parmi d'autres.**
 L'image Open Graph par défaut est un **manque du design system** signalé par `docs/designs/s29-blog-mdx.md` : ni gabarit, ni dimensions, ni jetons applicables. À trancher : image statique unique, ou gabarit dérivé des jetons.
