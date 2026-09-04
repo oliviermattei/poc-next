@@ -548,6 +548,15 @@ qu'on propose, où est le patch, et son état.
   devrait être traité comme une question à trancher **à la recherche**, pas
   reportée au plan — le plan la tranche de toute façon, mais après avoir été
   écrit à moitié.
+- **Dériver un compte trouve les trous que compter ne trouve pas.** Toujours en
+  s29 : `apps/web/AGENTS.md` annonçait « sept fichiers font exception » en
+  listant huit noms. Plutôt que de corriger le chiffre, la règle a été rendue
+  **dérivée** — un test lit sur le disque les fichiers de `apps/web/lib` qui
+  importent un module et exige que chacun soit nommé. La dérivation a
+  immédiatement révélé un **neuvième trou préexistant** (`lib/rate-limit.ts`,
+  documenté nulle part), que personne ne cherchait. C'est l'argument le plus
+  concret pour P4 rencontré jusqu'ici : dériver ne se contente pas d'empêcher
+  le compte de vieillir, il **trouve ce que le compte cachait**.
 - **Le découpage des stories.** Deux stories ont dépassé 66 fichiers en un
   commit (s18, s19), et dans les deux cas les constats critiques étaient des
   **oublis de câblage** qu'un découpage aurait exposés plus tôt. La complexité
@@ -569,6 +578,19 @@ qu'on propose, où est le patch, et son état.
   rapport de revue est traité comme une vérité. Piste : rendre explicite qu'un
   implémenteur peut **réfuter un constat par la mesure**, comme il peut réfuter
   une consigne — trois réfutations de consigne se sont révélées justes.
+- **Un confort d'interface peut désarmer une règle de sécurité, sans que rien ne
+  le dise.** Mesuré en s29 : poser un `loading.tsx` sur un segment fait vider la
+  coquille vers le client **avant** que la page ne décide, si bien qu'un
+  `notFound()` arrive en **HTTP 200**. Le parcours navigateur l'a attrapé — 200
+  au lieu de 404 — et la limite posée au niveau parent donne le même résultat :
+  **aucun placement ne sauve à la fois l'état de chargement et le 404**. Or le
+  404 n'est pas ici un détail d'ergonomie : `docs/security.md` §3 en fait la
+  réponse à la ressource d'autrui. L'arbitrage était donc écrit d'avance —
+  le squelette a été retiré et le manque signalé, pas comblé. Deux choses à en
+  tirer : la contrainte **attend s30 et s31 au même endroit**, puisqu'elles
+  rendront le même genre de contenu ; et c'est un parcours navigateur, pas un
+  test unitaire, qui l'a vue — un cas qui aurait vérifié « la page rend
+  `notFound()` » serait resté vert.
 - **Une mutation verte trouvée *pendant* l'implémentation vaut mieux que la même
   trouvée en revue, et le dépôt n'a pas de mot pour ça.** En s29, deux mutations
   sont restées vertes et l'implémenteur a corrigé **les tests, pas le code** : le
