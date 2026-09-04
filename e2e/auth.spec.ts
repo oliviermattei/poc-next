@@ -38,7 +38,14 @@ test('inscription, vérification, connexion, écran protégé, déconnexion', as
   // La connexion aboutit au **tableau de bord** : c'est le critère 1 de s08.
   // s07 repliait sur `/account`, faute de tableau de bord à atteindre.
   await signIn(page, email)
-  await expect(page).toHaveURL(urlOf('/'))
+  // **L'instantané, et pas l'attente** (s50) : `toHaveURL` réessaie pendant
+  // cinq secondes, donc il passe aussi bien quand la redirection est encore en
+  // vol au retour de `signIn` — c'est exactement l'état qui faisait échouer
+  // `billing.spec.ts` sur `dev` (`.../fr` reçu à la place de la page demandée,
+  // run 33894919551). `page.url()` ne réessaie pas : il rougit tant que le
+  // geste rend la main avant que la connexion ait atterri. C'est ici qu'est
+  // éprouvé le contrat de `signIn`, une fois, pour ses dix-sept appelants.
+  expect(page.url()).toMatch(urlOf('/'))
 
   await page.goto('/account')
   await expect(page.getByRole('heading', { name: 'Mon compte' })).toBeVisible()
