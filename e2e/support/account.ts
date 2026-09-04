@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { expect, type Page } from '@playwright/test'
 
 import { clickOnce } from './interaction'
-import { anonymousLanding, urlOf } from './locale'
+import { anonymousLanding, publicPath, urlOf } from './locale'
 
 /**
  * Les gestes communs aux parcours : inscrire un compte, lire son email, se
@@ -100,13 +100,53 @@ export const signUp = async (page: Page, email: string): Promise<void> => {
   await expect(page.getByRole('status')).toContainText('Vérifiez votre boîte email')
 }
 
+/**
+ * L'écran de connexion, quel que soit le préfixe de locale.
+ *
+ * Il sert de **signal d'achèvement** : la connexion est finie quand la page a
+ * quitté cet écran. C'est le plus lâche des signaux corrects, et c'est
+ * délibéré — la connexion atterrit sur le tableau de bord, sur l'écran demandé
+ * par `?next=`, ou sur l'écran de second facteur quand le compte en a un. Un
+ * signal qui nommerait le tableau de bord casserait `two-factor.spec.ts`.
+ */
+const SIGN_IN_SCREEN = new RegExp(`${publicPath('/sign-in').replaceAll('/', '\\/')}(\\?|$)`)
+
+/**
+ * Connecte un compte, et **rend la main quand la connexion a atterri** (s50).
+ *
+ * Le geste seul ne mesurait rien : `click()` dépêche l'événement et rend la
+ * main, pendant que la requête de connexion et la redirection qu'elle provoque
+ * sont encore en vol. La navigation demandée juste après partait donc en
+ * concurrence de celle-là — mesuré sur `dev`, run 33894919551 :
+ * `billing.spec.ts:439` attendait la page de tarifs et recevait `.../fr`,
+ * c'est-à-dire l'atterrissage de la connexion arrivé après coup. Sur les
+ * demandes de fusion 7 et 8, la même course s'était vue en
+ * `net::ERR_ABORTED` : la redirection annulait la navigation en cours.
+ *
+ * Le signal est celui que `signOut` documente juste en dessous — la
+ * navigation que la connexion provoque —, et le `clickOnce` de
+ * `support/interaction.ts` est l'outil qui le porte. Aucun délai n'est ajouté :
+ * une attente qui n'aboutit pas rougit sur le vrai constat.
+ *
+ * Ce contrat est éprouvé par un instantané, pas par une attente :
+ * `auth.spec.ts` sur l'atterrissage tableau de bord, `two-factor.spec.ts` sur
+ * l'atterrissage second facteur. `page.url()` ne réessaie pas, donc il rougit
+ * dès que le geste rend la main trop tôt — mesuré avant le correctif :
+ * `"http://localhost:3142/fr/sign-in?verified=1"` au retour de `signIn`.
+ */
 export const signIn = async (page: Page, email: string, password = PASSWORD): Promise<void> => {
   await page.getByLabel('Adresse email', { exact: true }).fill(email)
   await page.getByLabel('Mot de passe').fill(password)
   // `exact` depuis s14 : l'écran porte aussi « Se connecter avec une passkey »,
   // et une correspondance partielle en désignerait deux — Playwright refuse
   // alors de cliquer, sur **tous** les parcours qui passent par ici.
-  await page.getByRole('button', { name: 'Se connecter', exact: true }).click()
+  await clickOnce(
+    page,
+    page.getByRole('button', { name: 'Se connecter', exact: true }),
+    async () => {
+      await expect(page).not.toHaveURL(SIGN_IN_SCREEN)
+    },
+  )
 }
 
 /**

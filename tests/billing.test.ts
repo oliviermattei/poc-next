@@ -5553,19 +5553,67 @@ describe.runIf(databaseReachable)('la page de retour d’un paiement invité', (
    * Le cas rend l'écran réellement servi au retour — la page publique de
    * tarifs, seul écran qu'un visiteur anonyme atteint — avec un identifiant de
    * session de paiement **forgé** et avec un **authentique**, et exige la même
-   * chose des deux : aucune session en base, aucun cookie posé, et le même
+   * chose des deux : aucune session ouverte, aucun cookie posé, et le même
    * bandeau. C'est la discipline que s19 a posée pour `/billing`, étendue au
    * parcours invité.
+   *
+   * **Ce qui est observé, et pourquoi ce n'est plus un compte de lignes** (s50).
+   * La mesure était `select count(*) from auth_session` avant le rendu, la même
+   * après, et un écart nul exigé. Vitest exécute les fichiers **en parallèle**
+   * sur une base partagée : n'importe quel autre fichier qui ouvrait une
+   * session pendant ce rendu faisait rougir celui-ci — 3 rouges sur 23
+   * exécutions complètes, mesurés en recherche. Et le compte ne pouvait pas
+   * être réduit à un compte : le cas porte sur un **invité**, donc il n'y a
+   * aucun compte auquel rattacher une session. Un compte global ne dit pas *qui*
+   * a ouvert une session ; c'était la mauvaise mesure, et le parallélisme n'a
+   * fait que la révéler.
+   *
+   * Ce que le rendu doit faire pour ouvrir une session est observé **à sa
+   * source**, deux sondes, aucune base :
+   *
+   * - `appAuth` — le point de composition de l'authentification est le seul
+   *   fichier de l'application qui connaisse le module `auth`
+   *   (`apps/web/lib/auth.ts`), et le seul objet qui puisse créer une session.
+   *   La doublure le remplace par une sonde : l'atteindre est enregistré ;
+   * - `cookies().set` de `next/headers` — une session que le visiteur n'emporte
+   *   pas dans un cookie n'est pas une session. Cette sonde ne dépend d'aucun
+   *   chemin de création : elle attrape la pose du cookie, d'où qu'elle vienne.
+   *
+   * **Ce que ces deux sondes ne couvrent pas** : une écriture directe dans
+   * `auth_session` par `@repo/db` depuis l'écran, sans cookie. Aucune règle de
+   * lint ne l'interdit à `apps/web` aujourd'hui (balayé sur `eslint.config.ts` :
+   * la seule borne sur `@repo/module-auth` vise le module `organizations`), et
+   * l'ancien compte global l'aurait vue — au prix de rougir sur les sessions des
+   * autres fichiers, sans pouvoir les distinguer. Une session sans cookie
+   * n'ouvre l'accès de personne : c'est l'écart assumé.
    */
   const renderReturn = async (
     params: Record<string, string>,
-  ): Promise<{ readonly html: string; readonly sessions: number }> => {
-    const before = await countRows('auth_session')
+  ): Promise<{ readonly html: string; readonly opened: readonly string[] }> => {
+    const opened: string[] = []
 
     vi.resetModules()
     vi.doMock('../apps/web/lib/billing', () => ({ billing: { available: true } }))
     vi.doMock('../apps/web/lib/auth', () => ({
       currentViewer: () => Promise.resolve({ session: null, account: null }),
+      appAuth: () => {
+        opened.push('appAuth()')
+
+        throw new Error('La page de retour n’a aucune raison d’atteindre `appAuth`.')
+      },
+    }))
+    vi.doMock('next/headers', () => ({
+      cookies: () =>
+        Promise.resolve({
+          get: () => undefined,
+          getAll: () => [],
+          has: () => false,
+          set: (name: unknown) => {
+            opened.push(`cookies().set(${typeof name === 'string' ? name : 'objet'})`)
+          },
+          delete: () => {},
+        }),
+      headers: () => Promise.resolve(new Headers()),
     }))
     vi.doMock('../apps/web/lib/i18n', () => ({
       appIntl: () =>
@@ -5596,11 +5644,12 @@ describe.runIf(databaseReachable)('la page de retour d’un paiement invité', (
             children: tree,
           }),
         ),
-        sessions: (await countRows('auth_session')) - before,
+        opened,
       }
     } finally {
       vi.doUnmock('../apps/web/lib/billing')
       vi.doUnmock('../apps/web/lib/auth')
+      vi.doUnmock('next/headers')
       vi.doUnmock('../apps/web/lib/i18n')
     }
   }
@@ -5624,8 +5673,8 @@ describe.runIf(databaseReachable)('la page de retour d’un paiement invité', (
       session_id: 'cs_forge_par_un_tiers',
     })
 
-    expect(authentic.sessions).toBe(0)
-    expect(forged.sessions).toBe(0)
+    expect(authentic.opened).toEqual([])
+    expect(forged.opened).toEqual([])
     // Le même bandeau dans les deux cas : l'identifiant n'est ni lu, ni cru.
     expect(authentic.html).toContain(BILLING_KEYS.pricing.returnSuccess)
     expect(forged.html).toContain(BILLING_KEYS.pricing.returnSuccess)
@@ -5635,7 +5684,7 @@ describe.runIf(databaseReachable)('la page de retour d’un paiement invité', (
   it('dit l’abandon sans rien accorder', async () => {
     const cancelled = await renderReturn({ checkout: 'cancelled' })
 
-    expect(cancelled.sessions).toBe(0)
+    expect(cancelled.opened).toEqual([])
     expect(cancelled.html).toContain(BILLING_KEYS.pricing.returnCancelled)
   })
 

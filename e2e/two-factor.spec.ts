@@ -2,7 +2,7 @@ import { createHmac } from 'node:crypto'
 
 import { expect, test, type Page } from '@playwright/test'
 
-import { aSignedInAccount, PASSWORD, signIn, signOut } from './support/account'
+import { aSignedInAccount, PASSWORD, signIn } from './support/account'
 import { clickOnce } from './support/interaction'
 import { urlOf } from './support/locale'
 
@@ -83,21 +83,35 @@ const totpOf = (secret: string, periods = 0): string => {
   return (truncated % 1_000_000).toString().padStart(6, '0')
 }
 
-/**
- * Écarte la fin d'une période avant de dériver un code.
+/*
+ * **Ce parcours n'attend pas l'horloge** (s50), et voici la mesure qui l'a
+ * décidé. Cette note remplace la fonction qui vivait ici.
  *
- * La fenêtre de vérification vaut ±1 période, donc un code dérivé à la fin
- * d'une période reste valide ; ce qui ne l'est pas, c'est de dériver **puis**
- * d'attendre l'hydratation, la saisie et l'aller-retour réseau. `retries: 0`
- * est délibéré dans ce dépôt : un parcours instable n'y garde rien.
+ * Il portait un `withinStablePeriod` : quand il restait moins de dix secondes à
+ * la période TOTP courante, il **dormait** jusqu'à la suivante avant de dériver
+ * un code — 0 à 10,1 s, une fois sur trois, et le parcours l'appelait deux
+ * fois. Ajouté à un parcours qui coûte déjà 20 à 28 s, il faisait dépasser le
+ * budget de 30 s, et l'échec rapporté était un « Test timeout » qui ne nommait
+ * aucun appel : rien ne pendait, le temps était simplement fini.
+ *
+ * Mesuré sur huit exécutions consécutives, traces à l'appui : une pause de 5,58
+ * à 9,53 s dans les sept rouges (31,4 à 36,5 s), 3,17 s dans le seul vert
+ * (29,5 s). Sur `dev`, run 33894919551, le même cas passe en 28,2 s dans une
+ * configuration et échoue à 31,2 s dans l'autre.
+ *
+ * **Et cette attente ne protégeait de rien.** La fenêtre de vérification vaut
+ * **±1 période** — `totp/index.mjs` appelle `.verify(code)` sans second
+ * argument, et `@better-auth/utils` y met `window = 1`
+ * (`packages/modules/auth/src/infrastructure/better-auth-service.ts`, éprouvé
+ * aux deux bords par `tests/auth.test.ts`). Un code dérivé juste avant la
+ * bascule de période reste donc accepté pendant toute la période suivante :
+ * 30 à 60 s de marge, quand la saisie, le clic et l'aller-retour en coûtent
+ * moins de deux. Dormir pour « viser le milieu d'une période » achetait de la
+ * marge là où il y en avait déjà, et la payait sur le budget du test.
+ *
+ * Aucune reprise, aucun délai élargi : le parcours a été **raccourci**, pas
+ * détendu.
  */
-const withinStablePeriod = async (): Promise<void> => {
-  const remaining = TOTP_PERIOD_MS - (Date.now() % TOTP_PERIOD_MS)
-
-  if (remaining < 10_000) {
-    await new Promise((accept) => setTimeout(accept, remaining + 100))
-  }
-}
 
 /**
  * Le geste d'un bouton de cet écran, **une fois**, puis son achèvement.
@@ -123,6 +137,28 @@ const press = async (
   await clickOnce(page, page.getByRole('button', { name }), settled)
 }
 
+/**
+ * Redevenir un visiteur anonyme, **sans repasser par l'écran de compte** (s50).
+ *
+ * Le parcours enchaîne quatre connexions ; entre chacune il lui faut un
+ * navigateur sans session, et il l'obtenait par `signOut` — un aller à
+ * `/account`, une attente d'hydratation, un clic, une navigation, mesurés à
+ * 0,76 s l'unité sur ce poste, soit environ 2,5 fois plus sur un runner. Trois
+ * fois, pour un geste que ce fichier ne mesure pas : la déconnexion et sa
+ * révocation côté serveur sont éprouvées par `auth.spec.ts`, qui repose le
+ * cookie et vérifie qu'il ne ressuscite rien, et `passkeys.spec.ts` continue
+ * d'exercer `signOut` lui-même.
+ *
+ * Vider les cookies du navigateur est **plus strict** que se déconnecter :
+ * aucun état de session, aucun cookie d'appareil de confiance, rien à
+ * réutiliser d'une connexion à la suivante. Ce n'est pas une attente supprimée,
+ * c'est un aller-retour serveur supprimé — ce parcours dépassait son budget de
+ * 30 s, et c'est ce budget que la mesure de s50 a rendu au parcours.
+ */
+const anonymousAgain = async (page: Page): Promise<void> => {
+  await page.context().clearCookies()
+}
+
 test('activation, connexion par code, puis connexion par code de secours', async ({ page }) => {
   const email = await aSignedInAccount(page, 's13-e2e')
 
@@ -143,7 +179,6 @@ test('activation, connexion par code, puis connexion par code de secours', async
   // caméra, et c'est ce qui rend le QR et le texte solidaires.
   const secret = (await page.getByText(/^[A-Z2-7 ]{30,}$/).innerText()).trim()
 
-  await withinStablePeriod()
   await page.getByLabel('Code à six chiffres').fill(totpOf(secret))
   await press(page, 'Confirmer', async () => {
     await expect(page.getByRole('status')).toContainText('Notez ces dix codes')
@@ -168,14 +203,20 @@ test('activation, connexion par code, puis connexion par code de secours', async
   await expect(page.getByText(backupCodes[0] ?? 'code-absent')).toHaveCount(0)
 
   // --- Connexion par code d'application ---------------------------------
-  await signOut(page)
+  await anonymousAgain(page)
   await page.goto('/sign-in')
   await signIn(page, email)
 
   // Le mot de passe seul ne mène plus au tableau de bord.
-  await expect(page).toHaveURL(urlOf('/two-factor', '?next=%2F'))
+  //
+  // **L'instantané, et pas l'attente** (s50) : c'est ici que le signal
+  // d'achèvement de `signIn` est éprouvé sur son **second** atterrissage. Un
+  // signal qui n'attendrait que le tableau de bord laisserait ce parcours
+  // rendre la main pendant la redirection ; `page.url()` ne réessaie pas et le
+  // dirait. Les deux connexions suivantes gardent leur `toHaveURL` : une seule
+  // mesure du contrat suffit, les autres attestent l'écran.
+  expect(page.url()).toMatch(urlOf('/two-factor', '?next=%2F'))
 
-  await withinStablePeriod()
   // **Le compteur suivant** : celui de la confirmation vient d'être consommé,
   // et le rejouer serait refusé — c'est exactement ce que la garde protège.
   const signInCode = totpOf(secret, 1)
@@ -186,7 +227,7 @@ test('activation, connexion par code, puis connexion par code de secours', async
   })
 
   // --- Connexion par code de secours ------------------------------------
-  await signOut(page)
+  await anonymousAgain(page)
   await page.goto('/sign-in')
   await signIn(page, email)
   await expect(page).toHaveURL(urlOf('/two-factor', '?next=%2F'))
@@ -197,7 +238,7 @@ test('activation, connexion par code, puis connexion par code de secours', async
   })
 
   // --- Le même code, une seconde fois -----------------------------------
-  await signOut(page)
+  await anonymousAgain(page)
   await page.goto('/sign-in')
   await signIn(page, email)
   await expect(page).toHaveURL(urlOf('/two-factor', '?next=%2F'))
