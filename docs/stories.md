@@ -985,6 +985,8 @@ Piège : le consentement conditionne le **chargement** du script, pas seulement 
 ---
 
 ## Story s37-admin-users — Administrer les utilisateurs et les organisations
+
+> **DÉCOUPÉE le 05/09** en `s37a-superadmin-et-bannissement`, `s37b-back-office` et `s37c-inscriptions-publiques`, sur verdict de complexité **5** de sa recherche (notée 3 ici avant que quiconque ait ouvert un fichier). Cette entrée reste pour l'historique et ses dépendances ; **ne pas l'implémenter telle quelle**.
 **As a** Admin **I want** rechercher un utilisateur, agir sur son compte et me connecter à sa place **so that** je puisse assister mes clients et modérer la plateforme.
 
 ### Complexity
@@ -1015,6 +1017,68 @@ Module requis par s42-waitlist, s43-feedback-widget et s44-public-roadmap : la v
 **Précision par rapport au cimetière** : la traçabilité de l'impersonation est une écriture dans les **logs applicatifs**, pas une table d'audit alimentée par chaque module. Le « journal d'audit » reste au cimetière du PRD.
 
 ---
+
+## Story s37a-superadmin-et-bannissement — Désigner un superadmin et exclure un compte
+**As a** Admin **I want** désigner des superadmins et bannir un compte **so that** la plateforme ait des administrateurs et puisse exclure un utilisateur.
+
+> Tranche 1 de 3 de `s37-admin-users`, découpée sur verdict de complexité **5** de sa recherche. La ligne de coupe suit le risque, pas la taille : cette tranche porte **toute** la décision d'architecture et toute la sécurité. `s42`, `s43` et `s44` ne dépendent que d'elle.
+
+### Complexity
+3
+
+### Acceptance criteria
+- [ ] Le premier superadmin est désigné par une variable d'environnement ou par le seed ; la procédure est documentée et couverte par un test partant d'une base vierge
+- [ ] Un superadmin peut promouvoir un autre compte superadmin et révoquer ce rôle ; le dernier superadmin ne peut pas se révoquer lui-même
+- [ ] Aucun superadmin configuré : les routes du back-office renvoient 404 et le démarrage journalise un avertissement nommant la variable à définir
+- [ ] Un superadmin peut bannir et débannir un compte ; un compte banni ne peut plus se connecter et ses sessions sont révoquées
+- [ ] **Module non activé** : aucun rôle de superadmin, aucune route, et les modules qui le requièrent ne peuvent pas être activés (validation de configuration de s03)
+
+### Dependencies
+s17-roles-permissions
+
+### Agentic notes
+Le point dur est le critère 4 : le bannissement est une action d'administration, mais **le refus vit sur le chemin de connexion, qui est du socle**. Ne pas faire consulter un module optionnel par `auth`.
+
+## Story s37b-back-office — Consulter et assister un utilisateur
+**As a** Admin **I want** parcourir les comptes et me connecter à leur place **so that** je puisse assister mes clients.
+
+> Tranche 2 de 3 de `s37-admin-users`. Aucune autre story n'en dépend.
+
+### Complexity
+3
+
+### Acceptance criteria
+- [ ] Un back-office réservé aux superadmins liste les utilisateurs avec recherche et pagination ; un non-superadmin reçoit 404
+- [ ] Le détail d'un utilisateur affiche ses organisations, ses droits d'accès et ses sessions actives
+- [ ] Un superadmin peut révoquer une session et déclencher une réinitialisation de mot de passe
+- [ ] L'impersonation ouvre une session au nom de l'utilisateur, affiche un bandeau permanent et permet d'y mettre fin pour revenir au compte superadmin
+- [ ] Un superadmin ne peut pas impersonner un autre superadmin
+- [ ] Le début et la fin d'une impersonation émettent une entrée dans les logs applicatifs, avec l'identifiant du superadmin et celui de la cible
+- [ ] Une liste des organisations, avec recherche et pagination, est accessible aux superadmins lorsque le module organisations est activé ; module coupé, l'entrée disparaît du back-office
+- [ ] Le détail d'une organisation affiche ses membres et leurs rôles, son offre et l'état de son abonnement
+
+### Dependencies
+s37a-superadmin-et-bannissement, s21-trials-and-gating
+
+### Agentic notes
+L'impersonation est une élévation de privilège : rotation de session obligatoire, et journalisation aux deux bouts.
+
+## Story s37c-inscriptions-publiques — Consulter et exporter les inscriptions
+**As a** Admin **I want** consulter et exporter les inscriptions publiques **so that** je puisse exploiter les demandes entrantes.
+
+> Tranche 3 de 3 de `s37-admin-users`, la plus détachable : elle ne partage avec les deux autres que la garde de superadmin. **Optionnelle** — reportée après le socle fonctionnel.
+
+### Complexity
+2
+
+### Acceptance criteria
+- [ ] Les inscriptions publiques sont consultables, filtrables par source et exportables en CSV lorsque le module de formulaires publics est activé ; la vue est générique et n'énumère aucune source en dur
+
+### Dependencies
+s37a-superadmin-et-bannissement, s11-public-forms
+
+### Agentic notes
+L'export CSV doit être assaini : une cellule commençant par `=`, `+`, `-` ou `@` est une injection de formule.
 
 ## Story s38-admin-revenue — Suivre le revenu de la plateforme
 **As a** Admin **I want** voir mes indicateurs de revenu et d'abonnements **so that** je pilote mon activité sans ouvrir Stripe.
@@ -1120,6 +1184,8 @@ Piège : refuser toute opération sur un dépôt aux modifications non commitée
 ---
 
 ## Story s42-waitlist — Recueillir des inscriptions avant le lancement
+
+> **OPTIONNELLE — reportée le 05/09.** Décision du porteur du projet : le produit est livrable sans elle. À reprendre après le socle fonctionnel.
 **As a** Visiteur **I want** m'inscrire sur une liste d'attente **so that** je sois prévenu au lancement du produit.
 
 ### Complexity
@@ -1145,6 +1211,8 @@ Modules requis déclarés : back-office et formulaires publics.
 ---
 
 ## Story s43-feedback-widget — Envoyer un retour depuis l'application
+
+> **OPTIONNELLE — reportée le 05/09.** Décision du porteur du projet : le produit est livrable sans elle. À reprendre après le socle fonctionnel.
 **As a** User **I want** envoyer un retour depuis l'application **so that** je signale un problème sans changer d'outil.
 
 ### Complexity
@@ -1168,6 +1236,8 @@ Module requis déclaré : back-office. Le centre de notifications n'est pas requ
 ---
 
 ## Story s44-public-roadmap — Voter pour les prochaines fonctionnalités
+
+> **OPTIONNELLE — reportée le 05/09.** Décision du porteur du projet : le produit est livrable sans elle. À reprendre après le socle fonctionnel.
 **As a** User **I want** proposer une fonctionnalité et voter pour celles des autres **so that** le produit évolue selon les besoins réels.
 
 ### Complexity
