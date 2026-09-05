@@ -810,9 +810,7 @@ Piège : le rendu MDX ne doit pas exécuter de composant applicatif nécessitant
 
 ### Acceptance criteria
 - [ ] Les pages de documentation sont écrites en MDX et organisées en sections avec une navigation latérale générée depuis l'arborescence
-- [ ] La recherche plein texte retourne les pages correspondantes et fonctionne sans service externe
 - [ ] Chaque page expose un sommaire de ses titres et un lien d'ancre par section
-- [ ] Un lien interne pointant vers une page inexistante fait échouer le build
 - [ ] La documentation est traduisible ; une page non traduite retombe sur la locale par défaut avec une mention explicite
 - [ ] Les pages de documentation sont référencées dans `sitemap.xml`
 - [ ] **Module non activé** : aucune route de documentation, et le lien disparaît de la navigation publique
@@ -822,6 +820,9 @@ s29-blog-mdx
 
 ### Agentic notes
 Parité Supastarter (Fumadocs avec recherche plein texte) et MakerKit.
+**Découpée le 05/09, avant d'écrire le plan.** La recherche a rendu une complexité de 4 avec une ligne de coupe ; le plan aurait dépassé onze tâches. La **recherche plein texte** et la **validation des liens internes au build** partent en `s54-docs-recherche` : les deux demandent la même machinerie — une passe croisée sur l'ensemble du contenu au build — que le reste de la story n'a pas besoin de construire. Ce qui reste ici close seul : on écrit une page, on la parcourt, on la lit.
+**Ce que s29 laisse et qui sert directement** : `PROSE_CLASSNAME` et `proseComponents`, c'est-à-dire l'échelle de prose posée dans `docs/design-system.md`. Mais les importer depuis `@repo/module-blog` exigerait `requires: ['blog']` sur la documentation (ADR 018), ce qui est absurde en produit — **où vit l'échelle de prose est la décision structurelle de cette story**, et elle mérite son ADR.
+**Le critère du plan de site est devenu bon marché** : s53 a posé la quinzième clé du contrat (`publicUrls`, ADR 054). La documentation la déclare, et rien d'autre.
 Distinction du PRD : documentation **du SaaS généré**, pas documentation du boilerplate destinée à des acheteurs — cette dernière est au cimetière.
 Piège : l'index de recherche doit être construit au build et servi statiquement, sinon la promesse « sans service externe » se paie en temps de réponse.
 
@@ -1416,3 +1417,26 @@ La forme symétrique — un chemin du **socle** qui consulte un module optionnel
 Piège : `apps/web/app/sitemap.ts` porte `export const dynamic = 'force-dynamic'` pour une raison mesurée — un plan de site figé au build porterait `undefined` dans chaque URL, faute d'`APP_URL` validée à ce moment. Toute contribution hérite de cette contrainte.
 **Le trou que la découpe a laissé, relevé en revue de s29 (04/09)** : `marketingRobotsPolicy` rend `disallow: ['/']` plus un `allow` dérivé des seuls `marketingSite.publicPaths`. `/blog` n'y est pas, donc le blog **livré et activé** est interdit d'indexation. Ni s29 ni la première rédaction de s53 ne portaient ce critère — il est ajouté ci-dessus. Tant que cette story n'est pas livrée, le canal d'acquisition que s29 construit ne fonctionne pas : **elle est la suite immédiate de s29, pas une story parmi d'autres.**
 L'image Open Graph par défaut est un **manque du design system** signalé par `docs/designs/s29-blog-mdx.md` : ni gabarit, ni dimensions, ni jetons applicables. À trancher : image statique unique, ou gabarit dérivé des jetons.
+
+---
+
+## Story s54-docs-recherche — Chercher dans la documentation
+**As a** Visiteur **I want** trouver la bonne page sans la parcourir **so that** la documentation serve quand je sais déjà ce que je cherche.
+
+### Complexity
+3
+
+### Acceptance criteria
+- [ ] La recherche plein texte retourne les pages correspondantes et **fonctionne sans service externe**
+- [ ] L'index est construit **au build** et servi statiquement — servi à la requête, la promesse « sans service externe » se paie en temps de réponse
+- [ ] Un lien interne pointant vers une page inexistante **fait échouer le build**, en nommant le fichier fautif et la cible manquante
+- [ ] La recherche respecte la locale servie : une page qui n'existe pas dans cette langue n'est pas proposée comme si elle y était
+- [ ] **Module de documentation non activé** : aucun index, aucun écran de recherche, et rien ne casse
+
+### Dependencies
+s30-docs-site
+
+### Agentic notes
+Sortie de s30 le 05/09, avant d'écrire son plan : les deux critères partagent une **passe croisée sur l'ensemble du contenu au build** que le reste de s30 n'a pas besoin de construire. s29 valide chaque fichier isolément (frontmatter Zod, refus nommant le fichier) et ne croise jamais deux fichiers — c'est ce mécanisme-là qui est neuf.
+**Piège de sécurité** : si la recherche passe par une route, `docs/security.md` impose la limitation de débit sur tout point d'entrée public servi par le répartiteur (ADR 050), et `routeIsRateLimited` la pose sans qu'elle le déclare. Un index statique interrogé côté client l'évite entièrement — argument de plus pour le build, en plus du temps de réponse.
+**Piège de taille** : un index servi au client est téléchargé par chaque visiteur. Le critère ne fixe pas de plafond ; le plan devrait en poser un et le mesurer, sinon la promesse « sans service externe » se paie ailleurs.

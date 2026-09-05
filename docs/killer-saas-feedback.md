@@ -538,6 +538,17 @@ qu'on propose, où est le patch, et son état.
 
 # Observations sans proposition ferme
 
+- **La leçon a été appliquée dès la story suivante, et elle a coûté cinq minutes.**
+  s30 a été découpée **le 05/09, avant d'écrire son plan** : la recherche avait
+  rendu 4 avec une ligne de coupe, le décompte des tâches donnait onze à douze, et
+  la coupe a été faite là plutôt qu'à mi-plan. La recherche plein texte et la
+  validation des liens au build sont parties en `s54-docs-recherche` — les deux
+  partagent une passe croisée sur l'ensemble du contenu que le reste de s30 n'a
+  pas besoin de construire. C'est la même ligne que celle qui a séparé s29 de
+  s53, et la troisième fois qu'elle tient : **« ce qu'on lit » d'un côté, « ce qui
+  le fait trouver » de l'autre**. Pour un dépôt qui livre trois modules de contenu
+  (blog, documentation, changelog), c'est probablement une ligne de coupe
+  réutilisable, pas une coïncidence.
 - **La découpe faite au plan arrive plus tard que celle faite à la recherche, mais
   elle arrive.** s29 a été découpée le 04/09 **au moment d'écrire son plan**, pas
   à la recherche : c'est le décompte des tâches — treize — qui a déclenché la
