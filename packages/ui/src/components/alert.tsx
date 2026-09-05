@@ -9,15 +9,22 @@ import { cn } from '../lib/cn'
  * Les quatre sémantiques du design system, et rien d'autre : elles portent un
  * sens métier (succès, avertissement, danger, information), jamais un usage
  * décoratif. Le feedback asynchrone passe par un `Toaster`, pas par ceci.
+ *
+ * **Le texte emploie `-subtle-foreground`, jamais le jeton de remplissage**
+ * (s49, ADR 056). Le jeton sémantique nu est un **fond** : écrit en texte sur
+ * `bg-<sem>/10`, `warning` mesurait 1,83 : 1 en mode clair. `pnpm test:contrast`
+ * dérive ces quatre lignes et rougit si l'une repasse sous 4,5 : 1 — donc
+ * changer `text-<sem>-subtle-foreground` pour `text-<sem>` ici se voit.
  */
 const alertVariants = cva('rounded-lg border px-4 py-3 text-sm', {
   variants: {
     variant: {
       default: 'border-border bg-card text-card-foreground',
-      destructive: 'border-destructive/50 bg-destructive/10 text-destructive',
-      success: 'border-success/50 bg-success/10 text-success',
-      warning: 'border-warning/50 bg-warning/10 text-warning',
-      info: 'border-info/50 bg-info/10 text-info',
+      destructive:
+        'border-destructive/50 bg-destructive/10 text-destructive-subtle-foreground',
+      success: 'border-success/50 bg-success/10 text-success-subtle-foreground',
+      warning: 'border-warning/50 bg-warning/10 text-warning-subtle-foreground',
+      info: 'border-info/50 bg-info/10 text-info-subtle-foreground',
     },
   },
   defaultVariants: { variant: 'default' },

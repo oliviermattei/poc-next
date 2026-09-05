@@ -113,6 +113,14 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      # Le contraste de l'`Alert`, mesuré sur les jetons livrés (s49) : la
+      # variante `warning` portait le refus de s28 à 1,83 : 1 en mode clair, et
+      # rien dans le dépôt ne pouvait le dire. À côté du typage et du lint parce
+      # que c'est la même famille — un contrôle statique, sans base, sans
+      # navigateur, sans build.
+      - name: Contraste
+        run: pnpm test:contrast
+
       # Les barils de `generated/schema/` et les migrations SQL sont versionnés,
       # sans quoi un clone neuf ne pourrait rien générer. Les régénérer ici est
       # ce qui les empêche de mentir : toute divergence — un module activé sans
