@@ -578,6 +578,30 @@ qu'on propose, où est le patch, et son état.
   rapport de revue est traité comme une vérité. Piste : rendre explicite qu'un
   implémenteur peut **réfuter un constat par la mesure**, comme il peut réfuter
   une consigne — trois réfutations de consigne se sont révélées justes.
+- **Une affirmation fausse se corrige par un balayage de son *contenu*, jamais par
+  la liste des endroits dont on se souvient. Trois occurrences en trois stories.**
+  s29 : une garantie corrigée dans un ADR et un `AGENTS.md`, laissée intacte dans
+  le commentaire au-dessus de la ligne concernée — puis, une fois celui-là
+  corrigé, retrouvée dans le **corps du message de commit**. s53 : la règle que
+  la story existe pour réfuter, encore enseignée par **deux docblocs de
+  `packages/core`**, dont celui du contrat — le premier fichier qu'on ouvre pour
+  écrire un module. À chaque fois, celui qui corrigeait avait la bonne intention
+  et une liste incomplète. Le remède est mécanique et tient en une ligne :
+  **`grep` sur la formulation, dans plusieurs de ses tournures, avant d'écrire
+  quoi que ce soit** — et rapporter le nombre de sites trouvés, pas le nombre de
+  sites corrigés. Une consigne de correction devrait exiger ce compte.
+- **Six citations peuvent pointer vers une règle qui n'existe pas, et l'une
+  d'elles vivre dans un document immuable.** En s53, la décision centrale
+  s'appuie six fois sur `docs/security.md` §7 — dont une fois dans un ADR. Or §7
+  s'intitule « Journalisation, détection et abus » et ne porte pas la règle
+  citée. La décision est bonne, elle est même gardée par deux commandes réelles ;
+  c'est le **pointeur** qui est faux, et il a été promu en autorité par une story
+  qui l'a hérité d'une autre. Deux enseignements : une citation de section se
+  vérifie comme un nom de fichier de test — le dépôt a déjà payé pour l'un —, et
+  **le meilleur correctif est souvent de rendre la citation vraie** plutôt que de
+  la retirer, quand la règle citée mérite d'exister. Ici, l'ajouter à
+  `docs/security.md` avec la commande qui échoue quand on la viole rend les six
+  citations exactes d'un coup, sans superséder l'ADR.
 - **Une dérivation qui paraît gratuite doit être mesurée sur l'ensemble dont elle
   dérive, pas sur le cas qui l'a inspirée.** La recherche de s53 a vu que le
   module `blog` déclarait une entrée de navigation **publique** et en a conclu
