@@ -618,6 +618,56 @@ travail en parallèle n'a pas.
 transformé un défaut mécanique en règle de discipline. Une règle de discipline
 n'a pas de dispositif ; elle a une durée de vie. Celle-ci a tenu quatre jours.
 
+## P22 — Un obstacle contourné dans un fichier non suivi est un obstacle qui revient toujours
+
+**Observé deux fois dans la même story, s49, par deux agents différents.** Les
+deux exécutions ont buté sur le même mur avant de pouvoir mesurer quoi que ce
+soit, l'ont contourné, et l'ont laissé intact derrière elles. Le second l'a écrit
+noir sur blanc : « la prochaine exécution des parcours rencontrera les deux mêmes
+obstacles ».
+
+**Obstacle 1 — le `.env` importé contredit le harnais.** `worktree-manager` copie
+le `.env` du dépôt de base dans le worktree. Ce `.env` porte `STRIPE_SECRET_KEY`
+et `STRIPE_WEBHOOK_SECRET` ; `webServerEnv()` de `playwright.config.ts` impose
+`PAYMENTS_LOCAL_MODE=1` ; le démarrage **refuse les deux ensemble, en les
+nommant**. C'est le garde de P9 qui fonctionne exactement comme voulu — le défaut
+n'est pas là. Il est en amont : on provisionne le worktree dans un état où le
+harnais ne peut pas démarrer, et le seul correctif possible vit dans un fichier
+**non suivi par git**, donc invisible à la revue, absent du diff, et à refaire à
+chaque worktree.
+
+**Obstacle 2 — la base locale partagée n'est pas migrée, et le rouge ressemble à
+un défaut de la story.** `rate_limit_window` n'existe pas dans la base `app` du
+poste. Le limiteur **échoue fermé** — c'est sa conception, ADR 050, et elle est
+juste — donc le formulaire de contact répond « throttled ». Le premier essai de
+mesure a rougi sur la variante `warning`, c'est-à-dire **exactement la variante
+que la story corrige**. Un agent moins prudent aurait cherché la cause dans son
+propre diff.
+
+**Ce que cela coûte, mesuré** : deux exécutions d'implémenteur, ~17 et ~26
+minutes, dont une part non chiffrée passée à diagnostiquer un environnement et
+non le code. Et le coût se répète : chaque story qui touchera un parcours
+navigateur le paiera à nouveau.
+
+**La règle sous-jacente** : quand un contournement est nécessaire pour faire
+tourner une commande du dépôt, il appartient au dépôt. S'il vit dans un fichier
+non suivi, il n'a pas été fait — il a été fait *une fois, pour un agent*.
+
+**Propositions, par ordre de coût croissant :**
+
+1. **`worktree-manager` filtre à l'import.** Il connaît déjà `.env.example` ; il
+   peut retirer du `.env` importé les clés que `playwright.config.ts` déclare
+   incompatibles, plutôt que de copier en bloc. Une ligne de plus dans un agent
+   qui fait déjà l'import.
+2. **Le harnais crée sa base au lieu de supposer la vôtre migrée.** C'est déjà ce
+   que font `test:golden-path`, `test:minimal-profile` et `test:socle` — chacune
+   crée une base pour son exécution. `test:e2e` est la seule à emprunter la base
+   du poste, et c'est la seule qui a produit ce faux rouge.
+3. **Une commande de diagnostic** qui dit, avant de lancer quoi que ce soit,
+   pourquoi le harnais ne démarrera pas. C'est le remède le plus faible : il
+   documente l'obstacle au lieu de le retirer.
+
+
 
 
 ---
@@ -992,6 +1042,7 @@ n'a pas de dispositif ; elle a une durée de vie. Celle-ci a tenu quatre jours.
 | 04/09 | La revue bloque 18 à 31 min par ronde, contexte principal inoccupé | chercher la story suivante pendant, worktree nu à 9 Mo | P18 |
 | 05/09 | Une recherche conclut « le mode sombre passe partout » six lignes sous sa propre table qui donne 4,41 : 1 pour un seuil à 4,5 | recalcul indépendant au plan : le chiffre était faux (5,82), la conclusion juste ; l'écart est écrit dans le plan | P20 |
 | 05/09 | Deux branches ouvertes portant chacune un ADR 055, sous des noms différents : git ne conflit pas | renumérotation de s49 en 056 ; le correctif du 01/09 était une convention sans commande | P21 |
+| 05/09 | Deux exécutions de s49 bloquées par le même `.env` importé et la même base non migrée, contournées deux fois, laissées intactes | aucun — le contournement vit dans un fichier non suivi | P22 |
 
 ---
 
