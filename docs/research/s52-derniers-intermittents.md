@@ -109,3 +109,56 @@ d'audit ?** Si la piste `spawnSync`/tuyaux se confirme, le défaut est dans la
 façon dont le script coupe son enfant, et **il compte en production**. Stabiliser
 le test le masquerait. À établir avant tout correctif.
 
+## Mesure du 05/09 — la question ouverte du fait 5 est tranchée
+
+La recherche posait, en question ouverte n°1 : *« Que consomme les 20 s du cas
+d'audit ? À établir avant tout correctif — si la piste `spawnSync`/tuyaux se
+confirme, la story change de nature : elle corrige le script, pas le test. »*
+
+**Elle ne se confirme pas.** Deux mesures, chacune reproductible en dix lignes.
+
+**1. `spawnSync` ne reste pas bloqué sur les tuyaux hérités.** Un script shell qui
+`sleep 30`, lancé avec `timeout: 300` :
+
+| stdio | retour | signal |
+|---|---|---|
+| défaut (`pipe`) | **306 ms** | `SIGTERM`, `error.code = ETIMEDOUT` |
+| `ignore` | **305 ms** | `SIGTERM` |
+
+Le petit-fils `sleep` survit bien au `SIGTERM` envoyé au shell — il devient
+orphelin — mais **il ne retient pas `spawnSync`**. L'hypothèse est fausse dans
+cette forme.
+
+**2. Le script fait ses trois tentatives, cinq fois sur cinq.** Avec le faux
+`pnpm` du cas (compteur puis `sleep 30`) et `AUDIT_TIMEOUT_MS=300` :
+
+```
+passage 1 : 2629 ms · tentatives = 3
+passage 2 : 2752 ms · tentatives = 3
+passage 3 : 2822 ms · tentatives = 3
+passage 4 : 2863 ms · tentatives = 3
+passage 5 : 2802 ms · tentatives = 3
+```
+
+~2,7 s — l'arithmétique du fait 5 (trois délais de 300 ms plus deux reculs, soit
+~1,8 s) plus le démarrage de `tsx`. **Le script coupe son enfant, respecte son
+délai, et compte ses trois tentatives.**
+
+### Ce que cela change pour la story
+
+**Il n'y a pas de défaut de production ici.** La story ne corrige pas le script.
+Le `timeout: 20_000` du cas est posé sur le processus **`tsx`**, dont le
+démarrage à froid est le poste variable — et le symptôme `expected 2 to be 3`
+est ce qu'on obtient quand ce délai extérieur tombe pendant le recul de la
+deuxième tentative.
+
+Ce cas rejoint donc la **famille 1** de la re-vérification ci-dessus — *un délai
+fixe contre un coût de transformation à froid sous charge parallèle* — et non
+une famille à lui. C'est la troisième surface de cette même cause :
+`tests/deployment.test.ts`, `tests/env-wiring.test.ts`, et celui-ci.
+
+**Ce qui reste à établir** : le facteur exact entre 2,7 s à vide et les 20 s sous
+charge n'a pas été mesuré. Il n'est pas nécessaire pour choisir le correctif — la
+cause est identifiée — mais il l'est pour choisir un **délai justifié plutôt
+qu'arrondi**, ce que les critères de la story exigent.
+
