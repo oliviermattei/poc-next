@@ -569,6 +569,19 @@ qu'on propose, où est le patch, et son état.
   question « que puis-je encore faire ? » se pose à chaque indisponibilité d'un
   tiers, et la réponse par défaut — attendre — est la plus coûteuse.
 
+## P20 — Quand la prose d'un document contredit sa propre table, c'est la table qui a raison
+
+**Observé en s49.** La recherche produit une table de huit contrastes, puis conclut en une phrase : « Le mode sombre passe partout — le défaut est le mode clair seul. » Or sa propre table donne `info` en sombre à **4,41 : 1**, et le seuil de la story est 4,5 : 1. La phrase contredit la ligne qui la précède de six lignes, et rien ne l'a signalé.
+
+Au recalcul indépendant, c'est le **chiffre** qui était faux (5,82 : 1), pas la conclusion. Mais l'ordre dans lequel on le découvre n'est pas neutre : j'ai vu la contradiction *avant* de savoir laquelle des deux moitiés céderait. Si le chiffre avait été juste, la story aurait livré une variante sous le seuil en croyant le contraire, et sa commande de vérification l'aurait attrapée — après.
+
+**Ce qui rend le cas coûteux** : les quatre chiffres du mode clair étaient exacts, reproduits à la décimale par un calcul indépendant. Une table dont sept cellules sur huit sont justes inspire confiance en bloc, et c'est justement la forme d'erreur qu'aucune relecture ne voit. La recherche avait raison sur ce qui comptait, avec un chiffre faux et une phrase qui aurait dû rougir.
+
+**Règle** : un document qui pose une table *et* une conclusion en prose doit être lu comme deux sources. La table est la mesure ; la prose est la thèse. Quand elles divergent, on ne choisit pas — **on recalcule**, et on écrit dans le document laquelle des deux a cédé. C'est le pendant, côté documents, de « une mutation verte veut dire que le test est faux » : la contradiction interne est un signal, pas une coquille.
+
+**Où cela mord** : à ce jour, aucune commande ne relit une table de mesures d'un document de recherche. Le plan de s49 a rattrapé celle-ci parce qu'il refaisait le calcul pour choisir des valeurs — donc par chance, pas par dispositif. Piste, non implémentée : quand une recherche pose un seuil et une table, le plan qui s'en sert **recalcule au moins une ligne** et dit laquelle.
+
+
 ---
 
 # Observations sans proposition ferme
@@ -925,6 +938,7 @@ qu'on propose, où est le patch, et son état.
 | 04/09 | 827 Mo de `node_modules` et ~36 k tokens par story, pour une phase en lecture seule | une voie de recherche unique et réutilisée | P16 |
 | 04/09 | La contrainte de brancher avant de chercher vient d'`AGENTS.md`, pas du PRD | commiter la recherche sur la branche par défaut | P17 |
 | 04/09 | La revue bloque 18 à 31 min par ronde, contexte principal inoccupé | chercher la story suivante pendant, worktree nu à 9 Mo | P18 |
+| 05/09 | Une recherche conclut « le mode sombre passe partout » six lignes sous sa propre table qui donne 4,41 : 1 pour un seuil à 4,5 | recalcul indépendant au plan : le chiffre était faux (5,82), la conclusion juste ; l'écart est écrit dans le plan | P20 |
 
 ---
 
