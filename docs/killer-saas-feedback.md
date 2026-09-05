@@ -667,6 +667,64 @@ non suivi, il n'a pas été fait — il a été fait *une fois, pour un agent*.
    pourquoi le harnais ne démarrera pas. C'est le remède le plus faible : il
    documente l'obstacle au lieu de le retirer.
 
+## P23 — `ks scaffold` est inutilisable dans le pipeline qui l'impose
+
+**Observé en s32, et c'est une contradiction fermée.** `AGENTS.md` pose la règle :
+« Never scaffold one by hand — generate it (`npx ks`) ». Or `npx ks scaffold`
+appelle `assertRepositoryClean` (ADR 041), qui **refuse un dépôt sale**.
+
+Et un worktree de story est sale par construction : la règle « un commit par
+story » veut dire que tout ce qui a été écrit depuis le début de la story
+attend dans l'arbre de travail. Un module s'échafaude au milieu d'une story,
+jamais avant elle.
+
+**Donc aucun agent ne peut jamais satisfaire cette précondition.** Les deux
+règles sont justes prises séparément et incompatibles prises ensemble.
+
+L'implémenteur de s32 a contourné : il a appelé `planScaffold`, `scaffoldFiles`
+et `applyScaffold` de `@repo/cli` par un script jetable — le chemin de code du
+CLI, moins la précondition. Le squelette produit est celui de la commande. Le
+contournement est correct ; le fait qu'il soit **nécessaire** ne l'est pas.
+
+**Ce que la contradiction coûte vraiment** : elle pousse à faire à la main ce
+que la règle interdit de faire à la main, et un squelette manuel oublie une
+clé du contrat. C'est précisément le défaut que la règle existe pour empêcher —
+d'autant que le contrat vient de passer à quinze clés.
+
+**Propositions :**
+
+1. **`ks scaffold` accepte un arbre sale et refuse seulement un conflit sur les
+   fichiers qu'il écrit.** C'est ce que la précondition cherche à protéger ;
+   « le dépôt entier est propre » est une approximation trop large.
+2. À défaut, **une porte explicite** (`--allow-dirty`) que le pipeline emploie,
+   plutôt qu'un contournement réinventé par chaque agent.
+
+## P24 — Un défaut que 2 100 assertions ne voient pas, parce que les tests se câblent eux-mêmes
+
+**Observé en s32.** Toutes les routes d'écriture du centre de notifications
+répondaient **500 en production** : `prepareModuleServices()` n'appelait jamais
+`notifications.prepare()`. La suite complète — plus de 2 100 assertions — était
+**verte**, parce que chaque test appelle `configureNotifications` lui-même.
+
+Seule la vérification navigateur l'a vu.
+
+Ce n'est pas une première : `apps/web/lib/module-services.ts` **documente déjà
+ce défaut exact pour s15**. Le fichier porte la leçon, et la leçon n'a pas
+empêché la répétition — parce qu'elle est écrite en commentaire et qu'aucune
+commande ne la vérifie.
+
+**La forme générale** : un test qui construit lui-même le câblage qu'il teste
+ne teste pas le câblage. C'est la même famille que « `ACCEPT_REFUSALS` est à la
+fois la source et le validateur » relevé plus tôt, et que le préambule de suite
+de P13.
+
+**Correctif adopté dans la story** : un garde dérivé de `notifications.available`,
+rouge avant le correctif, et qui tient dans les deux configurations. **Piste plus
+large, non implémentée** : un contrôle générique qui, pour chaque module déclarant
+un service, vérifie que le point de composition le prépare — dérivé du contrat,
+nommant aucun module. Il aurait attrapé s15 et s32.
+
+
 
 
 
@@ -1043,6 +1101,9 @@ non suivi, il n'a pas été fait — il a été fait *une fois, pour un agent*.
 | 05/09 | Une recherche conclut « le mode sombre passe partout » six lignes sous sa propre table qui donne 4,41 : 1 pour un seuil à 4,5 | recalcul indépendant au plan : le chiffre était faux (5,82), la conclusion juste ; l'écart est écrit dans le plan | P20 |
 | 05/09 | Deux branches ouvertes portant chacune un ADR 055, sous des noms différents : git ne conflit pas | renumérotation de s49 en 056 ; le correctif du 01/09 était une convention sans commande | P21 |
 | 05/09 | Deux exécutions de s49 bloquées par le même `.env` importé et la même base non migrée, contournées deux fois, laissées intactes | aucun — le contournement vit dans un fichier non suivi | P22 |
+| 05/09 | `ks scaffold` refuse un arbre sale ; un worktree de story est sale par construction | contournement par appel direct du générateur | P23 |
+| 05/09 | Routes d'écriture à 500 en production, 2 100 assertions vertes : les tests câblent eux-mêmes ce qu'ils testent | garde dérivé de la disponibilité du module | P24 |
+| 05/09 | CI morte : tous les jobs en 2-3 s, sans journal, sur toutes les branches | cause au niveau du compte (quota de minutes), confirmée par le porteur ; rien dans le dépôt | — |
 
 ---
 
