@@ -913,7 +913,7 @@ Contrainte PRD : adapter avec **Inngest comme seule implémentation**. trigger.d
 - [ ] La suppression exige une confirmation explicite (saisie de l'email ou du nom de l'organisation)
 - [ ] La suppression appelle la fonction de purge de **chaque module activé** ; un module dont la purge échoue interrompt l'opération et la laisse rejouable
 - [ ] La suppression d'un compte efface ses données personnelles dans tous les modules activés, fichiers stockés et notifications compris
-- [ ] La suppression applique la politique de rétention déclarée par chaque module (contrat de s03) : les catégories marquées « anonymiser » — typiquement les factures et journaux de paiement, dont la conservation est légalement requise — voient le lien vers l'utilisateur rompu sans qu'aucune donnée identifiante ne subsiste
+- [ ] La suppression applique la politique de rétention **déclarée par chaque module activé**, dérivée du registre et jamais recopiée : une catégorie `erase` disparaît, une catégorie `anonymize` voit le lien vers l'utilisateur rompu sans qu'aucune donnée identifiante ne subsiste. **Le mécanisme d'anonymisation est éprouvé même si aucun module du socle ne le déclare** — un test qui balaierait zéro catégorie serait vert sans rien vérifier
 - [ ] La suppression d'une organisation efface ses données, retire ses membres et annule son abonnement chez le provider de paiement
 - [ ] Un utilisateur dernier propriétaire d'une organisation doit d'abord la transférer ou la supprimer ; le message le précise
 - [ ] Après suppression, les sessions sont révoquées et une reconnexion est impossible
@@ -923,6 +923,28 @@ Contrainte PRD : adapter avec **Inngest comme seule implémentation**. trigger.d
 
 ### Dependencies
 s33-background-jobs, s18-file-storage-avatar, s19-subscribe-stripe, s17-roles-permissions
+
+### Agentic notes
+**Le critère 4 a été corrigé le 05/09, sur mesure.** Il citait « typiquement les
+factures et journaux de paiement, dont la conservation est légalement requise ».
+Mesuré : `billing` ne stocke **aucune facture** — trois tables, et les deux qui
+portent de l'argent ou un événement n'ont **aucun lien vers un utilisateur**
+(`billing_webhook_event` : `eventId, type, receivedAt` ; `billing_refunded_payment` :
+`providerPaymentId, refundedAt, lastEventId`). Les factures vivent chez Stripe, et
+l'obligation légale de conservation est satisfaite là où le document existe.
+
+Ses quatre catégories sont donc déclarées `erase` **à raison** : il n'y a presque
+rien de personnel à rompre. Le critère supposait une conception que le dépôt a
+délibérément évitée — ce n'est pas un défaut, c'est une bonne propriété, et
+changer la rétention de `billing` sur une théorie juridique que personne n'a
+vérifiée aurait conservé des lignes dont le produit n'a pas besoin.
+
+**Ce qui reste vrai et devient l'exigence** : sur seize catégories déclarées, une
+seule vaut `anonymize` — `demo-notes`, dans `demo-disabled`, un module jamais
+activé. Un test du critère balaierait donc **zéro catégorie réelle** dans la
+configuration livrée. Le critère demande maintenant explicitement que le
+mécanisme soit éprouvé quand même, faute de quoi la story livrerait un
+balayage vide sur une exigence RGPD.
 
 ### Agentic notes
 **Socle non désactivable** : droit à l'effacement. Un droit optionnel n'est pas un droit.
