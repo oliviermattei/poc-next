@@ -684,6 +684,23 @@ qu'on propose, où est le patch, et son état.
 - **Les mutations vertes déclarées** sont un signal de qualité, pas un aveu :
   trois voies ont signalé d'elles-mêmes une mutation restée verte plutôt que de
   la taire. Le skill pourrait le dire explicitement pour l'encourager.
+- **Le répertoire courant d'un shell est un état invisible qui traverse les
+  phases, et il a fait atterrir un document de cadrage sur une branche de story.**
+  05/09 : le contexte principal écrit le design puis le plan de s30 dans le
+  worktree de s30 — légitime, ce sont des documents de story. Le shell y reste.
+  Deux tours plus tard, il écrit la **recherche de s31**, qui appartient à la
+  branche par défaut depuis P17 : `git add && git commit` atterrissent sur
+  `feature/s30-docs-site`, et le `git push origin dev` qui suit pousse un `dev`
+  qui ne la contient pas. Le fichier n'existait donc **que** sur une branche de
+  story. Détecté par l'implémenteur de s30, qui a **refusé de le supprimer par
+  rebase** en constatant que la branche portait l'unique copie — le bon réflexe,
+  et il vaut d'être cité. Deux remèdes, cumulables : préfixer les commandes git
+  de `-C <chemin absolu>` dès qu'on travaille sur plusieurs arbres, et faire de
+  « quelle branche est sortie ici ? » une vérification **avant** chaque écriture
+  de document, pas seulement avant chaque phase de story. C'est le **troisième**
+  manquement du contexte principal à « un agent, un répertoire de travail » sur
+  cette séance ; les deux premiers n'avaient coûté que de la confusion, celui-ci
+  a déplacé un document.
 - **Le rapport de revue peut ne jamais être écrit, et rien ne le signale avant
   le ship.** En s29, le contexte principal a reçu le corps du rapport du premier
   tour et a enchaîné directement sur le correctif : `docs/reviews/s29-blog-mdx.md`
