@@ -624,6 +624,20 @@ n'a pas de dispositif ; elle a une durée de vie. Celle-ci a tenu quatre jours.
 
 # Observations sans proposition ferme
 
+- **La règle sur les mutations vertes porte elle-même un compte écrit à la main,
+  et il vient de vieillir.** `AGENTS.md:240` dit « that has happened **five times**
+  here ». s49 en a ajouté deux d'un coup — le dés-ancrage de la recherche du bloc
+  `.dark` (36/36 verts, six lignes « sombre » devenues des copies des lignes
+  « clair ») et la suppression de l'encodage gamma sRGB (tous les cas de
+  référence verts, parce que les primaires et le noir/blanc sont aux coins du
+  gamut où linéaire et encodé coïncident). Le compte est donc à sept.
+  L'ironie est que le bullet situé **deux lignes plus haut** dans le même
+  fichier interdit exactement cela : « Never claim exhaustiveness. A measured
+  list says *what was swept*, never *what exists*. » Proposition : remplacer le
+  nombre par un renvoi au journal de ce document, qui date chaque occurrence —
+  un renvoi ne vieillit pas, un nombre si. Non appliqué : `AGENTS.md` est un
+  fichier de règles, et le modifier hors d'une story ou d'un Quick Fix demandé
+  sortirait du pipeline.
 - **La leçon a été appliquée dès la story suivante, et elle a coûté cinq minutes.**
   s30 a été découpée **le 05/09, avant d'écrire son plan** : la recherche avait
   rendu 4 avec une ligne de coupe, le décompte des tâches donnait onze à douze, et
