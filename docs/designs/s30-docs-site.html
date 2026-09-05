@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maquette — s30 documentation</title>
+<style>
+/* Jetons recopiés de docs/design-system.md. Aucune couleur inventée. */
+:root{
+  --background:oklch(1 0 0); --foreground:oklch(0.145 0 0);
+  --card:oklch(1 0 0); --card-foreground:oklch(0.145 0 0);
+  --muted:oklch(0.97 0 0); --muted-foreground:oklch(0.556 0 0);
+  --primary:oklch(0.205 0 0); --primary-foreground:oklch(0.985 0 0);
+  --secondary:oklch(0.97 0 0); --secondary-foreground:oklch(0.205 0 0);
+  --border:oklch(0.922 0 0); --ring:oklch(0.708 0 0); --radius:0.5rem;
+}
+.dark{
+  --background:oklch(0.145 0 0); --foreground:oklch(0.985 0 0);
+  --card:oklch(0.205 0 0); --card-foreground:oklch(0.985 0 0);
+  --muted:oklch(0.269 0 0); --muted-foreground:oklch(0.708 0 0);
+  --primary:oklch(0.985 0 0); --primary-foreground:oklch(0.205 0 0);
+  --secondary:oklch(0.269 0 0); --secondary-foreground:oklch(0.985 0 0);
+  --border:oklch(0.269 0 0);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--background);color:var(--foreground);
+  font-family:"Geist Sans",ui-sans-serif,system-ui,sans-serif;font-size:.875rem;line-height:1.6}
+.note{max-width:76rem;margin:0 auto;padding:.75rem 1.5rem;color:var(--muted-foreground);
+  font-size:.75rem;border-bottom:1px solid var(--border)}
+.wrap{max-width:76rem;margin:0 auto;padding:2.5rem 1.5rem}
+/* Rôles typographiques du système */
+.h1{font-size:1.875rem;font-weight:600;margin:0 0 .75rem;letter-spacing:-.01em}
+.h2{font-size:1.5rem;font-weight:600;margin:2.5rem 0 .75rem}
+.h3{font-size:1.25rem;font-weight:600;margin:2rem 0 .5rem}
+.body-lg{font-size:1rem}
+.small{font-size:.75rem;color:var(--muted-foreground)}
+.mono{font-family:"Geist Mono",ui-monospace,monospace;font-size:.875rem}
+/* Grille : trois colonnes au-delà de lg */
+.grid3{display:grid;grid-template-columns:1fr;gap:2rem}
+@media(min-width:1024px){.grid3{grid-template-columns:15rem minmax(0,1fr) 13rem}}
+/* Navigation latérale */
+.nav h4{font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--muted-foreground);margin:1.25rem 0 .5rem}
+.nav a{display:block;padding:.375rem .625rem;border-radius:calc(var(--radius) - 2px);
+  color:var(--muted-foreground);text-decoration:none;font-size:.875rem}
+.nav a[aria-current]{background:var(--secondary);color:var(--secondary-foreground);font-weight:500}
+/* Fil d'Ariane */
+.crumb{display:flex;gap:.5rem;align-items:center;color:var(--muted-foreground);font-size:.75rem;margin-bottom:1rem}
+/* Sommaire */
+.toc{position:sticky;top:2rem;align-self:start}
+.toc h4{font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--muted-foreground);margin:0 0 .5rem}
+.toc a{display:block;padding:.25rem 0 .25rem .75rem;border-left:2px solid var(--border);
+  color:var(--muted-foreground);text-decoration:none;font-size:.75rem}
+.toc a[aria-current]{border-left-color:var(--primary);color:var(--foreground)}
+.toc a.sub{padding-left:1.5rem}
+/* Prose — échelle posée par s29 */
+.prose p{margin:0 0 1rem;font-size:1rem;line-height:1.75}
+.prose ul{padding-left:1.5rem;margin:0 0 1rem}
+.prose li{margin-bottom:.5rem}
+.prose blockquote{border-left:2px solid var(--border);padding-left:1rem;color:var(--muted-foreground);margin:0 0 1rem}
+.prose code{font-family:"Geist Mono",ui-monospace,monospace;font-size:.875rem;
+  background:var(--muted);border-radius:calc(var(--radius) - 4px);padding:.125rem .375rem}
+.prose pre{border:1px solid var(--border);border-radius:var(--radius);padding:1rem;overflow-x:auto;
+  background:var(--muted);margin:0 0 1rem}
+/* Alerte de page non traduite — sans couleur sémantique (contrainte s49) */
+.mention{border:1px solid var(--border);border-radius:var(--radius);padding:.75rem 1rem;
+  background:var(--muted);color:var(--foreground);font-size:.75rem;margin-bottom:1.5rem;
+  display:flex;gap:.5rem;align-items:flex-start}
+.sep{height:1px;background:var(--border);border:0;margin:2.5rem 0}
+.btn{display:inline-flex;align-items:center;height:2.5rem;padding:0 1rem;border-radius:var(--radius);
+  border:1px solid var(--border);background:transparent;color:var(--foreground);font-size:.875rem}
+.empty{border:1px dashed var(--border);border-radius:var(--radius);padding:3rem 1.5rem;text-align:center;
+  display:flex;flex-direction:column;gap:.5rem;align-items:center}
+.gap{border-left:2px solid var(--ring);padding:.75rem 1rem;background:var(--muted);
+  border-radius:calc(var(--radius) - 2px);color:var(--muted-foreground);font-size:.75rem;margin:1rem 0}
+</style>
+</head>
+<body>
+
+<p class="note">Maquette de référence — s30. Communique la mise en page et les états, <strong>pas</strong> le code. La recherche plein texte appartient à <strong>s54</strong> et n'est pas dessinée ici. Thème clair, puis petit écran, puis sombre.</p>
+
+<!-- ── ÉCRAN PRINCIPAL, TROIS COLONNES ────────────────────────── -->
+<div class="wrap">
+  <p class="small">Écran — <strong>/docs/&lt;section&gt;/&lt;page&gt;</strong> · au-delà de <code class="mono">lg</code></p>
+  <div class="grid3">
+
+    <!-- Navigation dérivée de l'arborescence -->
+    <nav class="nav">
+      <h4>Démarrer</h4>
+      <a href="#">Installation</a>
+      <a href="#">Configuration</a>
+      <h4>Modules</h4>
+      <a href="#">Activer un module</a>
+      <a href="#" aria-current="page">Écrire un module</a>
+      <a href="#">Le contrat</a>
+      <h4>Déploiement</h4>
+      <a href="#">Docker</a>
+      <a href="#">Coolify</a>
+    </nav>
+
+    <!-- Corps -->
+    <main>
+      <div class="crumb"><span>Modules</span><span>›</span><span>Écrire un module</span></div>
+      <h1 class="h1">Écrire un module</h1>
+
+      <div class="mention">
+        <span aria-hidden="true">↔</span>
+        <span>Cette page n'existe pas encore en français. Elle est affichée en <strong>anglais</strong>, la langue par défaut du site.</span>
+      </div>
+
+      <div class="prose">
+        <p>Un module déclare un contrat typé et vit dans <code class="mono">packages/modules/&lt;nom&gt;</code>, avec ses quatre couches.</p>
+        <h2 class="h2" id="s1">Les quatre couches</h2>
+        <p>Le domaine ne connaît ni framework, ni ORM, ni SDK. L'application porte les cas d'usage et les ports.</p>
+        <ul>
+          <li><code class="mono">domain/</code> — les règles métier pures</li>
+          <li><code class="mono">application/</code> — les cas d'usage</li>
+          <li><code class="mono">infrastructure/</code> et <code class="mono">presentation/</code> — jamais l'un l'autre</li>
+        </ul>
+        <h3 class="h3" id="s1a">La règle que le lint tient</h3>
+        <blockquote>La frontière est vérifiée par une commande, pas par une relecture.</blockquote>
+        <h2 class="h2" id="s2">Générer plutôt que deviner</h2>
+        <p>Produire un squelette à la main est un signal d'alerte :</p>
+        <pre class="mono">npx ks scaffold mon-module</pre>
+      </div>
+    </main>
+
+    <!-- Sommaire -->
+    <aside class="toc">
+      <h4>Sur cette page</h4>
+      <a href="#s1" aria-current="true">Les quatre couches</a>
+      <a href="#s1a" class="sub">La règle que le lint tient</a>
+      <a href="#s2">Générer plutôt que deviner</a>
+    </aside>
+  </div>
+
+  <div class="gap"><strong>Manque n°2 du design system.</strong> Le sommaire n'a aucun composant déclaré — il est composé d'une liste et d'<code class="mono">aria-current</code>. Signalé, pas inventé.</div>
+</div>
+
+<hr class="sep">
+
+<!-- ── PETIT ÉCRAN ────────────────────────────────────────────── -->
+<div class="wrap" style="padding-top:0;max-width:24rem">
+  <p class="small">Sous <code class="mono">lg</code> — la navigation entre dans un <code class="mono">Sheet</code>, le sommaire passe au-dessus du corps</p>
+  <span class="btn" style="margin-bottom:1rem">☰ Documentation</span>
+  <div class="crumb"><span>Modules</span><span>›</span><span>Écrire un module</span></div>
+  <h1 class="h1">Écrire un module</h1>
+  <details style="border:1px solid var(--border);border-radius:var(--radius);padding:.75rem 1rem;margin-bottom:1.5rem">
+    <summary class="small" style="cursor:pointer">Sur cette page</summary>
+    <a href="#s1" style="display:block;padding-top:.5rem;color:var(--muted-foreground);text-decoration:none;font-size:.75rem">Les quatre couches</a>
+    <a href="#s2" style="display:block;color:var(--muted-foreground);text-decoration:none;font-size:.75rem">Générer plutôt que deviner</a>
+  </details>
+  <div class="prose"><p>Un module déclare un contrat typé et vit dans <code class="mono">packages/modules/&lt;nom&gt;</code>.</p></div>
+</div>
+
+<hr class="sep">
+
+<!-- ── ÉTAT VIDE ──────────────────────────────────────────────── -->
+<div class="wrap" style="padding-top:0">
+  <p class="small">État <strong>vide</strong> — aucune page publiée. La navigation latérale est absente, pas vide.</p>
+  <div class="empty">
+    <p class="h3" style="margin:0">Aucune page de documentation</p>
+    <p class="small" style="margin:0">Déposez un fichier <code class="mono">.mdx</code> dans le dossier des pages.</p>
+  </div>
+  <div class="gap"><strong>Aucun état de chargement, et c'est une décision.</strong> Mesuré en s29 : un <code class="mono">loading.tsx</code> vide la coquille avant que la page ne décide, si bien qu'un <code class="mono">notFound()</code> arrive en <strong>HTTP 200</strong>. Le 404 est une règle du socle de sécurité.</div>
+</div>
+
+<!-- ── THÈME SOMBRE ───────────────────────────────────────────── -->
+<div class="dark" style="background:var(--background);color:var(--foreground)">
+  <div class="wrap">
+    <p class="small">Le même écran en thème sombre — mêmes jetons, valeurs de <code class="mono">.dark</code></p>
+    <div class="grid3">
+      <nav class="nav">
+        <h4>Modules</h4>
+        <a href="#">Activer un module</a>
+        <a href="#" aria-current="page">Écrire un module</a>
+        <a href="#">Le contrat</a>
+      </nav>
+      <main>
+        <div class="crumb"><span>Modules</span><span>›</span><span>Écrire un module</span></div>
+        <h1 class="h1">Écrire un module</h1>
+        <div class="prose">
+          <p>Un module déclare un contrat typé et vit dans <code class="mono">packages/modules/&lt;nom&gt;</code>, avec ses quatre couches.</p>
+          <pre class="mono">npx ks scaffold mon-module</pre>
+        </div>
+      </main>
+      <aside class="toc">
+        <h4>Sur cette page</h4>
+        <a href="#s1" aria-current="true">Les quatre couches</a>
+      </aside>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

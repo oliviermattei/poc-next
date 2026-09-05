@@ -1,0 +1,27 @@
+---
+title: Le contrat de module
+description: Les quinze clés qu'un module déclare, et pourquoi aucune n'est facultative.
+order: 1
+---
+
+## Quinze clés, obligatoires dès le premier module
+
+Un module déclare `id`, `requires`, `schema`, `migrations`, `routes`,
+`navigation`, `publicUrls`, `messages`, `emails`, `webhooks`, `jobs`,
+`dataCategories`, `retention`, `purge` et `export`. Quitte à les laisser vides :
+en ajouter une plus tard obligerait à rouvrir tous les modules déjà écrits.
+
+## Quatre couches
+
+`domain` porte les règles pures, `application` les cas d'usage,
+`infrastructure` l'accès aux ressources extérieures et `presentation` ce qui se
+rend. Les deux dernières ne s'importent jamais l'une l'autre, et c'est le lint
+qui le refuse — pas la revue.
+
+> Une règle qu'aucune commande ne vérifie est de la documentation, pas une
+> règle.
+
+## Générer, ne pas deviner
+
+`pnpm ks scaffold <module>` produit un squelette conforme. Écrire le squelette à
+la main est un signal.

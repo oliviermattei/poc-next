@@ -1,0 +1,25 @@
+---
+title: The module contract
+description: The fifteen keys a module declares, and why none of them is optional.
+order: 1
+---
+
+## Fifteen keys, mandatory from the first module
+
+A module declares `id`, `requires`, `schema`, `migrations`, `routes`,
+`navigation`, `publicUrls`, `messages`, `emails`, `webhooks`, `jobs`,
+`dataCategories`, `retention`, `purge` and `export` — empty if need be: adding
+one later means reopening every module already written.
+
+## Four layers
+
+`domain` carries the pure rules, `application` the use cases, `infrastructure`
+the access to outside resources and `presentation` what gets rendered. The last
+two never import each other, and lint refuses it — not review.
+
+> A rule no command checks is documentation, not a rule.
+
+## Generate, do not guess
+
+`pnpm ks scaffold <module>` produces a compliant skeleton. Writing one by hand
+is a smell.

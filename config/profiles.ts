@@ -28,11 +28,16 @@ import type { AvailableModuleId } from './features'
  * vierge, et vérifie qu'il n'en reste ni route, ni entrée de navigation, ni
  * table.
  *
- * `blog` les a rejoints en s29, et pour la raison exacte qui fait exister ce
- * fichier : son critère « module non activé, aucune route de blog et le lien
- * disparaît de la navigation publique » n'était vérifié par **aucune
- * exécution** tant qu'aucun profil ne le coupait. Le coût est d'une ligne, ce
- * qui est précisément la promesse.
+ * `blog` les a rejoints en s29, et `docs` en s30, pour la raison exacte qui
+ * fait exister ce fichier : leur critère « module non activé, aucune route et
+ * le lien disparaît de la navigation publique » n'était vérifié par **aucune
+ * exécution** tant qu'aucun profil ne les coupait. Le coût est d'une ligne
+ * chacun, ce qui est précisément la promesse.
+ *
+ * Ni l'un ni l'autre ne déclare de table ni de route : ce que la recette
+ * vérifie d'eux est l'entrée de navigation — rendue nulle part, et **répondant
+ * 404 sur une vraie requête HTTP**, la garde ajoutée par la troisième revue de
+ * s29. C'est la seule qui morde sur un module qui n'apporte que des écrans.
  *
  * `pnpm test:minimal-profile` joue ce profil dans une **copie** du dépôt : il
  * n'est pas la configuration livrée, et éditer cette liste ne change rien à
@@ -47,5 +52,5 @@ export interface ModuleProfileDeclaration {
 
 export const minimalProfile = {
   id: 'minimal',
-  cut: ['organizations', 'billing', 'i18n', 'blog'],
+  cut: ['organizations', 'billing', 'i18n', 'blog', 'docs'],
 } as const satisfies ModuleProfileDeclaration

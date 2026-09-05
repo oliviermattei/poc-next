@@ -1,0 +1,15 @@
+{
+  "navigation.docs": "Documentation",
+  "sidebar.label": "Documentation sections",
+  "sidebar.open": "Documentation contents",
+  "sidebar.close": "Close contents",
+  "breadcrumb.label": "Breadcrumb",
+  "breadcrumb.home": "Documentation",
+  "toc.label": "On this page",
+  "toc.title": "On this page",
+  "untranslated.title": "Untranslated page",
+  "untranslated.description": "This page does not exist yet in the language you are viewing. It is served in the site’s default language.",
+  "empty.title": "No documentation page",
+  "empty.description": "Nothing is published here yet. Drop an MDX file into a section folder to get started.",
+  "empty.action": "Back to home"
+}

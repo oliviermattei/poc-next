@@ -159,6 +159,15 @@ rien serait une seconde typographie, pas une extension.
 | Séparation de section | le composant `Separator` | composant existant |
 | **Mesure de ligne** | corps borné à `max-w-2xl` (42 rem) | échelle de largeurs Tailwind par défaut, comme l'échelle d'espacement l'est déjà. C'est le manque n°4 du design de s29, tranché ici : une ligne de texte long non bornée devient illisible au-delà de ~90 caractères |
 
+**Où elle vit en code** : `packages/ui` (`src/composed/prose.tsx`), exportée par
+le baril `@repo/ui` sous `PROSE_CLASSNAME` et `proseComponents`. s29 l'avait
+transcrite dans `@repo/module-blog/presentation`, du temps où le blog en était
+le seul consommateur ; **ADR 055** l'a remontée quand s30 est devenue la
+seconde — l'y laisser aurait exigé `requires: ['blog']` sur la documentation
+(ADR 018), c'est-à-dire un produit où `pnpm ks toggle blog` refuse tant que la
+documentation est activée. `tests/design-system.test.ts` confronte la mesure de
+ligne ci-dessus à celle du code.
+
 Ce que cette échelle **ne** couvre pas, et qui reste un manque à signaler : les
 tableaux à l'intérieur d'un corps d'article (le système a `Table`, mais rien ne
 dit comment il se compose dans de la prose), et les notes de bas de page. Les

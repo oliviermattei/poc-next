@@ -46,6 +46,7 @@
     "@repo/module-billing": "workspace:*",
     "@repo/module-blog": "workspace:*",
     "@repo/module-consent": "workspace:*",
+    "@repo/module-docs": "workspace:*",
     "@repo/module-demo-disabled": "workspace:*",
     "@repo/module-demo-enabled": "workspace:*",
     "@repo/module-i18n": "workspace:*",

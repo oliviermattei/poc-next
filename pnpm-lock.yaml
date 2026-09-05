@@ -71,6 +71,9 @@ importers:
       '@repo/module-demo-enabled':
         specifier: workspace:*
         version: link:packages/modules/demo-enabled
+      '@repo/module-docs':
+        specifier: workspace:*
+        version: link:packages/modules/docs
       '@repo/module-i18n':
         specifier: workspace:*
         version: link:packages/modules/i18n
@@ -212,6 +215,9 @@ importers:
       '@repo/module-demo-enabled':
         specifier: workspace:*
         version: link:../../packages/modules/demo-enabled
+      '@repo/module-docs':
+        specifier: workspace:*
+        version: link:../../packages/modules/docs
       '@repo/module-i18n':
         specifier: workspace:*
         version: link:../../packages/modules/i18n
@@ -686,6 +692,40 @@ importers:
       '@types/node':
         specifier: ^22
         version: 22.20.1
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+
+  packages/modules/docs:
+    dependencies:
+      '@repo/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@repo/ui':
+        specifier: workspace:*
+        version: link:../../ui
+      lucide-react:
+        specifier: 1.37.0
+        version: 1.37.0(react@19.2.8)
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.0
+      zod:
+        specifier: ^4.5.0
+        version: 4.5.4
+    devDependencies:
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../../../tooling/typescript
+      '@types/node':
+        specifier: ^22
+        version: 22.20.1
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.2.18
+      react:
+        specifier: ^19.2.0
+        version: 19.2.8
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
