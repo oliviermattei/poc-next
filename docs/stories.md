@@ -1448,31 +1448,33 @@ Même famille que le scan de secrets de s28 : **une étape de CI dont le succès
 
 ---
 
-## Story s52-derniers-intermittents — Fermer les trois intermittents restants
+## Story s52-derniers-intermittents — Fermer les intermittents restants
 **As a** Agent ou humain qui lit la CI **I want** qu'aucun test ne rougisse au hasard **so that** un rouge signifie toujours une régression.
 
 ### Complexity
 2
 
 ### Acceptance criteria
-- [ ] `tests/audit-exceptions.test.ts` (« coupe un `pnpm audit` qui ne répond pas ») ne dépend plus d'une course entre le délai du faux processus et celui de la suite
-- [ ] `e2e/rate-limiting.spec.ts` — **trois cas, pas un** : `:38`, `:163` et `:205` — et **la paire** `e2e/oauth.spec.ts:30`/`:97` ne dépendent plus du nombre de travailleurs Playwright
-- [ ] `e2e/blog.spec.ts:134` (`ECONNRESET` sur un slug inconnu) et `e2e/two-factor.spec.ts:162` (la région `status` des codes de secours qui n'apparaît pas en 5 s) ne rougissent plus sous charge
-- [ ] Les trois passent **dix fois de suite sous le régime qui les faisait rougir** — quatre travailleurs en local —, et le compte est journalisé
-- [ ] Aucune reprise, aucun délai élargi, aucun saut : la mutation qui neutralise la propriété visée rougit toujours
-- [ ] La cause de chacun est écrite à l'endroit du test, avec la mesure qui l'établit
+- [ ] **La liste des cas vit à un seul endroit et son compte se dérive** : `tests/fixtures/intermittents.ts`, dont `tests/intermittents.test.ts` refuse le vide. Trois documents avaient écrit ce compte et les trois avaient vieilli (voir les notes) ; aucune commande ne peut interdire à un quatrième de le réécrire — seule la dérivation le rend inutile, et cette story retire les trois derniers de sa propre section
+- [ ] `tests/intermittents.test.ts` refuse une liste vide, une entrée qui désigne un fichier ou un témoin disparu, une entrée sans cause écrite, et **un cas déclaré corrigé sans cause établie**
+- [ ] La cause de **chaque** cas de la liste est écrite à l'endroit du test, avec la mesure qui l'établit — ou la mention explicite « non établie », qui laisse le cas ouvert et nommé plutôt que de poser un correctif sur une hypothèse
+- [ ] Chaque cas **corrigé** passe dix fois de suite sous le régime qui le faisait rougir, et le compte est journalisé
+- [ ] Aucune reprise, aucun délai élargi à l'aveugle, aucun saut : `tests/intermittents.test.ts` refuse `test.slow`, `test.fixme`, `test.setTimeout` et un `test.skip` inconditionnel dans les parcours de la liste, ainsi qu'une reprise dans `playwright.config.ts`
+- [ ] Aucune assertion perdue : la mutation qui neutralise la propriété visée rougit toujours
 
 ### Dependencies
 s48-ci-verte, s28-rate-limiting, s12-oauth-signin
 
 ### Agentic notes
-Les trois ont été rencontrés pendant s50 et **délibérément non corrigés** : l'interdit de cette story disait de nommer sans élargir.
+Les cas d’origine ont été rencontrés pendant s50 et **délibérément non corrigés** : l'interdit de cette story disait de nommer sans élargir.
 `tests/audit-exceptions.test.ts` rend `expected 2 to be 3` — deux tentatives au lieu de `AUDIT_ATTEMPTS` avant que le `timeout: 20_000` du `spawnSync` extérieur ne coupe. 1 rouge sur 4 exécutions complètes sous charge, **6/6 vert en isolation**. C'est du code de s48.
 `e2e/rate-limiting.spec.ts:38` : 1 rouge sur 11 suites, 24 vertes en isolation. `e2e/oauth.spec.ts` : 1 rouge sur 11, 5 vertes en isolation.
 **Corrigé le 05/09, revue de s30** : la liste ne nommait que `e2e/rate-limiting.spec.ts:38` pour ce fichier ; `:163` et `:205` rougissent aussi sous quatre travailleurs et passent seuls comme sous `test:socle`. **Deuxième fois que cette liste nomme un cas sur plusieurs** — après la paire OAuth. Une liste d'intermittents lue comme exhaustive fait attribuer les suivants à la prochaine story qui les rencontre : écrire ce qui a été balayé et sur combien d'exécutions, jamais « les N connus ».
 **Deux cas de plus, rencontrés les 04 et 05/09** : `e2e/blog.spec.ts:134` rend `ECONNRESET` sur `GET /fr/blog/aucun-article-de-ce-nom` — vu une fois en revue de s53, vert au rejeu isolé et au second passage complet. Et `e2e/two-factor.spec.ts:162` échoue sur `expect(getByRole('status')).toContainText('Notez ces dix codes')`, élément introuvable après 5 s — vu une fois sur la demande de fusion 11, **jamais sur `dev`**, avec le jumeau du même commit vert en 18,6 s. **Mode d'échec distinct de celui que s50 a réparé** : ce n'est pas le budget de 30 s qui saute, c'est une région qui n'apparaît pas. Ne pas confondre les deux.
-**Corrigé le 05/09, revue de s29** : la liste ne nommait que `:97`, or **la paire est `:30`/`:97`** — les deux cas pilotent le fournisseur OAuth local, qui rend toujours la même identité, et celui qui perd la course d'insertion échoue sur `duplicate key value violates unique constraint "auth_user_email_key"`. Une liste qui nomme un cas sur deux se lit comme vérifiée, et le second n'aurait été corrigé par personne. La cause est donc **connue** pour cette paire : ce n'est pas une course de charge, c'est une identité partagée. Les deux ne sont apparus que sous le régime local à quatre travailleurs ; la CI en utilise **un** — l'explication est plausible et **non établie**.
-Piège, le même que s50 : rendre le rouge plus rare n'est pas le rendre juste. Et si l'un des trois se révèle être une course réelle du produit et non du test, c'est un défaut à traiter comme tel, pas à stabiliser.
+**Corrigé le 05/09, revue de s29** : la liste ne nommait que `:97`, or **la paire est `:30`/`:97`** — les deux cas pilotent le fournisseur OAuth local, qui rend toujours la même identité, et celui qui perd la course d'insertion échoue sur `duplicate key value violates unique constraint "auth_user_email_key"`. Une liste qui nomme un cas sur deux se lit comme vérifiée, et le second n'aurait été corrigé par personne. La cause est donc **connue** pour cette paire : ce n'est pas une course de charge, c'est une identité partagée.
+**Mesuré à l'exécution de s52 — « quatre travailleurs contre un » est établi pour un cas, et réfuté comme explication d'ensemble.** L'hypothèse était répétée sans mesure. Établie sur `e2e/rate-limiting.spec.ts` : les deux cas de vérification 2FA tiraient leur défi de `Date.now()` seul, et l'écart entre les deux, à quatre travailleurs, vaut 3, 2, 44, 1, 42, 12, 13, 12, 53, 26, 31, 2, 52, **0**, 22 ms sur quinze passages — le passage à 0 ms est celui qui a rougi, les deux cas ensemble ; à un travailleur, les mêmes écarts valent 456, 364, 348, 292 et 107 ms, hors d'atteinte. Réfutée comme explication d'ensemble : les cas de `tests/deployment.test.ts` et `tests/env-wiring.test.ts` n'impliquent aucun travailleur Playwright et se reproduisent **à la demande** en saturant le processeur, contre le délai par défaut de Vitest. Le compte de travailleurs explique un cas, pas la famille — et `docs/killer-saas-feedback.md` (P12) l'avait déjà écarté pour le sien.
+**Le compte des cas ne s'écrit plus.** Trois documents l'avaient écrit et les trois ont vieilli : ce critère disait « les trois », la recherche « sept cas sur quatre fichiers » (il y en avait huit, sur cinq fichiers), le plan « onze ». La liste est désormais `tests/fixtures/intermittents.ts`, et un test en refuse le vide.
+Piège, le même que s50 : rendre le rouge plus rare n'est pas le rendre juste. Et si l’un d’eux se révèle être une course réelle du produit et non du test, c'est un défaut à traiter comme tel, pas à stabiliser.
 
 ---
 

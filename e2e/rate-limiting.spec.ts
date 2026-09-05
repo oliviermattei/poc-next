@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import { MODULE_ROUTE_PREFIX } from '@repo/core'
 import { TWO_FACTOR_CHALLENGE_COOKIE_NAME } from '@repo/module-auth'
 import { marketingRoutePath } from '@repo/module-marketing'
@@ -25,6 +27,30 @@ import { clickOnce } from './support/interaction'
  */
 
 const SIGN_IN = `${MODULE_ROUTE_PREFIX}/auth/sign-in/email`
+
+/**
+ * **Un défi par cas, et non par milliseconde** (s52, même cause que la paire
+ * OAuth : une identité partagée entre deux cas).
+ *
+ * Trois cas de ce fichier fabriquent un défi de second facteur, et le seau de
+ * limitation est **clé sur sa valeur** : deux cas qui fabriquent le même défi
+ * partagent un seau de quatre, et chacun compte alors les 429 de l'autre.
+ * `defi-fabrique-${Date.now()}` distinguait donc les cas par leur milliseconde
+ * de démarrage — ce que quatre travailleurs ne garantissent pas.
+ *
+ * **Mesuré le 05/09 sur cette branche**, écart entre les deux premiers défis
+ * sur quinze passages à quatre travailleurs : 3, 2, 44, 1, 42, 12, 13, 12, 53,
+ * 26, 31, 2, 52, **0**, 22 ms. Le passage à 0 ms est exactement celui qui a
+ * rougi, et il a fait tomber les **deux** cas ensemble : `[429, 429]` pour l'un,
+ * `[429, 429, 429, 429]` pour l'autre, là où un seul 429 est attendu. À un
+ * travailleur, les mêmes écarts valent 456, 364, 348, 292 et 107 ms — la
+ * collision y est hors d'atteinte, et c'est ce qui explique que ces cas passent
+ * seuls et sous la recette socle.
+ *
+ * `randomUUID` supprime la ressource partagée, comme `anEmail` le fait déjà
+ * pour les comptes visés de ce même fichier.
+ */
+const aChallenge = (): string => `defi-fabrique-${randomUUID()}`
 
 const signInPolicy = rateLimitPolicies.signIn
 
@@ -66,8 +92,17 @@ test('la connexion est bloquée après N tentatives sur le même compte, depuis 
 
   // Exactement une de trop : les précédentes passent (et échouent à
   // s'authentifier, ce qui n'est pas le sujet), la dernière est refusée.
-  expect(statuses.filter((status) => status === 429)).toHaveLength(1)
-  expect(statuses.at(-1)).toBe(429)
+  //
+  // **L'échec montre les statuts qu'il a lus** (s52). Ce cas figure dans la
+  // liste des intermittents et sa cause n'est pas établie : le seul rouge
+  // observé sur cette branche rendait `[]` — aucun 429 du tout, pas un de trop
+  // —, dans un passage où deux autres cas échouaient sur « element(s) not
+  // found », donc contre un serveur qui ne servait pas encore. Le tableau
+  // filtré cache ce qu'il a vu ; le message le rend, pour que la prochaine
+  // rencontre ait la mesure au lieu d'une enquête.
+  expect(statuses.filter((status) => status === 429), `statuts lus : ${statuses.join(', ')}`)
+    .toHaveLength(1)
+  expect(statuses.at(-1), `statuts lus : ${statuses.join(', ')}`).toBe(429)
 
   // `Retry-After` doit suivre la **fenêtre réelle**, pas être une constante :
   // une valeur figée ferait réessayer un client honnête trop tôt.
@@ -164,7 +199,7 @@ test('la vérification 2FA reste bornée malgré un leurre de cookie posé en t�
   request,
 }) => {
   const policy = rateLimitPolicies.twoFactor
-  const challenge = `defi-fabrique-${Date.now()}`
+  const challenge = aChallenge()
   const statuses: number[] = []
 
   for (let attempt = 0; attempt <= (policy.maxPerSubject ?? 0); attempt += 1) {
@@ -206,7 +241,7 @@ test('la vérification 2FA compte le même défi ré-encodé dans le même seau'
   request,
 }) => {
   const policy = rateLimitPolicies.twoFactor
-  const challenge = `defi-fabrique-${Date.now()}`
+  const challenge = aChallenge()
   /** Le même défi, avec un caractère de plus écrit en `%XX` à chaque essai. */
   const encodedAt = (index: number): string =>
     [...challenge]
@@ -267,7 +302,7 @@ test('l’écran de second facteur annonce l’attente, il n’accuse pas le cod
   // Le défi est fabriqué : la bibliothèque le refuse en 401 sans jamais le
   // compter, et c'est sans importance ici — ce qui est mesuré est ce que
   // l'**écran** affiche du refus de débit, pas qui valide le code.
-  const challenge = `defi-fabrique-${Date.now()}`
+  const challenge = aChallenge()
   // Sans HTTPS ni production, `secureCookiePrefix` est vide : c'est ce nom-là
   // que le serveur lit, et le seul que le navigateur accepte de poser sur
   // `http://localhost`.

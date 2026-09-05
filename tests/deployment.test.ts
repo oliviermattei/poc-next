@@ -5,6 +5,23 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { BUILD_ENV_KEYS, ENV_KEYS } from '@repo/config'
 
+import { COLD_GRAPH_TIMEOUT_MS } from './fixtures/intermittents'
+
+/**
+ * **Le délai de ce fichier, explicite et mesuré** (s52, cause A).
+ *
+ * Ce fichier charge `apps/web/instrumentation`, donc `startup.ts` et tous les
+ * points de composition, chaque fois précédé d'un `vi.resetModules()` qui force
+ * la re-transformation complète. Le défaut de Vitest est 5 000 ms — exactement
+ * la valeur des expirations observées : mesuré à saturation du processeur, le
+ * premier import du graphe coûte 6 875 à 7 576 ms contre 1 507 ms à vide. Le
+ * détail de la mesure et la raison du chiffre sont sur la constante.
+ *
+ * Posé sur le **fichier** et non sur un cas nommé : le coût tombe sur le
+ * premier cas qui touche le graphe, et l'ordre des blocs n'est pas figé.
+ */
+vi.setConfig({ testTimeout: COLD_GRAPH_TIMEOUT_MS })
+
 const readRepoFile = (name: string): string =>
   readFileSync(fileURLToPath(new URL(`../${name}`, import.meta.url)), 'utf8')
 

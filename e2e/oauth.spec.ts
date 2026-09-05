@@ -1,3 +1,4 @@
+import { LOCAL_OAUTH_SLOT_PARAM } from '@repo/module-auth'
 import { expect, test } from '@playwright/test'
 
 import { anonymousLanding, publicPath, urlOf } from './support/locale'
@@ -26,6 +27,28 @@ import { anonymousLanding, publicPath, urlOf } from './support/locale'
  */
 
 const LOCAL_PROVIDER_BUTTON = /Continuer avec/
+
+/**
+ * **Une identité par cas** (s52, cause B).
+ *
+ * Les deux cas qui ouvrent réellement une session par ce fournisseur — le
+ * bouton sans JavaScript et le retour inter-sites — créaient tous deux
+ * `local@example.test`. Joués en parallèle sur une base où la ligne n'existe
+ * pas encore, le perdant de la course d'insertion échouait sur
+ * `duplicate key value violates unique constraint "auth_user_email_key"`, et
+ * atterrissait sur `/sign-in?oauth=failed`. Reproduit au 3ᵉ passage sur 3,
+ * l'identité effacée entre chaque.
+ *
+ * Sérialiser les deux cas aurait caché la course ; le créneau la supprime — il
+ * n'y a plus de ligne partagée. Le fournisseur compose l'adresse lui-même dans
+ * `example.test` : ce paramètre choisit une étiquette, jamais une adresse.
+ *
+ * **Le cas du bouton garde l'identité par défaut**, et c'est la seule forme
+ * possible : son navigateur n'a pas JavaScript, il suit la chaîne de
+ * redirections telle que le serveur l'écrit, et il n'a donc aucun moyen
+ * d'ajouter un paramètre. Il est le seul des cinq à créer cette identité-là.
+ */
+const SLOT_RETOUR = 'retour'
 
 test('le bouton de fournisseur ouvre une session, sans JavaScript', async ({ browser }) => {
   // JavaScript coupé : le bouton est un `<form method="post">` et la route
@@ -108,8 +131,11 @@ test('le retour venu d’un autre site atterrit connecté', async ({ page, conte
 
   expect(start.status()).toBe(302)
 
-  const authorize = start.headers().location ?? ''
-  const authorized = await context.request.get(authorize, { maxRedirects: 0 })
+  const authorize = new URL(start.headers().location ?? '', baseURL)
+
+  authorize.searchParams.set(LOCAL_OAUTH_SLOT_PARAM, SLOT_RETOUR)
+
+  const authorized = await context.request.get(authorize.toString(), { maxRedirects: 0 })
   const callback = new URL(authorized.headers().location ?? '', baseURL)
 
   await page.route('http://fournisseur.test/**', async (route) => {

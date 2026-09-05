@@ -131,6 +131,22 @@ test('un article rend son corps sous la politique servie, console vide', async (
   await expect(page).toHaveURL(urlOf('/blog'))
 })
 
+/**
+ * **Cas intermittent de s52, cause non établie** — `read ECONNRESET` sur ce
+ * `GET`, vu une fois en revue de s53, vert au rejeu isolé et au second passage
+ * complet.
+ *
+ * Ce qu'on en sait : `e2e/health.spec.ts` porte le **même** symptôme sous
+ * `pnpm test:socle`, et les deux sont des `request.get` tirés du pool de
+ * connexions persistantes de Playwright — d'où l'hypothèse d'une connexion
+ * réutilisée à l'instant où le serveur la ferme. Ce qu'on n'en sait pas : rien
+ * ne l'établit. Aucun des deux n'a été reproduit sur cette branche (une suite
+ * complète à vide, une sous huit boucles de calcul, zéro rouge).
+ *
+ * Le cas reste donc **ouvert et nommé**, sans reprise ni délai posé au hasard :
+ * une reprise sur `ECONNRESET` rendrait ce rouge invisible sans rien apprendre,
+ * et c'est précisément ce que `retries: 0` refuse.
+ */
 test('un article qui n’existe pas répond 404, sans rien annoncer', async ({ request }) => {
   const response = await request.get(publicPath('/blog/aucun-article-de-ce-nom'))
 

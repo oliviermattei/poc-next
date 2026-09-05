@@ -16,10 +16,9 @@ import type { AuthService } from '../application/auth-service'
 import type { AuthDependencies, SecurityLog } from '../application/ports'
 import { defaultAuthPolicy, type AuthPolicy } from '../domain/auth-policy'
 import {
-  LOCAL_OAUTH_ACCOUNT_ID,
   LOCAL_OAUTH_AUTHORIZE_PATH,
-  LOCAL_OAUTH_EMAIL,
   LOCAL_OAUTH_PROVIDER_ID,
+  localOAuthIdentityOfCode,
   OAUTH_ERROR_PATH,
   OAUTH_PROVIDER_TIMEOUT_REFUSAL,
   oauthProvisioningRefusal,
@@ -363,16 +362,31 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
               providerId: LOCAL_OAUTH_PROVIDER_ID,
               clientId: LOCAL_OAUTH_PROVIDER_ID,
               authorizationUrl: `${options.appUrl}${MODULE_ROUTE_PREFIX}${LOCAL_OAUTH_AUTHORIZE_PATH}`,
-              getToken: async () => await Promise.resolve({ accessToken: LOCAL_OAUTH_ACCOUNT_ID }),
-              getUserInfo: async () =>
-                await Promise.resolve({
-                  id: LOCAL_OAUTH_ACCOUNT_ID,
-                  email: LOCAL_OAUTH_EMAIL,
-                  name: LOCAL_OAUTH_EMAIL,
-                  // Le fournisseur de développement atteste son adresse : elle
-                  // est réservée aux tests et n'appartient à personne.
-                  emailVerified: true,
-                }),
+              // **Le code transporte le créneau d'identité** (s52) : c'est le
+              // seul canal entre la route d'autorisation, qui l'a validé, et le
+              // profil que la bibliothèque lira. Un jeton fixe rendrait tous les
+              // créneaux à la même identité, ce qui est exactement la course
+              // que les créneaux suppriment.
+              getToken: async ({ code }) => await Promise.resolve({ accessToken: code }),
+              getUserInfo: async (tokens) => {
+                const identity = localOAuthIdentityOfCode(tokens.accessToken ?? '')
+
+                // Un code que ce fournisseur n'a pas émis n'a pas de profil :
+                // `null` fait échouer le retour, il ne se replie pas sur
+                // l'identité par défaut.
+                return await Promise.resolve(
+                  identity === null
+                    ? null
+                    : {
+                        id: identity.accountId,
+                        email: identity.email,
+                        name: identity.email,
+                        // Le fournisseur de développement atteste son adresse :
+                        // elle est réservée aux tests et n'appartient à personne.
+                        emailVerified: true,
+                      },
+                )
+              },
             },
           ],
         }),

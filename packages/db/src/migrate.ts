@@ -200,6 +200,24 @@ export interface ModuleMigrationOutcome {
  * appliquer, et il n'y a donc rien à ignorer. C'est ce qui fait qu'une base
  * vierge ne porte aucune trace d'un module non activé — pas un `if`, une
  * absence.
+ *
+ * ## Course connue, établie et **non corrigée** (s52)
+ *
+ * `CREATE TABLE "organization"` en échec, vu une fois sur la demande de fusion
+ * 12. Cause établie par lecture : `tests/auth.test.ts`, `tests/billing.test.ts`,
+ * `tests/organizations.test.ts` et `tests/marketing.test.ts` appellent chacun
+ * cette fonction dans leur `beforeAll`, contre la **même** base, dans des
+ * travailleurs Vitest parallèles. L'idempotence de Drizzle repose sur le
+ * journal en base — elle n'est pas concurrente : deux passages simultanés le
+ * lisent vide, puis exécutent la même migration.
+ *
+ * Ce n'est pas propre à la suite : deux instances qui démarrent ensemble
+ * feraient la même chose. Le correctif — un verrou consultatif PostgreSQL
+ * autour de `migrate`, ou une passe unique avant les travailleurs — change le
+ * contrat de migration de ce package et demande une connexion dédiée (un
+ * verrou de session pris sur une connexion du pool serait relâché sur une
+ * autre). C'est une décision de structure : elle se prend au plan, pas dans la
+ * story qui a classé le cas.
  */
 export async function runModuleMigrations(options: {
   readonly db: RunMigrationsOptions['db']

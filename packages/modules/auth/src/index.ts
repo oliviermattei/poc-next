@@ -33,6 +33,7 @@ export { AuthNotConfiguredError, type AuthService } from './application/auth-ser
 export { defaultAuthPolicy, type AuthPolicy } from './domain/auth-policy'
 export {
   LOCAL_OAUTH_PROVIDER_ID,
+  LOCAL_OAUTH_SLOT_PARAM,
   OAUTH_PROVIDERS,
   OAUTH_RETURN_SCREEN,
   oauthFailureClass,
