@@ -578,6 +578,21 @@ qu'on propose, où est le patch, et son état.
   rapport de revue est traité comme une vérité. Piste : rendre explicite qu'un
   implémenteur peut **réfuter un constat par la mesure**, comme il peut réfuter
   une consigne — trois réfutations de consigne se sont révélées justes.
+- **Une dérivation qui paraît gratuite doit être mesurée sur l'ensemble dont elle
+  dérive, pas sur le cas qui l'a inspirée.** La recherche de s53 a vu que le
+  module `blog` déclarait une entrée de navigation **publique** et en a conclu
+  que `robots.txt` pouvait dériver sa liste d'autorisation des entrées publiques
+  du registre — « sans aucune clé nouvelle ». L'implémenteur a regardé ce que ce
+  registre contient réellement : **cinq** entrées publiques, dont l'écran de
+  connexion, la page de tarifs et **une route d'API**. Dériver de là aurait
+  publié `/sign-in` dans `robots.txt` et le plan de site, ce que
+  `tests/marketing.test.ts` et `docs/security.md` §7 interdisent. La recherche
+  avait généralisé depuis **un** cas sans énumérer l'ensemble — exactement le
+  mode d'échec que le dépôt nomme, commis par le document dont le métier est de
+  vérifier les prémisses. Piste : quand une recherche propose une dérivation,
+  elle doit **exécuter** la dérivation sur l'état réel et lister ce qu'elle
+  produit, pas décrire ce qu'elle produirait. Le coût est d'un script jetable ;
+  ici, il aurait tenu en cinq lignes.
 - **Corriger une affirmation fausse à deux endroits en laisse une au troisième,
   et le troisième est celui du code.** En s29, une garantie mesurée fausse était
   écrite dans un ADR, dans un `AGENTS.md`, **et en commentaire au-dessus de la
