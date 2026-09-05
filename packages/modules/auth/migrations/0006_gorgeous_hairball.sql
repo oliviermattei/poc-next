@@ -1,0 +1,2 @@
+CREATE INDEX "auth_data_export_request_expiry_idx" ON "auth_data_export_request" USING btree ("expires_at");--> statement-breakpoint
+CREATE INDEX "auth_data_export_request_pending_idx" ON "auth_data_export_request" USING btree ("status","requested_at");

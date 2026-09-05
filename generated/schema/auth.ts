@@ -5,4 +5,4 @@
 // la seule forme que `drizzle-kit generate` sait lire (exports de premier
 // niveau uniquement).
 
-export { authAccount, authPasskey, authSession, authTwoFactor, authUser, authVerification } from '@repo/module-auth'
+export { authAccount, authDataExportRequest, authPasskey, authSession, authTwoFactor, authUser, authVerification } from '@repo/module-auth'

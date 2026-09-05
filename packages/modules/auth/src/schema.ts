@@ -2,6 +2,7 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -286,6 +287,82 @@ export const authPasskey = pgTable(
   ],
 )
 
+/**
+ * **Les demandes d'export de données** (s35).
+ *
+ * Une ligne par demande, et c'est elle qui porte les trois garanties du
+ * critère 7 et du critère 4 :
+ *
+ * 1. **une demande en cours empêche la suivante** — la revendication lit
+ *    `status = 'pending'` pour le périmètre, sous verrou consultatif, dans la
+ *    même transaction que l'insertion. Deux clics simultanés ne peuvent pas
+ *    produire deux demandes (`docs/reliability.md` §1) ;
+ * 2. **l'archive vit ici, dans la base de l'application**, et nulle part
+ *    ailleurs. C'est une décision (s35, tâche 6) : une donnée personnelle en
+ *    transit posée dans un seau d'objets survivrait à l'effacement du compte —
+ *    le seau n'a pas de clé étrangère —, et il a fallu trois trous de cette
+ *    forme exacte pour l'apprendre. Ici, la cascade de `requested_by` **et** la
+ *    purge par périmètre l'emportent, et la promesse est tenue par la base plutôt
+ *    que par une consigne. Elle est en JSON parce que l'archive l'est : le seul
+ *    module qui possède des octets, `storage`, n'en rend qu'un manifeste ;
+ * 3. **l'échéance est écrite côté serveur** (`expires_at`), jamais lue du lien.
+ *    Le lien ne porte que l'identifiant de la demande et sa signature.
+ *
+ * `token_digest` est l'**empreinte** du jeton, jamais le jeton : un vol de ces
+ * lignes ne rend aucun lien utilisable (`docs/security.md` §2), même règle que
+ * `auth_verification`.
+ *
+ * La clé étrangère reste **interne au module** (ADR 018). `scope_id` n'en porte
+ * aucune : un périmètre d'organisation appartient à un module que `auth` ne
+ * requiert pas, et une référence sortante rendrait ce module silencieusement non
+ * désactivable.
+ */
+export const authDataExportRequest = pgTable(
+  'auth_data_export_request',
+  {
+    id: text('id').primaryKey(),
+    /** `user` ou `organization` — la forme du contrat (`ModuleScope`). */
+    scopeKind: text('scope_kind').notNull(),
+    scopeId: text('scope_id').notNull(),
+    /** Le compte qui a demandé. Effacé, il emporte ses demandes. */
+    requestedBy: text('requested_by')
+      .notNull()
+      .references(() => authUser.id, { onDelete: 'cascade' }),
+    /** `pending`, `ready` ou `failed`. */
+    status: text('status').notNull(),
+    requestedAt: timestamp('requested_at', { withTimezone: true, mode: 'date' }).notNull(),
+    completedAt: timestamp('completed_at', { withTimezone: true, mode: 'date' }),
+    /** L'échéance du lien, **décidée par le serveur**. */
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }),
+    tokenDigest: text('token_digest'),
+    /** L'archive elle-même, en JSON. Effacée à l'expiration comme à la purge. */
+    archive: jsonb('archive'),
+    /** Le module qui a refusé, quand la construction a échoué. */
+    failedModuleId: text('failed_module_id'),
+  },
+  (table) => [
+    // La revendication cherche les demandes en cours d'un périmètre : sans
+    // index, chaque demande balaye la table.
+    index('auth_data_export_request_scope_idx').on(table.scopeKind, table.scopeId, table.status),
+    /**
+     * **Les deux autres lectures de cette table, et elles sont périodiques.**
+     *
+     * `forgetExpiredArchives` cherche les archives échues à **chaque demande
+     * d'export** (l'oubli ne peut pas dépendre du module `jobs`, ADR 062), et
+     * `listPending` cherche les demandes restées en cours à chaque balayage.
+     * Ni l'une ni l'autre n'a de périmètre : l'index de la revendication ne les
+     * sert pas, et elles balayaient la table.
+     *
+     * Sans conséquence à la taille d'aujourd'hui — une ligne par demande
+     * d'export, un geste rare —, et c'est bien pour cela que l'index est posé
+     * maintenant : le jour où elle grossit, personne ne fera le lien entre une
+     * requête lente et un balayage séquentiel que rien ne signale.
+     */
+    index('auth_data_export_request_expiry_idx').on(table.expiresAt),
+    index('auth_data_export_request_pending_idx').on(table.status, table.requestedAt),
+  ],
+)
+
 /** Les tables du module, telles que le contrat les déclare. */
 export const authSchema = {
   authUser,
@@ -294,4 +371,5 @@ export const authSchema = {
   authVerification,
   authTwoFactor,
   authPasskey,
+  authDataExportRequest,
 } as const

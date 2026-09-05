@@ -36,6 +36,20 @@
       "when": 1788601025859,
       "tag": "0004_sweet_la_nuit",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788649965475,
+      "tag": "0005_tense_echo",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788657451351,
+      "tag": "0006_gorgeous_hairball",
+      "breakpoints": true
     }
   ]
 }
