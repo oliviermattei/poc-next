@@ -624,6 +624,17 @@ qu'on propose, où est le patch, et son état.
   rapport de revue est traité comme une vérité. Piste : rendre explicite qu'un
   implémenteur peut **réfuter un constat par la mesure**, comme il peut réfuter
   une consigne — trois réfutations de consigne se sont révélées justes.
+- **Une liste qui sert de validateur cache ses propres oublis.** Mesuré en s47 :
+  `ACCEPT_REFUSALS` est un sous-ensemble **écrit** de `INVITATION_REFUSALS`, et
+  c'est la liste contre laquelle le paramètre `?error=` de l'écran d'acceptation
+  est validé. Un motif absent de cette liste est donc **muet à l'écran** — et
+  **aucun test unitaire ne le voit**, puisqu'ils valident contre cette même
+  liste. Mesure : retirer le nouveau motif fait rougir **1 cas navigateur** et
+  laisse **175 tests de nœud verts**. La recherche l'avait prédit, le correctif
+  l'a confirmé au chiffre près. La leçon générale : **quand une liste sert à la
+  fois de source et de validateur, elle ne peut pas attraper son propre oubli**
+  — il faut un cas qui traverse la vraie surface, ici un parcours navigateur.
+  Le dépôt a d'autres listes de cette forme.
 - **Une liste d'intermittents se comporte exactement comme un compte écrit : elle
   vieillit, et on la lit comme vérifiée.** Deux fois en deux stories, la liste des
   cas instables a nommé **un cas sur plusieurs** : `e2e/oauth.spec.ts:97` alors
