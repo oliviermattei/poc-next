@@ -745,164 +745,335 @@ sous-agents**, chaque échec d'outil, chaque interruption et chaque message du
 porteur, tous horodatés.
 
 Elle mesure donc le **flux** — combien de rondes, combien d'attente, combien de
-reprises — là où les revues mesurent le **résultat**. Les dix propositions qui
-suivent en sortent. Elles sont proposées, aucune n'est appliquée ici.
+reprises — là où les revues mesurent le **résultat**.
+
+Chaque proposition ci-dessous suit la règle du dépôt : *quelle commande échoue si
+on la viole ?* Une proposition sans réponse à cette question est signalée comme
+telle, et reste une convention, pas une règle.
+
+## Vue d'ensemble
+
+| # | Problème mesuré | Solution proposée | Ce qui la tient |
+|---|---|---|---|
+| P25 | 2,35 implémenteurs et 1,62 relecteurs **par story** ; 4 exécutions sur 10 sont des reprises, et rien ne les compte | auto-revue par mutation **avant** de rendre la main + `rondes:` dans l'en-tête du rapport | `tests/pipeline-docs.test.ts` : tout rapport de revue porte l'en-tête complet |
+| P26 | 3 rapports sur 38 gardent leurs rondes ; l'historique de reprise de s01→s27 n'existe pas dans le dépôt | une ronde s'**ajoute**, la porte lit la **dernière** ligne de verdict | même test : `## Ronde n` numérotées sans trou, autant que `rondes:` |
+| P27 | 38/38 `Ship allowed: yes`, dont 14 avec un `major` ouvert : la porte n'a jamais rien arrêté | section obligatoire `## Majeurs non fermés`, et tout majeur qui part ouvert devient une story écrite | même test (section présente) + un test qui exige un identifiant de story par ligne |
+| P28 | 105 sondages `gh`, 66 `sleep`, 13 expirations dont 12 à ~10 min ≈ 2 h de contexte principal à regarder la CI | `/ks-ship` coupé en `ouvrir` et `atterrir` ; aucun sondage dans le contexte principal | contrôle de forme sur la commande : elle ne contient ni `sleep` ni boucle `gh pr checks` |
+| P29 | 6 `ENOSPC` qui tuent des agents en vol ; 55 `du`/`df` manuels ; 20 branches et 5 worktrees vivants | `ks doctor` : place libre, worktrees, branches fusionnées, orphelines — appelé par `worktree-manager` | `ks doctor` sort non nul et **nomme** ce qui doit être nettoyé |
+| P30 | worktree supprimé avant la fin de la story, deux fois | suppression conditionnée à **fusionnée dans `dev` ET revue présente sur `dev`** | `ks doctor --gc` refuse de supprimer un worktree qui ne remplit pas les deux |
+| P31 | 22 % des actions des sous-agents rejouent la suite entière, à chaque ronde, même documentaire | trois niveaux nommés — `ciblé`, `complet`, `delta` — et le delta s'écrit | tout rapport de ronde > 1 porte `Périmètre rejoué:` et sa justification |
+| P32 | 7 allers-retours de découpe, 13 h de mur, sans critère d'arrêt | la revue rend une **table d'actions** ; 3 rondes au plus ; le reste va au PRD | `/ks-stories-review` refuse une 4ᵉ ronde et écrit le reste |
+| P33 | Docker, clés Stripe, navigateur, jeton MCP : 6 arrêts sur une action que seul le porteur peut faire | `docs/prerequisites.md` émis au cadrage : prérequis → première story | `/ks-research` refuse de démarrer une story dont un prérequis manque, en le nommant |
+| P34 | fenêtre à 782 k, 4 coupures pour limite d'usage, `/goal` perdu, `STATE.md` tenu à la main | `/ks-status --passation` **dérive** `STATE.md` ; le cycle finit par une remise à zéro | le fichier se régénère : un écart entre le dérivé et le commité fait échouer le contrôle |
+
+---
 
 ## P25 — La boucle correction ↔ revue est le premier poste de coût, et rien ne la compte
 
-- **Aujourd'hui** — le pipeline prévoit un `/ks-execute`, un `/ks-review`, et un
-  `/ks-execute` en mode correction si la porte bloque. Aucun document ne compte
-  les rondes.
-- **Mesuré** — rapportés aux 40 identifiants de story vus dans les journaux :
-  **2,35 exécutions d'implémenteur et 1,62 de relecteur par story**. Donc près de
-  **quatre exécutions d'implémenteur sur dix sont des reprises**, et **une story
-  sur trois** redemande une revue complète. Étalement médian d'une story : 1,8 h
-  (moyenne 3,9 h, maximum 31,6 h pour s19).
-- **Proposé** — `/ks-execute` se termine par une auto-revue dérivée de
-  `review-antihallu` (mutation posée à l'endroit du défaut, contrôle des
-  affirmations écrites) **avant** de rendre la main ; et le rapport de revue
-  porte `rondes: n` en tête. Une méthode qui ne compte pas ses rondes ne peut pas
-  savoir si un changement les réduit.
-- **État** — proposé.
+**Aujourd'hui** — le pipeline prévoit un `/ks-execute`, un `/ks-review`, et un
+`/ks-execute` en mode correction si la porte bloque. Aucun document ne compte les
+rondes.
+
+**Mesuré** — rapportés aux 40 identifiants de story vus dans les journaux :
+**2,35 exécutions d'implémenteur et 1,62 de relecteur par story**. Près de
+**quatre exécutions d'implémenteur sur dix sont des reprises**, et **une story sur
+trois** redemande une revue complète. Étalement médian d'une story : 1,8 h
+(moyenne 3,9 h, maximum 31,6 h pour s19).
+
+**Solution**
+
+1. **L'implémenteur se relit avant de rendre la main.** Dernière étape obligatoire
+   de `.claude/agents/implementer.md` : poser **au moins trois mutations** sur son
+   propre diff — chacune **à l'endroit où un vrai défaut apparaîtrait**, pas là où
+   son code se trouve (règle P1) —, compter les rouges, restaurer, et vérifier
+   `git diff --exit-code` propre. Le rendu contient la table. Une mutation verte
+   est un test à réparer **avant** d'appeler le relecteur, pas une ronde à payer.
+2. **Le rapport de revue porte son coût.** En-tête normalisé, en tête de
+   `docs/reviews/<id>.md` :
+
+   ```yaml
+   ---
+   story: s24-guest-checkout
+   rondes: 2
+   constats: { critical: 0, major: 3, minor: 4 }
+   ---
+   ```
+
+3. **Ce qui échoue** — `tests/pipeline-docs.test.ts` (nouveau, à la racine) : pour
+   chaque fichier de `docs/reviews/s*.md`, l'en-tête existe, les quatre clés sont
+   présentes, `rondes` est un entier ≥ 1. Un rapport sans en-tête fait rougir
+   `pnpm test`, donc la CI.
+
+**Comment on saura que ça marche** — la moyenne `rondes` sur dix stories
+consécutives. Aujourd'hui elle vaut **2,35 / 1,62** ; c'est la ligne de base.
+
+---
 
 ## P26 — Le rapport de revue est réécrit à chaque ronde, donc la reprise n'a pas d'historique
 
-- **Mesuré** — 38 rapports dans `docs/reviews/` ; **trois seulement** (s28, s48,
-  s49) conservent leurs rondes en sections. Les 35 autres ne portent que l'état
-  final : le nombre de rondes de s01 à s27 n'est reconstituable **que** depuis
-  les journaux de session, qui ne sont pas dans le dépôt. La pratique de garder
-  les rondes est apparue seule, tard, et n'est écrite nulle part.
-- **Proposé** — une ronde s'**ajoute**, elle n'écrase pas ; le verdict lu par la
-  porte est celui de la dernière. Coût nul, et c'est ce qui rend P25 mesurable.
-- **État** — proposé.
+**Mesuré** — 38 rapports dans `docs/reviews/` ; **trois seulement** (s28, s48,
+s49) conservent leurs rondes en sections. Les 35 autres ne portent que l'état
+final : le nombre de rondes de s01 à s27 n'est reconstituable **que** depuis les
+journaux de session, qui ne sont pas dans le dépôt. La pratique de garder les
+rondes est apparue seule, tard, et n'est écrite nulle part.
+
+**Solution**
+
+1. **Une ronde s'ajoute, elle n'écrase pas.** `/ks-review` ouvre `## Ronde n` à la
+   fin du fichier existant. Le format de s49 est le modèle : suites exécutées,
+   table de mutations, constats, **et ce qui n'a pas été vérifié dans cette
+   ronde**.
+2. **La porte lit la dernière.** `/ks-ship` prend la **dernière** occurrence de
+   `Ship allowed:` dans le fichier, pas la première. C'est une ligne à changer dans
+   la commande, et elle rend le format additif compatible avec la porte
+   existante.
+3. **Ce qui échoue** — même test que P25 : le nombre de sections `## Ronde n`
+   égale `rondes:`, la numérotation n'a pas de trou, et le fichier se termine par
+   les deux lignes de verdict.
+
+**Effet secondaire utile** — P25 devient mesurable rétroactivement dès que les
+rapports portent leur compte, sans rien reconstituer.
+
+---
 
 ## P27 — La porte n'a jamais rien arrêté : 38 rapports sur 38 finissent `Ship allowed: yes`
 
-- **Mesuré** — 38 sur 38 en `yes`, dont **14 avec `Max severity: major`**. Le
-  seul verdict bloquant est `critical`, et aucun n'a survécu à une ronde. Ce
-  n'est donc pas la porte qui a tenu la qualité : ce sont les rondes de
-  correction qui la précèdent.
-- **Proposé** — garder la porte, mais lui faire porter ce qu'elle a coûté : le
-  compte par sévérité et le nombre de rondes ; et exiger **une ligne écrite** pour
-  chaque `major` qui part sans être fermé. Sans cela, la porte est une signature,
-  pas un filtre — et une signature qui dit toujours oui finit ignorée, exactement
-  comme le contrôle de P8.
-- **État** — proposé.
+**Mesuré** — 38 sur 38 en `yes`, dont **14 avec `Max severity: major`**. Le seul
+verdict bloquant est `critical`, et aucun n'a survécu à une ronde. Ce n'est donc
+pas la porte qui a tenu la qualité : ce sont les rondes de correction qui la
+précèdent. Une porte qui dit toujours oui finit ignorée — c'est exactement le
+mécanisme de P8, appliqué à la porte elle-même.
 
-> **Nuance mesurée le 05/09, contre le dépôt.** Le chiffre est exact — 38 rapports
-> sur 38 finissent `Ship allowed: yes` — mais « la porte n'a jamais rien arrêté »
-> ne suit pas. **Cinq rapports portent un `Ship allowed: no` à une ronde
-> intermédiaire** : `s13-two-factor`, `s18-file-storage-avatar`,
-> `s19-subscribe-stripe`, `s20-one-time-purchase`, `s28-rate-limiting`. La porte
-> a donc bloqué cinq fois sur trente-huit, forcé une ronde de correction à chaque
-> fois, et le verdict final est `yes` **parce que les correctifs ont eu lieu** —
-> ce qui est le fonctionnement attendu, pas son échec.
->
-> Ce que le chiffre mesure réellement, c'est que **le fichier ne garde que le
-> dernier verdict**. C'est un défaut d'instrumentation, pas de la porte : un
-> compteur qui lit `docs/reviews/` ne peut pas voir les blocages, et conclura
-> toujours que la porte est décorative. La mesure juste serait de compter les
-> rondes, pas les fichiers.
->
-> Reste vrai, et c'est le fond du constat : **aucune story n'a jamais été
-> abandonnée ni renvoyée au découpage par une revue.** La porte force des
-> corrections ; elle n'a jamais dit non pour de bon.
+**Solution** — ne pas durcir le verdict (bloquer sur `major` ferait rougir 14
+stories sur 38 et la porte serait contournée), mais **rendre le majeur visible
+après le ship** :
+
+1. **Section obligatoire `## Majeurs non fermés`** à la fin du rapport. Vide
+   autorisée — elle doit exister. Chaque ligne :
+   `M3 — <constat en une phrase> — part ouvert parce que <raison> — repris par <id de story>`.
+2. **Un majeur qui part ouvert devient une story.** L'identifiant cité doit
+   exister dans `docs/stories.md`. Un majeur sans story est une dette qui
+   disparaît : c'est le cas de s49, s51 et s52, nées de constats de revue — la
+   pratique existe déjà, elle n'est simplement pas obligatoire.
+3. **Ce qui échoue** — `tests/pipeline-docs.test.ts` : la section existe, et tout
+   identifiant de story qu'elle cite se retrouve dans `docs/stories.md`.
+
+---
 
 ## P28 — L'attente de la CI se paie dans le contexte principal
 
-- **Mesuré** — sur 1 397 commandes bash des contextes principaux : **105 sondages
-  `gh pr checks` / `gh run`**, 66 `sleep`, et **13 expirations de commande**, dont
-  douze à ~10 minutes — soit **au moins deux heures** de boucle principale passées
-  à regarder la CI, contexte chargé, sans rien produire. Trois `sleep` ont en plus
-  été refusés par le harnais, qui demande une boucle de surveillance.
-- **Proposé** — `/ks-ship` en deux temps : ouvrir la demande de fusion, enregistrer
-  une surveillance, rendre la main ; **jamais** de sondage de CI dans le contexte
-  principal. P19 dit jusqu'où continuer sans CI ; ceci dit comment ne pas
-  l'attendre.
-- **État** — proposé.
+**Mesuré** — sur 1 397 commandes bash des contextes principaux : **105 sondages
+`gh pr checks` / `gh run`**, 66 `sleep`, et **13 expirations de commande**, dont
+douze à ~10 minutes — soit **au moins deux heures** de boucle principale passées à
+regarder la CI, contexte chargé, sans rien produire. Trois `sleep` ont en plus été
+refusés par le harnais, qui demande une boucle de surveillance.
+
+**Solution**
+
+1. **`/ks-ship` se coupe en deux commandes.**
+   - `/ks-ship ouvrir <id>` : commite la revue, pousse, ouvre la demande de
+     fusion, écrit le numéro dans `docs/STATE.md`, **rend la main immédiatement**.
+   - `/ks-ship atterrir <id>` : lit l'état des contrôles **en un appel**, fusionne
+     si vert, puis appelle `ks doctor --gc` (P30). Si rouge ou en cours, elle le
+     dit et sort — elle n'attend pas.
+2. **Interdiction écrite, dans `AGENTS.md` et dans la commande** : aucun `sleep`,
+   aucune boucle de sondage de CI dans le contexte principal. L'attente se fait en
+   tâche de fond ou pas du tout. Le travail utile pendant ce temps est déjà
+   nommé : la recherche de la story suivante (P18).
+3. **Ce qui échoue** — contrôle de forme sur les commandes du pipeline : aucun
+   fichier de `.claude/commands/ks-*.md` ne contient `sleep ` ni `gh pr checks`
+   dans une boucle. C'est un `grep` dans le test de P25, donc `pnpm test`.
+
+**Combiné à P19** — P19 dit *jusqu'où* continuer sans CI (deux branches en
+attente) ; P28 dit *comment ne pas l'attendre*. Les deux se lisent ensemble.
+
+---
 
 ## P29 — Le disque est une ressource du pipeline, et il a tué des agents en vol
 
-- **Mesuré** — **six échecs `ENOSPC`** le 02/09 entre 18:00 et 21:06, qui ont
-  coupé des sorties d'agent en cours d'écriture ; et **55 appels `du` / `df`**
-  dans le contexte principal, c'est-à-dire un agent qui surveille son disque à la
-  main faute de garde. À l'écriture : cinq worktrees vivants, **vingt branches
-  `feature/*` locales non fusionnées**, et deux branches orphelines
-  `worktree-agent-*`.
-- **Proposé** — un contrôle de place **avant** création de worktree, un magasin
-  pnpm partagé, et l'élargissement de la suppression de P7 aux branches
-  orphelines. Le disque plein n'a pas ralenti le pipeline : il l'a arrêté.
-- **État** — proposé.
+**Mesuré** — **six échecs `ENOSPC`** le 02/09 entre 18:00 et 21:06, qui ont coupé
+des sorties d'agent en cours d'écriture ; et **55 appels `du` / `df`** dans le
+contexte principal, c'est-à-dire un agent qui surveille son disque à la main faute
+de garde. À l'écriture : cinq worktrees vivants, **vingt branches `feature/*`
+locales non fusionnées**, et deux branches orphelines `worktree-agent-*`.
+
+**Solution** — une commande, appelée par le pipeline, jamais par le porteur :
+
+```
+ks doctor            # état : place, worktrees, branches, orphelines
+ks doctor --gc       # nettoie ce qui est sûr à nettoyer (voir P30)
+```
+
+Ce qu'elle vérifie, et ce qui la fait sortir non nulle :
+
+| Contrôle | Seuil | Message |
+|---|---|---|
+| place libre | < 3 × la taille de `node_modules` du dépôt | « il manque N Go pour un worktree de plus » |
+| worktrees vivants | > 3 | liste, avec pour chacun l'état de sa branche |
+| branches `feature/*` fusionnées dans `dev` mais gardées | > 0 | la commande de suppression, prête à coller |
+| branches `worktree-agent-*` | > 0 | orphelines, à supprimer |
+
+`worktree-manager` l'appelle **avant** de créer, et refuse en nommant ce qui doit
+partir. Deuxième volet, indépendant : **magasin pnpm partagé** entre le dépôt et
+ses worktrees (`pnpm config set store-dir`), pour que le coût d'un worktree ne
+soit plus les 827 Mo mesurés en P16.
+
+---
 
 ## P30 — La suppression du worktree a devancé la phase qui en avait encore besoin
 
-- **Mesuré** — deux fois : s48 le 04/09 à 16:12 et s49 le 05/09 à 06:53, une
-  commande échoue sur `.worktrees/<story>: no such file or directory` alors que la
-  finition de la story n'était pas close. Le correctif de P7 (« la suppression
-  fait partie de la fusion ») a été appliqué **trop tôt** dans le cycle.
-- **Proposé** — la suppression est conditionnée à **fusion confirmée *et* revue
-  commitée**, jamais à « la demande de fusion est ouverte ».
-- **État** — proposé.
+**Mesuré** — deux fois : s48 le 04/09 à 16:12 et s49 le 05/09 à 06:53, une
+commande échoue sur `.worktrees/<story>: no such file or directory` alors que la
+finition de la story n'était pas close. Le correctif de P7 (« la suppression fait
+partie de la fusion ») a été appliqué **trop tôt** dans le cycle.
+
+**Solution** — `ks doctor --gc` ne supprime un worktree que si **les deux**
+conditions tiennent :
+
+1. `git branch --merged dev` contient sa branche ;
+2. `docs/reviews/<id>.md` existe **sur `dev`** — la revue est commitée, donc la
+   story a fini de produire des fichiers.
+
+Tout le reste est listé, jamais supprimé. P7 disait *quand* supprimer ; P30 dit
+*à quelle condition*, et c'est la condition qui manquait.
+
+---
 
 ## P31 — La vérification n'est jamais réduite : 22 % des actions des sous-agents rejouent la suite entière
 
-- **Mesuré** — 18 529 commandes bash dans les sous-agents, contre 1 652 `Edit` et
-  668 `Write` : **huit commandes pour une écriture**. Parmi elles, **4 018
-  exécutions de vérification (22 %)**, dont **1 255 de parcours navigateur (7 %)**.
-  Le relecteur rejoue `docker compose up`, `db:migrate`, `test`, `typecheck`,
-  `lint`, `build` et `test:e2e` **à chaque ronde** — y compris pour une ronde
-  purement documentaire (s49, ronde 3).
-- **Proposé** — vérification **étagée** : ciblée pendant la TDD, complète une fois
-  avant de rendre la main. Et une ronde de revue qui ne touche aucun fichier de
-  production rejoue ce que le diff atteint, **en l'écrivant**. La preuve qui le
-  permet existe déjà : s49 ronde 2 écrit « aucun changement de production depuis
-  la ronde 1 — prouvé ». Elle suffit à justifier de ne pas tout rejouer.
-- **État** — proposé.
+**Mesuré** — 18 529 commandes bash dans les sous-agents, contre 1 652 `Edit` et
+668 `Write` : **huit commandes pour une écriture**. Parmi elles, **4 018
+exécutions de vérification (22 %)**, dont **1 255 de parcours navigateur (7 %)**.
+Le relecteur rejoue `docker compose up`, `db:migrate`, `test`, `typecheck`,
+`lint`, `build` et `test:e2e` **à chaque ronde** — y compris pour une ronde
+purement documentaire (s49, ronde 3).
+
+**Solution** — trois niveaux, nommés dans `tdd-skill` et `review-antihallu`, et
+écrits dans le rapport :
+
+| Niveau | Quand | Ce qu'on lance |
+|---|---|---|
+| `ciblé` | pendant la TDD, à chaque pas | `pnpm vitest run <chemin>`, `pnpm typecheck` du seul package touché |
+| `complet` | une fois, avant de rendre la main, et en ronde 1 de revue | la table complète des commandes d'`AGENTS.md` |
+| `delta` | ronde de revue > 1 | ce que le diff **de la ronde** atteint, et rien d'autre |
+
+Le niveau `delta` n'est légitime que si la ronde le prouve. La preuve existe déjà
+dans le dépôt — s49 ronde 2 écrit « aucun changement de production depuis la
+ronde 1 — prouvé » : c'est `git diff --stat <commit ronde n-1>..HEAD -- . ':!docs'`
+qui rend vide. Une ronde documentaire ne relance donc ni `test:e2e`, ni `build`,
+ni le conteneur.
+
+**Ce qui échoue** — tout rapport de ronde > 1 porte une ligne
+`Périmètre rejoué: complet | delta — <justification>`. Absente, le test de P25
+rougit. Écrire `delta` sans la preuve est un constat de revue, comme n'importe
+quelle affirmation non tenue (P4).
+
+**Attendu** — la revue bloque 18 à 31 min par ronde (mesure de P18). Une ronde
+documentaire à `delta` devrait coûter quelques minutes.
+
+---
 
 ## P32 — Le cadrage a bouclé sept fois sans critère d'arrêt
 
-- **Mesuré** — `/ks-stories` ↔ `/ks-stories-review`, **sept allers-retours** du
-  29/08 21:05 au 30/08 10:19 : **treize heures de mur** avant `/ks-architect`.
-  Aucune des sept passes n'a produit le critère qui aurait dit que la suivante
-  était inutile.
-- **Proposé** — la revue de découpe rend une **liste adressable** (chaque ligne =
-  une story à ajouter, fusionner ou couper) ; **trois rondes au plus**, puis une
-  décision écrite. Le PRD nomme déjà son cimetière ; la découpe peut nommer son
-  reste.
-- **État** — proposé.
+**Mesuré** — `/ks-stories` ↔ `/ks-stories-review`, **sept allers-retours** du
+29/08 21:05 au 30/08 10:19 : **treize heures de mur** avant `/ks-architect`.
+Aucune des sept passes n'a produit le critère qui aurait dit que la suivante était
+inutile.
+
+**Solution**
+
+1. **La revue rend une table d'actions, pas un texte.** `docs/reviews/stories.md`
+   contient une table `id | action | raison`, où `action` vaut `ajouter`,
+   `fusionner`, `couper` ou `garder`. La passe suivante de `/ks-stories` traite la
+   table **ligne à ligne**, et coche. Une revue qui ne rend rien d'actionnable
+   ferme la boucle d'elle-même.
+2. **Trois rondes au plus.** À la troisième, ce qui reste ouvert part dans une
+   section `Reste assumé` du PRD, à côté du cimetière : nommé, daté, non traité.
+   Le PRD sait déjà écrire ce qu'on ne fera pas ; il peut écrire ce qu'on n'a pas
+   tranché.
+3. **Ce qui échoue** — `/ks-stories-review` compte les sections de rondes de son
+   propre fichier et **refuse** la quatrième en renvoyant à l'écriture du reste.
+
+---
 
 ## P33 — Les dépendances humaines arrivent par surprise, au milieu d'une story
 
-- **Mesuré** — Docker demandé pendant s01 (30/08 13:51) ; clés Stripe pendant s19
-  (03/09 12:33 → 14:44, trois tours dont un aller-retour sur « `sk_test` ou
-  `price_` ? ») ; sélection de navigateur bloquante deux fois ; jeton MCP expiré
-  deux fois. À chaque fois le pipeline s'arrête sur une action que **seul le
-  porteur** peut faire, découverte au moment où elle bloque.
-- **Proposé** — `/ks-architect` émet un tableau **prérequis → première story qui
-  en a besoin** (comptes, clés, binaires locaux, accès). Le porteur les rassemble
-  une fois. Une clé manquante connue trois jours à l'avance ne coûte rien ;
-  découverte en exécution, elle coûte la story.
-- **État** — proposé.
+**Mesuré** — Docker demandé pendant s01 (30/08 13:51) ; clés Stripe pendant s19
+(03/09 12:33 → 14:44, trois tours dont un aller-retour sur « `sk_test` ou
+`price_` ? ») ; sélection de navigateur bloquante deux fois ; jeton MCP expiré
+deux fois. À chaque fois le pipeline s'arrête sur une action que **seul le
+porteur** peut faire, découverte au moment où elle bloque.
+
+**Solution**
+
+1. **`/ks-architect` émet `docs/prerequisites.md`**, une table :
+
+   | Prérequis | Type | Première story | Comment l'obtenir | Vérifié par |
+   |---|---|---|---|---|
+   | Docker | binaire local | s01 | `docker --version` | `ks doctor` |
+   | `STRIPE_SECRET_KEY` (test) | clé | s19 | tableau de bord Stripe → clés API → `sk_test_…` | `ks doctor` |
+   | `STRIPE_LIVE_PRICE_ID` | identifiant | s25 | produit → tarif → `price_…` | `ks doctor` |
+
+2. **`ks doctor` vérifie les prérequis des stories à venir**, pas seulement de la
+   courante : tout ce dont la première story est à deux rangs ou moins. Le porteur
+   voit la clé qui manquera **avant** qu'elle bloque.
+3. **`/ks-research` refuse** de démarrer une story dont un prérequis est absent,
+   en le nommant et en citant la ligne « comment l'obtenir ». C'est le même
+   fail-closed que la validation d'environnement au démarrage.
+
+**Pourquoi ça vaut le coup** — une clé connue trois jours à l'avance ne coûte
+rien ; découverte en exécution, elle coûte la story et un aller-retour humain.
+
+---
 
 ## P34 — Le contexte principal ne se vide pas entre les stories, et la passation est artisanale
 
-- **Mesuré** — le porteur l'a demandé deux fois, dont le 31/08 à 09:21 avec une
-  fenêtre à **782 k jetons** ; un `/compact` manuel le 31/08 à 11:25 ; **quatre
-  reprises après limite d'usage** (31/08 15:51 et 20:51, 01/09 01:51, 02/09
-  11:01), chacune coupant le travail en cours ; et la perte du `/goal` au
-  changement de session (04/09 06:57 : « il semble que tu l'as stoppé »).
-  `docs/STATE.md`, 363 lignes, est tenu **à la main** pour survivre aux `/clear`.
-- **Proposé** — la passation devient un artefact du pipeline
-  (`/ks-status --passation` écrit `docs/STATE.md`), et le cycle d'une story se
-  termine par une remise à zéro du contexte principal, la reprise se faisant par
-  ce fichier.
-- **Corollaire mesuré, sur le débit** — le 31/08, avec trois à quatre
-  implémenteurs en parallèle, **onze stories ont été ouvertes dans la journée** ;
-  les jours suivants, en séquentiel : 2, puis 5, 6, 4, 5. Le parallélisme a bien
-  acheté du débit. Il a été abandonné parce que **le budget a cédé avant le
-  disque** (P11) et que le contexte principal ne se vidait pas entre les stories —
-  pas parce qu'il ne marchait pas.
-- **État** — proposé.
+**Mesuré** — le porteur l'a demandé deux fois, dont le 31/08 à 09:21 avec une
+fenêtre à **782 k jetons** ; un `/compact` manuel le 31/08 à 11:25 ; **quatre
+reprises après limite d'usage** (31/08 15:51 et 20:51, 01/09 01:51, 02/09 11:01),
+chacune coupant le travail en cours ; et la perte du `/goal` au changement de
+session (04/09 06:57 : « il semble que tu l'as stoppé »). `docs/STATE.md`, 363
+lignes, est tenu **à la main** pour survivre aux `/clear`.
+
+**Solution**
+
+1. **`/ks-status --passation` écrit `docs/STATE.md`**, et l'essentiel du fichier
+   est **dérivé**, donc il ne peut pas vieillir : stories closes (revue passée +
+   branche fusionnée), en vol (branche non fusionnée), recherches d'avance
+   (`docs/research/` sans `docs/plans/`), demandes de fusion ouvertes, premier
+   numéro d'ADR libre, comptes de tests de la dernière exécution. Deux sections
+   restent écrites à la main et sont **préservées** à la régénération :
+   `## REPRENDRE ICI` et `## Objectif` — cette dernière porte le `/goal`, qui
+   survit alors au `/clear`.
+2. **Le cycle d'une story se termine par une remise à zéro.** Ordre fixe :
+   `/ks-ship ouvrir` → `/ks-status --passation` → `/clear` → la story suivante
+   commence par lire `docs/STATE.md`. C'est ce que le porteur a demandé deux fois,
+   et ce qui n'a jamais été inscrit dans le pipeline.
+3. **Ce qui échoue** — `/ks-status --passation` régénère la partie dérivée et la
+   compare à celle commitée ; un écart est signalé et le fichier réécrit. Un
+   `STATE.md` qui ment devient impossible à garder.
+
+**Corollaire mesuré, sur le débit** — le 31/08, avec trois à quatre implémenteurs
+en parallèle, **onze stories ont été ouvertes dans la journée** ; les jours
+suivants, en séquentiel : 2, puis 5, 6, 4, 5. Le parallélisme a bien acheté du
+débit. Il a été abandonné parce que **le budget a cédé avant le disque** (P11) et
+que le contexte principal ne se vidait pas entre les stories — pas parce qu'il ne
+marchait pas. P29 et P34 traitent les deux causes ; le parallélisme redevient une
+option ensuite, pas avant.
+
+---
+
+## Ce que ces dix propositions coûtent
+
+Elles ajoutent **un fichier de test** (`tests/pipeline-docs.test.ts`, qui porte
+P25, P26, P27, P28 et P31), **une commande** (`ks doctor`, qui porte P29, P30 et
+P33), **un découpage de commande** (`/ks-ship`, P28), **un drapeau**
+(`/ks-status --passation`, P34) et **deux règles de format** (table d'actions de
+la découpe, P32 ; niveaux de vérification, P31).
+
+Aucune ne demande de revenir sur une décision structurelle du dépôt, et aucune
+n'est appliquée ici : elles sont écrites pour être jugées, pas pour être prises
+sur parole.
 
 ---
 
