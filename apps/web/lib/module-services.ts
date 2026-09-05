@@ -7,6 +7,7 @@ import { billing } from './billing'
 import { consent } from './consent'
 import { localeRouting } from './locale-routing'
 import { prepareModuleContent } from './module-content'
+import { prepareJobs } from './jobs'
 import { createAppMailer } from './mailer'
 import { marketingSite } from './marketing'
 import { notifications } from './notifications'
@@ -98,4 +99,10 @@ export function prepareModuleServices(): void {
   // les routes, il ne construit rien. Mesuré au navigateur, exactement comme la
   // première soumission de formulaire d'organisation en s15.
   notifications.prepare()
+  // s33 — deux choses qu'aucune requête ne procure : le compteur que la tâche
+  // `rate-limit.sweep-closed-windows` balaie (déclarée en s28, jamais exécutée
+  // avant cette story), et le gestionnaire de rappel du fournisseur, sans
+  // lequel `/api/modules/jobs/inngest` répondrait 404 pendant qu'Inngest
+  // l'appelle.
+  prepareJobs()
 }

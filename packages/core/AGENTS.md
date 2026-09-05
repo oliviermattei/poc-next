@@ -135,8 +135,15 @@ en se chargeant s'exécuterait pour un module que la configuration n'active pas.
 
 ## Imports autorisés
 
-- rien à l'exécution : ce package est une feuille du graphe, sans dépendance de
-  production. Il ne connaît ni Drizzle, ni Next, ni la base de données ;
+- `@repo/ports` **en type seulement**, et une seule raison le justifie : le
+  répartiteur de tâches (`src/jobs.ts`, s33) classe un échec en code du port
+  `Jobs` et écrit dans son journal. C'est le port qui décide de quel côté tombe
+  chaque code — transitoire ou définitif —, et le redéclarer ici ferait deux
+  vérités pour la règle « ne jamais rejouer une validation »
+  (`docs/reliability.md` §3). `@repo/ports` n'a **aucune** dépendance
+  d'exécution : ce package reste une feuille du graphe de production ;
+- rien d'autre à l'exécution. Il ne connaît ni Drizzle, ni Next, ni la base de
+  données ;
 - `@repo/typescript-config` pour la configuration du compilateur ;
 - `vitest` dans les fichiers de test.
 

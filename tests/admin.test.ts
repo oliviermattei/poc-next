@@ -884,6 +884,10 @@ describe('l’avertissement de démarrage', () => {
     vi.stubEnv('STRIPE_SECRET_KEY', '')
     vi.stubEnv('STRIPE_WEBHOOK_SECRET', '')
     vi.stubEnv('PAYMENTS_LOCAL_MODE', '1')
+    vi.stubEnv('INNGEST_EVENT_KEY', '')
+    vi.stubEnv('INNGEST_SIGNING_KEY', '')
+    vi.stubEnv('INNGEST_BASE_URL', '')
+    vi.stubEnv('JOBS_LOCAL_RUNNER', '1')
     // La valeur vide vaut absence : c'est ce que `.env.example` livre.
     vi.stubEnv('SUPERADMIN_EMAIL', '')
 

@@ -27,5 +27,7 @@
   "type.account.security-alert.label": "Security alert",
   "type.account.security-alert.body": "Unusual activity on your account: {summary}.",
   "type.organization.member-joined.label": "New member",
-  "type.organization.member-joined.body": "{member} joined {organization}."
+  "type.organization.member-joined.body": "{member} joined {organization}.",
+  "type.billing.trial-ending.label": "Trial ending soon",
+  "type.billing.trial-ending.body": "Your {offer} trial ends on {date}."
 }

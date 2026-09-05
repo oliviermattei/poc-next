@@ -1,5 +1,6 @@
-import { defineModule, type ModuleJob } from '@repo/core'
+import { defineModule, JobFailure, type ModuleJob } from '@repo/core'
 
+import { requireRateLimiter } from './infrastructure/rate-limit-runtime'
 import enMessages from './messages/en.json' with { type: 'json' }
 import frMessages from './messages/fr.json' with { type: 'json' }
 import { rateLimitSchema } from './schema'
@@ -35,18 +36,40 @@ import { rateLimitSchema } from './schema'
  * module, précisément pour qu'une tâche n'ait pas à s'enregistrer elle-même à
  * l'import.
  *
- * `run` est **vide ici** et le dit : ce module ne construit rien: il reçoit sa
- * connexion de son point de composition (ADR 020), et c'est donc l'application
- * qui remplacera ce corps quand l'ordonnanceur existera. Une tâche qui
- * ouvrirait la base à l'import s'exécuterait pour `pnpm ks list` et
- * `pnpm db:generate`, qui n'en ont pas.
+ * **Elle tourne depuis s33, et pas avant.** Son corps était vide, avec écrit
+ * « c'est donc l'application qui remplacera ce corps quand l'ordonnanceur
+ * existera » : `registry.jobs` était agrégé et n'avait aucun consommateur, si
+ * bien que `rate_limit_window` **n'a jamais été purgée** — c'est la table dont
+ * la croissance oblige `e2e/support/warm-up.ts` à vider le magasin avant les
+ * parcours. Brancher cette tâche **change le comportement de ce module en
+ * production** : le magasin se vide désormais tout seul, y compris sur une
+ * application au repos.
+ *
+ * Le module ne construit toujours rien : il **reçoit** son compteur du point de
+ * composition (`provideRateLimiter`, ADR 020). Une tâche qui ouvrirait la base à
+ * l'import s'exécuterait pour `pnpm ks list` et `pnpm db:generate`, qui n'en ont
+ * pas.
+ *
+ * `now` vient du répartiteur, jamais de l'horloge du système : `sweep` prend
+ * **l'instant présent**, et c'est la ligne qui porte son échéance (voir le port).
  */
 const sweepClosedWindows: ModuleJob = {
   id: 'sweep-closed-windows',
   // Toutes les dix minutes : le même rythme que le balayage opportuniste du
   // garde, et la plus courte fenêtre qu'une politique livrée déclare.
   schedule: '*/10 * * * *',
-  run: async () => {},
+  run: async ({ now }) => {
+    const result = await requireRateLimiter().sweep(now)
+
+    if (!result.ok) {
+      // Un seau invalide est un défaut de configuration : le rejouer ne le
+      // répare pas. Le reste est une panne de magasin, donc transitoire.
+      throw new JobFailure(
+        result.error.code === 'invalid_bucket' ? 'invalid_event' : 'provider_unavailable',
+        result.error.message,
+      )
+    }
+  },
 }
 
 export const rateLimitModule = defineModule({

@@ -54,6 +54,13 @@ export const PAYMENTS_LOCAL_MODE_ENABLED = '1'
  */
 export const CONSENT_SCRIPT_PROBE_ENABLED = '1'
 
+/**
+ * La valeur qui monte l'**exécuteur de tâches en mémoire** (s33) — même
+ * littéral, même raison que les cinq ci-dessus : une seule orthographe pour un
+ * seul choix.
+ */
+export const JOBS_LOCAL_RUNNER_ENABLED = '1'
+
 const envShape = {
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   DATABASE_URL: z
@@ -273,6 +280,53 @@ const envShape = {
    */
   PAYMENTS_LOCAL_MODE: z.literal(PAYMENTS_LOCAL_MODE_ENABLED).optional(),
   /**
+   * Clé d'événement du fournisseur de tâches (Inngest), **optionnelle** ici.
+   *
+   * Optionnelle parce qu'un projet peut couper le module `jobs`, et parce que
+   * `pnpm db:migrate` n'émet aucune tâche. L'exigence « il faut un fournisseur
+   * ou l'exécuteur local » est portée par `apps/web/lib/jobs-config.ts`,
+   * appliquée au démarrage **uniquement quand le module est activé**.
+   */
+  INNGEST_EVENT_KEY: z.string().min(1).optional(),
+  /**
+   * Clé de signature des appels **entrants** du fournisseur.
+   *
+   * Elle va **avec** la clé d'événement, et la règle croisée ci-dessous
+   * l'exige : la route de rappel est publique et sa seule garde est cette
+   * signature (`docs/security.md` §4). Sans cette règle, l'application
+   * démarrerait, émettrait, et refuserait chaque exécution — c'est-à-dire
+   * n'exécuterait plus rien, en silence.
+   */
+  INNGEST_SIGNING_KEY: z.string().min(1).optional(),
+  /**
+   * L'origine de l'API d'événements, pour viser un serveur de développement
+   * Inngest plutôt que le service.
+   *
+   * Une URL, pas un drapeau : elle est **injectée**, jamais devinée, et elle
+   * n'active rien à elle seule.
+   */
+  INNGEST_BASE_URL: z
+    .string()
+    .refine((value) => /^https?:\/\/.+/.test(value), {
+      message: 'must be an http(s) URL (http://localhost:8288)',
+    })
+    .optional(),
+  /**
+   * Monte l'**exécuteur de tâches en mémoire**, sans aucune clé et sans aucun
+   * service.
+   *
+   * Opt-in explicite, comme la capture locale des emails, le fournisseur OAuth
+   * de développement, le stockage sur disque et le paiement local — et jamais
+   * déduit de `NODE_ENV` ni de l'absence de clé. Posé en même temps qu'une clé
+   * Inngest, il est refusé : le choix serait implicite, et personne ne saurait
+   * si une tâche a réellement été mise en file chez le fournisseur.
+   *
+   * Ce qu'il ne fait pas, et qui est écrit plutôt que sous-entendu : il ne
+   * survit pas au processus, et deux instances exécuteraient chacune la même
+   * échéance.
+   */
+  JOBS_LOCAL_RUNNER: z.literal(JOBS_LOCAL_RUNNER_ENABLED).optional(),
+  /**
    * **L'adresse du premier superadmin** (s37a).
    *
    * Une adresse, et pas un identifiant de compte : c'est ce qui se lit et
@@ -441,6 +495,42 @@ export const envSchema = z.object(envShape).superRefine((value, ctx) => {
       code: 'custom',
       path: ['PAYMENTS_LOCAL_MODE'],
       message: 'cannot be enabled while STRIPE_SECRET_KEY or STRIPE_WEBHOOK_SECRET is set: choose one',
+    })
+  }
+
+  // Les tâches : la clé d'événement et la clé de signature vont **ensemble**.
+  // Une clé d'événement seule laisse démarrer une application qui émet et dont
+  // la route de rappel refuse chaque appel — donc qui n'exécute plus rien, en
+  // silence, ce qui est exactement le défaut que s33 corrige.
+  if (value.INNGEST_EVENT_KEY !== undefined && value.INNGEST_SIGNING_KEY === undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['INNGEST_SIGNING_KEY'],
+      message: 'is required when INNGEST_EVENT_KEY is set',
+    })
+  }
+
+  if (value.INNGEST_SIGNING_KEY !== undefined && value.INNGEST_EVENT_KEY === undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['INNGEST_EVENT_KEY'],
+      message: 'is required when INNGEST_SIGNING_KEY is set',
+    })
+  }
+
+  // Même règle que les trois modes locaux ci-dessus : un mode local est un
+  // choix, pas un repli. Les deux à la fois, et plus personne ne sait si une
+  // tâche a été mise en file chez le fournisseur ou exécutée en mémoire.
+  const jobsLocal = value.JOBS_LOCAL_RUNNER === JOBS_LOCAL_RUNNER_ENABLED
+  const anyInngestKey =
+    value.INNGEST_EVENT_KEY !== undefined || value.INNGEST_SIGNING_KEY !== undefined
+
+  if (jobsLocal && anyInngestKey) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['JOBS_LOCAL_RUNNER'],
+      message:
+        'cannot be enabled while INNGEST_EVENT_KEY or INNGEST_SIGNING_KEY is set: choose one',
     })
   }
 })

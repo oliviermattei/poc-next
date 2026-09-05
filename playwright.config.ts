@@ -148,6 +148,22 @@ export const webServerEnv = (): Record<string, string> => ({
   // tant que le consentement n'est pas donné — c'est la condition réelle d'un
   // déploiement muni d'un outil d'analyse.
   CONSENT_SCRIPT_PROBE: '1',
+  // Monte l'**exécuteur de tâches en mémoire** (s33) : aucune clé, aucun
+  // service, aucun réseau. Sans ce drapeau, le serveur meurt après `✓ Ready` —
+  // le module `jobs` est activé, et l'application refuse de démarrer sans avoir
+  // dit ce qu'elle fait de ses tâches.
+  //
+  // Posé **ici**, donc l'emportant sur le `.env` du poste : un poste muni d'une
+  // vraie clé Inngest verra le démarrage refuser les deux ensemble en le
+  // disant, plutôt que d'émettre vers un service pendant un parcours.
+  //
+  // Conséquence assumée, et elle se voit : la tâche `rate-limit.sweep-closed-windows`
+  // tourne alors toutes les dix minutes pendant la suite — c'est le
+  // comportement réel d'un déploiement, et la raison d'être de s33.
+  JOBS_LOCAL_RUNNER: '1',
+  INNGEST_EVENT_KEY: '',
+  INNGEST_SIGNING_KEY: '',
+  INNGEST_BASE_URL: '',
 })
 
 export default defineConfig({

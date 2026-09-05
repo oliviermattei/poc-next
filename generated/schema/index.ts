@@ -14,6 +14,7 @@ import * as consent from './consent'
 import * as demoEnabled from './demo-enabled'
 import * as docs from './docs'
 import * as i18n from './i18n'
+import * as jobs from './jobs'
 import * as marketing from './marketing'
 import * as mcpServer from './mcp-server'
 import * as notifications from './notifications'
@@ -30,6 +31,7 @@ export const enabledModuleSchemas = [
   { id: 'demo-enabled', schema: demoEnabled },
   { id: 'docs', schema: docs },
   { id: 'i18n', schema: i18n },
+  { id: 'jobs', schema: jobs },
   { id: 'marketing', schema: marketing },
   { id: 'mcp-server', schema: mcpServer },
   { id: 'notifications', schema: notifications },

@@ -1,4 +1,4 @@
-import { defineModule } from '@repo/core'
+import { defineModule, type ModuleJob } from '@repo/core'
 
 import { BILLING_MODULE_ID } from './domain/message-keys'
 import { requireBillingService } from './infrastructure/billing-runtime'
@@ -39,6 +39,29 @@ import { billingSchema } from './schema'
  * **route déclarée**, publique, et sa garde est la signature. Un module coupé
  * n'a alors ni route ni webhook, ce qui est la propriété recherchée.
  */
+/**
+ * **La relance d'essai, livrée comme tâche réelle** (critère 7 de s33).
+ *
+ * `trialEnd` était présent partout depuis s21 — schéma, port, cas d'usage — et
+ * **rien ne le lisait pour agir** : il manquait le déclencheur, pas le modèle de
+ * données. C'est lui.
+ *
+ * Tous les jours à 9 h UTC : une relance est un email, et l'envoyer la nuit du
+ * destinataire n'aide personne. L'heure est en UTC comme toute échéance de ce
+ * dépôt (voir `cronMatches`) ; la localiser demanderait de savoir *où* est le
+ * destinataire, ce qu'aucune ligne d'abonnement ne dit.
+ *
+ * Elle ne construit rien à l'import : le service est **différé**
+ * (`requireBillingService`), comme pour les routes.
+ */
+const trialEndingReminder: ModuleJob = {
+  id: 'trial-ending-reminder',
+  schedule: '0 9 * * *',
+  run: async ({ now }) => {
+    await requireBillingService().remindEndingTrials(now)
+  },
+}
+
 export const billingModule = defineModule({
   id: BILLING_MODULE_ID,
   requires: [],
@@ -56,7 +79,7 @@ export const billingModule = defineModule({
   messages: { fr: frMessages, en: enMessages },
   emails: [],
   webhooks: [],
-  jobs: [],
+  jobs: [trialEndingReminder],
   // Le rattachement d'un périmètre à un client du fournisseur, et l'abonnement
   // qui en découle. Ce sont des données personnelles : elles désignent une
   // personne ou son organisation chez un tiers. **Effacées**, jamais

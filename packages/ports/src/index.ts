@@ -2,9 +2,19 @@
  * Interfaces des dépendances externes (`docs/architecture.md`).
  *
  * Un fichier par capacité, et tous sur le même gabarit : `mailer` d'abord (s06),
- * `storage` ensuite (s18), `payments` (s19), `rate-limit` (s28) ; jobs,
+ * `storage` ensuite (s18), `payments` (s19), `rate-limit` (s28), `jobs` (s33) ;
  * analytique et monitoring suivront.
  */
+export { JOBS_ERROR_CODES } from './jobs'
+export type {
+  EmitJobResult,
+  JobEmission,
+  Jobs,
+  JobsError,
+  JobsErrorCode,
+  JobsLogger,
+  JobsLogRecord,
+} from './jobs'
 export type {
   Checkout,
   CheckoutMode,

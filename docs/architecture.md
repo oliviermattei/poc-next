@@ -93,14 +93,14 @@ interface ModuleDefinition {
   messages: Record<Locale, Messages>
   emails: readonly EmailTemplate[]    // chacun avec ses locales
   webhooks: readonly WebhookHandler[]
-  jobs: readonly ModuleJob[]          // tâches planifiées : identifiant + expression cron
+  jobs: readonly ModuleJob[]          // tâches planifiées : identifiant, expression cron, exécution
   dataCategories: readonly DataCategory[]
   purge: (scope: UserScope | OrgScope) => Promise<void>
   export: (scope: UserScope | OrgScope) => Promise<ExportPayload>
   retention: Record<DataCategory, 'erase' | 'anonymize'>
 }
 ```
-Toutes les clés sont obligatoires dès le premier module, quitte à être vides (ADR 007). `jobs` est déclarative comme `routes` et `webhooks` : l'ordonnanceur de s33 se branche sur le registre, jamais sur un enregistrement à l'import — sinon la tâche planifiée d'un module non activé s'exécuterait. `requires` est typée `string[]` et non `ModuleId[]` : l'union des identifiants vient de l'annuaire, qui importe les modules ; la typer fermerait le cycle, et un requis mal orthographié est donc refusé à la construction du registre. `retention` est indexée par `dataCategories` : une catégorie déclarée sans politique ne compile pas. `routes` porte une forme transitoire (ADR 017), et l'annuaire statique de `config/features.ts` a sa propre conséquence documentée (ADR 016). `publicUrls` est la seule clé qui soit une **fonction** (ADR 054) : les URL d'un contenu découvert à la lecture n'existent pas à l'import, et `app/sitemap.ts` est un gestionnaire `force-dynamic` — un tableau déclaré serait figé au build, où aucune `APP_URL` n'est validée. C'est elle, et **non** les entrées de navigation publiques, qui décide de ce qui entre dans `sitemap.xml` et `robots.txt` : `public` est un niveau de protection, pas une décision d'indexation. Les ajouter plus tard obligerait à rouvrir chaque module déjà écrit.
+Toutes les clés sont obligatoires dès le premier module, quitte à être vides (ADR 007). `jobs` est déclarative comme `routes` et `webhooks` : l'ordonnanceur (s33, ADR 059) se branche sur le registre, jamais sur un enregistrement à l'import — sinon la tâche planifiée d'un module non activé s'exécuterait. Son `run` reçoit un contexte (`{ key, data, attempt, now }`) depuis s33, sans que la déclaration change : une tâche qui n'en fait rien s'écrit toujours `run: async () => {}`. Son `schedule` est **refusé au démarrage** s'il n'est pas une expression cron lisible, en nommant la tâche — jusqu'à s33, rien ne le lisait, donc une expression fausse était silencieuse. `requires` est typée `string[]` et non `ModuleId[]` : l'union des identifiants vient de l'annuaire, qui importe les modules ; la typer fermerait le cycle, et un requis mal orthographié est donc refusé à la construction du registre. `retention` est indexée par `dataCategories` : une catégorie déclarée sans politique ne compile pas. `routes` porte une forme transitoire (ADR 017), et l'annuaire statique de `config/features.ts` a sa propre conséquence documentée (ADR 016). `publicUrls` est la seule clé qui soit une **fonction** (ADR 054) : les URL d'un contenu découvert à la lecture n'existent pas à l'import, et `app/sitemap.ts` est un gestionnaire `force-dynamic` — un tableau déclaré serait figé au build, où aucune `APP_URL` n'est validée. C'est elle, et **non** les entrées de navigation publiques, qui décide de ce qui entre dans `sitemap.xml` et `robots.txt` : `public` est un niveau de protection, pas une décision d'indexation. Les ajouter plus tard obligerait à rouvrir chaque module déjà écrit.
 
 ### Règles transverses
 - **Nommage** : fichiers en `kebab-case`, types et composants en `PascalCase`, fonctions et variables en `camelCase`, tables et colonnes en `snake_case`.
@@ -182,7 +182,7 @@ Deux règles structurantes :
 | Analytique | `Analytics` | PostHog, chargée après consentement | s39 |
 | Limitation de débit | `RateLimiter` | Compteur PostgreSQL (`rate_limit_window`), une seule implémentation | s28 |
 
-Chaque port doit fonctionner en développement local **sans clé d'API** : capture locale des emails, stockage sur disque, jobs synchrones, analytique inerte.
+Chaque port doit fonctionner en développement local **sans clé d'API** : capture locale des emails, stockage sur disque, jobs exécutés en mémoire (`JOBS_LOCAL_RUNNER=1`, s33), analytique inerte.
 
 **`RateLimiter` est le quatrième port livré** (s28, ADR 050), et le seul dont le
 « fournisseur » est la base de l'application. Trois conséquences le distinguent
@@ -205,6 +205,29 @@ dépôt n'a qu'un mécanisme pour qu'une table ait un propriétaire, une migrati
 un journal de migration. `public_form_throttle` (s11) et
 `billing_checkout_throttle` (s24) ne sont plus écrites et restent en place,
 inertes ; leur suppression est une story ultérieure (ADR 050).
+
+**`Jobs` est le cinquième port livré** (s33, ADR 059), et le seul dont la surface
+soit **coupée en deux** — le port porte l'émission, le contrat de module porte la
+déclaration, et c'est `dispatchModuleJob` (`@repo/core`) qui les réunit. Quatre
+choses le distinguent, et elles sont écrites parce qu'elles ne se devinent pas :
+
+- **`ok: true` dit « c'est parti », pas « c'est fait »** : le port met en file, il
+  ne rend jamais le résultat du traitement, qui se lit au journal du répartiteur ;
+- **la règle d'exécution vit dans le socle**, jamais dans le module `jobs` : elle
+  doit répondre quand ce module est **coupé**, ce qui est la condition du repli
+  synchrone (critère 8 de la story, et l'obligation légale de s34 et s35) ;
+- **`ModuleJob.run` reçoit un contexte** — `{ key, data, attempt, now }` — depuis
+  s33. Rétro-compatible : une tâche qui n'en fait rien s'écrit toujours
+  `run: async () => {}`, et aucun module n'a été rouvert ;
+- **son mode local exécute en mémoire, sans clé et sans service**
+  (`JOBS_LOCAL_RUNNER=1`). Il ne survit pas au processus et n'est pas partagé
+  entre instances : `docs/deployment.md` le réserve à un déploiement à une seule
+  instance.
+
+Son magasin d'idempotence (`job_run`) et les trois routes par lesquelles le
+fournisseur rappelle appartiennent au module `jobs`, **optionnel**. Coupé, ses
+chemins ne sont dans aucune table de routage, sa table n'existe pas, l'émission
+s'exécute dans la requête appelante sans reprise, et le démarrage le journalise.
 
 ## Design / UX
 

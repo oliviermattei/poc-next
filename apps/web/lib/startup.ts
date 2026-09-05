@@ -6,6 +6,7 @@ import { resolveAuthConfig } from './auth-config'
 import { billingCatalogue } from './billing-catalogue'
 import { resolveBillingConfig } from './billing-config'
 import { assertFeatureGates } from './feature-gates'
+import { assertJobsConfiguration } from './jobs'
 import { resolveMailerConfig } from './mailer-config'
 import { resolveOAuthConfig } from './oauth-config'
 import { assertRateLimitConfiguration } from './rate-limit'
@@ -84,6 +85,24 @@ export function assertStartupConfiguration(
   // que le navigateur bloquerait en fermant le formulaire sans un mot.
   assertRateLimitConfiguration()
 
+  // **Les tâches de fond** (s33), sans condition de phase pour sa moitié qui ne
+  // lit aucune variable : le **plancher** de l'ordonnanceur — au moins une tâche
+  // déclarée, aucun doublon, chaque expression cron lisible.
+  //
+  // **Ce que cet appel-ci tient tout seul, et rien de plus** : la **phase de
+  // construction**, où l'appel d'en bas n'est jamais atteint. Au démarrage, ce
+  // dernier rejoue le même plancher — la seconde revue de s33 a mesuré que
+  // neutraliser cette ligne laissait la suite verte, ce qui était exact. Sa
+  // contribution propre est donc qu'un `pnpm build` refuse une expression cron
+  // illisible plutôt que de livrer une image dont l'ordonnanceur ne démarrera
+  // pas, et c'est ce que `tests/env-wiring.test.ts` mesure désormais (« refuse
+  // la construction sur une expression cron illisible »).
+  //
+  // Module coupé, elle **journalise le repli** au lieu de refuser : l'émission
+  // s'exécute alors dans la requête appelante, et les tâches planifiées ne
+  // s'exécutent pas (critère 8).
+  assertJobsConfiguration()
+
   if (env === undefined) {
     return
   }
@@ -131,6 +150,13 @@ export function assertStartupConfiguration(
   if (billingEnabled) {
     resolveBillingConfig(env)
   }
+
+  // Et pour les tâches — **mais seulement si le module est activé**, comme le
+  // stockage et le paiement. Sans clé et sans drapeau, l'application refuse de
+  // démarrer en nommant les trois variables : `docs/reliability.md` §2 interdit
+  // le repli silencieux, qui exécuterait ici deux fois chaque échéance dès la
+  // seconde instance.
+  assertJobsConfiguration(env)
 }
 
 /**

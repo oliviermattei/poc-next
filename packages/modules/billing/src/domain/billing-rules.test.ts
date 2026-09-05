@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { trialReminderWindow, trialsToRemind } from './trial-reminder'
 import {
   BillingConfigError,
   formatOfferPrice,
@@ -717,5 +718,68 @@ describe('les offres qu’un périmètre détient', () => {
     expect(entitledOfferIds([sub('pro-monthly'), sub('pro-monthly')], [], NOW)).toEqual([
       'pro-monthly',
     ])
+  })
+})
+
+/**
+ * **Qui relancer, et quand** (s33, critère 7) — la règle, là où elle vit.
+ *
+ * `trialEnd` était présent partout depuis s21 et **rien ne le lisait pour
+ * agir** : il manquait le déclencheur, pas le modèle de données. Cette règle est
+ * ce que le déclencheur lit.
+ */
+describe('la relance d’essai', () => {
+  const trial = (
+    id: string,
+    trialEnd: string | null,
+    status: SubscriptionSnapshot['status'] = 'trialing',
+  ) => ({ id, status, trialEnd: trialEnd === null ? null : new Date(trialEnd) })
+
+  const NOW_TRIAL = new Date('2026-09-05T09:00:00.000Z')
+
+  it('retient un essai qui se termine exactement le jour visé', () => {
+    expect(trialsToRemind([trial('a', '2026-09-08T23:59:00.000Z')], NOW_TRIAL, 3)).toEqual([
+      trial('a', '2026-09-08T23:59:00.000Z'),
+    ])
+  })
+
+  /**
+   * **Le jour est exact, pas « dans les trois jours »**, et c'est ce qui rend la
+   * relance non répétitive sans rien stocker : une tâche quotidienne ne trouve
+   * un abonnement donné qu'un seul jour de sa vie. Une règle « il reste au plus
+   * trois jours » l'aurait trouvé trois fois, et il aurait fallu une colonne
+   * « déjà relancé » — c'est-à-dire une migration pour tenir ce qu'un calcul
+   * tient.
+   */
+  it.each([
+    ['la veille du jour visé', '2026-09-07T12:00:00.000Z'],
+    ['le lendemain du jour visé', '2026-09-09T12:00:00.000Z'],
+    ['aujourd’hui', '2026-09-05T12:00:00.000Z'],
+  ])('écarte un essai qui se termine %s', (_why, trialEnd) => {
+    expect(trialsToRemind([trial('a', trialEnd)], NOW_TRIAL, 3)).toEqual([])
+  })
+
+  it('écarte un abonnement qui n’est plus en essai, même au bon jour', () => {
+    expect(
+      trialsToRemind([trial('a', '2026-09-08T12:00:00.000Z', 'active')], NOW_TRIAL, 3),
+    ).toEqual([])
+    expect(
+      trialsToRemind([trial('a', '2026-09-08T12:00:00.000Z', 'canceled')], NOW_TRIAL, 3),
+    ).toEqual([])
+  })
+
+  it('écarte un essai sans échéance : il n’y a rien à annoncer', () => {
+    expect(trialsToRemind([trial('a', null)], NOW_TRIAL, 3)).toEqual([])
+  })
+
+  /**
+   * La fenêtre lue en base **dérive du même calcul** que la règle : plus large,
+   * la relance partirait en boucle ; plus étroite, elle manquerait des essais.
+   */
+  it('borne la lecture sur le jour visé, des deux côtés', () => {
+    expect(trialReminderWindow(NOW_TRIAL, 3)).toEqual({
+      from: new Date('2026-09-08T00:00:00.000Z'),
+      to: new Date('2026-09-08T23:59:59.999Z'),
+    })
   })
 })

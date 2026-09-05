@@ -27,5 +27,7 @@
   "type.account.security-alert.label": "Alerte de sécurité",
   "type.account.security-alert.body": "Activité inhabituelle sur votre compte : {summary}.",
   "type.organization.member-joined.label": "Nouveau membre",
-  "type.organization.member-joined.body": "{member} a rejoint {organization}."
+  "type.organization.member-joined.body": "{member} a rejoint {organization}.",
+  "type.billing.trial-ending.label": "Fin d’essai proche",
+  "type.billing.trial-ending.body": "Votre essai de l’offre {offer} se termine le {date}."
 }

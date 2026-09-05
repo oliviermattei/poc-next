@@ -325,12 +325,35 @@ export interface WebhookHandler {
  * liste ; il n'aura pas à rouvrir les modules écrits d'ici là.
  *
  * `schedule` est une expression cron. Le contrat ne la valide pas : c'est
- * l'ordonnanceur qui la refusera, en nommant la tâche.
+ * l'ordonnanceur qui la refuse au démarrage, en nommant la tâche
+ * (`assertJobsAreRunnable`, s33).
  */
 export interface ModuleJob {
   readonly id: string
   readonly schedule: string
-  readonly run: () => Promise<void>
+  readonly run: (context: JobRunContext) => Promise<void>
+}
+
+/**
+ * Ce que le répartiteur donne à une tâche qu'il exécute (s33).
+ *
+ * **Un paramètre, pas une clé de contrat en plus** : la déclaration ne change
+ * pas, et une tâche qui n'a rien à en faire s'écrit toujours
+ * `run: async () => {}`. Le critère 2 de s33 demande qu'une doublure
+ * d'enregistrement asserte « le nom **et la charge utile** » d'un événement
+ * émis ; sans ce contexte, une charge utile n'aurait aucun destinataire et le
+ * critère se serait réduit à un nom.
+ *
+ * `key` est la clé d'idempotence de **cette** exécution, `data` ne porte que des
+ * références (`docs/security.md` §5), `attempt` vaut 1 à la première tentative,
+ * et `now` est **injecté** — une tâche qui lirait l'horloge du système ne serait
+ * pas éprouvable à une échéance donnée.
+ */
+export interface JobRunContext {
+  readonly key: string
+  readonly data: Readonly<Record<string, string>>
+  readonly attempt: number
+  readonly now: Date
 }
 
 /**

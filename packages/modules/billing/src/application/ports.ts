@@ -52,6 +52,22 @@ export interface SubscriptionRecord {
  * offre retirée du catalogue laisse la valeur en place ; c'est l'écran qui sait
  * dire qu'il ne la connaît plus.
  */
+/**
+ * Un essai qui se termine, tel que la relance a besoin de le connaître (s33).
+ *
+ * Il porte le **périmètre**, pas une adresse : `billing` ne connaît ni `auth` ni
+ * `organizations`, et c'est le point de composition de l'application qui sait
+ * résoudre un destinataire.
+ */
+export interface EndingTrial {
+  readonly providerSubscriptionId: string
+  readonly offerId: string | null
+  readonly status: SubscriptionStatus
+  readonly trialEnd: Date | null
+  readonly scopeKind: BillingScopeKind
+  readonly scopeId: string
+}
+
 export interface PurchaseRecord {
   readonly id: string
   readonly billingCustomerId: string
@@ -204,6 +220,24 @@ export interface BillingRepository {
    * pour un client qui venait de payer (constat F1 de la revue).
    */
   subscriptionsOfCustomer(billingCustomerId: string): Promise<readonly SubscriptionRecord[]>
+
+  /**
+   * **Les essais qui se terminent dans cette fenêtre**, avec le périmètre à qui
+   * ils appartiennent (s33, critère 7).
+   *
+   * C'est la seule lecture de ce port qui ne parte pas d'un client : la relance
+   * d'essai est une tâche planifiée, elle n'a ni session ni périmètre en entrée.
+   * Elle rend le périmètre pour que l'appelant sache **à qui** écrire, sans que
+   * ce module ait à connaître `auth` ni `organizations` (ADR 034).
+   *
+   * La fenêtre est bornée des deux côtés — jamais « avant telle date » : une
+   * borne unique ramènerait tous les essais passés à chaque exécution, et la
+   * relance partirait en boucle.
+   */
+  trialsEndingBetween(input: {
+    readonly from: Date
+    readonly to: Date
+  }): Promise<readonly EndingTrial[]>
 
   /**
    * **Tous** les achats uniques de ce client, du plus récemment ouvert au plus
