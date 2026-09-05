@@ -1090,6 +1090,7 @@ const authUseCasesWith = (mailer: ReturnType<typeof createRecordingMailer>) =>
     users: {
       findByEmail: () => Promise.resolve(null),
       findById: () => Promise.resolve(null),
+      findByIds: () => Promise.resolve([]),
       markEmailVerified: () => Promise.resolve(false),
       changeEmail: () => Promise.resolve(false),
       changeName: () => Promise.resolve(false),

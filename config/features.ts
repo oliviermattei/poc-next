@@ -10,6 +10,7 @@ import { demoEnabledModule } from '@repo/module-demo-enabled'
 import { i18nModule } from '@repo/module-i18n'
 import { marketingModule } from '@repo/module-marketing'
 import { mcpServerModule } from '@repo/module-mcp-server'
+import { notificationsModule } from '@repo/module-notifications'
 import { organizationsModule } from '@repo/module-organizations'
 import { rateLimitModule } from '@repo/module-rate-limit'
 import { storageModule } from '@repo/module-storage'
@@ -44,6 +45,7 @@ export const availableModules = [
   i18nModule,
   marketingModule,
   mcpServerModule,
+  notificationsModule,
   organizationsModule,
   rateLimitModule,
   storageModule,
@@ -92,6 +94,7 @@ export const enabledModules = [
   'i18n',
   'marketing',
   'mcp-server',
+  'notifications',
   'organizations',
   'rate-limit',
   'storage',

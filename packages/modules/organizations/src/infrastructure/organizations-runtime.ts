@@ -6,7 +6,12 @@ import {
   createOrganizationsUseCases,
   type OrganizationsUseCases,
 } from '../application/organization-use-cases'
-import type { InvitationTokenFactory, SeatSync, SecurityLog } from '../application/ports'
+import type {
+  InvitationTokenFactory,
+  NotifyRecipient,
+  SeatSync,
+  SecurityLog,
+} from '../application/ports'
 import { consoleSecurityLog } from './console-security-log'
 import {
   createDrizzleOrganizationRepository,
@@ -68,6 +73,15 @@ export interface ConfigureOrganizationsOptions {
    * avoir à faire est un succès.
    */
   readonly seatSync: SeatSync
+  /**
+   * L'émission de notifications de l'application (s32).
+   *
+   * **Obligatoire, pour la raison qui rend `seatSync` obligatoire** : un repli
+   * neutre ferait d'un point de composition distrait un produit qui n'avertit
+   * plus personne, et cela ne se découvrirait qu'à la plainte d'un client. Le
+   * compilateur réclame donc la ligne.
+   */
+  readonly notify: NotifyRecipient
 }
 
 export interface OrganizationsService {
@@ -100,6 +114,7 @@ const build = (options: ConfigureOrganizationsOptions): OrganizationsService => 
     now: options.now ?? (() => new Date()),
     tokens: options.tokens ?? createInvitationTokenFactory(),
     securityLog: options.securityLog ?? consoleSecurityLog,
+    notify: options.notify,
   }),
 })
 

@@ -1,5 +1,6 @@
 import { ConsentBanner, ConsentScripts } from '@repo/module-consent/presentation'
-import { LocaleSwitcher, Sidebar, SidebarBrand, ThemeToggle, cn } from '@repo/ui'
+import { Badge, Button, LocaleSwitcher, Sidebar, SidebarBrand, ThemeToggle, cn } from '@repo/ui'
+import { BellIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import { authRoutePath, currentViewer } from '../lib/auth'
@@ -8,6 +9,11 @@ import { appIntl } from '../lib/i18n'
 import { localeRouting } from '../lib/locale-routing'
 import { moduleRegistry } from '../lib/module-registry'
 import { localeOptions, shellNavigation } from '../lib/navigation'
+import {
+  notifications,
+  NOTIFICATIONS_BADGE_LABEL_KEY,
+  NOTIFICATIONS_SCREEN_PATH,
+} from '../lib/notifications'
 import { fileUrl, storage } from '../lib/storage'
 import { AccountMenu } from './account-menu'
 import { DesktopNavigation, MobileNavigation } from './app-navigation'
@@ -57,6 +63,26 @@ export async function AppShell({
   // compte les connexions ouvertes pendant le rendu du shell : une lecture
   // inconditionnelle ici ferait rougir cette mesure.
   const avatar = account === null ? null : await storage.avatarOf(account.userId)
+  /**
+   * **Le badge de notifications non lues** (s32, critère 2).
+   *
+   * Lu **seulement quand il y a une session** : un visiteur anonyme n'a pas de
+   * notifications, donc aucune connexion n'est ouverte pour l'apprendre. Module
+   * coupé, `unreadCount` rend zéro **sans toucher la base**, et la condition
+   * ci-dessous ne nomme aucun module — elle lit une donnée.
+   *
+   * **Ce qui rougit si on retire la condition** : `tests/marketing.test.ts`,
+   * cas « ne lit aucun compteur de notifications pour un visiteur sans
+   * session ». Il monte le module de force avant de compter — sans cela le
+   * registre en vigueur ne le contient pas, `unreadCount` rend zéro sans rien
+   * lire, et la mesure reste verte (revue s32, F2).
+   *
+   * **Il se met à jour à la navigation, et à rien d'autre.** Le shell est rendu
+   * côté serveur à chaque requête ; après une lecture, la route répond 303 vers
+   * l'écran, donc le compteur est relu. Aucun intervalle, aucun websocket : le
+   * temps réel est au cimetière du PRD.
+   */
+  const unread = session === null ? 0 : await notifications.unreadCount(session)
   /**
    * Le consentement du **visiteur**, lu dans son cookie et non dans un compte
    * (s36) : un anonyme a exactement le même droit qu'un utilisateur connecté.
@@ -109,6 +135,27 @@ export async function AppShell({
                 system: t('app.shell.theme.system'),
               }}
             />
+            {!notifications.available || account === null ? null : (
+              <Button
+                asChild
+                variant="ghost"
+                size="icon"
+                aria-label={t(NOTIFICATIONS_BADGE_LABEL_KEY, { count: unread })}
+              >
+                <a href={path(NOTIFICATIONS_SCREEN_PATH)} className="relative">
+                  <BellIcon aria-hidden />
+                  {unread === 0 ? null : (
+                    <Badge
+                      variant="destructive"
+                      className="absolute -top-1 -right-1 px-1 py-0"
+                      aria-hidden
+                    >
+                      {unread}
+                    </Badge>
+                  )}
+                </a>
+              </Button>
+            )}
             {account === null ? null : (
               <AccountMenu
                 email={account.email}

@@ -1,4 +1,4 @@
-import type { Mailer } from '@repo/ports'
+import type { EmailData, Mailer } from '@repo/ports'
 
 import type { InvitationRefusal } from '../domain/invitation'
 import type { OrganizationRole } from '../domain/organization'
@@ -424,6 +424,19 @@ export interface OrganizationsDependencies {
    * supervision de s39.
    */
   readonly securityLog: SecurityLog
+  /**
+   * L'émission de notifications de l'application (s32).
+   *
+   * Injectée comme le mailer et le journal : le module ne sait pas qu'il existe
+   * un centre de notifications — il ne le requiert pas, et le produit doit
+   * rester utilisable ce module coupé. Il sait seulement **nommer l'événement
+   * qu'il possède** et désigner qui le reçoit ; ce qui en est fait — une ligne
+   * in-app, un email, rien — se décide ailleurs, sur les préférences du compte.
+   *
+   * **Obligatoire.** Une dépendance optionnelle à repli neutre ferait d'un point
+   * de composition distrait un produit qui n'avertit plus personne, en silence.
+   */
+  readonly notify: NotifyRecipient
 }
 
 /**
@@ -434,6 +447,47 @@ export interface OrganizationsDependencies {
  * (`domain/security-event.ts`) — il n'y a aucun champ où glisser un secret.
  */
 export type SecurityLog = (event: OrganizationSecurityEvent) => void
+
+/**
+ * Le type de notification que **ce module possède** : quelqu'un a rejoint une
+ * organisation.
+ *
+ * L'identifiant est écrit ici et déclaré dans `config/notifications.ts`, qui est
+ * du socle — le module ne peut pas lire ce catalogue sans en dépendre. Les deux
+ * ne peuvent pas diverger en silence : `tests/notifications.test.ts` refuse un
+ * producteur dont le type n'est pas déclaré, et l'émission rend `unknown_type`.
+ */
+export const MEMBER_JOINED_NOTIFICATION = 'organization.member-joined'
+
+/**
+ * L'émission d'une notification vers **un** destinataire.
+ *
+ * La forme est déclarée ici plutôt qu'importée de `@repo/emails` : c'est le
+ * précédent du module `notifications` lui-même, dont le `domain` redéclare
+ * l'union des canaux que la frontière de couches lui interdit d'importer
+ * (ADR 006). Le compilateur refuse la divergence au point de composition, où
+ * `emitNotification` est affecté à cette forme-ci.
+ *
+ * Elle ne lève pas et son résultat n'est pas lu par l'appelant : avertir ne doit
+ * jamais changer l'issue d'une requête, exactement comme journaliser.
+ */
+export type NotifyRecipient = (input: {
+  readonly type: string
+  readonly recipient: {
+    readonly userId: string
+    readonly email: string
+    readonly locale: string
+  }
+  readonly organizationId: string | null
+  /** Ce qui est **rendu maintenant** : le texte de l'email, qui ne se relit pas. */
+  readonly data: EmailData
+  /**
+   * Ce qui est **écrit et relu plus tard** (revue s32, R1) : des références,
+   * jamais des données personnelles. La ligne est celle de quelqu'un d'autre et
+   * survit aux gens qu'elle nomme.
+   */
+  readonly stored: EmailData
+}) => Promise<{ readonly ok: boolean }>
 
 /**
  * La fabrique du jeton d'invitation, **injectée**.

@@ -16,6 +16,7 @@ import * as docs from './docs'
 import * as i18n from './i18n'
 import * as marketing from './marketing'
 import * as mcpServer from './mcp-server'
+import * as notifications from './notifications'
 import * as organizations from './organizations'
 import * as rateLimit from './rate-limit'
 import * as storage from './storage'
@@ -31,6 +32,7 @@ export const enabledModuleSchemas = [
   { id: 'i18n', schema: i18n },
   { id: 'marketing', schema: marketing },
   { id: 'mcp-server', schema: mcpServer },
+  { id: 'notifications', schema: notifications },
   { id: 'organizations', schema: organizations },
   { id: 'rate-limit', schema: rateLimit },
   { id: 'storage', schema: storage },

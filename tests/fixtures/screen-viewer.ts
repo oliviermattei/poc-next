@@ -376,3 +376,72 @@ export const FIXTURE_CONSENT_SCRIPTS = [
     src: '/api/consent-probe/demo-advertising',
   },
 ]
+
+/**
+ * **Le compteur du badge de notifications** (s32).
+ *
+ * Il est rendu par le **shell**, donc sur chaque écran d'un compte connecté :
+ * c'est une donnée, au même titre que les initiales du repli d'avatar, et il
+ * entre pour cette raison dans le jeu commun de `tests/rendered-text.test.ts`.
+ * Non nul, sans quoi le badge ne serait rendu nulle part et son balisage
+ * sortirait du filet.
+ */
+export const FIXTURE_UNREAD_NOTIFICATIONS = 3
+
+/**
+ * Ce que l'écran du centre de notifications affiche (s32).
+ *
+ * **Deux notifications, et ce n'est pas de la générosité** : une lue et une non
+ * lue, sinon une des deux formes de la ligne — celle qui porte le bouton
+ * « marquer comme lu » — ne serait pas rendue. Une de périmètre organisation et
+ * une de périmètre compte, pour la même raison.
+ *
+ * **Deux pages**, sans quoi la pagination n'est pas rendue et ses quatre
+ * libellés sortent du filet.
+ *
+ * **Deux types de préférence, avec un canal actif et un canal coupé** : les deux
+ * états du bouton portent deux libellés différents, et un seul état n'en
+ * rendrait qu'un.
+ *
+ * Les charges utiles reprennent les données déjà déclarées ailleurs — un nom
+ * d'organisation, une adresse, une IP — pour ne pas élargir le jeu commun.
+ */
+export const FIXTURE_NOTIFICATIONS = {
+  notifications: [
+    {
+      id: 'ntf_1',
+      type: 'organization.member-joined',
+      organizationId: 'org_1',
+      payload: { member: FIXTURE_MEMBER_EMAIL, organization: FIXTURE_ORGANIZATION_NAME },
+      createdAt: FIXTURE_SESSION_CREATED_AT,
+      read: false,
+    },
+    {
+      id: 'ntf_2',
+      type: 'account.security-alert',
+      organizationId: null,
+      payload: { summary: FIXTURE_IP },
+      createdAt: FIXTURE_SESSION_CREATED_AT,
+      read: true,
+    },
+  ],
+  unreadCount: FIXTURE_UNREAD_NOTIFICATIONS,
+  page: 1,
+  pageCount: 2,
+  preferences: [
+    {
+      type: 'account.security-alert',
+      channels: [
+        { channel: 'in_app' as const, enabled: true },
+        { channel: 'email' as const, enabled: true },
+      ],
+    },
+    {
+      type: 'organization.member-joined',
+      channels: [
+        { channel: 'in_app' as const, enabled: true },
+        { channel: 'email' as const, enabled: false },
+      ],
+    },
+  ],
+}

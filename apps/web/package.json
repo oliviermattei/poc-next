@@ -26,6 +26,7 @@
     "@repo/module-demo-enabled": "workspace:*",
     "@repo/module-i18n": "workspace:*",
     "@repo/module-marketing": "workspace:*",
+    "@repo/module-notifications": "workspace:*",
     "@repo/module-organizations": "workspace:*",
     "@repo/payments-testing": "workspace:*",
     "@repo/ports": "workspace:*",

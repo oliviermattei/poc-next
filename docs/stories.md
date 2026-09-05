@@ -864,7 +864,7 @@ Piège : le tri par version doit suivre un ordre sémantique (10.0 après 9.0), 
 - [ ] Les préférences permettent d'activer ou désactiver chaque type de notification par canal (in-app, email) et sont respectées à l'émission
 - [ ] Une notification émise pour un événement d'organisation n'est visible que par les membres concernés
 - [ ] Tout email correspondant à un **type déclaré dans le registre de préférences** passe par la fonction d'émission unique ; un test vérifie qu'aucun de ces types n'appelle le mailer directement
-- [ ] **Module non activé** : aucune route ni entrée de navigation de notifications, les émetteurs existants ne provoquent aucune erreur, et les types déclarés retombent sur un envoi email direct
+- [ ] **Module non activé** : aucune route ni entrée de navigation de notifications, les émetteurs existants ne provoquent aucune erreur, et les types déclarés retombent sur un envoi email direct. **Le repli suit le défaut déclaré du canal email** : un type qui déclare `email: false` n'envoie rien module coupé — couper un module ne doit pas ajouter du trafic sortant que la configuration complète n'aurait pas émis, ce qui inverserait « un module désactivé ne laisse aucune trace ». Restriction décidée et argumentée dans l'ADR 057.
 
 ### Dependencies
 s17-roles-permissions, s06-transactional-emails

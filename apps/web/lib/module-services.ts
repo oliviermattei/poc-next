@@ -9,6 +9,7 @@ import { localeRouting } from './locale-routing'
 import { prepareModuleContent } from './module-content'
 import { createAppMailer } from './mailer'
 import { marketingSite } from './marketing'
+import { notifications } from './notifications'
 import { organizations } from './organizations'
 import { appRateLimiter } from './rate-limit'
 import { storage } from './storage'
@@ -92,4 +93,9 @@ export function prepareModuleServices(): void {
   billing.prepare()
   provideMarketingForms()
   storage.prepare()
+  // s32 — sans cette ligne, les routes du centre de notifications répondent
+  // **500** en disant que le module n'est pas configuré : le répartiteur monte
+  // les routes, il ne construit rien. Mesuré au navigateur, exactement comme la
+  // première soumission de formulaire d'organisation en s15.
+  notifications.prepare()
 }

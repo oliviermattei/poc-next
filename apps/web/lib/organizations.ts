@@ -168,6 +168,11 @@ const APPLICATION_SEGMENTS = [
   // Le rebond same-site du retour de fournisseur (s12) : un écran servi par
   // l'application, donc un identifiant qu'aucune organisation ne peut prendre.
   'oauth',
+  // Le centre de notifications (s32) : il est aussi dérivé de la navigation du
+  // registre, mais son fichier d'écran existe sur le disque **même quand le
+  // module est coupé** — et c'est du disque que `tests/organizations.test.ts`
+  // dérive. Même raison que `billing` et `blog` plus haut.
+  'notifications',
   'organizations',
   // L'écran d'une fonctionnalité réservée à une offre payante (s21) : un écran
   // servi par l'application, donc un identifiant qu'aucune organisation ne peut
@@ -245,6 +250,16 @@ const provide = (): void => {
     // **L'import est différé** : `lib/billing.ts` importe ce fichier-ci (pour
     // `dataOwnerOf`), et un import statique en sens inverse fermerait le cycle.
     seatSync: seatSyncOf(async () => (await import('./billing')).billing),
+    // **Le module ne connaît pas les notifications** — il ne les requiert pas,
+    // et le produit doit rester utilisable ce module coupé. Il nomme l'événement
+    // qu'il possède ; ce qui en est fait se décide dans l'émission unique
+    // (`lib/notifications.ts`), sur les préférences du compte destinataire.
+    //
+    // **L'import est différé**, pour la raison exacte qui diffère celui de la
+    // facturation : `lib/notifications.ts` importe ce fichier-ci (pour le
+    // périmètre de lecture d'un compte), et un import statique en sens inverse
+    // fermerait le cycle.
+    notify: async (input) => await (await import('./notifications')).emitNotification(input),
   }))
 }
 

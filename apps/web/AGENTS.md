@@ -27,6 +27,7 @@ module (`packages/modules/<module>/src/domain`).
   référence : `@repo/module-admin`, `@repo/module-auth`, `@repo/module-billing`,
   `@repo/module-blog`,
   `@repo/module-consent`, `@repo/module-docs`, `@repo/module-i18n`, `@repo/module-marketing`,
+  `@repo/module-notifications`,
   `@repo/module-organizations`, `@repo/module-storage`,
   `@repo/module-demo-enabled` et `@repo/module-demo-disabled` aujourd'hui. Les
   **points de composition** font exception et importent leur module directement
@@ -37,6 +38,8 @@ module (`packages/modules/<module>/src/domain`).
   consentement, `lib/blog.ts`, celui du blog, `lib/docs.ts`, celui de la
   documentation, et `lib/admin.ts`, celui de l'administration de plateforme
   (voir plus bas). **Aucun nombre
+  documentation, et `lib/notifications.ts`, celui des notifications (voir plus
+  bas). **Aucun nombre
   n'est écrit ici, et c'est délibéré** : la phrase annonçait « sept » au-dessus
   de huit noms, la story qui a ajouté le huitième n'ayant pas touché au
   décompte. D'autres fichiers de `lib/` importent un module **déjà monté** pour
@@ -53,7 +56,8 @@ module (`packages/modules/<module>/src/domain`).
   `@repo/module-organizations/presentation`,
   `@repo/module-billing/presentation`,
   `@repo/module-consent/presentation`, `@repo/module-blog/presentation`,
-  `@repo/module-docs/presentation`) : ses composants React n'ont pas
+  `@repo/module-docs/presentation`,
+  `@repo/module-notifications/presentation`) : ses composants React n'ont pas
   leur place dans le barril que lit `config/features.ts`, qu'aucun outil du
   dépôt ne compile en JSX (**ADR 024**, la règle de tout module à composants) ;
 - `zod` pour valider les entrées de route — le paramètre `[document]` des pages
@@ -1342,6 +1346,62 @@ de `lib/billing.ts` : ce qui est écrit dans `lib/startup.ts` n'est neutralisabl
 par aucun test. `tests/admin.test.ts` porte les deux moitiés — la règle, et le
 témoin qu'elle est réellement appelée au démarrage, avec une attente **dérivée
 de la configuration** : module coupé, il n'y a rien à avertir.
+## Le montage des notifications (s32)
+
+Un fichier, sur le modèle exact des organisations — mais il porte **trois**
+choses au lieu d'une, et c'est ce que l'ADR 057 décide :
+
+- `lib/notifications.ts` construit le **registre de types** depuis
+  `config/notifications.ts` et les locales de l'application. Il est du **socle** :
+  un type déclaré existe que le module soit activé ou non, sans quoi le repli du
+  critère 7 n'aurait plus rien à replier ;
+- il compose le **catalogue de rendu** de l'émission : les templates des modules
+  activés **plus** ceux des types déclarés. Le mailer que les modules reçoivent
+  (`createAppMailer()`), lui, ne porte que les premiers — un module qui enverrait
+  `notification.<type>` directement obtient `invalid_request` du port, à
+  l'exécution, en production comprise. C'est la moitié **exécutable** du critère
+  6 ; l'autre est le balayage de `tests/notifications.test.ts` ;
+- il dérive le **centre**, ou son absence : `notificationCentreOf(registry)` rend
+  `null` quand le registre ne contient pas le module. Le repli est donc une
+  **absence**, pas une condition disséminée — et il se prouve en coupant
+  réellement le module dans une configuration de test, jamais en doublant le
+  registre.
+
+| | module activé | module coupé |
+|---|---|---|
+| `/notifications` | l'écran | **404** |
+| entrée de navigation | présente (authentifiée) | absente |
+| badge du shell | le nombre de non-lues | **absent**, sans requête |
+| `emitNotification` | in-app + email selon les préférences | **envoi email direct pour les types qui le veulent par défaut**, rien pour les autres |
+| requêtes en base | celles de l'écran | **aucune** |
+
+**Le badge du shell n'est lu que lorsqu'il y a une session.** Un visiteur anonyme
+n'a pas de notifications, donc aucune connexion n'est ouverte pour l'apprendre.
+Ce qui le tient : `tests/marketing.test.ts`, cas « ne lit aucun compteur de
+notifications pour un visiteur sans session » — il **monte le module de force**
+et vérifie qu'il l'est avant de compter, parce que la première écriture de cette
+mesure tournait sous un registre réduit et restait verte quoi que le shell écrive
+(revue s32, F2). L'avatar est lu sous la même condition, une ligne plus haut ;
+**aucune mesure ne le tient**, et cette phrase-ci ne prétend pas le contraire.
+
+**Un seul producteur ship** (revue s32, F5, autorisé par le propriétaire) :
+`organizations` prévient les membres déjà présents quand quelqu'un rejoint leur
+organisation. Le module ne connaît pas les notifications — il reçoit `notify` au
+point de composition (`lib/organizations.ts`, import différé pour ne pas fermer
+le cycle avec `lib/notifications.ts`) et nomme l'événement qu'il possède
+(`MEMBER_JOINED_NOTIFICATION`). Il émet **une fois par destinataire**, avec
+l'identifiant de ce destinataire : le périmètre de lecture reste celui du module
+`notifications`, et le nouveau venu n'est pas de la liste.
+`account.security-alert` reste **sans producteur** : aucun code n'en émet.
+
+**Il se met à jour à la navigation, et à rien d'autre.** Les routes d'écriture
+répondent 303 vers l'écran, donc le shell est re-rendu côté serveur et le
+compteur relu. Aucun intervalle de rafraîchissement, aucun websocket, aucun
+sondage : le temps réel est au **cimetière du PRD**.
+
+Le segment `notifications` est **réservé** dans `lib/organizations.ts`, comme
+tout écran servi par l'application : son fichier existe sur le disque même quand
+le module est coupé, et c'est du disque que `tests/organizations.test.ts` dérive.
 
 ## Le montage du mailer
 
