@@ -1057,7 +1057,7 @@ Le point dur est le critère 4 : le bannissement est une action d'administration
 - [ ] Une liste des organisations, avec recherche et pagination, est accessible aux superadmins lorsque le module organisations est activé ; module coupé, l'entrée disparaît du back-office
 - [ ] Le détail d'une organisation affiche ses membres et leurs rôles, son offre et l'état de son abonnement
 
-- [ ] La révocation du rôle de superadmin compte les superadmins **capables de se connecter**, et non les lignes de rôle : bannir un pair puis révoquer l'autre ne peut plus laisser la plateforme sans administrateur
+- [ ] **Tout** décompte de superadmins compte ceux **capables de se connecter**, et non les lignes de rôle — la révocation, le garde-fou de bannissement et la promotion : aucune séquence de gestes permis ne peut laisser la plateforme sans administrateur, ni deux bannissements successifs, ni un bannissement suivi d'une révocation
 
 ### Dependencies
 s37a-superadmin-et-bannissement, s21-trials-and-gating
@@ -1065,7 +1065,16 @@ s37a-superadmin-et-bannissement, s21-trials-and-gating
 ### Agentic notes
 L'impersonation est une élévation de privilège : rotation de session obligatoire, et journalisation aux deux bouts.
 
-**Le critère de révocation ci-dessus n'est pas cosmétique.** s37a a fermé trois des quatre écritures menant à « plus aucun superadmin capable de se connecter » ; la quatrième — bannir un pair non-dernier **puis** révoquer l'autre — reste ouverte et **ne se répare pas seule** : la ligne du banni subsiste, le compte renvoie 1, la révocation autorise. La fermer demande d'élargir `AdminAccountsPort` pour que le comptage connaisse l'état « banni », qui vit dans le socle (ADR 058) — c'est une décision de forme, d'où son report ici plutôt qu'une rustine dans s37a. Le tableau des quatre chemins balayés est dans `packages/modules/admin/AGENTS.md`.
+**Le critère de décompte ci-dessus n'est pas cosmétique, et il a déjà été écrit trop étroitement une fois.** s37a a fermé les gestes *uniques* qui laissent la plateforme sans superadmin capable de se connecter, mais **le décompte compte des lignes de rôle et ignore l'état « banni »**. Deux séquences de gestes tous permis restent donc ouvertes, mesurées en revue de ronde 2 :
+
+- bannir un pair, puis **se bannir soi-même** — les deux rendent 200, le décompte voit 2 lignes, la plateforme n'a plus personne ;
+- bannir un pair, puis **révoquer l'autre** — la révocation voit 1 ligne et autorise.
+
+Aucune ne se répare seule : la ligne du banni subsiste, donc `SUPERADMIN_EMAIL` ne se redéclenche jamais et il faut un `UPDATE` à la main en production.
+
+**La cause est unique** : `readFacts` compte `admin_platform_role`, et l'état `banned` vit dans le socle, hors de portée d'`AdminAccountsPort` (ADR 058). Corriger le seul prédicat du `delete` **ne fermerait pas** la première séquence — c'est l'erreur exacte que la première rédaction de ce critère induisait. Élargir le port, puis faire consulter le nouveau décompte par `revocationRefusal`, `banRefusal` **et** `grantSuperadmin` (promouvoir un compte banni gonfle le décompte d'un administrateur inutilisable).
+
+Le tableau des chemins balayés est dans `packages/modules/admin/AGENTS.md` ; il est lui aussi trop étroit et se corrige avec ce critère.
 
 ## Story s37c-inscriptions-publiques — Consulter et exporter les inscriptions
 **As a** Admin **I want** consulter et exporter les inscriptions publiques **so that** je puisse exploiter les demandes entrantes.
