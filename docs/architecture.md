@@ -12,7 +12,7 @@
 | Monorepo | Turborepo + pnpm | 002 |
 | Base de données | PostgreSQL 16+, Drizzle ORM, migrations SQL versionnées | 003 |
 | Provider base | Neon par défaut, PostgreSQL conteneurisé (Coolify) supporté et testé | 003 |
-| Authentification | Better Auth (plugins `organization`, `admin`, `two-factor`, `passkey`) | 004 |
+| Authentification | Better Auth. **Greffons réellement configurés** (`packages/modules/auth/src/infrastructure/better-auth-service.ts`, mesuré le 05/09) : `magicLink`, `twoFactor` — enveloppé par `withTwoFactorOnEverySignIn` du dépôt —, `passkey`, plus `genericOAuth` **uniquement** sous le fournisseur de développement explicite. `organization` est écarté (ADR 025), `admin` aussi (ADR 058) | 004, 025, 058 |
 | Couche API | **`dispatchModuleRequest` de `@repo/core`**, contrats `ModuleRoute` + Zod, TanStack Query | 005, 017 |
 
 > **Divergence mesurée le 05/09.** L'ADR 005 a choisi Hono et oRPC, l'ADR 017 a présenté `ModuleRoute` comme une « forme transitoire jusqu'à Hono ». **Ni l'un ni l'autre n'a été livré** : zéro import `@orpc/*`, zéro import `hono`, zéro dépendance déclarée, sur douze modules et quarante stories. Les tableaux ci-dessous décrivaient l'intention comme si c'était l'état — ils ont fait écrire « contrats oRPC » dans le plan de s32, que l'implémenteur a eu raison d'ignorer. Le transport réel est le répartiteur de `@repo/core`. Reprendre la décision demande un ADR, pas une correction de prose.

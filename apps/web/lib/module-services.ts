@@ -1,6 +1,7 @@
 import { getDatabase } from '@repo/db'
 import { provideMarketing } from '@repo/module-marketing'
 
+import { admin } from './admin'
 import { appAuth } from './auth'
 import { billing } from './billing'
 import { consent } from './consent'
@@ -83,6 +84,10 @@ export function prepareModuleServices(): void {
   // c'est la seule raison pour laquelle un `provide*` oublié se voit.
   prepareModuleContent()
   consent.prepare()
+  // L'administration de plateforme (s37a) : sans cet appel, ses routes
+  // répondent 500 en disant que le module n'est pas configuré. Le module coupé,
+  // `prepare` ne fait rien — il n'y a alors aucune route à servir.
+  admin.prepare()
   organizations.prepare()
   billing.prepare()
   provideMarketingForms()

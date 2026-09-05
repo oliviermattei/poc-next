@@ -307,6 +307,7 @@ besoin que de `DATABASE_URL`.
 | `STRIPE_WEBHOOK_SECRET` | oui avec `STRIPE_SECRET_KEY` | la vérification de signature des webhooks. Endpoint à déclarer chez Stripe : `<APP_URL>/api/modules/billing/webhook` |
 | `PAYMENTS_LOCAL_MODE` | l'une des deux | `1` simule le paiement. **Refusée au démarrage sous `NODE_ENV=production`** : elle accorderait un abonnement complet sans paiement |
 | `PAYMENTS_RECORDED_EVENTS` | non | le dossier d'événements rejoués par `pnpm test:golden-path`. Jamais posée à la main, jamais en production |
+| `SUPERADMIN_EMAIL` | non, module `admin` activé | l'adresse du **premier** superadmin (s37a). Absente, le démarrage **avertit sans refuser** — une plateforme sans superadmin doit pouvoir démarrer pour qu'on puisse en désigner un — et le back-office répond 404 à tout le monde. Elle ne prend effet que tant qu'aucun superadmin n'existe : ensuite, c'est la base qui fait foi |
 | `STORAGE_S3_BUCKET` | les quatre ensemble, module `storage` activé | le seau réel (S3, R2, MinIO, Spaces) |
 | `STORAGE_S3_REGION` | idem | la région du seau |
 | `STORAGE_S3_ACCESS_KEY_ID` | idem | l'identifiant d'accès |

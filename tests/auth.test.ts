@@ -1090,6 +1090,74 @@ describe.skipIf(!databaseReachable)('indistinguabilité compte inconnu / mot de 
   }, 120_000)
 })
 
+/**
+ * **Le compte banni** (s37a) — un état du compte, porté par le socle.
+ *
+ * Le bannissement se décide dans le module d'administration ; l'**état**, lui,
+ * appartient à `auth`, parce que c'est `auth` qui possède les comptes et la
+ * décision de laisser entrer. Ces trois cas mesurent cette décision-là, à
+ * travers le répartiteur et contre une vraie base — jamais sur la valeur de
+ * retour de l'écriture.
+ */
+describe.skipIf(!databaseReachable)('compte banni', () => {
+  it('refuse la connexion sans dire pourquoi : le refus est celui d’un compte inconnu', async () => {
+    const { email, userId } = await aVerifiedAccount()
+
+    await service.useCases.banAccount({ userId, reason: 'abus signalé' })
+
+    const refused = await signIn(email)
+    const unknown = await call('/sign-in/email', {
+      body: { email: anEmail(), password: PASSWORD },
+    })
+
+    // **Le piège de la story.** Répondre « vous êtes banni » à la connexion
+    // donne un oracle d'énumération : l'attaquant apprend qu'un compte existe,
+    // et lequel. `docs/security.md` §7 n'admet aucune distinction, « ni par
+    // message, ni par code de statut » — le motif est lisible côté serveur,
+    // jamais par l'anonyme.
+    expect(refused.status).toBe(unknown.status)
+    await expect(refused.json()).resolves.toEqual(await unknown.json())
+
+    // Et le refus reste un refus : aucune session n'est ouverte au passage.
+    expect(sessionCookie(refused)).toBeNull()
+  }, 30_000)
+
+  it('invalide la session déjà ouverte, mesurée sur une requête réelle', async () => {
+    const { email, userId } = await aVerifiedAccount()
+    const opened = await signIn(email)
+    const cookie = sessionCookie(opened)?.value ?? ''
+
+    expect(cookie).not.toBe('')
+
+    // La session sert **avant** : sans ce témoin, le cas suivant serait vert
+    // sur un cookie qui n'a jamais rien ouvert.
+    const before = await call('/change-name', { body: { name: 'Avant' }, cookie })
+
+    expect(before.status).toBe(200)
+
+    await service.useCases.banAccount({ userId, reason: null })
+
+    // Bannir sans révoquer laisserait la session en cours vivante jusqu'à son
+    // expiration : le refus ne mordrait qu'à la prochaine connexion. Mesuré ici
+    // sur une **requête** que le répartiteur sert, pas sur l'appel de révocation.
+    const after = await call('/change-name', { body: { name: 'Après' }, cookie })
+
+    expect(after.status).toBe(401)
+  }, 30_000)
+
+  it('rend le compte connectable au débannissement', async () => {
+    const { email, userId } = await aVerifiedAccount()
+
+    await service.useCases.banAccount({ userId, reason: 'erreur' })
+    await service.useCases.unbanAccount({ userId })
+
+    const response = await signIn(email)
+
+    expect(response.status).toBe(200)
+    expect(sessionCookie(response)).not.toBeNull()
+  }, 30_000)
+})
+
 describe.skipIf(!databaseReachable)('journalisation des événements de sécurité', () => {
   it('journalise la connexion avec son acteur, l’échec sans acteur', async () => {
     const { email, userId } = await aVerifiedAccount()

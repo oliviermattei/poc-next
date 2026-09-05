@@ -1,6 +1,7 @@
 import { assertStartupEnv } from '@repo/config'
 
 import { enabledModules } from '../../../config/features'
+import { superadminWarningFor } from './admin'
 import { resolveAuthConfig } from './auth-config'
 import { billingCatalogue } from './billing-catalogue'
 import { resolveBillingConfig } from './billing-config'
@@ -85,6 +86,18 @@ export function assertStartupConfiguration(
 
   if (env === undefined) {
     return
+  }
+
+  // **L'administration de plateforme avertit, elle ne refuse pas** (s37a,
+  // critère 3), et c'est la seule garde de ce fichier qui laisse démarrer.
+  // Une plateforme sans superadmin **doit** pouvoir démarrer : la variable
+  // nomme une adresse dont le compte n'existe pas encore sur une base vierge,
+  // et refuser rendrait la désignation impossible. Le back-office, lui, répond
+  // 404 à tout le monde tant que personne ne l'administre.
+  const superadminWarning = superadminWarningFor(env)
+
+  if (superadminWarning !== null) {
+    console.warn(superadminWarning)
   }
 
   resolveMailerConfig(env)

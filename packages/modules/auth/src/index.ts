@@ -41,6 +41,10 @@ export {
   type OAuthFailureClass,
 } from './domain/oauth'
 export { safeRedirectPath } from './domain/redirect'
+// s37a : l'état « banni » appartient au socle (ADR 058). La borne du motif sort
+// d'ici parce qu'elle vit avec la colonne qui le porte — le module
+// d'administration la lit, il n'en écrit pas une seconde.
+export { BAN_REASON_MAX_LENGTH, parseBanReason, type ParsedBanReason } from './domain/ban'
 export {
   TWO_FACTOR_CHALLENGE_COOKIES,
   TWO_FACTOR_CHALLENGE_COOKIE_NAME,

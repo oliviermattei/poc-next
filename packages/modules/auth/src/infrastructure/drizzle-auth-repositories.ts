@@ -73,12 +73,14 @@ const toRecord = (row: {
   email: string
   emailVerified: boolean
   twoFactorEnabled: boolean
+  banned: boolean
 }): AuthUserRecord => ({
   id: row.id,
   name: row.name,
   email: row.email,
   emailVerified: row.emailVerified,
   twoFactorEnabled: row.twoFactorEnabled,
+  banned: row.banned,
 })
 
 export function createDrizzleAuthUserRepository(db: AuthDatabase): AuthUserRepository {
@@ -88,6 +90,7 @@ export function createDrizzleAuthUserRepository(db: AuthDatabase): AuthUserRepos
     email: authUser.email,
     emailVerified: authUser.emailVerified,
     twoFactorEnabled: authUser.twoFactorEnabled,
+    banned: authUser.banned,
   }
 
   return {
@@ -105,6 +108,39 @@ export function createDrizzleAuthUserRepository(db: AuthDatabase): AuthUserRepos
       const [row] = await db.select(columns).from(authUser).where(eq(authUser.id, userId)).limit(1)
 
       return row === undefined ? null : toRecord(row)
+    },
+
+    /**
+     * **Lue à chaque ouverture de session** (s37a) : une seule colonne, un seul
+     * index primaire. Un compte introuvable rend `true` — le sens fermé : la
+     * garde refuse plutôt que d'ouvrir une session à un compte qui n'existe
+     * plus.
+     */
+    isBanned: async (userId) => {
+      const [row] = await db
+        .select({ banned: authUser.banned })
+        .from(authUser)
+        .where(eq(authUser.id, userId))
+        .limit(1)
+
+      return row === undefined ? true : row.banned
+    },
+
+    setBanned: async ({ userId, banned, at, reason }) => {
+      const updated = await db
+        .update(authUser)
+        .set({
+          banned,
+          // Débannir efface la marque : `banned_at` et le motif n'ont de sens
+          // que tant que la sanction dure.
+          bannedAt: banned ? at : null,
+          bannedReason: banned ? reason : null,
+          updatedAt: at,
+        })
+        .where(eq(authUser.id, userId))
+        .returning({ id: authUser.id })
+
+      return updated.length > 0
     },
 
     markEmailVerified: async (userId) => {

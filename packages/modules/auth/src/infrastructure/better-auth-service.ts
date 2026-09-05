@@ -1,6 +1,7 @@
 import { MODULE_ROUTE_PREFIX, resolveLocale } from '@repo/core'
 import type { Mailer } from '@repo/ports'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
+import { APIError } from 'better-auth/api'
 import { betterAuth } from 'better-auth/minimal'
 import { genericOAuth } from 'better-auth/plugins/generic-oauth'
 import { magicLink } from 'better-auth/plugins/magic-link'
@@ -26,6 +27,7 @@ import {
   type OAuthProviderId,
 } from '../domain/oauth'
 import { digestBackupCode, digestBackupCodes } from '../domain/backup-code'
+import { refusesSignIn } from '../domain/ban'
 import { withTwoFactorOnEverySignIn } from './two-factor-challenge'
 import {
   TOTP_DIGITS,
@@ -409,6 +411,38 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
       transaction: true,
     })),
     socialProviders,
+    /**
+     * **Le compte banni n'ouvre aucune session** (s37a), et la garde est posée
+     * au seul endroit que **tous** les parcours traversent : la création de la
+     * ligne de session. Mot de passe, magic link, rappel de fournisseur,
+     * passkey, et tout parcours écrit demain y passent — une garde posée dans
+     * le gestionnaire de `/sign-in/email` aurait laissé les quatre autres
+     * ouverts.
+     *
+     * Deux différences avec le greffon `admin` de la bibliothèque, que ce dépôt
+     * n'adopte pas (ADR 058) :
+     *
+     * - **le compte est relu par le repository du module**, jamais par
+     *   `ctx.context.internalAdapter`. Le greffon commence par
+     *   `if (!ctx) return` : sans contexte d'endpoint, il **laisse passer**.
+     *   Ici il n'y a pas de contexte à avoir, donc pas de branche ouverte ;
+     * - **le refus ne dit pas pourquoi.** Le greffon rend « You have been
+     *   banned from this application » : c'est un oracle d'énumération de
+     *   comptes, que `docs/security.md` §7 refuse. `UNAUTHORIZED` est réécrit
+     *   par la route en `SIGN_IN_REFUSAL`, le refus unique du `domain`, celui
+     *   d'un compte inconnu.
+     */
+    databaseHooks: {
+      session: {
+        create: {
+          before: async (session: { readonly userId: string }) => {
+            if (refusesSignIn({ banned: await dependencies.users.isBanned(session.userId) })) {
+              throw new APIError('UNAUTHORIZED', { message: 'Invalid email or password' })
+            }
+          },
+        },
+      },
+    },
     /**
      * **Où atterrit un retour en échec dont l'état n'a pas pu être lu.**
      *
