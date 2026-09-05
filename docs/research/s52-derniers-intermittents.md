@@ -49,3 +49,63 @@ Notée **2** dans `docs/stories.md`. **Ma note : 4.**
 La note de 2 a été posée quand la liste comptait deux cas d'une même surface. Elle en porte sept, sur quatre fichiers, issus de six stories, avec **au moins trois causes distinctes dont une seule est comprise à moitié**. Et le fait 5 ouvre la possibilité qu'un des cas soit un défaut de production déguisé en test instable — auquel cas ce n'est plus du tout la même story.
 
 **Proposition de découpe, à trancher au plan** : les cas dont la cause **est établie** (la paire OAuth, et l'audit si le fait 5 se confirme) d'un côté ; ceux dont la cause reste à trouver (`two-factor:162`, `blog:134`, les trois de `rate-limiting`) de l'autre. La première close seule et vite ; la seconde est une enquête, et mélanger une enquête à un correctif fait traîner les deux.
+
+## Re-vérification du 05/09 — contre `dev` au commit `6466ccf`
+
+Recherche datée de `201bf64`, **33 commits plus tôt**. Les cinq points d'ancrage
+existent tous, et le fait 2 tient : `grep -c "countRows('auth_session')"` sur
+`tests/billing.test.ts` rend **0**, s50 a bien fermé ce cas.
+
+### Une contrainte est tombée
+
+« La CI est à l'arrêt au niveau du compte » **n'est plus vrai**. Le dépôt est
+passé public le 05/09, ce qui a levé la limite de minutes ; la CI tourne depuis,
+sur les deux événements. **Les cas qui ne rougissent qu'en CI sont donc
+reproductibles à nouveau** — c'était la contrainte qui rendait trois des sept
+cas inaccessibles.
+
+### Quatre familles observées le 05/09, que la recherche ne connaissait pas
+
+Toutes relevées en revue, chacune sur une exécution réelle. Elles élargissent la
+liste de sept à **onze cas**, et surtout elles ajoutent **une cause caractérisée**
+que la story peut fermer directement.
+
+1. **Expirations à 5 000 ms sur les fichiers qui importent `apps/web/next.config`**
+   — la seule des quatre dont le mécanisme est **établi**, par lecture du dépôt :
+   `vitest.config.ts` ne pose **aucun `testTimeout`**, donc le défaut de 5 000 ms,
+   exactement la valeur observée ; trois fichiers de `tests/` chargent le même
+   graphe lourd (`next`, `@next/mdx`, `next-intl/plugin`, et surtout
+   `apps/web/lib/startup.ts` qui tire tous les points de composition), **chacun
+   précédé d'un `vi.resetModules()`** qui force la re-transformation complète ; et
+   `test:minimal-profile` travaille dans un clone neuf, donc cache de
+   transformation froid, à côté de la compilation Next et des parcours navigateur
+   de la même recette. Observé sur `tests/deployment.test.ts` et
+   `tests/env-wiring.test.ts`. **La porte est un délai explicite sur ces imports,
+   jamais une reprise** — et `s33` vient d'ajouter un quatrième appelant à ce
+   graphe.
+2. **Course de migration** — `CREATE TABLE "organization"` en échec, deux fichiers
+   de test migrant la même base en parallèle. Observé sur la demande de fusion 12.
+3. **`e2e/health.spec.ts` — `read ECONNRESET`** sur `GET /api/health` pendant
+   `pnpm test:socle`, vert au second passage.
+4. **`e2e/oauth.spec.ts` — `unable_to_create_user` / `_bt_check_unique`** pendant
+   `pnpm test:socle`. **C'est la paire du fait 3**, observée sous un troisième
+   régime : elle rougit donc en local, en CI *et* dans la recette socle, ce qui
+   renforce le diagnostic « identité partagée » plutôt que « nombre de
+   travailleurs ».
+
+### Ce que ces observations changent pour le fait 4
+
+L'hypothèse « quatre travailleurs contre un » perd encore du terrain : la famille 1
+a un mécanisme établi qui **ne dépend pas du parallélisme des travailleurs** mais
+du cache de transformation et du délai par défaut, et la famille 4 rougit sous
+trois régimes différents. Traiter les onze cas comme une famille reste la
+mauvaise route ; la re-vérification en donne désormais **quatre causes
+distinctes**, dont deux comprises.
+
+### Ce qui reste ouvert, et le reste
+
+La question la plus importante n'a pas bougé : **que consomme les 20 s du cas
+d'audit ?** Si la piste `spawnSync`/tuyaux se confirme, le défaut est dans la
+façon dont le script coupe son enfant, et **il compte en production**. Stabiliser
+le test le masquerait. À établir avant tout correctif.
+
