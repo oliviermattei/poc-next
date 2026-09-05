@@ -1182,6 +1182,48 @@ c'est une story, pas un correctif. Consigné ici pour que la prochaine story qui
 touche au contrat de tâches le trouve — et parce que le prochain job à la demande
 recopiera la rustine s'il ne trouve que la rustine.
 
+## P28 — Une recherche doit compter les satisfaisants d'un critère, pas vérifier qu'il en existe
+
+**Observé deux fois, à sept stories d'écart.**
+
+**s48, critère 8.** Le prédicat avait **exactement un** satisfaisant dans tout le
+dépôt — le module `marketing` — et la branche socle de la matrice de CI le coupe.
+Le critère n'était donc jouable que dans une moitié de la CI, et personne ne
+l'avait vu parce que « il existe un module qui satisfait le prédicat » était vrai.
+
+**s34, critère 4.** Il exige que les catégories de rétention marquées
+`anonymize` voient le lien vers l'utilisateur rompu, et cite en exemple « les
+factures et journaux de paiement ». Balayage : **une seule** des seize catégories
+déclarées vaut `anonymize`, et elle appartient à `demo-disabled` — un module
+**délibérément jamais activé**, dont l'existence sert précisément à prouver qu'un
+module coupé ne laisse aucune trace. Zéro satisfaisant dans la configuration
+livrée. Un test du critère aurait été vert en ne vérifiant rien, sur une exigence
+RGPD.
+
+**Ce que les deux cas ont en commun** : la prémisse du critère était *vraie* — le
+mécanisme existe, le type existe, un module le déclare. Ce qui manquait n'était
+pas l'existence mais le **compte**, et surtout le compte **dans la configuration
+que le produit livre**.
+
+**Règle** : quand un critère porte sur « les X qui ont la propriété P », la
+recherche ne demande pas *« P existe-t-elle ? »* mais *« combien de X l'ont, et
+combien en restent dans la configuration livrée ? »*. Un satisfaisant unique est
+un signal ; **zéro est une prémisse fausse**, et elle se répare dans la story, pas
+au plan.
+
+**Les deux sorties, et elles ne se valent pas.** s48 a rendu le critère
+indépendant de la configuration. s34 a corrigé le critère lui-même — l'exemple
+qu'il donnait n'existait pas dans le produit, parce que `billing` ne stocke aucune
+facture : les trois tables qui portent de l'argent ou un événement n'ont **aucun
+lien vers un utilisateur**, et les factures vivent chez le fournisseur de
+paiement. Le critère supposait une conception que le dépôt a délibérément évitée.
+
+**Et dans les deux cas, l'exigence a survécu à la correction** : s34 impose
+désormais que le mécanisme d'anonymisation soit éprouvé *même si aucun module du
+socle ne le déclare* — sans quoi la story aurait livré un balayage vide. C'est le
+point : on corrige la prémisse, on ne supprime pas la difficulté.
+
+
 
 
 
@@ -1564,6 +1606,7 @@ recopiera la rustine s'il ne trouve que la rustine.
 | 05/09 | Un garde ajouté pour fermer une vacuité était lui-même vert par accident d'environnement (P9, troisième fois) | le cas déclare l'intégralité de ce que la garde lit, précédent de `tests/admin.test.ts` | P25bis |
 | 05/09 | La CI casse exactement à l'endroit que la revue avait nommé comme non vérifié | diagnostic en deux minutes au lieu d'une instruction depuis zéro | P26 |
 | 05/09 | Le premier job à la demande doit déclarer une cadence dont il ne veut pas, et l'adaptateur l'arme quotidiennement à vide | non-opérant documenté, tenu par deux gardes | P27bis |
+| 05/09 | Un critère RGPD dont aucune catégorie de la configuration livrée n'est satisfaisante — deuxième fois après s48 | critère corrigé sur mesure, et l'exigence maintenue par un module de test | P28 |
 
 ---
 
