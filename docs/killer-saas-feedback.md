@@ -1146,6 +1146,43 @@ L'implémenteur en a fermé un tout seul (`pnpm test:e2e`, 108 passés) une fois
 qu'on lui a dit que c'était là que ça cassait. Une section « non vérifié » précise
 est donc aussi une **liste de travail**, pas seulement un avertissement.
 
+## P27bis — Une clé obligatoire pour tous force à mentir ceux qui n'en veulent pas
+
+**Observé en s34, imputable à s33.** `ModuleJob` vaut `{ id, schedule, run }`, et
+`schedule` est **obligatoire** — comme les quinze clés du contrat de module, et
+pour la même bonne raison : une clé optionnelle est une clé qu'on oublie, et
+l'ajouter plus tard rouvre tous les modules.
+
+Mais s34 a livré le premier job **à la demande** du dépôt :
+`auth.purge-account`, déclenché par une requête de suppression de compte. Il n'a
+aucune cadence. Il a donc dû en déclarer une, et l'adaptateur Inngest **arme les
+deux déclencheurs pour chaque job** — si bien qu'une tâche à la demande est aussi
+tirée quotidiennement, sans charge utile. s34 a fait de cette exécution un
+non-opérant documenté, tenu par deux gardes.
+
+C'est correct comme réponse locale, et c'est une rustine sur un contrat.
+
+**Ce que le cas révèle** : « obligatoire pour tous » et « significatif pour tous »
+ne sont pas la même propriété. Les quatorze autres clés du contrat sont
+significatives même vides — `routes: []` veut dire « ce module ne sert rien »,
+`emails: []` veut dire « il n'envoie rien ». `schedule: '0 3 * * *'` sur un job à
+la demande ne veut **rien** dire : c'est une valeur inventée pour satisfaire un
+type, et un lecteur la croira.
+
+**Deux sorties, et la première est meilleure :**
+
+1. **Un marqueur explicite** — `schedule: 'on-demand'` comme valeur du type, ou un
+   champ `trigger: {kind:'schedule', cron} | {kind:'on-demand'}`. Le contrat reste
+   obligatoire, l'adaptateur sait quoi armer, et rien n'est inventé.
+2. Rendre `schedule` optionnel. Mais c'est exactement ce que le dépôt refuse
+   partout ailleurs, et pour une raison mesurée.
+
+**Non implémenté** : cela rouvrirait les modules qui déclarent des jobs, donc
+c'est une story, pas un correctif. Consigné ici pour que la prochaine story qui
+touche au contrat de tâches le trouve — et parce que le prochain job à la demande
+recopiera la rustine s'il ne trouve que la rustine.
+
+
 
 
 ---
@@ -1526,6 +1563,7 @@ est donc aussi une **liste de travail**, pas seulement un avertissement.
 | 05/09 | CI morte : tous les jobs en 2-3 s, sans journal, sur toutes les branches | cause au niveau du compte (quota de minutes), confirmée par le porteur ; rien dans le dépôt | — |
 | 05/09 | Un garde ajouté pour fermer une vacuité était lui-même vert par accident d'environnement (P9, troisième fois) | le cas déclare l'intégralité de ce que la garde lit, précédent de `tests/admin.test.ts` | P25bis |
 | 05/09 | La CI casse exactement à l'endroit que la revue avait nommé comme non vérifié | diagnostic en deux minutes au lieu d'une instruction depuis zéro | P26 |
+| 05/09 | Le premier job à la demande doit déclarer une cadence dont il ne veut pas, et l'adaptateur l'arme quotidiennement à vide | non-opérant documenté, tenu par deux gardes | P27bis |
 
 ---
 
