@@ -105,6 +105,7 @@ export {
 } from './application/billing-use-cases'
 export type {
   BillingPermission,
+  EndingTrial,
   GuestAccount,
   GuestAccounts,
   ScopeEmailResolver,
@@ -150,3 +151,14 @@ export {
   billingNavigation,
   billingRoutePath,
 } from './presentation/billing-routes'
+export {
+  remindEndingTrials,
+  type RemindEndingTrialsInput,
+  type TrialReminder,
+} from './application/trial-reminders'
+export {
+  trialReminderWindow,
+  trialsToRemind,
+  utcDayOf,
+  TRIAL_REMINDER_LEAD_DAYS,
+} from './domain/trial-reminder'

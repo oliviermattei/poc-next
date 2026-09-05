@@ -17,7 +17,7 @@
 ## 2. Dégradation
 
 - L'indisponibilité d'un port **dégrade** l'application, elle ne la casse pas : sans service d'email, l'inscription échoue proprement en le disant ; sans analytique, l'application fonctionne ; sans jobs, purge et export s'exécutent en synchrone.
-- Aucun port ne dépend d'une clé de fournisseur pour fonctionner **en développement local** : capture locale des emails, stockage sur disque, jobs synchrones, analytique inerte. Ce mode local est **explicite** — un drapeau que le développeur pose, jamais une déduction depuis `NODE_ENV` ni depuis l'absence de clé. Sans clé et sans drapeau, le processus refuse de démarrer en nommant la variable : une substitution silencieuse rendrait un envoi capturé indiscernable d'un envoi réel, y compris en production.
+- Aucun port ne dépend d'une clé de fournisseur pour fonctionner **en développement local** : capture locale des emails, stockage sur disque, jobs exécutés en mémoire (`JOBS_LOCAL_RUNNER=1`, s33 — sa file ne survit pas au processus et n'est pas partagée entre instances), analytique inerte. Ce mode local est **explicite** — un drapeau que le développeur pose, jamais une déduction depuis `NODE_ENV` ni depuis l'absence de clé. Sans clé et sans drapeau, le processus refuse de démarrer en nommant la variable : une substitution silencieuse rendrait un envoi capturé indiscernable d'un envoi réel, y compris en production.
 - Une panne de service tiers ne bloque jamais une requête au-delà de son délai d'attente, et n'écrit jamais un état partiel qu'aucune reprise ne peut rattraper.
 - Toute opération multi-étapes est **reprenable** : soit elle est atomique, soit elle laisse un état explicite permettant de la rejouer.
 

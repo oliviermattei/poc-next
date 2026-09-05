@@ -91,6 +91,11 @@ describe('contraintes du contrat portées par le compilateur', () => {
     // de site et du `robots.txt` sans qu'aucune commande ne le dise — c'est ce
     // que le compilateur refuse ici.
     ['un module qui ne déclare pas ses URL publiques', 'missing-public-urls.ts'],
+    // s33 : le cinquième port hérite du même contrat. Une émission dont l'échec
+    // n'est pas écarté ne compile pas — et c'est la garantie qui compte pour un
+    // port asynchrone : une émission perdue ne se voit jamais dans la requête
+    // qui l'a faite.
+    ['un échec du port de jobs non traité', 'unhandled-jobs-failure.ts'],
   ])('refuse %s', (_case, fixture) => {
     expect(diagnostics).toContain(fixture)
   })

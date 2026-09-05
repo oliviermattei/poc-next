@@ -1,10 +1,11 @@
 import type { ModuleScope } from '@repo/core'
-import { and, desc, eq, isNull, lte, ne, or, sql, type SQL } from 'drizzle-orm'
+import { and, desc, eq, gte, isNull, lte, ne, or, sql, type SQL } from 'drizzle-orm'
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core'
 
 import type {
   BillingCustomerRecord,
   BillingRepository,
+  EndingTrial,
   PurchaseReconcileWrite,
   PurchaseRecord,
   SubscriptionRecord,
@@ -366,6 +367,32 @@ export function createDrizzleBillingRepository(db: BillingDatabase): BillingRepo
         .from(billingSubscription)
         .where(eq(billingSubscription.billingCustomerId, billingCustomerId))
         .orderBy(...subscriptionReadOrder)) as readonly SubscriptionRecord[],
+
+    /**
+     * **Les essais qui se terminent dans la fenêtre**, joints à leur périmètre
+     * (s33). La borne haute n'est pas décorative : sans elle, la relance
+     * ramènerait tous les essais passés à chaque exécution.
+     */
+    trialsEndingBetween: async ({ from, to }) =>
+      (await db
+        .select({
+          providerSubscriptionId: billingSubscription.providerSubscriptionId,
+          offerId: billingSubscription.offerId,
+          status: billingSubscription.status,
+          trialEnd: billingSubscription.trialEnd,
+          scopeKind: billingCustomer.scopeKind,
+          scopeId: billingCustomer.scopeId,
+        })
+        .from(billingSubscription)
+        .innerJoin(billingCustomer, eq(billingSubscription.billingCustomerId, billingCustomer.id))
+        .where(
+          and(
+            eq(billingSubscription.status, 'trialing'),
+            gte(billingSubscription.trialEnd, from),
+            lte(billingSubscription.trialEnd, to),
+          ),
+        )
+        .orderBy(billingSubscription.providerSubscriptionId)) as readonly EndingTrial[],
 
     /**
      * **Les achats d'un client, dans un ordre total.** La règle qui décide

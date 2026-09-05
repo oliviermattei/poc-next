@@ -1,4 +1,5 @@
 import { defineModule, type ModuleIdOf } from '@repo/core'
+import type { Jobs } from '@repo/ports'
 
 import type { availableModules, AvailableModuleId } from '../../../config/features'
 
@@ -54,3 +55,22 @@ type IsExactlyString<T> = string extends T ? true : false
 
 export const idsStayNarrow: IsExactlyString<AvailableModuleId> = false
 export const directoryStaysTyped: IsExactlyString<ModuleIdOf<typeof availableModules>> = false
+
+/**
+ * Le port de jobs (s33), employé **correctement** : la branche d'échec est
+ * écartée avant la lecture du succès.
+ *
+ * Témoin du témoin : si `EmitJobResult` cessait d'être discriminé — ou si le
+ * port disparaissait — c'est ici que la compilation casserait, et le cas
+ * « refuse un échec du port de jobs non traité » cesserait de prouver quoi que
+ * ce soit.
+ */
+export const emitHandlingFailure = async (jobs: Jobs): Promise<string> => {
+  const result = await jobs.emit({
+    job: 'rate-limit.sweep-closed-windows',
+    key: 'sweep:2026-09-05T10:00',
+    data: {},
+  })
+
+  return result.ok ? result.id : result.error.code
+}

@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url'
 import { parseEnv, type Env } from '@repo/config'
 import {
   buildRegistry,
+  dispatchModuleJob,
+  qualifyJobId,
   visibleNavigation,
   type ModuleScope,
   type ModuleSession,
@@ -55,6 +57,7 @@ import {
   resetBillingService,
   stateTitleKey,
   subscriptionReadOrder,
+  TRIAL_REMINDER_LEAD_DAYS,
   type BillingPermission,
   type BillingView,
   type ConfigureBillingOptions,
@@ -650,6 +653,15 @@ const suiteBilling = (): ConfigureBillingOptions => ({
   // visiteur quand le canal anonyme est saturé se décide au point de
   // composition, et c'est donc lui que ces cas mesurent.
   guestFallbackUrl,
+  // s33 — la livraison d'une relance d'essai. Cette suite mesure la **règle**
+  // (qui relancer, et quand) ; le fil jusqu'à la livraison de l'application est
+  // mesuré dans le bloc « le point de composition de l'application », qui repose
+  // le vrai objet `billing`.
+  remindTrialEnding: (trial) => {
+    suiteReminders.push(trial.providerSubscriptionId)
+
+    return Promise.resolve()
+  },
   now: () => clock,
   generateId: () => {
     sequence += 1
@@ -657,6 +669,9 @@ const suiteBilling = (): ConfigureBillingOptions => ({
     return `bc_s19_${sequence}`
   },
 })
+
+/** Les relances d'essai livrées par le service **de cette suite**. */
+const suiteReminders: string[] = []
 
 const cleanup = async (): Promise<void> => {
   await connection.db.execute(sql`delete from billing_customer`)
@@ -1899,6 +1914,78 @@ describe.runIf(compositionMeasurable)('le point de composition de l’applicatio
     // périmètre et la permission par leurs variables.
     resetBillingService()
     configureBilling(suiteBilling())
+  })
+
+  /**
+   * **Le fil complet du critère 7 de s33** : contrat → répartiteur → service →
+   * requête SQL → règle → livraison de l'application.
+   *
+   * La revue de s33 a mesuré que **rien** ne le tenait : vider le corps de la
+   * tâche (`packages/modules/billing/src/module.ts`) et retirer
+   * `remindTrialEnding` du point de composition (`apps/web/lib/billing.ts`)
+   * laissaient tous deux 2 415 cas verts. La relance était couverte comme « une
+   * tâche à la bonne cadence est déclarée » plus « une règle pure filtre bien »,
+   * et rien ne reliait les deux — alors que les deux balayages de la même story
+   * étaient, eux, conduits de bout en bout contre un vrai PostgreSQL.
+   *
+   * **Pourquoi un périmètre d'organisation** : c'est le seul dont la livraison
+   * de l'application soit observable sans monter ni compte, ni mailer — elle
+   * journalise et saute, faute de destinataire résolvable (limite connue de
+   * s33). Ce qui est éprouvé ici est le **fil**, pas le canal.
+   */
+  it('relance l’essai qui se termine, du contrat jusqu’à la livraison', async () => {
+    const now = new Date('2026-09-05T09:00:00.000Z')
+    const target = new Date(now.getTime() + TRIAL_REMINDER_LEAD_DAYS * 24 * 60 * 60 * 1_000)
+    const registry = buildRegistry({
+      available: [billingModule],
+      enabled: [billingModule.id],
+      locales: [...appLocales],
+    })
+
+    await connection.db.execute(sql`
+      insert into billing_customer (id, scope_kind, scope_id, provider_customer_id)
+      values ('bc_s33', 'organization', 'org_s33', 'cus_s33')
+    `)
+    await connection.db.execute(sql`
+      insert into billing_subscription (
+        provider_subscription_id, billing_customer_id, offer_id, price_id, status,
+        quantity, current_period_end, cancel_at_period_end, trial_end, last_event_at, last_event_id
+      ) values (
+        'sub_s33', 'bc_s33', 'pro-monthly', 'price_pro_monthly', 'trialing',
+        1, ${new Date(target.getTime() + 86_400_000)}, false, ${target}, ${now}, 'evt_s33'
+      )
+    `)
+
+    const said: string[] = []
+    const info = vi.spyOn(console, 'info').mockImplementation((...args: unknown[]) => {
+      said.push(args.map(String).join(' '))
+    })
+
+    try {
+      const outcome = await dispatchModuleJob({
+        registry,
+        emission: {
+          job: qualifyJobId('billing', 'trial-ending-reminder'),
+          key: 'trial@2026-09-05',
+          data: {},
+        },
+        log: () => {},
+        retry: { maxAttempts: 1, baseMs: 1, maxMs: 1 },
+        now: () => now,
+        sleep: async () => {},
+      })
+
+      expect(outcome).toEqual({ ok: true, ran: true, attempts: 1 })
+    } finally {
+      info.mockRestore()
+      await connection.db.execute(sql`delete from billing_customer where id = 'bc_s33'`)
+    }
+
+    // La livraison **de l'application** a été appelée, avec l'abonnement que la
+    // requête a trouvé : c'est le seul endroit de la chaîne qui ne soit ni une
+    // déclaration ni une règle pure.
+    expect(said.join('\n')).toContain('jobs.trial-reminder.skipped')
+    expect(said.join('\n')).toContain('subscription=sub_s33')
   })
 
   it('refuse au simple membre les deux portes, sans écrire ni appeler', async () => {
@@ -5712,6 +5799,61 @@ describe.runIf(databaseReachable)('la promotion d’une ligne invitée', () => {
     expect(customers).toHaveLength(1)
     expect(customers[0]?.scope_kind).toBe('user')
     expect(customers[0]?.scope_id).toBe('usr_premier')
+  })
+
+  /**
+   * **La requête des essais qui se terminent** (s33), éprouvée là où elle vit.
+   *
+   * Elle n'était exécutée par **aucun** test : elle n'apparaissait que dans
+   * l'interface, l'implémentation, le cas d'usage et deux doublures. Or c'est
+   * elle qui porte la jointure vers le périmètre, le filtre `status` et la
+   * fenêtre **bornée des deux côtés** — une borne unique ramènerait tous les
+   * essais passés à chaque exécution, et la relance partirait en boucle.
+   */
+  it('ne rend que les essais en cours dont l’échéance tombe dans la fenêtre', async () => {
+    const repository = createDrizzleBillingRepository(connection.db)
+    const from = new Date('2026-09-08T00:00:00.000Z')
+    const to = new Date('2026-09-08T23:59:59.999Z')
+
+    await connection.db.execute(sql`
+      insert into billing_customer (id, scope_kind, scope_id, provider_customer_id)
+      values ('bc_win', 'organization', 'org_win', 'cus_win')
+    `)
+
+    const seed = async (id: string, status: string, trialEnd: string): Promise<void> => {
+      await connection.db.execute(sql`
+        insert into billing_subscription (
+          provider_subscription_id, billing_customer_id, offer_id, price_id, status,
+          quantity, current_period_end, cancel_at_period_end, trial_end, last_event_at, last_event_id
+        ) values (
+          ${id}, 'bc_win', 'pro-monthly', 'price_pro_monthly', ${status},
+          1, ${new Date('2026-10-01T00:00:00.000Z')}, false, ${new Date(trialEnd)},
+          ${new Date('2026-09-01T00:00:00.000Z')}, ${`evt_${id}`}
+        )
+      `)
+    }
+
+    await seed('sub_in', 'trialing', '2026-09-08T12:00:00.000Z')
+    await seed('sub_before', 'trialing', '2026-09-07T23:59:59.000Z')
+    await seed('sub_after', 'trialing', '2026-09-09T00:00:00.000Z')
+    await seed('sub_active', 'active', '2026-09-08T12:00:00.000Z')
+
+    try {
+      const found = await repository.trialsEndingBetween({ from, to })
+
+      expect(found.map((trial) => trial.providerSubscriptionId)).toEqual(['sub_in'])
+      // La jointure rend le **périmètre**, sans lequel l'application ne saurait
+      // à qui écrire : c'est la seule raison pour laquelle cette lecture ne part
+      // pas d'un client, contrairement à toutes les autres de ce port.
+      expect(found[0]).toMatchObject({
+        scopeKind: 'organization',
+        scopeId: 'org_win',
+        offerId: 'pro-monthly',
+        status: 'trialing',
+      })
+    } finally {
+      await connection.db.execute(sql`delete from billing_customer where id = 'bc_win'`)
+    }
   })
 
   /**

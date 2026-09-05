@@ -200,11 +200,36 @@ describe('validation de l’environnement au démarrage du serveur', () => {
   }
 
   /**
+   * Les tâches de fond lisent trois variables, et la garde en refuse deux
+   * états — même forme et même raison que `stubPayments` (s33).
+   */
+  const stubJobs = (choice: 'local' | 'aucun'): void => {
+    vi.stubEnv('INNGEST_EVENT_KEY', '')
+    vi.stubEnv('INNGEST_SIGNING_KEY', '')
+    vi.stubEnv('INNGEST_BASE_URL', '')
+    vi.stubEnv('JOBS_LOCAL_RUNNER', choice === 'local' ? '1' : '')
+  }
+
+  /**
    * Le module `billing` **activé**, quelle que soit la configuration du dépôt.
    *
    * `config/features.ts` bascule d'une configuration à l'autre (`pnpm ks
    * toggle billing`), et ces cas-ci mesurent la garde, pas l'état du dépôt.
    */
+  /**
+   * Le module `jobs` **activé**, quelle que soit la configuration du dépôt —
+   * même forme et même raison que `withBillingEnabled` : `pnpm ks toggle jobs`
+   * bascule d'une configuration à l'autre, et ce cas-ci mesure la garde, pas
+   * l'état du dépôt.
+   */
+  const withJobsEnabled = (): void => {
+    vi.doMock('../config/features', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('../config/features')>()
+
+      return { ...actual, enabledModules: [...new Set([...actual.enabledModules, 'jobs'])] }
+    })
+  }
+
   const withBillingEnabled = (): void => {
     vi.doMock('../config/features', async (importOriginal) => {
       const actual = await importOriginal<typeof import('../config/features')>()
@@ -234,6 +259,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     stubAuth('configure')
     stubStorage('disque')
     stubPayments('local')
+    stubJobs('local')
 
     const config = await loadNextConfig()
 
@@ -248,6 +274,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     stubAuth('configure')
     stubStorage('disque')
     stubPayments('local')
+    stubJobs('local')
 
     const config = await loadNextConfig()
 
@@ -265,6 +292,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     stubAuth('configure')
     stubStorage('disque')
     stubPayments('local')
+    stubJobs('local')
 
     const config = await loadNextConfig()
 
@@ -282,11 +310,84 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     stubAuth('configure')
     stubStorage('aucun')
     stubPayments('local')
+    stubJobs('local')
 
     const config = await loadNextConfig()
 
     expect(() => config(DEV_SERVER_PHASE)).toThrowError(/STORAGE_S3_BUCKET/)
     expect(() => config(DEV_SERVER_PHASE)).toThrowError(/STORAGE_LOCAL_DIRECTORY/)
+  })
+
+  /**
+   * **La branche `'aucun'` de `stubJobs` était livrée et n'était appelée par
+   * personne** (constat F1 de la revue de s33) : `stubMailer`, `stubStorage` et
+   * `stubAuth` ont chacun leur cas de refus, celui des tâches manquait. La
+   * conséquence était mesurable — retirer `assertJobsConfiguration(env)` de
+   * `lib/startup.ts` laissait 2 407 cas verts, donc une application démarrait
+   * sans avoir dit ce qu'elle fait de ses tâches.
+   */
+  it('refuse de démarrer quand le module `jobs` est activé sans exécuteur, en nommant les variables', async () => {
+    withJobsEnabled()
+    vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
+    stubMailer('capture')
+    stubAuth('configure')
+    stubStorage('disque')
+    stubPayments('local')
+    stubJobs('aucun')
+
+    const config = await loadNextConfig()
+
+    expect(() => config(DEV_SERVER_PHASE)).toThrowError(/INNGEST_EVENT_KEY/)
+    expect(() => config(DEV_SERVER_PHASE)).toThrowError(/JOBS_LOCAL_RUNNER/)
+  })
+
+  /**
+   * **Ce que le premier appel, sans condition de phase, tient tout seul.**
+   *
+   * `lib/startup.ts` appelle `assertJobsConfiguration()` deux fois : une fois
+   * avant la sortie de phase — le **plancher** et la lecture des expressions
+   * cron, qui ne lisent aucune variable —, une fois après, avec l'environnement.
+   * La revue de s33 a mesuré que neutraliser le **premier** laissait la suite
+   * verte : au démarrage, le second rattrape tout.
+   *
+   * Sa contribution propre est donc exactement celle-ci — une expression cron
+   * illisible fait échouer la **construction**, où le second appel ne s'exécute
+   * jamais. Sans ce cas, un `pnpm build` vert livrerait une image dont
+   * l'ordonnanceur refuse de démarrer.
+   */
+  it('refuse la construction sur une expression cron illisible, en nommant la tâche', async () => {
+    vi.doMock('../config/features', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('../config/features')>()
+      const broken = {
+        id: 'fixture-cron-casse',
+        requires: [],
+        schema: {},
+        migrations: null,
+        routes: [],
+        navigation: [],
+        publicUrls: () => [],
+        messages: { fr: {}, en: {} },
+        emails: [],
+        webhooks: [],
+        jobs: [{ id: 'jamais', schedule: 'tous les matins', run: async () => {} }],
+        dataCategories: [],
+        retention: {},
+        purge: async () => {},
+        export: async () => ({}),
+      }
+
+      return {
+        ...actual,
+        availableModules: [...actual.availableModules, broken],
+        enabledModules: [...actual.enabledModules, 'fixture-cron-casse'],
+      }
+    })
+
+    const config = await loadNextConfig()
+
+    // La phase de **construction** : l'environnement d'exécution n'y est pas
+    // validé, et le second appel n'est jamais atteint.
+    expect(() => config(BUILD_PHASE)).toThrowError(/fixture-cron-casse\.jamais/)
   })
 
   it('refuse de démarrer sans secret de session ni URL publique, en nommant les deux variables', async () => {
@@ -300,6 +401,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     stubAuth('aucun')
     stubStorage('disque')
     stubPayments('local')
+    stubJobs('local')
 
     const config = await loadNextConfig()
 
@@ -336,6 +438,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     stubAuth('configure')
     stubStorage('disque')
     stubPayments('local')
+    stubJobs('local')
     stubOAuth()
 
     const config = await loadNextConfig()
@@ -349,6 +452,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     stubAuth('configure')
     stubStorage('disque')
     stubPayments('local')
+    stubJobs('local')
     // Un identifiant sans secret : la bibliothèque se contenterait d'un
     // avertissement dans le journal, et l'échec n'apparaîtrait qu'au premier
     // clic sur le bouton, en production.
@@ -365,6 +469,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     stubAuth('configure')
     stubStorage('disque')
     stubPayments('local')
+    stubJobs('local')
     stubOAuth({ githubSecret: 'secret-de-test' })
 
     const config = await loadNextConfig()
@@ -378,6 +483,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     stubAuth('configure')
     stubStorage('disque')
     stubPayments('local')
+    stubJobs('local')
     stubOAuth({ githubId: 'id', githubSecret: 'secret', local: '1' })
 
     const config = await loadNextConfig()
@@ -391,6 +497,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     stubAuth('configure')
     stubStorage('disque')
     stubPayments('local')
+    stubJobs('local')
     stubOAuth({ local: '1' })
 
     const config = await loadNextConfig()
@@ -408,6 +515,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     stubAuth('configure')
     stubStorage('disque')
     stubPayments('local')
+    stubJobs('local')
     stubOAuth({ local: '1' })
 
     const config = await loadNextConfig()
@@ -463,6 +571,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     stubAuth('configure')
     stubOAuth()
     stubPayments('local')
+    stubJobs('local')
     withBillingEnabled()
     malformedCatalogue()
 
@@ -491,6 +600,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     stubOAuth()
     stubStorage('disque')
     stubPayments('local')
+    stubJobs('local')
     withBillingEnabled()
 
     const config = await loadNextConfig()
@@ -521,6 +631,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     stubOAuth()
     stubStorage('disque')
     stubPayments('local')
+    stubJobs('local')
     withBillingEnabled()
     vi.doMock('../config/gating', () => ({
       featureGates: [{ id: 'premium-report', offers: ['pro-quarterly'] }],
@@ -539,6 +650,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     stubOAuth()
     stubStorage('disque')
     stubPayments('local')
+    stubJobs('local')
     withBillingEnabled()
     // Aucune déclaration : la route réservée du module de démonstration ne
     // serait plus ouverte par personne.
@@ -556,6 +668,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     stubOAuth()
     stubStorage('disque')
     stubPayments('local')
+    stubJobs('local')
     withBillingEnabled()
 
     const config = await loadNextConfig()
@@ -569,6 +682,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     stubAuth('aucun')
     stubStorage('disque')
     stubPayments('local')
+    stubJobs('local')
 
     const config = await loadNextConfig()
 
@@ -581,6 +695,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     stubAuth('aucun')
     stubStorage('disque')
     stubPayments('local')
+    stubJobs('local')
 
     const config = await loadNextConfig()
 
@@ -601,6 +716,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
       stubAuth('aucun')
       stubStorage('disque')
       stubPayments('local')
+      stubJobs('local')
       vi.stubEnv('SKIP_ENV_VALIDATION', '1')
 
       const config = await loadNextConfig()

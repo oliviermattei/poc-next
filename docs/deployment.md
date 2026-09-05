@@ -306,6 +306,10 @@ besoin que de `DATABASE_URL`.
 | `STRIPE_SECRET_KEY` | l'une des deux, module `billing` activé | la clé Stripe : l'application encaisse réellement |
 | `STRIPE_WEBHOOK_SECRET` | oui avec `STRIPE_SECRET_KEY` | la vérification de signature des webhooks. Endpoint à déclarer chez Stripe : `<APP_URL>/api/modules/billing/webhook` |
 | `PAYMENTS_LOCAL_MODE` | l'une des deux | `1` simule le paiement. **Refusée au démarrage sous `NODE_ENV=production`** : elle accorderait un abonnement complet sans paiement |
+| `INNGEST_EVENT_KEY` | l'une des deux, module `jobs` activé | la clé d'événement Inngest : les tâches sont réellement mises en file chez le fournisseur |
+| `INNGEST_SIGNING_KEY` | oui avec `INNGEST_EVENT_KEY` | la vérification de signature des appels entrants. URL de rappel à déclarer chez Inngest : `<APP_URL>/api/modules/jobs/inngest` |
+| `JOBS_LOCAL_RUNNER` | l'une des deux | `1` exécute les tâches **en mémoire du processus**, sans service. À ne poser en production que sur un déploiement **à une seule instance** : la file est perdue au redémarrage, et deux instances exécuteraient chacune la même échéance |
+| `INNGEST_BASE_URL` | non | l'origine de l'API d'événements, pour viser un serveur de développement Inngest. Jamais posée en production |
 | `PAYMENTS_RECORDED_EVENTS` | non | le dossier d'événements rejoués par `pnpm test:golden-path`. Jamais posée à la main, jamais en production |
 | `SUPERADMIN_EMAIL` | non, module `admin` activé | l'adresse du **premier** superadmin (s37a). Absente, le démarrage **avertit sans refuser** — une plateforme sans superadmin doit pouvoir démarrer pour qu'on puisse en désigner un — et le back-office répond 404 à tout le monde. Elle ne prend effet que tant qu'aucun superadmin n'existe : ensuite, c'est la base qui fait foi |
 | `STORAGE_S3_BUCKET` | les quatre ensemble, module `storage` activé | le seau réel (S3, R2, MinIO, Spaces) |

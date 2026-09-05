@@ -42,11 +42,13 @@ import { defineNotificationType } from '@repo/emails'
  * **Ce que ce fichier ne fait pas : émettre.** Les six templates d'email
  * existants restent des appels directs légitimes, la story le dit nommément.
  *
- * **Un seul type a un producteur** : `organization.member-joined`, émis par le
- * module `organizations` quand une invitation est acceptée (revue s32, F5). Le
- * module reçoit l'émission au point de composition et ne connaît pas ce
- * fichier. `account.security-alert` n'en a aucun. Les stories qui possèdent un
- * événement (s37, s43) appellent l'émission avec le type qui leur correspond.
+ * **Deux types ont un producteur** : `organization.member-joined`, émis par le
+ * module `organizations` quand une invitation est acceptée (revue s32, F5), et
+ * `billing.trial-ending`, émis par la **tâche planifiée** de relance d'essai
+ * (s33). Les deux modules reçoivent l'émission au point de composition et ne
+ * connaissent pas ce fichier. `account.security-alert` n'en a aucun. Les
+ * stories qui possèdent un événement (s37, s43) appellent l'émission avec le
+ * type qui leur correspond.
  */
 export const appNotificationTypes = [
   defineNotificationType({
@@ -111,6 +113,42 @@ export const appNotificationTypes = [
         en: {
           subject: '{member} joined {organization}',
           body: '{member} has just joined the {organization} organization.',
+        },
+      },
+    },
+  }),
+  defineNotificationType({
+    id: 'billing.trial-ending',
+    channels: ['in_app', 'email'],
+    /**
+     * **L'email est actif par défaut**, comme l'alerte de sécurité et pour une
+     * raison voisine : une relance d'essai que le compte ne lit pas dans
+     * l'application est précisément celle qu'il faut lui porter ailleurs. Un
+     * essai qui se termine sans que personne l'ait su est une perte pour les
+     * deux côtés.
+     */
+    defaults: { in_app: true, email: true },
+    /**
+     * Aucune référence de compte : ce type ne parle que du compte destinataire,
+     * et sa charge ne porte qu'une offre et une date — des références, jamais
+     * une donnée personnelle (revue s32, R1).
+     */
+    actors: [],
+    email: {
+      id: 'billing.trial-ending',
+      locales: {
+        fr: {
+          subject: 'Votre essai se termine le {date}',
+          body:
+            'Votre période d’essai de l’offre {offer} se termine le {date}.\n\n' +
+            'Pour continuer sans interruption, ajoutez un moyen de paiement depuis la page ' +
+            'de facturation.',
+        },
+        en: {
+          subject: 'Your trial ends on {date}',
+          body:
+            'Your {offer} trial ends on {date}.\n\n' +
+            'To continue without interruption, add a payment method from the billing page.',
         },
       },
     },

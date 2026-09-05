@@ -13,6 +13,7 @@ import {
   type BillingService,
   type BillingView,
   type ConfigureBillingOptions,
+  type EndingTrial,
   type SeatSyncOutcome,
 } from '@repo/module-billing'
 import {
@@ -251,6 +252,10 @@ const provide = (runtime: BillingRuntime = {}): void => {
     // module dit *que* le tunnel n'est pas ouvert, l'application dit *où* le
     // visiteur repart.
     guestFallbackUrl,
+    // s33 : la relance d'essai est une **tâche**, pas une route. Sans cette
+    // ligne, elle échoue définitivement en la nommant plutôt que de tourner au
+    // vert sans relancer personne.
+    remindTrialEnding,
   }))
 }
 
@@ -407,6 +412,69 @@ const emailOfScope = async (_scope: ModuleScope, userId: string): Promise<string
   const { appAuth } = await import('./auth')
 
   return (await appAuth().useCases.viewAccount(userId))?.email ?? null
+}
+
+/**
+ * **La livraison d'une relance d'essai** (s33, critère 7).
+ *
+ * Le module `billing` dit *qui* relancer ; il ne connaît ni `auth`, ni
+ * `organizations`, ni `notifications` (ADR 034). Cette fonction-ci est le seul
+ * endroit qui les relie, et elle passe par la **fonction d'émission unique** de
+ * s32 : le compte reçoit une notification in-app, un email, ou les deux selon
+ * ses préférences — et un email direct quand le module `notifications` est
+ * coupé.
+ *
+ * **Elle ne relance qu'un périmètre de compte, et il faut le dire.** Un
+ * abonnement d'organisation n'a pas de destinataire évident : il faudrait
+ * résoudre son propriétaire, ce qu'aucune surface de `organizations` n'expose
+ * aujourd'hui — l'inventer ici serait une lecture inter-modules non déclarée.
+ * Le cas est donc **journalisé et sauté**, jamais silencieux, et c'est une
+ * limite connue de s33 plutôt qu'un oubli.
+ *
+ * L'import est **différé**, comme celui de `emailOfScope` et pour la même
+ * raison : ce fichier est chargé hors de Next par `e2e/billing.spec.ts` et par
+ * `scripts/billing-reconcile.ts`.
+ */
+const remindTrialEnding = async (trial: EndingTrial): Promise<void> => {
+  if (trial.scopeKind !== 'user') {
+    // **La référence de l'abonnement, sinon N organisations sautées produisent
+    // N lignes indistinguables** (constat F9 de la revue) : on ne saurait ni
+    // combien de périmètres sont concernés, ni lesquels rappeler à la main.
+    // C'est un identifiant **du fournisseur**, pas une donnée personnelle — la
+    // même raison qui laisse `job` en clair dans `job_run` pendant que la clé y
+    // est condensée.
+    console.info(
+      `[jobs.trial-reminder.skipped] scope=${trial.scopeKind} ` +
+        `subscription=${trial.providerSubscriptionId} : aucun destinataire résolvable pour un ` +
+        'abonnement qui n’appartient pas à un compte.',
+    )
+
+    return
+  }
+
+  const { appAuth } = await import('./auth')
+  const account = await appAuth().useCases.viewAccount(trial.scopeId)
+
+  if (account === null) {
+    return
+  }
+
+  const { emitNotification } = await import('./notifications')
+  const trialEnd = trial.trialEnd ?? new Date()
+
+  await emitNotification({
+    type: 'billing.trial-ending',
+    recipient: {
+      userId: trial.scopeId,
+      email: account.email,
+      locale: localeRouting.defaultLocale,
+    },
+    organizationId: null,
+    data: { offer: trial.offerId ?? '—', date: trialEnd.toISOString().slice(0, 10) },
+    // Ce qui est relu plus tard ne porte que des **références** : une offre du
+    // catalogue et une date, jamais une adresse (revue s32, R1).
+    stored: { offer: trial.offerId ?? '—', date: trialEnd.toISOString().slice(0, 10) },
+  })
 }
 
 const billingService = (): BillingService => {

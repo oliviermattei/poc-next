@@ -29,5 +29,11 @@ export {
   type DrizzleRateLimiterOptions,
   type RateLimitDatabase,
 } from './infrastructure/drizzle-rate-limiter'
+export {
+  provideRateLimiter,
+  requireRateLimiter,
+  resetRateLimitRuntime,
+  RateLimiterNotProvidedError,
+} from './infrastructure/rate-limit-runtime'
 export { rateLimitModule } from './module'
 export { rateLimitSchema, rateLimitWindow } from './schema'

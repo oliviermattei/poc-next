@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type { Payments, RateLimiter } from '@repo/ports'
 
 import { createBillingUseCases, type BillingUseCases } from '../application/billing-use-cases'
+import { remindEndingTrials, type TrialReminder } from '../application/trial-reminders'
 import type {
   BillingPermission,
   GuestAccounts,
@@ -84,6 +85,25 @@ export interface ConfigureBillingOptions {
     readonly offerId: string
     readonly locale: string | null
   }) => string
+  /**
+   * **La livraison d'une relance d'essai** (s33, critère 7).
+   *
+   * **Obligatoire**, comme `notify` l'est devenu pour `organizations` en s32 et
+   * pour la même raison : facultative, elle laissait un point de composition
+   * l'oublier sans qu'aucune commande ne le dise — et la tâche tournait alors au
+   * vert tous les jours sans relancer personne, une perte qui ne se mesure qu'en
+   * essais non convertis. La revue de s33 a mesuré exactement cela : retirer la
+   * ligne de `apps/web/lib/billing.ts` laissait 2 415 cas verts.
+   *
+   * Le compilateur tient donc désormais la moitié du fil, et
+   * `tests/billing.test.ts` — « relance l'essai qui se termine, du contrat
+   * jusqu'à la livraison » — tient l'autre : qu'elle soit **appelée**.
+   *
+   * Le module ne connaît ni `auth`, ni `organizations`, ni `notifications`
+   * (ADR 034) : il donne le **périmètre**, l'application résout le destinataire
+   * et choisit le canal.
+   */
+  readonly remindTrialEnding: TrialReminder
   readonly now?: () => Date
   readonly generateId?: () => string
   /**
@@ -100,6 +120,14 @@ export interface ConfigureBillingOptions {
 
 export interface BillingService {
   readonly useCases: BillingUseCases
+  /**
+   * Relance les essais qui se terminent, et rend combien.
+   *
+   * Hors de `useCases` à dessein : ce n'est pas un cas d'usage appelé par une
+   * route, c'est le corps d'une tâche planifiée. Le mélanger aux autres
+   * laisserait croire qu'une session le déclenche.
+   */
+  readonly remindEndingTrials: (now: Date) => Promise<number>
 }
 
 export class BillingNotConfiguredError extends Error {
@@ -138,6 +166,12 @@ const build = (options: ConfigureBillingOptions): BillingService => ({
     generateId: options.generateId ?? (() => randomUUID()),
     generateGuestScopeId: options.generateGuestScopeId ?? createGuestScopeIdGenerator(),
   }),
+  remindEndingTrials: async (now) =>
+    await remindEndingTrials({
+      repository: createDrizzleBillingRepository(options.db),
+      remind: options.remindTrialEnding,
+      now,
+    }),
 })
 
 /** Construit le service **maintenant**. C'est la forme qu'une suite de tests emploie. */

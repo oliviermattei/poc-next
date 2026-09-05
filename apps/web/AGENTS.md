@@ -23,11 +23,14 @@ module (`packages/modules/<module>/src/domain`).
 - `@repo/adapter-stripe` pour l'unique implémentation du port `Payments`, et
   `@repo/payments-testing` pour le mode local — **uniquement** dans
   `lib/billing.ts`, qui est le point de composition de la facturation (s19) ;
+- `@repo/adapter-inngest` pour l'unique implémentation du port `Jobs`, et
+  `@repo/jobs-testing` pour l'exécuteur en mémoire — **uniquement** dans
+  `lib/jobs.ts`, qui est le point de composition des tâches de fond (s33) ;
 - les modules du projet, **uniquement** parce que `config/features.ts` les
   référence : `@repo/module-admin`, `@repo/module-auth`, `@repo/module-billing`,
   `@repo/module-blog`,
   `@repo/module-consent`, `@repo/module-docs`, `@repo/module-i18n`, `@repo/module-marketing`,
-  `@repo/module-notifications`,
+  `@repo/module-notifications`, `@repo/module-jobs`,
   `@repo/module-organizations`, `@repo/module-storage`,
   `@repo/module-demo-enabled` et `@repo/module-demo-disabled` aujourd'hui. Les
   **points de composition** font exception et importent leur module directement
@@ -38,7 +41,8 @@ module (`packages/modules/<module>/src/domain`).
   consentement, `lib/blog.ts`, celui du blog, `lib/docs.ts`, celui de la
   documentation, et `lib/admin.ts`, celui de l'administration de plateforme
   (voir plus bas). **Aucun nombre
-  documentation, et `lib/notifications.ts`, celui des notifications (voir plus
+  documentation, `lib/notifications.ts`, celui des notifications, et
+  `lib/jobs.ts`, celui des tâches de fond (voir plus
   bas). **Aucun nombre
   n'est écrit ici, et c'est délibéré** : la phrase annonçait « sept » au-dessus
   de huit noms, la story qui a ajouté le huitième n'ayant pas touché au

@@ -45,6 +45,13 @@ import type { AvailableModuleId } from './features'
  * vérifié par **aucune exécution** tant qu'aucun profil ne le coupe, et
  * `tests/minimal-profile.test.ts` mesure que le balayage le couvre plutôt que
  * de le supposer.
+ * `jobs` les a rejoints en s33, et c'est le seul dont la coupure change le
+ * comportement d'un module **resté activé** : sans lui, l'émission d'une tâche
+ * s'exécute de façon synchrone dans la requête appelante et les tâches
+ * planifiées ne s'exécutent pas (critère 8). Ses trois chemins de rappel et sa
+ * table `job_run` sont ce que la recette balaie ; le repli lui-même est mesuré
+ * par `tests/jobs.test.ts`, qui construit les deux configurations.
+ *
  * `notifications` les a rejoints en s32, pour la même raison et sur le même
  * critère : « module non activé, aucune route ni entrée de navigation de
  * notifications, et aucune table sur une base vierge ». Les deux premières
@@ -65,5 +72,5 @@ export interface ModuleProfileDeclaration {
 
 export const minimalProfile = {
   id: 'minimal',
-  cut: ['organizations', 'billing', 'i18n', 'blog', 'docs', 'admin', 'notifications'],
+  cut: ['organizations', 'billing', 'i18n', 'blog', 'docs', 'admin', 'notifications', 'jobs'],
 } as const satisfies ModuleProfileDeclaration

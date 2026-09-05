@@ -43,4 +43,18 @@ export async function register(): Promise<void> {
 
   loadRootEnv()
   refuseStartupOnInvalidConfiguration()
+
+  /**
+   * **L'ordonnanceur local** (s33), et il ne démarre qu'ici.
+   *
+   * Il n'existe que dans le mode local (`JOBS_LOCAL_RUNNER=1`) : avec le
+   * fournisseur, c'est lui qui tient les horloges, et deux ordonnanceurs
+   * feraient deux exécutions de chaque échéance. `register` est appelée une
+   * fois par instance de serveur, ce qui est exactement la portée voulue — un
+   * `setInterval` posé dans un fichier de route serait posé à chaque requête.
+   */
+  const { prepareJobs, startLocalJobScheduler } = await import('./lib/jobs')
+
+  prepareJobs()
+  startLocalJobScheduler()
 }
