@@ -589,6 +589,16 @@ qu'on propose, où est le patch, et son état.
   rapport de revue est traité comme une vérité. Piste : rendre explicite qu'un
   implémenteur peut **réfuter un constat par la mesure**, comme il peut réfuter
   une consigne — trois réfutations de consigne se sont révélées justes.
+- **Une liste d'intermittents se comporte exactement comme un compte écrit : elle
+  vieillit, et on la lit comme vérifiée.** Deux fois en deux stories, la liste des
+  cas instables a nommé **un cas sur plusieurs** : `e2e/oauth.spec.ts:97` alors
+  que la paire est `:30`/`:97` (identité partagée du fournisseur local), puis
+  `e2e/rate-limiting.spec.ts:38` alors que `:163` et `:205` rougissent dans les
+  mêmes conditions. À chaque fois, la story suivante rencontre le cas non nommé et
+  doit décider seule s'il lui appartient. C'est le même remède que pour les
+  comptes : **écrire ce qui a été balayé et sur combien d'exécutions**, jamais
+  « les N intermittents connus ». Et tant qu'ils ne sont pas fermés, une liste
+  incomplète coûte plus qu'une liste absente — elle éteint la recherche.
 - **Une affirmation fausse se corrige par un balayage de son *contenu*, jamais par
   la liste des endroits dont on se souvient. Trois occurrences en trois stories.**
   s29 : une garantie corrigée dans un ADR et un `AGENTS.md`, laissée intacte dans
