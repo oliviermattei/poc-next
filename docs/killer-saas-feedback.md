@@ -730,6 +730,182 @@ nommant aucun module. Il aurait attrapé s15 et s32.
 
 ---
 
+# Audit du flux — ce que mesurent les journaux de session
+
+Les propositions P1 à P24 sont nées des **rapports de revue** : elles portent sur
+la qualité de ce qui est produit. Cette section-ci ouvre une **seconde source de
+mesure**, jamais exploitée jusqu'ici : les journaux des sessions Claude Code qui
+ont mené le dépôt, du 29/08 18:30 au 05/09 09:38.
+
+Ce que cette source contient, et le reste ne contient pas : **180 appels de
+sous-agent** (96 implémenteur, 66 relecteur, 11 worktree-manager, 6
+stories-reviewer, 1 autre), **361 transcriptions de sous-agents** pour 239 Mo,
+**1 397 commandes bash dans les deux contextes principaux** et **18 529 dans les
+sous-agents**, chaque échec d'outil, chaque interruption et chaque message du
+porteur, tous horodatés.
+
+Elle mesure donc le **flux** — combien de rondes, combien d'attente, combien de
+reprises — là où les revues mesurent le **résultat**. Les dix propositions qui
+suivent en sortent. Elles sont proposées, aucune n'est appliquée ici.
+
+## P25 — La boucle correction ↔ revue est le premier poste de coût, et rien ne la compte
+
+- **Aujourd'hui** — le pipeline prévoit un `/ks-execute`, un `/ks-review`, et un
+  `/ks-execute` en mode correction si la porte bloque. Aucun document ne compte
+  les rondes.
+- **Mesuré** — rapportés aux 40 identifiants de story vus dans les journaux :
+  **2,35 exécutions d'implémenteur et 1,62 de relecteur par story**. Donc près de
+  **quatre exécutions d'implémenteur sur dix sont des reprises**, et **une story
+  sur trois** redemande une revue complète. Étalement médian d'une story : 1,8 h
+  (moyenne 3,9 h, maximum 31,6 h pour s19).
+- **Proposé** — `/ks-execute` se termine par une auto-revue dérivée de
+  `review-antihallu` (mutation posée à l'endroit du défaut, contrôle des
+  affirmations écrites) **avant** de rendre la main ; et le rapport de revue
+  porte `rondes: n` en tête. Une méthode qui ne compte pas ses rondes ne peut pas
+  savoir si un changement les réduit.
+- **État** — proposé.
+
+## P26 — Le rapport de revue est réécrit à chaque ronde, donc la reprise n'a pas d'historique
+
+- **Mesuré** — 38 rapports dans `docs/reviews/` ; **trois seulement** (s28, s48,
+  s49) conservent leurs rondes en sections. Les 35 autres ne portent que l'état
+  final : le nombre de rondes de s01 à s27 n'est reconstituable **que** depuis
+  les journaux de session, qui ne sont pas dans le dépôt. La pratique de garder
+  les rondes est apparue seule, tard, et n'est écrite nulle part.
+- **Proposé** — une ronde s'**ajoute**, elle n'écrase pas ; le verdict lu par la
+  porte est celui de la dernière. Coût nul, et c'est ce qui rend P25 mesurable.
+- **État** — proposé.
+
+## P27 — La porte n'a jamais rien arrêté : 38 rapports sur 38 finissent `Ship allowed: yes`
+
+- **Mesuré** — 38 sur 38 en `yes`, dont **14 avec `Max severity: major`**. Le
+  seul verdict bloquant est `critical`, et aucun n'a survécu à une ronde. Ce
+  n'est donc pas la porte qui a tenu la qualité : ce sont les rondes de
+  correction qui la précèdent.
+- **Proposé** — garder la porte, mais lui faire porter ce qu'elle a coûté : le
+  compte par sévérité et le nombre de rondes ; et exiger **une ligne écrite** pour
+  chaque `major` qui part sans être fermé. Sans cela, la porte est une signature,
+  pas un filtre — et une signature qui dit toujours oui finit ignorée, exactement
+  comme le contrôle de P8.
+- **État** — proposé.
+
+> **Nuance mesurée le 05/09, contre le dépôt.** Le chiffre est exact — 38 rapports
+> sur 38 finissent `Ship allowed: yes` — mais « la porte n'a jamais rien arrêté »
+> ne suit pas. **Cinq rapports portent un `Ship allowed: no` à une ronde
+> intermédiaire** : `s13-two-factor`, `s18-file-storage-avatar`,
+> `s19-subscribe-stripe`, `s20-one-time-purchase`, `s28-rate-limiting`. La porte
+> a donc bloqué cinq fois sur trente-huit, forcé une ronde de correction à chaque
+> fois, et le verdict final est `yes` **parce que les correctifs ont eu lieu** —
+> ce qui est le fonctionnement attendu, pas son échec.
+>
+> Ce que le chiffre mesure réellement, c'est que **le fichier ne garde que le
+> dernier verdict**. C'est un défaut d'instrumentation, pas de la porte : un
+> compteur qui lit `docs/reviews/` ne peut pas voir les blocages, et conclura
+> toujours que la porte est décorative. La mesure juste serait de compter les
+> rondes, pas les fichiers.
+>
+> Reste vrai, et c'est le fond du constat : **aucune story n'a jamais été
+> abandonnée ni renvoyée au découpage par une revue.** La porte force des
+> corrections ; elle n'a jamais dit non pour de bon.
+
+## P28 — L'attente de la CI se paie dans le contexte principal
+
+- **Mesuré** — sur 1 397 commandes bash des contextes principaux : **105 sondages
+  `gh pr checks` / `gh run`**, 66 `sleep`, et **13 expirations de commande**, dont
+  douze à ~10 minutes — soit **au moins deux heures** de boucle principale passées
+  à regarder la CI, contexte chargé, sans rien produire. Trois `sleep` ont en plus
+  été refusés par le harnais, qui demande une boucle de surveillance.
+- **Proposé** — `/ks-ship` en deux temps : ouvrir la demande de fusion, enregistrer
+  une surveillance, rendre la main ; **jamais** de sondage de CI dans le contexte
+  principal. P19 dit jusqu'où continuer sans CI ; ceci dit comment ne pas
+  l'attendre.
+- **État** — proposé.
+
+## P29 — Le disque est une ressource du pipeline, et il a tué des agents en vol
+
+- **Mesuré** — **six échecs `ENOSPC`** le 02/09 entre 18:00 et 21:06, qui ont
+  coupé des sorties d'agent en cours d'écriture ; et **55 appels `du` / `df`**
+  dans le contexte principal, c'est-à-dire un agent qui surveille son disque à la
+  main faute de garde. À l'écriture : cinq worktrees vivants, **vingt branches
+  `feature/*` locales non fusionnées**, et deux branches orphelines
+  `worktree-agent-*`.
+- **Proposé** — un contrôle de place **avant** création de worktree, un magasin
+  pnpm partagé, et l'élargissement de la suppression de P7 aux branches
+  orphelines. Le disque plein n'a pas ralenti le pipeline : il l'a arrêté.
+- **État** — proposé.
+
+## P30 — La suppression du worktree a devancé la phase qui en avait encore besoin
+
+- **Mesuré** — deux fois : s48 le 04/09 à 16:12 et s49 le 05/09 à 06:53, une
+  commande échoue sur `.worktrees/<story>: no such file or directory` alors que la
+  finition de la story n'était pas close. Le correctif de P7 (« la suppression
+  fait partie de la fusion ») a été appliqué **trop tôt** dans le cycle.
+- **Proposé** — la suppression est conditionnée à **fusion confirmée *et* revue
+  commitée**, jamais à « la demande de fusion est ouverte ».
+- **État** — proposé.
+
+## P31 — La vérification n'est jamais réduite : 22 % des actions des sous-agents rejouent la suite entière
+
+- **Mesuré** — 18 529 commandes bash dans les sous-agents, contre 1 652 `Edit` et
+  668 `Write` : **huit commandes pour une écriture**. Parmi elles, **4 018
+  exécutions de vérification (22 %)**, dont **1 255 de parcours navigateur (7 %)**.
+  Le relecteur rejoue `docker compose up`, `db:migrate`, `test`, `typecheck`,
+  `lint`, `build` et `test:e2e` **à chaque ronde** — y compris pour une ronde
+  purement documentaire (s49, ronde 3).
+- **Proposé** — vérification **étagée** : ciblée pendant la TDD, complète une fois
+  avant de rendre la main. Et une ronde de revue qui ne touche aucun fichier de
+  production rejoue ce que le diff atteint, **en l'écrivant**. La preuve qui le
+  permet existe déjà : s49 ronde 2 écrit « aucun changement de production depuis
+  la ronde 1 — prouvé ». Elle suffit à justifier de ne pas tout rejouer.
+- **État** — proposé.
+
+## P32 — Le cadrage a bouclé sept fois sans critère d'arrêt
+
+- **Mesuré** — `/ks-stories` ↔ `/ks-stories-review`, **sept allers-retours** du
+  29/08 21:05 au 30/08 10:19 : **treize heures de mur** avant `/ks-architect`.
+  Aucune des sept passes n'a produit le critère qui aurait dit que la suivante
+  était inutile.
+- **Proposé** — la revue de découpe rend une **liste adressable** (chaque ligne =
+  une story à ajouter, fusionner ou couper) ; **trois rondes au plus**, puis une
+  décision écrite. Le PRD nomme déjà son cimetière ; la découpe peut nommer son
+  reste.
+- **État** — proposé.
+
+## P33 — Les dépendances humaines arrivent par surprise, au milieu d'une story
+
+- **Mesuré** — Docker demandé pendant s01 (30/08 13:51) ; clés Stripe pendant s19
+  (03/09 12:33 → 14:44, trois tours dont un aller-retour sur « `sk_test` ou
+  `price_` ? ») ; sélection de navigateur bloquante deux fois ; jeton MCP expiré
+  deux fois. À chaque fois le pipeline s'arrête sur une action que **seul le
+  porteur** peut faire, découverte au moment où elle bloque.
+- **Proposé** — `/ks-architect` émet un tableau **prérequis → première story qui
+  en a besoin** (comptes, clés, binaires locaux, accès). Le porteur les rassemble
+  une fois. Une clé manquante connue trois jours à l'avance ne coûte rien ;
+  découverte en exécution, elle coûte la story.
+- **État** — proposé.
+
+## P34 — Le contexte principal ne se vide pas entre les stories, et la passation est artisanale
+
+- **Mesuré** — le porteur l'a demandé deux fois, dont le 31/08 à 09:21 avec une
+  fenêtre à **782 k jetons** ; un `/compact` manuel le 31/08 à 11:25 ; **quatre
+  reprises après limite d'usage** (31/08 15:51 et 20:51, 01/09 01:51, 02/09
+  11:01), chacune coupant le travail en cours ; et la perte du `/goal` au
+  changement de session (04/09 06:57 : « il semble que tu l'as stoppé »).
+  `docs/STATE.md`, 363 lignes, est tenu **à la main** pour survivre aux `/clear`.
+- **Proposé** — la passation devient un artefact du pipeline
+  (`/ks-status --passation` écrit `docs/STATE.md`), et le cycle d'une story se
+  termine par une remise à zéro du contexte principal, la reprise se faisant par
+  ce fichier.
+- **Corollaire mesuré, sur le débit** — le 31/08, avec trois à quatre
+  implémenteurs en parallèle, **onze stories ont été ouvertes dans la journée** ;
+  les jours suivants, en séquentiel : 2, puis 5, 6, 4, 5. Le parallélisme a bien
+  acheté du débit. Il a été abandonné parce que **le budget a cédé avant le
+  disque** (P11) et que le contexte principal ne se vidait pas entre les stories —
+  pas parce qu'il ne marchait pas.
+- **État** — proposé.
+
+---
+
 # Observations sans proposition ferme
 
 - **La règle sur les mutations vertes porte elle-même un compte écrit à la main,
@@ -1118,3 +1294,9 @@ nommant aucun module. Il aurait attrapé s15 et s32.
    commande qui l'a produite.
 4. **Les décisions structurelles** : `docs/decisions/` — 37 ADR, chacun avec ses
    options rejetées et la mesure qui les tue.
+5. **Les mesures de flux (P25 à P34)** : les journaux de session, sous
+   `~/.claude/projects/-Users-olivier-www-boilerplate/` — le `.jsonl` de chaque
+   session et son dossier `subagents/`. Les comptes cités s'en tirent en lisant
+   les `tool_use` (`Agent`, `Bash`), les `tool_result` en erreur et les
+   horodatages. C'est la seule source qui porte les rondes de s01 à s27, que les
+   rapports de revue ont écrasées (P26).
