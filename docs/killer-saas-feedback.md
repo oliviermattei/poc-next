@@ -534,6 +534,41 @@ qu'on propose, où est le patch, et son état.
   structurelle que le plan aurait sinon découverte trop tard. Le worktree nu
   n'est pas encore appliqué — les deux voies ouvertes portent leurs 827 Mo.
 
+## P19 — Le pipeline continue sans CI jusqu'à la fusion, et il faut savoir jusqu'où
+
+- **Aujourd'hui** — rien ne dit ce qui reste faisable quand l'intégration continue
+  est indisponible. La réaction naturelle est d'attendre.
+- **Mesuré le 05/09** — GitHub Actions s'est arrêté au niveau du compte : tous
+  les jobs morts en 3 secondes, sans journal, sur la branche par défaut comme
+  sur les branches, sans qu'aucun commit ne touche `.github/`. Dépôt privé, donc
+  minutes facturées. **Le travail a continué pendant plusieurs heures** :
+  - **six recherches** écrites et poussées — elles ne demandent ni base, ni
+    conteneur, ni CI (P15, P17) ;
+  - **une story planifiée, exécutée et revue** de bout en bout, tout le harnais
+    tournant en local : `typecheck`, `lint`, `test`, `build`, `test:e2e`,
+    `test:socle`, `test:minimal-profile`, `audit`.
+  Seule la **fusion** était bloquée.
+- **Ce qui limite réellement**, et ce n'est pas la CI : chaque branche en attente
+  diverge de la branche par défaut, donc coûte un rebase. Deux branches en
+  attente se gèrent ; six deviennent un travail à part entière. **La règle
+  praticable est de choisir des surfaces disjointes** — s30 (documentation,
+  `packages/ui`) et s47 (facturation, autorisations) ne se recouvrent en rien,
+  donc elles fusionneront dans n'importe quel ordre sans conflit.
+- **Proposé** — écrire dans le gabarit ce que chaque phase exige réellement :
+
+  | Phase | Base | Conteneur | CI |
+  |---|---|---|---|
+  | Recherche, design, plan | non | non | non |
+  | Exécution, revue | oui | oui | **non** |
+  | Ship | — | — | **oui** |
+
+  Et une consigne d'ordonnancement : **quand la fusion est bloquée, n'avancer
+  que sur des stories dont les surfaces sont disjointes**, et s'arrêter à deux ou
+  trois branches en attente — au-delà, le coût de rebase dépasse le gain.
+- **État** — appliqué le 05/09 pendant la panne. **Candidat à remonter** : la
+  question « que puis-je encore faire ? » se pose à chaque indisponibilité d'un
+  tiers, et la réponse par défaut — attendre — est la plus coûteuse.
+
 ---
 
 # Observations sans proposition ferme
