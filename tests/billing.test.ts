@@ -259,6 +259,26 @@ const CATALOGUE = parseBillingCatalogue([
     trialDays: null,
     perSeat: true,
   },
+  /**
+   * s47 — **une offre plafonnée qui n'est pas facturée au siège**.
+   *
+   * `perSeat: false` et `seatLimit: 2` : c'est le couple que la story exige de
+   * couvrir. Recopier la condition d'`offerSyncsSeats` (`perSeat && mode ===
+   * 'subscription'`) sur le plafond rendrait cette offre illimitée, et une
+   * offre au siège plafonnée ne le verrait pas — le plafond y serait appliqué
+   * pour la mauvaise raison.
+   */
+  {
+    id: 'studio-capped',
+    mode: 'subscription',
+    priceId: 'price_studio_capped',
+    amount: 1900,
+    currency: 'eur',
+    interval: 'month',
+    trialDays: null,
+    perSeat: false,
+    seatLimit: 2,
+  },
   // s20 — l'offre **unique** : ni périodicité, ni essai. Le catalogue refuse
   // les deux pour ce mode, au démarrage.
   {
@@ -304,10 +324,10 @@ let organizationsService: OrganizationsService
  * `apps/web/lib/organizations.ts` compose.
  */
 const seatSyncCalls: { organizationId: string; seats: number }[] = []
-let seatSync: SeatSync = async (change) => {
-  seatSyncCalls.push({ ...change })
+let seatSync: SeatSync = async ({ organizationId, seats: counted }) => {
+  seatSyncCalls.push({ organizationId, seats: counted })
 
-  return true
+  return { ok: true }
 }
 
 /** s23 — le nombre de membres que la réconciliation lira. `null` : aucun nombre. */
@@ -709,10 +729,10 @@ beforeEach(async () => {
   permission = () => Promise.resolve(permitted)
   seats = 1
   seatSyncCalls.length = 0
-  seatSync = async (change) => {
-    seatSyncCalls.push({ ...change })
+  seatSync = async ({ organizationId, seats: counted }) => {
+    seatSyncCalls.push({ organizationId, seats: counted })
 
-    return true
+    return { ok: true }
   }
   scopeSeats = () => Promise.resolve(null)
   guestAccountLog.length = 0
@@ -1212,6 +1232,7 @@ describe.runIf(databaseReachable)('la vue de l’écran', () => {
       'pro-monthly',
       'pro-yearly',
       'team-monthly',
+      'studio-capped',
       'lifetime',
     ])
     expect(view.hasCustomer).toBe(false)
@@ -3273,7 +3294,14 @@ describe.runIf(databaseReachable)('la quantité facturée suit les membres', () 
    * Une organisation abonnée au siège : son propriétaire, son client chez le
    * fournisseur, et un abonnement en cache à **une** place.
    */
-  const anOrganizationOnSeats = async (): Promise<{
+  const anOrganizationOnSeats = async (
+    /**
+     * L'offre souscrite. Par défaut celle **au siège** — s23 ; s47 rejoue le
+     * même montage sur une offre **au forfait plafonnée**, et c'est la seule
+     * chose qui change entre les deux.
+     */
+    offer: (typeof CATALOGUE)[number] | undefined = SEAT_OFFER,
+  ): Promise<{
     readonly owner: ModuleSession
     readonly organizationId: string
   }> => {
@@ -3302,7 +3330,7 @@ describe.runIf(databaseReachable)('la quantité facturée suit les membres', () 
     ]
 
     expect(
-      (await call('checkout', { session: owner, body: { offerId: SEAT_OFFER?.id ?? '' } })).status,
+      (await call('checkout', { session: owner, body: { offerId: offer?.id ?? '' } })).status,
     ).toBe(200)
 
     await deliver(
@@ -3314,7 +3342,7 @@ describe.runIf(databaseReachable)('la quantité facturée suit les membres', () 
           id: SUBSCRIPTION,
           customer: CUSTOMER,
           periodEnd: 1_800_000_000,
-          priceId: SEAT_OFFER?.priceId,
+          priceId: offer?.priceId,
           quantity: 1,
         }),
       }),
@@ -3325,15 +3353,18 @@ describe.runIf(databaseReachable)('la quantité facturée suit les membres', () 
     // **La vraie synchronisation**, celle que `apps/web/lib/organizations.ts`
     // compose : le module rend le nombre de membres, le point de composition le
     // porte chez le fournisseur, et un échec annule l'écriture.
-    seatSync = async ({ organizationId: id, seats: counted }) => {
-      seatSyncCalls.push({ organizationId: id, seats: counted })
+    const translate = seatSyncOf(async () => ({
+      available: true,
+      syncSeats: async (input) => await requireBillingService().useCases.syncSeats(input),
+    }))
 
-      const outcome = await requireBillingService().useCases.syncSeats({
-        scope: { kind: 'organization', organizationId: id },
-        seats: counted,
-      })
+    seatSync = async (change) => {
+      seatSyncCalls.push({ organizationId: change.organizationId, seats: change.seats })
 
-      return outcome.status !== 'failed'
+      // **La vraie traduction**, celle d'`apps/web/lib/seat-sync.ts` : elle
+      // décide seule ce qui annule l'écriture et sous quel motif. La réécrire
+      // ici mesurerait la copie du test, pas la règle livrée.
+      return await translate(change)
     }
 
     return { owner, organizationId }
@@ -3686,6 +3717,218 @@ describe.runIf(databaseReachable)('la quantité facturée suit les membres', () 
     // l'absence d'erreur.
     expect(calls).toEqual([])
   })
+
+  /* ----------------------------------------------------------------------- *
+   * s47 — **le plafond de membres**, dans le même montage que s23.
+   *
+   * Le refus tombe au même endroit du parcours que `seat_sync_unavailable` :
+   * à l'acceptation, à l'intérieur de la transaction, avant qu'elle soit
+   * validée. Ce n'est donc pas un second mécanisme, c'est un second motif.
+   *
+   * L'offre du bloc est **au forfait** (`perSeat: false`) : recopier la
+   * condition d'`offerSyncsSeats` sur le plafond la rendrait illimitée, et
+   * chacun de ces cas rougirait.
+   * ----------------------------------------------------------------------- */
+  describe('le plafond de membres de l’offre', () => {
+    const CAPPED = CATALOGUE.find((offer) => (offer.seatLimit ?? null) !== null)
+
+    it('déclare bien une offre plafonnée qui n’est **pas** facturée au siège', () => {
+      // Sans ces trois assertions, tout ce sous-bloc serait vert et vide — ou
+      // vert pour la mauvaise raison, ce qui est pire.
+      expect(CAPPED?.seatLimit).toBe(2)
+      expect(CAPPED?.perSeat).toBe(false)
+      expect(CAPPED?.mode).toBe('subscription')
+    })
+
+    /**
+     * **Le cœur de la story** : l'invitation qui atteint le plafond passe,
+     * celle qui le dépasse est refusée — et refusée **par un motif**, pas par
+     * un 404 (`docs/security.md` §3 réserve le 404 à la ressource d'autrui ;
+     * ici l'organisation est bien celle de l'invité qui vient d'être invité,
+     * c'est l'opération qui est refusée).
+     *
+     * Il couvre aussi la décision 5 du plan : les **deux** invitations sont
+     * émises avant qu'aucune ne soit acceptée, donc elles dépassent le plafond
+     * *ensemble* alors qu'aucune ne le dépasse seule. Le premier accepteur
+     * prend la place ; le second reçoit le motif.
+     */
+    it('accepte l’invitation qui atteint le plafond et refuse la suivante', async () => {
+      const { owner, organizationId } = await anOrganizationOnSeats(CAPPED)
+      const first = await anInvitation(owner, organizationId)
+      const second = await anInvitation(owner, organizationId)
+
+      // **Aucune réponse du fournisseur n'est posée** : une offre au forfait
+      // n'a pas de quantité à porter. Le plafond s'applique quand même, et
+      // tout appel sortant ferait échouer la mesure d'`calls` plus bas.
+      responses = []
+
+      expect(
+        (
+          await organizationsService.useCases.acceptInvitation({
+            userId: first.guest.userId,
+            body: { token: first.token },
+          })
+        ).status,
+      ).toBe('ok')
+      expect(await membersOf(organizationId)).toBe(2)
+
+      expect(
+        await organizationsService.useCases.acceptInvitation({
+          userId: second.guest.userId,
+          body: { token: second.token },
+        }),
+      ).toEqual({ status: 'refused', refusal: 'seat_limit_reached' })
+
+      // **Rien n'a été écrit** : l'effectif n'a pas bougé, et aucun appel
+      // sortant n'a eu lieu — le refus est local, il ne dépend d'aucun tiers.
+      expect(await membersOf(organizationId)).toBe(2)
+      expect(calls).toEqual([])
+    })
+
+    /**
+     * **L'invitation reste vivante**, exactement comme sur
+     * `seat_sync_unavailable` : rien n'a été consommé, et le même lien
+     * fonctionne dès que la place existe. C'est ce qui interdit de replier ce
+     * motif sur « lien invalide ».
+     */
+    it('ne consomme pas l’invitation qu’elle refuse', async () => {
+      const { owner, organizationId } = await anOrganizationOnSeats(CAPPED)
+      const first = await anInvitation(owner, organizationId)
+      const second = await anInvitation(owner, organizationId)
+
+      responses = []
+
+      await organizationsService.useCases.acceptInvitation({
+        userId: first.guest.userId,
+        body: { token: first.token },
+      })
+
+      expect(
+        (
+          await organizationsService.useCases.acceptInvitation({
+            userId: second.guest.userId,
+            body: { token: second.token },
+          })
+        ).status,
+      ).toBe('refused')
+
+      // La place se libère : le **même** jeton est accepté, sans nouvel envoi.
+      expect(
+        (
+          await organizationsService.useCases.removeMember({
+            userId: owner.userId,
+            body: { organizationId, userId: first.guest.userId },
+          })
+        ).status,
+      ).toBe('ok')
+
+      expect(
+        (
+          await organizationsService.useCases.acceptInvitation({
+            userId: second.guest.userId,
+            body: { token: second.token },
+          })
+        ).status,
+      ).toBe('ok')
+      expect(await membersOf(organizationId)).toBe(2)
+    })
+
+    /**
+     * **Un plafond abaissé sous l'effectif n'expulse personne** (critère 4), et
+     * il n'enferme pas non plus.
+     *
+     * Le montage est le changement d'offre de la décision 1 : l'organisation
+     * grandit à trois sur une offre sans plafond, puis le fournisseur annonce
+     * qu'elle est passée sur une offre plafonnée à deux. Trois choses doivent
+     * être vraies en même temps, et deux d'entre elles se contredisent si la
+     * règle est écrite à l'envers —
+     *
+     * - **personne ne part** : l'effectif est toujours trois ;
+     * - **l'ajout suivant est refusé**, avec le motif ;
+     * - **le retrait passe quand même**. C'est celle qu'on oublie : opposer le
+     *   plafond à un retrait laisserait l'organisation coincée au-dessus de son
+     *   plafond, en lui interdisant précisément le seul geste qui l'en
+     *   rapprocherait.
+     */
+    it('n’expulse personne quand le plafond passe sous l’effectif, et laisse retirer', async () => {
+      const { owner, organizationId } = await anOrganizationOnSeats()
+      const guests = [
+        await anInvitation(owner, organizationId),
+        await anInvitation(owner, organizationId),
+        await anInvitation(owner, organizationId),
+      ]
+
+      // Quatre membres, sur une offre **sans plafond**.
+      for (const [index, invited] of guests.entries()) {
+        responses = [...seatWrite(index + 2)]
+        expect(
+          (
+            await organizationsService.useCases.acceptInvitation({
+              userId: invited.guest.userId,
+              body: { token: invited.token },
+            })
+          ).status,
+        ).toBe('ok')
+      }
+
+      expect(await membersOf(organizationId)).toBe(4)
+
+      // **Le changement d'offre**, annoncé par le fournisseur : la même ligne
+      // d'abonnement passe sur une offre plafonnée à deux. L'organisation est
+      // désormais **loin** au-dessus de son plafond, et c'est ce qui rend la
+      // dernière assertion capable d'échouer : un retrait qui la laisse encore
+      // au-dessus est le seul cas où opposer le plafond à un retrait se voit.
+      await deliver(
+        eventPayload({
+          id: `evt_s47_${randomUUID()}`,
+          type: 'customer.subscription.updated',
+          created: 1_788_000_500,
+          object: subscriptionObject({
+            id: SUBSCRIPTION,
+            customer: CUSTOMER,
+            periodEnd: 1_800_000_000,
+            priceId: CAPPED?.priceId,
+            quantity: 4,
+          }),
+        }),
+      )
+
+      calls.length = 0
+      responses = []
+
+      // **Personne n'est parti.** Aucun geste n'a été demandé, et aucun n'a eu
+      // lieu : c'est le cimetière du PRD, qui refuse toute suppression de
+      // données hors d'un `eject` explicite.
+      expect(await membersOf(organizationId)).toBe(4)
+
+      const late = await anInvitation(owner, organizationId)
+
+      // **L'ajout suivant est refusé**, et il l'est par un motif, pas par un 404.
+      expect(
+        await organizationsService.useCases.acceptInvitation({
+          userId: late.guest.userId,
+          body: { token: late.token },
+        }),
+      ).toEqual({ status: 'refused', refusal: 'seat_limit_reached' })
+      expect(await membersOf(organizationId)).toBe(4)
+
+      // **Le retrait passe, et il laisse l'effectif encore au-dessus du
+      // plafond** (trois pour deux). C'est l'assertion que la story peut
+      // manquer : opposer le plafond à un retrait enfermerait cette
+      // organisation au-dessus de son plafond, en lui interdisant le seul geste
+      // qui l'en rapprocherait.
+      expect(
+        (
+          await organizationsService.useCases.removeMember({
+            userId: owner.userId,
+            body: { organizationId, userId: guests[0]?.guest.userId ?? '' },
+          })
+        ).status,
+      ).toBe('ok')
+      expect(await membersOf(organizationId)).toBe(3)
+      expect(calls).toEqual([])
+    })
+  })
 })
 
 /* -------------------------------------------------------------------------- *
@@ -3890,7 +4133,9 @@ describe('la synchronisation des sièges quand il n’y a rien à facturer', () 
   it('laisse passer l’écriture, module de facturation coupé, sans rien demander', async () => {
     const sync = seatSyncOf(async () => ({ available: false, syncSeats: forbidden }))
 
-    expect(await sync({ organizationId: 'org_s23', seats: 4 })).toBe(true)
+    // s47, critère 5 : module coupé, **aucun plafond** — et la doublure crie si
+    // on l'interroge, donc l'absence de question est mesurée, pas supposée.
+    expect(await sync({ organizationId: 'org_s23', seats: 4, adds: true })).toEqual({ ok: true })
   })
 
   it('laisse passer l’écriture quand il n’y a rien à synchroniser', async () => {
@@ -3899,7 +4144,7 @@ describe('la synchronisation des sièges quand il n’y a rien à facturer', () 
       syncSeats: () => Promise.resolve({ status: 'not_applicable' }),
     }))
 
-    expect(await sync({ organizationId: 'org_s23', seats: 4 })).toBe(true)
+    expect(await sync({ organizationId: 'org_s23', seats: 4, adds: true })).toEqual({ ok: true })
   })
 
   it('annule l’écriture quand le fournisseur a échoué', async () => {
@@ -3908,10 +4153,33 @@ describe('la synchronisation des sièges quand il n’y a rien à facturer', () 
       syncSeats: () => Promise.resolve({ status: 'failed' }),
     }))
 
-    expect(await sync({ organizationId: 'org_s23', seats: 4 })).toBe(false)
+    expect(await sync({ organizationId: 'org_s23', seats: 4, adds: true })).toEqual({
+      ok: false,
+      refusal: 'seat_sync_unavailable',
+    })
   })
 
-  it('transmet le périmètre organisation et la quantité visée, jamais un delta', async () => {
+  /**
+   * **s47 — les deux refus ne se replient pas l'un sur l'autre.**
+   *
+   * C'est ici que se joue ce que l'invité lira, donc ce qu'il fera ensuite :
+   * « réessayez » sur une panne, « prévenez qui vous a invité » sur un plafond.
+   * Une traduction qui renverrait le même motif pour les deux issues passerait
+   * les deux cas précédents et échouerait celui-ci.
+   */
+  it('annule l’écriture sous un motif distinct quand le plafond est atteint', async () => {
+    const sync = seatSyncOf(async () => ({
+      available: true,
+      syncSeats: () => Promise.resolve({ status: 'over_limit' }),
+    }))
+
+    expect(await sync({ organizationId: 'org_s23', seats: 4, adds: true })).toEqual({
+      ok: false,
+      refusal: 'seat_limit_reached',
+    })
+  })
+
+  it('transmet le périmètre, la quantité visée — jamais un delta — et le sens de l’écriture', async () => {
     const asked: unknown[] = []
     const sync = seatSyncOf(async () => ({
       available: true,
@@ -3922,9 +4190,15 @@ describe('la synchronisation des sièges quand il n’y a rien à facturer', () 
       },
     }))
 
-    await sync({ organizationId: 'org_s23', seats: 4 })
+    await sync({ organizationId: 'org_s23', seats: 4, adds: true })
+    // Le retrait passe par la **même** porte, et il doit se distinguer de
+    // l'ajout : sans cela, un plafond abaissé refuserait les retraits (s47).
+    await sync({ organizationId: 'org_s23', seats: 3, adds: false })
 
-    expect(asked).toEqual([{ scope: { kind: 'organization', organizationId: 'org_s23' }, seats: 4 }])
+    expect(asked).toEqual([
+      { scope: { kind: 'organization', organizationId: 'org_s23' }, seats: 4, adds: true },
+      { scope: { kind: 'organization', organizationId: 'org_s23' }, seats: 3, adds: false },
+    ])
   })
 })
 
@@ -4005,11 +4279,13 @@ describe.runIf(appOrganizations.available)('le fil des sièges au point de compo
       const options = provided[0]?.()
 
       // Le fournisseur a échoué : l'écriture d'appartenance doit être annulée.
-      expect(await options?.seatSync({ organizationId: 'org_s23_fil', seats: 4 })).toBe(false)
+      expect(await options?.seatSync({ organizationId: 'org_s23_fil', seats: 4, adds: true })).toEqual(
+        { ok: false, refusal: 'seat_sync_unavailable' },
+      )
       // Et la facturation de l'application a bien été interrogée, avec le
-      // périmètre organisation et la quantité visée.
+      // périmètre organisation, la quantité visée et le sens de l'écriture.
       expect(asked).toEqual([
-        { scope: { kind: 'organization', organizationId: 'org_s23_fil' }, seats: 4 },
+        { scope: { kind: 'organization', organizationId: 'org_s23_fil' }, seats: 4, adds: true },
       ])
     } finally {
       vi.doUnmock('@repo/module-organizations')

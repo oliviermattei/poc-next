@@ -1,5 +1,6 @@
 import type { Mailer } from '@repo/ports'
 
+import type { InvitationRefusal } from '../domain/invitation'
 import type { OrganizationRole } from '../domain/organization'
 import type { OrganizationSecurityEvent } from '../domain/security-event'
 
@@ -308,7 +309,47 @@ export type InvitationOutcome = 'ok' | 'already_invited'
 export type SeatSync = (change: {
   readonly organizationId: string
   readonly seats: number
-}) => Promise<boolean>
+  /**
+   * **Cette écriture ajoute-t-elle un membre ?** — s47.
+   *
+   * Le module ne demande pas ça pour facturer : la quantité visée suffit à
+   * cela. Il le demande parce que l'extérieur peut **plafonner** un ajout, et
+   * qu'un plafond ne doit jamais s'opposer à un retrait. Sans ce champ, une
+   * organisation dont le plafond a été abaissé sous l'effectif verrait ses
+   * retraits refusés — elle resterait bloquée au-dessus du plafond, sans aucun
+   * moyen de redescendre, et le seul geste qui l'en rapprocherait serait
+   * précisément celui qu'on lui interdirait.
+   */
+  readonly adds: boolean
+}) => Promise<SeatSyncVerdict>
+
+/**
+ * Les motifs par lesquels l'extérieur peut refuser une écriture d'appartenance.
+ *
+ * Ils sont nommés dans le **vocabulaire de ce module** — ce sont deux
+ * `InvitationRefusal` —, jamais dans celui de la facturation : `requires: []`
+ * est une décision (ADR 034), et ce module ne doit pas apprendre qu'il existe
+ * un fournisseur de paiement. Il sait seulement que l'écriture peut être
+ * refusée, et pour laquelle des deux raisons.
+ *
+ * La distinction n'est pas cosmétique : la première dit « réessayez », la
+ * seconde dit « ce n'est pas à vous de réessayer ».
+ */
+export type SeatSyncRefusal = Extract<
+  InvitationRefusal,
+  'seat_sync_unavailable' | 'seat_limit_reached'
+>
+
+/**
+ * Ce que rend un `SeatSync` : un **résultat discriminé**, jamais un booléen.
+ *
+ * Le booléen d'origine (s23) ne portait qu'une seule façon d'échouer. Depuis
+ * s47 il y en a deux, et elles n'appellent pas la même action de la part de qui
+ * les lit — le compilateur oblige donc à nommer laquelle.
+ */
+export type SeatSyncVerdict =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly refusal: SeatSyncRefusal }
 
 /**
  * Le refus d'un `SeatSync`, **transporté par une exception** — et c'est le
@@ -318,12 +359,16 @@ export type SeatSync = (change: {
  * transaction : lever est la seule manière d'annuler ce que la transaction a
  * déjà écrit. Le cas d'usage l'attrape aussitôt et la ramène à un refus nommé,
  * si bien qu'aucun appelant ne voit passer une exception.
+ *
+ * Elle **porte le motif** depuis s47 : l'exception traverse la transaction, et
+ * c'est le seul endroit où le motif peut voyager sans être reconstitué de
+ * l'autre côté — reconstitué, il serait faux la moitié du temps.
  */
 export class SeatSyncRefusedError extends Error {
-  constructor() {
+  constructor(readonly refusal: SeatSyncRefusal) {
     super(
-      'La taille de l’organisation n’a pas pu être portée chez le fournisseur : ' +
-        'l’écriture a été annulée (ADR 046).',
+      'L’écriture d’appartenance a été annulée : la nouvelle taille de ' +
+        `l’organisation a été refusée (« ${refusal} », ADR 046).`,
     )
     this.name = 'SeatSyncRefusedError'
   }

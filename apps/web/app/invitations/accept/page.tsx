@@ -1,7 +1,7 @@
 import {
   ACCEPT_REFUSALS,
+  acceptRefusalMessageKey,
   refusalForStatus,
-  refusalMessageKey,
 } from '@repo/module-organizations'
 import { InvitationScreen } from '@repo/module-organizations/presentation'
 import { notFound } from 'next/navigation'
@@ -47,6 +47,12 @@ const TOKEN = z.string().trim().min(1).max(256)
  * refus du module : un code venu d'un autre parcours n'affiche donc rien ici.
  * Une clé absente ferait tomber l'écran en 500, puisque aucune clé manquante ne
  * se replie (s09).
+ *
+ * Le texte, lui, passe par `acceptRefusalMessageKey` et non par
+ * `refusalMessageKey` : **qui lit cet écran n'est pas membre** de
+ * l'organisation, et un motif d'origine facturation ne doit rien lui apprendre
+ * d'elle — ni son offre, ni son nombre de places (s47, décision 3). Le partage
+ * est écrit dans le `domain` ; cet écran ne le rejoue pas.
  */
 const REFUSAL = z.enum(ACCEPT_REFUSALS)
 
@@ -82,12 +88,12 @@ export default async function AcceptInvitationPage({
    */
   const statusRefusal = invitation === null ? null : refusalForStatus(invitation.status)
   const refusalKey = parsedRefusal.success
-    ? refusalMessageKey(parsedRefusal.data)
+    ? acceptRefusalMessageKey(parsedRefusal.data)
     : invitation === null
-      ? refusalMessageKey('invitation_unknown')
+      ? acceptRefusalMessageKey('invitation_unknown')
       : statusRefusal === null
         ? null
-        : refusalMessageKey(statusRefusal)
+        : acceptRefusalMessageKey(statusRefusal)
 
   // Le retour de connexion est le chemin **interne** de cet écran, jeton
   // compris : c'est l'écran de connexion qui le met dans la forme publique de sa

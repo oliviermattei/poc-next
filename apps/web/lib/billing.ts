@@ -122,6 +122,8 @@ export interface BillingFeature {
   readonly syncSeats: (input: {
     readonly scope: ModuleScope
     readonly seats: number
+    /** L'écriture ajoute-t-elle un membre ? Seul un ajout peut franchir un plafond (s47). */
+    readonly adds?: boolean
   }) => Promise<SeatSyncOutcome>
   /**
    * Le simulateur, ou `null`.

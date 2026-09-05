@@ -56,6 +56,7 @@
   "accept.signUp": "Créer un compte",
   "accept.back": "Retour à l’accueil",
   "accept.refusedTitle": "Invitation",
+  "accept.seatLimit": "Cette organisation ne peut pas vous accueillir pour le moment. Votre invitation reste valide : prévenez la personne qui vous a invité, elle seule peut débloquer votre arrivée.",
   "error.invalid_name": "Ce nom n’est pas valide. Utilisez entre 1 et 64 caractères.",
   "error.invalid_slug": "Cet identifiant n’est pas valide. Utilisez des lettres minuscules, des chiffres et des tirets.",
   "error.slug_unavailable": "Cet identifiant n’est pas disponible. Choisissez-en un autre.",
@@ -72,5 +73,6 @@
   "error.invitation_other_recipient": "Ce lien a été envoyé à une autre adresse. Connectez-vous avec l’adresse invitée.",
   "error.last_owner": "Une organisation garde toujours au moins un propriétaire.",
   "error.not_a_member": "Cette personne n’est pas membre de l’organisation.",
-  "error.seat_sync_unavailable": "La facturation n’a pas pu être mise à jour : rien n’a été modifié. Réessayez dans un instant."
+  "error.seat_sync_unavailable": "La facturation n’a pas pu être mise à jour : rien n’a été modifié. Réessayez dans un instant.",
+  "error.seat_limit_reached": "La limite de membres de votre offre est atteinte : personne n’a été retiré, mais aucun membre de plus ne peut rejoindre l’organisation. Choisissez une offre au plafond plus élevé."
 }

@@ -29,7 +29,7 @@ import {
   guestScopeReference,
   isGuestScopeKind,
 } from '../domain/guest'
-import { billableSeats, offerSyncsSeats } from '../domain/seats'
+import { billableSeats, exceedsSeatLimit, offerSeatLimit, offerSyncsSeats } from '../domain/seats'
 import {
   entitledOfferIds,
   grantsBillingAccess,
@@ -221,13 +221,40 @@ export const EMPTY_BILLING_VIEW: BillingView = {
 /**
  * Ce que la synchronisation d'une quantité de sièges rend (s23).
  *
- * Trois issues, et la distinction entre les deux dernières est tout l'enjeu :
- * `not_applicable` laisse l'écriture locale se valider, `failed` l'annule.
+ * **Aucun nombre écrit ici** : la phrase disait « trois issues » alors qu'il y
+ * en avait quatre depuis s47, et aucune commande ne tenait ce compte. La liste
+ * ci-dessous est vérifiable, elle.
+ *
+ * La distinction qui porte tout l'enjeu est celle entre `not_applicable` et les
+ * deux refus : `not_applicable` laisse l'écriture locale se valider, `failed`
+ * et `over_limit` l'annulent.
  */
 export type SeatSyncOutcome =
   | { readonly status: 'synced'; readonly quantity: number }
   | { readonly status: 'not_applicable' }
   | { readonly status: 'failed' }
+  /**
+   * **Le plafond de l'offre est atteint** (s47) — ni `failed` ni
+   * `not_applicable`.
+   *
+   * Pas `failed` : rien n'est en panne, et l'action à conseiller n'est pas
+   * « réessayez ». Pas `not_applicable` : l'écriture doit être annulée.
+   *
+   * **Elle ne porte pas le plafond, et c'est délibéré** (constat M2 de la revue
+   * de s47). Elle l'a porté : `{ limit: number }`, avec un commentaire qui
+   * annonçait « le message qui le nomme est composé plus haut ». Ce message
+   * n'existait pas. Le nombre était lu **nulle part** —
+   * `apps/web/lib/seat-sync.ts` le laissait tomber un étage plus haut, et aucun
+   * texte n'interpole de nombre. Le porter donnait à lire un câblage qui
+   * n'était pas là.
+   *
+   * Le nombre ne sort donc pas du module aujourd'hui. Le rendre au
+   * propriétaire demande un canal que cette story n'a pas — une notification
+   * dans l'application, c'est `s32-notifications-inapp` —, et le jour où ce
+   * canal existe, le champ se repose ici, à la ligne qui construit cette
+   * issue : c'est le seul endroit qui connaisse l'offre.
+   */
+  | { readonly status: 'over_limit' }
 
 export interface BillingDependencies {
   readonly repository: BillingRepository
@@ -351,6 +378,20 @@ export interface BillingUseCases {
   syncSeats(input: {
     readonly scope: ModuleScope
     readonly seats: number
+    /**
+     * **Cette écriture ajoute-t-elle un membre ?** (s47)
+     *
+     * Le plafond ne s'oppose qu'aux ajouts. Un retrait qui laisse encore
+     * l'effectif au-dessus d'un plafond abaissé doit passer : le refuser
+     * enfermerait l'organisation au-dessus de son plafond, en lui interdisant
+     * le seul geste qui l'en rapprocherait — et le critère 4 interdit par
+     * ailleurs de retirer qui que ce soit d'office.
+     *
+     * Facultatif, et **`false` par défaut** : les appelants qui ne changent pas
+     * l'effectif (la réconciliation, une correction de quantité) ne peuvent pas
+     * déclencher un plafond par omission.
+     */
+    readonly adds?: boolean
   }): Promise<SeatSyncOutcome>
   /** Réconcilie le cache avec le fournisseur. Rend le nombre de lignes changées. */
   reconcile(): Promise<{ readonly customers: number; readonly changed: number }>
@@ -1089,7 +1130,7 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
      * sièges. Les confondre avec un échec annulerait des écritures parfaitement
      * légitimes.
      */
-    syncSeats: async ({ scope, seats }) => {
+    syncSeats: async ({ scope, seats, adds = false }) => {
       // **Le forfait** (critère 8) : un périmètre compte n'a pas de membres, et
       // le module `organizations` peut être coupé. Rien à synchroniser.
       if (scope.kind !== 'organization') {
@@ -1122,7 +1163,35 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
 
       const offer = offerForPrice(catalogue, current.priceId)
 
-      if (offer === null || !offerSyncsSeats(offer)) {
+      if (offer === null) {
+        return { status: 'not_applicable' }
+      }
+
+      /**
+       * **Le plafond, et il passe avant `offerSyncsSeats`** (s47, décision 2).
+       *
+       * L'ordre est la décision. `offerSyncsSeats` est faux sur une offre au
+       * forfait — elle n'a aucune quantité à corriger —, si bien que placer le
+       * plafond après lui rendrait **illimitée** toute offre au forfait. Or
+       * plafonner un forfait est l'emploi le plus courant d'un plafond :
+       * « jusqu'à cinq membres », prix fixe. Les deux règles répondent à deux
+       * questions, elles n'ont pas la même condition.
+       *
+       * Le plafond ne mord que sur un **ajout**, et seulement quand une offre
+       * courante existe : sans abonnement vivant, la fonction est déjà sortie
+       * plus haut en `not_applicable`, et c'est voulu — faire dépendre l'ajout
+       * d'un membre d'un état de facturation transitoire (essai expiré,
+       * abonnement clos) coûterait plus cher que le plafond ne rapporte.
+       */
+      const limit = offerSeatLimit(offer)
+
+      if (limit !== null && adds && exceedsSeatLimit(quantity, limit)) {
+        // Le plafond reste **ici** : c'est le seul endroit qui connaisse
+        // l'offre, et rien au-dessus ne sait encore quoi en faire (M2).
+        return { status: 'over_limit' }
+      }
+
+      if (!offerSyncsSeats(offer)) {
         return { status: 'not_applicable' }
       }
 

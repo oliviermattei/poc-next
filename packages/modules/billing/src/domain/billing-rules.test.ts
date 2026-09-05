@@ -55,6 +55,56 @@ describe('le catalogue d’offres', () => {
   })
 
   /**
+   * **Le plafond de sièges** (s47, critère 1) : un champ **facultatif**.
+   *
+   * Les deux cas ci-dessous sont les deux moitiés du critère — « une limite
+   * configurable sur une offre, une offre sans limite restant illimitée ». Le
+   * second est celui qui rougit si le champ devenait obligatoire : le catalogue
+   * livré ne déclarerait alors plus.
+   */
+  it('accepte une offre plafonnée et rend le plafond tel quel', () => {
+    expect(parseBillingCatalogue([offer({ seatLimit: 5 })])).toEqual([
+      { ...SUBSCRIPTION, seatLimit: 5 },
+    ])
+  })
+
+  it('accepte une offre sans plafond, et n’en invente aucun', () => {
+    const [parsed] = parseBillingCatalogue([SUBSCRIPTION])
+
+    expect(parsed?.seatLimit ?? null).toBeNull()
+  })
+
+  /**
+   * **Un plafond sur un forfait est légitime** (s47, décision 2) : c'est même
+   * son cas d'usage le plus courant. Le catalogue ne doit donc pas le lier à
+   * `perSeat`, contrairement à ce qu'une symétrie avec `offerSyncsSeats`
+   * suggérerait.
+   */
+  it('accepte un plafond sur une offre au forfait', () => {
+    expect(parseBillingCatalogue([offer({ perSeat: false, seatLimit: 3 })])).toEqual([
+      { ...SUBSCRIPTION, perSeat: false, seatLimit: 3 },
+    ])
+  })
+
+  /**
+   * **Un plafond sur un achat unique ne s'exécute nulle part** (constat M1 de
+   * la revue de s47) : `syncSeats` résout l'offre courante depuis l'abonnement
+   * vivant, un encaissement unique n'en a aucun, et la fonction sort en
+   * `not_applicable` avant même de lire le plafond. Le catalogue le refuse
+   * donc au démarrage — le refus est dans la table ci-dessous.
+   *
+   * Ce cas-ci est l'**autre moitié** : `null` reste accepté sur ce mode. La
+   * documentation du champ dit « absent comme `null`, l'offre est illimitée »,
+   * et une condition écrite sur la présence de la clé plutôt que sur sa valeur
+   * refuserait un catalogue parfaitement légitime.
+   */
+  it('accepte un achat unique dont le plafond est nul', () => {
+    const oneTime = offer({ mode: 'one_time', interval: null, trialDays: null, seatLimit: null })
+
+    expect(parseBillingCatalogue([oneTime])).toEqual([oneTime])
+  })
+
+  /**
    * Chaque cas nomme **l'offre et le champ**. Un message qui dirait seulement
    * « configuration invalide » obligerait à relire le fichier à la main, et
    * c'est au démarrage d'un déploiement que ça se produirait.
@@ -79,6 +129,21 @@ describe('le catalogue d’offres', () => {
         why: 'un achat unique avec une période d’essai',
         value: offer({ mode: 'one_time', interval: null }),
         names: 'trialDays',
+      },
+      {
+        // M1 de la revue de s47, et le frère exact du cas ci-dessus : une
+        // intention que rien n'exécute, refusée au démarrage plutôt
+        // qu'ignorée en silence.
+        why: 'un achat unique avec un plafond de sièges',
+        value: offer({ mode: 'one_time', interval: null, trialDays: null, seatLimit: 5 }),
+        names: 'seatLimit',
+      },
+      { why: 'un plafond de sièges nul', value: offer({ seatLimit: 0 }), names: 'seatLimit' },
+      { why: 'un plafond de sièges négatif', value: offer({ seatLimit: -3 }), names: 'seatLimit' },
+      {
+        why: 'un plafond de sièges fractionnaire',
+        value: offer({ seatLimit: 2.5 }),
+        names: 'seatLimit',
       },
       { why: 'un champ absent', value: { id: 'pro' }, names: 'mode' },
     ]

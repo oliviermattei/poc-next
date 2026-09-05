@@ -83,10 +83,15 @@ export type InvitationStatus = 'pending' | 'accepted' | 'revoked' | 'expired'
  * Les motifs de refus propres à l'invitation et au retrait.
  *
  * Distincts d'`OrganizationRefusal` (s15) parce qu'ils n'ont pas les mêmes
- * appelants ni le même écran : les premiers reviennent sur `/organizations`, les
- * cinq motifs d'acceptation sur `/invitations/accept`. La liste est la source du
+ * appelants ni le même écran : les premiers reviennent sur `/organizations`, ceux
+ * d'`ACCEPT_REFUSALS` sur `/invitations/accept`. La liste est la source du
  * catalogue **et** de la validation du paramètre d'URL — recopier l'une ou
  * l'autre les ferait diverger.
+ *
+ * **Aucun nombre écrit ici** : la phrase disait « les cinq motifs
+ * d'acceptation » alors qu'ils étaient six depuis s23, et sept depuis s47.
+ * Aucune commande ne tenait ce compte, donc il vieillissait en silence — et le
+ * lecteur suivant s'y fiait. La liste, elle, est vérifiable.
  */
 export type InvitationRefusal =
   /** L'adresse n'a pas la forme d'une adresse email. */
@@ -122,8 +127,53 @@ export type InvitationRefusal =
    * demander une nouvelle, indéfiniment. Ici, réessayer est la bonne action.
    */
   | 'seat_sync_unavailable'
+  /**
+   * **Le plafond de membres de l'offre est atteint** (s47) — le frère du motif
+   * ci-dessus, et pas un doublon.
+   *
+   * Même origine (la facturation refuse une écriture d'appartenance), même
+   * moment (l'acceptation), même garantie (rien n'a été écrit). Ce qui change
+   * est **ce qu'il faut faire** : `seat_sync_unavailable` dit « réessayez »,
+   * celui-ci dit « ce n'est pas à vous de réessayer ». Les confondre ferait
+   * recharger indéfiniment une page qui ne changera pas d'avis.
+   *
+   * **Il ne retire personne** : un plafond abaissé sous l'effectif laisse tous
+   * les membres en place et refuse le prochain ajout (critère 4).
+   *
+   * **Plusieurs invitations en attente peuvent dépasser le plafond ensemble**
+   * alors qu'aucune ne le dépasse seule : le refus porte sur l'acceptation, pas
+   * sur l'envoi, et une invitation en attente n'occupe aucun siège. Le premier
+   * accepteur prend la place ; les suivants reçoivent ce motif. Ce n'est pas un
+   * hasard, c'est la conséquence directe du critère 3.
+   */
+  | 'seat_limit_reached'
 
-/** Les motifs que l'écran des organisations sait rendre. */
+/**
+ * Les motifs que l'écran des organisations sait rendre.
+ *
+ * **`seat_limit_reached` y figure sans qu'aucun parcours ne l'y produise
+ * aujourd'hui** (constat M2 de la revue de s47), et c'est écrit ici pour que le
+ * prochain lecteur ne le déduise pas de travers. Le motif naît à
+ * `acceptInvitation`, donc pour l'**invité**, dont l'écran affiche
+ * délibérément le texte vague (`acceptRefusalMessageKey`). Le message qui
+ * **nomme** le plafond — `error.seat_limit_reached`, le critère 2 de la story —
+ * n'est donc atteint que par un `?error=seat_limit_reached` tapé à la main sur
+ * `/organizations` : le propriétaire, lui, n'apprend pas que quelqu'un a été
+ * refusé à la porte.
+ *
+ * **Il est gardé, pas supprimé**, pour deux raisons vérifiables :
+ *
+ * - il est l'**ancre** du cas de non-divulgation (`tests/organizations.test.ts`,
+ *   « ne nomme ni l'offre ni le plafond à qui n'est pas membre ») : l'assertion
+ *   négative sur le texte de l'invité passerait sur le vide sans un texte de
+ *   membre qui, lui, nomme la limite ;
+ * - le retirer du catalogue demanderait de retirer le code de cette liste, or
+ *   c'est bien un motif que cet écran-là saura rendre — il lui manque le
+ *   **canal** qui le lui apporte, pas le texte.
+ *
+ * Ce canal est `s32-notifications-inapp` : c'est cette story qui portera le
+ * refus jusqu'au propriétaire, et elle trouvera le texte écrit.
+ */
 export const INVITATION_REFUSALS = [
   'invalid_email',
   'already_member',
@@ -138,6 +188,7 @@ export const INVITATION_REFUSALS = [
   'last_owner',
   'not_a_member',
   'seat_sync_unavailable',
+  'seat_limit_reached',
 ] as const satisfies readonly InvitationRefusal[]
 
 /**
@@ -157,6 +208,12 @@ export const ACCEPT_REFUSALS = [
   // taille chez le fournisseur. L'écran d'acceptation doit savoir le dire —
   // c'est le seul de ses motifs sur lequel réessayer a du sens.
   'seat_sync_unavailable',
+  // s47 : le plafond de l'offre est atteint. Il tombe au même endroit du
+  // parcours que le motif ci-dessus, donc au même endroit à l'écran — et
+  // l'oublier **ici** le rendrait muet sans qu'aucun cas unitaire rougisse,
+  // puisqu'ils valident tous contre cette liste. Un cas navigateur le tient
+  // (`e2e/organizations.spec.ts`).
+  'seat_limit_reached',
 ] as const satisfies readonly InvitationRefusal[]
 
 export type InvitationEmailParse =

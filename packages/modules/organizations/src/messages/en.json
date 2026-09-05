@@ -56,6 +56,7 @@
   "accept.signUp": "Create an account",
   "accept.back": "Back to home",
   "accept.refusedTitle": "Invitation",
+  "accept.seatLimit": "This organisation cannot take you in right now. Your invitation is still valid: tell whoever invited you, they alone can make room for you.",
   "error.invalid_name": "This name is not valid. Use between 1 and 64 characters.",
   "error.invalid_slug": "This identifier is not valid. Use lowercase letters, digits and hyphens.",
   "error.slug_unavailable": "This identifier is not available. Please choose another one.",
@@ -72,5 +73,6 @@
   "error.invitation_other_recipient": "This link was sent to another address. Sign in with the invited address.",
   "error.last_owner": "An organization always keeps at least one owner.",
   "error.not_a_member": "This person is not a member of the organization.",
-  "error.seat_sync_unavailable": "Billing could not be updated, so nothing was changed. Please try again in a moment."
+  "error.seat_sync_unavailable": "Billing could not be updated, so nothing was changed. Please try again in a moment.",
+  "error.seat_limit_reached": "Your plan's member limit has been reached: nobody was removed, but no further member can join this organisation. Pick an offer with a higher limit."
 }

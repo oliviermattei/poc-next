@@ -49,6 +49,36 @@ export interface BillingOffer {
    * conséquence.
    */
   readonly perSeat: boolean
+  /**
+   * **Le plafond de membres de l'offre** (s47), ou rien : absent comme `null`,
+   * l'offre est illimitée. Le champ est **facultatif** parce que le critère 1
+   * l'exige — « une offre sans limite reste illimitée » —, et un catalogue
+   * écrit avant s47 doit continuer de se lire sans être réécrit.
+   *
+   * **La règle ne dépend pas de `perSeat`**, et c'est une décision de s47
+   * (décision 2) : la symétrie avec `offerSyncsSeats` serait fausse. Cette
+   * règle-là (`perSeat && mode === 'subscription'`) exclut le forfait **et**
+   * l'achat unique, parce que ni l'un ni l'autre n'a de quantité à corriger ;
+   * un **plafond**, lui, a du sens sur un forfait — c'est même son emploi le
+   * plus courant, vendre « jusqu'à cinq membres » à prix fixe. La
+   * dérivation vit dans `domain/seats.ts` (`offerSeatLimit`), qui ne reçoit
+   * que ce champ et ne *peut* donc voir ni `perSeat` ni `mode`.
+   *
+   * **Le catalogue, lui, le refuse non nul sur un achat unique** (constat M1
+   * de la revue de s47) — le `superRefine` plus bas, sur le précédent de
+   * `trialDays`. Ce n'est pas la règle qui exclut ce mode, c'est le **câblage**
+   * qui n'existe pas : `syncSeats` résout l'offre courante depuis l'abonnement
+   * vivant du périmètre, un encaissement unique n'en a aucun, et la fonction
+   * sort en `not_applicable` avant d'avoir lu ce champ. Un plafond y serait un
+   * vœu sans conséquence — exactement ce que `perSeat` est encore, juste
+   * au-dessus, faute que quiconque l'ait refusé.
+   *
+   * **Le plafond ne retire jamais personne.** Abaissé sous l'effectif d'une
+   * organisation — ici, ou par un changement d'offre —, il laisse tous les
+   * membres en place et refuse le prochain ajout (critère 4, et le cimetière du
+   * PRD, qui refuse toute suppression de données hors d'un `eject` explicite).
+   */
+  readonly seatLimit?: number | null
 }
 
 export type BillingCatalogue = readonly BillingOffer[]
@@ -78,6 +108,10 @@ const offerSchema = z
     interval: z.enum(BILLING_INTERVALS).nullable(),
     trialDays: z.int().positive().nullable(),
     perSeat: z.boolean(),
+    // Facultatif, et **strictement positif** : un plafond de zéro décrirait une
+    // organisation sans membre, ce qui n'existe pas (`createOrganization` écrit
+    // le créateur dans la même transaction). Une offre sans plafond l'omet.
+    seatLimit: z.int().positive().nullish(),
   })
   .superRefine((offer, ctx) => {
     // Un abonnement sans périodicité n'a pas de sens, et le fournisseur le
@@ -106,6 +140,26 @@ const offerSchema = z
         code: 'custom',
         path: ['trialDays'],
         message: 'must be null for a one_time offer',
+      })
+    }
+
+    // **Le même objet que la règle ci-dessus** (constat M1 de la revue de
+    // s47) : un plafond sur un achat unique décrit une intention que rien
+    // n'exécute. `syncSeats` résout l'offre courante depuis l'**abonnement
+    // vivant** du périmètre ; un encaissement unique n'en a aucun, et la
+    // fonction rend `not_applicable` avant d'avoir lu `seatLimit`. La règle
+    // pure, elle, reste aveugle au mode — `offerSeatLimit` ne reçoit que
+    // `seatLimit`, décision 2 de la story —, et c'est ici que le câblage
+    // manquant se dit, au démarrage, en nommant le champ.
+    //
+    // `null` reste accepté : c'est la valeur qui dit « illimitée », au même
+    // titre que le champ absent.
+    if (offer.mode === 'one_time' && offer.seatLimit !== null && offer.seatLimit !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['seatLimit'],
+        message:
+          'must be null for a one_time offer (a one-time purchase has no live subscription to read an offer from, so the cap would never be applied)',
       })
     }
   })

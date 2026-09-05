@@ -184,16 +184,26 @@ export function createDrizzleOrganizationRepository(
   const syncSeatsBeforeCommit = async (
     transaction: TransactionalWriter,
     organizationId: string,
+    /**
+     * **Cette écriture ajoute-t-elle un membre ?** (s47)
+     *
+     * Transmis à l'extérieur, qui seul sait s'il plafonne. Un retrait ne peut
+     * pas franchir un plafond par le haut ; le lui opposer enfermerait une
+     * organisation au-dessus de son plafond, sans aucun geste pour redescendre.
+     */
+    adds: boolean,
   ): Promise<void> => {
-    const accepted = await seatSync({
+    const verdict = await seatSync({
       organizationId,
       seats: await seatsInTransaction(transaction, organizationId),
+      adds,
     })
 
-    if (!accepted) {
+    if (!verdict.ok) {
       // Lever **est** l'annulation : rien de ce que cette transaction a écrit
-      // ne sera validé. Le cas d'usage ramène l'exception à un refus nommé.
-      throw new SeatSyncRefusedError()
+      // ne sera validé. Le cas d'usage ramène l'exception à un refus nommé, et
+      // c'est le motif porté ici qu'il rend — jamais un motif reconstitué.
+      throw new SeatSyncRefusedError(verdict.refusal)
     }
   }
 
@@ -468,7 +478,17 @@ export function createDrizzleOrganizationRepository(
 
         // **La quantité part avant que l'adhésion soit validée** (ADR 046) : un
         // refus du fournisseur lève ici, et l'invitation redevient consommable.
-        await syncSeatsBeforeCommit(transaction, consumed.organizationId)
+        //
+        // **Le seul ajout de membre à une organisation qui existe déjà** — donc
+        // le seul endroit où un plafond peut mordre (s47). La formule était
+        // « le seul ajout de membre du module », et elle était fausse :
+        // `createOrganization` insère aussi une ligne
+        // `organization_member`, celle du fondateur. Elle ne synchronise rien,
+        // et rien n'y plafonne — l'organisation naît dans cette
+        // transaction-là, elle n'a donc encore aucun client de facturation d'où
+        // tirer une offre. La conclusion tenait, la prémisse non ; le prochain
+        // lecteur aurait cherché un second site et n'aurait pas trouvé.
+        await syncSeatsBeforeCommit(transaction, consumed.organizationId, true)
 
         return { organizationId: consumed.organizationId }
       })
@@ -528,7 +548,12 @@ export function createDrizzleOrganizationRepository(
         // s'inverse ici — une validation locale en échec après un succès
         // distant sous-facture d'un siège au lieu de surfacturer —, et c'est le
         // sens le moins coûteux pour le client.
-        await syncSeatsBeforeCommit(transaction, access.organizationId)
+        //
+        // **Un retrait n'ajoute rien** : aucun plafond ne s'y oppose (s47,
+        // critère 4). L'inverse enfermerait une organisation au-dessus d'un
+        // plafond abaissé, en lui interdisant le seul geste qui l'en
+        // rapprocherait.
+        await syncSeatsBeforeCommit(transaction, access.organizationId, false)
 
         return true
       })

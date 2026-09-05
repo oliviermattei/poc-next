@@ -141,7 +141,39 @@ export const ORGANIZATIONS_KEYS = {
   acceptSignUp: organizationsKey('accept.signUp'),
   acceptBack: organizationsKey('accept.back'),
   acceptRefusedTitle: organizationsKey('accept.refusedTitle'),
+  /**
+   * **Le plafond, dit à quelqu'un qui n'est pas membre** (s47, décision 3).
+   *
+   * Un second texte pour un seul motif, et c'est une décision de sécurité :
+   * celui qui accepte une invitation n'appartient pas encore à
+   * l'organisation, et lui nommer l'offre ou le nombre de places lui
+   * apprendrait quelque chose d'elle. Il apprend seulement que l'organisation
+   * ne peut pas l'accueillir, et à qui parler.
+   */
+  acceptSeatLimit: organizationsKey('accept.seatLimit'),
 } as const
+
+/**
+ * Le message d'un refus **tel que l'écran d'acceptation l'affiche** (s47).
+ *
+ * Elle ne diffère de `refusalMessageKey` que sur un motif, et c'est le seul qui
+ * porte une information appartenant à l'organisation : son plafond de membres.
+ * Qui lit cet écran-là n'en est pas membre — il tient un lien, rien de plus.
+ *
+ * **Elle ne masque pas un refus, elle en change le texte.** Le motif reste le
+ * même code, il reste dans `ACCEPT_REFUSALS`, et l'écran l'affiche : c'est
+ * exactement ce que s23 exigeait pour `seat_sync_unavailable`, dire la vérité
+ * plutôt que « lien invalide ». Ce qui est retiré est l'offre et le nombre, pas
+ * le fait.
+ *
+ * Le partage est écrit **ici** et pas dans l'écran : une condition dans un
+ * `.tsx` ferait exister la règle à deux endroits, et le second serait celui qui
+ * ment.
+ */
+export const acceptRefusalMessageKey = (refusal: InvitationRefusal): string =>
+  refusal === 'seat_limit_reached'
+    ? ORGANIZATIONS_KEYS.acceptSeatLimit
+    : refusalMessageKey(refusal)
 
 /**
  * Le libellé du bouton qui **pose** un rôle sur une ligne, et son nom accessible.

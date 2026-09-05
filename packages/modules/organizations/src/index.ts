@@ -54,6 +54,8 @@ export {
 export type {
   OrganizationRepository,
   SeatSync,
+  SeatSyncRefusal,
+  SeatSyncVerdict,
   SecurityLog,
   SlugOutcome,
 } from './application/ports'
@@ -91,6 +93,7 @@ export {
 } from './domain/invitation'
 export { invitationEmail } from './emails/invitation'
 export {
+  acceptRefusalMessageKey,
   ORGANIZATIONS_KEYS,
   ORGANIZATION_REFUSALS,
   organizationsKey,

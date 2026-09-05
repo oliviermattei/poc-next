@@ -792,8 +792,17 @@ d'appartenance : la taille de l'organisation part chez le fournisseur de
 paiement **avant** que l'écriture qui l'a changée soit validée, et un
 fournisseur en panne n'ajoute ni ne retire personne (ADR 046). Elle est
 **obligatoire** dans `configureOrganizations` — un point de composition qui
-l'oublierait ne compile pas —, et un projet sans facturation rend `true` : ne
-rien avoir à faire est un succès. Le module, lui, ignore qu'il existe une
+l'oublierait ne compile pas —, et un projet sans facturation rend `{ok: true}` :
+ne rien avoir à faire est un succès.
+
+Depuis s47 elle rend un **résultat discriminé** et non un booléen, parce qu'il y
+a deux façons de refuser et qu'elles n'appellent pas la même action : une panne
+du fournisseur (`seat_sync_unavailable`) dit « réessayez », un plafond de
+l'offre atteint (`seat_limit_reached`) dit « ce n'est pas à vous de réessayer ».
+Elle reçoit aussi le **sens de l'écriture** (`adds`) : un plafond ne s'oppose
+qu'aux ajouts — le lui opposer sur un retrait enfermerait une organisation
+au-dessus d'un plafond abaissé, en lui interdisant le seul geste qui l'en
+rapprocherait. Le module, lui, ignore qu'il existe une
 facturation (`requires: []`, ADR 034) ; l'import de `lib/billing.ts` est
 **différé**, parce que celui-ci importe `lib/organizations.ts` pour
 `dataOwnerOf` et qu'un import statique en sens inverse fermerait le cycle.
@@ -911,7 +920,19 @@ montage à part** :
 - `lib/seat-sync.ts` (s23) porte **ce que la nouvelle taille d'une organisation
   doit traverser avant que l'écriture qui l'a changée soit validée** : facturation
   coupée, périmètre sans client ou offre au forfait laissent passer ; un échec du
-  fournisseur **annule** l'écriture. Il est séparé pour la raison qui a sorti la
+  fournisseur **annule** l'écriture. Depuis s47 elle traduit une issue de plus —
+  le plafond de l'offre atteint —, qui annule aussi mais sous un autre motif.
+  Mesuré à nouveau après la revue, replier l'un sur l'autre ici laisse **3 cas
+  rouges** dans `tests/billing.test.ts`, et non deux : « accepte l'invitation
+  qui atteint le plafond et refuse la suivante », « n'expulse personne quand le
+  plafond passe sous l'effectif, et laisse retirer » et « annule l'écriture sous
+  un motif distinct quand le plafond est atteint » — le deuxième manquait au
+  compte. **Ce que ce fil ne porte pas** : le nombre. `over_limit` ne transporte
+  aucun plafond, aucun écran n'en interpole, et le message qui *nomme* la limite
+  (`organizations.error.seat_limit_reached`) n'est rendu par aucun parcours — le
+  propriétaire n'apprend donc pas qu'on a été refusé à sa porte. Le canal
+  manquant est `s32-notifications-inapp` ; le détail est dans
+  `docs/plans/s47-seat-limit.md`. Il est séparé pour la raison qui a sorti la
   permission — écrite dans `lib/organizations.ts`, la règle n'aurait été
   neutralisable par aucun cas. Son **fil**, lui, est mesuré à part :
   `tests/billing.test.ts` prend le `seatSync` que `lib/organizations.ts` donne

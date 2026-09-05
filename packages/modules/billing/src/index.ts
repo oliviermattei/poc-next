@@ -62,7 +62,7 @@ export {
   guestCheckoutBucket,
 } from './domain/checkout-throttle'
 export { createGuestScopeIdGenerator } from './infrastructure/guest-scope-id'
-export { billableSeats, offerSyncsSeats } from './domain/seats'
+export { billableSeats, exceedsSeatLimit, offerSeatLimit, offerSyncsSeats } from './domain/seats'
 export {
   PURCHASE_STATUSES,
   grantsBillingAccess,

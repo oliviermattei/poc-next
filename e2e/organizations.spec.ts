@@ -535,3 +535,61 @@ test('bascule d’organisation sans JavaScript', async ({ page, browser }) => {
 
   await withoutScript.close()
 })
+
+/**
+ * **Le motif de plafond, rendu à l'écran d'acceptation** (s47).
+ *
+ * Ce cas existe parce qu'aucun test de nœud ne peut le tenir. `ACCEPT_REFUSALS`
+ * est un **sous-ensemble écrit** d'`INVITATION_REFUSALS`, et c'est la liste
+ * contre laquelle le paramètre `?error=` de cet écran est validé : un motif
+ * absent de cette liste-là serait **muet à l'écran** sans qu'un seul cas
+ * unitaire rougisse, puisqu'ils valident tous *contre cette même liste*.
+ * Seul un navigateur voit la différence entre « le code existe » et « le
+ * visiteur lit quelque chose ».
+ *
+ * L'invitation est **vivante** : c'est la situation exacte que s23 décrivait à
+ * propos de `seat_sync_unavailable` — dire « lien invalide » à quelqu'un dont
+ * l'invitation est parfaitement valide l'enverrait en demander une nouvelle,
+ * indéfiniment.
+ */
+test('affiche le refus de plafond sur une invitation vivante', async ({ page, browser }) => {
+  test.skip(!mounted, 'Le module est coupé dans cette configuration.')
+
+  await aSignedInAccount(page, 's47-founder')
+  await page.goto(publicPath('/organizations'))
+  await submitCreation(page, 'Studio Plafonné', aSlug())
+  await expect(page).toHaveURL(urlOf('/organizations'))
+
+  const guestContext = await browser.newContext({ locale: 'fr-FR' })
+  const guest = await guestContext.newPage()
+  const guestEmail = await aSignedInAccount(guest, 's47-guest')
+  const sentAfter = Date.now()
+
+  await page
+    .getByRole('form', { name: text('organizations.invitations.title') })
+    .getByLabel(text('organizations.invitations.emailLabel'))
+    .fill(guestEmail)
+  await page
+    .getByRole('form', { name: text('organizations.invitations.title') })
+    .getByRole('button', { name: text('organizations.invitations.submit') })
+    .click()
+  await expect(page).toHaveURL(urlOf('/organizations'))
+
+  const invitationLink = await linkSentTo(guestEmail, { since: sentAfter })
+
+  // La destination **exacte** que la route d'acceptation compose sur un refus :
+  // le jeton reposé, et le motif. Rien d'autre n'est simulé.
+  await guest.goto(`${invitationLink}&error=seat_limit_reached`)
+
+  /**
+   * **Le texte de l'invité, pas celui du membre** (s47, décision 3) : qui lit
+   * cet écran n'appartient pas à l'organisation, et le message ne nomme ni son
+   * offre ni son nombre de places. L'assertion négative qui le prouve vit dans
+   * `tests/organizations.test.ts`, ancrée sur ce que le message contient ; ici,
+   * ce qui est mesuré est que **c'est bien celui-là** qui s'affiche.
+   */
+  await expect(guest.getByText(text('organizations.accept.seatLimit'))).toBeVisible()
+  await expect(guest.getByText(text('organizations.error.seat_limit_reached'))).toBeHidden()
+
+  await guestContext.close()
+})
