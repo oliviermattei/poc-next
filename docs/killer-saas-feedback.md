@@ -624,6 +624,28 @@ qu'on propose, où est le patch, et son état.
   rapport de revue est traité comme une vérité. Piste : rendre explicite qu'un
   implémenteur peut **réfuter un constat par la mesure**, comme il peut réfuter
   une consigne — trois réfutations de consigne se sont révélées justes.
+- **Le précédent qui tranche une question est souvent dans le fichier qu'on
+  édite, dix lignes plus bas.** En s47, un plafond de sièges posé sur une offre à
+  achat unique était **accepté et sans effet** — le câblage résout l'offre depuis
+  l'abonnement vivant, qu'un achat unique n'a pas. Le même fichier refuse déjà
+  une période d'essai sur une offre à achat unique, avec la raison écrite :
+  « *une intention que rien n'exécute : le fournisseur l'ignorerait en silence* ».
+  Même objet, même remède, six lignes de `superRefine`. Ni l'implémenteur ni le
+  plan ne l'avaient vu ; c'est la revue qui a lu le voisinage. **Piste** : avant
+  d'ajouter un champ à une structure de configuration, lire **ce que les champs
+  voisins refusent** — la question a souvent déjà été tranchée, et l'incohérence
+  coûte plus qu'une règle manquante.
+- **Un champ de sortie sans consommateur, et un commentaire qui en invente un.**
+  Toujours en s47 : `SeatSyncOutcome` porte un plafond « *qui voyage avec le
+  refus, le message qui le nomme étant composé plus haut* ». Le balayage de la
+  revue : ce plafond n'est **lu nulle part**, et le seul message qui le nommerait
+  n'est rendu par **aucun parcours** — il n'est atteignable qu'en tapant le
+  paramètre d'URL à la main. La moitié « le propriétaire voit la limite nommée »
+  d'une décision de plan n'avait donc **aucune porte**, et rien ne rougissait.
+  C'est le pendant exact du compte écrit : une **donnée** transportée sans
+  consommateur vieillit comme un nombre, en silence. Piste : quand une décision
+  de plan nomme un destinataire, vérifier qu'un chemin l'atteint — le grep du
+  champ suffit.
 - **Une liste qui sert de validateur cache ses propres oublis.** Mesuré en s47 :
   `ACCEPT_REFUSALS` est un sous-ensemble **écrit** de `INVITATION_REFUSALS`, et
   c'est la liste contre laquelle le paramètre `?error=` de l'écran d'acceptation
