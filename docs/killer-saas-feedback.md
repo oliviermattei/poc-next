@@ -1075,6 +1075,38 @@ Aucune ne demande de revenir sur une décision structurelle du dépôt, et aucun
 n'est appliquée ici : elles sont écrites pour être jugées, pas pour être prises
 sur parole.
 
+## P25bis — Reproduire la CI en local, c'est retirer le fichier `.env`, pas désarmer ses variables
+
+**Observé en s32, et j'avais donné la mauvaise consigne.** Un test ajouté pour
+fermer une vacuité de garde rougissait en CI et passait en local. J'ai demandé à
+l'implémenteur de reproduire en jouant le cas « avec `AUTH_SECRET` et `APP_URL`
+désarmées dans l'environnement du processus ».
+
+**Ça ne reproduit rien.** `tests/fixtures/database.ts` appelle `loadRootEnv()`,
+qui **lit le fichier `.env` du dépôt** : les variables reviennent par le fichier,
+quel que soit l'état du shell. L'agent l'a mesuré au lieu de suivre ma consigne,
+et a trouvé la forme fidèle : **aucun fichier `.env`**, avec `DATABASE_URL`
+fournie comme le job la fournit. Sous cette forme, exactement le défaut de la CI,
+et lui seul — 1 échec sur 34.
+
+**Pourquoi c'est plus qu'une anecdote.** Le poste et le runner ne diffèrent pas
+par des variables mais par **une source de configuration entière**. Un agent qui
+« vérifie sans les variables » obtient un vert et conclut que c'est réparé ; le
+rouge revient au prochain passage de CI, et le cycle recommence. C'est le
+troisième aller-retour de ce genre dans la séance.
+
+**Règle** : la commande de vérification locale d'un défaut de CI est
+`env -u … pnpm test` **sans** le fichier — ou mieux, un clone neuf, ce que font
+déjà `test:golden-path`, `test:minimal-profile` et `test:socle`. Ces trois
+recettes ont raison sur ce point et `pnpm test` est la seule qui emprunte
+l'environnement du poste. C'est aussi ce que dit P22 sous un autre angle : ce qui
+vit dans un fichier non suivi n'est pas reproductible.
+
+**Piste, non implémentée** : un mode de `pnpm test` qui ignore le `.env` racine et
+n'accepte que les variables déclarées, pour que « je reproduis la CI » soit une
+commande et non une discipline.
+
+
 ---
 
 # Observations sans proposition ferme
@@ -1451,6 +1483,7 @@ sur parole.
 | 05/09 | `ks scaffold` refuse un arbre sale ; un worktree de story est sale par construction | contournement par appel direct du générateur | P23 |
 | 05/09 | Routes d'écriture à 500 en production, 2 100 assertions vertes : les tests câblent eux-mêmes ce qu'ils testent | garde dérivé de la disponibilité du module | P24 |
 | 05/09 | CI morte : tous les jobs en 2-3 s, sans journal, sur toutes les branches | cause au niveau du compte (quota de minutes), confirmée par le porteur ; rien dans le dépôt | — |
+| 05/09 | Un garde ajouté pour fermer une vacuité était lui-même vert par accident d'environnement (P9, troisième fois) | le cas déclare l'intégralité de ce que la garde lit, précédent de `tests/admin.test.ts` | P25bis |
 
 ---
 
