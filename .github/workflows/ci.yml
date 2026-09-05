@@ -149,7 +149,11 @@ jobs:
       - name: Installer le navigateur
         run: pnpm exec playwright install --with-deps chromium
 
+      # L'`id:` est ce que l'étape d'archivage interroge : elle ne doit se
+      # déclencher que si ce sont **les parcours** qui ont rougi, et pas le
+      # lint, le typage ou l'audit. `tests/failure-traces.test.ts` le dérive.
       - name: Parcours end-to-end
+        id: parcours
         run: pnpm test:e2e
 
       # Critère 12 : un fichier généré par un outil ne salit pas l'arbre. C'est
@@ -176,12 +180,41 @@ jobs:
       - name: Audit de dépendances
         run: pnpm run audit
 
+      # **L'artefact était vide depuis l'origine.** Cette étape pointait
+      # `playwright-report/`, que cette suite ne produit pas (`reporter: 'list'`)
+      # : Playwright écrit ses traces dans son `outputDir`. Et `upload-artifact`
+      # qui ne trouve aucun fichier **n'échoue pas** — son `if-no-files-found`
+      # vaut `warn` par défaut, `error` étant l'option qui rougit. Chaque échec
+      # de parcours a donc produit un archivage vert et rien à télécharger.
+      #
+      # Le chemin est déclaré une seule fois (`TRACES_OUTPUT_DIRECTORY`,
+      # `playwright.config.ts`) et `tests/failure-traces.test.ts` vérifie qu'il
+      # vaut celui-ci, `if-no-files-found` compris. Ce n'est **pas** le
+      # mécanisme du parcours doré 130 lignes plus bas : celui-là recopie ses
+      # traces hors d'un clone qu'il détruit, ce job-ci tourne dans l'arbre.
+      #
+      # **`failure()` seul serait plus large que ce que l'étape promet** : il est
+      # vrai dès qu'une étape quelconque du job a échoué — lint, typage,
+      # contraste, `db:generate`, migrations, tests unitaires, build, arbre
+      # propre, audit —, et aucune de celles-là n'écrit de trace. Sur une
+      # exécution verte des parcours, `test-results/` ne porte que
+      # `.last-run.json`, caché, qu'`include-hidden-files` exclut par défaut :
+      # avec `if-no-files-found: error`, la majorité des échecs de ce job
+      # gagneraient un second rouge trompeur. D'où la conclusion de l'étape des
+      # parcours, interrogée par son `id:`.
+      #
+      # Le nom de l'artefact ne change pas, et c'est un choix de moindre bruit
+      # plutôt qu'une compatibilité : par la prémisse même de cette story, tous
+      # les artefacts déjà produits sous ce nom sont **vides**, et
+      # `retention-days: 7` les efface de toute façon. Le renommer serait de la
+      # rotation pour rien ; le contenu, lui, est décrit par le `path:`.
       - name: Traces des parcours en échec
-        if: failure()
+        if: failure() && steps.parcours.conclusion == 'failure'
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report-${{ matrix.modules }}
-          path: playwright-report/
+          path: test-results/
+          if-no-files-found: error
           retention-days: 7
 
   # **Y a-t-il quelque chose à rejouer ?** Ce job minuscule n'existe que pour
@@ -314,6 +347,13 @@ jobs:
       # `pnpm test:e2e` efface au démarrage. Le chemin est déclaré une seule
       # fois (`FAILURE_TRACES_DIRECTORY`, `scripts/golden-path-regime.ts`) et
       # `tests/golden-path.test.ts` vérifie qu'il vaut celui-ci.
+      #
+      # **Et cette étape-ci garde `if-no-files-found: warn`**, contrairement à
+      # celle des parcours plus haut : `keepFailureTraces`
+      # (`scripts/golden-path.ts`) sort sans rien recopier quand Playwright n'a
+      # écrit aucun sous-dossier de trace, ce qui arrive légitimement — un échec
+      # avant le premier cas, ou hors du navigateur. Ce dossier peut donc ne pas
+      # exister sur un échec réel, et `error` y produirait un faux rouge.
       - name: Traces du parcours doré en échec
         if: failure()
         uses: actions/upload-artifact@v7
