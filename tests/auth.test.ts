@@ -739,6 +739,15 @@ describe.skipIf(!databaseReachable)('durcissement de la session', () => {
     expect(sessionCookie(response)?.value).not.toBe(current?.value)
   }, 30_000)
 
+  /**
+   * **Cité par le plan de s52 comme intermittent (`tests/auth.test.ts:765`), et
+   * cause non établie — le symptôme lui-même n'a pas été retrouvé.** La ligne
+   * en question porte l'assertion sur le nombre de sessions restantes. Aucun
+   * relevé de ce rouge dans `docs/stories.md`, `docs/STATE.md`, `docs/reviews/`
+   * ni la recherche de la story, et zéro rouge sur les exécutions complètes de
+   * `pnpm test` de cette branche. Nommé pour que le prochain agent sache qu'il
+   * a été cherché, pas pour affirmer qu'il existe.
+   */
   it('révoque les autres sessions au changement d’email, une fois la nouvelle adresse confirmée', async () => {
     const { email, userId } = await aVerifiedAccount()
     const cookie = sessionCookie(await signIn(email))
@@ -1962,6 +1971,56 @@ describe.skipIf(!databaseReachable)('connexion par un fournisseur externe', () =
       expect(waited).toEqual([])
       expect(sessionCookie(refused)).toBeNull()
     }, 20_000)
+  })
+
+  /**
+   * **Le créneau d'identité du fournisseur de développement, à la porte** (s52).
+   *
+   * `localOAuthIdentity` est éprouvée là où elle vit
+   * (`packages/modules/auth/src/domain/auth-rules.test.ts`) ; ces deux cas-ci
+   * tiennent la seule chose qu'elle ne peut pas tenir : que la **route**
+   * l'applique. C'est là que l'étiquette arrive d'un appelant extérieur, et un
+   * repli silencieux posé ici — `localOAuthIdentity(x) ?? localOAuthIdentity(null)`
+   * — rendrait tous les créneaux malformés à l'identité par défaut, donc
+   * ramènerait la course d'insertion que les créneaux suppriment, sans qu'aucun
+   * cas de domaine ne bouge.
+   */
+  describe('créneau d’identité du fournisseur de développement', () => {
+    const AUTHORIZE = '/local-provider/authorize'
+
+    beforeEach(() => {
+      service = configureService({ oauth: { localProvider: true } })
+    })
+
+    afterAll(() => {
+      service = configureService()
+    })
+
+    it('refuse une étiquette hors forme, et ne redirige vers aucun rappel', async () => {
+      const refused = await call(`${AUTHORIZE}?state=un-etat&identity=Retour`)
+
+      expect(refused.status).toBe(400)
+      // Le refus est un refus : rien n'est parti vers le rappel, donc aucune
+      // identité — surtout pas celle par défaut — n'a été mise en jeu.
+      expect(refused.headers.get('location')).toBeNull()
+    })
+
+    it('transporte le créneau demandé jusqu’au rappel, et l’état avec lui', async () => {
+      const accepted = await call(`${AUTHORIZE}?state=un-etat&identity=retour`)
+      const location = accepted.headers.get('location') ?? ''
+
+      expect(accepted.status).toBe(302)
+      expect(location).toContain('/callback/local')
+      expect(location).toContain('code=local-oauth-account-retour')
+      expect(location).toContain('state=un-etat')
+    })
+
+    it('sert l’identité par défaut quand aucun créneau n’est demandé', async () => {
+      const location =
+        (await call(`${AUTHORIZE}?state=un-etat`)).headers.get('location') ?? ''
+
+      expect(location).toContain('code=local-oauth-account&')
+    })
   })
 })
 

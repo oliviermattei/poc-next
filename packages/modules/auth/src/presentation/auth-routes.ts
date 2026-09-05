@@ -18,9 +18,10 @@ import {
 } from '../domain/passkey'
 import {
   isOAuthProviderId,
-  LOCAL_OAUTH_ACCOUNT_ID,
   LOCAL_OAUTH_AUTHORIZE_PATH,
   LOCAL_OAUTH_PROVIDER_ID,
+  LOCAL_OAUTH_SLOT_PARAM,
+  localOAuthIdentity,
   OAUTH_CALLBACK_PROVIDERS,
   OAUTH_ERROR_PATH,
   oauthFailureClass,
@@ -683,15 +684,28 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
         // parce que `playwright.config.ts` pose ce drapeau ; c'est écrit ici
         // pour que celui qui l'enlèverait sache pourquoi la garde rougit.
         //
-        // L'autorisation du fournisseur de développement : aucune question,
-        // aucun choix d'identité, et **le `redirect_uri` reçu est ignoré**. Le
-        // reprendre ferait de cette route une redirection ouverte que le
-        // drapeau suffirait à armer.
-        const state = new URL(request.url).searchParams.get('state') ?? ''
+        // L'autorisation du fournisseur de développement : aucune question, et
+        // **le `redirect_uri` reçu est ignoré**. Le reprendre ferait de cette
+        // route une redirection ouverte que le drapeau suffirait à armer.
+        //
+        // Le **créneau** d'identité (s52) est la seule chose que l'appelant
+        // choisisse ici, et il ne choisit pas une adresse : `localOAuthIdentity`
+        // compose la sienne dans le domaine réservé. Une étiquette hors forme
+        // est refusée, jamais repliée sur l'identité par défaut.
+        const url = new URL(request.url)
+        const state = url.searchParams.get('state') ?? ''
+        const identity = localOAuthIdentity(url.searchParams.get(LOCAL_OAUTH_SLOT_PARAM))
+
+        if (identity === null) {
+          return badRequest(
+            `créneau d’identité local invalide : ${LOCAL_OAUTH_SLOT_PARAM} attend une étiquette ` +
+              'de seize caractères au plus, minuscules et chiffres',
+          )
+        }
 
         return redirect(
           `${MODULE_ROUTE_PREFIX}/auth/callback/${LOCAL_OAUTH_PROVIDER_ID}` +
-            `?code=${LOCAL_OAUTH_ACCOUNT_ID}&state=${encodeURIComponent(state)}`,
+            `?code=${identity.accountId}&state=${encodeURIComponent(state)}`,
         )
       },
     },

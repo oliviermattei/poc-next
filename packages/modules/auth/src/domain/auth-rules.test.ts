@@ -20,9 +20,13 @@ import {
 } from './outbound'
 import {
   canUnlinkSignInMethod,
+  localOAuthIdentity,
+  localOAuthIdentityOfCode,
   oauthFailureClass,
   oauthProvisioningRefusal,
   readOAuthFailureClass,
+  LOCAL_OAUTH_ACCOUNT_ID,
+  LOCAL_OAUTH_EMAIL,
   OAUTH_UNVERIFIED_EMAIL_REFUSAL,
 } from './oauth'
 import { digestBackupCode, digestBackupCodes, isBackupCodeDigest } from './backup-code'
@@ -376,6 +380,77 @@ describe('provisionnement par un fournisseur OAuth', () => {
         providerAssertsEmail: false,
       }),
     ).toBeNull()
+  })
+})
+
+/**
+ * **Les créneaux d'identité du fournisseur de développement** (s52, cause B).
+ *
+ * Deux parcours pilotaient ce fournisseur, qui rendait toujours la même
+ * adresse : joués en parallèle sur une base où la ligne n'existe pas encore,
+ * le perdant de la course d'insertion échoue sur `auth_user_email_key`. Les
+ * créneaux suppriment la ressource partagée au lieu de sérialiser les deux cas.
+ *
+ * Ce que ces cas tiennent, et qui est la contrepartie du créneau : **l'appelant
+ * choisit une étiquette, jamais une adresse.** L'adresse est composée ici,
+ * toujours dans `example.test`.
+ */
+describe('créneau d’identité du fournisseur de développement', () => {
+  it('rend l’identité par défaut quand aucun créneau n’est demandé', () => {
+    for (const slot of [null, undefined, '', '   ']) {
+      expect(localOAuthIdentity(slot)).toEqual({
+        accountId: LOCAL_OAUTH_ACCOUNT_ID,
+        email: LOCAL_OAUTH_EMAIL,
+      })
+    }
+  })
+
+  it('compose une identité distincte par créneau, et jamais hors du domaine réservé', () => {
+    const first = localOAuthIdentity('retour')
+    const second = localOAuthIdentity('bouton')
+
+    expect(first?.email).toBe('local-retour@example.test')
+    expect(second?.email).toBe('local-bouton@example.test')
+    expect(first?.accountId).not.toBe(second?.accountId)
+    expect(first?.accountId).not.toBe(LOCAL_OAUTH_ACCOUNT_ID)
+  })
+
+  /**
+   * **Le refus est le cœur du mécanisme.** Une étiquette hors forme est
+   * refusée, jamais repliée en silence sur l'identité par défaut : un repli
+   * rendrait indiscernables « ce parcours a son créneau » et « ce parcours a
+   * mal écrit son créneau, et partage donc le créneau des autres » — la course
+   * reviendrait sans que rien ne le dise.
+   */
+  it('refuse une étiquette qui n’est pas une étiquette, plutôt que de replier sur le défaut', () => {
+    for (const slot of [
+      'victime@example.com',
+      'Retour',
+      'a b',
+      'retour.suite',
+      '../autre',
+      'x'.repeat(17),
+      'retour%40ailleurs',
+    ]) {
+      expect(localOAuthIdentity(slot)).toBeNull()
+    }
+  })
+
+  it('relit l’identité depuis le code que le rappel transporte, dans les deux sens', () => {
+    for (const slot of [null, 'retour', 'bouton']) {
+      const identity = localOAuthIdentity(slot)
+
+      expect(identity).not.toBeNull()
+      expect(localOAuthIdentityOfCode((identity as { accountId: string }).accountId)).toEqual(
+        identity,
+      )
+    }
+  })
+
+  it('refuse un code que ce fournisseur n’a pas émis', () => {
+    for (const code of ['', 'autre-chose', `${LOCAL_OAUTH_ACCOUNT_ID}-Retour`, 'local-oauth']) {
+      expect(localOAuthIdentityOfCode(code)).toBeNull()
+    }
   })
 })
 

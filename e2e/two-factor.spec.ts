@@ -180,6 +180,32 @@ test('activation, connexion par code, puis connexion par code de secours', async
   const secret = (await page.getByText(/^[A-Z2-7 ]{30,}$/).innerText()).trim()
 
   await page.getByLabel('Code à six chiffres').fill(totpOf(secret))
+  /**
+   * **Le cas intermittent de s52, et ce que la mesure en dit** — région `status`
+   * introuvable après 5 s, vue une fois en CI sur la demande de fusion 11,
+   * jamais sur `dev`.
+   *
+   * **Cause non établie, et ce n'est pas un budget.** Le plan attendait ici un
+   * délai explicite ; la mesure l'interdit. Chronométré le 05/09 entre le clic
+   * sur « Confirmer » et l'apparition de la région : 232, 227 et 198 ms à vide,
+   * et **235 ms** sous la suite complète avec huit boucles de calcul en
+   * parallèle — contre le défaut de 5 000 ms, soit vingt et une fois de marge.
+   * Élargir ce délai serait rendre le rouge plus rare sans le rendre juste.
+   *
+   * Écarté aussi : le glissement de période TOTP entre la saisie et la
+   * validation. La bibliothèque vérifie sur ±1 période — `window = 1`, parcouru
+   * de `-window` à `window` dans `@better-auth/utils@0.4.2/dist/otp.mjs:42,50`
+   * —, donc un franchissement de frontière ne produit pas de refus.
+   * (`totpStepsToTry`, du domaine de ce dépôt, est **autre chose** : elle
+   * couvre `[c-2, c-1, c, c+1]` pour la garde de rejeu, qui calcule son
+   * compteur après coup.)
+   *
+   * **Mode d'échec distinct de celui que s50 a réparé sur ce parcours**, qui
+   * était un budget de 30 s dépassé par un `clickUntil` qui recliquait un geste
+   * à usage unique. Ici le geste part une fois, et la région n'apparaît pas.
+   * Ne pas confondre les deux : le second se corrige en supprimant la boucle,
+   * le premier n'a pas de cause écrite.
+   */
   await press(page, 'Confirmer', async () => {
     await expect(page.getByRole('status')).toContainText('Notez ces dix codes')
   })

@@ -284,6 +284,12 @@ describe('`scripts/audit.ts` face à un `pnpm audit` en panne', () => {
   const SCRIPT = fileURLToPath(new URL('../scripts/audit.ts', import.meta.url))
   const TSX = fileURLToPath(new URL('../node_modules/.bin/tsx', import.meta.url))
 
+  /**
+   * Le filet qui borne le processus extérieur — pas le délai que le cas
+   * éprouve, qui est celui du script. Nommé pour que l'échec puisse le citer.
+   */
+  const OUTER_NET_MS = 20_000
+
   const runWithStubbedPnpm = (stdout: string, exitCode: number) => {
     const directory = mkdtempSync(join(tmpdir(), 'audit-stub-'))
     const stub = join(directory, 'pnpm')
@@ -477,8 +483,34 @@ describe('`scripts/audit.ts` face à un `pnpm audit` en panne', () => {
       },
       // Le délai de ce processus-ci n'est pas celui qu'on éprouve : il borne le
       // cas si le script cessait d'en poser un, au lieu de le faire pendre.
-      timeout: 20_000,
+      timeout: OUTER_NET_MS,
     })
+
+    /**
+     * **Le filet extérieur, s'il a coupé, le dit lui-même** (s52).
+     *
+     * Ce cas figure dans la liste des intermittents avec le symptôme
+     * `expected 2 to be 3` : deux tentatives au lieu de trois. Ce compte-là ne
+     * distingue pas « le script s'est arrêté trop tôt » de « le filet
+     * ci-dessus a tué le script » — et c'est la seconde lecture qui coûte une
+     * enquête à chaque rencontre. `spawnSync` marque pourtant le cas :
+     * `error.code === 'ETIMEDOUT'` quand le délai a tiré. L'assertion est
+     * posée **avant** le compte, pour que l'échec nomme sa cause.
+     *
+     * Le filet lui-même n'est pas élargi, et la mesure est la raison : sur
+     * cette branche, le cas coûte 2 177–2 479 ms à vide (6 passages),
+     * 3 224–3 903 ms sous 64 boucles de calcul (6 passages) et
+     * 2 443–3 077 ms sous une tempête de forks à 716 processus (12 passages),
+     * les trois tentatives étant comptées 24 fois sur 24. Il reste plus de cinq
+     * fois de marge à huit fois la charge nominale. Élargir un délai qu'aucune
+     * mesure ne montre atteint serait rendre le rouge plus rare sans le rendre
+     * juste.
+     */
+    expect(
+      (result.error as NodeJS.ErrnoException | undefined)?.code,
+      `le filet extérieur de ${OUTER_NET_MS} ms a coupé le script : ce qui suit compterait ` +
+        'des tentatives interrompues, pas les tentatives du script',
+    ).not.toBe('ETIMEDOUT')
 
     expect(Number(readFileSync(counter, 'utf8').trim())).toBe(AUDIT_ATTEMPTS)
     expect(result.status).not.toBe(0)

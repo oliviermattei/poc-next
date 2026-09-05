@@ -17,6 +17,13 @@ test('l’application démarre et sert la page d’accueil', async ({ page }) =>
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
 })
 
+/**
+ * **Cas intermittent de s52, cause non établie** — `read ECONNRESET` sur ce
+ * `GET`, vu une fois pendant `pnpm test:socle`, vert au second passage. Même
+ * symptôme et même famille que `e2e/blog.spec.ts` (« un article qui n'existe
+ * pas répond 404 »), où le raisonnement est écrit ; ni l'un ni l'autre n'a été
+ * reproduit sur cette branche.
+ */
 test('la sonde de santé répond 200 avec la base connectée', async ({ request }) => {
   // Une sonde qui répond 200 par principe ne vaut rien (socle de fiabilité §5) :
   // celle-ci interroge réellement la base. Ce test échoue donc aussi quand

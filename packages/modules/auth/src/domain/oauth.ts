@@ -35,17 +35,87 @@ export const OAUTH_CALLBACK_PROVIDERS: readonly AnyOAuthProviderId[] = [
 ]
 
 /**
- * L'identité **fixe** du fournisseur de développement.
+ * L'identité par **défaut** du fournisseur de développement.
  *
- * Fixe, et c'est la décision : une adresse choisie par le visiteur ferait du
- * drapeau un « se connecter en tant que n'importe qui ». Le domaine `example.test`
- * est réservé aux tests (RFC 6761) — cette adresse ne peut appartenir à
- * personne.
+ * Le domaine `example.test` est réservé aux tests (RFC 6761) — cette adresse ne
+ * peut appartenir à personne.
  */
 export const LOCAL_OAUTH_EMAIL = 'local@example.test'
 
 /** L'identifiant de compte chez le fournisseur de développement. Stable. */
 export const LOCAL_OAUTH_ACCOUNT_ID = 'local-oauth-account'
+
+/** Une identité que le fournisseur de développement sait servir. */
+export interface LocalOAuthIdentity {
+  readonly accountId: string
+  readonly email: string
+}
+
+/**
+ * Le paramètre par lequel un appelant demande un **créneau** d'identité, sur la
+ * route d'autorisation du fournisseur de développement.
+ */
+export const LOCAL_OAUTH_SLOT_PARAM = 'identity'
+
+/**
+ * La forme d'une étiquette de créneau : minuscules et chiffres, seize
+ * caractères au plus.
+ */
+const LOCAL_OAUTH_SLOT = /^[a-z0-9]{1,16}$/
+
+/**
+ * **Une identité par appelant qui la demande — et jamais une adresse choisie
+ * par le visiteur** (s52, cause B).
+ *
+ * Le fournisseur ne servait qu'une adresse, et deux parcours qui l'ouvraient en
+ * parallèle sur une base vierge entraient en course d'insertion : le perdant
+ * échouait sur `auth_user_email_key`. Sérialiser aurait caché la course ; les
+ * créneaux la suppriment, parce qu'il n'y a plus de ligne partagée.
+ *
+ * **Ce que l'appelant choisit est une étiquette, jamais une adresse.**
+ * L'adresse est composée ici, avec un préfixe fixe et le domaine réservé
+ * `example.test` : aucune valeur reçue ne peut désigner le compte de quelqu'un
+ * d'autre, ce qui est la propriété que la version à identité unique protégeait.
+ * Le reste de la garde est inchangé — la route qui lit ce paramètre n'existe
+ * que sous `OAUTH_LOCAL_PROVIDER=1`, drapeau refusé au démarrage en production.
+ *
+ * `null` est un **refus**, pas un repli : replier une étiquette malformée sur
+ * l'identité par défaut rendrait indiscernables « ce parcours a son créneau » et
+ * « ce parcours partage celui des autres », et la course reviendrait en silence.
+ */
+export function localOAuthIdentity(
+  slot: string | null | undefined,
+): LocalOAuthIdentity | null {
+  const label = slot?.trim() ?? ''
+
+  if (label === '') {
+    return { accountId: LOCAL_OAUTH_ACCOUNT_ID, email: LOCAL_OAUTH_EMAIL }
+  }
+
+  if (!LOCAL_OAUTH_SLOT.test(label)) {
+    return null
+  }
+
+  return { accountId: `${LOCAL_OAUTH_ACCOUNT_ID}-${label}`, email: `local-${label}@example.test` }
+}
+
+/**
+ * L'identité que porte le **code** rendu au rappel — l'autre sens de
+ * {@link localOAuthIdentity}.
+ *
+ * Le code est le seul canal entre la route d'autorisation et le profil que le
+ * greffon lira : la bibliothèque le transporte, l'échange de jeton le rend tel
+ * quel. Un code que ce fournisseur n'a pas émis est refusé.
+ */
+export function localOAuthIdentityOfCode(code: string): LocalOAuthIdentity | null {
+  if (code === LOCAL_OAUTH_ACCOUNT_ID) {
+    return { accountId: LOCAL_OAUTH_ACCOUNT_ID, email: LOCAL_OAUTH_EMAIL }
+  }
+
+  const prefix = `${LOCAL_OAUTH_ACCOUNT_ID}-`
+
+  return code.startsWith(prefix) ? localOAuthIdentity(code.slice(prefix.length)) : null
+}
 
 /**
  * Les chemins que l'**infrastructure** et la **présentation** partagent, sans

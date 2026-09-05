@@ -11,6 +11,22 @@ import { findRootEnvPath, loadRootEnv } from '@repo/config/server'
 
 import { LOCAL_WEBHOOK_SECRET, resolveBillingConfig } from '../apps/web/lib/billing-config'
 import { resolveOAuthConfig } from '../apps/web/lib/oauth-config'
+import { COLD_GRAPH_TIMEOUT_MS } from './fixtures/intermittents'
+
+/**
+ * **Le délai de ce fichier, explicite et mesuré** (s52, cause A).
+ *
+ * Ce fichier importe `apps/web/next.config` — donc `next`, `@next/mdx`,
+ * `next-intl/plugin` et `startup.ts` — après un `vi.resetModules()`, une
+ * dizaine de fois. Le défaut de Vitest est 5 000 ms, exactement la valeur des
+ * expirations observées : mesuré à saturation du processeur, le premier import
+ * du graphe coûte 6 782 à 7 458 ms contre 1 875 ms à vide. Le détail de la
+ * mesure et la raison du chiffre sont sur la constante.
+ *
+ * Posé sur le **fichier** et non sur un cas nommé : le coût tombe sur le
+ * premier cas qui touche le graphe, et l'ordre des blocs n'est pas figé.
+ */
+vi.setConfig({ testTimeout: COLD_GRAPH_TIMEOUT_MS })
 
 const TURBO_CONFIG_PATH = fileURLToPath(new URL('../turbo.json', import.meta.url))
 

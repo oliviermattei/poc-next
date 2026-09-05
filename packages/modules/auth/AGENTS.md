@@ -176,13 +176,27 @@ verrouillage progressif de s28 compterait deux fois le même.
 
 **Le mode local est un fournisseur de plus, pas un repli.**
 `OAUTH_LOCAL_PROVIDER=1` monte un fournisseur `local` par `genericOAuth`, avec
-son propre identifiant, une adresse de test fixe, et aucun appel réseau — ses
-deux crochets (`getToken`, `getUserInfo`) remplacent les points de terminaison.
-Il n'emprunte l'identité d'aucun fournisseur réel, et le poser en même temps
-qu'une clé est **refusé au démarrage** — comme le poser sous
-`NODE_ENV=production` : il ouvre une session sans mot de passe à qui clique, et
-la règle « jamais déduit de `NODE_ENV` » reste tenue, `NODE_ENV` ne faisant que
-restreindre l'opt-in sans jamais l'armer.
+son propre identifiant et aucun appel réseau — ses deux crochets (`getToken`,
+`getUserInfo`) remplacent les points de terminaison. Il n'emprunte l'identité
+d'aucun fournisseur réel, et le poser en même temps qu'une clé est **refusé au
+démarrage** — comme le poser sous `NODE_ENV=production` : il ouvre une session
+sans mot de passe à qui clique, et la règle « jamais déduit de `NODE_ENV` »
+reste tenue, `NODE_ENV` ne faisant que restreindre l'opt-in sans jamais l'armer.
+
+**Il sert un créneau d'identité par appelant qui le demande** (s52,
+`localOAuthIdentity`), et non plus une adresse unique : deux parcours qui
+l'ouvraient en parallèle sur une base vierge entraient en course d'insertion sur
+`auth_user_email_key`, et le perdant atterrissait sur `/sign-in?oauth=failed`.
+Le créneau arrive par `?identity=<étiquette>` sur la route d'autorisation, et
+c'est **une étiquette, jamais une adresse** : celle-ci est composée dans le
+domaine réservé `example.test`, si bien qu'aucune valeur reçue ne peut désigner
+le compte d'un tiers — la propriété que l'adresse unique protégeait. Une
+étiquette hors forme est **refusée** (400), jamais repliée sur l'identité par
+défaut : un repli rendrait indiscernables « ce parcours a son créneau » et « ce
+parcours partage celui des autres », et la course reviendrait en silence. Le
+code du rappel transporte le créneau, et `getUserInfo` refuse un code que ce
+fournisseur n'a pas émis. Éprouvé dans `packages/modules/auth/src/domain/auth-rules.test.ts`
+(« créneau d'identité du fournisseur de développement »).
 
 ## Le second facteur (s13)
 
