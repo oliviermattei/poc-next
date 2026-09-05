@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -370,6 +370,18 @@ describe('l’image de production', () => {
 
     expect(healthcheck).not.toBe('')
     expect(healthcheck).toMatch(/\$\{?PORT/)
+  })
+
+  it('recopie les fichiers statiques que la sortie autonome ne trace pas', () => {
+    // Dérivé du disque : tout dossier servi tel quel par Next (`public/`) doit
+    // être recopié dans l'étape d'exécution. Next ne le trace pas — il n'est
+    // importé par aucun module —, et une image de partage qui répond 404 ne
+    // montre aucun aperçu (s53).
+    const served = fileURLToPath(new URL('../apps/web/public', import.meta.url))
+
+    // Garde contre l'inertie : sans fichier servi, la règle ne dirait rien.
+    expect(existsSync(served) && readdirSync(served).length > 0).toBe(true)
+    expect(dockerfile()).toContain('/repo/apps/web/public ./apps/web/public')
   })
 
   it('ne copie aucun `.env` ni aucune clé dans l’image', () => {

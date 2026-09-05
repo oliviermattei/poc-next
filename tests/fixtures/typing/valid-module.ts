@@ -16,6 +16,7 @@ export const completeModule = defineModule({
   migrations: null,
   routes: [],
   navigation: [],
+  publicUrls: () => [],
   messages: {
     fr: { 'nav.title': 'Titre' },
     en: { 'nav.title': 'Title' },

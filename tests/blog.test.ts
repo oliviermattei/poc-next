@@ -2,17 +2,25 @@ import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { buildRegistry } from '@repo/core'
 import {
   EMPTY_BLOG_CATALOG,
+  blogFeedPath,
+  blogModule,
+  provideBlogContent,
   resolveBlogCatalog,
   type BlogCatalog,
 } from '@repo/module-blog'
+import { parseFeed } from '@rowanmanning/feed-parser'
 import type { ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 
 import { localeRouting } from '../apps/web/lib/locale-routing'
+import { DEFAULT_OG_IMAGE } from '../apps/web/lib/og-image'
+import { availableModules, requiredModules } from '../config/features'
 import { appLocales, defaultLocale } from '../config/i18n'
+import { dispatchAllowingRateLimit } from './fixtures/rate-limit'
 
 /**
  * Le blog, **là où il traverse les packages**.
@@ -290,6 +298,25 @@ describe('ce qu’un article déclare aux moteurs', () => {
     })
   })
 
+  it('déclare l’image de partage par défaut quand l’article n’en fournit pas', async () => {
+    // Critère 3. L'image est **servie par l'application** : aucune origine
+    // n'entre dans la politique de sécurité du contenu (`docs/security.md` §1).
+    const metadata = await articleMetadata(MOUNTED, ARTICLE.slug)
+
+    expect(metadata.openGraph?.images).toEqual([DEFAULT_OG_IMAGE])
+  })
+
+  it('déclare la sienne quand l’article en fournit une', async () => {
+    const illustrated = resolveBlogCatalog({
+      articles: [{ ...ARTICLE, slug: 'illustre', image: '/blog/illustre.png' }],
+      pageSize: 6,
+    })
+
+    expect((await articleMetadata(illustrated, 'illustre')).openGraph?.images).toEqual([
+      '/blog/illustre.png',
+    ])
+  })
+
   it('porte la canonique de la langue servie, jamais une commune aux deux', async () => {
     const canonicalIn = async (locale: string) =>
       (await articleMetadata(MOUNTED, ARTICLE.slug, locale)).alternates?.canonical
@@ -314,6 +341,25 @@ describe('ce qu’un article déclare aux moteurs', () => {
     // divulguerait l'existence de ce qu'elle refuse.
     expect(await articleMetadata(MOUNTED, 'inconnu')).toEqual({})
     expect(await articleMetadata(EMPTY_BLOG_CATALOG, ARTICLE.slug)).toEqual({})
+  })
+})
+
+describe('la liste annonce son flux', () => {
+  it('déclare le flux de la langue servie, jamais celui d’une autre', async () => {
+    const metadataIn = async (locale: string) =>
+      (await withCatalog(
+        MOUNTED,
+        locale,
+        (page) => (page.generateMetadata as () => Promise<Metadata>)(),
+        '../apps/web/app/blog/page',
+      )) as Metadata & { alternates?: { types?: Record<string, unknown> } }
+
+    expect((await metadataIn(defaultLocale)).alternates?.types).toEqual({
+      'application/rss+xml': blogFeedPath(),
+    })
+    expect((await metadataIn(OTHER_LOCALE)).alternates?.types).toEqual({
+      'application/rss+xml': `${blogFeedPath()}?locale=${OTHER_LOCALE}`,
+    })
   })
 })
 
@@ -407,5 +453,201 @@ describe('le blog n’injecte jamais de balisage brut', () => {
     ).map((file) => file.slice(REPO_ROOT.length))
 
     expect(offenders, offenders.join(', ')).toEqual([])
+  })
+})
+
+/* ------------------------------------------------------------------------- *
+ * Le flux RSS (s53).
+ *
+ * Il est servi par une **route du module**, donc par le répartiteur : c'est ce
+ * qui rend « module coupé, aucun flux » dérivé plutôt que conditionnel. Ce que
+ * ce bloc mesure et qu'aucune assertion maison ne pourrait prouver : que le
+ * document est **analysé par un analyseur de flux tiers**
+ * (`@rowanmanning/feed-parser`), y compris sur un titre portant `&`, `<` et des
+ * guillemets — l'échappement est la seule chose qu'une bibliothèque de
+ * génération ferait à notre place.
+ *
+ * **Ce n'est pas une validation**, et un cas plus bas le mesure : l'analyseur se
+ * dit *resilient*, il lève sur un non-flux mais accepte un `<channel>` sans
+ * titre ni lien ni description. La conformité au format se lit dans la
+ * spécification — c'est par là qu'est passé `dc:creator`.
+ * ------------------------------------------------------------------------- */
+
+const HOSTILE = {
+  ...ARTICLE,
+  slug: 'titre-hostile',
+  title: 'Tests & « pièges » : <script> compris',
+  description: 'Une description avec un & et un <chevron>.',
+  date: '2026-03-02',
+} as const
+
+const feedRequest = (query = ''): Request =>
+  new Request(`https://app.test${blogFeedPath()}${query}`, { method: 'GET' })
+
+/** Le contenu que le point de composition fournirait, sans disque ni `APP_URL`. */
+const provideCatalog = (catalog: BlogCatalog): void => {
+  provideBlogContent(() => ({
+    catalog,
+    locales: [...localeRouting.locales],
+    defaultLocale: localeRouting.defaultLocale,
+    url: (pathname, locale) =>
+      `https://app.test${pathname.startsWith('/api') ? pathname : localeRouting.publicPath(pathname, locale)}`,
+  }))
+}
+
+const feedRegistry = (enabled: readonly string[]) =>
+  buildRegistry({
+    available: [...availableModules],
+    enabled: [...requiredModules, 'i18n', ...enabled],
+    required: [...requiredModules],
+    locales: [...appLocales],
+  })
+
+const servedFeed = async (
+  registry: ReturnType<typeof buildRegistry>,
+  query = '',
+): Promise<Response> => await dispatchAllowingRateLimit(registry, feedRequest(query))
+
+describe('le flux du blog', () => {
+  it('est un flux que lit un analyseur de flux, et il porte les articles', async () => {
+    provideCatalog(
+      resolveBlogCatalog({ articles: [ARTICLE, HOSTILE, TAGGED], pageSize: 6 }),
+    )
+
+    const response = await servedFeed(feedRegistry(['blog']))
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('application/rss+xml')
+
+    // La validation est faite par une bibliothèque tierce : elle **lève** sur
+    // un document qui n'est pas un flux, et c'est ce qui remplace une
+    // assertion maison sur le texte produit.
+    const feed = parseFeed(await response.text())
+
+    // Le titre vient du catalogue **du module**, pas de celui de l'application :
+    // celui-ci disparaît avec le module, et `pnpm test:minimal-profile` le coupe.
+    expect(feed.title).toBe(blogModule.messages[defaultLocale]?.['list.title'])
+    expect(feed.items.map((item) => item.title)).toEqual([
+      // Du plus récent au plus ancien : un lecteur affiche le document tel
+      // qu'il le reçoit.
+      HOSTILE.title,
+      ARTICLE.title,
+      TAGGED.title,
+    ])
+
+    const [first] = feed.items
+
+    expect(first?.url).toBe(
+      `https://app.test${localeRouting.publicPath(`/blog/${HOSTILE.slug}`, defaultLocale)}`,
+    )
+    expect(first?.description).toBe(HOSTILE.description)
+    expect(first?.published?.toISOString().slice(0, 10)).toBe(HOSTILE.date)
+  })
+
+  it('ne sert que la langue demandée, et retombe sur celle du site sinon', async () => {
+    const other = { ...ARTICLE, slug: 'seulement-ailleurs', locale: OTHER_LOCALE }
+
+    provideCatalog(resolveBlogCatalog({ articles: [ARTICLE, other], pageSize: 6 }))
+
+    const registry = feedRegistry(['blog'])
+    const urlsOf = async (query: string) =>
+      parseFeed(await (await servedFeed(registry, query)).text()).items.map((item) => item.url)
+    const absolute = (slug: string, locale: string) =>
+      `https://app.test${localeRouting.publicPath(`/blog/${slug}`, locale)}`
+
+    // Une langue que l'application ne **sert** pas n'entre ni dans le document,
+    // ni dans les URL : elle est ignorée, pas crue.
+    expect(await urlsOf('?locale=../../etc')).toEqual([absolute(ARTICLE.slug, defaultLocale)])
+
+    // L'attente est **dérivée des langues servies** : module `i18n` coupé,
+    // l'application n'en sert qu'une et la seconde retombe elle aussi sur le
+    // flux du site. C'est la configuration de `pnpm test:minimal-profile`.
+    expect(await urlsOf(`?locale=${OTHER_LOCALE}`)).toEqual(
+      localeRouting.locales.includes(OTHER_LOCALE)
+        ? [absolute(other.slug, OTHER_LOCALE)]
+        : [absolute(ARTICLE.slug, defaultLocale)],
+    )
+  })
+
+  it('ne contribue aucune URL quand le catalogue n’est pas monté', () => {
+    // La garde qui **reste** dans le module, et le cas qui la fait mordre : un
+    // registre construit avec le blog activé au-dessus d'un dépôt qui le coupe
+    // — ce que `pnpm test:socle` et `pnpm test:minimal-profile` produisent —
+    // demanderait sa contribution avec un catalogue vide. Sans la garde, il
+    // annoncerait `/blog`, c'est-à-dire une page qui répond 404.
+    const context = { locales: [...appLocales], defaultLocale }
+
+    provideCatalog(EMPTY_BLOG_CATALOG)
+    expect(blogModule.publicUrls(context)).toEqual([])
+
+    // Garde d'inertie : monté, il contribue bel et bien.
+    provideCatalog(resolveBlogCatalog({ articles: [ARTICLE], pageSize: 6 }))
+    expect(blogModule.publicUrls(context).map((url) => url.path)).toEqual([
+      '/blog',
+      `/blog/${ARTICLE.slug}`,
+    ])
+  })
+
+  it('nomme l’auteur en `dc:creator`, jamais dans un `<author>` sans adresse', async () => {
+    provideCatalog(resolveBlogCatalog({ articles: [ARTICLE], pageSize: 6 }))
+
+    const body = await (await servedFeed(feedRegistry(['blog']))).text()
+
+    // RSS 2.0 définit `<item><author>` comme **l'adresse email** de l'auteur
+    // (`<author>lawyer@boyer.net (Lawyer Boyer)</author>`) : un nom nu y vaut
+    // `InvalidContact` au validateur de flux du W3C. Le frontmatter porte un nom
+    // d'affichage, jamais une adresse, et le format prévu pour ça est
+    // `dc:creator` du Dublin Core — dont l'espace de noms doit être **déclaré**,
+    // sans quoi le préfixe ne veut rien dire.
+    expect(body).toContain('xmlns:dc="http://purl.org/dc/elements/1.1/"')
+    expect(body).toContain(`<dc:creator>${ARTICLE.author}</dc:creator>`)
+    expect(body).not.toContain('<author>')
+
+    // Et le document reste un flux que l'analyseur lit, auteur compris.
+    expect(parseFeed(body).items.map((item) => item.authors.map((who) => who.name))).toEqual([
+      [ARTICLE.author],
+    ])
+  })
+
+  /**
+   * **Ce que l'analyseur prouve, et ce qu'il ne prouve pas.**
+   *
+   * `@rowanmanning/feed-parser` se décrit lui-même comme *resilient* : il
+   * **lève** sur un document qui n'est pas un flux, et il **accepte** des
+   * documents qu'un validateur refuserait. Ce cas fixe les deux bords, faute de
+   * quoi « analysé par un analyseur tiers » se relirait un jour comme « validé
+   * par un validateur » — ce qu'aucune commande de ce dépôt ne vérifie.
+   */
+  it('mesure la limite de l’analyseur : il rejette un non-flux, il ne valide pas', () => {
+    for (const notAFeed of ['<p>bonjour</p>', 'du texte brut', '<rss version="2.0"></rss>']) {
+      expect(() => parseFeed(notAFeed), notAFeed).toThrow()
+    }
+
+    // Un flux vide de tout ce que RSS 2.0 exige — ni titre, ni lien, ni
+    // description, et un article sans rien qu'un identifiant — passe.
+    expect(() =>
+      parseFeed(
+        '<rss version="2.0"><channel><item><guid>x</guid></item></channel></rss>',
+      ),
+    ).not.toThrow()
+  })
+
+  it('répond 404 quand le module est coupé, comme sur un chemin inventé', async () => {
+    provideCatalog(EMPTY_BLOG_CATALOG)
+
+    const registry = feedRegistry([])
+    const invented = await dispatchAllowingRateLimit(
+      registry,
+      new Request('https://app.test/api/modules/blog/chemin-invente', { method: 'GET' }),
+    )
+    const response = await servedFeed(registry)
+
+    expect(response.status).toBe(invented.status)
+    expect(await response.text()).toBe(await invented.clone().text())
+
+    // Garde d'inertie : le module **déclare** bien cette route, publique.
+    expect(blogModule.routes.map((route) => `${route.method} ${route.path}`)).toEqual([
+      'GET /blog/feed.xml',
+    ])
   })
 })

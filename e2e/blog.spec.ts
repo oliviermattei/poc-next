@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { expect, test, type ConsoleMessage, type Page } from '@playwright/test'
+import { blogFeedPath } from '@repo/module-blog'
+import { parseFeed } from '@rowanmanning/feed-parser'
 
 import { blogCatalog } from '../apps/web/lib/blog'
 import { defaultLocale } from '../config/i18n'
@@ -134,4 +136,63 @@ test('un article qui n’existe pas répond 404, sans rien annoncer', async ({ r
 
   expect(response.status()).toBe(404)
   expect(await response.text()).not.toContain(first?.title ?? '')
+})
+
+test('le flux est servi, valide, et annoncé par la liste', async ({ request, page }) => {
+  // Ce qu'aucun test de nœud ne voit : le document que **Next sert
+  // réellement** sur la route montée du module, avec son type de contenu, et le
+  // lien qui le rend découvrable dans le `<head>` de la liste.
+  const response = await request.get(blogFeedPath())
+
+  expect(response.status()).toBe(200)
+  expect(response.headers()['content-type']).toContain('application/rss+xml')
+
+  const body = await response.text()
+  const feed = parseFeed(body)
+
+  // L'auteur est nommé en `dc:creator`, espace de noms déclaré : RSS 2.0 réserve
+  // `<item><author>` à une **adresse email**, et le frontmatter n'en porte pas.
+  // Mesuré sur le document **servi**, parce que c'est lui qu'un agrégateur lit.
+  expect(body).toContain('xmlns:dc="http://purl.org/dc/elements/1.1/"')
+  expect(body).toContain('<dc:creator>')
+  expect(body).not.toContain('<author>')
+
+  expect(feed.items.map((item) => new URL(item.url ?? '').pathname)).toEqual(
+    // Du plus récent au plus ancien, et seulement la langue servie par défaut.
+    [...articles]
+      .sort((left, right) => right.date.localeCompare(left.date))
+      .map((article) => publicPath(`/blog/${article.slug}`)),
+  )
+
+  await page.goto(publicPath('/blog'))
+
+  // Next rend l'URL **absolue** contre `metadataBase` (`APP_URL`) : c'est ce qui
+  // fait qu'un agrégateur suit le bon serveur, et c'est la raison pour laquelle
+  // s53 a posé `metadataBase` — sans elle, Next publie `http://localhost:3000`.
+  const announced = await page
+    .locator('link[rel="alternate"][type="application/rss+xml"]')
+    .getAttribute('href')
+
+  // L'origine annoncée est celle **du serveur**, pas celle par laquelle Next se
+  // rabat quand `metadataBase` manque (`http://localhost:3000`) : c'est la
+  // seule chose que cette assertion attrape, et c'est pour elle que s53 pose
+  // `metadataBase` depuis `APP_URL`.
+  expect(announced).toBe(new URL(blogFeedPath(), page.url()).toString())
+})
+
+test('le robots.txt autorise le blog, et le plan de site le référence', async ({ request }) => {
+  // Le critère 1 de la story, sur les fichiers **réellement servis** : s29 a
+  // livré le blog activé et interdit.
+  const robots = await (await request.get('/robots.txt')).text()
+  const sitemap = await (await request.get('/sitemap.xml')).text()
+  const locations = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map(
+    (match) => new URL(match[1] ?? '').pathname,
+  )
+
+  expect(robots).toContain(`Allow: ${publicPath('/blog')}$`)
+  expect(locations).toContain(publicPath('/blog'))
+
+  for (const article of articles) {
+    expect(locations).toContain(publicPath(`/blog/${article.slug}`))
+  }
 })

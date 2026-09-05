@@ -14,6 +14,9 @@ export {
   type ModuleScope,
   type ModuleSession,
   type NavigationEntry,
+  type PublicUrl,
+  type PublicUrlContext,
+  type PublicUrlContribution,
   type RetentionAction,
   type RouteProtection,
   type RouteRateLimit,
@@ -33,6 +36,7 @@ export {
   type RegistryEmailTemplate,
   type RegistryJob,
   type RegistryNavigationEntry,
+  type RegistryPublicUrl,
   type RegistryRoute,
   type RegistryWebhookHandler,
   type RouteRateLimitGuard,
@@ -50,6 +54,18 @@ export {
   type NestedMessages,
 } from './i18n'
 export { resolveDataOwner, satisfiesProtection, visibleNavigation } from './protection'
+export {
+  carriesLocalePrefix,
+  indexableUrls,
+  robotsAllows,
+  robotsPolicy,
+  sitemapEntries,
+  type IndexableUrl,
+  type RobotsInput,
+  type RobotsPolicy,
+  type SitemapEntry,
+  type SitemapInput,
+} from './syndication'
 export {
   allowsFeature,
   assertGatesCoverRoutes,

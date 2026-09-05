@@ -34,6 +34,44 @@ const refusalOf = (source: string): string => {
   throw new Error('Le frontmatter fautif a été accepté.')
 }
 
+/**
+ * L'image de partage (s53) : **facultative**, et bornée à une ressource que
+ * l'application sert elle-même. Une URL externe demanderait une origine dans la
+ * politique de sécurité du contenu, donc une justification écrite
+ * (`docs/security.md` §1) — le frontmatter d'un article n'est pas l'endroit où
+ * on ouvre une origine.
+ */
+describe('l’image de partage d’un article', () => {
+  const withImage = (value: string): string =>
+    VALID.replace('tags: [ingénierie, coulisses]', `tags: [ingénierie]\nimage: ${value}`)
+
+  it('est retenue quand elle désigne une ressource de l’application', () => {
+    expect(
+      parseArticle({
+        source: withImage('/blog/mon-article.png'),
+        filePath: FILE,
+        slug: 'test-vert',
+        locale: 'fr',
+      }).image,
+    ).toBe('/blog/mon-article.png')
+  })
+
+  it('est absente quand l’article n’en déclare pas', () => {
+    expect(
+      parseArticle({ source: VALID, filePath: FILE, slug: 'test-vert', locale: 'fr' }).image,
+    ).toBeUndefined()
+  })
+
+  it.each([
+    ['une origine externe', 'https://images.example.com/a.png'],
+    ['un protocole', '//images.example.com/a.png'],
+    ['un chemin relatif', 'mon-article.png'],
+    ['une remontée de dossier', '/../secret.png'],
+  ])('refuse %s, en nommant le fichier', (_case, value) => {
+    expect(refusalOf(withImage(value))).toContain(FILE)
+  })
+})
+
 describe('le frontmatter d’un article', () => {
   it('rend les cinq champs déclarés, et le chemin qui les porte', () => {
     expect(parseArticle({ source: VALID, filePath: FILE, slug: 'test-vert', locale: 'fr' })).toEqual(

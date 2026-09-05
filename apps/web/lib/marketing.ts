@@ -1,6 +1,7 @@
 import {
   EMPTY_MARKETING_SITE,
   marketingModule,
+  provideMarketingContent,
   resolveMarketingSite,
   type MarketingSite,
 } from '@repo/module-marketing'
@@ -59,3 +60,15 @@ export const marketingSite: MarketingSite = moduleRegistry.moduleIds.includes(ma
  * parcours avant qu'aucun test ne s'exécute.
  */
 export const marketingFormsAvailable = marketingSite.forms !== null
+
+/**
+ * Donne au module ses chemins publics, pour la quinzième clé du contrat (s53).
+ *
+ * C'est **ici** que le module est nommé — c'est le rôle de ce fichier —, et
+ * `app/sitemap.ts` comme `app/robots.ts` n'en savent rien : ils lisent le
+ * registre. Appelée par `lib/module-content.ts`, idempotente : elle dit **où**
+ * lire le site, elle ne le lit pas.
+ */
+export function prepareMarketingContent(): void {
+  provideMarketingContent(() => marketingSite)
+}

@@ -30,6 +30,13 @@ export const authModule = defineModule({
   migrations: 'packages/modules/auth/migrations',
   routes: createAuthRoutes(requireAuthService),
   navigation: authNavigation,
+  /**
+   * Aucune URL publique : ce module ne publie pas de page indexable (s53).
+   *
+   * Déclaré vide, jamais omis — le compilateur refuse l'omission
+   * (`tests/fixtures/typing/missing-public-urls.ts`).
+   */
+  publicUrls: () => [],
   messages: { fr: frMessages, en: enMessages },
   emails: [verificationEmail, magicLinkEmail, passwordResetEmail],
   webhooks: [],

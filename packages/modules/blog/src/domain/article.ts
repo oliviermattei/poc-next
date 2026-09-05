@@ -28,6 +28,15 @@ export interface BlogArticle {
   readonly date: string
   readonly author: string
   readonly tags: readonly string[]
+  /**
+   * L'image de partage, **facultative** (s53).
+   *
+   * Absente, la page d'article retombe sur l'image par défaut de
+   * l'application. Présente, c'est un chemin de **notre** origine : une URL
+   * externe demanderait une source dans la politique de sécurité du contenu,
+   * donc une justification écrite (`docs/security.md` §1).
+   */
+  readonly image?: string
 }
 
 /**
@@ -69,6 +78,19 @@ const isoDate = z.string().refine((value) => {
  * article dont le titre manque, sans que rien ne le dise. Avec, elle est un
  * refus nommé.
  */
+/**
+ * Un chemin servi par **cette** application : une barre oblique de tête, aucun
+ * protocole, aucune remontée de dossier.
+ *
+ * `//example.com/a.png` commence par une barre et n'en est pas un pour autant —
+ * c'est une URL de protocole relatif, que le navigateur résout chez le tiers.
+ * Le second caractère est donc contraint lui aussi.
+ */
+const appPath = z
+  .string()
+  .regex(/^\/(?!\/)[\w./-]*$/, 'attendu : un chemin de l’application, commençant par « / »')
+  .refine((value) => !value.includes('..'), 'attendu : un chemin sans remontée de dossier')
+
 const frontmatterSchema = z
   .object({
     title: z.string().min(1),
@@ -76,6 +98,7 @@ const frontmatterSchema = z
     date: isoDate,
     author: z.string().min(1),
     tags: z.array(z.string().min(1)),
+    image: appPath.optional(),
   })
   .strict()
 

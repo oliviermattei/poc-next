@@ -2,7 +2,12 @@ import { readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { buildRegistry, resolveEnabledModules } from '@repo/core'
+import {
+  buildRegistry,
+  resolveEnabledModules,
+  robotsAllows,
+  type RobotsPolicy,
+} from '@repo/core'
 import {
   createDatabaseClient,
   listDatabaseTables,
@@ -18,10 +23,9 @@ import {
   legalPath,
   marketingMessageKeys,
   marketingModule,
+  provideMarketingContent,
   resolveMarketingSite,
-  robotsAllows,
   type MarketingSite,
-  type RobotsPolicy,
 } from '@repo/module-marketing'
 import {
   configureMarketing,
@@ -473,22 +477,20 @@ describe('le module marketing coupé', () => {
     }
   })
 
-  it('ne référence rien dans le plan de site', async () => {
-    vi.stubEnv('APP_URL', 'https://app.test')
-    vi.resetModules()
-    vi.doMock('../apps/web/lib/marketing', () => ({ marketingSite: EMPTY_MARKETING_SITE }))
+  it('ne contribue aucune URL publique', () => {
+    // Le plan de site et le `robots.txt` sont **dérivés** depuis s53 : ils ne
+    // lisent plus ce module, ils lisent le registre. Ce qui reste vrai ici est
+    // ce que ce module donne — rien, quand il n'est pas monté. Les deux
+    // fichiers eux-mêmes sont le sujet de `tests/syndication.test.ts`, qui les
+    // éprouve dans quatre configurations.
+    const context = { locales: [...appLocales], defaultLocale: appLocales[0] ?? 'fr' }
 
-    const { default: sitemap } = await import('../apps/web/app/sitemap')
-    const { default: robots } = await import('../apps/web/app/robots')
+    provideMarketingContent(() => shippedSite)
 
-    expect(sitemap()).toEqual([])
-    // Et rien n'annonce un plan de site vide : ce serait publier une adresse
-    // qui ne référence rien.
-    expect(robots().sitemap).toBeUndefined()
-    expect(robots().rules).toEqual({ userAgent: '*', disallow: ['/'] })
-
-    vi.doUnmock('../apps/web/lib/marketing')
-    vi.unstubAllEnvs()
+    // Garde d'inertie : monté, il contribue bel et bien — sans quoi « rien »
+    // serait vrai sans rien prouver.
+    expect(marketingModule.publicUrls(context).length).toBeGreaterThan(0)
+    expect(withoutMarketing.publicUrls(context)).toEqual([])
   })
 })
 
@@ -574,7 +576,25 @@ describe('le module marketing activé', () => {
     vi.stubEnv('APP_URL', 'https://app.test/')
 
     vi.resetModules()
-    vi.doMock('../apps/web/lib/marketing', () => ({ marketingSite: shippedSite }))
+    // **Le registre, pas le module** : depuis s53, les deux fichiers de
+    // métadonnées sont dérivés des contributions des modules activés. Le blog
+    // est écarté ici pour que la mesure porte sur le site public seul — ses
+    // articles sont le sujet de `tests/syndication.test.ts`.
+    vi.doMock('../apps/web/lib/module-registry', async () => {
+      const { buildRegistry: build } = await import('@repo/core')
+      const { availableModules: modules, requiredModules: base } = await import(
+        '../config/features'
+      )
+
+      return {
+        moduleRegistry: build({
+          available: [...modules],
+          enabled: [...base, 'i18n', 'marketing'],
+          required: [...base],
+          locales: [...appLocales],
+        }),
+      }
+    })
 
     const { localeRouting } = await import('../apps/web/lib/locale-routing')
     const { default: sitemap } = await import('../apps/web/app/sitemap')

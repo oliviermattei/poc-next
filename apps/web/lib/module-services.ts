@@ -5,6 +5,7 @@ import { appAuth } from './auth'
 import { billing } from './billing'
 import { consent } from './consent'
 import { localeRouting } from './locale-routing'
+import { prepareModuleContent } from './module-content'
 import { createAppMailer } from './mailer'
 import { marketingSite } from './marketing'
 import { organizations } from './organizations'
@@ -76,6 +77,11 @@ const provideMarketingForms = (): void => {
 }
 
 export function prepareModuleServices(): void {
+  // Le **contenu** que les modules publient (s53) : le flux RSS du blog est une
+  // route montée, donc servie par ce chemin-ci. Sans cet appel, elle répond 500
+  // en disant que le contenu n'a pas été fourni — mesuré au navigateur, et
+  // c'est la seule raison pour laquelle un `provide*` oublié se voit.
+  prepareModuleContent()
   consent.prepare()
   organizations.prepare()
   billing.prepare()

@@ -87,6 +87,7 @@ interface ModuleDefinition {
   migrations: MigrationsDir
   routes: readonly ModuleRoute[]      // ADR 017 — forme transitoire jusqu'à Hono
   navigation: readonly NavEntry[]     // chacune avec son niveau de protection
+  publicUrls: (context: PublicUrlContext) => readonly PublicUrl[]  // ce que le module donne à indexer (ADR 054)
   messages: Record<Locale, Messages>
   emails: readonly EmailTemplate[]    // chacun avec ses locales
   webhooks: readonly WebhookHandler[]
@@ -97,7 +98,7 @@ interface ModuleDefinition {
   retention: Record<DataCategory, 'erase' | 'anonymize'>
 }
 ```
-Toutes les clés sont obligatoires dès le premier module, quitte à être vides (ADR 007). `jobs` est déclarative comme `routes` et `webhooks` : l'ordonnanceur de s33 se branche sur le registre, jamais sur un enregistrement à l'import — sinon la tâche planifiée d'un module non activé s'exécuterait. `requires` est typée `string[]` et non `ModuleId[]` : l'union des identifiants vient de l'annuaire, qui importe les modules ; la typer fermerait le cycle, et un requis mal orthographié est donc refusé à la construction du registre. `retention` est indexée par `dataCategories` : une catégorie déclarée sans politique ne compile pas. `routes` porte une forme transitoire (ADR 017), et l'annuaire statique de `config/features.ts` a sa propre conséquence documentée (ADR 016). Les ajouter plus tard obligerait à rouvrir chaque module déjà écrit.
+Toutes les clés sont obligatoires dès le premier module, quitte à être vides (ADR 007). `jobs` est déclarative comme `routes` et `webhooks` : l'ordonnanceur de s33 se branche sur le registre, jamais sur un enregistrement à l'import — sinon la tâche planifiée d'un module non activé s'exécuterait. `requires` est typée `string[]` et non `ModuleId[]` : l'union des identifiants vient de l'annuaire, qui importe les modules ; la typer fermerait le cycle, et un requis mal orthographié est donc refusé à la construction du registre. `retention` est indexée par `dataCategories` : une catégorie déclarée sans politique ne compile pas. `routes` porte une forme transitoire (ADR 017), et l'annuaire statique de `config/features.ts` a sa propre conséquence documentée (ADR 016). `publicUrls` est la seule clé qui soit une **fonction** (ADR 054) : les URL d'un contenu découvert à la lecture n'existent pas à l'import, et `app/sitemap.ts` est un gestionnaire `force-dynamic` — un tableau déclaré serait figé au build, où aucune `APP_URL` n'est validée. C'est elle, et **non** les entrées de navigation publiques, qui décide de ce qui entre dans `sitemap.xml` et `robots.txt` : `public` est un niveau de protection, pas une décision d'indexation. Les ajouter plus tard obligerait à rouvrir chaque module déjà écrit.
 
 ### Règles transverses
 - **Nommage** : fichiers en `kebab-case`, types et composants en `PascalCase`, fonctions et variables en `camelCase`, tables et colonnes en `snake_case`.

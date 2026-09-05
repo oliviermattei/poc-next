@@ -40,3 +40,37 @@ export function resolveSiteUrl(env: Env = getEnv()): string {
  */
 export const absoluteUrl = (pathname: string, siteUrl: string): string =>
   `${siteUrl}${pathname === '/' ? '' : pathname}`
+
+/**
+ * L'origine contre laquelle Next rend les URL de métadonnées absolues.
+ *
+ * **Elle ne lève jamais**, et c'est toute la différence avec `resolveSiteUrl` :
+ * elle est lue par `app/layout.tsx`, donc sur **chaque** écran et pendant
+ * `next build`, où `getEnv()` ne valide rien et où l'intégration continue ne
+ * pose aucune `APP_URL`. Un plan de site sans URL absolue est une erreur qu'il
+ * faut crier ; une page qui refuserait de se rendre faute d'`APP_URL` serait
+ * une panne totale pour une balise de partage.
+ *
+ * `null` rend la main à Next, qui retombe alors sur son origine de
+ * développement en le journalisant. En production, `APP_URL` est exigée au
+ * démarrage (`lib/startup.ts`) : le cas ne s'y présente pas.
+ *
+ * Ce qu'elle rend possible : écrire `/og-default.png` ou `/fr/blog/x` dans les
+ * métadonnées et laisser Next les rendre absolues, plutôt que de lire
+ * l'environnement au milieu d'un rendu.
+ */
+export function metadataBaseUrl(env: Env = getEnv()): URL | null {
+  const declared = env.APP_URL?.trim()
+
+  if (declared === undefined || declared === '') {
+    return null
+  }
+
+  try {
+    return new URL(declared)
+  } catch {
+    // Une valeur malformée est refusée au démarrage, en la nommant : ici, elle
+    // ne doit pas faire tomber le rendu de chaque écran.
+    return null
+  }
+}

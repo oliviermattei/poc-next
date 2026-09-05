@@ -32,6 +32,7 @@ const moduleWith = (entries: readonly NavigationEntry[]): AnyModuleDefinition =>
   migrations: null,
   routes: [],
   navigation: entries,
+  publicUrls: () => [],
   messages: {
     fr: Object.fromEntries(entries.map((navigation) => [navigation.labelKey, navigation.id])),
   },

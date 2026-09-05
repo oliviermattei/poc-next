@@ -33,6 +33,7 @@ const moduleFor = (
     migrations,
     routes: [],
     navigation: [],
+    publicUrls: () => [],
     messages: { fr: {} },
     emails: [],
     webhooks: [],

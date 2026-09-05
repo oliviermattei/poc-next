@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 
 import { MarketingConfigurationError } from '../domain/marketing-config'
 import { marketingMessageKeys } from '../domain/message-keys'
-import { marketingRobotsPolicy, marketingSitemapEntries, robotsAllows } from '../domain/seo'
 import {
   EMPTY_MARKETING_SITE,
   legalDocumentOf,
@@ -270,105 +269,5 @@ describe('les clés de traduction qu’une configuration exige', () => {
 
   it('n’en demande aucune quand il n’y a pas de site', () => {
     expect(marketingMessageKeys(EMPTY_MARKETING_SITE)).toEqual([])
-  })
-})
-
-describe('le plan de site', () => {
-  /** Une fabrique d'URL absolue, comme le point de composition en fournit une. */
-  const url = (pathname: string, locale: string) =>
-    `https://app.test${locale === 'fr' ? '' : `/${locale}`}${pathname === '/' ? '' : pathname}`
-
-  it('rend une entrée par chemin public, avec ses variantes de langue', () => {
-    const entries = marketingSitemapEntries({
-      paths: ['/', '/legal/privacy'],
-      locales: ['fr', 'en'],
-      defaultLocale: 'fr',
-      url,
-    })
-
-    expect(entries.map((entry) => entry.url)).toEqual([
-      'https://app.test',
-      'https://app.test/legal/privacy',
-    ])
-    expect(entries[1]?.alternates).toEqual({
-      fr: 'https://app.test/legal/privacy',
-      en: 'https://app.test/en/legal/privacy',
-    })
-  })
-
-  it('ne référence rien quand aucun chemin n’est public', () => {
-    expect(
-      marketingSitemapEntries({ paths: [], locales: ['fr', 'en'], defaultLocale: 'fr', url }),
-    ).toEqual([])
-  })
-})
-
-describe('la politique des robots', () => {
-  const policyFor = (allowed: readonly string[]) =>
-    marketingRobotsPolicy({ allowed, sitemapUrl: 'https://app.test/sitemap.xml' })
-
-  it('n’autorise que les chemins publics eux-mêmes, jamais ce qui s’ouvre en dessous', () => {
-    const publicPaths = ['/fr', '/en', '/fr/legal/privacy', '/en/legal/privacy']
-    const policy = policyFor(publicPaths)
-
-    for (const pathname of publicPaths) {
-      expect(robotsAllows(policy, pathname), pathname).toBe(true)
-    }
-
-    // La correspondance d'un `robots.txt` est **par préfixe** (RFC 9309 §2.2.2) :
-    // « Allow: /fr » ouvre `/fr/account`, `/fr/sign-in` et `/fr/reset-password?token=…`,
-    // et il l'emporte sur `Disallow: /` parce qu'il est plus long. Un jeton de
-    // réinitialisation dans un index public est une fuite, pas une coquille.
-    for (const pathname of [
-      '/fr/account',
-      '/fr/sign-in',
-      '/fr/reset-password?token=jeton-de-reinitialisation',
-      '/fr/verify-email',
-      '/fr/legal/privacy/annexe',
-      '/fr/legal/inconnu',
-      '/frais',
-      '/en/account',
-      '/account',
-      '/',
-    ]) {
-      expect(robotsAllows(policy, pathname), pathname).toBe(false)
-    }
-
-    expect(policy.sitemap).toBe('https://app.test/sitemap.xml')
-  })
-
-  it('n’ouvre pas davantage quand les chemins publics ne sont pas préfixés', () => {
-    // Module `i18n` coupé : `publicPath` est l'identité, et le chemin public de
-    // l'accueil est `/` — celui-là même que `Disallow: /` interdit. Une règle
-    // d'autorisation par préfixe ouvrirait alors le site entier.
-    const policy = policyFor(['/', '/legal/privacy'])
-
-    expect(robotsAllows(policy, '/')).toBe(true)
-    expect(robotsAllows(policy, '/legal/privacy')).toBe(true)
-
-    for (const pathname of ['/account', '/sign-in', '/reset-password?token=jeton', '/legal']) {
-      expect(robotsAllows(policy, pathname), pathname).toBe(false)
-    }
-  })
-
-  it('interdit tout et n’annonce aucun plan de site quand rien n’est public', () => {
-    const policy = policyFor([])
-
-    expect(policy.rules.allow).toBeUndefined()
-    expect(policy.rules.disallow).toEqual(['/'])
-    expect(policy.sitemap).toBeUndefined()
-
-    for (const pathname of ['/', '/fr', '/fr/legal/privacy', '/account']) {
-      expect(robotsAllows(policy, pathname), pathname).toBe(false)
-    }
-  })
-
-  it('lit une politique comme un robot la lit : la règle la plus longue l’emporte', () => {
-    // La garde contre l'inertie de `robotsAllows` : sans elle, une fonction qui
-    // rendrait toujours `false` satisferait la moitié des cas ci-dessus.
-    expect(robotsAllows({ rules: { userAgent: '*', disallow: [] } }, '/n’importe/quoi')).toBe(true)
-    expect(
-      robotsAllows({ rules: { userAgent: '*', allow: ['/blog/*$'], disallow: ['/'] } }, '/blog/x'),
-    ).toBe(true)
   })
 })

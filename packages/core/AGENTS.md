@@ -17,6 +17,7 @@ tenues par le compilateur, les suivantes à la construction du registre :
 | Requis manquant, cycle, auto-référence, identifiant en double | `resolveEnabledModules`, à la construction du registre | `pnpm test`, et le démarrage de l'application |
 | Template d'email incomplet, clé de navigation sans traduction, collision de route entre deux modules | `assertDeclarationsAreComplete`, à la construction du registre | `pnpm test`, et le démarrage de l'application |
 | Un point de composition qui ne déclare pas les locales de l'application | le **compilateur** (`buildRegistry` exige `locales`), et un refus à l'exécution pour l'appelant qui ignore les types | `pnpm typecheck`, `pnpm test` |
+| Un module qui ne déclare pas ce qu'il publie (`publicUrls`, s53) | le **compilateur** (la clé est obligatoire comme les quatorze autres) | `pnpm typecheck`, et `tests/module-registry.test.ts` qui compile réellement le refus |
 
 `locales` est **obligatoire** dans `buildRegistry`, et ce n'est pas du confort :
 c'est contre les locales de l'**application** — jamais celles du module — qu'un
@@ -39,6 +40,26 @@ des identifiants vient de l'annuaire de `config/features.ts`, qui importe les
 modules. La typer depuis cette union fermerait le cycle. Une faute de frappe
 dans un requis est donc attrapée à la construction du registre, pas à la
 compilation — asymétrie assumée avec `enabledModules`, écrite dans le contrat.
+
+## Ce que le socle donne à indexer (s53, ADR 054)
+
+`src/syndication.ts` porte le plan de site, la politique des robots et la règle
+du préfixe de langue. Ces fonctions vivaient dans le `domain` du module
+`marketing` : elles sont montées ici parce que `apps/web/app/robots.ts` et
+`apps/web/app/sitemap.ts` ne doivent connaître **aucun** module par son nom, et
+qu'elles n'ont jamais rien eu de marketing — des chemins entrent, des URL
+sortent.
+
+`indexableUrls(registry, context)` agrège **une seule source** : la quinzième
+clé du contrat, `publicUrls`. Elle ne lit **pas** les entrées de navigation
+publiques, et c'est une décision mesurée : la configuration livrée en compte
+cinq, dont `/sign-in`, `/pricing` et une route d'API. `public` est un niveau de
+**protection**, pas une décision d'indexation (`docs/security.md` §7).
+
+`carriesLocalePrefix` est la règle d'`apps/web/proxy.ts`, écrite ici depuis
+qu'elle a un second appelant : `publicPath` préfixe sans condition, `/api…`
+compris, et une contribution vers une route montée serait sinon annoncée sous
+une langue que rien ne sert (constat M3 de la revue de s29).
 
 Le contrat porte aussi la **protection** des routes **et** des entrées de
 navigation, et les deux sont lues : `dispatchModuleRequest` refuse une route non

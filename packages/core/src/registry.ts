@@ -8,6 +8,8 @@ import type {
   ModuleScope,
   ModuleSession,
   NavigationEntry,
+  PublicUrl,
+  PublicUrlContext,
   WebhookHandler,
 } from './module'
 import { entitlementFeatureOf } from './entitlement'
@@ -33,6 +35,11 @@ export interface RegistryNavigationEntry extends NavigationEntry {
   readonly moduleId: string
 }
 
+/** Une URL publique contribuée par un module, avec le module qui la donne. */
+export interface RegistryPublicUrl extends PublicUrl {
+  readonly moduleId: string
+}
+
 export interface RegistryEmailTemplate {
   readonly moduleId: string
   readonly template: EmailTemplate
@@ -54,6 +61,17 @@ export interface ModuleRegistry {
   readonly moduleIds: readonly string[]
   readonly routes: readonly RegistryRoute[]
   readonly navigation: readonly RegistryNavigationEntry[]
+  /**
+   * Les URL publiques des modules activés (s53, ADR 054).
+   *
+   * **Une fonction, pas une liste**, et les deux raisons sont mesurées : les URL
+   * d'un article n'existent qu'après lecture du contenu, et `app/sitemap.ts`
+   * est un gestionnaire de route `force-dynamic` — un plan de site figé à la
+   * construction du registre le serait aussi à celle du build, où `APP_URL`
+   * n'est pas validée. Le contexte (les langues **servies**) arrive donc à
+   * l'appel, pas à la composition.
+   */
+  readonly publicUrls: (context: PublicUrlContext) => readonly RegistryPublicUrl[]
   /** Traductions fusionnées par locale, chaque clé préfixée par son module. */
   readonly messages: Readonly<Record<string, ModuleMessages>>
   readonly emails: readonly RegistryEmailTemplate[]
@@ -137,6 +155,10 @@ export function buildRegistry(configuration: {
       module.routes.map((route) => ({ ...route, moduleId: module.id })),
     ),
     navigation,
+    publicUrls: (context) =>
+      modules.flatMap((module) =>
+        module.publicUrls(context).map((url) => ({ ...url, moduleId: module.id })),
+      ),
     messages,
     emails: modules.flatMap((module) =>
       module.emails.map((template) => ({ moduleId: module.id, template })),

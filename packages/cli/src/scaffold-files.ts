@@ -142,6 +142,7 @@ export function scaffoldFiles(moduleId: string): readonly ScaffoldFile[] {
         '  migrations: null,',
         '  routes: [],',
         '  navigation: [],',
+        '  publicUrls: () => [],',
         '  messages: { fr: frMessages, en: enMessages },',
         '  emails: [],',
         '  webhooks: [],',

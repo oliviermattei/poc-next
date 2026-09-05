@@ -1,11 +1,8 @@
-import {
-  legalPath,
-  marketingModule,
-  robotsAllows,
-  type RobotsPolicy,
-} from '@repo/module-marketing'
+import { robotsAllows, type RobotsPolicy } from '@repo/core'
+import { legalPath, marketingModule } from '@repo/module-marketing'
 import { expect, test } from '@playwright/test'
 
+import { blogCatalog } from '../apps/web/lib/blog'
 import { marketingSite } from '../apps/web/lib/marketing'
 import { flatMessagesFor } from '../apps/web/lib/messages'
 import { defaultLocale } from '../config/i18n'
@@ -30,6 +27,14 @@ import { publicPath, urlOf } from './support/locale'
 const catalogue = flatMessagesFor(defaultLocale)
 const publicSite = marketingSite.sections.length > 0
 
+/**
+ * **Le plan de site n'est plus celui du seul site public** (s53) : chaque
+ * module activé y contribue ce qu'il publie. Les attentes sont donc dérivées
+ * des **sources** — la configuration marketing et les articles lus sur le
+ * disque —, jamais de la dérivation elle-même, qui est ce que ce fichier juge.
+ */
+const blogUrls = blogCatalog.index === null ? [] : [publicPath(blogCatalog.index.path)]
+
 /** Le texte attendu à l'écran, lu dans le catalogue de la langue servie. */
 const text = (key: string): string => {
   const value = catalogue[key]
@@ -42,7 +47,17 @@ const text = (key: string): string => {
 }
 
 /** Les URL publiques attendues, dans la langue par défaut. */
-const publicUrls = marketingSite.publicPaths.map((pathname) => publicPath(pathname))
+const publicUrls = [
+  ...marketingSite.publicPaths.map((pathname) => publicPath(pathname)),
+  ...blogUrls,
+  ...[
+    ...new Set(
+      blogCatalog.articles
+        .filter((article) => article.locale === defaultLocale)
+        .map((article) => publicPath(`${blogCatalog.index?.path ?? '/blog'}/${article.slug}`)),
+    ),
+  ],
+]
 
 /**
  * Des chemins que **rien** ne doit ouvrir à un robot, quel que soit l'état du
@@ -61,12 +76,14 @@ test('le plan de site référence exactement les pages publiques', async ({ requ
   const body = await response.text()
   const locations = [...body.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1] ?? '')
 
-  expect(locations.map((url) => new URL(url).pathname)).toEqual(
-    publicUrls.map((pathname) => (pathname === '/' ? '/' : pathname)),
+  // Comparaison par ensemble : l'ordre suit celui du graphe des modules, que ce
+  // fichier n'a pas à figer.
+  expect([...locations.map((url) => new URL(url).pathname)].sort()).toEqual(
+    [...publicUrls].sort(),
   )
 
-  // Site public coupé, il ne référence **rien** : c'est le critère 6.
-  if (!publicSite) {
+  // Aucun module ne publie rien : le fichier ne référence **rien**.
+  if (!publicSite && blogCatalog.index === null) {
     expect(locations).toEqual([])
   }
 })
@@ -111,21 +128,22 @@ test('le robots.txt n’ouvre que les pages publiques', async ({ request }) => {
     expect(robotsAllows(policy, publicPath(pathname)), pathname).toBe(false)
   }
 
-  if (publicSite) {
-    for (const pathname of publicUrls) {
-      expect(robotsAllows(policy, pathname), pathname).toBe(true)
-    }
+  for (const pathname of publicUrls) {
+    expect(robotsAllows(policy, pathname), pathname).toBe(true)
+  }
 
-    expect(body).toContain('Sitemap:')
-  } else {
+  if (!publicSite) {
+    // Le site public coupé, sa racine reste interdite — **que le blog soit
+    // activé ou non** : ce sont deux contributions séparées.
     for (const pathname of ['/', publicPath('/')]) {
       expect(robotsAllows(policy, pathname), pathname).toBe(false)
     }
-
-    // Aucun plan de site annoncé : publier une adresse qui ne référence rien
-    // n'aurait aucun sens.
-    expect(body).not.toContain('Sitemap:')
   }
+
+  // La ligne `Sitemap:` suit ce qui est publié, plus le seul site public : dès
+  // qu'un module contribue une URL, elle réapparaît (s53, ADR 054). Sans
+  // contribution, publier une adresse qui ne référence rien n'aurait aucun sens.
+  expect(body.includes('Sitemap:')).toBe(publicUrls.length > 0)
 })
 
 test.describe('site public activé', () => {

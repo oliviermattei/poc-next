@@ -99,6 +99,37 @@ Correspondance avec les états de facturation (s19, s21) : essai en cours → `i
 | `small` | 0.75rem / 400 | Aide sous un champ, horodatage, métadonnée |
 | `mono` | 0.875rem | Blocs de code de la documentation (s30) et du changelog (s31) |
 
+#### Image sociale — manque n°2 de `s29-blog-mdx`, **toujours non comblé** (s53)
+
+Le système ne décrit **aucun gabarit d'image de partage** : ni dimensions de
+référence, ni zone de titre, ni marges de sécurité, ni comportement d'un titre
+long, ni variante sombre. s53 avait besoin d'une image par défaut et a tranché
+**au plus petit** : un fichier statique unique, `apps/web/public/og-default.png`,
+composé des seuls jetons existants (`--background`, `--foreground`,
+`--muted-foreground`, `--border`, `--radius`) et de la typographie du système,
+produit par `scripts/og-image.ts` — donc reproductible et sensible à un
+changement de jeton.
+
+Ce n'est **pas** l'extension du système, et il ne faut pas la lire comme telle :
+tant qu'un gabarit n'est pas décrit ici, une image **par article** ne peut pas
+être produite sans inventer. Un article peut en revanche fournir la sienne
+(`image:` au frontmatter), auquel cas rien n'est généré.
+
+**Ce que s53 a dû poser au-dessus du système, faute de gabarit** — quatre
+dimensions qui ne dérivent d'aucun des huit rôles typographiques ci-dessus, ni
+de l'échelle d'espacement, et qui vivent dans `scripts/og-image.ts` seul :
+
+| Dimension | Valeur posée | Pourquoi aucun rôle ne la couvre |
+|---|---|---|
+| Titre de l'image | 88 px / 600 | `display` (3 rem ≈ 48 px) est le plus grand rôle, et il est **réservé au héros marketing** (s10). Une image de 1200×630 lue en vignette demande davantage |
+| Sous-titre | 36 px / 400 | entre `display` et `h1`, aucun rôle n'existe à cette taille |
+| Marge et retrait du cadre | 64 px | l'échelle d'espacement s'arrête au rythme des sections (`py-16`/`py-24`), pensé pour un écran, pas pour un cadre de 630 px |
+| Interligne des deux textes | 24 px | idem |
+
+Un gabarit d'image sociale décrit ici les remplacerait toutes les quatre. Tant
+qu'il n'existe pas, elles sont **un emprunt nommé**, pas une extension tacite —
+et la story suivante qui touche à l'image de partage part de ce tableau.
+
 #### Échelle de prose — un corps d'article long (s29)
 
 Les huit rôles ci-dessus décrivent une **interface**. Aucun ne décrit un corps

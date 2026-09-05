@@ -1,4 +1,4 @@
-import { BLOG_KEYS, blogListView } from '@repo/module-blog'
+import { BLOG_KEYS, blogFeedPath, blogListView } from '@repo/module-blog'
 import { BlogList } from '@repo/module-blog/presentation'
 import { MarketingFooter } from '@repo/module-marketing/presentation'
 import type { Metadata } from 'next'
@@ -9,6 +9,7 @@ import { blogCatalog } from '../../lib/blog'
 import { consentFooterLinks } from '../../lib/consent'
 import { appIntl } from '../../lib/i18n'
 import { marketingFormsAvailable, marketingSite } from '../../lib/marketing'
+import { defaultLocale } from '../../../../config/i18n'
 
 /**
  * La liste des articles.
@@ -66,7 +67,16 @@ export async function generateMetadata(): Promise<Metadata> {
     title,
     description,
     openGraph: { title, description, type: 'website', locale },
-    alternates: { canonical: path(blogCatalog.index.path) },
+    alternates: {
+      canonical: path(blogCatalog.index.path),
+      // Le flux, **découvrable** : c'est ce qui le fait exister pour un
+      // agrégateur. Un flux servi que rien n'annonce répète exactement le
+      // défaut que cette story corrige — un blog en ligne et introuvable.
+      types: {
+        'application/rss+xml':
+          locale === defaultLocale ? blogFeedPath() : `${blogFeedPath()}?locale=${locale}`,
+      },
+    },
   }
 }
 
