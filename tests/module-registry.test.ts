@@ -86,6 +86,11 @@ describe('contraintes du contrat portées par le compilateur', () => {
     // écarté l'échec ne compile pas, si bien qu'un magasin indisponible ne peut
     // pas être « oublié » et laissé passer par distraction (ADR 050).
     ['un échec du port de limitation non traité', 'unhandled-rate-limit-failure.ts'],
+    // s53 : la quinzième clé est obligatoire comme les quatorze autres. Un
+    // module de contenu écrit demain et qui l'omettrait serait absent du plan
+    // de site et du `robots.txt` sans qu'aucune commande ne le dise — c'est ce
+    // que le compilateur refuse ici.
+    ['un module qui ne déclare pas ses URL publiques', 'missing-public-urls.ts'],
   ])('refuse %s', (_case, fixture) => {
     expect(diagnostics).toContain(fixture)
   })
@@ -115,6 +120,7 @@ const moduleFixture = (
   migrations: null,
   routes: [],
   navigation: [],
+  publicUrls: () => [],
   messages: { fr: {}, en: {} },
   emails: [],
   webhooks: [],

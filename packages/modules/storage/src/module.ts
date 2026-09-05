@@ -8,7 +8,7 @@ import { createStorageRoutes, storageNavigation } from './presentation/storage-r
 import { storageSchema } from './schema'
 
 /**
- * Le contrat du module `storage`, rempli — les quatorze clés.
+ * Le contrat du module `storage`, rempli — les quinze clés.
  *
  * Le point de composition du module — le seul fichier qui connaît les quatre
  * couches — vit ici, hors des couches, comme dans tout module de ce dépôt.
@@ -47,6 +47,13 @@ export const storageModule = defineModule({
   migrations: 'packages/modules/storage/migrations',
   routes: createStorageRoutes(requireStorageService),
   navigation: storageNavigation,
+  /**
+   * Aucune URL publique : ce module ne publie pas de page indexable (s53).
+   *
+   * Déclaré vide, jamais omis — le compilateur refuse l'omission
+   * (`tests/fixtures/typing/missing-public-urls.ts`).
+   */
+  publicUrls: () => [],
   messages: { fr: frMessages, en: enMessages },
   emails: [],
   webhooks: [],

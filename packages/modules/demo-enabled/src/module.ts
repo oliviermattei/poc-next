@@ -43,6 +43,13 @@ export const demoEnabledModule = defineModule({
   migrations: 'packages/modules/demo-enabled/migrations',
   routes: createDemoItemRoutes(demoItemUseCases),
   navigation: demoItemNavigation,
+  /**
+   * Aucune URL publique : ce module ne publie pas de page indexable (s53).
+   *
+   * Déclaré vide, jamais omis — le compilateur refuse l'omission
+   * (`tests/fixtures/typing/missing-public-urls.ts`).
+   */
+  publicUrls: () => [],
   messages: { fr: frMessages, en: enMessages },
   emails: [welcomeEmail],
   webhooks: createDemoWebhookHandlers(demoItemUseCases),

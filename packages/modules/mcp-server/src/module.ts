@@ -22,6 +22,13 @@ export const mcpServerModule = defineModule({
   migrations: null,
   routes: [],
   navigation: [],
+  /**
+   * Aucune URL publique : ce module ne publie pas de page indexable (s53).
+   *
+   * Déclaré vide, jamais omis — le compilateur refuse l'omission
+   * (`tests/fixtures/typing/missing-public-urls.ts`).
+   */
+  publicUrls: () => [],
   messages: { fr: frMessages, en: enMessages },
   emails: [],
   webhooks: [],

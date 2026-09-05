@@ -198,6 +198,65 @@ export interface NavigationEntry {
   readonly protection: RouteProtection
 }
 
+/**
+ * **Ce qu'un module donne à indexer** (s53, ADR 054).
+ *
+ * Le quinzième champ du contrat, et le seul qui soit une **fonction** : les URL
+ * d'un article de blog n'existent qu'après lecture du contenu, et un tableau
+ * déclaré à l'import ne pourrait pas les porter. Les deux fichiers de
+ * métadonnées de l'application (`app/robots.ts`, `app/sitemap.ts`) sont
+ * construits de **cette seule clé**, jamais d'un module nommé — c'est le
+ * critère 4 de la story, et la raison pour laquelle `marketing` y passe comme
+ * les autres.
+ *
+ * **Ce qui n'entre pas dans l'index : les entrées de navigation publiques.**
+ * Elles auraient été la source évidente, et la mesure les écarte. La
+ * configuration livrée en compte cinq — `marketing /`, `auth /sign-in`,
+ * `blog /blog`, `billing /pricing`, `demo-enabled
+ * /api/modules/demo-enabled/items` : les dériver publierait l'écran de
+ * connexion, la page de tarifs et une route d'API dans le `sitemap.xml` et le
+ * `robots.txt`. **`public` est un niveau de protection — qui peut entrer —, pas
+ * une décision d'indexation — ce qui mérite un index.** Un écran ouvert à tous
+ * n'a pas à figurer dans un moteur, et l'y mettre est la divulgation gratuite de
+ * surface que `docs/security.md` §7 refuse. Un module qui veut être indexé le
+ * **déclare ici** ; rebrancher la navigation fait rougir
+ * `tests/syndication.test.ts` et `packages/core/src/syndication.test.ts`.
+ *
+ * `locales` par entrée, et non par site : un article traduit dans une seule
+ * langue n'existe que là. Le publier dans l'autre reviendrait à annoncer une
+ * page qui répond 404.
+ */
+export interface PublicUrl {
+  /** Chemin **interne**, sans préfixe de langue et sans origine : `/blog/mon-article`. */
+  readonly path: string
+  /** Les langues dans lesquelles cette page est réellement servie. */
+  readonly locales: readonly string[]
+  /** Date de dernière modification (`AAAA-MM-JJ`), quand le module en connaît une. */
+  readonly lastModified?: string
+}
+
+/**
+ * Ce que l'application donne à un module pour qu'il sache quoi contribuer.
+ *
+ * Les langues sont celles **servies** (`localeRouting.locales`), pas celles que
+ * le projet déclare : module `i18n` coupé, l'application n'en sert qu'une, et
+ * annoncer les autres au plan de site publierait des URL qui redirigent.
+ */
+export interface PublicUrlContext {
+  readonly locales: readonly string[]
+  readonly defaultLocale: string
+}
+
+/**
+ * La contribution d'un module aux URL publiques.
+ *
+ * Rendre `[]` est la déclaration d'un module qui ne publie rien — c'est le cas
+ * de dix des douze modules du dépôt. Ce n'est pas une omission : le champ est
+ * obligatoire, et `tests/fixtures/typing/missing-public-urls.ts` compile
+ * réellement le refus.
+ */
+export type PublicUrlContribution = (context: PublicUrlContext) => readonly PublicUrl[]
+
 /** Sujet et corps d'un template d'email, pour une locale. */
 export interface EmailTemplateContent {
   readonly subject: string
@@ -346,6 +405,13 @@ export interface ModuleDefinition<
   readonly migrations: string | null
   readonly routes: readonly ModuleRoute[]
   readonly navigation: readonly NavigationEntry[]
+  /**
+   * Les URL publiques que ce module donne à indexer (s53, ADR 054).
+   *
+   * Obligatoire comme les quatorze autres clés : un module qui ne publie rien
+   * rend `[]`, il n'omet pas le champ.
+   */
+  readonly publicUrls: PublicUrlContribution
   readonly messages: Readonly<Record<TLocale, ModuleMessages>>
   readonly emails: readonly EmailTemplate<TLocale>[]
   readonly webhooks: readonly WebhookHandler[]
@@ -408,6 +474,7 @@ export function defineModule<
   readonly migrations: string | null
   readonly routes: readonly ModuleRoute[]
   readonly navigation: readonly NavigationEntry[]
+  readonly publicUrls: PublicUrlContribution
   readonly messages: Readonly<Record<TLocale, ModuleMessages>>
   readonly emails: readonly EmailTemplate<NoInfer<TLocale>>[]
   readonly webhooks: readonly WebhookHandler[]

@@ -78,7 +78,7 @@ const APP_URL = 'http://localhost:3000'
  * service — lequel demande un mailer, un secret et une URL publique, c'est-à-dire
  * tout ce que cette suite n'a pas à monter pour parler de fichiers.
  *
- * Ce qui est doublé ici est donc un **contrat**, pas une règle : quatorze clés
+ * Ce qui est doublé ici est donc un **contrat**, pas une règle : toutes les clés
  * vides, et une purge qui enregistre l'état de la table de fichiers **au moment
  * où elle s'exécute**. C'est ce qui rend l'ordre d'ADR 029 observable — le
  * dépendant avant son requis — au lieu d'être affirmé.
@@ -92,6 +92,7 @@ const authStandIn = defineModule({
   migrations: null,
   routes: [],
   navigation: [],
+  publicUrls: () => [],
   messages: { fr: {}, en: {} },
   emails: [],
   webhooks: [],

@@ -1,4 +1,5 @@
 import { getNodeEnv } from '@repo/config'
+import { carriesLocalePrefix } from '@repo/core'
 import { NextResponse, type NextRequest } from 'next/server'
 
 import { contentSecurityPolicySources } from '../../config/security'
@@ -43,43 +44,15 @@ import { CSP_REPORT_PATH, NONCE_HEADER, policyMode, securityHeaders } from './li
  * l'utilisateur l'avait choisie.
  */
 /**
- * Ce qui **ne porte pas** de préfixe de locale.
+ * Ce qui **ne porte pas** de préfixe de locale : `carriesLocalePrefix`, de
+ * `@repo/core`.
  *
- * C'était le motif du `matcher` jusqu'à s45 — `'/((?!api|_next|favicon.ico|.*\\..*).*)'` —
- * et l'élargir aux routes d'API et aux fichiers racine pour y poser les en-têtes
- * de sécurité obligeait à ramener l'exclusion ici. Ses **quatre** alternatives
- * sont donc reprises une à une, dans l'ordre où il les écrivait :
- *
- * 1. `/api…` — les routes que le registre monte n'héritent d'aucun préfixe.
- *    Les préfixer casserait chaque lien envoyé par email et chaque appel des
- *    formulaires ;
- * 2. `/_next…` — les points d'entrée internes de Next. Le `matcher` n'en exclut
- *    plus que `_next/static` et `_next/image`, parce que le reste doit porter
- *    les en-têtes ; il n'a jamais porté de préfixe de locale pour autant ;
- * 3. `/favicon.ico`, que le motif nommait ;
- * 4. **un point n'importe où** dans le chemin — `/robots.txt`, `/sitemap.xml`,
- *    mais aussi `/v1.2/page`. Sans ce cas, `canonicalPath('/robots.txt')`
- *    redirige vers `/fr/robots.txt` et le plan de site cesse d'être servi.
- *
- * La première écriture de s45 ne cherchait le point que sur le **dernier**
- * segment et laissait tomber `_next` : la revue a mesuré que `/v1.2/page` et
- * `/_next/quelque-chose` recevaient alors une redirection de locale qu'ils
- * n'avaient jamais reçue. Aucune route de cette forme n'existe aujourd'hui —
- * raison de plus pour que la propriété affirmée ici soit vraie, plutôt que
- * vraie par chance.
+ * La règle vivait ici — elle était le motif du `matcher` jusqu'à s45. Elle est
+ * montée dans le socle en s53 parce qu'un **second appelant** en a besoin : la
+ * dérivation des URL indexables (`apps/web/lib/public-urls.ts`) applique
+ * `publicPath`, qui préfixe sans condition. Deux écritures de la même règle
+ * auraient divergé au premier module contribuant l'URL d'une route montée.
  */
-const carriesLocalePrefix = (pathname: string): boolean => {
-  // Le motif s'appliquait au chemin **sans** sa barre oblique de tête : ses
-  // alternatives se lisent donc à partir du premier caractère utile.
-  const route = pathname.slice(1)
-
-  return !(
-    route.startsWith('api') ||
-    route.startsWith('_next') ||
-    route.startsWith('favicon.ico') ||
-    route.includes('.')
-  )
-}
 
 export function proxy(request: NextRequest): NextResponse {
   const { pathname, search } = request.nextUrl

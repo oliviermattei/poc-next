@@ -8,7 +8,7 @@ import { billingNavigation, createBillingRoutes } from './presentation/billing-r
 import { billingSchema } from './schema'
 
 /**
- * Le contrat du module `billing`, rempli — les quatorze clés.
+ * Le contrat du module `billing`, rempli — les quinze clés.
  *
  * Le point de composition du module — le seul fichier qui connaisse les quatre
  * couches — vit ici, hors des couches, comme dans tout module de ce dépôt.
@@ -46,6 +46,13 @@ export const billingModule = defineModule({
   migrations: 'packages/modules/billing/migrations',
   routes: createBillingRoutes(requireBillingService),
   navigation: billingNavigation,
+  /**
+   * Aucune URL publique : ce module ne publie pas de page indexable (s53).
+   *
+   * Déclaré vide, jamais omis — le compilateur refuse l'omission
+   * (`tests/fixtures/typing/missing-public-urls.ts`).
+   */
+  publicUrls: () => [],
   messages: { fr: frMessages, en: enMessages },
   emails: [],
   webhooks: [],

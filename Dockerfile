@@ -96,6 +96,9 @@ RUN addgroup -S app && adduser -S app -G app
 # Les fichiers statiques ne sont pas tracés par Next : ils se recopient à côté.
 COPY --from=builder --chown=app:app /repo/apps/web/.next/standalone ./
 COPY --from=builder --chown=app:app /repo/apps/web/.next/static ./apps/web/.next/static
+# `public/` n'est pas tracé non plus (s53) : l'image de partage par défaut y
+# vit, et une balise `og:image` qui pointe vers un 404 ne montre aucun aperçu.
+COPY --from=builder --chown=app:app /repo/apps/web/public ./apps/web/public
 
 USER app
 

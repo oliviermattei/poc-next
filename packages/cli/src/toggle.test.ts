@@ -33,6 +33,7 @@ const moduleFor = (id: string, requires: readonly string[] = []) =>
     migrations: `packages/modules/${id}/migrations`,
     routes: [],
     navigation: [],
+    publicUrls: () => [],
     messages: { fr: {} },
     emails: [],
     webhooks: [],

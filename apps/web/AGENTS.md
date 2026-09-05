@@ -40,6 +40,8 @@ module (`packages/modules/<module>/src/domain`).
   décompte. D'autres fichiers de `lib/` importent un module **déjà monté** pour
   en composer un service — `lib/billing-catalogue.ts`, `lib/billing-permission.ts`,
   `lib/blog-body.tsx`, `lib/guest-account.ts`, `lib/module-services.ts`,
+  `lib/module-content.ts` et `lib/public-urls.ts` (la syndication, s53 — le
+  second ne nomme aucun module, il n'en **parle** que dans sa règle),
   `lib/rate-limit.ts` (le seau de limitation de débit, s28) et `lib/seat-sync.ts`.
   La liste qui fait foi est **dérivée du disque** par `tests/agents-md.test.ts` :
   un fichier de `lib/` qui importe un module sans être nommé ici fait rougir
@@ -422,9 +424,10 @@ Deux fichiers, sur le modèle exact de l'i18n :
   et le seul qui regarde s'il est activé. Il rend un `MarketingSite` dont la
   **forme est la même dans les deux états** : trois listes, vides quand le
   module est coupé ;
-- `app/page.tsx`, `app/legal/[document]/page.tsx`, `app/contact/page.tsx`,
-  `app/sitemap.ts` et `app/robots.ts` **lisent** ce site sans jamais nommer de
-  module. La racine a
+- `app/page.tsx`, `app/legal/[document]/page.tsx` et `app/contact/page.tsx`
+  **lisent** ce site sans jamais nommer de module. Depuis s53,
+  `app/sitemap.ts` et `app/robots.ts` ne le lisent plus du tout : ils lisent le
+  **registre** (voir « La syndication » plus bas). La racine a
   trois branches — tableau de bord pour un visiteur connecté, accueil marketing
   pour un visiteur anonyme, redirection vers la connexion quand il n'y a pas de
   section — et les deux dernières se départagent sur `sections.length`,
@@ -439,7 +442,7 @@ la section fautive.
 n'est pas une commodité : ce sont des route handlers que Next met en cache par
 défaut, donc évalués pendant `next build` — où `getEnv()` ne valide rien et où la
 CI ne pose aucune `APP_URL`. Un plan de site figé au build porterait `undefined`
-dans chacune de ses URL.
+dans chacune de ses URL, et gèlerait le catalogue d'articles avec elles.
 
 **Le service du module, lui, est câblé dans `lib/module-services.ts`** et non
 dans `lib/marketing.ts`, contrairement aux organisations. La raison est mesurée :
@@ -454,7 +457,8 @@ et n'a pas le droit de lire ses tables.
 
 `/contact` est déclaré dans `publicPaths` : il entre donc dans le `sitemap.xml`
 et obtient son `Allow: /<langue>/contact$` **ancré** dans le `robots.txt`, sans
-qu'aucune liste ne soit recopiée. Son segment est aussi **réservé** dans
+qu'aucune liste ne soit recopiée — le module contribue désormais ces chemins par
+la quinzième clé du contrat, comme n'importe quel module de contenu (ADR 054). Son segment est aussi **réservé** dans
 `lib/organizations.ts` — `tests/organizations.test.ts` dérive du disque les
 segments de premier niveau et exige que chacun soit refusé à une organisation.
 
@@ -589,11 +593,52 @@ Le segment `blog` est **réservé** dans `lib/organizations.ts`, comme tout écr
 servi par l'application : ses fichiers existent sur le disque même quand le
 module est coupé, et c'est du disque que `tests/organizations.test.ts` dérive.
 
-**Ce que cette story ne fait pas, et volontairement** : ni flux RSS, ni image
-Open Graph par défaut, ni contribution au plan de site — `apps/web/app/sitemap.ts`
-et `apps/web/app/robots.ts` ne connaissent pas le blog, donc `robots.txt`
-**n'autorise pas** `/blog`. C'est `s53-blog-syndication`, qui doit trancher au
-passage s'il faut une quinzième clé au contrat de module.
+**Ce que s53 a ajouté** : le blog est **trouvable**. `robots.txt` autorise
+`/blog` et chaque article, `sitemap.xml` les référence avec leurs alternates de
+langue, le module sert un flux RSS (`/api/modules/blog/feed.xml`, un document
+par langue servie via `?locale=`), et un article sans image de partage retombe
+sur `/og-default.png`. Le mécanisme est décrit ci-dessous ; la décision, dans
+l'ADR 054.
+
+## La syndication (s53)
+
+**Deux fichiers de l'application ne connaissent plus aucun module**, et c'est
+tout le sujet : `app/robots.ts` et `app/sitemap.ts` lisent `lib/public-urls.ts`,
+qui agrège ce que les modules **activés** déclarent publier (`publicUrls`, la
+quinzième clé du contrat). Un `grep '@repo/module-'` sur ces deux fichiers doit
+revenir vide.
+
+| Fichier | Ce qu'il porte |
+|---|---|
+| `lib/public-urls.ts` | la dérivation : les contributions du registre, et `servedPath`, qui ne préfixe de langue que ce que l'application sert ainsi |
+| `lib/module-content.ts` | **la seule énumération de modules de contenu du dépôt** : elle remet à `marketing` et à `blog` ce qu'ils ne peuvent pas se procurer (chemins validés, catalogue lu sur le disque). Ce n'est pas une condition — un module coupé n'est pas dans le registre, sa contribution n'est jamais demandée |
+| `lib/og-image.ts` | l'image de partage par défaut, un fichier statique de `public/` |
+
+**Ce qui n'entre pas dans l'index, et il faut le savoir avant de « réparer »
+la dérivation** : une entrée de navigation **publique** n'est pas une URL
+indexable. La configuration livrée en compte cinq — `marketing /`,
+`auth /sign-in`, `blog /blog`, `billing /pricing`,
+`demo-enabled /api/modules/demo-enabled/items` — et en dériver l'index aurait
+publié l'écran de connexion et une route d'API. `tests/syndication.test.ts`
+porte le cas ; il rougit si quelqu'un rebranche la navigation.
+
+**Un changement de comportement assumé** : `robotsPolicy` n'annonce aucun plan
+de site quand rien n'est public. La liste ne venant plus d'un seul module, une
+installation « site public coupé, blog activé » **réaffiche** la ligne
+`Sitemap:` là où elle était tue. Les deux configurations sont mesurées.
+
+**L'image Open Graph par défaut est un fichier statique**, `public/og-default.png`,
+produit par `scripts/og-image.ts` depuis les jetons de `packages/ui/src/styles.css`
+et la police du design system. Ce n'est pas un gabarit rendu à la requête :
+`next/og` n'existe nulle part ici et le design system n'a **ni gabarit d'image
+sociale, ni dimensions, ni marges de sécurité** — c'est le manque n°2 de
+`docs/designs/s29-blog-mdx.md`, **signalé et toujours pas comblé**. Deux
+conséquences : `Dockerfile` recopie `apps/web/public` (la sortie autonome ne
+trace pas ce dossier, `tests/deployment.test.ts` le garde), et `app/layout.tsx`
+pose `metadataBase` depuis `APP_URL` — sans elle, Next rend les URL de
+métadonnées absolues contre `http://localhost:3000` et **publie** cette adresse.
+Aucune origine n'entre dans la politique de sécurité du contenu : l'image est
+servie par l'application.
 
 ## Les en-têtes de sécurité et la politique de sécurité du contenu (s45)
 

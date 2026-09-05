@@ -1,9 +1,12 @@
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 
+import { carriesLocalePrefix } from '@repo/core'
+
 import {
   EMPTY_BLOG_CATALOG,
   blogModule,
+  provideBlogContent,
   readArticleDirectory,
   resolveBlogCatalog,
   type BlogCatalog,
@@ -12,6 +15,7 @@ import {
 import { appLocales } from '../../../config/i18n'
 import { localeRouting } from './locale-routing'
 import { moduleRegistry } from './module-registry'
+import { absoluteUrl, resolveSiteUrl } from './site-url'
 
 /**
  * Le point de composition du blog — le même modèle que `lib/marketing.ts`
@@ -87,3 +91,32 @@ export const blogCatalog: BlogCatalog = moduleRegistry.moduleIds.includes(blogMo
       pageSize: PAGE_SIZE,
     })
   : EMPTY_BLOG_CATALOG
+
+/**
+ * Donne au module son catalogue et de quoi construire une URL absolue (s53).
+ *
+ * C'est **ici** que le module est nommé — le rôle de ce fichier —, si bien que
+ * le flux, le plan de site et le `robots.txt` n'ont personne à connaître.
+ *
+ * `url` est une **fonction** : elle appelle `resolveSiteUrl()` à l'invocation,
+ * et `APP_URL` n'est validée qu'à l'exécution. Une URL de site capturée ici
+ * serait celle du build, où l'intégration continue n'en pose aucune — c'est la
+ * raison qui fait déjà porter `force-dynamic` aux deux fichiers de métadonnées.
+ *
+ * Le chemin passe par la **même** mise en forme que les liens des écrans, et il
+ * n'est préfixé que s'il en porte un : `carriesLocalePrefix` écarte ce que
+ * l'application ne sert pas sous une langue (`/api…`), là où `publicPath`
+ * préfixe sans condition.
+ */
+export function prepareBlogContent(): void {
+  provideBlogContent(() => ({
+    catalog: blogCatalog,
+    locales: localeRouting.locales,
+    defaultLocale: localeRouting.defaultLocale,
+    url: (pathname, locale) =>
+      absoluteUrl(
+        carriesLocalePrefix(pathname) ? localeRouting.publicPath(pathname, locale) : pathname,
+        resolveSiteUrl(),
+      ),
+  }))
+}

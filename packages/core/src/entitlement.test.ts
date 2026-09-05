@@ -174,6 +174,7 @@ describe('la couverture des routes réservées par les déclarations', () => {
       migrations: null,
       routes,
       navigation: entries,
+      publicUrls: () => [],
       messages: { fr: Object.fromEntries(entries.map((entry) => [entry.labelKey, entry.id])) },
       emails: [],
       webhooks: [],

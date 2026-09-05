@@ -22,6 +22,7 @@ const moduleFor = (id: string) =>
     migrations: null,
     routes: [],
     navigation: [],
+    publicUrls: () => [],
     messages: { fr: {} },
     emails: [],
     webhooks: [],
@@ -59,29 +60,22 @@ describe('ks scaffold — le plan', () => {
 })
 
 describe('ks scaffold — le contenu généré', () => {
-  it('rend un contrat conforme aux 13 clés (ADR 007), rien omis', () => {
+  it('rend un contrat portant **toutes** les clés du contrat, rien omis', () => {
+    // La liste attendue est **dérivée** d'un module réel, jamais recopiée : la
+    // version précédente énumérait quatorze littéraux sous un titre qui en
+    // annonçait treize, et la quinzième clé (s53) serait passée sans un mot.
+    // Ici, le contrat gagne une clé et ce cas rougit tant que le squelette ne
+    // la génère pas.
     const files = scaffoldFiles('roadmap')
     const moduleFile = files.find((file) => file.path === 'src/module.ts')
+    const contractKeys = Object.keys(moduleFor('reference'))
 
-    expect(moduleFile).toBeDefined();
+    expect(moduleFile).toBeDefined()
+    // Garde contre l'inertie : une dérivation vide passerait sur rien.
+    expect(contractKeys.length).toBeGreaterThan(10)
 
-    for (const key of [
-      'id:',
-      'requires:',
-      'schema:',
-      'migrations:',
-      'routes:',
-      'navigation:',
-      'messages:',
-      'emails:',
-      'webhooks:',
-      'jobs:',
-      'dataCategories:',
-      'retention:',
-      'purge:',
-      'export:',
-    ]) {
-      expect(moduleFile?.content).toContain(key)
+    for (const key of contractKeys) {
+      expect(moduleFile?.content, key).toContain(`${key}:`)
     }
   })
 
@@ -100,6 +94,7 @@ describe('ks scaffold — le contenu généré', () => {
         migrations: null,
         routes: [],
         navigation: [],
+        publicUrls: () => [],
         messages,
         emails: [],
         webhooks: [],

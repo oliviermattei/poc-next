@@ -12,7 +12,7 @@ import {
 import { organizationsSchema } from './schema'
 
 /**
- * Le contrat du module `organizations`, rempli — les quatorze clés.
+ * Le contrat du module `organizations`, rempli — les quinze clés.
  *
  * Le point de composition du module — le seul fichier qui connaît les quatre
  * couches — vit ici, hors des couches, comme dans tout module de ce dépôt.
@@ -36,6 +36,13 @@ export const organizationsModule = defineModule({
   migrations: 'packages/modules/organizations/migrations',
   routes: createOrganizationRoutes(requireOrganizationsService),
   navigation: organizationsNavigation,
+  /**
+   * Aucune URL publique : ce module ne publie pas de page indexable (s53).
+   *
+   * Déclaré vide, jamais omis — le compilateur refuse l'omission
+   * (`tests/fixtures/typing/missing-public-urls.ts`).
+   */
+  publicUrls: () => [],
   messages: { fr: frMessages, en: enMessages },
   // Un seul template, livré dans **les deux locales du module** : le contrat
   // indexe `emails[].locales` par les locales de `messages`, donc un template

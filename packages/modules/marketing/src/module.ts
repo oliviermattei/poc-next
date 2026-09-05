@@ -3,6 +3,7 @@ import { defineModule, type NavigationEntry } from '@repo/core'
 import { MARKETING_MODULE_ID } from './domain/marketing-config'
 import { contactMessageEmail } from './emails/contact-message'
 import { newsletterConfirmationEmail } from './emails/newsletter-confirmation'
+import { marketingPublicUrls } from './infrastructure/marketing-content'
 import { requireMarketingService } from './infrastructure/marketing-runtime'
 import enMessages from './messages/en.json' with { type: 'json' }
 import frMessages from './messages/fr.json' with { type: 'json' }
@@ -33,7 +34,7 @@ const marketingNavigation: readonly NavigationEntry[] = [
 ]
 
 /**
- * Le contrat du module `marketing`, rempli — les quatorze clés.
+ * Le contrat du module `marketing`, rempli — les quinze clés.
  *
  * Ce que ce module apporte d'abord, ce sont des **pages** (accueil, mentions
  * légales, contact), que seule l'application peut servir — un `ModuleRoute` est
@@ -65,6 +66,12 @@ export const marketingModule = defineModule({
   migrations: 'packages/modules/marketing/migrations',
   routes: createPublicFormRoutes(requireMarketingService),
   navigation: marketingNavigation,
+  /**
+   * Les chemins publics du site, contribués comme n'importe quel module de
+   * contenu (s53, ADR 054) — accueil, contact et pages légales. Le contenu vient
+   * du point de composition de l'application, qui valide `config/marketing.ts`.
+   */
+  publicUrls: marketingPublicUrls,
   messages: { fr: frMessages, en: enMessages },
   emails: [contactMessageEmail, newsletterConfirmationEmail],
   webhooks: [],

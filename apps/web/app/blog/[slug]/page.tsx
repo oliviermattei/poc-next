@@ -7,6 +7,7 @@ import { z } from 'zod'
 
 import { blogCatalog } from '../../../lib/blog'
 import { articleBody } from '../../../lib/blog-body'
+import { DEFAULT_OG_IMAGE } from '../../../lib/og-image'
 import { consentFooterLinks } from '../../../lib/consent'
 import { appIntl } from '../../../lib/i18n'
 import { marketingFormsAvailable, marketingSite } from '../../../lib/marketing'
@@ -60,6 +61,10 @@ export async function generateMetadata({
       publishedTime: article.date,
       authors: [article.author],
       tags: [...article.tags],
+      // L'image de partage de l'article, ou celle de l'application. Un article
+      // sans image serait partagé sans aperçu, c'est-à-dire à peu près jamais
+      // (critère 3 de s53).
+      images: [article.image ?? DEFAULT_OG_IMAGE],
     },
     // La canonique est l'URL **servie dans cette langue** : la même valeur en
     // `fr` et en `en` fusionnerait les deux versions pour un moteur.

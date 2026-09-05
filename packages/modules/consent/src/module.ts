@@ -7,7 +7,7 @@ import frMessages from './messages/fr.json' with { type: 'json' }
 import { createConsentRoutes } from './presentation/consent-routes'
 
 /**
- * Le contrat du module `consent`, rempli — les quatorze clés.
+ * Le contrat du module `consent`, rempli — les quinze clés.
  *
  * **Il ne persiste rien** (ADR 035). `schema`, `migrations`, `dataCategories` et
  * `retention` sont vides parce que le choix d'un visiteur vit sur l'appareil de
@@ -50,6 +50,13 @@ export const consentModule = defineModule({
    * qui n'a pas de barre latérale à lui.
    */
   navigation: [],
+  /**
+   * Aucune URL publique : ce module ne publie pas de page indexable (s53).
+   *
+   * Déclaré vide, jamais omis — le compilateur refuse l'omission
+   * (`tests/fixtures/typing/missing-public-urls.ts`).
+   */
+  publicUrls: () => [],
   messages: { fr: frMessages, en: enMessages },
   emails: [],
   webhooks: [],

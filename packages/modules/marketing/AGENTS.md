@@ -17,7 +17,8 @@ quelqu'un qui n'a pas de compte.
 | La validation de cette configuration | `src/domain/marketing-config.ts` | une configuration est une frontière (`docs/security.md` §4) |
 | La validation d'une **soumission** | `src/domain/public-forms.ts` | un corps de requête est une frontière, au même titre |
 | Les clés qu'une configuration exige | `src/domain/message-keys.ts` | ces clés sont **composées**, donc invisibles au balayage statique de `tests/i18n.test.ts` |
-| Le plan de site et la politique des robots | `src/domain/seo.ts` | fonctions pures : elles reçoivent les chemins et une façon de faire une URL |
+| Le plan de site et la politique des robots | `packages/core/src/syndication.ts` | **montées dans le socle en s53** (ADR 054) : `app/robots.ts` et `app/sitemap.ts` ne doivent connaître aucun module par son nom, et ces fonctions n'ont jamais rien eu de marketing |
+| Ce que ce module **donne à indexer** | `src/infrastructure/marketing-content.ts` | la quinzième clé du contrat : ses chemins publics, fournis par le point de composition qui valide `config/marketing.ts` |
 | Les **règles** des deux formulaires | `src/application/public-forms.ts` | ce que la route rend, ce qui est écrit, ce qui est envoyé |
 | Les **pages** | `apps/web/app/page.tsx`, `apps/web/app/legal/[document]/page.tsx`, `apps/web/app/contact/page.tsx` | un `ModuleRoute` est monté sous `/api/modules/…` (ADR 017), ce n'est pas un écran |
 | Le **formulaire** interactif | `apps/web/app/public-form.tsx` | il appelle `fetch`, ce qu'un module n'a pas le droit de faire — voir plus bas |

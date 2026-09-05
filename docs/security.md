@@ -137,6 +137,25 @@
   dans la politique de sécurité du contenu — le navigateur bloquerait sinon le
   widget et fermerait le formulaire sans un mot. **Aucun fournisseur n'est
   branché** : c'est un manque nommé, pas une fonctionnalité.
+- **Aucun écran applicatif dans un index public.** `robots.txt` et `sitemap.xml`
+  n'annoncent que ce qu'un module **déclare** publier (`publicUrls`, ADR 054).
+  Une page ouverte à tous n'y entre pas pour autant : `public` est un niveau de
+  **protection** — qui peut entrer —, pas une décision d'**indexation** — ce qui
+  mérite un index. Publier `/sign-in`, `/pricing` ou une route d'API dans un
+  moteur ne contourne aucune autorisation ; ça dresse la carte de la surface de
+  l'application pour qui la cherche, et la tient à jour tout seul à chaque story
+  suivante. Le contrôle est **dérivé** : aucun chemin n'y est nommé, et la règle
+  est celle-ci depuis s10, promue en contrôle par s53 — six citations la
+  désignaient sans qu'elle soit écrite.
+
+  | Ce qui est tenu | Où | Ce qui échoue si on le viole |
+  |---|---|---|
+  | Ce que le `robots.txt` autorise est confronté à **chaque écran du disque**, dans chaque langue servie, et lu **par préfixe** comme un robot le lit | balayage de `apps/web/app` | `pnpm test` (`tests/marketing.test.ts`) |
+  | Une entrée de navigation **publique** n'entre ni dans le plan de site, ni dans la liste d'autorisation | `indexableUrls` (`@repo/core`), qui ne lit que la clé `publicUrls` | `pnpm test` (`tests/syndication.test.ts`, `packages/core/src/syndication.test.ts`) — rebrancher la navigation les fait rougir : mutation du 5 septembre 2026, **7 cas** |
+  | Trois chemins privés servis — `/account`, `/sign-in`, `/reset-password?token=…` — restent hors du fichier **réellement servi** | `PRIVATE_PATHS` | `pnpm test:e2e` (`e2e/marketing.spec.ts`) |
+
+  Aucun plan de site n'est annoncé quand aucun module ne publie : une adresse
+  qui ne référence rien est une invitation à chercher.
 - Aucune information exploitable dans une réponse d'erreur publique : pas d'énumération de comptes, pas de différence de temps de réponse observable.
 
 ## Comment une story démontre sa conformité

@@ -9,6 +9,7 @@ import type { ReactNode } from 'react'
 
 import { currentLocale } from '../lib/current-locale'
 import { NONCE_HEADER } from '../lib/security-headers'
+import { metadataBaseUrl } from '../lib/site-url'
 import { AppShell } from './app-shell'
 import './globals.css'
 
@@ -24,9 +25,16 @@ export const viewport: Viewport = {
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations()
 
+  const metadataBase = metadataBaseUrl()
+
   return {
     title: t('app.metadata.title'),
     description: t('app.metadata.description'),
+    // L'origine contre laquelle Next rend absolues les URL relatives des
+    // métadonnées — canoniques, alternates de langue, image de partage (s53).
+    // Sans elle, Next retombe sur `http://localhost:3000` et **publie** cette
+    // adresse dans les balises servies en production.
+    ...(metadataBase === null ? {} : { metadataBase }),
   }
 }
 

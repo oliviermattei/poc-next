@@ -118,9 +118,8 @@ export {
   marketingMessageKeys,
 } from './domain/message-keys'
 export {
-  marketingRobotsPolicy,
-  marketingSitemapEntries,
-  robotsAllows,
-  type RobotsPolicy,
-  type SitemapEntry,
-} from './domain/seo'
+  marketingPublicUrls,
+  provideMarketingContent,
+  resetMarketingContent,
+  MarketingContentNotProvidedError,
+} from './infrastructure/marketing-content'
