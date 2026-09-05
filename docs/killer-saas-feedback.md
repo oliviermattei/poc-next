@@ -581,6 +581,44 @@ Au recalcul indépendant, c'est le **chiffre** qui était faux (5,82 : 1), pas l
 
 **Où cela mord** : à ce jour, aucune commande ne relit une table de mesures d'un document de recherche. Le plan de s49 a rattrapé celle-ci parce qu'il refaisait le calcul pour choisir des valeurs — donc par chance, pas par dispositif. Piste, non implémentée : quand une recherche pose un seuil et une table, le plan qui s'en sert **recalcule au moins une ligne** et dit laquelle.
 
+## P21 — Le numéro d'ADR s'attribue à la fusion, pas à l'écriture
+
+**Observé en s49, et c'est la deuxième fois.** Le 01/09 déjà, deux voies avaient
+pris le même numéro d'ADR sans que git bronche. Le correctif inscrit au journal
+était une **réservation** — « deux numéros par voie ». C'est une convention
+tenue de tête. Aucune commande ne la vérifie, et elle a cédé.
+
+Aujourd'hui, `feature/s30-docs-site` (demande de fusion 12, ouverte) porte
+`055-l-echelle-de-prose-vit-dans-le-design-system…` et `feature/s49-contraste-des-alertes`
+a écrit `055-le-texte-sur-teinte-a-sa-propre-famille-de-jetons`. **Noms de
+fichiers différents, donc aucun conflit git** : les deux ADR auraient atterri
+sur `dev`, tous deux numérotés 055, et rien n'aurait rougi. Vérifié :
+`ls docs/decisions/ | sed 's/-.*//' | sort | uniq -d` ne renvoie rien
+aujourd'hui — et ne renverrait quelque chose qu'**après** la double fusion.
+
+**Pourquoi la réservation ne pouvait pas tenir.** Elle demande à chaque voie de
+connaître les numéros pris par les voies concurrentes, y compris celles qui
+n'existaient pas quand elle a commencé. s49 a été écrite après s30 mais planifiée
+sans lire les branches ouvertes ; la réservation supposait un ordre que le
+travail en parallèle n'a pas.
+
+**Correctif proposé, en deux temps :**
+
+1. **Un test d'unicité dans le dépôt** — le préfixe numérique de
+   `docs/decisions/` n'a pas de doublon. Il ne *prévient* pas la collision (une
+   branche ne voit pas les autres), mais il la fait rougir **au premier merge
+   qui la crée**, au lieu de la laisser vivre indéfiniment. Coût : trois lignes.
+2. **La prévention réelle : numéroter à la fusion, pas à l'écriture.** Pendant la
+   story, l'ADR vit sous son slug seul. `/ks-ship` lui attribue le premier
+   numéro libre sur la branche par défaut, au moment où il connaît l'état réel.
+   Deux voies concurrentes reçoivent alors deux numéros différents par
+   construction, sans que ni l'une ni l'autre ait à savoir que l'autre existe.
+
+**La leçon générale, et c'est P4 encore une fois** : le correctif du 01/09 a
+transformé un défaut mécanique en règle de discipline. Une règle de discipline
+n'a pas de dispositif ; elle a une durée de vie. Celle-ci a tenu quatre jours.
+
+
 
 ---
 
@@ -939,6 +977,7 @@ Au recalcul indépendant, c'est le **chiffre** qui était faux (5,82 : 1), pas l
 | 04/09 | La contrainte de brancher avant de chercher vient d'`AGENTS.md`, pas du PRD | commiter la recherche sur la branche par défaut | P17 |
 | 04/09 | La revue bloque 18 à 31 min par ronde, contexte principal inoccupé | chercher la story suivante pendant, worktree nu à 9 Mo | P18 |
 | 05/09 | Une recherche conclut « le mode sombre passe partout » six lignes sous sa propre table qui donne 4,41 : 1 pour un seuil à 4,5 | recalcul indépendant au plan : le chiffre était faux (5,82), la conclusion juste ; l'écart est écrit dans le plan | P20 |
+| 05/09 | Deux branches ouvertes portant chacune un ADR 055, sous des noms différents : git ne conflit pas | renumérotation de s49 en 056 ; le correctif du 01/09 était une convention sans commande | P21 |
 
 ---
 
