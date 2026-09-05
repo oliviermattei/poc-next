@@ -4,53 +4,54 @@
 
 ## REPRENDRE ICI
 
-**s29-blog-mdx est fusionnée** (demande de fusion 10, squash `b0dda43`) — le
-douzième module, et la première story de fonctionnalité après trois stories de
-harnais. Worktree, branche, conteneur et volume supprimés.
+**s53-blog-syndication est fusionnée** (demande de fusion 11, squash `0e7e313`).
+Le blog est désormais **trouvable** : `robots.txt` l'autorise, `sitemap.xml` porte
+ses articles, un flux RSS est servi, et une image Open Graph par défaut existe.
 
-**La suite immédiate est `s53-blog-syndication`, et elle n'est pas optionnelle.**
-`robots.txt` interdit `/blog` et le plan de site l'ignore : le blog est livré,
-activé, lisible — et introuvable. C'est le prix assumé de la découpe de s29, et
-s53 porte désormais le critère explicite « `robots.txt` autorise `/blog` ». Elle
-porte aussi la **quinzième clé du contrat de module**, pour la forme
-contributive.
+**Le dépôt a une quinzième clé de contrat : `publicUrls`.** Un module déclare les
+URL qu'il publie ; le socle les agrège. Conséquence vérifiable d'un `grep` :
+`apps/web/app/robots.ts` et `apps/web/app/sitemap.ts` ne connaissent **plus aucun
+module par son nom**. ADR 054.
 
-**Trois choses que s29 laisse au dépôt, au-delà de son périmètre :**
+**Ce que la navigation publique du registre n'alimente pas, et pourquoi.** Le plan
+voulait dériver la liste d'autorisation des entrées de navigation publiques.
+Mesuré : il y en a **cinq**, dont `auth /sign-in`, `billing /pricing` et une route
+d'API. Dériver de là publiait l'écran de connexion dans le plan de site. Seule la
+clé alimente la dérivation, et rebrancher la navigation fait rougir **8 cas** plus
+2 parcours navigateur.
 
-1. **Un `loading.tsx` transforme un `notFound()` en HTTP 200.** La coquille est
-   vidée avant que la page ne décide. Mesuré sur trois placements ; un groupe de
-   routes scope bien la frontière, contrairement à ce qu'on a d'abord écrit. La
-   contrainte **attend s30 et s31 au même endroit**.
-2. **Une garde générique le referme** : toute adresse de navigation déclarée par
-   un module coupé doit répondre **404 sur une requête HTTP réelle**
-   (`e2e/minimal-profile/minimal-profile.spec.ts`). Dérivée du contrat, ne
-   nommant aucun module, cinq adresses aujourd'hui, avec **son propre plancher**
-   — le plancher partagé de la recette l'aurait laissée passer.
-3. **L'échelle de prose** est posée dans `docs/design-system.md`, dérivée des
-   huit rôles existants. s30 et s31 en héritent.
+**Un critère est livré non tenu, et déclaré comme tel.** Le critère 2 de s53
+demandait un flux « valide **au sens d'un validateur** ». Le dépôt n'embarque
+aucun validateur : il embarque un **analyseur**, dont la revue a mesuré la
+complaisance (il accepte un canal sans titre ni lien ni description). Un cas fixe
+désormais les deux bords de l'outil pour que la phrase ne se regonfle pas. Le
+tenir demanderait une dépendance de validation ou un appel au W3C — **décision
+non prise**.
 
-**Ce qui n'est pas livré, et sa case le dit** : l'état de chargement de la liste.
-Le squelette a été retiré, et `packages/ui/src/components/skeleton.tsx` avec lui.
+**Cinq intermittents connus, tous dans `s52-derniers-intermittents`** :
+`tests/audit-exceptions.test.ts`, `e2e/rate-limiting.spec.ts:38`, la **paire**
+`e2e/oauth.spec.ts:30`/`:97` (identité partagée du fournisseur local, cause
+connue), `e2e/blog.spec.ts:134` (`ECONNRESET`), et `e2e/two-factor.spec.ts:162`
+— ce dernier d'un **mode d'échec distinct** de celui que s50 a réparé : une
+région `status` qui n'apparaît pas, pas un budget de 30 s dépassé.
 
-**Deux manquements de procédure du contexte principal, écrits dans le rapport de
-revue** : le rapport du premier tour n'avait pas été écrit avant d'enchaîner sur
-le correctif, et il a ensuite été écrit dans le worktree pendant qu'un relecteur
-y mesurait. Les deux sont enregistrés dans `docs/killer-saas-feedback.md`.
+**Six recherches d'avance sont sur `dev`**, prêtes à planifier : `s30` (**4**, et
+elle dépendait de s53 sans le déclarer — c'est levé), `s32` (4), `s37` (**5,
+découpe requise**), `s47` (2), `s49` (2).
 
-**Cinq recherches d'avance sont sur `dev`**, prêtes à planifier : `s32` (4),
-`s37` (**5, découpe requise en s37a/b/c**), `s47` (2), `s49` (2) — et `s53`, qui
-n'en a pas encore.
+**La forme symétrique du contrat reste ouverte pour s32** : un chemin du socle qui
+consulte un module optionnel avec une absence définie. s37 en héritera.
 
-Premier numéro d'ADR libre : **054**.
+Premier numéro d'ADR libre : **055**.
 
 ## Où on en est
 
 | | |
 |---|---|
-| Stories closes | **34 sur 53** (s01 → s29, s36, s41, s45, s48, s50) |
-| En vol | aucune — s53 est la suite immédiate |
-| Restantes | 19 — dont s49, s51, s52 et s53, nées de constats de revue |
-| Tests | **2030 + 8 sautés**, 105 parcours navigateur |
+| Stories closes | **35 sur 53** (s01 → s29, s36, s41, s45, s48, s50, s53) |
+| En vol | aucune — six recherches prêtes à planifier |
+| Restantes | 18 — dont s49, s51 et s52, nées de constats de revue |
+| Tests | **2064 + 8 sautés**, 107 parcours navigateur |
 | ADR | **50** (jusqu'à 050 ; 051 libre) |
 
 Stratégie de ship : **auto**. `/ks-ship` fusionne en squash dès que le portail
