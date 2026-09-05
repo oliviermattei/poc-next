@@ -86,12 +86,41 @@ tout seul.
 |---|---|---|
 | révoquer le rôle du dernier superadmin | **fermé** : prédicat de comptage dans le `delete`, sous verrou | — |
 | bannir le compte du dernier superadmin (revue de s37a, F2) | **fermé** : `banRefusal` sous le même verrou, bannissement exécuté verrou tenu | — |
-| `purgeAccount` (`auth`) efface la ligne `auth_user` du dernier superadmin, et `admin_platform_role.user_id` est en `cascade` : le rôle part avec le compte, sans garde. **Pas encore vivant** — `purgeModules` n'a aucune route utilisateur —, la story RGPD le rendra vivant | **ouvert** | **oui** : le décompte retombe à 0, donc la désignation par `SUPERADMIN_EMAIL` se redéclenche |
+| `purgeAccount` (`auth`) efface la ligne `auth_user` du dernier superadmin, et `admin_platform_role.user_id` est en `cascade` : le rôle part avec le compte, sans garde. **Vivant depuis s34** : `POST /api/modules/auth/delete-account` appelle `purgeModules`, et c'est la cascade qui emporte le rôle | **ouvert** | **oui** : le décompte retombe à 0, donc la désignation par `SUPERADMIN_EMAIL` se redéclenche |
 | bannir un superadmin qui **n'est pas** le dernier — permis, c'est de la modération entre pairs — puis révoquer son pair : la révocation compte des **lignes**, elle ne sait pas laquelle appartient à un compte banni | **ouvert** | **non** : la ligne du banni reste, le décompte rend 1, la désignation ne se redéclenche jamais |
 
 **L'asymétrie est ce qu'il faut retenir** : la purge se répare toute seule, le
-bannissement brique. C'est pour cela que le garde-fou du bannissement a été
-posé et que celui de la purge attend sa story.
+bannissement brique. C'est pour cela que le garde-fou du bannissement a été posé
+et que celui de la purge n'a jamais été écrit — s34 a rendu le chemin vivant
+sans en ajouter un, et la réparation reste la redésignation par
+`SUPERADMIN_EMAIL`. **Ce que rien ne vérifie**, dit plutôt que sous-entendu :
+aucun test n'exécute « le **dernier** superadmin supprime son compte » ; le
+raisonnement repose sur la cascade déclarée dans `src/schema.ts` et sur le
+décompte de `SUPERADMIN_EMAIL`, pas sur une mesure.
+
+## `granted_by` : la colonne que la cascade n'atteint pas (s34, constat F1)
+
+`admin_platform_role.granted_by` porte l'identifiant du superadmin **qui a
+promu**, et il n'a **aucune** clé étrangère — délibérément : effacer le
+promoteur ne doit ni emporter la promotion, ni la bloquer. La conséquence
+n'avait pas été tirée : la purge du module était vide, si bien que l'identifiant
+d'un compte effacé survivait sur **chaque** rôle qu'il avait accordé. C'est la
+colonne qui a fait mentir l'invariant de s34 — « aucune ligne conservée ne porte
+l'identifiant du compte effacé » —, et le balayage ne l'avait pas vue parce
+qu'aucun cas n'écrivait une telle ligne.
+
+Le module déclare donc **une** catégorie de données, `grant-authorship`, en
+rétention **`anonymize`** — la seule du dépôt à ce jour. `anonymize` et non
+`erase` parce que les deux mots ne décrivent pas la même ligne : effacer la
+ligne retirerait son rôle à un tiers et pourrait rendre la plateforme
+inadministrable. Ce qui part est le **lien**, pas la donnée, et
+`PlatformRoleRepository.forgetGranter` est ce qui le rompt.
+
+Le **rôle** lui-même n'a pas de catégorie et n'en a pas besoin : `user_id` est
+en cascade, il n'y a rien à décider de son sort. La commande qui échoue si tout
+cela cesse d'être vrai : `pnpm test`, cas « ne survit sur aucun rôle accordé
+après l'effacement du promoteur » (`tests/account-deletion.test.ts`) — vider la
+purge du module le fait rougir.
 
 Fermer le quatrième chemin demanderait que la révocation sache ce que ce module
 ne sait pas : l'état « banni » vit dans `auth` (ADR 058) et n'est atteignable

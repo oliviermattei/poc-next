@@ -29,10 +29,23 @@ import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core'
  *
  * **Ce que ce verrou ne tient pas**, dit plutôt que sous-entendu : `hashtext`
  * rend 32 bits, donc deux organisations peuvent partager une clé de verrou.
- * La conséquence est une attente inutile entre deux organisations, jamais une
- * correction manquée. Et la portée est **une base** : deux processus de
- * l'application partagent le verrou parce qu'ils partagent PostgreSQL, ce qui
- * n'est pas vrai d'un verrou tenu en mémoire.
+ * **La garantie tient — aucune correction n'est manquée —, mais la liste des
+ * conséquences a changé** (s34, constat m5 de la quatrième revue) :
+ *
+ * - une **attente inutile** entre deux organisations qui partagent une clé.
+ *   C'était la seule conséquence tant qu'un appelant ne prenait qu'un verrou ;
+ * - depuis que `deleteMembershipsOf` en prend **plusieurs dans une même
+ *   transaction** — un par organisation possédée par le compte qui part —, une
+ *   collision entre deux ensembles qui se recouvrent peut aussi produire un
+ *   **interblocage**, que PostgreSQL tranche en annulant l'une des deux
+ *   transactions. La purge échoue alors au lieu d'attendre, et elle est
+ *   rejouée. L'ordre de prise est **total et stable** (les identifiants triés),
+ *   ce qui exclut l'interblocage entre deux ensembles réels ; il ne l'exclut
+ *   pas entre deux clés qui se confondent par collision.
+ *
+ * Et la portée est **une base** : deux processus de l'application partagent le
+ * verrou parce qu'ils partagent PostgreSQL, ce qui n'est pas vrai d'un verrou
+ * tenu en mémoire.
  */
 
 /** Ce dont un verrou a besoin, et rien de plus : une transaction en cours. */

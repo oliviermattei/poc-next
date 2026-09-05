@@ -15,6 +15,8 @@ import {
   type OrganizationsView,
 } from '@repo/module-organizations'
 
+import { purgeModules } from '@repo/core'
+
 import { resolveAuthConfig } from './auth-config'
 import { localeRouting } from './locale-routing'
 import { createAppMailer } from './mailer'
@@ -100,6 +102,24 @@ export interface OrganizationsFeature {
    * (`billableSeats`, `@repo/module-billing`).
    */
   readonly countMembers: (organizationId: string) => Promise<number | null>
+  /**
+   * **Les organisations dont ce compte est le seul propriétaire** (s34, critère
+   * 6), nommées.
+   *
+   * Lue par la suppression de compte, qui vit dans le module `auth`. Module
+   * coupé : **aucune**, sans toucher la base — un projet sans organisations n'a
+   * personne à retenir.
+   */
+  readonly soleOwnerships: (userId: string) => Promise<readonly string[]>
+  /**
+   * **Retire ce compte de ses organisations, ou refuse** (s34, constat F1 de la
+   * troisième revue) — la revendication atomique qui remplace, au moment
+   * d'effacer, la lecture de `soleOwnerships`.
+   *
+   * Module coupé : **aucune** organisation ne bloque et il n'y a rien à
+   * retirer, sans toucher la base.
+   */
+  readonly releaseOrganizations: (userId: string) => Promise<readonly string[]>
 }
 
 /**
@@ -115,6 +135,8 @@ const ABSENT_ORGANIZATIONS: OrganizationsFeature = {
   view: () => Promise.resolve(EMPTY_ORGANIZATIONS_VIEW),
   invitation: () => Promise.resolve(null),
   countMembers: () => Promise.resolve(null),
+  soleOwnerships: () => Promise.resolve([]),
+  releaseOrganizations: () => Promise.resolve([]),
 }
 
 /**
@@ -260,6 +282,44 @@ const provide = (): void => {
     // périmètre de lecture d'un compte), et un import statique en sens inverse
     // fermerait le cycle.
     notify: async (input) => await (await import('./notifications')).emitNotification(input),
+    /**
+     * **L'effacement de tous les modules activés** (s34), branché sur le
+     * registre de l'application.
+     *
+     * Le module ne connaît pas le registre — il ne peut pas, le registre est
+     * construit à partir des modules. Ce qui est rendu est réduit à ce dont la
+     * règle a besoin : a-t-elle abouti ? Le module fautif est journalisé ici,
+     * jamais rendu à l'appelant.
+     */
+    purgeScope: async (scope) => {
+      const outcome = await purgeModules(moduleRegistry, scope)
+
+      if (!outcome.ok) {
+        console.error(
+          `[organizations.purge_failed] module=${outcome.failed} purgés=${outcome.purged.length} ${outcome.message}`,
+        )
+      }
+
+      return { ok: outcome.ok }
+    },
+    /**
+     * **L'annulation de l'abonnement du périmètre** (critère 5), par le même
+     * chemin différé que `seatSync` et pour la même raison de cycle.
+     *
+     * Facturation coupée : rien à annuler, et **aucune connexion ouverte** pour
+     * l'apprendre — par la valeur, pas par une condition sur un nom de module.
+     */
+    cancelBilling: async (organizationId) => {
+      const billing = (await import('./billing')).billing
+
+      if (!billing.available) {
+        return { ok: true }
+      }
+
+      const outcome = await billing.cancelSubscriptions({ kind: 'organization', organizationId })
+
+      return { ok: outcome.status !== 'failed' }
+    },
   }))
 }
 
@@ -280,6 +340,10 @@ export const organizations: OrganizationsFeature = mounted
         await organizationsService().useCases.describeInvitation(token),
       countMembers: async (organizationId) =>
         await organizationsService().useCases.countMembers(organizationId),
+      soleOwnerships: async (userId) =>
+        await organizationsService().useCases.soleOwnerships(userId),
+      releaseOrganizations: async (userId) =>
+        await organizationsService().useCases.releaseMemberships(userId),
     }
   : ABSENT_ORGANIZATIONS
 

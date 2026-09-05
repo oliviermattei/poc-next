@@ -52,6 +52,10 @@ const PATHS = {
   removeMember: '/organizations/members/remove',
   // s17 — le rôle d'un membre, transfert de propriété compris.
   setMemberRole: '/organizations/members/role',
+  // s34 — la suppression de l'organisation. `POST` et non `DELETE` : la route
+  // est appelée par un `<form>` autant que par un `fetch`, et un formulaire
+  // HTML ne sait émettre que `GET` ou `POST`.
+  delete: '/organizations/delete',
 } as const
 
 /** Le chemin public d'une route du module, préfixe de montage compris. */
@@ -258,6 +262,7 @@ export function createOrganizationRoutes(
     ),
     acceptRoute,
     submit(PATHS.removeMember, async (useCases, input) => await useCases.removeMember(input)),
+    submit(PATHS.delete, async (useCases, input) => await useCases.deleteOrganization(input)),
     submit(PATHS.setMemberRole, async (useCases, input) => await useCases.setMemberRole(input)),
   ]
 }

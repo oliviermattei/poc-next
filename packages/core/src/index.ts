@@ -34,6 +34,7 @@ export {
   MODULE_ROUTE_PREFIX,
   type DispatchOptions,
   type ModuleRegistry,
+  type PurgeModulesOutcome,
   type RegistryEmailTemplate,
   type RegistryJob,
   type RegistryNavigationEntry,

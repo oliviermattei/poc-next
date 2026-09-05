@@ -638,7 +638,10 @@ describe.runIf(databaseReachable)('la purge et l’export du contrat de module',
     const scope: ModuleScope = { kind: 'user', userId: session.userId }
 
     await purgeModules(registry, scope)
-    await expect(purgeModules(registry, scope)).resolves.toContain('storage')
+    await expect(purgeModules(registry, scope)).resolves.toMatchObject({
+      ok: true,
+      purged: expect.arrayContaining(['storage']),
+    })
     expect(await rowsOf(writeOwner(session.userId))).toBe(0)
   })
 
@@ -682,7 +685,7 @@ describe('le module coupé ne laisse aucune trace', () => {
   it('n’est ni purgé ni exporté quand il est coupé', async () => {
     const scope: ModuleScope = { kind: 'user', userId: 'usr_absent' }
 
-    expect(await purgeModules(withoutStorage, scope)).not.toContain('storage')
+    expect((await purgeModules(withoutStorage, scope)).purged).not.toContain('storage')
     expect(Object.keys(await exportModules(withoutStorage, scope))).not.toContain('storage')
   })
 })

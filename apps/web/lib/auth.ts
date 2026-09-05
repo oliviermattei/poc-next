@@ -12,11 +12,12 @@ import {
   type DescribedSession,
   type DescribedSignInMethod,
 } from '@repo/module-auth'
-import type { ModuleSession } from '@repo/core'
+import { purgeModules, type ModuleSession } from '@repo/core'
 import { headers } from 'next/headers'
 import { after } from 'next/server'
 
 import { resolveAuthConfig } from './auth-config'
+import { moduleRegistry } from './module-registry'
 import { LOCALE_COOKIE, localeRouting } from './locale-routing'
 import { createAppMailer } from './mailer'
 import { resolveOAuthConfig } from './oauth-config'
@@ -114,6 +115,47 @@ export function appAuth(options: AppAuthOptions = {}): AuthService {
         after(async () => {
           await task
         })
+      },
+      /**
+       * **L'effacement de tous les modules activés** (s34), branché sur le
+       * registre de l'application.
+       *
+       * Le module `auth` ne connaît pas le registre — il ne peut pas —, il
+       * reçoit la fonction comme il reçoit son mailer. `lib/organizations.ts`
+       * fait le même branchement pour le périmètre organisation : deux
+       * appelants, un par périmètre du contrat.
+       */
+      purgeScope: async (scope) => await purgeModules(moduleRegistry, scope),
+      /**
+       * **Les organisations dont ce compte est le seul propriétaire** (critère
+       * 6), lues par le module qui les porte.
+       *
+       * Module `organizations` coupé : la liste est vide, sans ouvrir de
+       * connexion, et rien ne bloque une suppression de compte.
+       *
+       * **L'import est différé**, pour la raison exacte de `seatSync` :
+       * `lib/organizations.ts` importe ce fichier-ci, et un import statique en
+       * sens inverse fermerait le cycle.
+       */
+      soleOwnerships: async (userId) =>
+        await (await import('./organizations')).organizations.soleOwnerships(userId),
+      /**
+       * **La revendication atomique du départ** (s34, constat F1 de la
+       * troisième revue), branchée sur le même module et différée pour la même
+       * raison de cycle.
+       */
+      releaseOrganizations: async (userId) =>
+        await (await import('./organizations')).organizations.releaseOrganizations(userId),
+      /**
+       * **Le port d'émission de tâches** (s33) : l'effacement quitte la requête
+       * quand le module `jobs` est activé, et s'exécute dedans quand il est
+       * coupé. `lib/jobs.ts` décide, ce fichier ne le sait pas.
+       *
+       * Différé pour la même raison de cycle : `lib/jobs.ts` construit ses
+       * adaptateurs à l'appel, jamais à l'import.
+       */
+      jobs: {
+        emit: async (emission) => await (await import('./jobs')).appJobs().emit(emission),
       },
     })
   }

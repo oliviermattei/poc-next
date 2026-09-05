@@ -78,6 +78,14 @@ export type SecurityEventName =
   | 'auth.passkey_rename_refused'
   | 'auth.passkey_revoked'
   | 'auth.passkey_revoke_refused'
+  // s34 : la suppression de compte. Trois noms, parce que les trois moments
+  // n'apprennent pas la même chose — une demande enregistrée, un effacement
+  // abouti, et un refus (confirmation qui ne correspond pas, dernier
+  // propriétaire, ou file indisponible). Le refus a son nom pour la raison de
+  // s12 et de s14 : la réponse ne distingue pas tout, le journal si.
+  | 'auth.account_deletion_requested'
+  | 'auth.account_deletion_refused'
+  | 'auth.account_deleted'
 
 /** L'acteur d'un événement. `email` est accepté à l'appel, jamais journalisé. */
 export interface SecurityEventActor {

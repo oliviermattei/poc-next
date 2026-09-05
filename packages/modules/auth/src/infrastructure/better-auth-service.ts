@@ -1,5 +1,10 @@
-import { MODULE_ROUTE_PREFIX, resolveLocale } from '@repo/core'
-import type { Mailer } from '@repo/ports'
+import {
+  MODULE_ROUTE_PREFIX,
+  resolveLocale,
+  type ModuleScope,
+  type PurgeModulesOutcome,
+} from '@repo/core'
+import type { EmitJobResult, Jobs, Mailer } from '@repo/ports'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { APIError } from 'better-auth/api'
 import { betterAuth } from 'better-auth/minimal'
@@ -134,6 +139,44 @@ export interface ConfigureAuthOptions {
    * (`docs/reliability.md` §2).
    */
   readonly oauth?: OAuthConfiguration
+  /**
+   * **L'effacement de tous les modules activés** (s34), reçu du point de
+   * composition qui possède le registre.
+   *
+   * Facultatif ici, et **fail-closed** : absent, la suppression échoue en
+   * nommant le câblage manquant plutôt qu'en effaçant à moitié. Le rendre
+   * obligatoire aurait rouvert tous les appels de `configureAuth` du dépôt pour
+   * une capacité qu'une suite qui mesure la connexion n'utilise pas.
+   */
+  readonly purgeScope?: (scope: ModuleScope) => Promise<PurgeModulesOutcome>
+  /**
+   * Les organisations dont un compte est le **dernier propriétaire** (critère
+   * 6). Absent, aucune ne bloque : c'est l'état d'un projet dont le module
+   * d'organisations est coupé.
+   */
+  readonly soleOwnerships?: (userId: string) => Promise<readonly string[]>
+  /**
+   * La revendication atomique du départ (s34, constat F1 de la troisième
+   * revue). Absente, rien ne bloque et il n'y a rien à retirer : c'est l'état
+   * d'un projet dont le module d'organisations est coupé.
+   */
+  readonly releaseOrganizations?: (userId: string) => Promise<readonly string[]>
+  /**
+   * Le port d'émission de tâches (s33).
+   *
+   * **Absent, la suppression de compte est refusée** — `emit` rend
+   * `{ok:false, unknown_job}`, la route répond 503, et rien n'est effacé. Ce
+   * n'est **pas** le repli synchrone : celui-ci existe, mais il vit dans
+   * `apps/web/lib/jobs.ts`, qui rend un port exécutant dans la requête quand le
+   * module `jobs` est coupé. Le port est donc toujours fourni par le point de
+   * composition, et son absence ici est un câblage manquant, pas une
+   * configuration valide.
+   *
+   * La rédaction précédente promettait l'inverse de ce que fait le défaut, cent
+   * cinquante lignes plus bas (constat F3 de la revue) : un composeur qui
+   * n'aurait lu que cette surface aurait cru à un repli qui n'existe pas ici.
+   */
+  readonly jobs?: Jobs
 }
 
 /** Un fournisseur réel et ses identifiants. Les deux, ou rien. */
@@ -264,6 +307,44 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
     appUrl: options.appUrl,
     emailLocaleFor,
     now,
+    /**
+     * **Fail-closed** : sans câblage, la purge ne fait rien et le dit. Une
+     * valeur par défaut qui rendrait `ok: true` ferait croire à un effacement
+     * qui n'a pas eu lieu, et l'email de confirmation partirait.
+     */
+    purgeScope:
+      options.purgeScope ??
+      ((): Promise<PurgeModulesOutcome> =>
+        Promise.resolve({
+          ok: false,
+          purged: [],
+          failed: 'auth',
+          message:
+            'purgeScope n’a pas été fourni : le point de composition de l’application ' +
+            'doit brancher purgeModules() sur configureAuth().',
+        })),
+    soleOwnerships: options.soleOwnerships ?? ((): Promise<readonly string[]> => Promise.resolve([])),
+    releaseOrganizations:
+      options.releaseOrganizations ?? ((): Promise<readonly string[]> => Promise.resolve([])),
+    /**
+     * **Fail-closed, comme `purgeScope`.** Le repli synchrone existe déjà et
+     * n'est pas ici : `lib/jobs.ts` rend un port qui exécute dans la requête
+     * quand le module `jobs` est coupé (s33). Le port est donc **toujours**
+     * fourni par le point de composition, et son absence est un câblage
+     * manquant — pas une configuration valide.
+     */
+    jobs: options.jobs ?? {
+      emit: (): Promise<EmitJobResult> =>
+        Promise.resolve({
+          ok: false,
+          error: {
+            code: 'unknown_job',
+            message:
+              'Le port de tâches n’a pas été fourni : le point de composition de ' +
+              'l’application doit brancher appJobs() sur configureAuth().',
+          },
+        }),
+    },
   }
 
   const useCases = createAuthUseCases(dependencies)

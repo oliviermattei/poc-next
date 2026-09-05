@@ -44,6 +44,19 @@ export type OrganizationSecurityEventName =
    * le sont pas : ce sont des erreurs d'usage, pas des tentatives.
    */
   | 'organizations.role_change_refused'
+  /**
+   * **L'organisation a été supprimée** (s34, `docs/security.md` §7).
+   *
+   * Un geste définitif, et le seul du module qui emporte les données de tous
+   * ses membres : il se journalise pour la même raison qu'un changement de
+   * rôle. Le refus, lui, n'a pas de nom — un non-propriétaire est déjà couvert
+   * par `organizations.role_change_refused` ? Non : il n'est couvert par rien,
+   * et c'est assumé. Une suppression refusée faute de droit n'a pas de
+   * déclencheur d'écran (l'action n'est pas rendue), donc son signal est celui
+   * d'un appel direct — le même que toute route authentifiée sans droit, que le
+   * répartiteur refuse déjà.
+   */
+  | 'organizations.deleted'
 
 export interface OrganizationSecurityEvent {
   readonly event: OrganizationSecurityEventName

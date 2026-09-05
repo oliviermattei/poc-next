@@ -213,6 +213,8 @@ export function createDrizzleOrganizationRepository(
 
     listMemberships: async (userId) => await reads.membershipsOf(userId),
 
+    soleOwnerships: async (userId) => await reads.soleOwnershipsOf(userId),
+
     createOrganization: async (input): Promise<SlugOutcome> => {
       try {
         // Les deux lignes dans **une** transaction : une organisation écrite
@@ -280,10 +282,60 @@ export function createDrizzleOrganizationRepository(
     },
 
     deleteMembershipsOf: async (userId) => {
-      await db
-        .delete(organizationActiveSelection)
-        .where(eq(organizationActiveSelection.userId, userId))
-      await db.delete(organizationMember).where(eq(organizationMember.userId, userId))
+      /**
+       * **La règle du dernier propriétaire, sur le chemin de la purge** (s34,
+       * critique de la seconde revue).
+       *
+       * `removeMember` la tient depuis s16, avec son prédicat et son verrou ;
+       * ce chemin-ci l'ignorait, et c'est par lui qu'un compte devenu dernier
+       * propriétaire **après** sa demande de suppression laissait une
+       * organisation sans personne pour l'administrer — plus aucun rôle à
+       * nommer, aucune invitation, aucune suppression.
+       *
+       * Tout tient dans **une transaction** : la lecture des organisations
+       * possédées, leurs verrous, le décompte sous verrou, puis le retrait. Une
+       * vérification faite au-dessus laisserait la fenêtre où deux
+       * copropriétaires partent ensemble, chacun voyant l'autre — la variante
+       * que la revue a nommée.
+       *
+       * Les lectures passent par la **porte unique** du module
+       * (`scoped-reads.ts`), construite ici sur la transaction : `pnpm lint`
+       * refuse `select` et `from` partout ailleurs, y compris dans ce fichier.
+       */
+      return await db.transaction(async (transaction) => {
+        const scoped = createScopedReads(transaction)
+        const owned = (await scoped.membershipsOf(userId))
+          .filter((membership) => membership.role === FOUNDER_ROLE)
+          // Un ordre **total et stable** : deux purges qui touchent les mêmes
+          // organisations prennent leurs verrous dans le même ordre, donc ne
+          // peuvent pas s'interbloquer.
+          .map((membership) => membership.organizationId)
+          .sort()
+
+        for (const organizationId of owned) {
+          await lockOrganizationMembership(transaction, organizationId)
+        }
+
+        // **Le décompte se fait sous les verrous**, pas avant : c'est là que la
+        // course entre deux départs simultanés se résout.
+        const blocking = await scoped.soleOwnershipsOf(userId)
+
+        // **Le refus est total, jamais partiel** : retirer les appartenances
+        // qui ne bloquent pas laisserait un compte à moitié effacé, et le rejeu
+        // ne saurait plus ce qu'il doit reprendre.
+        if (blocking.length > 0) {
+          return blocking
+        }
+
+        await transaction
+          .delete(organizationActiveSelection)
+          .where(eq(organizationActiveSelection.userId, userId))
+        await transaction
+          .delete(organizationMember)
+          .where(eq(organizationMember.userId, userId))
+
+        return []
+      })
     },
 
     deleteOrganization: async (organizationId) => {

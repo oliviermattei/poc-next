@@ -309,6 +309,11 @@ describe('la matrice des permissions', () => {
       'member.remove',
       'member.set_role',
       'billing.manage',
+      // s34 — la suppression de l'organisation. **Au propriétaire seul**, et le
+      // commentaire de la matrice le disait déjà pour une action qui n'existait
+      // pas encore : un `admin` ne peut « ni supprimer l'organisation ni
+      // modifier un owner ».
+      'organization.delete',
     ],
     // Un `admin` invite, révoque, renvoie, renomme et retire — mais il ne
     // distribue pas les rôles : les critères énumèrent ce qu'il peut faire

@@ -1,5 +1,8 @@
 import { defineModule } from '@repo/core'
 
+import { createAccountPurgeJob } from './application/account-purge-job'
+import { accountDeletedEmail } from './emails/account-deleted'
+import { accountDeletionBlockedEmail } from './emails/account-deletion-blocked'
 import { magicLinkEmail } from './emails/magic-link'
 import { passwordResetEmail } from './emails/password-reset'
 import { verificationEmail } from './emails/verification'
@@ -38,9 +41,21 @@ export const authModule = defineModule({
    */
   publicUrls: () => [],
   messages: { fr: frMessages, en: enMessages },
-  emails: [verificationEmail, magicLinkEmail, passwordResetEmail],
+  emails: [
+    verificationEmail,
+    magicLinkEmail,
+    passwordResetEmail,
+    accountDeletedEmail,
+    accountDeletionBlockedEmail,
+  ],
   webhooks: [],
-  jobs: [],
+  // s34 : l'effacement d'un compte est une tâche déclarée. Elle s'exécute dans
+  // la requête quand le module `jobs` est coupé — le repli livré par s33.
+  //
+  // Elle appelle la purge de tous les modules activés, et elle n'est **pas** la
+  // seule à le faire : la suppression d'organisation l'appelle aussi
+  // (`apps/web/lib/organizations.ts`), sur le chemin de sa propre requête.
+  jobs: [createAccountPurgeJob(requireAuthService)],
   dataCategories: ['account', 'session'],
   // Un compte est **effacé**, jamais anonymisé : un compte anonyme resterait
   // un moyen de connexion.

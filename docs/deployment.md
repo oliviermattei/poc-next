@@ -162,6 +162,13 @@ appliqué**, et c'est exactement ce que le critère 3 demande.
 Rejeu : un second `up` relance `migrate`, qui répond « Rien à appliquer :
 aucune migration en attente » et sort en 0 (`docs/reliability.md` §1).
 
+**Deux conteneurs de migration lancés ensemble convergent** au lieu d'en tuer un
+(s34, ADR 060) : le perdant de la course au `CREATE TABLE` rejoue jusqu'à cinq
+fois et retrouve le journal rempli par le gagnant. Ce rejeu ne vaut que pour la
+création concurrente — une migration réellement en échec échoue toujours, et
+empêche toujours le basculement. **Il est silencieux** : un second migrateur ne
+se signale plus par un plantage.
+
 #### Ce que ce mécanisme ne fait pas : garder l'ancienne version en ligne
 
 Trois états, mesurés sur **une pile déjà en service** (`/api/health` → 200), la

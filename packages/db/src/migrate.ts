@@ -90,6 +90,47 @@ async function journalLength(
  * joué. L'idempotence est celle de Drizzle : le journal des migrations déjà
  * appliquées vit dans la base, un second passage n'exécute rien — et le dit.
  */
+/**
+ * **Les codes PostgreSQL d'un objet déjà créé par quelqu'un d'autre.**
+ *
+ * `42P07` table déjà là, `42710` objet déjà là (type, contrainte, index), et
+ * `23505` la violation d'unicité que le catalogue rend quand deux `create table`
+ * du même nom se croisent (`pg_type_typname_nsp_index`). Ce sont les seuls que
+ * le rejeu ci-dessous accepte : une migration réellement en échec n'est **pas**
+ * rejouée, et continue d'empêcher l'application de démarrer.
+ */
+const CONCURRENT_CREATION_CODES: readonly string[] = ['42P07', '42710', '23505']
+
+/**
+ * Cette erreur dit-elle « quelqu'un d'autre vient de créer cet objet » ?
+ *
+ * **La cause est inspectée, pas seulement l'erreur** : `drizzle-orm@0.45.2`
+ * enveloppe l'erreur du pilote dans une `DrizzleQueryError` (« Failed query: … »)
+ * et range l'originale — celle qui porte le `code` de PostgreSQL — dans
+ * `cause`. C'est la lecture déjà employée par le module `admin` pour la
+ * violation de clé étrangère ; ne regarder que le premier niveau ne verrait
+ * jamais le code.
+ */
+export function isConcurrentCreationError(error: unknown): boolean {
+  for (let candidate: unknown = error; candidate != null; ) {
+    if (
+      typeof candidate === 'object' &&
+      'code' in candidate &&
+      typeof candidate.code === 'string' &&
+      CONCURRENT_CREATION_CODES.includes(candidate.code)
+    ) {
+      return true
+    }
+
+    candidate = typeof candidate === 'object' && 'cause' in candidate ? candidate.cause : null
+  }
+
+  return false
+}
+
+/** Tentatives d'un pas de migration perdu contre un créateur concurrent. */
+const CONCURRENT_ATTEMPTS = 5
+
 export async function runMigrations(options: RunMigrationsOptions): Promise<MigrationsResult> {
   if (!hasMigrations(options.migrationsFolder)) {
     return { applied: false, count: 0 }
@@ -100,13 +141,61 @@ export async function runMigrations(options: RunMigrationsOptions): Promise<Migr
 
   const before = await journalLength(options.db, schema, table)
 
-  await migrate(options.db, {
-    migrationsFolder: options.migrationsFolder,
-    ...(options.migrationsTable === undefined ? {} : { migrationsTable: options.migrationsTable }),
-    ...(options.migrationsSchema === undefined
-      ? {}
-      : { migrationsSchema: options.migrationsSchema }),
-  })
+  /**
+   * **Deux migrateurs qui démarrent ensemble sur une base vierge.**
+   *
+   * Le cas n'est pas théorique et il ne vient pas de la production : la suite
+   * de tests exécute ses fichiers en parallèle, plusieurs d'entre eux montent
+   * les mêmes modules, et `pnpm test:minimal-profile` leur donne une base
+   * **créée pour l'exécution** où les modules coupés n'ont pas été migrés par
+   * la recette. Deux workers émettent alors le même `create table` et le
+   * perdant échoue sur le catalogue — mesuré en s34.
+   *
+   * Le rejeu suffit à converger, et c'est une propriété du journal : le gagnant
+   * l'écrit, si bien que la tentative suivante ne crée plus rien
+   * (`docs/reliability.md` §1). Il est ici plutôt que chez chaque appelant —
+   * mesuré aussi : rejouer d'un seul côté déplace l'échec sur l'autre.
+   *
+   * **Il ne rattrape que la création concurrente** : tout autre échec sort au
+   * premier essai.
+   *
+   * Ce que cette discrimination change, dit exactement — la revue de s34 a
+   * mesuré qu'elle ne change **pas** l'issue : une migration réellement en
+   * échec échoue de toute façon, rejouée ou non. Drizzle ouvre **une seule
+   * transaction pour toute la boucle** des migrations en attente
+   * (`drizzle-orm@0.45.2/pg-core/dialect.js`, `session.transaction` autour du
+   * `for await`), donc un échec annule le lot entier et la tentative suivante
+   * repart du même journal, sur le même SQL — la conclusion tient, et plus
+   * fermement qu'avec une transaction par migration.
+   *
+   * Elle change le **coût** : sans elle, un échec réel paierait cinq
+   * tentatives et ~1,5 s de recul avant de se dire, dans le conteneur de
+   * migration qui précède la bascule du trafic. Ce qui est éprouvé est donc le
+   * classement lui-même (`isConcurrentCreationError`, `tests/migrations.test.ts`)
+   * et non une issue qu'il ferait diverger. La décision et ses options écartées
+   * vivent dans l'ADR 060.
+   */
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      await migrate(options.db, {
+        migrationsFolder: options.migrationsFolder,
+        ...(options.migrationsTable === undefined
+          ? {}
+          : { migrationsTable: options.migrationsTable }),
+        ...(options.migrationsSchema === undefined
+          ? {}
+          : { migrationsSchema: options.migrationsSchema }),
+      })
+
+      break
+    } catch (error) {
+      if (attempt >= CONCURRENT_ATTEMPTS || !isConcurrentCreationError(error)) {
+        throw error
+      }
+
+      await new Promise((accept) => setTimeout(accept, 100 * attempt))
+    }
+  }
 
   const count = (await journalLength(options.db, schema, table)) - before
 

@@ -55,6 +55,35 @@
 - Toute divergence possible avec un système externe possède une **commande de réconciliation** — c'est le cas de la quantité de sièges facturés face au nombre réel de membres.
 - Cette commande réconcilie **dans les deux sens, selon le champ** (ADR 046). Le statut, la période et l'offre viennent du fournisseur, qui fait foi (ADR 034) ; la **quantité de sièges** va vers lui, parce que le nombre de membres est ce qui fait foi et que la quantité en est dérivée. Deux gardes en découlent : la commande n'efface jamais, et elle ne **baisse** aucune quantité sur une lecture de membres en échec ou vide — un silence de notre base interrompt la réconciliation au lieu de réduire une facture.
 
+## 6. Ce qu'une suppression de compte laisse derrière elle quand elle échoue
+
+La purge d'un compte (s34) traverse **tous les modules activés**, chacun avec sa
+propre transaction : elle n'est pas atomique d'un module à l'autre, et elle n'a
+pas à l'être — elle est **rejouable**, c'est le rejeu qui répare. Ce paragraphe
+existe parce qu'un état intermédiaire peut malgré tout demander un geste humain,
+et qu'aucun journal ne le dit.
+
+**Ce que dit le journal** : `job.failed`, un code — le plus souvent
+`provider_unavailable` — et le module fautif, par exemple « la purge du module
+« storage » a échoué ». La tâche sera rejouée.
+
+**Ce que le journal ne dit pas** : la suppression **revendique d'abord** le
+départ des organisations du compte, avant toute purge, pour qu'un départ
+simultané de deux copropriétaires ne laisse aucune organisation sans
+propriétaire. Cette revendication est **committée** avant les purges. Un échec
+survenu ensuite laisse donc la personne **retirée de ses organisations** alors
+que son compte existe encore, jusqu'au rejeu.
+
+**Le rejeu répare la suppression, pas l'appartenance.** Si la personne renonce —
+ou si l'échec persiste et que la tâche est abandonnée —, aucune commande ne
+réajoute un membre : le geste est une **ré-invitation par un propriétaire
+restant**, par les chemins normaux du produit. C'est une opération humaine, elle
+n'a pas de commande, et c'est le seul cas de ce socle où la réparation n'est pas
+automatique.
+
+À surveiller, donc : un `job.failed` répété sur `auth.purge-account` mérite de
+vérifier les appartenances du compte concerné, pas seulement de relancer.
+
 ## Comment une story démontre sa conformité
 
 1. Son plan nomme les sections applicables de ce socle.

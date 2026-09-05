@@ -168,11 +168,18 @@ pour les deux fournisseurs livrés, `packages/mailer-testing/src/*.test.ts` et
   l'implémentation : c'est ce qui permet de rejouer un checkout sans en ouvrir
   deux, et de **compter les tirages** dans un test — la mutation qui manquait à
   s06 (revue, F2).
-- **Une écriture, une seule, et elle est arrivée en s23** :
-  `updateSubscriptionQuantity`. Jusque-là ce port ne savait qu'ouvrir, lire et
-  vérifier ; la quantité ne partait qu'une fois, à l'ouverture du tunnel de
-  paiement. Facturer au nombre de membres demande de la corriger sur un
-  abonnement existant.
+- **Deux écritures post-création, arrivées en s23 puis en s34** :
+  `updateSubscriptionQuantity`, puis `cancelSubscription`. Jusqu'en s23 ce port
+  ne savait qu'ouvrir, lire et vérifier ; la quantité ne partait qu'une fois, à
+  l'ouverture du tunnel de paiement. Facturer au nombre de membres demande de la
+  corriger sur un abonnement existant.
+
+  `cancelSubscription` (s34) n'est **pas** une quantité à zéro — le fournisseur
+  refuse —, ni un lien de portail : une organisation supprimée ne peut pas
+  attendre qu'un humain clique. Elle annule **immédiatement**, parce que le
+  périmètre qui payait n'existera plus et qu'une fin de période facturerait un
+  périmètre effacé. Sa clé d'idempotence est dérivée de la cible, pour la raison
+  de sa voisine : deux annulations du même abonnement sont le même appel.
 
   Ce que son entrée impose, et pourquoi : elle porte la quantité **visée**,
   jamais un incrément. Un delta rejoué compte deux fois, une cible rejouée

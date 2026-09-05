@@ -40,6 +40,21 @@ export interface IntermittentCase {
   readonly established: boolean
   /** Vrai quand cette branche pose le correctif. */
   readonly corrected: boolean
+  /**
+   * **Le témoin du correctif**, quand il en existe un : un extrait qui doit se
+   * trouver dans `file` **si et seulement si** `corrected` vaut `true`.
+   *
+   * Il rend la bascule de `corrected` exécutable. Sans lui, une entrée pouvait
+   * rester `corrected: false` en désignant le fichier même où le correctif
+   * venait d'être posé — la suite restait verte sur une entrée fausse, dans le
+   * fichier dont le préambule dit « la liste est donc la source » (constat de
+   * la seconde revue de s34).
+   *
+   * Facultatif, et ce n'est pas un assouplissement : tous les correctifs ne
+   * laissent pas de trace textuelle — un délai relevé, un ordre changé. Une clé
+   * obligatoire pour tous forcerait à en inventer une (P27bis).
+   */
+  readonly correctedWitness?: string
 }
 
 /**
@@ -279,17 +294,17 @@ export const INTERMITTENT_CASES: readonly IntermittentCase[] = [
     witness: 'export async function runModuleMigrations',
     regime: 'suite Vitest, 8 travailleurs — 1 rouge sur la demande de fusion 12',
     cause:
-      '**Établie par lecture, non corrigée.** `tests/auth.test.ts`, `tests/billing.test.ts`, ' +
-      '`tests/organizations.test.ts` et `tests/marketing.test.ts` appellent chacun ' +
-      '`runModuleMigrations` dans leur `beforeAll`, contre la **même** base, dans des ' +
-      'travailleurs Vitest parallèles. Le migrateur de Drizzle est idempotent par son journal, ' +
-      'pas concurrent : deux passages simultanés lisent le journal vide puis exécutent le même ' +
-      '`CREATE TABLE "organization"`. Le correctif — un verrou consultatif dans `runMigrations`, ' +
-      'ou une passe unique avant les travailleurs — change le contrat de migration de ' +
-      '`@repo/db` et vaut pour la production autant que pour la suite : c’est une décision de ' +
-      'structure, elle se prend au plan et non ici.',
+      '**Établie par lecture, corrigée en s34 (ADR 060).** `tests/auth.test.ts`, ' +
+      '`tests/billing.test.ts`, `tests/organizations.test.ts` et `tests/marketing.test.ts` ' +
+      'appellent chacun `runModuleMigrations` dans leur `beforeAll`, contre la **même** base, ' +
+      'dans des travailleurs Vitest parallèles. Le migrateur de Drizzle est idempotent par son ' +
+      'journal, pas concurrent : deux passages simultanés lisent le journal vide puis exécutent ' +
+      'le même `CREATE TABLE "organization"`. s52 avait laissé la décision au plan ; s34 l’a ' +
+      'rencontrée en ajoutant un quatrième module à une suite, et l’a prise — `runMigrations` ' +
+      'rejoue le pas perdu contre un créateur concurrent, et **lui seul**.',
     established: true,
-    corrected: false,
+    corrected: true,
+    correctedWitness: 'isConcurrentCreationError',
   },
   {
     id: 'auth/sessions-au-changement-d-email',

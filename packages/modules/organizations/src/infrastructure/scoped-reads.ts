@@ -1,10 +1,10 @@
 import { authUser } from '@repo/module-auth'
-import { and, asc, count, eq, gte, isNull } from 'drizzle-orm'
+import { and, asc, count, eq, gte, inArray, isNull } from 'drizzle-orm'
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core'
 
 import type { MembershipRecord, OrganizationAccess } from '../application/organization-access'
 import type { InvitationRecord, MemberIdentity } from '../application/ports'
-import type { OrganizationRole } from '../domain/organization'
+import { FOUNDER_ROLE, type OrganizationRole } from '../domain/organization'
 import {
   organization,
   organizationActiveSelection,
@@ -124,6 +124,22 @@ export interface ScopedReads {
   membershipsOf(userId: string): Promise<readonly MembershipRecord[]>
 
   /**
+   * **Les organisations dont ce compte est le seul propriétaire** (s34, critère
+   * 6), nommées.
+   *
+   * C'est la lecture qui décide si un compte peut partir : une organisation
+   * sans propriétaire n'est administrable par personne, et aucune commande ne
+   * la répare. Le compte est **dans le prédicat** des deux ordres — comme
+   * partout ici, il n'est pas vérifié avant.
+   *
+   * Deux ordres et non une sous-requête : le décompte porte sur les
+   * organisations que le premier a déjà restreintes au compte, donc sur une
+   * poignée de lignes. Une jointure agrégée n'y gagnerait rien et se relirait
+   * moins bien.
+   */
+  soleOwnershipsOf(userId: string): Promise<readonly { readonly organizationId: string; readonly name: string }[]>
+
+  /**
    * L'organisation courante du compte — **si le compte en est encore membre**.
    *
    * La ligne de sélection survit au retrait d'un membre (s16), et rien ne doit
@@ -240,6 +256,44 @@ export function createScopedReads(db: ReadableDatabase): ScopedReads {
         .orderBy(asc(organization.name), asc(organization.id))
 
       return rows.map(toMembership)
+    },
+
+    soleOwnershipsOf: async (userId) => {
+      const mine = await db
+        .select({ organizationId: organization.id, name: organization.name })
+        .from(organizationMember)
+        .innerJoin(organization, eq(organization.id, organizationMember.organizationId))
+        .where(
+          and(
+            eq(organizationMember.userId, userId),
+            eq(organizationMember.role, FOUNDER_ROLE),
+          ),
+        )
+        .orderBy(asc(organization.name), asc(organization.id))
+
+      if (mine.length === 0) {
+        return []
+      }
+
+      const owners = await db
+        .select({ organizationId: organizationMember.organizationId, owners: count() })
+        .from(organizationMember)
+        .where(
+          and(
+            inArray(
+              organizationMember.organizationId,
+              mine.map((row) => row.organizationId),
+            ),
+            eq(organizationMember.role, FOUNDER_ROLE),
+          ),
+        )
+        .groupBy(organizationMember.organizationId)
+
+      const sole = new Set(
+        owners.filter((row) => row.owners === 1).map((row) => row.organizationId),
+      )
+
+      return mine.filter((row) => sole.has(row.organizationId))
     },
 
     activeOrganizationIdOf: async (userId) => {

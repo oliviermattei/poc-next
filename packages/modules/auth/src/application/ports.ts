@@ -1,4 +1,5 @@
-import type { Mailer, SendEmailResult } from '@repo/ports'
+import type { ModuleScope, PurgeModulesOutcome } from '@repo/core'
+import type { Jobs, Mailer, SendEmailResult } from '@repo/ports'
 
 import type { AuthPolicy } from '../domain/auth-policy'
 import type { StoredPasskey } from '../domain/passkey'
@@ -216,6 +217,31 @@ export interface VerificationTokenRepository {
     readonly value: string
     readonly exceptIdentifier?: string
   }): Promise<number>
+  /**
+   * **Efface les jetons qui nomment ce compte** (s34).
+   *
+   * Elle existe parce que `auth_verification` **ne porte aucune clé étrangère
+   * vers le compte** : ses lignes sont désignées par une adresse, ou par
+   * « identifiant espace adresse visée » pour un changement d'email en attente.
+   * La cascade qui emporte sessions et moyens de connexion ne les touche donc
+   * pas, et un jeton de vérification survivait à la suppression du compte en
+   * portant son adresse — mesuré par le balayage de s34, pas déduit.
+   *
+   * **Le prédicat est ancré, sans aucun joker**, et la seconde revue explique
+   * pourquoi : une correspondance par sous-chaîne déborde de sa cible sur une
+   * table partagée par tous les comptes. Échapper `_` et `%` fermait la classe
+   * des jokers, pas celle des adresses qui en contiennent une autre — `a@b.co`
+   * emportait les jetons de `a@b.com`, deux adresses ordinaires et distinctes.
+   *
+   * Les valeurs à atteindre sont **connues et fermées** : l'adresse exacte, ou
+   * `<identifiant> <adresse visée>`. Le prédicat les nomme donc exactement, et
+   * le seul motif restant est ancré sur l'identifiant suivi d'une espace — ce
+   * qu'aucune autre valeur de la table ne peut porter.
+   */
+  deleteNaming(subject: {
+    readonly userId: string
+    readonly email: string
+  }): Promise<number>
 }
 
 /**
@@ -287,6 +313,50 @@ export interface AuthDependencies {
    */
   readonly emailLocaleFor: (knownLocale: string | null | undefined) => string
   readonly now: () => Date
+  /**
+   * **L'effacement de tous les modules activés** (s34).
+   *
+   * Le module ne connaît pas le registre — il ne peut pas : `@repo/core`
+   * construit le registre à partir des modules, et un module qui le lirait
+   * fermerait le cycle. Il reçoit donc la fonction, exactement comme il reçoit
+   * son mailer, et le point de composition de l'application la branche sur
+   * `purgeModules`.
+   */
+  readonly purgeScope: (scope: ModuleScope) => Promise<PurgeModulesOutcome>
+  /**
+   * **Les organisations dont ce compte est le dernier propriétaire** (critère
+   * 6), nommées.
+   *
+   * Reçue pour la même raison que `purgeScope`, et avec la même conséquence
+   * quand le module d'organisations est coupé : la liste est vide, il n'y a
+   * rien à bloquer — par la valeur, jamais par une condition sur un nom de
+   * module.
+   */
+  readonly soleOwnerships: (userId: string) => Promise<readonly string[]>
+  /**
+   * **La revendication atomique du départ** (s34, constat F1 de la troisième
+   * revue) : retire le compte de ses organisations, ou refuse en les nommant.
+   *
+   * Distincte de `soleOwnerships`, qui **lit** et qui sert le refus à la
+   * demande. Celle-ci est appelée au moment d'effacer, et c'est la différence
+   * qui compte : deux lectures concurrentes se voient l'une l'autre et laissent
+   * passer les deux départs, après quoi le refus arrive **à l'intérieur** de la
+   * purge — trop tard, les modules purgés plus tôt dans l'ordre inverse ont
+   * déjà effacé les fichiers du perdant. Une revendication, elle, sérialise :
+   * le second appelant se découvre dernier propriétaire et refuse avant
+   * d'effacer quoi que ce soit.
+   */
+  readonly releaseOrganizations: (userId: string) => Promise<readonly string[]>
+  /**
+   * **Le port d'émission de tâches** (s33) : le seul chemin par lequel
+   * l'effacement quitte la requête.
+   *
+   * Il est injecté et non construit : module `jobs` activé, l'émission part
+   * chez le fournisseur ; module coupé, le port l'exécute de façon synchrone
+   * dans la requête appelante. Le module d'authentification ne connaît pas la
+   * différence, et c'est le critère 9.
+   */
+  readonly jobs: Jobs
 }
 
 export type { Mailer, SendEmailResult }

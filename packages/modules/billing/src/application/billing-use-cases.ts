@@ -229,6 +229,18 @@ export const EMPTY_BILLING_VIEW: BillingView = {
  * deux refus : `not_applicable` laisse l'écriture locale se valider, `failed`
  * et `over_limit` l'annulent.
  */
+/**
+ * Ce que rend une annulation d'abonnements (s34).
+ *
+ * `cancelled` compte ce qui a été annulé **avant** l'échec, pour que le journal
+ * de l'appelant dise où l'opération s'est arrêtée — la même raison que
+ * `purgeModules`, qui rend les modules effectivement purgés.
+ */
+export type CancelSubscriptionsOutcome =
+  | { readonly status: 'cancelled'; readonly cancelled: number }
+  | { readonly status: 'not_applicable' }
+  | { readonly status: 'failed'; readonly cancelled: number }
+
 export type SeatSyncOutcome =
   | { readonly status: 'synced'; readonly quantity: number }
   | { readonly status: 'not_applicable' }
@@ -394,6 +406,23 @@ export interface BillingUseCases {
     readonly adds?: boolean
   }): Promise<SeatSyncOutcome>
   /** Réconcilie le cache avec le fournisseur. Rend le nombre de lignes changées. */
+  /**
+   * **Annule les abonnements d'un périmètre chez le fournisseur** (s34, critère
+   * 5).
+   *
+   * Appelée à la suppression d'une organisation, par le module qui la porte —
+   * lequel ne connaît pas ce module et reçoit une fonction (le patron de
+   * `seatSync`, ADR 034).
+   *
+   * `not_applicable` couvre « il n'y avait rien à annuler » : pas de client
+   * chez le fournisseur, aucun abonnement vivant. Confondre ce cas avec un
+   * échec rendrait toute organisation gratuite indélébile.
+   *
+   * Elle n'efface **aucune ligne locale** : c'est la purge du module qui le
+   * fait, et l'ordre est celui de la suppression — annuler d'abord, effacer
+   * ensuite.
+   */
+  cancelSubscriptions(scope: ModuleScope): Promise<CancelSubscriptionsOutcome>
   reconcile(): Promise<{ readonly customers: number; readonly changed: number }>
   purge(scope: ModuleScope): Promise<void>
   export(scope: ModuleScope): Promise<ModuleExportPayload>
@@ -1216,6 +1245,44 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
      * réécrit ; une seconde exécution ne change rien, et c'est le compte rendu
      * qui le prouve.
      */
+    cancelSubscriptions: async (scope) => {
+      const customer = await repository.customerForScope(scope)
+
+      if (customer === null) {
+        return { status: 'not_applicable' }
+      }
+
+      const at = now()
+      const subscriptions = await repository.subscriptionsOfCustomer(customer.id)
+      // Ceux qui **accordent encore quelque chose** : un abonnement déjà annulé
+      // ou expiré n'a rien à annuler, et le rejouer chez le fournisseur
+      // rendrait `not_found` sur une ligne d'historique.
+      const live = subscriptions.filter((subscription) => grantsAccess(subscription, at))
+
+      let cancelled = 0
+
+      for (const subscription of live) {
+        const outcome = await payments.cancelSubscription({
+          subscriptionId: subscription.providerSubscriptionId,
+          // **Dérivée de la cible**, comme celle de la quantité : deux
+          // annulations du même abonnement sont le même appel, et un rejeu
+          // converge au lieu d'échouer.
+          idempotencyKey: `cancel:${subscription.providerSubscriptionId}`,
+        })
+
+        if (!outcome.ok) {
+          // **L'échec interrompt** (`docs/reliability.md` §3) : l'appelant
+          // n'efface rien, et l'opération se rejoue. Les annulations déjà
+          // faites sont idempotentes, le rejeu ne les compte pas deux fois.
+          return { status: 'failed', cancelled }
+        }
+
+        cancelled += 1
+      }
+
+      return cancelled === 0 ? { status: 'not_applicable' } : { status: 'cancelled', cancelled }
+    },
+
     reconcile: async () => {
       const customers = await repository.listCustomers()
       let changed = 0

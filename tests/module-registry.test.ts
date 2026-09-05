@@ -436,11 +436,51 @@ describe('construction du registre', () => {
       locales: ['fr'],
     })
 
-    await purgeModules(registry, { kind: 'user', userId: 'u-ordre' })
+    const outcome = await purgeModules(registry, { kind: 'user', userId: 'u-ordre' })
 
     expect(purged).toEqual(['b', 'a'])
+    // Ce qu'elle **rend** est ce qu'elle a fait, dans l'ordre où elle l'a fait —
+    // pas l'inventaire des modules activés.
+    expect(outcome).toEqual({ ok: true, purged: ['b', 'a'] })
     // Le montage, lui, ne bouge pas : un requis est monté avant son dépendant.
     expect(registry.moduleIds).toEqual(['a', 'b'])
+  })
+
+  /**
+   * **Ce que rend une purge interrompue** (s34, critère 2).
+   *
+   * Elle rendait `registry.moduleIds` — tous les identifiants, quoi qu'il se
+   * soit passé —, si bien qu'une purge qui levait laissait l'appelant devant
+   * une exception et une liste qui décrivait la configuration, pas
+   * l'opération. « Un module dont la purge échoue interrompt l'opération et la
+   * laisse rejouable » n'était pas exprimable : rien ne disait **où** elle
+   * s'était arrêtée, donc rien ne disait ce qu'un rejeu devait retrouver.
+   */
+  it('interrompt à la première purge en échec, nomme le module et ne rend que ce qui a été purgé', async () => {
+    const purged: string[] = []
+    const registry = buildRegistry({
+      available: [
+        moduleFixture('a', { purge: () => (purged.push('a'), Promise.resolve()) }),
+        moduleFixture('b', {
+          requires: ['a'],
+          purge: () => Promise.reject(new Error('le stockage ne répond pas')),
+        }),
+        moduleFixture('c', {
+          requires: ['b'],
+          purge: () => (purged.push('c'), Promise.resolve()),
+        }),
+      ],
+      enabled: ['a', 'b', 'c'],
+      locales: ['fr'],
+    })
+
+    const outcome = await purgeModules(registry, { kind: 'user', userId: 'u-echec' })
+
+    // `c` a été purgé — il vient avant `b` dans l'ordre inverse —, `a` ne l'a
+    // **pas** été : l'échec interrompt, il ne saute pas le module fautif.
+    expect(purged).toEqual(['c'])
+    expect(outcome).toMatchObject({ ok: false, failed: 'b', purged: ['c'] })
+    expect(outcome.ok ? '' : outcome.message).toContain('le stockage ne répond pas')
   })
 
   it('n’agrège que les modules activés', () => {

@@ -19,6 +19,7 @@ import {
   type InvitationStatus,
 } from '../domain/invitation'
 import {
+  confirmsOrganization,
   FOUNDER_ROLE,
   ORGANIZATIONS_MODULE_ID,
   ORGANIZATION_ROLES,
@@ -41,6 +42,7 @@ import { authorizeOrganization, type OrganizationAccess } from './organization-a
 import {
   MEMBER_JOINED_NOTIFICATION,
   SeatSyncRefusedError,
+  SoleOwnershipError,
   type OrganizationsDependencies,
   type SeatSyncRefusal,
 } from './ports'
@@ -252,6 +254,43 @@ export interface OrganizationsUseCases {
   }): Promise<OrganizationOutcome>
   /** Ce que l'écran d'atterrissage montre avant l'acceptation, ou `null`. */
   describeInvitation(token: string): Promise<InvitationPreview | null>
+  /**
+   * **Supprime l'organisation** (s34, critère 5).
+   *
+   * Trois choses dans cet ordre, et l'ordre est la règle : la confirmation, puis
+   * l'annulation chez le fournisseur de paiement, puis l'effacement. Annuler
+   * après avoir effacé laisserait un abonnement courant sur un périmètre dont
+   * plus rien ne porte l'identifiant ; effacer sans avoir annulé facturerait un
+   * client qui n'existe plus. Un échec de l'une **interrompt** les suivantes.
+   */
+  deleteOrganization(input: {
+    readonly userId: string
+    readonly body: unknown
+  }): Promise<OrganizationOutcome>
+  /**
+   * **Les organisations dont ce compte est le seul propriétaire** (critère 6).
+   *
+   * Lue par la suppression de compte, qui vit dans le module `auth` : celui-ci
+   * ne connaît pas les organisations, il reçoit cette fonction du point de
+   * composition.
+   */
+  soleOwnerships(userId: string): Promise<readonly string[]>
+  /**
+   * **Retire ce compte de toutes ses organisations, ou refuse** — en une seule
+   * transaction, sous le verrou de chacune (s34, constat F1 de la troisième
+   * revue).
+   *
+   * Distincte de `soleOwnerships`, qui **lit** : deux lectures concurrentes se
+   * voient l'une l'autre et laissent passer les deux départs. Celle-ci
+   * **revendique** : la première qui commite retire son appartenance, la
+   * seconde recompte sous le même verrou, se découvre dernière propriétaire et
+   * refuse — avant que quoi que ce soit n'ait été effacé ailleurs.
+   *
+   * Rend les organisations qui bloquent, nommées, ou une liste vide quand le
+   * retrait a eu lieu. Rejouable : un second appel ne trouve plus
+   * d'appartenance et rend une liste vide.
+   */
+  releaseMemberships(userId: string): Promise<readonly string[]>
   purge(scope: ModuleScope): Promise<void>
   export(scope: ModuleScope): Promise<ModuleExportPayload>
 }
@@ -352,6 +391,8 @@ export function createOrganizationsUseCases(
     now,
     tokens,
     securityLog,
+    purgeScope,
+    cancelBilling,
     notify,
   } = dependencies
 
@@ -609,6 +650,82 @@ export function createOrganizationsUseCases(
         ? { status: 'refused', refusal: 'slug_unavailable' }
         : { status: 'ok', organizationId: access.organizationId }
     },
+
+    deleteOrganization: async ({ userId, body }) => {
+      // L'autorisation d'abord : un non-membre n'apprend rien, pas même que
+      // son corps était mal formé (`docs/security.md` §3).
+      const access = await accessFrom(userId, body)
+
+      if (access === null) {
+        return { status: 'not_found' }
+      }
+
+      // **La permission ensuite, et jamais avant** : inverser les deux rendrait
+      // 403 sur l'organisation d'un autre, donc confirmerait son existence.
+      if (!allows(access.role, ORGANIZATION_ACTION.delete)) {
+        return { status: 'forbidden' }
+      }
+
+      /**
+       * **La confirmation est comparée ici, par le serveur.** Un écran qui
+       * n'activerait son bouton qu'au bon nom n'est pas une confirmation : c'est
+       * une décoration que `curl` contourne.
+       */
+      if (!confirmsOrganization(body, access.name)) {
+        return { status: 'refused', refusal: 'confirmation_mismatch' }
+      }
+
+      /**
+       * **L'annulation avant l'effacement** (`docs/reliability.md` §3).
+       *
+       * Un fournisseur en panne interrompt et **rien n'est effacé** :
+       * l'organisation reste, l'abonnement court, et l'opération se rejoue. Le
+       * sens inverse — effacer d'abord — laisserait un abonnement qui facture un
+       * périmètre dont plus aucune ligne ne porte l'identifiant, donc
+       * irrécupérable par la réconciliation.
+       */
+      const cancelled = await cancelBilling(access.organizationId)
+
+      if (!cancelled.ok) {
+        return { status: 'refused', refusal: 'billing_cancel_failed' }
+      }
+
+      /**
+       * **L'effacement de tous les modules activés**, pas seulement de celui-ci
+       * : les fichiers, les notifications et les lignes de facturation du
+       * périmètre partent avec lui. L'ordre des purges est celui du registre
+       * (ADR 029) ; ce module ne le connaît pas, il reçoit la fonction.
+       */
+      const purged = await purgeScope({
+        kind: 'organization',
+        organizationId: access.organizationId,
+      })
+
+      if (!purged.ok) {
+        return { status: 'refused', refusal: 'purge_failed' }
+      }
+
+      securityLog({
+        // La forme du journal est **fermée** : ni adresse, ni nom
+        // d'organisation, seulement des identifiants (`docs/security.md` §5).
+        // Une suppression ne vise personne et ne transfère rien, d'où les deux
+        // `null` et le `false` — le champ existe, il n'est pas omis.
+        event: 'organizations.deleted',
+        actor: access.userId,
+        organizationId: access.organizationId,
+        target: null,
+        role: null,
+        transfersOwnership: false,
+      })
+
+      return { status: 'ok', organizationId: access.organizationId }
+    },
+
+    soleOwnerships: async (userId) =>
+      (await repository.soleOwnerships(userId)).map((entry) => entry.name),
+
+    releaseMemberships: async (userId) =>
+      (await repository.deleteMembershipsOf(userId)).map((entry) => entry.name),
 
     viewOrganizations: async (userId) => {
       const [memberships, activeId] = await Promise.all([
@@ -1056,7 +1173,24 @@ export function createOrganizationsUseCases(
         // avant son requis (ADR 029) — est ce qui rend cette lecture possible.
         const email = await repository.emailOf(scope.userId)
 
-        await repository.deleteMembershipsOf(scope.userId)
+        /**
+         * **Une organisation ne se retrouve jamais sans propriétaire** (s34,
+         * critique de la seconde revue).
+         *
+         * Le refus vient de l'écriture elle-même, sous son verrou : le
+         * contrôle fait à la **demande** de suppression ne suffit pas, parce
+         * que l'effacement est différé et que le monde change entre les deux.
+         *
+         * Il **lève**, et c'est ce que le contrat attend d'une purge qui ne
+         * peut pas aboutir : `purgeModules` s'arrête, nomme ce module, et
+         * l'opération reste rejouable — la personne transfère ou supprime son
+         * organisation, puis relance.
+         */
+        const blocking = await repository.deleteMembershipsOf(scope.userId)
+
+        if (blocking.length > 0) {
+          throw new SoleOwnershipError(blocking.map((entry) => entry.name))
+        }
 
         if (email !== null) {
           await repository.deleteInvitationsAddressedTo(normalizeEmail(email))
