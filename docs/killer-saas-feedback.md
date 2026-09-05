@@ -1106,6 +1106,47 @@ vit dans un fichier non suivi n'est pas reproductible.
 n'accepte que les variables déclarées, pour que « je reproduis la CI » soit une
 commande et non une discipline.
 
+## P26 — Une section « non vérifié » honnête est ce qui rattrape la story suivante
+
+**Observé en s33, deux fois dans la même journée.** La revue de ronde 2 a écrit,
+dans sa section « Non vérifié » : *« `pnpm test:e2e` n'a jamais été joué. C'est la
+seule commande dont ce diff change le comportement sans témoin. »*
+
+C'est exactement là que la CI a cassé. Le module `jobs` déclarait une route
+publique qui rendait **404** en l'absence de fournisseur, et
+`e2e/modules.spec.ts` — qui balaie toute route publique d'un module activé et
+exige qu'elle ne réponde pas 404 — l'a refusée, sur les deux branches de la
+matrice.
+
+**Ce qui rend le cas instructif, c'est la chaîne :**
+
+1. Le relecteur **n'a pas prétendu** avoir couvert ce qu'il n'avait pas couvert.
+2. Il a **nommé la commande** précise et **la raison** pour laquelle elle comptait
+   ici — pas « la suite e2e n'a pas tourné », mais « c'est la seule commande dont
+   *ce diff* change le comportement sans témoin ».
+3. La CI a rougi exactement là, une heure plus tard.
+4. Le diagnostic a pris deux minutes, parce que la phrase existait.
+
+Sans cette phrase, le rouge aurait été un mystère à instruire depuis zéro sur une
+story de 89 fichiers.
+
+**Et le garde qui l'a attrapé ne nomme aucun module.** Personne n'a écrit de test
+pour `jobs` : c'est le contrat qui s'est défendu seul, parce qu'une règle
+générique — « une route publique déclarée par un module activé est montée » —
+existait déjà. Un test nommant `jobs` n'aurait rien attrapé, puisqu'il aurait été
+écrit par la personne qui a introduit le défaut.
+
+**Règle** : une revue vaut autant par ce qu'elle déclare ne pas avoir vérifié que
+par ce qu'elle a mesuré. La section « non vérifié » n'est pas une décharge, c'est
+**la liste des endroits où le prochain rouge va tomber** — et elle doit nommer la
+commande, pas la catégorie.
+
+**Corollaire, mesuré ici** : trois items de cette section demandaient un humain.
+L'implémenteur en a fermé un tout seul (`pnpm test:e2e`, 108 passés) une fois
+qu'on lui a dit que c'était là que ça cassait. Une section « non vérifié » précise
+est donc aussi une **liste de travail**, pas seulement un avertissement.
+
+
 
 ---
 
@@ -1484,6 +1525,7 @@ commande et non une discipline.
 | 05/09 | Routes d'écriture à 500 en production, 2 100 assertions vertes : les tests câblent eux-mêmes ce qu'ils testent | garde dérivé de la disponibilité du module | P24 |
 | 05/09 | CI morte : tous les jobs en 2-3 s, sans journal, sur toutes les branches | cause au niveau du compte (quota de minutes), confirmée par le porteur ; rien dans le dépôt | — |
 | 05/09 | Un garde ajouté pour fermer une vacuité était lui-même vert par accident d'environnement (P9, troisième fois) | le cas déclare l'intégralité de ce que la garde lit, précédent de `tests/admin.test.ts` | P25bis |
+| 05/09 | La CI casse exactement à l'endroit que la revue avait nommé comme non vérifié | diagnostic en deux minutes au lieu d'une instruction depuis zéro | P26 |
 
 ---
 
