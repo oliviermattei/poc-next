@@ -13,7 +13,9 @@
 | Base de données | PostgreSQL 16+, Drizzle ORM, migrations SQL versionnées | 003 |
 | Provider base | Neon par défaut, PostgreSQL conteneurisé (Coolify) supporté et testé | 003 |
 | Authentification | Better Auth (plugins `organization`, `admin`, `two-factor`, `passkey`) | 004 |
-| Couche API | Hono monté dans Next, contrats oRPC, TanStack Query | 005 |
+| Couche API | **`dispatchModuleRequest` de `@repo/core`**, contrats `ModuleRoute` + Zod, TanStack Query | 005, 017 |
+
+> **Divergence mesurée le 05/09.** L'ADR 005 a choisi Hono et oRPC, l'ADR 017 a présenté `ModuleRoute` comme une « forme transitoire jusqu'à Hono ». **Ni l'un ni l'autre n'a été livré** : zéro import `@orpc/*`, zéro import `hono`, zéro dépendance déclarée, sur douze modules et quarante stories. Les tableaux ci-dessous décrivaient l'intention comme si c'était l'état — ils ont fait écrire « contrats oRPC » dans le plan de s32, que l'implémenteur a eu raison d'ignorer. Le transport réel est le répartiteur de `@repo/core`. Reprendre la décision demande un ADR, pas une correction de prose.
 | Architecture interne | Clean architecture à quatre couches par module | 006 |
 | Composition | Contrat de module + `config/features.ts` | 007 |
 | Providers | Resend, S3/R2, Stripe, Inngest, Sentry, PostHog, compteur PostgreSQL | 008 |
@@ -25,7 +27,7 @@
 
 ```
 apps/
-  web/                     Application Next.js — rendu, layouts, montage du serveur Hono
+  web/                     Application Next.js — rendu, layouts, montage du répartiteur de modules
     app/api/[[...route]]/  Route handler attrape-tout : point de montage unique de l'API
 config/                    Configuration éditée par le propriétaire du projet
   features.ts              Modules activés (typé, validé au démarrage)
@@ -36,7 +38,7 @@ config/                    Configuration éditée par le propriétaire du projet
 packages/
   core/                    Contrat de module, registre, validation de configuration
   db/                      Client Drizzle, composition des schémas, exécution des migrations
-  api/                     Serveur Hono racine, contrats oRPC, middlewares partagés
+  api/                     Contrats de routes et middlewares partagés (le serveur Hono de l'ADR 005 n'a jamais été livré)
   ui/                      Design system : composants shadcn, tokens, primitives
   ports/                   Interfaces des dépendances externes, un fichier par capacité
                            (mail, storage, paiement, jobs, analytics, monitoring,
@@ -68,7 +70,7 @@ packages/modules/<module>/src/
   domain/          Entités et règles métier pures. Aucune importation de framework, d'ORM ou de SDK.
   application/     Cas d'usage et ports. Dépend de domain uniquement.
   infrastructure/  Repositories Drizzle, appels aux adapters. Dépend de application et domain.
-  presentation/    Routes Hono, contrats oRPC, composants React, navigation. Dépend de application et domain.
+  presentation/    Routes `ModuleRoute`, composants React, navigation. Dépend de application et domain.
   module.ts        Déclaration du contrat de module.
   schema.ts        Tables Drizzle du module.
   migrations/      Migrations SQL du module.
@@ -85,7 +87,7 @@ interface ModuleDefinition {
   requires: readonly string[]         // et non ModuleId[] : voir ci-dessous
   schema: DrizzleSchema
   migrations: MigrationsDir
-  routes: readonly ModuleRoute[]      // ADR 017 — forme transitoire jusqu'à Hono
+  routes: readonly ModuleRoute[]      // ADR 017 — présentée comme transitoire ; c'est la forme réelle et durable
   navigation: readonly NavEntry[]     // chacune avec son niveau de protection
   publicUrls: (context: PublicUrlContext) => readonly PublicUrl[]  // ce que le module donne à indexer (ADR 054)
   messages: Record<Locale, Messages>
