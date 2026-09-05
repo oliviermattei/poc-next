@@ -3,7 +3,9 @@
  *
  * Gabarit : `packages/modules/demo-enabled`, qui se présente lui-même comme
  * tel (`packages/modules/demo-enabled/AGENTS.md`) — quatre couches, le
- * contrat à 13 clés au complet (ADR 007), rien omis même vide. Ce squelette
+ * contrat au complet (ADR 007), rien omis même vide — **toutes** ses clés,
+ * quel qu'en soit le nombre : l'écrire ici vieillirait à la prochaine ajoutée,
+ * comme le « 13 » qui y a survécu jusqu'à ce que le contrat en porte 15. Ce squelette
  * n'a ni schéma, ni route, ni migration : ajouter la première table ou la
  * première route reste le travail du développeur, mais le contrat, lui,
  * compile dès la génération — un générateur qui produit du code qui ne
@@ -75,7 +77,8 @@ export function scaffoldFiles(moduleId: string): readonly ScaffoldFile[] {
         `# packages/modules/${moduleId} — règles locales`,
         '',
         `Squelette généré par \`ks scaffold ${moduleId}\` (s41). Le contrat de module (ADR 007)`,
-        'est rempli et compile déjà : les 13 clés sont là, la plupart vides. Ce fichier reste à',
+        'est rempli et compile déjà : toutes les clés du contrat sont là, la plupart vides.',
+        'Ce fichier reste à',
         'compléter une fois que le module porte une vraie règle métier — décrire ici ce qu\'il',
         'importe, ce qu\'il ne doit jamais contenir, où vivent ses tests, comme le fait',
         '`packages/modules/demo-enabled/AGENTS.md`, son gabarit.',
