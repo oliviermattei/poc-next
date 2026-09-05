@@ -1,4 +1,5 @@
 import type {
+  CancelSubscriptionResult,
   CreateCheckoutInput,
   CreateCheckoutResult,
   CreatePortalSessionResult,
@@ -661,6 +662,49 @@ export function createStripePayments(options: StripePaymentsOptions): Payments {
 
       try {
         return { ok: true, subscription: normalizeSubscription(written.value) }
+      } catch (error) {
+        return {
+          ok: false,
+          error: failure(
+            'invalid_request',
+            error instanceof Error ? error.message : 'abonnement illisible',
+            1,
+          ),
+        }
+      }
+    },
+
+    /**
+     * **L'annulation d'un abonnement** (s34, critère 5).
+     *
+     * Un seul appel, contrairement à la quantité : le fournisseur annule par
+     * identifiant d'abonnement, sans avoir à retrouver la ligne.
+     *
+     * `subscriptions.cancel` annule **immédiatement**. C'est ce que la
+     * suppression d'organisation demande : le périmètre qui payait n'existera
+     * plus, et `cancel_at_period_end` continuerait de facturer un périmètre
+     * effacé.
+     *
+     * Le délai d'attente et les reprises sont ceux de `run`, comme pour les six
+     * autres opérations (`docs/reliability.md` §3) : rien de spécial ici, et
+     * c'est le point — une opération qui poserait sa propre échéance en aurait
+     * une seconde, divergente.
+     */
+    cancelSubscription: async (input): Promise<CancelSubscriptionResult> => {
+      const cancelled = await run('cancel_subscription', async () =>
+        await client.subscriptions.cancel(
+          input.subscriptionId,
+          {},
+          { idempotencyKey: input.idempotencyKey },
+        ),
+      )
+
+      if (!cancelled.ok) {
+        return { ok: false, error: cancelled.error }
+      }
+
+      try {
+        return { ok: true, subscription: normalizeSubscription(cancelled.value) }
       } catch (error) {
         return {
           ok: false,

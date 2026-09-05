@@ -73,6 +73,11 @@ const PATHS = {
   changeEmail: '/auth/change-email',
   changeName: '/auth/change-name',
   revokeSession: '/auth/revoke-session',
+  // s34 : la suppression de son propre compte. Le point d'entrée
+  // `/delete-user` de la bibliothèque reste **non déclaré**, donc 404 : il
+  // supprime sur présentation d'une session, sans confirmation, sans purge des
+  // autres modules et sans règle du dernier propriétaire.
+  deleteAccount: '/auth/delete-account',
   // s13. Cinq chemins, et **cinq seulement** : le greffon en expose sept.
   // `two-factor/get-totp-uri` rendrait le secret d'un compte déjà activé —
   // celui-ci ne sort qu'une fois, à l'enrôlement de son propriétaire — et
@@ -1087,6 +1092,72 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
           })
 
           return revoked ? Response.json({ status: true }) : notFound()
+        }),
+    },
+    {
+      /**
+       * **La suppression de son propre compte** (s34).
+       *
+       * `POST` et non `DELETE` : la route est appelée par un `<form>` d'écran
+       * autant que par un `fetch`, et un formulaire HTML ne sait émettre que
+       * `GET` ou `POST`. Le geste est le même, seule la méthode change de nom.
+       *
+       * Le compte visé est **celui de la session**. Il n'y a aucun paramètre
+       * pour en nommer un autre : la question « et si ce n'est pas le mien ? »
+       * n'a pas de porte ici.
+       */
+      method: 'POST',
+      path: PATHS.deleteAccount,
+      protection: { level: 'authenticated' },
+      handler: async (request, context) =>
+        await refuseInvalid(async () => {
+          const auth = service()
+
+          if (context.session === null) {
+            return badRequest('session absente')
+          }
+
+          const outcome = await auth.useCases.requestAccountDeletion({
+            userId: context.session.userId,
+            body: await submittedBody(request),
+            // La langue de **cette** requête : c'est celle du destinataire de la
+            // confirmation, qui est la personne qui la demande (constat F9).
+            knownLocale: auth.localeOf(request),
+          })
+
+          switch (outcome.status) {
+            case 'queued':
+              // **202 et non 200** : la mise en file a réussi. Avec un
+              // ordonnanceur, le compte n'est pas encore parti ; sans lui, il
+              // l'est déjà. Une seule réponse pour les deux, parce que
+              // l'appelant n'a rien à faire de la différence.
+              return Response.json({ status: 'accepted' }, { status: 202 })
+            // **Deux motifs distincts, et la distinction est le témoin de la
+            // frontière** : `confirmation_absente` vient de Zod — le corps n'a
+            // pas la forme attendue —, `confirmation_differente` vient de la
+            // règle, qui a bel et bien comparé. Un seul motif pour les deux
+            // rendrait la validation invisible depuis l'extérieur, donc non
+            // mesurable (constat F6 de la revue).
+            case 'invalid_request':
+              return badRequest('confirmation_absente')
+            case 'confirmation_mismatch':
+              return badRequest('confirmation_differente')
+            case 'sole_owner':
+              // **409, et il nomme les organisations qui bloquent** (critère
+              // 6) : « transférez ou supprimez » sans dire laquelle ne précise
+              // rien. Ce sont les siennes — il en est propriétaire —, donc les
+              // nommer ne divulgue rien.
+              return Response.json(
+                { error: 'conflict', reason: 'sole_owner', organizations: outcome.organizations },
+                { status: 409 },
+              )
+            case 'unavailable':
+              // Rien n'a été effacé et rien ne le sera : 503 plutôt qu'un
+              // accusé de réception pour un travail que personne ne fera.
+              return Response.json({ error: 'unavailable' }, { status: 503 })
+            default:
+              return notFound()
+          }
         }),
     },
     {

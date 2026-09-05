@@ -1,5 +1,7 @@
 import { createStripePayments } from '@repo/adapter-stripe'
 import type {
+  CancelSubscriptionInput,
+  CancelSubscriptionResult,
   CheckoutMode,
   CreateCheckoutInput,
   CreateCheckoutResult,
@@ -373,6 +375,57 @@ export function createLocalPayments(options: LocalPaymentsOptions): LocalPayment
      * Abonnement inconnu : un échec, jamais une exception — un simulateur ne
      * lève pas plus qu'un port.
      */
+    /**
+     * **L'annulation simulée** (s34).
+     *
+     * Elle porte l'abonnement à `canceled` et lève `cancel_at_period_end` : le
+     * périmètre disparaît, il n'y a pas de fin de période à honorer. La forme
+     * rendue est **celle de l'adaptateur**, comme partout ici — la simulation ne
+     * produit pas une normalisation à elle.
+     *
+     * Rejouée, elle converge : un abonnement déjà annulé le reste, et l'appel
+     * réussit. C'est ce que fait le vrai fournisseur sous une clé
+     * d'idempotence.
+     */
+    cancelSubscription: async (input: CancelSubscriptionInput): Promise<CancelSubscriptionResult> => {
+      const subscription = subscriptions.get(input.subscriptionId)
+
+      if (subscription === undefined) {
+        return {
+          ok: false,
+          error: {
+            code: 'not_found',
+            message: 'aucun abonnement simulé ne porte cet identifiant',
+            attempts: 1,
+          },
+        }
+      }
+
+      subscription['status'] = 'canceled'
+      subscription['cancel_at_period_end'] = false
+
+      const read = await verifier.verifyWebhook(
+        sign({
+          id: `${SIMULATED_EVENT_ID_PREFIX}cancel_${input.subscriptionId}`,
+          object: 'event',
+          api_version: null,
+          created: seconds(now()),
+          livemode: false,
+          pending_webhooks: 0,
+          request: { id: null, idempotency_key: input.idempotencyKey },
+          type: 'customer.subscription.deleted',
+          data: { object: subscription },
+        }),
+      )
+
+      return read.ok && read.event.kind === 'subscription_changed'
+        ? { ok: true, subscription: read.event.subscription }
+        : {
+            ok: false,
+            error: { code: 'invalid_request', message: 'abonnement illisible', attempts: 1 },
+          }
+    },
+
     updateSubscriptionQuantity: async (
       input: UpdateSubscriptionQuantityInput,
     ): Promise<UpdateSubscriptionQuantityResult> => {

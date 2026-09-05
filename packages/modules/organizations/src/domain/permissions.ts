@@ -64,6 +64,16 @@ export const ORGANIZATION_ACTION = {
    * combinaison rôle × action sensible soit couverte.
    */
   manageBilling: 'billing.manage',
+  /**
+   * **La suppression de l'organisation** (s34, critère 5).
+   *
+   * Réservée au propriétaire, et le commentaire de `MATRIX` le disait déjà —
+   * « ni supprimer l'organisation ni modifier un owner » — pour une action qui
+   * n'existait pas encore. Elle est donc absente de la liste explicite d'`admin`
+   * et présente chez `owner` par `ORGANIZATION_ACTIONS` : la règle est tenue par
+   * la construction de la matrice, pas par une seconde énumération.
+   */
+  delete: 'organization.delete',
 } as const
 
 export type OrganizationAction = (typeof ORGANIZATION_ACTION)[keyof typeof ORGANIZATION_ACTION]

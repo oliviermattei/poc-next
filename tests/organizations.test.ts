@@ -2126,10 +2126,26 @@ describe.runIf(databaseReachable)('ce que l’écran voit', () => {
 })
 
 describe.runIf(databaseReachable)('la purge et l’export du module', () => {
+  /** Un copropriétaire, posé en base : ce cas mesure la purge, pas l'invitation. */
+  const aCoOwner = async (organizationId: string): Promise<ModuleSession> => {
+    const peer = await anAccount()
+
+    await connection.db.execute(
+      sql`insert into organization_member (id, organization_id, user_id, role, created_at)
+          values (${`mbr_${randomUUID()}`}, ${organizationId}, ${peer.userId}, 'owner', now())`,
+    )
+
+    return peer
+  }
+
   it('efface les appartenances d’un compte, et se rejoue sans rien de plus', async () => {
     const account = await anAccount()
+    const organizationId = await anOrganization(account)
 
-    await call('create', { session: account, body: { name: 'Studio', slug: aSlug() } })
+    // **Un pair propriétaire**, sans quoi la purge refuse : depuis s34, retirer
+    // le dernier propriétaire laisserait une organisation que plus personne ne
+    // peut administrer (cas suivant).
+    await aCoOwner(organizationId)
 
     expect(await countRows('organization_member', 'user_id', account.userId)).toBe(1)
 
@@ -2138,6 +2154,30 @@ describe.runIf(databaseReachable)('la purge et l’export du module', () => {
 
     expect(await countRows('organization_member', 'user_id', account.userId)).toBe(0)
     expect(await countRows('organization_active_selection', 'user_id', account.userId)).toBe(0)
+  })
+
+  /**
+   * **La règle du dernier propriétaire, sur le chemin de la purge** (s34).
+   *
+   * `removeMember` la tient depuis s16 ; `deleteMembershipsOf` — le chemin
+   * qu'emprunte la purge d'un compte — l'ignorait. C'est par là qu'une
+   * suppression de compte laissait une organisation sans aucun propriétaire,
+   * état que ce fichier décrit comme ingouvernable et qu'aucune commande ne
+   * répare. La règle est éprouvée **ici**, à côté d'elle ; ses appelants n'en
+   * gardent qu'un témoin.
+   */
+  it('refuse de purger un compte qui laisserait une organisation sans propriétaire', async () => {
+    const account = await anAccount()
+    const organizationId = await anOrganization(account)
+
+    await expect(
+      organizationsModule.purge({ kind: 'user', userId: account.userId }),
+    ).rejects.toThrow(/dernier propriétaire/)
+
+    // **Le refus n'a rien retiré** : ni l'appartenance qui bloque, ni la
+    // sélection active. Un refus partiel laisserait un compte à moitié effacé.
+    expect(await countRows('organization_member', 'user_id', account.userId)).toBe(1)
+    expect(await countRows('organization_member', 'organization_id', organizationId)).toBe(1)
   })
 
   it('efface l’adresse invitée avec le compte qui la porte, et se rejoue', async () => {

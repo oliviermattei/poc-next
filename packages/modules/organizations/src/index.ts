@@ -51,7 +51,7 @@ export {
   type MembershipRecord,
   type OrganizationAccess,
 } from './application/organization-access'
-export { MEMBER_JOINED_NOTIFICATION } from './application/ports'
+export { MEMBER_JOINED_NOTIFICATION, SoleOwnershipError } from './application/ports'
 export type {
   NotifyRecipient,
   OrganizationRepository,

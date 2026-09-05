@@ -17,6 +17,8 @@ export type {
 } from './jobs'
 export type {
   Checkout,
+  CancelSubscriptionInput,
+  CancelSubscriptionResult,
   CheckoutMode,
   CreateCheckoutInput,
   CreateCheckoutResult,

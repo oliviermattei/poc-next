@@ -42,6 +42,14 @@ export {
   type OAuthFailureClass,
 } from './domain/oauth'
 export { safeRedirectPath } from './domain/redirect'
+// s34 : l'identifiant de la tâche de purge et le champ de sa charge utile. Le
+// point de composition en a besoin pour n'écrire aucun de ces noms deux fois.
+export {
+  ACCOUNT_PURGE_JOB,
+  ACCOUNT_PURGE_JOB_FIELD,
+  ACCOUNT_PURGE_JOB_LOCALE,
+  confirmsAccount,
+} from './domain/account-deletion'
 // s37a : l'état « banni » appartient au socle (ADR 058). La borne du motif sort
 // d'ici parce qu'elle vit avec la colonne qui le porte — le module
 // d'administration la lit, il n'en écrit pas une seconde.
@@ -59,6 +67,7 @@ export {
 export { authRoutePath } from './presentation/auth-routes'
 export {
   AUTH_EMAIL_TEMPLATES,
+  type AccountDeletionOutcome,
   type AccountView,
   type AuthUseCases,
   type DescribedSignInMethod,

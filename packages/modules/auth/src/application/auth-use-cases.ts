@@ -1,6 +1,18 @@
-import { MODULE_ROUTE_PREFIX, type ModuleExportPayload, type ModuleScope } from '@repo/core'
+import {
+  JobFailure,
+  MODULE_ROUTE_PREFIX,
+  type ModuleExportPayload,
+  type ModuleScope,
+} from '@repo/core'
 import type { SendEmailResult } from '@repo/ports'
 
+import {
+  ACCOUNT_PURGE_JOB,
+  ACCOUNT_PURGE_JOB_FIELD,
+  ACCOUNT_PURGE_JOB_LOCALE,
+  confirmsAccount,
+  parseAccountDeletion,
+} from '../domain/account-deletion'
 import { parseBanReason } from '../domain/ban'
 import { canUnlinkSignInMethod } from '../domain/oauth'
 import { describePasskeys, type DescribedPasskey } from '../domain/passkey'
@@ -43,11 +55,15 @@ export interface DescribedSignInMethod {
  *   que la bibliothèque émet elle-même.
  */
 
-/** Identifiants des trois templates déclarés au contrat. */
+/** Identifiants des templates déclarés au contrat. `tests/auth.test.ts` en fige la liste. */
 export const AUTH_EMAIL_TEMPLATES = {
   verification: 'verify-email',
   magicLink: 'magic-link',
   passwordReset: 'reset-password',
+  /** s34 : la confirmation d'une suppression, envoyée **après** l'effacement. */
+  accountDeleted: 'account-deleted',
+  /** s34 : la suppression demandée qui n'a pas pu aboutir, et pourquoi. */
+  accountDeletionBlocked: 'account-deletion-blocked',
 } as const
 
 export interface IssuedToken {
@@ -77,11 +93,18 @@ export type VerificationOutcome =
  * La langue **connue du destinataire** d'un email, jointe à chaque envoi.
  *
  * `null` — ou absente — est le cas explicite du destinataire dont rien n'est
- * connu : `emailLocaleFor` rend alors la locale par défaut du site. Aujourd'hui
- * les quatre emails du module partent vers la personne qui vient de faire la
- * requête, donc la langue connue est celle de cette requête ; demain une
- * invitation partira sans rien savoir de son destinataire, et la même règle
- * décidera.
+ * connu : `emailLocaleFor` rend alors la locale par défaut du site.
+ *
+ * **Les emails du module partent tous vers la personne qui vient de faire la
+ * requête**, donc la langue connue est celle de cette requête. La confirmation
+ * de suppression (s34) est le premier dont l'envoi est **différé** : la personne
+ * n'est plus devant nous quand il part, et sa langue voyage donc dans la charge
+ * utile de la tâche — une **référence**, comme l'identifiant du compte. Sans
+ * cela elle serait perdue, et la règle retomberait sur la langue du site
+ * (constat F9 de la revue). Une exécution qui n'en porte aucune — l'échéance
+ * cron que le contrat impose — retombe légitimement sur celle du site, et
+ * demain une invitation partira sans rien savoir de son destinataire : la même
+ * règle décidera.
  */
 export interface RecipientLocale {
   readonly knownLocale?: string | null
@@ -193,6 +216,38 @@ export interface AuthUseCases {
   }): Promise<BanOutcome>
   /** Lève le bannissement, et efface la marque avec lui. */
   unbanAccount(input: { readonly userId: string }): Promise<BanOutcome>
+  /**
+   * **Demande la suppression de son propre compte** (s34, critères 1, 2 et 9).
+   *
+   * Elle ne supprime rien : elle vérifie, puis elle **met en file**. Ce
+   * découpage n'est pas une commodité, c'est le critère 9 — module de tâches
+   * activé, l'effacement sort de la requête ; module coupé, le port l'exécute
+   * de façon synchrone dans la requête appelante, et l'appelant ne voit pas la
+   * différence.
+   *
+   * `userId` est **celui de la session**, jamais un identifiant reçu d'un
+   * corps : aucun chemin ne supprime le compte d'un autre.
+   */
+  requestAccountDeletion(
+    input: {
+      readonly userId: string
+      readonly body: unknown
+    } & RecipientLocale,
+  ): Promise<AccountDeletionOutcome>
+  /**
+   * **Efface le compte partout, puis confirme** (s34, critères 2, 3, 7 et 8).
+   *
+   * C'est le corps de la tâche `auth.purge-account`. Elle appelle la purge de
+   * **tous** les modules activés pour le périmètre du compte ; le périmètre
+   * organisation a son propre appelant, dans le module `organizations`.
+   *
+   * Elle lève quand la purge échoue — c'est ce que le répartiteur de tâches
+   * attend pour reprendre ou pour marquer l'échec —, et elle est **rejouable** :
+   * `auth` est purgé en dernier (ADR 029), donc un compte encore là est un
+   * compte dont l'effacement n'a pas abouti, et un compte parti n'a plus rien à
+   * effacer ni personne à prévenir.
+   */
+  runAccountPurge(input: { readonly userId: string } & RecipientLocale): Promise<void>
   purgeAccount(scope: ModuleScope): Promise<void>
   exportAccount(scope: ModuleScope): Promise<ModuleExportPayload>
   log: AuthDependencies['log']
@@ -207,6 +262,27 @@ export interface AuthUseCases {
 export type BanOutcome =
   | { readonly ok: true; readonly revokedSessions: number }
   | { readonly ok: false; readonly error: 'not_found' | 'invalid_reason' }
+
+/**
+ * Ce que rend une demande de suppression.
+ *
+ * `queued` est **la seule issue heureuse**, et le mot est exact : la mise en
+ * file a réussi. Elle ne dit pas que le compte est parti — avec un
+ * ordonnanceur, il ne l'est pas encore ; sans lui, il l'est déjà. L'appelant
+ * n'a pas à connaître la différence, et une réponse qui prétendrait
+ * « supprimé » mentirait dans la moitié des configurations.
+ *
+ * `sole_owner` porte **les organisations qui bloquent**, nommées : le critère 6
+ * demande que le message précise ce qu'il faut faire, et « transférez ou
+ * supprimez » sans dire laquelle ne le précise pas.
+ */
+export type AccountDeletionOutcome =
+  | { readonly status: 'queued' }
+  | { readonly status: 'invalid_request' }
+  | { readonly status: 'confirmation_mismatch' }
+  | { readonly status: 'not_found' }
+  | { readonly status: 'sole_owner'; readonly organizations: readonly string[] }
+  | { readonly status: 'unavailable' }
 
 /** Sépare le sujet d'un changement d'email : compte et adresse visée. */
 const EMAIL_CHANGE_SEPARATOR = ' '
@@ -225,6 +301,10 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
     appUrl,
     emailLocaleFor,
     now,
+    purgeScope,
+    soleOwnerships,
+    releaseOrganizations,
+    jobs,
   } = dependencies
 
   /**
@@ -687,12 +767,281 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
      * comptes appartiennent aux personnes, et le module organisations (s15)
      * possède les appartenances.
      */
+    requestAccountDeletion: async ({ userId, body, knownLocale }) => {
+      // **Zod d'abord, à la frontière** (`docs/security.md` §4) : ce qui suit ne
+      // compare que des chaînes bornées.
+      const parsed = parseAccountDeletion(body)
+
+      if (!parsed.ok) {
+        return { status: 'invalid_request' }
+      }
+
+      const user = await users.findById(userId)
+
+      if (user === null) {
+        return { status: 'not_found' }
+      }
+
+      // **La comparaison est ici, côté serveur.** L'écran peut la refaire pour
+      // ne pas promettre ce qui sera refusé ; elle ne remplace pas celle-ci.
+      if (!confirmsAccount(parsed.input.confirmation, user.email)) {
+        log(
+          describeSecurityEvent({
+            event: 'auth.account_deletion_refused',
+            actor: { userId },
+            details: { reason: 'confirmation_mismatch' },
+          }),
+        )
+
+        return { status: 'confirmation_mismatch' }
+      }
+
+      /**
+       * **Le dernier propriétaire d'une organisation ne part pas seul**
+       * (critère 6). La liste vient du point de composition : ce module ne
+       * connaît pas les organisations, et le module qui les porte peut être
+       * coupé — auquel cas il n'y a rien à bloquer.
+       */
+      const blocking = await soleOwnerships(userId)
+
+      if (blocking.length > 0) {
+        log(
+          describeSecurityEvent({
+            event: 'auth.account_deletion_refused',
+            actor: { userId },
+            details: { reason: 'sole_owner', organizations: blocking.length },
+          }),
+        )
+
+        return { status: 'sole_owner', organizations: blocking }
+      }
+
+      /**
+       * **La charge utile ne porte qu'une référence** (`docs/security.md` §5 et
+       * la règle posée par la revue de s32) : l'identifiant du compte, jamais
+       * son adresse. Elle est écrite chez le fournisseur, relue à l'exécution et
+       * souvent journalisée en chemin.
+       *
+       * La clé d'idempotence est le compte : deux clics ne suppriment pas deux
+       * fois. Elle est libérée par le répartiteur quand l'exécution échoue
+       * définitivement, ce qui laisse l'opération rejouable.
+       */
+      const emitted = await jobs.emit({
+        job: `auth.${ACCOUNT_PURGE_JOB}`,
+        key: `${ACCOUNT_PURGE_JOB}:${userId}`,
+        data: {
+          [ACCOUNT_PURGE_JOB_FIELD]: userId,
+          // **La langue de la demande, retenue ici et pas ailleurs** : c'est le
+          // dernier endroit où le destinataire est devant nous. Un code de
+          // langue est une référence, il ne nomme personne (constat F9).
+          [ACCOUNT_PURGE_JOB_LOCALE]: emailLocaleFor(knownLocale),
+        },
+      })
+
+      if (!emitted.ok) {
+        log(
+          describeSecurityEvent({
+            event: 'auth.account_deletion_refused',
+            actor: { userId },
+            details: { reason: emitted.error.code },
+          }),
+        )
+
+        // Rien n'a été effacé et rien ne le sera : le dire vaut mieux que rendre
+        // un accusé de réception pour un travail que personne ne fera.
+        return { status: 'unavailable' }
+      }
+
+      log(
+        describeSecurityEvent({
+          event: 'auth.account_deletion_requested',
+          actor: { userId },
+        }),
+      )
+
+      return { status: 'queued' }
+    },
+
+    runAccountPurge: async ({ userId, knownLocale }) => {
+      /**
+       * **L'adresse est retenue avant l'effacement, l'email part après.**
+       *
+       * La décision est ici parce que c'est ici qu'elle s'exécute, et les deux
+       * autres formes ont été écartées :
+       *
+       * - envoyer **avant** l'effacement enverrait un accusé de réception pour
+       *   une opération qui peut encore échouer — le critère 2 impose justement
+       *   qu'elle puisse échouer et être rejouée ;
+       * - lire l'adresse **après** est impossible : la ligne du compte n'existe
+       *   plus, et rien dans le produit ne la porte encore.
+       *
+       * C'est le précédent de `organizations.purge` (s16, constat F6) appliqué
+       * au même problème : lire ce qui désigne une personne **tant que le
+       * compte est là**, agir ensuite.
+       */
+      const user = await users.findById(userId)
+
+      if (user === null) {
+        // **Le rejeu, et la preuve qu'il ne fait rien de plus.** `auth` est
+        // purgé en dernier (ADR 029) : un compte absent est un compte dont
+        // l'effacement a abouti — il n'y a ni purge à refaire, ni second email
+        // à envoyer.
+        return
+      }
+
+      const email = user.email
+
+      /**
+       * **Le contrôle du dernier propriétaire est rejoué ici, à l'effacement**
+       * (critique de la seconde revue).
+       *
+       * Il était fait à la **demande**, et là seulement. Or l'effacement est
+       * différé — c'est le mécanisme du critère 9, et l'état livré active le
+       * module de tâches —, si bien que le monde change entre les deux :
+       * demander sa suppression, créer une organisation, puis laisser la tâche
+       * s'exécuter laissait une organisation sans aucun propriétaire, que plus
+       * personne ne peut administrer et qu'aucune commande ne répare.
+       *
+       * **Pourquoi refuser plutôt que promouvoir quelqu'un**, puisque les deux
+       * fermaient la fenêtre : le critère 6 dit que la personne « doit d'abord
+       * transférer ou supprimer », et promouvoir automatiquement prendrait cette
+       * décision à sa place **et** à celle du membre promu — qui hériterait sans
+       * l'avoir demandé d'une organisation, de sa facturation et de ses données.
+       * Ce serait inventer une règle que la story n'a pas.
+       *
+       * **Ce que la personne vit**, et c'est la contrepartie qu'il fallait
+       * payer : sa demande a été acceptée, elle ne sera pas honorée, et elle
+       * doit l'apprendre. Un email le lui dit — refuser en silence sur un chemin
+       * de droit à l'effacement est le pire des deux mondes.
+       */
+      const refuseSoleOwnership = async (organizations: readonly string[]): Promise<never> => {
+        const notified = await mailer.send({
+          to: email,
+          template: `auth.${AUTH_EMAIL_TEMPLATES.accountDeletionBlocked}`,
+          locale: emailLocaleFor(knownLocale),
+          data: {},
+        })
+
+        log(
+          describeSecurityEvent({
+            event: 'auth.account_deletion_refused',
+            actor: { userId },
+            details: {
+              reason: 'sole_owner',
+              organizations: organizations.length,
+              delivery: notified.ok ? 'sent' : notified.error.code,
+            },
+          }),
+        )
+
+        /**
+         * **Définitif, jamais transitoire** (`docs/reliability.md` §3) : rien
+         * dans un rejeu ne transfère une organisation à la place de la
+         * personne. Le rejouer jusqu'au plafond multiplierait l'échec et
+         * l'email.
+         */
+        throw new JobFailure(
+          'invalid_event',
+          `le compte est le dernier propriétaire de ${organizations.length} organisation(s) : ` +
+            'il doit d’abord les transférer ou les supprimer.',
+        )
+      }
+
+      /**
+       * **Une revendication, pas une lecture** — et c'est ce qui ferme la
+       * course (constat F1 de la troisième revue).
+       *
+       * Une relecture de `soleOwnerships` ici laissait passer **les deux**
+       * appelants d'un départ simultané : chacun voit deux propriétaires. Le
+       * refus n'arrivait alors qu'à l'intérieur de la purge, dans le module des
+       * organisations — c'est-à-dire **après** les modules purgés plus tôt dans
+       * l'ordre inverse. Les fichiers du perdant étaient déjà effacés du
+       * fournisseur de stockage, définitivement, pendant que son compte
+       * survivait et qu'un email lui annonçait que rien n'avait été effacé.
+       *
+       * `releaseOrganizations` retire les appartenances **ou** refuse, en une
+       * transaction, sous le verrou de chaque organisation possédée. Le second
+       * appelant recompte sur l'état commis par le premier, se découvre dernier
+       * propriétaire, et refuse avant que la purge ne commence.
+       *
+       * **Ce que cela coûte, dit plutôt que tu**: un effacement qui échoue
+       * **après** cette revendication laisse la personne retirée de ses
+       * organisations alors que son compte existe encore, jusqu'au rejeu. C'est
+       * une étape de la suppression qu'elle a demandée, franchie plus tôt que
+       * les autres ; la purge n'a jamais été transactionnelle entre modules, et
+       * c'est le rejeu qui répare.
+       */
+      const blocking = await releaseOrganizations(userId)
+
+      if (blocking.length > 0) {
+        await refuseSoleOwnership(blocking)
+      }
+
+      const outcome = await purgeScope({ kind: 'user', userId })
+
+      if (!outcome.ok) {
+        /**
+         * **L'échec interrompt et se nomme.** `JobFailure` est ce qui distingue
+         * « réessaye » de « ne réessaye pas » (`docs/reliability.md` §3) : une
+         * purge qui échoue pour une autre raison est presque toujours une
+         * indisponibilité — base, stockage, fournisseur de paiement —, donc
+         * transitoire.
+         */
+        throw new JobFailure(
+          'provider_unavailable',
+          `la purge du module « ${outcome.failed} » a échoué : ${outcome.message}`,
+        )
+      }
+
+      const sent = await mailer.send({
+        to: email,
+        template: `auth.${AUTH_EMAIL_TEMPLATES.accountDeleted}`,
+        // **La langue de la demande**, transportée par la charge utile de la
+        // tâche. La règle unique du module décide encore : une exécution qui
+        // n'en porte aucune — l'échéance cron que le contrat impose — retombe
+        // sur celle du site.
+        locale: emailLocaleFor(knownLocale),
+        data: {},
+      })
+
+      log(
+        describeSecurityEvent({
+          event: 'auth.account_deleted',
+          actor: { userId },
+          details: {
+            modules: outcome.purged.length,
+            delivery: sent.ok ? 'sent' : sent.error.code,
+          },
+        }),
+      )
+    },
+
     purgeAccount: async (scope) => {
       if (scope.kind !== 'user') {
         return
       }
 
+      /**
+       * **L'adresse d'abord, tant que le compte existe** — le précédent de
+       * `organizations.purge` (s16, constat F6), appliqué à la table que la
+       * cascade n'atteint pas.
+       *
+       * `auth_verification` ne référence pas `auth_user` : ses lignes sont
+       * désignées par une adresse, pas par un identifiant. Effacer le compte
+       * seul laissait donc un jeton de vérification portant l'adresse d'une
+       * personne partie — trouvé par le balayage de s34, sur une table que
+       * personne n'aurait pensé à citer.
+       */
+      const user = await users.findById(scope.userId)
+
       await sessions.revokeAllForUser(scope.userId)
+
+      if (user !== null) {
+        // L'identifiant **et** l'adresse : la valeur d'un changement d'email en
+        // attente porte les deux.
+        await tokens.deleteNaming({ userId: scope.userId, email: user.email })
+      }
+
       await users.deleteById(scope.userId)
     },
 

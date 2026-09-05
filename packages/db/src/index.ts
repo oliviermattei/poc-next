@@ -35,6 +35,7 @@ export { listDatabaseTables, type ListDatabaseTablesOptions } from './introspect
 export {
   migrationsTableFor,
   planModuleMigrations,
+  isConcurrentCreationError,
   runMigrations,
   runModuleMigrations,
   MIGRATIONS_SCHEMA,

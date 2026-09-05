@@ -1020,3 +1020,150 @@ describe('les fournisseurs OAuth configurés', () => {
     expect(config.localProvider).toBe(false)
   })
 })
+
+/**
+ * **Les dépendances de suppression de compte, branchées au point de
+ * composition** (s34, observation de la troisième revue).
+ *
+ * Les trois options de `configureAuth` que s34 ajoute ont des défauts, et deux
+ * d'entre eux sont **fail-closed** : sans `purgeScope` la purge échoue en le
+ * disant, sans `jobs` l'émission refuse. Le troisième ne peut pas l'être :
+ * `soleOwnerships` et `releaseOrganizations` rendent une liste vide, parce que
+ * c'est l'état légitime d'un projet dont le module `organizations` est coupé.
+ *
+ * **Conséquence, et c'est ce que ce cas garde** : perdre la ligne au point de
+ * composition ne casse rien de visible. Il n'y a plus de 409 à la demande, plus
+ * d'email de refus, et le refus du module des organisations est reclassé en
+ * `provider_unavailable` — donc transitoire, donc rejoué jusqu'au plafond.
+ * L'organisation garde son propriétaire, mais le produit ment à la personne.
+ *
+ * **Ce que ce cas mesure, exactement** : que le point de composition **nomme**
+ * ces options. Il lit la source, pas le comportement — construire le service
+ * ici demanderait une base, un mailer et la bibliothèque entière. C'est un
+ * garde-fou contre la ligne perdue, pas une preuve que la fonction branchée est
+ * la bonne ; celle-là est dans `tests/account-deletion.test.ts`, qui les
+ * branche pour de vrai.
+ */
+describe('le point de composition de l’authentification', () => {
+  const sourceOf = async (path: string): Promise<string> =>
+    await readFile(fileURLToPath(new URL(`../${path}`, import.meta.url)), 'utf8')
+
+  /**
+   * **Le délégué que cette option nomme réellement.**
+   *
+   * On coupe la source à l'option, puis on cherche le **premier** appel parmi
+   * les délégués candidats. C'est ce qui distingue « la ligne est là » de « la
+   * ligne dit la bonne chose » : deux options peuvent partager une signature,
+   * et les intervertir compile, passe le typecheck et passe une garde qui ne
+   * regarderait que la présence des noms.
+   *
+   * **La dernière occurrence, pas la première**, et c'est mesuré : dans
+   * `lib/organizations.ts`, le même nom apparaît d'abord dans la déclaration de
+   * l'interface, puis dans l'état « module coupé » — deux endroits sans appel,
+   * qui faisaient lire le délégué de l'option **suivante**. Le câblage réel est
+   * le dernier des trois. Conséquence à connaître : si le câblage disparaît, la
+   * recherche tombe sur l'état coupé, n'y trouve aucun candidat, et rend `null`
+   * — ce qui rougit aussi.
+   */
+  const delegateNamedBy = (
+    source: string,
+    option: string,
+    candidates: readonly string[],
+  ): string | null => {
+    const declaration = source.lastIndexOf(`${option}:`)
+
+    if (declaration === -1) {
+      return null
+    }
+
+    const body = source.slice(declaration)
+    const found = candidates
+      .map((candidate) => ({ candidate, at: body.indexOf(`.${candidate}(`) }))
+      .filter((entry) => entry.at !== -1)
+      .sort((left, right) => left.at - right.at)
+
+    return found[0]?.candidate ?? null
+  }
+
+  it('passe à `configureAuth` les dépendances que le module ne peut pas se procurer', async () => {
+    const source = await sourceOf('apps/web/lib/auth.ts')
+
+    // Le plancher : sans cet appel, les assertions suivantes chercheraient des
+    // noms dans un fichier qui ne configure plus rien.
+    expect(source).toContain('configureAuth({')
+
+    const missing = [
+      // s34 — l'effacement de tous les modules activés, fail-closed sans lui.
+      'purgeScope:',
+      // s34 — le refus du dernier propriétaire, à la demande…
+      'soleOwnerships:',
+      // …et sa revendication atomique au moment d'effacer.
+      'releaseOrganizations:',
+      // s33 — le port d'émission, fail-closed sans lui.
+      'jobs:',
+    ].filter((option) => !source.includes(option))
+
+    expect(missing).toEqual([])
+  })
+
+  /**
+   * **La paire, pas seulement le nom** (constat m4 de la quatrième revue).
+   *
+   * `soleOwnerships` et `releaseOrganizations` ont **la même signature** —
+   * `(userId: string) => Promise<readonly string[]>` —, si bien que les
+   * intervertir compile, lint et passe la garde ci-dessus. Les conséquences ne
+   * sont pas symétriques : brancher l'option d'effacement sur la **lecture**
+   * rouvre exactement la course que la troisième revue a fait fermer, et
+   * brancher le refus de la demande sur la **revendication** retirerait les
+   * appartenances d'une personne qui n'a encore rien confirmé.
+   *
+   * Ce cas lit la source, comme son voisin, et pour la même raison : construire
+   * les deux points de composition demanderait une base et la bibliothèque
+   * entière. Ce qu'il garde est l'appariement, pas le comportement — celui-ci
+   * est mesuré dans `tests/account-deletion.test.ts`, qui branche ses propres
+   * dépendances et ne verrait donc jamais une inversion ici.
+   */
+  it('nomme le bon délégué derrière chaque option, et pas seulement un délégué', async () => {
+    const candidates = ['soleOwnerships', 'releaseOrganizations', 'releaseMemberships'] as const
+
+    const expected: readonly {
+      readonly file: string
+      readonly option: string
+      readonly delegate: string
+    }[] = [
+      // Le point de composition de l'authentification délègue au module des
+      // organisations, option par option.
+      { file: 'apps/web/lib/auth.ts', option: 'soleOwnerships', delegate: 'soleOwnerships' },
+      {
+        file: 'apps/web/lib/auth.ts',
+        option: 'releaseOrganizations',
+        delegate: 'releaseOrganizations',
+      },
+      // Lequel, à son tour, délègue aux cas d'usage — et c'est là que les deux
+      // noms cessent de se ressembler : la revendication s'appelle
+      // `releaseMemberships`.
+      {
+        file: 'apps/web/lib/organizations.ts',
+        option: 'soleOwnerships',
+        delegate: 'soleOwnerships',
+      },
+      {
+        file: 'apps/web/lib/organizations.ts',
+        option: 'releaseOrganizations',
+        delegate: 'releaseMemberships',
+      },
+    ]
+
+    const wrong: string[] = []
+
+    for (const entry of expected) {
+      const named = delegateNamedBy(await sourceOf(entry.file), entry.option, candidates)
+
+      if (named !== entry.delegate) {
+        wrong.push(`${entry.file} · ${entry.option} → ${named ?? 'aucun'}`)
+      }
+    }
+
+    expect(wrong).toEqual([])
+  })
+})

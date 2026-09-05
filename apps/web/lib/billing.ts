@@ -14,6 +14,7 @@ import {
   type BillingView,
   type ConfigureBillingOptions,
   type EndingTrial,
+  type CancelSubscriptionsOutcome,
   type SeatSyncOutcome,
 } from '@repo/module-billing'
 import {
@@ -127,6 +128,15 @@ export interface BillingFeature {
     readonly adds?: boolean
   }) => Promise<SeatSyncOutcome>
   /**
+   * **Annule les abonnements du périmètre chez le fournisseur** (s34, critère 5).
+   *
+   * Appelée par `lib/organizations.ts` **avant** l'effacement : un fournisseur
+   * en panne interrompt la suppression, et rien n'est effacé. Module coupé, elle
+   * rend `not_applicable` sans ouvrir de connexion — un projet qui ne vend rien
+   * n'a pas d'abonnement à annuler.
+   */
+  readonly cancelSubscriptions: (scope: ModuleScope) => Promise<CancelSubscriptionsOutcome>
+  /**
    * Le simulateur, ou `null`.
    *
    * Non `null` **uniquement** en mode local : c'est ce qui monte
@@ -150,6 +160,7 @@ const ABSENT_BILLING: BillingFeature = {
   entitledOffers: () => Promise.resolve([]),
   reconcile: () => Promise.resolve({ customers: 0, changed: 0 }),
   syncSeats: () => Promise.resolve({ status: 'not_applicable' }),
+  cancelSubscriptions: () => Promise.resolve({ status: 'not_applicable' }),
   localCheckout: () => null,
 }
 
@@ -493,6 +504,8 @@ export const billing: BillingFeature = mounted
       entitledOffers: async (session) => await billingService().useCases.entitledOffers({ session }),
       reconcile: async () => await billingService().useCases.reconcile(),
       syncSeats: async (input) => await billingService().useCases.syncSeats(input),
+      cancelSubscriptions: async (scope) =>
+        await billingService().useCases.cancelSubscriptions(scope),
       localCheckout: () => {
         // Lu à l'appel, pas à l'import : c'est la construction du port qui
         // décide, et elle est différée comme tout le reste.

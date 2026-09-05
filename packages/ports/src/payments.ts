@@ -254,6 +254,31 @@ export type UpdateSubscriptionQuantityResult =
   | { readonly ok: true; readonly subscription: PaymentSubscription }
   | { readonly ok: false; readonly error: PaymentsError }
 
+/**
+ * **L'annulation d'un abonnement** (s34, critère 5).
+ *
+ * Elle est distincte d'`updateSubscriptionQuantity` — mettre la quantité à zéro
+ * n'annule pas, le fournisseur refuse — et distincte de `createPortalSession`,
+ * qui rend un lien qu'un humain doit suivre : une organisation supprimée ne
+ * peut pas attendre que quelqu'un clique.
+ *
+ * **Immédiate, jamais « à la fin de la période »** : l'organisation qui payait
+ * n'existera plus, et laisser courir un abonnement jusqu'à son terme facturerait
+ * un périmètre effacé. C'est aussi ce qui rend l'annulation observable tout de
+ * suite, donc vérifiable.
+ *
+ * `idempotencyKey` est dérivée de la cible, comme celle de la quantité : deux
+ * annulations du même abonnement sont le même appel.
+ */
+export interface CancelSubscriptionInput {
+  readonly subscriptionId: string
+  readonly idempotencyKey: string
+}
+
+export type CancelSubscriptionResult =
+  | { readonly ok: true; readonly subscription: PaymentSubscription }
+  | { readonly ok: false; readonly error: PaymentsError }
+
 /* -------------------------------------------------------------------------- *
  * Achat unique
  * -------------------------------------------------------------------------- */
@@ -419,6 +444,8 @@ export type PaymentsOperation =
   | 'list_purchases'
   /** La seule écriture post-création : la quantité de sièges (s23). */
   | 'update_subscription_quantity'
+  /** L'annulation d'un abonnement, à la suppression d'une organisation (s34). */
+  | 'cancel_subscription'
 
 /**
  * La seule surface que le code métier appelle pour parler au fournisseur de
@@ -444,6 +471,15 @@ export interface Payments {
   updateSubscriptionQuantity(
     input: UpdateSubscriptionQuantityInput,
   ): Promise<UpdateSubscriptionQuantityResult>
+  /**
+   * Annule un abonnement **existant**, immédiatement (s34).
+   *
+   * Comme les six autres, elle ne lève pas : l'échec est une valeur, et c'est
+   * ce qui permet à la suppression d'organisation d'**interrompre** au lieu de
+   * rendre un 500 — `docs/reliability.md` §3 refuse qu'un tiers en panne fasse
+   * disparaître des données qu'il facture encore.
+   */
+  cancelSubscription(input: CancelSubscriptionInput): Promise<CancelSubscriptionResult>
 }
 
 /**

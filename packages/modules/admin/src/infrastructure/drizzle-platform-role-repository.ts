@@ -22,7 +22,10 @@ import { adminPlatformRole } from '../schema'
  */
 export type AdminExecutor = Pick<
   PgDatabase<PgQueryResultHKT>,
-  'select' | 'insert' | 'delete' | 'execute'
+  // `update` est arrivé avec s34 : l'anonymisation de `granted_by` réécrit une
+  // colonne au lieu d'effacer une ligne. Les opérations sont énumérées, jamais
+  // élargies au `NodePgDatabase` complet.
+  'select' | 'insert' | 'update' | 'delete' | 'execute'
 >
 
 export type AdminDatabase = AdminExecutor & AdminTransactions
@@ -169,6 +172,27 @@ export function createDrizzlePlatformRoleRepository(
 
         throw error
       }
+    },
+
+    /**
+     * **L'anonymisation du promoteur** (s34, constat F1).
+     *
+     * Aucun verrou : elle ne lit ni ne compte les superadmins, elle réécrit une
+     * colonne d'attribution. Le décompte du dernier superadmin porte sur `role`
+     * et sur `user_id`, que cette écriture ne touche pas — deux annulations
+     * simultanées ne peuvent donc pas se croiser ici.
+     *
+     * Rejouée, elle ne touche plus aucune ligne : le prédicat porte sur la
+     * valeur qu'elle efface (`docs/reliability.md` §1).
+     */
+    forgetGranter: async (userId) => {
+      const disowned = await db
+        .update(adminPlatformRole)
+        .set({ grantedBy: null })
+        .where(eq(adminPlatformRole.grantedBy, userId))
+        .returning({ id: adminPlatformRole.id })
+
+      return disowned.length
     },
 
     revokeSuperadmin: async (userId) =>

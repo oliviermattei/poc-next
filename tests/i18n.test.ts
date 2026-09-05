@@ -1121,6 +1121,7 @@ const authUseCasesWith = (mailer: ReturnType<typeof createRecordingMailer>) =>
       create: () => Promise.resolve(),
       consume: () => Promise.resolve(null),
       invalidateSiblings: () => Promise.resolve(0),
+      deleteNaming: () => Promise.resolve(0),
     },
     tokenFactory: {
       generate: () => 'jeton',
@@ -1132,6 +1133,20 @@ const authUseCasesWith = (mailer: ReturnType<typeof createRecordingMailer>) =>
     appUrl: 'https://example.test',
     emailLocaleFor,
     now: () => new Date('2026-01-01T00:00:00Z'),
+    // s34 : ce fichier mesure la **langue** des emails, pas la suppression. Les
+    // trois dépendances sont fournies dans leur forme fermée — la purge échoue,
+    // aucune organisation ne bloque, aucune file n'existe.
+    purgeScope: () =>
+      Promise.resolve({ ok: false, purged: [], failed: 'auth', message: 'hors sujet ici' }),
+    soleOwnerships: () => Promise.resolve([]),
+    releaseOrganizations: () => Promise.resolve([]),
+    jobs: {
+      emit: () =>
+        Promise.resolve({
+          ok: false,
+          error: { code: 'unknown_job', message: 'aucune file dans cette suite' },
+        }),
+    },
   } satisfies AuthDependencies)
 
 describe('les emails transactionnels partent dans la langue du destinataire', () => {

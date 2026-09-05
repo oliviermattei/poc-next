@@ -1,3 +1,4 @@
+import type { ModuleScope } from '@repo/core'
 import type { EmailData, Mailer } from '@repo/ports'
 
 import type { InvitationRefusal } from '../domain/invitation'
@@ -42,6 +43,16 @@ export interface OrganizationRepository {
   listMemberships(userId: string): Promise<readonly MembershipRecord[]>
 
   /**
+   * **Les organisations dont ce compte est le seul propriétaire** (s34, critère
+   * 6), nommées.
+   *
+   * C'est la lecture qui décide si un compte peut être supprimé : une
+   * organisation sans propriétaire n'est administrable par personne, et aucune
+   * commande ne la répare.
+   */
+  soleOwnerships(userId: string): Promise<readonly { readonly organizationId: string; readonly name: string }[]>
+
+  /**
    * Crée l'organisation **et** l'appartenance de son créateur.
    *
    * Les deux ensemble : une organisation sans membre serait une ressource que
@@ -71,7 +82,28 @@ export interface OrganizationRepository {
   setActiveOrganization(access: OrganizationAccess): Promise<void>
 
   /** Efface les appartenances et la sélection courante d'un compte. */
-  deleteMembershipsOf(userId: string): Promise<void>
+  /**
+   * **Retire ce compte de toutes ses organisations — sauf s'il en laisserait
+   * une sans propriétaire** (s34, critique de la seconde revue).
+   *
+   * Le refus est la règle que `removeMember` applique déjà, sur le chemin que
+   * la purge empruntait sans elle : `deleteMembershipsOf` effaçait les
+   * appartenances **sans compter les propriétaires restants**, si bien qu'un
+   * compte devenu dernier propriétaire entre sa demande de suppression et son
+   * effacement laissait une organisation ingouvernable — plus personne pour
+   * nommer un rôle, inviter, révoquer, renommer ni supprimer.
+   *
+   * Il est ici, dans l'écriture, et **sous le même verrou** que le décompte :
+   * une vérification faite au-dessus laisserait la fenêtre où deux
+   * copropriétaires partent ensemble, chacun voyant l'autre.
+   *
+   * Rend les organisations qui ont **bloqué**, nommées, ou une liste vide quand
+   * le retrait a eu lieu. Aucune n'est effacée dans le premier cas : le refus
+   * est total, il n'est pas partiel.
+   */
+  deleteMembershipsOf(
+    userId: string,
+  ): Promise<readonly { readonly organizationId: string; readonly name: string }[]>
 
   /** Efface une organisation. Ses appartenances suivent par cascade. */
   deleteOrganization(organizationId: string): Promise<void>
@@ -437,7 +469,62 @@ export interface OrganizationsDependencies {
    * de composition distrait un produit qui n'avertit plus personne, en silence.
    */
   readonly notify: NotifyRecipient
+  /**
+   * **L'effacement de tous les modules activés pour ce périmètre** (s34).
+   *
+   * Reçu, comme il l'est du module `auth` et pour la même raison : le registre
+   * est construit à partir des modules, un module ne peut donc pas le lire. Le
+   * point de composition branche `purgeModules`.
+   */
+  readonly purgeScope: PurgeScope
+  /**
+   * **L'annulation de l'abonnement du périmètre chez le fournisseur de
+   * paiement** (critère 5).
+   *
+   * Reçue comme `seatSync`, et pour la même raison : le module ne connaît pas
+   * `billing`, qui peut être coupé — auquel cas il n'y a rien à annuler, par la
+   * valeur et non par une condition sur un nom de module. **Un échec
+   * interrompt** : effacer une organisation dont l'abonnement court encore
+   * facturerait un périmètre qui n'existe plus.
+   */
+  readonly cancelBilling: CancelBilling
 }
+
+/**
+ * **Ce que lève une purge de compte qui laisserait une organisation sans
+ * propriétaire** (s34, critique de la seconde revue).
+ *
+ * Une exception plutôt qu'un résultat, parce que la signature de `purge` est
+ * celle du **contrat de module** — `(scope) => Promise<void>` — et qu'aucun
+ * périmètre ne peut la changer sans rouvrir les treize modules. C'est le même
+ * arbitrage que `SeatSyncRefusedError` : le refus voyage par une exception
+ * jusqu'à la frontière qui sait quoi en faire, et pas plus loin.
+ *
+ * Elle porte les **noms** des organisations qui bloquent : l'appelant les
+ * répète à la personne, comme le fait déjà le refus à la demande.
+ */
+export class SoleOwnershipError extends Error {
+  constructor(readonly organizations: readonly string[]) {
+    super(
+      `Ce compte est le dernier propriétaire de ${organizations.length} organisation(s) : ` +
+        'il doit d’abord les transférer ou les supprimer.',
+    )
+    this.name = 'SoleOwnershipError'
+  }
+}
+
+/** L'effacement de tous les modules activés pour un périmètre (s34). */
+export type PurgeScope = (scope: ModuleScope) => Promise<{ readonly ok: boolean }>
+
+/**
+ * L'annulation de l'abonnement d'une organisation.
+ *
+ * Un booléen discriminé et rien de plus : ce module n'a pas à connaître les
+ * codes d'erreur d'un fournisseur qu'il ne nomme pas. `ok: true` couvre aussi
+ * « il n'y avait rien à annuler » — facturation coupée, périmètre sans client,
+ * offre au forfait —, exactement comme `seatSync` (s23, critère 8).
+ */
+export type CancelBilling = (organizationId: string) => Promise<{ readonly ok: boolean }>
 
 /**
  * Le port du journal de sécurité.

@@ -7,8 +7,10 @@ import {
   type OrganizationsUseCases,
 } from '../application/organization-use-cases'
 import type {
+  CancelBilling,
   InvitationTokenFactory,
   NotifyRecipient,
+  PurgeScope,
   SeatSync,
   SecurityLog,
 } from '../application/ports'
@@ -82,6 +84,24 @@ export interface ConfigureOrganizationsOptions {
    * compilateur réclame donc la ligne.
    */
   readonly notify: NotifyRecipient
+  /**
+   * **L'effacement de tous les modules activés pour un périmètre** (s34).
+   *
+   * Facultative et **fail-closed** : absente, la suppression d'organisation
+   * échoue au lieu d'effacer à moitié. Le rendre obligatoire aurait rouvert
+   * chaque `configureOrganizations` du dépôt pour une capacité qu'une suite qui
+   * mesure les invitations n'utilise pas.
+   */
+  readonly purgeScope?: PurgeScope
+  /**
+   * L'annulation de l'abonnement du périmètre (critère 5).
+   *
+   * Absente, **rien à annuler** : c'est l'état d'un projet sans facturation, et
+   * `seatSync` traite le même cas de la même façon. La différence avec
+   * `purgeScope` est délibérée : ne rien effacer est un défaut, ne rien
+   * facturer n'en est pas un.
+   */
+  readonly cancelBilling?: CancelBilling
 }
 
 export interface OrganizationsService {
@@ -113,6 +133,12 @@ const build = (options: ConfigureOrganizationsOptions): OrganizationsService => 
     emailLocale: options.emailLocale,
     now: options.now ?? (() => new Date()),
     tokens: options.tokens ?? createInvitationTokenFactory(),
+    purgeScope:
+      options.purgeScope ??
+      ((): Promise<{ readonly ok: boolean }> => Promise.resolve({ ok: false })),
+    cancelBilling:
+      options.cancelBilling ??
+      ((): Promise<{ readonly ok: boolean }> => Promise.resolve({ ok: true })),
     securityLog: options.securityLog ?? consoleSecurityLog,
     notify: options.notify,
   }),

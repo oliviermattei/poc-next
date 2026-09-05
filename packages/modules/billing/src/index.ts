@@ -98,6 +98,7 @@ export {
   billingScopeReference,
   type BillingUseCases,
   type BillingView,
+  type CancelSubscriptionsOutcome,
   type SeatSyncOutcome,
   type OfferView,
   type PurchaseView,

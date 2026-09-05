@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import {
   createDatabaseClient,
   composeSchema,
+  isConcurrentCreationError,
   runMigrations,
   runSeeders,
   type DatabaseConnection,
@@ -13,6 +14,40 @@ import { afterAll, beforeAll, describe, expect, expectTypeOf, it } from 'vitest'
 
 import { databaseUrl, isDatabaseReachable } from './fixtures/database'
 import { fixtureItem } from './fixtures/schema'
+
+/**
+ * **Ce qui distingue « quelqu'un d'autre vient de créer cet objet » d'un échec
+ * de migration** (s34).
+ *
+ * La distinction décide d'un rejeu, et un rejeu qui se tromperait de côté
+ * masquerait une migration réellement en échec — ce que `docs/reliability.md`
+ * refuse en toutes lettres (« une migration en échec empêche l'application de
+ * démarrer »). Elle est donc une fonction pure, éprouvée ici, et le rejeu qui
+ * s'en sert est éprouvé par la concurrence réelle de
+ * `pnpm test:minimal-profile`, où le défaut s'est produit.
+ */
+describe('la création concurrente d’un objet, distinguée d’un échec', () => {
+  it('reconnaît les codes du catalogue, y compris à travers l’enveloppe de Drizzle', () => {
+    // Drizzle enveloppe l'erreur du pilote et range l'originale dans `cause` :
+    // ne regarder que le premier niveau ne verrait jamais le code.
+    const wrapped = new Error('Failed query: create table "organization" …', {
+      cause: { code: '23505', constraint: 'pg_type_typname_nsp_index' },
+    })
+
+    expect(isConcurrentCreationError(wrapped)).toBe(true)
+    expect(isConcurrentCreationError({ code: '42P07' })).toBe(true)
+    expect(isConcurrentCreationError({ code: '42710' })).toBe(true)
+  })
+
+  it('ne reconnaît pas un échec de migration, qui doit rester un échec', () => {
+    // Une syntaxe invalide, une contrainte violée par les données, une colonne
+    // absente : rien de tout cela ne se répare en rejouant.
+    expect(isConcurrentCreationError({ code: '42601' })).toBe(false)
+    expect(isConcurrentCreationError({ code: '23503' })).toBe(false)
+    expect(isConcurrentCreationError(new Error('migration illisible'))).toBe(false)
+    expect(isConcurrentCreationError(null)).toBe(false)
+  })
+})
 
 describe('composition des schémas de modules', () => {
   it('assemble les schémas de plusieurs modules', () => {

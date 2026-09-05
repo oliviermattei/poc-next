@@ -415,10 +415,14 @@ describe.skipIf(!databaseReachable)('frontière — tout email passe par le port
     expect(outboundCalls).toEqual([])
   }, 60_000)
 
-  it('déclare les trois templates au contrat, dans toutes ses locales', () => {
+  it('déclare les cinq templates au contrat, dans toutes ses locales', () => {
     const locales = Object.keys(authModule.messages)
 
     expect(authModule.emails.map((template) => template.id).sort()).toEqual([
+      // s34 : la confirmation de suppression de compte, et l'avis d'une
+      // suppression qui n'a pas pu aboutir.
+      'account-deleted',
+      'account-deletion-blocked',
       'magic-link',
       'reset-password',
       'verify-email',

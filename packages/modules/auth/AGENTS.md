@@ -606,3 +606,85 @@ pourquoi le service de la bibliothèque est déclaré comme un **port** dans
   `tests/fixtures/webauthn.ts` : cette doublure remplace **l'authentificateur,
   jamais le vérificateur**, et ne dit rien de ce qu'un navigateur accepte de
   produire.
+
+## La suppression de compte (s34)
+
+Trois choses à savoir avant d'y toucher.
+
+**La cascade n'attrape pas tout, et l'exception est mesurée.** `auth_session`,
+`auth_account`, `auth_passkey` et `auth_two_factor` référencent `auth_user` en
+`on delete cascade` : effacer le compte les emporte. `auth_verification`, non —
+ses lignes sont désignées par une **adresse** (ou par « identifiant espace
+adresse » pour un changement d'email en attente), jamais par une clé étrangère.
+`purgeAccount` lit donc l'adresse **pendant que le compte existe**, puis appelle
+`tokens.deleteNaming({ userId, email })`. Sans cet appel, un jeton de
+vérification survivait au compte en portant son adresse — trouvé par le balayage
+de `tests/account-deletion.test.ts`.
+
+**Ce que ce balayage couvre, exactement** — la première rédaction de ce
+paragraphe promettait plus, et la revue l'a démentie en mesurant : les **tables**
+sont dérivées du contrat — celles des modules activés **qui existent réellement
+dans le schéma**, l'intersection étant lue dans `information_schema` parce que la
+suite ne migre que les modules dont elle écrit des données —, toutes leurs
+colonnes, comparées en texte ; les **lignes**, elles, ne sont pas dérivées. Le balayage ne
+trouve que ce que le cas a lui-même écrit, donc une table qu'aucune écriture ne
+peuple est balayée **vide**. Ajouter une table qui nomme un compte ne fait donc
+rougir ce balayage que si un cas y écrit une ligne.
+
+C'est pour cela que le cas nomme les tables qu'il peuple (`POPULATED`) et
+**asserte cette liste** : les quatre qui nomment un compte sans clé étrangère
+vers lui — `admin_platform_role.granted_by`, `auth_verification.value`,
+`organization_invitation.email`, `notification.payload` —, plus quatre témoins
+que la cascade emporte. Une table qui cesse d'être peuplée fait rougir ; une
+table neuve qui devrait l'être se décide en ajoutant sa ligne à cette liste. La
+mesure qui a produit cette rédaction : neutraliser l'effacement de l'adresse
+invitée laissait le balayage **vert** ; il en rougit désormais.
+
+**Le prédicat de `deleteNaming` est ancré, et il l'est en deux fois.** Il a
+d'abord cherché `%<valeur>%` sur une table **partagée par tous les comptes**,
+avec deux débordements successivement mesurés : les jokers de `LIKE` — `_` est
+légal dans une adresse —, puis la sous-chaîne elle-même, `a@b.co` emportant les
+jetons de `a@b.com`. Les valeurs à atteindre étant connues et fermées, il les
+nomme désormais : les **égalités** — l'adresse, et `<identifiant> <adresse
+visée>` — et **un seul motif, ancré à gauche**, `<identifiant> %`, pour un
+changement d'email dont l'adresse visée n'est pas connue de l'appelant. La
+liste qui fait foi est le tableau `conditions` du repository ; ce paragraphe la
+décrit, il ne la compte pas.
+
+`escapeLikePattern` ne garde donc plus que ce dernier motif, et il faut le
+savoir avant de lire les cas : « n'efface pas le jeton d'un voisin dont
+l'adresse ne diffère que par un joker » passe aujourd'hui sur l'**égalité**, et
+ne mesure plus l'échappement malgré son nom — mesuré, retirer l'échappement le
+laissait vert. Ce qui le mesure est « n'efface pas le changement d'email d'un
+compte dont l'identifiant est voisin », qui pose ses lignes à la main parce que
+la bibliothèque ne produit pas d'identifiant portant un joker.
+
+**Ce qui tient « les sessions sont révoquées », mesuré :** la cascade, pas
+l'appel. `purgeAccount` appelle `sessions.revokeAllForUser` **et** supprime le
+compte ; neutraliser le premier laisse la suite verte, neutraliser le second fait
+rougir largement — **11 cas sur l'ensemble de `pnpm test`, mesuré le 05/09/2026**,
+et le nombre vieillira : ce qui compte est qu'il ne soit pas nul, la commande qui
+le dit est `pnpm test` avec `users.deleteById` neutralisé. L'appel explicite est
+une ceinture, il n'est pas la bretelle — ne pas le citer comme la garantie.
+
+**L'orchestration n'est pas dans ce module, elle y arrive.** `purgeScope`
+(l'effacement de tous les modules activés), `soleOwnerships` (les organisations
+qu'un compte bloquerait en partant) et `jobs` (le port d'émission) sont
+**injectés** par `apps/web/lib/auth.ts`, comme le mailer : `@repo/core` construit
+le registre à partir des modules, donc un module ne peut pas le lire. Les trois
+sont **fail-closed** en l'absence de câblage — la purge échoue en nommant ce qui
+manque, l'émission refuse — sauf `soleOwnerships`, qui rend une liste vide parce
+que c'est l'état légitime d'un projet dont le module `organizations` est coupé.
+
+**L'ordre de l'effacement, et la raison pour laquelle il rend l'opération
+rejouable :** `auth` est purgé **en dernier** (ordre inverse du graphe, ADR 029,
+tous les autres modules le requièrent). Un compte encore présent est donc un
+compte dont l'effacement n'a pas abouti, et un compte absent est un compte dont
+tout a abouti — c'est ce qui autorise `runAccountPurge` à sortir sans rien faire
+quand `findById` rend `null`, donc à ne produire **qu'un seul** email de
+confirmation quel que soit le nombre de rejeux.
+
+**Le moment de l'email :** l'adresse est retenue **avant** l'effacement, la
+confirmation part **après** — le précédent de `organizations.purge` (s16).
+Envoyée avant, elle accuserait réception d'une opération qui peut encore
+échouer ; l'adresse ne se relit pas après, elle n'existe plus.

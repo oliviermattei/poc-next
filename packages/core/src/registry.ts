@@ -383,8 +383,31 @@ export async function dispatchModuleRequest(
 }
 
 /**
- * Purge les données du périmètre dans **chaque module activé**, et rend la liste
- * de ceux qui ont été appelés.
+ * Ce que rend une purge : **ce qu'elle a fait**, jamais ce qui existe (s34).
+ *
+ * `purged` est la liste des modules **effectivement purgés**, dans l'ordre où
+ * ils l'ont été. En échec, elle s'arrête avant le module fautif, que `failed`
+ * nomme — c'est ce qui rend le critère 2 exprimable : « un module dont la purge
+ * échoue interrompt l'opération et la laisse rejouable ». Sans le nom du module
+ * et sans la liste de ce qui a abouti, un rejeu ne peut rien dire de ce qu'il
+ * retrouvera.
+ *
+ * `message` vient de l'erreur levée par le module. Il est destiné à un journal
+ * et à un appelant qui décide, jamais à une réponse HTTP : rien n'y garantit
+ * l'absence de détail interne.
+ */
+export type PurgeModulesOutcome =
+  | { readonly ok: true; readonly purged: readonly string[] }
+  | {
+      readonly ok: false
+      readonly purged: readonly string[]
+      readonly failed: string
+      readonly message: string
+    }
+
+/**
+ * Purge les données du périmètre dans **chaque module activé**, et rend ce
+ * qu'elle a purgé.
  *
  * Un module non activé n'est pas dans la liste : sa fonction de purge n'est pas
  * appelée, et son absence ne provoque aucune erreur — il n'y a rien à ignorer.
@@ -397,16 +420,36 @@ export async function dispatchModuleRequest(
  * effacé, et l'adresse d'une personne survivait dans une invitation en attente.
  * Le montage, lui, garde l'ordre direct : une route d'un requis existe avant
  * celles de son dépendant.
+ *
+ * **Elle ne lève pas, et elle ne continue pas non plus** : un module qui échoue
+ * arrête l'opération là — poursuivre effacerait les données que le module
+ * fautif devait encore résoudre, et l'ordre inverse n'aurait plus de sens. Le
+ * rejeu est ce qui répare : chaque purge de module est un effacement
+ * conditionnel, donc un second passage ne retrouve rien de ce qui est déjà
+ * parti (`docs/reliability.md` §1).
  */
 export async function purgeModules(
   registry: ModuleRegistry,
   scope: ModuleScope,
-): Promise<readonly string[]> {
+): Promise<PurgeModulesOutcome> {
+  const purged: string[] = []
+
   for (const module of [...registry.modules].reverse()) {
-    await module.purge(scope)
+    try {
+      await module.purge(scope)
+    } catch (thrown) {
+      return {
+        ok: false,
+        purged,
+        failed: module.id,
+        message: thrown instanceof Error ? thrown.message : String(thrown),
+      }
+    }
+
+    purged.push(module.id)
   }
 
-  return registry.moduleIds
+  return { ok: true, purged }
 }
 
 /** Export des données du périmètre, module activé par module activé. */

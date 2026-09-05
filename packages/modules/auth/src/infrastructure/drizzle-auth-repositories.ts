@@ -36,6 +36,16 @@ import {
  * modules ne serait pas assignable à une connexion typée sans schéma. Un module
  * n'a pas à connaître les tables des autres pour recevoir une connexion.
  */
+/**
+ * Échappe les jokers d'un motif `LIKE` (s34).
+ *
+ * `_` et `%` sont des jokers **et** des caractères légaux d'un identifiant ou
+ * d'une adresse ; non échappés, un motif construit à partir d'une valeur de la
+ * base atteindrait des lignes voisines.
+ */
+const escapeLikePattern = (value: string): string =>
+  value.replaceAll(/[\\%_]/g, (match) => `\\${match}`)
+
 export type AuthDatabase = Pick<
   PgDatabase<PgQueryResultHKT>,
   'select' | 'insert' | 'update' | 'delete'
@@ -498,6 +508,57 @@ export function createDrizzleVerificationTokenRepository(
             ? sameFamily
             : and(sameFamily, ne(authVerification.identifier, exceptIdentifier)),
         )
+        .returning({ id: authVerification.id })
+
+      return deleted.length
+    },
+
+    /**
+     * **Les jetons qui nomment un compte effacé** (s34).
+     *
+     * `auth_verification` n'a pas de clé étrangère vers `auth_user` : sa valeur
+     * est une adresse, ou « identifiant espace adresse » pour un changement
+     * d'email. Rien ne l'emporte par cascade, d'où cet effacement explicite,
+     * appelé par la purge du module pendant que le compte existe encore.
+     *
+     * **Des valeurs nommées et un motif ancré, aucun joker libre** — la liste
+     * exacte se lit dans `conditions`, juste en dessous ; un nombre écrit ici
+     * vieillirait à trois lignes de ce qu'il compte, et celui-ci a vieilli dans
+     * le commit même qui l'a écrit (constat m1 de la quatrième revue).
+     *
+     * Le premier jet cherchait `%<valeur>%` : sur une table partagée par tous
+     * les comptes, cela emportait les jetons d'un tiers dont l'adresse contient
+     * celle de la cible (`a@b.co` contre `a@b.com`), et, sans échappement, ceux
+     * d'une adresse qui n'en diffère que par un `_`. Les valeurs visées étant
+     * connues et fermées, le prédicat les nomme : rien ne dépasse.
+     *
+     * Le seul motif restant — `<identifiant> %` — est ancré à gauche sur un
+     * identifiant de compte suivi d'une espace, ce qu'aucune autre famille de
+     * jetons ne produit. `like` reste échappé sur l'identifiant, qui vient de la
+     * base et pourrait un jour porter un caractère de motif.
+     */
+    deleteNaming: async ({ userId, email }) => {
+      if (userId === '' && email === '') {
+        return 0
+      }
+
+      const conditions = [
+        // Le jeton de vérification d'adresse : sa valeur **est** l'adresse.
+        email === '' ? undefined : eq(authVerification.value, email),
+        // Le changement d'email en attente, dans les deux sens de lecture :
+        // la valeur exacte quand les deux sont connus, et tout changement
+        // **émis par** ce compte quelle que soit l'adresse visée.
+        userId === '' || email === ''
+          ? undefined
+          : eq(authVerification.value, `${userId} ${email}`),
+        userId === ''
+          ? undefined
+          : like(authVerification.value, `${escapeLikePattern(userId)} %`),
+      ].filter((condition) => condition !== undefined)
+
+      const deleted = await db
+        .delete(authVerification)
+        .where(or(...conditions))
         .returning({ id: authVerification.id })
 
       return deleted.length

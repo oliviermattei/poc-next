@@ -50,6 +50,19 @@ export interface PlatformRoleRepository {
    */
   revokeSuperadmin(userId: string): Promise<RevokeOutcome>
   /**
+   * **Rompt le lien vers le compte qui a promu** (s34, constat F1 de la revue).
+   *
+   * `granted_by` n'a aucune clé étrangère — effacer le promoteur ne doit ni
+   * emporter la promotion, ni la bloquer —, donc aucune cascade ne l'atteint.
+   * Sans cette écriture, l'identifiant d'un compte effacé survivait sur chaque
+   * rôle qu'il avait accordé.
+   *
+   * C'est une **anonymisation**, pas un effacement : la ligne reste, le promu
+   * garde son rôle, et le décompte du dernier superadmin est inchangé. Rend le
+   * nombre de lignes touchées ; rejouée, elle n'en touche plus aucune.
+   */
+  forgetGranter(userId: string): Promise<number>
+  /**
    * **Bannit, sauf s'il s'agit du dernier superadmin** (revue de s37a, F2).
    *
    * Le bannissement lui-même n'appartient pas à ce module — c'est un état du

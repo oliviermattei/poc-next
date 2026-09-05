@@ -66,6 +66,34 @@ describe('la liste des cas intermittents', () => {
 
     expect(guessed.map((entry) => entry.id)).toEqual([])
   })
+
+  /**
+   * **La bascule de `corrected`, rendue exécutable** (constat de la seconde
+   * revue de s34).
+   *
+   * Une entrée est restée `corrected: false` en désignant le fichier même où le
+   * correctif venait d'être posé, et rien n'a rougi : la liste se disait « la
+   * source » tout en mentant sur son propre état. Le témoin de correctif ferme
+   * les deux sens — il doit être là quand l'entrée se dit corrigée, absent
+   * quand elle se dit ouverte.
+   */
+  it('accorde chaque témoin de correctif avec l’état déclaré du cas', () => {
+    const witnessed = INTERMITTENT_CASES.filter((entry) => entry.correctedWitness !== undefined)
+
+    // Le plancher : sans une seule entrée qui en déclare un, ce cas serait vert
+    // en ne regardant rien.
+    expect(witnessed.length).toBeGreaterThan(0)
+
+    const disagreeing = witnessed.filter((entry) => {
+      const present = readRepoFile(entry.file).includes(entry.correctedWitness ?? '')
+
+      return present !== entry.corrected
+    })
+
+    expect(
+      disagreeing.map((entry) => `${entry.id} → corrected: ${String(entry.corrected)}`),
+    ).toEqual([])
+  })
 })
 
 /**

@@ -45,7 +45,7 @@ Un décompte se lit, il ne s'écrit pas.
 | **Le renvoi et le retrait n'agissent que dans l'organisation autorisée** | `organization_id` est dans le prédicat des deux écritures, comme pour la révocation | `tests/organizations.test.ts` — « refuse de renvoyer l'invitation d'une autre organisation » et « refuse de retirer un membre d'une autre organisation » |
 | **L'adresse invitée s'efface avec le compte qui la porte** | `purge({kind:'user'})` lit l'adresse sur le compte, puis efface les invitations qui la portent, dans toutes les organisations ; la catégorie `invitation` est déclarée et sa rétention est `erase` | `tests/organizations.test.ts` — « efface l'adresse invitée avec le compte qui la porte » |
 | **Aucun `GET` ne consomme un jeton** | la route d'acceptation est un `POST` ; l'écran d'atterrissage rend un `<form method="post">` | `tests/organizations.test.ts` — un `GET` sur le chemin d'acceptation répond 404 et l'invitation reste en attente |
-| **Un changement de taille passe chez l'extérieur avant d'être validé — sur les deux écritures où ce l'est jusqu'ici** | `consumeInvitation` et `removeMember` comptent les membres **dans leur transaction**, appellent le `SeatSync` injecté, et lèvent `SeatSyncRefusedError` — donc annulent — sur un refus (s23, ADR 046). Le module ignore qu'il existe une facturation : le couplage est au point de composition. **Aucun nombre écrit ici, la liste est le compte** : la phrase disait « les quatre écritures du module », et il y en a cinq — elle oubliait celle du fondateur. **Balayées, les écritures du module qui changent le nombre de lignes de `organization_member` : `createOrganization`, `consumeInvitation`, `removeMember`, `deleteMembershipsOf`, `deleteOrganization`.** Les deux du milieu synchronisent. `createOrganization` insère le fondateur et **ne synchronise rien** : l'organisation naît dans cette transaction, elle n'a donc pas encore de client de facturation d'où tirer une offre — aucun plafond ne peut y mordre. `deleteMembershipsOf(userId)` — le retrait d'une personne de **toutes** ses organisations, atteint par `purge({kind:'user'})` — ne synchronise rien non plus, et `deleteOrganization` non plus (l'organisation entière disparaît, ses appartenances par cascade). Le premier des deux est le piège de la story qui supprimera un compte (s34) : aujourd'hui aucun défaut n'est expédié — `purgeModules` (`@repo/core`) n'a **aucun appelant hors des tests** —, mais qui câblera la suppression de compte sans l'accrocher laissera un siège facturé jusqu'à `pnpm billing:reconcile` | `tests/billing.test.ts` — « n'ajoute pas le membre quand le fournisseur refuse » et « ne retire pas le membre quand le fournisseur refuse le retrait » : **2 rouges** quand le refus cesse d'annuler. **Rien ne mesure les trois autres sites** — `createOrganization` n'a rien à synchroniser, et les deux autres n'ont rien à mesurer tant que personne ne les appelle |
+| **Un changement de taille passe chez l'extérieur avant d'être validé — sur les deux écritures où ce l'est jusqu'ici** | `consumeInvitation` et `removeMember` comptent les membres **dans leur transaction**, appellent le `SeatSync` injecté, et lèvent `SeatSyncRefusedError` — donc annulent — sur un refus (s23, ADR 046). Le module ignore qu'il existe une facturation : le couplage est au point de composition. **Aucun nombre écrit ici, la liste est le compte** : la phrase disait « les quatre écritures du module », et il y en a cinq — elle oubliait celle du fondateur. **Balayées, les écritures du module qui changent le nombre de lignes de `organization_member` : `createOrganization`, `consumeInvitation`, `removeMember`, `deleteMembershipsOf`, `deleteOrganization`.** Les deux du milieu synchronisent. `createOrganization` insère le fondateur et **ne synchronise rien** : l'organisation naît dans cette transaction, elle n'a donc pas encore de client de facturation d'où tirer une offre — aucun plafond ne peut y mordre. `deleteMembershipsOf(userId)` — le retrait d'une personne de **toutes** ses organisations, atteint par `purge({kind:'user'})` — ne synchronise rien non plus, et `deleteOrganization` non plus (l'organisation entière disparaît, ses appartenances par cascade). **s34 a câblé `purgeModules`** (la suppression de compte l'appelle), et n'a **pas** accroché `deleteMembershipsOf` au `SeatSync` : la conséquence est écrite plutôt que niée — supprimer son compte laisse la quantité de sièges de ses organisations trop haute chez le fournisseur jusqu'à `pnpm billing:reconcile`, que `docs/reliability.md` §5 impose précisément pour cet écart et qui pousse le nombre de membres vers le fournisseur (ADR 046). C'est une décision, pas un oubli : brancher l'appel ferait échouer un **droit à l'effacement** sur une panne de Stripe, ce qui est le mauvais sens du fail-closed. `deleteOrganization`, lui, ne synchronise rien non plus mais **annule** l'abonnement avant d'effacer (s34, critère 5) : il n'y a plus de quantité à corriger | `tests/billing.test.ts` — « n'ajoute pas le membre quand le fournisseur refuse » et « ne retire pas le membre quand le fournisseur refuse le retrait » : **2 rouges** quand le refus cesse d'annuler. **Rien ne mesure les trois autres sites** — `createOrganization` n'a rien à synchroniser, et les deux autres n'ont rien à mesurer tant que personne ne les appelle |
 | **Rejoindre une organisation prévient ses membres déjà là, une fois chacun** | `announceArrival` émet **une fois par destinataire**, avec l'identifiant de ce destinataire, par le port `NotifyRecipient` injecté au point de composition (s32, revue F5). Le nouveau venu est retiré de la liste ; le module ne connaît ni les préférences, ni le périmètre de lecture, ni le fait qu'un centre existe. Le résultat n'est pas lu : avertir ne doit pas annuler une adhésion écrite | `tests/organizations.test.ts` — « prévient les membres déjà là, une fois chacun, et personne d'autre » : **1 rouge** quand l'appel disparaît, **1 rouge** quand le nouveau venu cesse d'être retiré |
 | **Une invitation en attente n'occupe aucun siège** | `countMembersOf` compte `organization_member`, et rien d'autre ; les invitations vivent dans une autre table | `tests/billing.test.ts` — « ne facture pas l'invitation qui reste en attente » : **3 rouges** quand le comptage y ajoute les invitations vivantes |
 | **Un refus de l'extérieur porte son motif, et seul un ajout peut être plafonné** (s47) | `SeatSync` rend un résultat discriminé — `{ok:true}` ou `{ok:false, refusal}` — et reçoit `adds` ; `consumeInvitation` passe `true`, `removeMember` passe `false`. Le cas d'usage **rapporte** le motif reçu, il n'en choisit aucun : replier les deux sur un seul enverrait l'invité réessayer indéfiniment une opération qui ne changera pas d'avis. Un plafond opposé à un retrait enfermerait une organisation au-dessus d'un plafond abaissé | `tests/billing.test.ts` — « n'expulse personne quand le plafond passe sous l'effectif, et laisse retirer » : **1 rouge** quand le retrait passe `adds: true`, **1 rouge** quand le plafond ignore `adds` (les deux re-mesurés). Replier le plafond sur `seat_sync_unavailable` dans `apps/web/lib/seat-sync.ts` : **3 rouges** et non deux — « accepte l'invitation qui atteint le plafond et refuse la suivante », « n'expulse personne quand le plafond passe sous l'effectif, et laisse retirer » et « annule l'écriture sous un motif distinct quand le plafond est atteint ». Le deuxième manquait au compte écrit par s47 |
@@ -142,16 +142,95 @@ personne ne peut en nommer un, et l'organisation est figée à vie. L'état est
 `delete` comptent les propriétaires sous le même verrou, et trois croisements de
 concurrence ont été sondés à la revue.
 
-Il reste **productible par la base**, et c'est le piège de la story qui
-supprimera un compte (s34) : `organization_member.user_id` référence
-`auth_user.id` en `onDelete: 'cascade'`
-(`src/schema.ts:62-64`). Effacer le compte du dernier propriétaire efface sa
-ligne d'appartenance sans que rien ne compte les propriétaires restants —
-l'organisation survit, ses membres aussi, et plus personne ne peut nommer un
-rôle, renommer, inviter, révoquer ni retirer. `docs/reliability.md` §5 demande
-une **commande de réconciliation** pour tout état qui peut diverger : elle
-appartient à s34, avec sa suppression, et pas à s17. La nommer ici est le seul
-moyen que l'agent de s34 la trouve **avant** d'écrire sa purge, et non après.
+Il restait **productible par la base** : `organization_member.user_id` référence
+`auth_user.id` en `onDelete: 'cascade'` (`src/schema.ts:62-64`), si bien
+qu'effacer le compte du dernier propriétaire effaçait sa ligne d'appartenance
+sans que rien ne compte les propriétaires restants — l'organisation survivait,
+ses membres aussi, et plus personne ne pouvait nommer un rôle, renommer,
+inviter, révoquer ni retirer.
+
+**s34 a fermé la porte, et il a fallu trois tours pour la fermer au bon endroit.**
+
+Le premier tour contrôlait à la **demande** de suppression : `soleOwnerships`
+est lu, la route refuse en 409 en nommant les organisations, la personne
+transfère ou supprime d'abord. C'est le critère 6, et c'est ce que la personne
+lit à l'écran. **Ce contrôle ne suffisait pas**, et la revue l'a mesuré avec les
+seules routes du produit : l'effacement est **différé** — c'est le mécanisme du
+critère 9, et la configuration livrée active le module de tâches —, si bien
+qu'une demande acceptée sans organisation, suivie d'une création, laissait la
+tâche effacer le compte et l'organisation survivre avec **zéro propriétaire**.
+
+Le deuxième tour a relu `soleOwnerships` **avant** d'appeler la purge. Cela
+fermait le cas séquentiel, et pas la course : deux départs simultanés lisent
+chacun deux propriétaires, passent tous les deux, et le refus n'arrive qu'à
+l'intérieur de la purge — c'est-à-dire **après** les modules purgés plus tôt
+dans l'ordre inverse. La troisième revue l'a mesuré : sur cinq courses, le
+perdant avait déjà perdu ses données. Le paragraphe affirmait pourtant « un
+refus n'efface rien, pas même en chemin », et l'email de refus disait « aucune
+de vos données n'a été effacée » — deux affirmations fausses sur ce chemin-là,
+dont l'une adressée à la personne concernée.
+
+Ce qui ferme aujourd'hui, et à quel endroit :
+
+1. **`runAccountPurge` revendique au lieu de lire.** Il appelle
+   `releaseMemberships`, qui retire les appartenances **ou** refuse, en une
+   transaction, sous le verrou consultatif de chaque organisation possédée. Le
+   second appelant d'une course recompte sur l'état commis par le premier, se
+   découvre dernier propriétaire et refuse **avant que la purge ne commence** —
+   donc avant qu'aucun module n'ait effacé quoi que ce soit. Une lecture ne
+   pouvait pas le faire : deux lectures concurrentes se voient l'une l'autre ;
+2. le refus est **définitif** (`invalid_event`, jamais rejoué : rien dans un
+   rejeu ne transfère une organisation) ;
+3. **`deleteMembershipsOf` refuse aussi de lui-même**, avec le même prédicat et
+   les mêmes verrous — c'est la même écriture, et elle garde sa règle pour tout
+   autre appelant, `organizations.purge` compris. Le refus est **total** :
+   aucune appartenance n'est retirée quand une seule bloque ;
+4. **la personne est prévenue** : sa demande a été acceptée puis refusée, elle
+   reçoit un email qui le dit et ce qu'il faut faire. Refuser en silence sur un
+   chemin de droit à l'effacement serait pire que la fenêtre elle-même.
+
+**Ce que la revendication coûte, dit plutôt que tu** : un effacement qui échoue
+**après** elle — stockage indisponible, fournisseur de paiement en panne —
+laisse la personne retirée de ses organisations alors que son compte existe
+encore, jusqu'au rejeu. C'est une étape de la suppression qu'elle a demandée,
+franchie plus tôt que les autres ; la purge n'a jamais été transactionnelle
+entre modules, et c'est le rejeu qui répare.
+
+**L'ordre de purge, puisque c'est lui qui décide de ce qui est en jeu** : il est
+l'inverse du graphe des requis (ADR 029). Dans la configuration livrée, les
+modules purgés **avant** `organizations` sont `demo-enabled`, `storage` et
+`rate-limit` — dont `storage`, qui efface des objets chez un tiers, de façon
+irréversible. `notifications`, lui, est purgé **après** : il n'a jamais été en
+jeu, et la rédaction précédente le nommait à tort.
+
+**Pourquoi refuser plutôt que promouvoir un membre** — les deux fermaient la
+fenêtre : le critère 6 dit que la personne « doit d'abord transférer ou
+supprimer ». Promouvoir automatiquement prendrait la décision à sa place **et** à
+celle du promu, qui hériterait sans l'avoir demandé d'une organisation, de sa
+facturation et de ses données.
+
+**Ce qui est balayé, et ce qui ne l'est pas** — ni « inatteignable », ni
+« prouvé » : la formulation précédente disait « inatteignable par les routes ni
+par la cascade », et la revue a atteint l'état par les routes. Ont été mesurés :
+la fenêtre demande → création → exécution ; deux copropriétaires qui partent
+l'un après l'autre ; **cinq courses** de deux départs simultanés — chacune
+vérifiant aussi que le **refusé n'a rien perdu en chemin** —, où neutraliser
+le verrou ou le prédicat fait rougir. N'ont **pas** été balayés : un `delete from
+auth_user` émis à la main hors du produit, et tout chemin futur qui retirerait
+une appartenance sans passer par `removeMember` ni `deleteMembershipsOf` — c'est
+la question à se poser avant d'en écrire un.
+
+**Il n'existe toujours aucune commande de réparation**, et c'est désormais un
+choix documenté plutôt qu'un oubli : s17 en avait assigné une à s34
+(`docs/reliability.md` §5, « tout état qui peut diverger »). Elle n'a pas été
+écrite parce que l'état ne se produit plus par les chemins balayés ci-dessus, et
+qu'une commande qui promeut un propriétaire porterait exactement la décision que
+le critère 6 refuse d'automatiser. **Si un chemin non balayé la produit un jour,
+c'est cette commande qu'il faut écrire** — pas un contrôle de plus.
+
+**Ce que ce refus ne couvre pas**, dit plutôt que sous-entendu : un compte
+propriétaire **partagé** (un pair est aussi `owner`) part sans rien bloquer, et
+c'est voulu — l'organisation garde un propriétaire.
 
 ## Ce que Better Auth aurait fait, et pourquoi ce n'est pas fait
 

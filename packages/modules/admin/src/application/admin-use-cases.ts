@@ -33,6 +33,16 @@ export interface AdminUseCases {
     readonly userId: string
   }): Promise<RevokeOutcome>
   /**
+   * **Oublie qui a promu** (s34, constat F1 de la revue).
+   *
+   * C'est la purge du module, et sa catégorie de rétention est `anonymize` :
+   * `granted_by` nomme un compte sans clé étrangère vers lui, donc aucune
+   * cascade ne l'atteint, et l'identifiant d'un compte effacé y survivait sur
+   * chaque rôle qu'il avait accordé. La ligne est **conservée** — le promu garde
+   * son rôle —, seul le lien est rompu.
+   */
+  forgetGranter(userId: string): Promise<number>
+  /**
    * **Bannit un compte, sauf le dernier superadmin** (revue de s37a, F2).
    *
    * Le refus n'est pas une commodité d'écran : sans lui, le superadmin unique
@@ -132,6 +142,8 @@ export function createAdminUseCases(dependencies: AdminDependencies): AdminUseCa
 
       return outcome
     },
+
+    forgetGranter: async (userId) => await roles.forgetGranter(userId),
 
     revokeSuperadmin: async ({ actorId, userId }) => {
       const outcome = await roles.revokeSuperadmin(userId)

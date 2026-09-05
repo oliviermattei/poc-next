@@ -58,6 +58,14 @@ export type OrganizationRefusal =
   | 'invalid_slug'
   | 'slug_unavailable'
   | 'invalid_role'
+  // s34 — la suppression de l'organisation. Trois refus, et ils ne disent pas
+  // la même chose à qui les lit : la saisie ne correspond pas au nom ;
+  // l'abonnement n'a pas pu être annulé chez le fournisseur, donc **rien** n'a
+  // été effacé et il faut réessayer ; la purge d'un module a échoué, et le
+  // rejeu reprend là où elle s'est arrêtée.
+  | 'confirmation_mismatch'
+  | 'billing_cancel_failed'
+  | 'purge_failed'
 
 export interface OrganizationDraft {
   readonly name: string
@@ -101,6 +109,27 @@ const DRAFT = z.object({ name: NAME, slug: SLUG })
  * impose déjà aux ports (`docs/architecture.md`), et elle oblige l'appelant à
  * traduire le refus au lieu de laisser passer un 500.
  */
+/**
+ * **La saisie de confirmation d'une suppression** (s34, critère 1).
+ *
+ * Bornée comme toute entrée : ce qui arrive ici vient de nulle part. La
+ * comparaison ignore la casse et les espaces de bord — un nom se recopie, et
+ * exiger l'octet près ferait échouer une confirmation authentique.
+ *
+ * Elle est ici, dans le `domain`, parce que c'est une **règle** : la faire
+ * décider par l'écran reviendrait à ne pas la faire (`docs/security.md` §3).
+ */
+const CONFIRMATION = z.object({ confirmation: z.string().trim().min(1).max(200) })
+
+export function confirmsOrganization(body: unknown, name: string): boolean {
+  const parsed = CONFIRMATION.safeParse(body)
+
+  return (
+    parsed.success &&
+    parsed.data.confirmation.trim().toLocaleLowerCase() === name.trim().toLocaleLowerCase()
+  )
+}
+
 export function parseOrganizationDraft(
   input: unknown,
   reservedSlugs: ReadonlySet<string>,

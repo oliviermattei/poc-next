@@ -50,16 +50,35 @@ export const adminModule = defineModule({
   webhooks: [],
   jobs: [],
   /**
-   * **Aucune donnée personnelle.**
+   * **Une catégorie, et elle est la seule `anonymize` du dépôt** (s34, constat
+   * F1 de la revue).
    *
-   * La table du module ne porte qu'un identifiant de compte et un rôle ; le
-   * compte lui-même appartient à `auth`, qui déclare `account` et le purge. La
-   * ligne de rôle disparaît **par cascade** avec le compte (`src/schema.ts`),
-   * si bien qu'il n'y a rien à effacer ici — et rien à exporter que la personne
-   * ne puisse déjà lire dans son propre compte.
+   * Le **rôle** d'un compte disparaît par cascade avec lui (`src/schema.ts`),
+   * et n'a donc pas de catégorie : il n'y a rien à décider de son sort. Ce qui
+   * en avait une sans qu'on l'ait vu, c'est `granted_by` — l'identifiant du
+   * compte **qui a promu**, porté par la ligne de **quelqu'un d'autre**, et
+   * sans clé étrangère (délibérément : effacer le promoteur ne doit ni emporter
+   * la promotion, ni la bloquer). Aucune cascade ne l'atteint, et il survivait
+   * à l'effacement de son porteur.
+   *
+   * `anonymize` et non `erase` parce que les deux mots ne décrivent pas la même
+   * ligne : effacer la ligne retirerait son rôle à un tiers, et pourrait rendre
+   * la plateforme inadministrable. Ce qui part est le **lien**, pas la donnée.
+   * C'est la définition exacte du contrat (`RetentionAction`), et
+   * `tests/account-deletion.test.ts` l'exécute sur ce module.
+   *
+   * L'export reste vide : la personne ne peut rien lire ici qu'elle ne lise
+   * déjà dans son propre compte, et l'attribution d'un rôle appartient à la
+   * ligne d'un tiers.
    */
-  dataCategories: [],
-  retention: {},
-  purge: async () => {},
+  dataCategories: ['grant-authorship'],
+  retention: { 'grant-authorship': 'anonymize' },
+  purge: async (scope) => {
+    if (scope.kind !== 'user') {
+      return
+    }
+
+    await requireAdminService().useCases.forgetGranter(scope.userId)
+  },
   export: async () => ({}),
 })

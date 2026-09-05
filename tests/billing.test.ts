@@ -3810,6 +3810,149 @@ describe.runIf(databaseReachable)('la quantité facturée suit les membres', () 
   })
 
   /* ----------------------------------------------------------------------- *
+   * s34 — **l'annulation des abonnements d'un périmètre**.
+   *
+   * Elle est mesurée ici, à côté de la règle, et pas dans
+   * `tests/account-deletion.test.ts` : celle-là éprouve ce que la suppression
+   * d'organisation **fait d'un refus**, avec une doublure ; celle-ci éprouve
+   * l'appel réel, sérialisé par le SDK et servi par la doublure de **réseau**.
+   * ----------------------------------------------------------------------- */
+  describe('l’annulation des abonnements d’un périmètre (s34)', () => {
+    it('annule chez le fournisseur, et l’appel porte la clé d’idempotence de la cible', async () => {
+      const scope: ModuleScope = { kind: 'user', userId: 'usr_s34_annule' }
+
+      currentScope = scope
+      responses = [
+        () => json({ id: 'cus_s34_annule', object: 'customer' }),
+        () =>
+          json({
+            id: 'cs_s34_annule',
+            object: 'checkout.session',
+            url: 'https://checkout.stripe.com/c/pay/cs_s34_annule',
+            customer: 'cus_s34_annule',
+          }),
+      ]
+
+      await call('checkout', { session: { userId: scope.userId, roles: [] }, body: { offerId: 'pro-monthly' } })
+      await deliver(
+        eventPayload({
+          id: `evt_s34_annule_${randomUUID()}`,
+          type: 'customer.subscription.created',
+          created: 1_788_000_000,
+          object: subscriptionObject({
+            id: 'sub_s34_annule',
+            customer: 'cus_s34_annule',
+            periodEnd: 1_800_000_000,
+            priceId: 'price_pro_monthly',
+          }),
+        }),
+      )
+
+      calls.length = 0
+      responses = [
+        () =>
+          json(
+            subscriptionObject({
+              id: 'sub_s34_annule',
+              customer: 'cus_s34_annule',
+              periodEnd: 1_800_000_000,
+              priceId: 'price_pro_monthly',
+              status: 'canceled',
+            }),
+          ),
+      ]
+
+      expect(await requireBillingService().useCases.cancelSubscriptions(scope)).toEqual({
+        status: 'cancelled',
+        cancelled: 1,
+      })
+
+      // **L'appel sortant a bien eu lieu**, sur l'abonnement visé, et il porte
+      // la clé d'idempotence dérivée de la cible : un rejeu converge.
+      expect(calls).toHaveLength(1)
+      expect(calls[0]?.url).toContain('/v1/subscriptions/sub_s34_annule')
+      expect(calls[0]?.headers['idempotency-key']).toBe('cancel:sub_s34_annule')
+    })
+
+    it('interrompt sur un fournisseur en panne, sans rien effacer localement', async () => {
+      const scope: ModuleScope = { kind: 'user', userId: 'usr_s34_panne' }
+
+      currentScope = scope
+      responses = [
+        () => json({ id: 'cus_s34_panne', object: 'customer' }),
+        () =>
+          json({
+            id: 'cs_s34_panne',
+            object: 'checkout.session',
+            url: 'https://checkout.stripe.com/c/pay/cs_s34_panne',
+            customer: 'cus_s34_panne',
+          }),
+      ]
+
+      await call('checkout', { session: { userId: scope.userId, roles: [] }, body: { offerId: 'pro-monthly' } })
+      await deliver(
+        eventPayload({
+          id: `evt_s34_panne_${randomUUID()}`,
+          type: 'customer.subscription.created',
+          created: 1_788_000_000,
+          object: subscriptionObject({
+            id: 'sub_s34_panne',
+            customer: 'cus_s34_panne',
+            periodEnd: 1_800_000_000,
+            priceId: 'price_pro_monthly',
+          }),
+        }),
+      )
+
+      calls.length = 0
+      // Une panne, répétée : l'adaptateur reprend, puis rend l'échec.
+      responses = Array.from(
+        { length: 6 },
+        () => () =>
+          new Response(
+            JSON.stringify({ error: { type: 'api_error', message: 'fournisseur indisponible' } }),
+            { status: 503, headers: { 'content-type': 'application/json' } },
+          ),
+      )
+
+      expect(await requireBillingService().useCases.cancelSubscriptions(scope)).toEqual({
+        status: 'failed',
+        cancelled: 0,
+      })
+      // L'appel sortant a bien eu lieu : sans lui, l'échec ne dirait rien du
+      // fournisseur.
+      expect(calls.length).toBeGreaterThan(0)
+
+      /**
+       * **La ligne locale est intacte**, et c'est asserté plutôt que commenté
+       * (constat mineur de la seconde revue de s34) : le commentaire l'affirmait
+       * quand la seule mesure portait sur le nombre d'appels sortants. Cette
+       * fonction ne touche **aucune** ligne locale — c'est la purge du module
+       * qui efface, et l'appelant ne l'exécute pas sur un refus.
+       */
+      const rows = await connection.db.execute<{ rows: number }>(
+        sql`select count(*)::int as rows from billing_subscription
+            where provider_subscription_id = 'sub_s34_panne'`,
+      )
+
+      expect(rows.rows[0]?.rows).toBe(1)
+    })
+
+    it('ne parle à personne pour un périmètre sans client', async () => {
+      calls.length = 0
+      responses = []
+
+      expect(
+        await requireBillingService().useCases.cancelSubscriptions({
+          kind: 'organization',
+          organizationId: 'org_s34_sans_client',
+        }),
+      ).toEqual({ status: 'not_applicable' })
+      expect(calls).toEqual([])
+    })
+  })
+
+  /* ----------------------------------------------------------------------- *
    * s47 — **le plafond de membres**, dans le même montage que s23.
    *
    * Le refus tombe au même endroit du parcours que `seat_sync_unavailable` :
