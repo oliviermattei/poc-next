@@ -4,52 +4,50 @@
 
 ## REPRENDRE ICI
 
-**s53-blog-syndication est fusionnée** (demande de fusion 11, squash `0e7e313`).
-Le blog est désormais **trouvable** : `robots.txt` l'autorise, `sitemap.xml` porte
-ses articles, un flux RSS est servi, et une image Open Graph par défaut existe.
+**Bloquant, et il n'est pas dans le dépôt : la CI de GitHub Actions est à
+l'arrêt au niveau du compte.** Depuis le 05/09 vers 04:10, **tous** les jobs
+échouent en 3 à 4 secondes, sans un seul journal (`BlobNotFound`), y compris le
+scan de secrets et la sonde d'enregistrement. `dev` est touché comme les
+branches : vert à 03:33, rouge à 04:10, **sans qu'aucun commit ne touche
+`.github/`** entre les deux. Le dépôt est **privé**, donc les minutes Actions
+sont facturées et plafonnées.
 
-**Le dépôt a une quinzième clé de contrat : `publicUrls`.** Un module déclare les
-URL qu'il publie ; le socle les agrège. Conséquence vérifiable d'un `grep` :
-`apps/web/app/robots.ts` et `apps/web/app/sitemap.ts` ne connaissent **plus aucun
-module par son nom**. ADR 054.
+Hypothèse qui colle à tous les faits : **quota de minutes épuisé ou limite de
+dépense atteinte**. Non vérifiable d'ici — lire la facturation demande la portée
+`user` (`gh auth refresh -h github.com -s user`). Voir aussi
+`githubstatus.com`.
 
-**Ce que la navigation publique du registre n'alimente pas, et pourquoi.** Le plan
-voulait dériver la liste d'autorisation des entrées de navigation publiques.
-Mesuré : il y en a **cinq**, dont `auth /sign-in`, `billing /pricing` et une route
-d'API. Dériver de là publiait l'écran de connexion dans le plan de site. Seule la
-clé alimente la dérivation, et rebrancher la navigation fait rougir **8 cas** plus
-2 parcours navigateur.
+**`s30-docs-site` est prête et n'est pas fusionnée** : demande de fusion **12**,
+revue passée (`Max severity: minor`, ship autorisé), suite locale verte à
+**2122 / 8 sautés**. Elle n'a pas été mergée **volontairement** : elle touche
+`packages/ui`, partagé avec le blog, et merger sans CI verte serait exactement ce
+que cette séance a passé son temps à refuser. **Quand la CI revient : vérifier
+les contrôles par événement, puis merger.**
 
-**Un critère est livré non tenu, et déclaré comme tel.** Le critère 2 de s53
-demandait un flux « valide **au sens d'un validateur** ». Le dépôt n'embarque
-aucun validateur : il embarque un **analyseur**, dont la revue a mesuré la
-complaisance (il accepte un canal sans titre ni lien ni description). Un cas fixe
-désormais les deux bords de l'outil pour que la phrase ne se regonfle pas. Le
-tenir demanderait une dépendance de validation ou un appel au W3C — **décision
-non prise**.
+**Ce qui ne demande aucune CI et peut continuer sans elle** : les recherches. Il
+en manque treize, dont **cinq immédiatement faisables** (dépendances toutes
+fusionnées) : `s46-auth-screens-design`, `s54-docs-recherche`,
+`s51-traces-des-echecs`, `s52-derniers-intermittents`, `s39-monitoring-analytics`.
+Les autres attendent s32 ou s37.
 
-**Cinq intermittents connus, tous dans `s52-derniers-intermittents`** :
-`tests/audit-exceptions.test.ts`, `e2e/rate-limiting.spec.ts:38`, la **paire**
-`e2e/oauth.spec.ts:30`/`:97` (identité partagée du fournisseur local, cause
-connue), `e2e/blog.spec.ts:134` (`ECONNRESET`), et `e2e/two-factor.spec.ts:162`
-— ce dernier d'un **mode d'échec distinct** de celui que s50 a réparé : une
-région `status` qui n'apparaît pas, pas un budget de 30 s dépassé.
+**Six recherches d'avance sont déjà sur `dev`** : `s31` (3), `s32` (4), `s37`
+(**5, découpe requise**), `s47` (2), `s49` (2), `s54` — non, s54 n'en a pas
+encore.
 
-**Six recherches d'avance sont sur `dev`**, prêtes à planifier : `s30` (**4**, et
-elle dépendait de s53 sans le déclarer — c'est levé), `s32` (4), `s37` (**5,
-découpe requise**), `s47` (2), `s49` (2).
+**Ce que s30 apporte au dépôt une fois fusionnée**, et qu'il faut savoir pour
+planifier la suite : l'échelle de prose vit désormais dans `packages/ui` (ADR
+055), donc s31 peut la réutiliser sans dépendre du blog ; et une garde confronte
+enfin le tableau de `packages/ui/AGENTS.md` au baril — elle a fermé une dérive
+ouverte depuis s18.
 
-**La forme symétrique du contrat reste ouverte pour s32** : un chemin du socle qui
-consulte un module optionnel avec une absence définie. s37 en héritera.
-
-Premier numéro d'ADR libre : **055**.
+Premier numéro d'ADR libre : **056**.
 
 ## Où on en est
 
 | | |
 |---|---|
 | Stories closes | **35 sur 53** (s01 → s29, s36, s41, s45, s48, s50, s53) |
-| En vol | aucune — six recherches prêtes à planifier |
+| En vol | s30 — prête, **en attente de CI** (blocage de compte) |
 | Restantes | 18 — dont s49, s51 et s52, nées de constats de revue |
 | Tests | **2064 + 8 sautés**, 107 parcours navigateur |
 | ADR | **50** (jusqu'à 050 ; 051 libre) |
