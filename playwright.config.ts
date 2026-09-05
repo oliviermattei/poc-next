@@ -51,6 +51,28 @@ export const GOLDEN_PATH_DIRECTORY = './e2e/golden-path'
 export const MINIMAL_PROFILE_DIRECTORY = './e2e/minimal-profile'
 
 /**
+ * **Où Playwright écrit les traces des parcours en échec** — son `outputDir`,
+ * déclaré ici plutôt que laissé implicite.
+ *
+ * Il l'était, et le job de CI téléversait `playwright-report/` : un dossier que
+ * cette suite ne produit pas (`reporter: 'list'`). L'étape ne trouvait donc
+ * jamais rien, et `upload-artifact` qui ne trouve rien **ne rougit pas** — son
+ * `if-no-files-found` vaut `warn` par défaut. Chaque échec de parcours en CI
+ * depuis l'origine a produit un artefact vide et une étape verte.
+ *
+ * Déclaré une seule fois, et `tests/failure-traces.test.ts` vérifie que le
+ * workflow téléverse **ce** chemin : recopier `test-results/` dans le job
+ * corrigerait le symptôme et rouvrirait la dérive à la première story qui
+ * changerait l'`outputDir`.
+ *
+ * Rien à voir avec `FAILURE_TRACES_DIRECTORY` du parcours doré
+ * (`scripts/golden-path-regime.ts`), qui travaille dans un clone qu'il détruit
+ * et doit donc **recopier** ses traces hors de ce dossier avant la suppression.
+ * Le job principal tourne dans l'arbre : il n'a rien à recopier.
+ */
+export const TRACES_OUTPUT_DIRECTORY = 'test-results'
+
+/**
  * **L'environnement du serveur des parcours**, partagé avec la configuration du
  * parcours doré.
  *
@@ -134,6 +156,7 @@ export default defineConfig({
   // ils n'appartiennent pas à cette suite : chacun a sa propre configuration et
   // sa propre commande.
   testIgnore: ['**/golden-path/**', '**/minimal-profile/**'],
+  outputDir: TRACES_OUTPUT_DIRECTORY,
   fullyParallel: true,
   // **Le serveur répond avant d'être compilé.** `webServer.url` ci-dessous
   // n'atteste que d'un port qui écoute ; `next dev` compile chaque route à sa
