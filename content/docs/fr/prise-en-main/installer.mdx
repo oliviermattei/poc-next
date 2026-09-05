@@ -1,0 +1,33 @@
+---
+title: Installer le dépôt
+description: Cloner, installer les dépendances, lever une base de données.
+order: 1
+---
+
+## Prérequis
+
+Node 20.10 ou plus récent, pnpm 10, et Docker pour la base de données locale.
+Rien d'autre n'est nécessaire : le dépôt embarque son propre PostgreSQL en
+conteneur.
+
+### Vérifier les versions
+
+```bash
+# ce commentaire n'est pas un titre
+node --version
+pnpm --version
+```
+
+## Installer
+
+Une seule commande, et elle refuse d'écrire si le fichier de verrouillage
+diverge du manifeste.
+
+```bash
+pnpm install --frozen-lockfile
+```
+
+## Lever la base
+
+Le conteneur porte son propre contrôle de santé : la migration lancée juste
+après `up` ne tombe pas sur une base qui n'écoute pas encore.

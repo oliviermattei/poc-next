@@ -1,11 +1,18 @@
-import { Avatar, AvatarFallback, Badge, Button, Separator, initialsOf } from '@repo/ui'
+import {
+  Avatar,
+  AvatarFallback,
+  Badge,
+  Button,
+  PROSE_CLASSNAME,
+  Separator,
+  initialsOf,
+} from '@repo/ui'
 import type { ReactNode } from 'react'
 
 import { BLOG_PATH } from '../application/blog-catalog'
 import { formatArticleDate, type BlogArticle } from '../domain/article'
 import type { BlogIntl } from './blog-intl'
 import { BLOG_KEYS } from '../domain/message-keys'
-import { PROSE_CLASSNAME } from './prose'
 
 /**
  * Un article : le fil de retour, l'en-tête, le corps, le retour de pied.

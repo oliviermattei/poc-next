@@ -148,6 +148,12 @@ const APPLICATION_SEGMENTS = [
   // `tests/organizations.test.ts` dérive. Même raison que `billing` juste
   // au-dessus, mesurée par `pnpm test:minimal-profile`, qui coupe ce module.
   'blog',
+  // Les deux écrans de la documentation (s30), exactement pour la même raison,
+  // et trouvée de la même façon : `pnpm test` était vert — module activé, son
+  // entrée de navigation suffisait —, et `pnpm test:minimal-profile`, qui coupe
+  // ce module, a rougi. Une garde qui ne mord que dans une configuration est
+  // une garde que la CI peut ne jamais exécuter.
+  'docs',
   // L'écran de contact du site public (s11) : un segment que l'application
   // sert, donc un identifiant qu'aucune organisation ne peut prendre.
   'contact',

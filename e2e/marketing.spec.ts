@@ -3,6 +3,7 @@ import { legalPath, marketingModule } from '@repo/module-marketing'
 import { expect, test } from '@playwright/test'
 
 import { blogCatalog } from '../apps/web/lib/blog'
+import { docsCatalog } from '../apps/web/lib/docs'
 import { marketingSite } from '../apps/web/lib/marketing'
 import { flatMessagesFor } from '../apps/web/lib/messages'
 import { defaultLocale } from '../config/i18n'
@@ -35,6 +36,24 @@ const publicSite = marketingSite.sections.length > 0
  */
 const blogUrls = blogCatalog.index === null ? [] : [publicPath(blogCatalog.index.path)]
 
+/**
+ * **La documentation contribue à son tour** (s30), et elle diffère du blog sur
+ * un point : une page non traduite est **servie** dans la langue par défaut, si
+ * bien que chaque page est annoncée dans toutes les langues. Les URL sont donc
+ * celles de l'arbre **canonique**, sans filtre de langue — filtrer sur
+ * `defaultLocale` comme pour les articles serait ici la même chose par accident,
+ * et faux dès qu'une page n'existerait qu'en traduction.
+ */
+const docsUrls =
+  docsCatalog.index === null
+    ? []
+    : [
+        publicPath(docsCatalog.index.path),
+        ...docsCatalog.pages
+          .filter((page) => page.locale === docsCatalog.index?.defaultLocale)
+          .map((page) => publicPath(`${docsCatalog.index?.path ?? '/docs'}/${page.section}/${page.slug}`)),
+      ]
+
 /** Le texte attendu à l'écran, lu dans le catalogue de la langue servie. */
 const text = (key: string): string => {
   const value = catalogue[key]
@@ -57,6 +76,7 @@ const publicUrls = [
         .map((article) => publicPath(`${blogCatalog.index?.path ?? '/blog'}/${article.slug}`)),
     ),
   ],
+  ...docsUrls,
 ]
 
 /**
@@ -83,7 +103,7 @@ test('le plan de site référence exactement les pages publiques', async ({ requ
   )
 
   // Aucun module ne publie rien : le fichier ne référence **rien**.
-  if (!publicSite && blogCatalog.index === null) {
+  if (!publicSite && blogCatalog.index === null && docsCatalog.index === null) {
     expect(locations).toEqual([])
   }
 })

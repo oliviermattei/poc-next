@@ -1,4 +1,4 @@
-import { proseComponents } from '@repo/module-blog/presentation'
+import { proseComponents } from '@repo/ui'
 import type { ComponentType, ReactNode } from 'react'
 
 /**

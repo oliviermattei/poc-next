@@ -54,10 +54,21 @@ const nextConfig: NextConfig = {
    * surveille** : aucun ne le peut tant que son retrait ne change rien. Elle
    * deviendra porteuse le jour où ce traçage large sera resserré (ADR 053,
    * « À surveiller »).
+   *
+   * **La documentation (s30) est déclarée aux mêmes conditions**, y compris ses
+   * `section.json` — eux aussi lus par `node:fs` à l'amorçage, et eux seuls ne
+   * seraient couverts par aucun motif `.mdx`. Le même avertissement de traçage
+   * est émis pour `lib/docs.ts`, donc la même remarque vaut : l'effet est
+   * masqué aujourd'hui, la déclaration ne l'est pas.
    */
   outputFileTracingIncludes: {
     '/blog': ['../../content/blog/**/*.mdx'],
     '/blog/[slug]': ['../../content/blog/**/*.mdx'],
+    '/docs': ['../../content/docs/**/*.mdx', '../../content/docs/**/section.json'],
+    '/docs/[section]/[page]': [
+      '../../content/docs/**/*.mdx',
+      '../../content/docs/**/section.json',
+    ],
   },
 }
 

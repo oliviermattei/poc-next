@@ -26,7 +26,7 @@ module (`packages/modules/<module>/src/domain`).
 - les modules du projet, **uniquement** parce que `config/features.ts` les
   référence : `@repo/module-auth`, `@repo/module-billing`,
   `@repo/module-blog`,
-  `@repo/module-consent`, `@repo/module-i18n`, `@repo/module-marketing`,
+  `@repo/module-consent`, `@repo/module-docs`, `@repo/module-i18n`, `@repo/module-marketing`,
   `@repo/module-organizations`, `@repo/module-storage`,
   `@repo/module-demo-enabled` et `@repo/module-demo-disabled` aujourd'hui. Les
   **points de composition** font exception et importent leur module directement
@@ -34,12 +34,13 @@ module (`packages/modules/<module>/src/domain`).
   de l'i18n, `lib/marketing.ts`, celui du site public, `lib/organizations.ts`,
   celui des organisations, `lib/storage.ts`, celui du stockage,
   `lib/billing.ts`, celui de la facturation, `lib/consent.ts`, celui du
-  consentement, et `lib/blog.ts`, celui du blog (voir plus bas). **Aucun nombre
+  consentement, `lib/blog.ts`, celui du blog, et `lib/docs.ts`, celui de la
+  documentation (voir plus bas). **Aucun nombre
   n'est écrit ici, et c'est délibéré** : la phrase annonçait « sept » au-dessus
   de huit noms, la story qui a ajouté le huitième n'ayant pas touché au
   décompte. D'autres fichiers de `lib/` importent un module **déjà monté** pour
   en composer un service — `lib/billing-catalogue.ts`, `lib/billing-permission.ts`,
-  `lib/blog-body.tsx`, `lib/guest-account.ts`, `lib/module-services.ts`,
+  `lib/blog-body.tsx`, `lib/docs-body.tsx`, `lib/guest-account.ts`, `lib/module-services.ts`,
   `lib/module-content.ts` et `lib/public-urls.ts` (la syndication, s53 — le
   second ne nomme aucun module, il n'en **parle** que dans sa règle),
   `lib/rate-limit.ts` (le seau de limitation de débit, s28) et `lib/seat-sync.ts`.
@@ -50,7 +51,8 @@ module (`packages/modules/<module>/src/domain`).
   point d'entrée de leur module (`@repo/module-marketing/presentation`,
   `@repo/module-organizations/presentation`,
   `@repo/module-billing/presentation`,
-  `@repo/module-consent/presentation`, `@repo/module-blog/presentation`) : ses composants React n'ont pas
+  `@repo/module-consent/presentation`, `@repo/module-blog/presentation`,
+  `@repo/module-docs/presentation`) : ses composants React n'ont pas
   leur place dans le barril que lit `config/features.ts`, qu'aucun outil du
   dépôt ne compile en JSX (**ADR 024**, la règle de tout module à composants) ;
 - `zod` pour valider les entrées de route — le paramètre `[document]` des pages
@@ -599,6 +601,54 @@ langue, le module sert un flux RSS (`/api/modules/blog/feed.xml`, un document
 par langue servie via `?locale=`), et un article sans image de partage retombe
 sur `/og-default.png`. Le mécanisme est décrit ci-dessous ; la décision, dans
 l'ADR 054.
+
+## Le montage de la documentation (s30)
+
+Deux fichiers, sur le modèle exact du blog :
+
+- `lib/docs.ts` porte le **choix** — le module `docs` est-il monté ? C'est le
+  seul fichier de l'application qui connaisse `@repo/module-docs`. Il rend un
+  `DocsCatalog` dont la **forme est la même dans les deux états** : `index` vaut
+  `null` quand le module est coupé, et les deux écrans répondent alors 404 sur
+  une **donnée**, jamais sur un identifiant de module ;
+- `lib/docs-body.tsx` charge le **corps** d'une page, compilé par le bundler
+  (ADR 053), et pour la même raison que `lib/blog-body.tsx` ce n'est pas un
+  composant asynchrone.
+
+| | module activé | module coupé |
+|---|---|---|
+| `/docs` | redirige vers la première page de l'arbre ; état vide si aucune page | **404** |
+| `/docs/<section>/<page>` | la page ; **servie dans la langue par défaut** si elle n'est pas traduite | **404** |
+| entrée de navigation | « Documentation » | absente, avec le module |
+| `sitemap.xml` | une entrée par page, dans toutes les langues servies | aucune |
+
+**Le repli i18n est l'inverse de celui du blog**, et c'est la seule chose de ce
+montage qui ne se déduit pas du précédent. `/blog/<slug>` répond **404** quand
+l'article n'existe pas dans la langue servie : servir le français sur une URL
+anglaise ferait de deux pages une seule pour un moteur.
+`/docs/<section>/<page>` **sert** alors la page de la langue par défaut,
+précédée d'une mention explicite, et déclare cette page dans toutes les langues
+servies au plan de site — une documentation absente vaut moins qu'une
+documentation dans la mauvaise langue. `docsPageView` porte la décision ;
+l'écran ne fait que rendre son drapeau `translated`.
+
+**Le contenu est lu par `node:fs` à l'amorçage**, comme celui du blog, donc
+pendant `pnpm build` : un frontmatter invalide, un manifeste de section absent
+ou une page écrite dans une seule traduction font échouer le build **en nommant
+le fautif**. `next.config.ts` déclare `outputFileTracingIncludes` pour
+`content/docs`, **manifestes `section.json` compris** — un motif `.mdx` ne les
+couvrirait pas. La remarque du blog vaut telle quelle : le build annonce
+lui-même « Dynamic filesystem access causes tracing of the whole project » pour
+`lib/docs.ts`, si bien que cette déclaration est une **assurance dont l'effet
+est masqué**, qu'aucun test ne surveille et qui ne deviendra porteuse que le
+jour où ce traçage large sera resserré.
+
+**Aucun `loading.tsx` non plus**, pour la raison mesurée en s29 et détaillée
+ci-dessus : les deux écrans de la documentation refusent (module coupé pour
+l'un, chemin inconnu pour l'autre). `tests/docs.test.ts` dérive la liste des
+`loading.tsx` de l'arbre versionné et refuse qu'il en apparaisse un — c'est la
+première garde du dépôt qui morde **avant** `next dev`, les deux autres étant
+des requêtes HTTP.
 
 ## La syndication (s53)
 

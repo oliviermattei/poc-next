@@ -3,6 +3,7 @@ import { authModule } from '@repo/module-auth'
 import { billingModule } from '@repo/module-billing'
 import { blogModule } from '@repo/module-blog'
 import { consentModule } from '@repo/module-consent'
+import { docsModule } from '@repo/module-docs'
 import { demoDisabledModule } from '@repo/module-demo-disabled'
 import { demoEnabledModule } from '@repo/module-demo-enabled'
 import { i18nModule } from '@repo/module-i18n'
@@ -37,6 +38,7 @@ export const availableModules = [
   billingModule,
   blogModule,
   consentModule,
+  docsModule,
   i18nModule,
   marketingModule,
   mcpServerModule,
@@ -83,6 +85,7 @@ export const enabledModules = [
   'billing',
   'blog',
   'consent',
+  'docs',
   'i18n',
   'marketing',
   'mcp-server',

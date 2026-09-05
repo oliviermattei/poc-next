@@ -190,6 +190,77 @@ describe('les tokens de `packages/ui` sont ceux du design system', () => {
     }
   })
 
+  it('transcrit l’échelle de prose dans `packages/ui`, et pas dans un module optionnel', async () => {
+    /*
+     * L'échelle de prose est une **section du document** (« Échelle de prose —
+     * un corps d'article long »), pas un objet du blog : trois stories rendent
+     * du MDX (s29, s30, s31). Livrée en s29 dans
+     * `@repo/module-blog/presentation`, elle obligeait tout second consommateur
+     * à déclarer `requires: ['blog']` — donc à rendre la documentation
+     * indisponible dès qu'on coupe le blog (ADR 055). Elle vit désormais là où
+     * le design system vit en code.
+     *
+     * Les deux côtés sont **dérivés** : la mesure de ligne est lue dans la
+     * ligne du document qui la décide, jamais recopiée ici. La changer dans le
+     * document sans la changer dans le code fait rougir cette ligne.
+     */
+    const documented = /Mesure de ligne[^|]*\|[^|]*`([\w-]+)`/.exec(read('/docs/design-system.md'))
+
+    expect(documented, 'la ligne « Mesure de ligne » du § Échelle de prose').not.toBeNull()
+
+    const ui = (await import('@repo/ui')) as {
+      readonly PROSE_CLASSNAME?: string
+      readonly proseComponents?: Readonly<Record<string, unknown>>
+    }
+
+    expect(ui.PROSE_CLASSNAME).toContain(documented?.[1])
+    // La table des éléments du corps : le document en décrit onze, et la
+    // transcription doit les habiller. Un `h2` sans classe rendrait la prose
+    // au style par défaut du navigateur, ce qu'aucune capture ne distingue
+    // d'un thème sobre.
+    expect(Object.keys(ui.proseComponents ?? {})).toContain('h2')
+  })
+
+  it('ne déclare « pas encore copié » aucun composant que le baril exporte', async () => {
+    /*
+     * **La commande qui manquait.** `packages/ui/AGENTS.md` porte la liste de ce
+     * que le design system décrit et que ce package n'a pas encore copié, et
+     * cette liste a été prise en défaut **deux fois** — `Pagination` livré par
+     * s29 et resté « non copié », `Avatar` exporté depuis s18 et toujours
+     * listé. Son propre commentaire le disait : « aucune commande ne confronte
+     * ce tableau au baril, c'est précisément ce qui les laisse dériver ».
+     *
+     * Les deux côtés sont **dérivés** : les noms cités dans le paragraphe, et
+     * les exports réels du baril. La comparaison est **par nom exact** — une
+     * correspondance par sous-chaîne ferait couvrir `Table` par `DataTable`,
+     * et la garantie serait une illusion.
+     *
+     * Ce que cette ligne ne dit pas : qu'un composant exporté figure bien dans
+     * l'une des deux lignes du tableau. Ce sens-là demanderait de rattacher
+     * `AccordionContent` à `Accordion`, donc exactement la correspondance par
+     * sous-chaîne qu'on vient d'écarter.
+     */
+    const agents = read('/packages/ui/AGENTS.md')
+    const start = agents.indexOf('Le reste de l')
+    const end = agents.indexOf('copié**', start)
+
+    expect(start, 'le paragraphe « le reste de l’inventaire »').toBeGreaterThan(0)
+    expect(end).toBeGreaterThan(start)
+
+    const claimed = [
+      ...new Set(
+        [...agents.slice(start, end).matchAll(/`(\w+)`/g)].map((match) => match[1] ?? ''),
+      ),
+    ]
+
+    // Garde contre l'inertie : une extraction qui ne trouve rien passerait.
+    expect(claimed.length).toBeGreaterThan(10)
+
+    const exported = new Set(Object.keys(await import('@repo/ui')))
+
+    expect(claimed.filter((name) => exported.has(name))).toEqual([])
+  })
+
   it('n’a pas de fichier de configuration JavaScript (Tailwind v4, ADR 010)', () => {
     // Un `tailwind.config.js` déposé à côté serait lu par Tailwind v4 s'il
     // était référencé, et surtout : il ferait croire au prochain agent que la

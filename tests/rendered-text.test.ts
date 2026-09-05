@@ -746,6 +746,126 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         ]
       : []
 
+    /**
+     * **La documentation** (s30) — la seconde source de contenu par fichier.
+     *
+     * Tout est dérivé du contenu livré, comme pour le blog : les titres et
+     * descriptions viennent du catalogue, le corps est relu sur le disque par la
+     * même fonction. Deux différences comptent ici :
+     *
+     * 1. l'écran rend aussi **l'arbre entier** — les titres de toutes les
+     *    sections et de toutes les pages sont à l'écran dans la navigation
+     *    latérale, pas seulement ceux de la page servie ;
+     * 2. le cas **non traduit** rend en plus la mention, qui vient, elle, du
+     *    catalogue de messages : elle doit donc rester sous le filet.
+     */
+    /**
+     * Le corps d'une page de documentation, ramené à ses nœuds de texte.
+     *
+     * **C'est `articleBodyStrings` élargi, délibérément et une fois.** Son
+     * commentaire annonçait le cas : « un article portant du balisage en ligne
+     * découperait ses nœuds autrement, et ce cas rougirait en le disant ». Il a
+     * rougi sur le premier contenu de documentation, et pour deux raisons qui
+     * n'ont rien d'accidentel — une documentation contient du code en ligne
+     * (`\`pnpm install\`` devient un `<code>`, donc trois nœuds au lieu d'un) et
+     * ses paragraphes tiennent sur plusieurs lignes (Markdown les réunit en un
+     * seul nœud, saut de ligne compris).
+     *
+     * La version du blog n'est **pas** modifiée : sa narrowness est sa garde.
+     * Celle-ci couvre en plus le regroupement de paragraphe et le découpage au
+     * code en ligne, et rien d'autre — emphase, lien et image découperaient
+     * encore autrement, et rougiraient en le disant.
+     */
+    const docsBodyStrings = (source: string): readonly string[] => {
+      const body = source.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '')
+      const found: string[] = []
+      let fenced: string[] | null = null
+      let paragraph: string[] = []
+
+      const flush = (): void => {
+        for (const piece of paragraph.join('\n').split(/`([^`]+)`/)) {
+          const text = piece.trim()
+
+          if (text !== '') {
+            found.push(text)
+          }
+        }
+
+        paragraph = []
+      }
+
+      for (const line of body.split('\n')) {
+        if (line.startsWith('```')) {
+          flush()
+
+          if (fenced === null) {
+            fenced = []
+          } else {
+            found.push(fenced.join('\n'))
+            fenced = null
+          }
+
+          continue
+        }
+
+        if (fenced !== null) {
+          fenced.push(line)
+
+          continue
+        }
+
+        const text = line.replace(/^(#{1,6}\s+|[-*]\s+|>\s+)/, '')
+
+        if (text.trim() === '') {
+          flush()
+
+          continue
+        }
+
+        if (/^#{1,6}\s/.test(line)) {
+          flush()
+          paragraph = [text]
+          flush()
+
+          continue
+        }
+
+        paragraph.push(text)
+      }
+
+      flush()
+
+      return found
+    }
+    const { docsCatalog } = await import('../apps/web/lib/docs')
+    const { docsNavigationTree } = await import('@repo/module-docs')
+    const docsMounted = docsCatalog.index !== null
+    const docsTree = docsNavigationTree(docsCatalog, defaultLocale)
+    const DOCS_PAGE = docsTree[0]?.pages[0] ?? { section: 'x', slug: 'x' }
+    const docsData = docsMounted
+      ? [
+          ...docsTree.flatMap((section) => [
+            section.title,
+            ...section.pages.map((page) => page.title),
+          ]),
+          ...docsCatalog.pages
+            .filter((page) => page.locale === defaultLocale)
+            .flatMap((page) => [page.title, page.description, ...page.headings.map((h) => h.text)]),
+          ...docsBodyStrings(
+            readFileSync(
+              join(
+                REPO_ROOT,
+                'content/docs',
+                defaultLocale,
+                DOCS_PAGE.section,
+                `${DOCS_PAGE.slug}.mdx`,
+              ),
+              'utf8',
+            ),
+          ),
+        ]
+      : []
+
     const { featureGates } = await import('../apps/web/lib/feature-gates')
     const { DEMO_PREMIUM_FEATURE } = await import('@repo/module-demo-enabled')
     const premiumGated = featureGates().some((gate) => gate.id === DEMO_PREMIUM_FEATURE)
@@ -1263,6 +1383,36 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         render: async () =>
           (await import('../apps/web/app/blog/[slug]/page')).default({
             params: Promise.resolve({ slug: BLOG_SLUG }),
+          }),
+      },
+      {
+        // L'entrée de la documentation : elle **redirige** vers la première
+        // page de l'arbre. C'est le seul écran du dépôt dont le refus attendu
+        // dépend du contenu et pas de la configuration — sans page, il rendrait
+        // son état vide.
+        id: 'documentation, l’entrée',
+        file: 'docs/page.tsx',
+        viewer: ANONYMOUS,
+        refuses: docsMounted
+          ? docsTree.some((section) => section.pages.length > 0)
+            ? 'NEXT_REDIRECT'
+            : null
+          : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        render: async () => (await import('../apps/web/app/docs/page')).default(),
+      },
+      {
+        // Une page de documentation, dans la langue par défaut : l'arbre, le fil
+        // d'Ariane, le sommaire, le corps. Aucune mention de repli ici — la
+        // page suivante est celle qui la porte.
+        id: 'documentation, une page',
+        file: 'docs/[section]/[page]/page.tsx',
+        viewer: ANONYMOUS,
+        refuses: docsMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        technicalProps: ['contactRecipient', 'newsletterSource', 'section', 'slug', 'page'],
+        screenData: docsData,
+        render: async () =>
+          (await import('../apps/web/app/docs/[section]/[page]/page')).default({
+            params: Promise.resolve({ section: DOCS_PAGE.section, page: DOCS_PAGE.slug }),
           }),
       },
       {

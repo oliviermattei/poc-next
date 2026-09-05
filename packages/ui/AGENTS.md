@@ -146,28 +146,44 @@ vit dans `apps/web`.
 Ceux que s08 utilise réellement, et rien de plus — copier l'inventaire complet
 « pour plus tard » livrerait du code que personne n'a exercé :
 
-| Copiés | `Accordion`, `Alert`, `Badge`, `Button`, `Card`, `Checkbox`, `DropdownMenu`, `Input`, `Label`, `Separator`, `Sheet`, `Textarea` |
+| Copiés | `Accordion`, `Alert`, `Avatar`, `Badge`, `Breadcrumb`, `Button`, `Card`, `Checkbox`, `DropdownMenu`, `Input`, `Label`, `Separator`, `Sheet`, `Textarea` |
 | --- | --- |
-| Composés maison | `CookieBanner`, `EmptyState`, `LocaleSwitcher`, `MarketingSection`, `OrgSwitcher`, `PageHeader`, `Pagination`, `Sidebar` / `SidebarNav`, `ThemeProvider`, `ThemeToggle` |
+| Composés maison | `CookieBanner`, `EmptyState`, `LocaleSwitcher`, `MarketingSection`, `OrgSwitcher`, `PageHeader`, `Pagination`, `Sidebar` / `SidebarNav`, `ThemeProvider`, `ThemeToggle`, l'échelle de prose (`PROSE_CLASSNAME`, `proseComponents`) |
 
 Le reste de l'inventaire de `docs/design-system.md` — `Form`, `Table`,
-`DataTable`, `Tabs`, `Toaster`, `Command`, `AlertDialog`, `Avatar`, `Tooltip`,
-`Popover`, `Skeleton`, `Progress`, `ScrollArea`, `Breadcrumb`,
+`DataTable`, `Tabs`, `Toaster`, `Command`, `AlertDialog`, `Tooltip`,
+`Popover`, `Skeleton`, `Progress`, `ScrollArea`,
 `RadioGroup`, `Select`, `Switch`,
 `ConfirmDialog`, et les composés des stories à venir — **n'est pas encore
-copié**. C'est la liste au 2 septembre 2026, révisée par s10, s11, s18, s36
-puis s29 ; le document fait foi, pas ce tableau — **et ce tableau a déjà été
-pris en défaut deux fois**, ce qui est la raison de la phrase précédente :
+copié**. C'est la liste au 5 septembre 2026, révisée par s10, s11, s18, s36,
+s29 puis s30 ; le document fait foi, pas ce tableau — **et ce tableau avait
+déjà été pris en défaut deux fois**, ce qui est la raison de la phrase
+précédente :
 
 - `Pagination` y est resté « non copié » alors que **s29** le livrait et
   l'exportait. Corrigé ici : il est **composé maison**, pas copié de shadcn/ui —
   des liens plutôt que des boutons, la page courante distinguée par la primaire
   et par `aria-current` ;
-- `Avatar` y figure encore alors que le baril l'exporte depuis **s18**. Ce
-  décalage est **antérieur à s29** et n'a pas été corrigé par elle : il est
-  signalé plutôt que tu, pour que le lecteur suivant ne lise pas cette liste
-  comme vérifiée. Aucune commande ne confronte ce tableau au baril — c'est
-  précisément ce qui les laisse dériver.
+- `Avatar` y a figuré jusqu'à **s30** alors que le baril l'exporte depuis
+  **s18** : décalage antérieur à s29, signalé par elle plutôt que tu, et rangé
+  ici dans la ligne des copiés.
+
+**Ce qui a changé en s30 : la commande existe.**
+`tests/design-system.test.ts` confronte le paragraphe ci-dessus au baril, par
+nom exact, et refuse qu'un composant y soit déclaré « pas encore copié » alors
+qu'il est exporté. Elle a rougi sur `Avatar` et sur `Breadcrumb` dès sa
+première exécution. **Ce qu'elle ne vérifie pas** : qu'un composant exporté
+figure bien dans l'une des deux lignes du tableau — ce sens-là demanderait de
+rattacher `AccordionContent` à `Accordion`, donc une correspondance par
+sous-chaîne, qui ferait couvrir `Table` par `DataTable`. Cette moitié-là reste
+de la relecture.
+
+`Breadcrumb` est arrivé avec **s30**, copié de shadcn/ui pour le fil d'Ariane de
+la documentation, sans son `BreadcrumbEllipsis` — aucun écran ne replie de fil,
+et ce package ne livre pas de code que personne n'exerce. `ScrollArea` et
+`Command` sont restés non copiés pour la même raison : le premier n'est pas
+nécessaire à une navigation de documentation, le second est la palette de
+recherche de `s54-docs-recherche`.
 
 `Checkbox` et `CookieBanner` sont arrivés avec **s36**, que le document attribue
 nommément au second (« Bannière de consentement (s36) »).
@@ -218,6 +234,24 @@ interdit `unsafe-inline`), et le navigateur masque le bloc dès que le script
 tourne. `e2e/organizations.spec.ts` le parcourt avec `javaScriptEnabled: false` ;
 c'est le seul endroit du dépôt qui puisse le prouver, un rendu statique n'ayant
 pas de moteur qui décide d'afficher un `<noscript>`.
+
+**L'échelle de prose n'est ni une primitive copiée ni un composé d'écran**, et
+c'est pour ça qu'elle a l'air d'un intrus ici : c'est une table de composants
+MDX (`proseComponents`) plus une classe de mesure de ligne (`PROSE_CLASSNAME`),
+transcription du § « Échelle de prose » de `docs/design-system.md`. Elle est
+arrivée par **s29** dans `@repo/module-blog/presentation` et a été remontée ici
+par **s30** (ADR 055) : trois modules rendent du MDX (blog, documentation,
+changelog), et la laisser dans l'un d'eux aurait exigé `requires: ['blog']` sur
+les deux autres — donc un produit où `pnpm ks toggle blog` refuse tant que la
+documentation est activée. Ne pas la redescendre dans un module : c'est le
+document qui la décide, pas le module qui l'affiche.
+
+`createProseComponents` est le même objet **paramétré par une seule chose**,
+l'ancre d'un titre : la documentation a besoin d'un `id` sur ses `h2`/`h3` pour
+que son sommaire pointe quelque part, le blog n'en a pas. Sans le paramètre,
+la documentation devrait redéclarer les classes des titres, c'est-à-dire une
+seconde typographie par la porte de derrière. `proseComponents` est
+`createProseComponents()` — sans ancre — et c'est ce que le blog emploie.
 
 `Accordion` et `MarketingSection` sont arrivés avec s10 : le premier porte la
 FAQ marketing (que le document lui attribue explicitement), le second est

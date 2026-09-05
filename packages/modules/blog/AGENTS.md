@@ -27,7 +27,11 @@ défaut que la confusion inverse a déjà coûté au dépôt.
 ## Imports autorisés
 
 - `@repo/core` pour le contrat de module et la qualification des clés ;
-- `@repo/ui` pour la présentation — jamais Radix directement (ADR 022) ;
+- `@repo/ui` pour la présentation — jamais Radix directement (ADR 022). **C'est
+  de là que vient l'échelle de prose** (`PROSE_CLASSNAME`, `proseComponents`) :
+  s29 l'avait posée dans ce module, ADR 055 l'a remontée dans le design system
+  quand s30 en est devenue la seconde consommatrice, et ce module l'importe
+  désormais comme n'importe qui d'autre ;
 - `zod` à la frontière du frontmatter, `yaml` pour le lire ;
 - `node:fs` **uniquement** dans `src/infrastructure/` ;
 - `@repo/typescript-config` pour la configuration du compilateur

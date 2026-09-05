@@ -1,0 +1,24 @@
+---
+title: Configurer le projet
+description: Les fichiers que le propriétaire du dépôt édite, et rien d'autre.
+order: 2
+---
+
+## Les quatre fichiers de `config/`
+
+`config/features.ts` déclare les modules et ceux qui sont activés,
+`config/billing.ts` les offres, `config/gating.ts` ce qu'une offre ouvre, et
+`config/marketing.ts` le site public.
+
+## Ce que `pnpm ks` fait à votre place
+
+Tout le reste s'édite à la main. Un module, lui, s'active par
+`pnpm ks toggle <module>`, jamais en
+modifiant `generated/` à la main — la commande régénère, et restaure la
+configuration si la régénération échoue.
+
+## Les variables d'environnement
+
+Elles sont validées au démarrage, et l'échec **nomme la variable fautive**. Un
+processus sans clé et sans mode local explicite refuse de démarrer plutôt que de
+se rabattre en silence sur un remplaçant.

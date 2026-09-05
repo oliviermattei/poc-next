@@ -1,0 +1,15 @@
+{
+  "navigation.docs": "Documentation",
+  "sidebar.label": "Sections de la documentation",
+  "sidebar.open": "Sommaire de la documentation",
+  "sidebar.close": "Fermer le sommaire",
+  "breadcrumb.label": "Fil d’Ariane",
+  "breadcrumb.home": "Documentation",
+  "toc.label": "Sur cette page",
+  "toc.title": "Sur cette page",
+  "untranslated.title": "Page non traduite",
+  "untranslated.description": "Cette page n’existe pas encore dans la langue affichée. Elle est servie dans la langue par défaut du site.",
+  "empty.title": "Aucune page de documentation",
+  "empty.description": "Rien n’est encore publié ici. Déposez un fichier MDX dans un dossier de section pour commencer.",
+  "empty.action": "Retour à l’accueil"
+}

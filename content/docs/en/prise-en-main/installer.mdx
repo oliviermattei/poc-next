@@ -1,0 +1,32 @@
+---
+title: Install the repository
+description: Clone it, install the dependencies, bring a database up.
+order: 1
+---
+
+## Requirements
+
+Node 20.10 or newer, pnpm 10, and Docker for the local database. Nothing else:
+the repository ships its own PostgreSQL in a container.
+
+### Checking versions
+
+```bash
+# this comment is not a heading
+node --version
+pnpm --version
+```
+
+## Install
+
+One command, and it refuses to write when the lockfile has drifted from the
+manifest.
+
+```bash
+pnpm install --frozen-lockfile
+```
+
+## Bring the database up
+
+The container carries its own health check: a migration started right after
+`up` will not hit a database that is not listening yet.

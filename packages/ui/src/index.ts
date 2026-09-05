@@ -22,6 +22,14 @@ export {
 export { Alert, AlertDescription, AlertTitle, type AlertProps } from './components/alert'
 export { Avatar, AvatarFallback, AvatarImage, type AvatarProps } from './components/avatar'
 export { Badge, type BadgeProps } from './components/badge'
+export {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from './components/breadcrumb'
 export { Button, buttonVariants, type ButtonProps } from './components/button'
 export {
   Card,
@@ -73,6 +81,12 @@ export {
 } from './composed/org-switcher'
 export { PageHeader, type PageHeaderProps } from './composed/page-header'
 export { Pagination, type PaginationProps } from './composed/pagination'
+export {
+  PROSE_CLASSNAME,
+  createProseComponents,
+  proseComponents,
+  type ProseOptions,
+} from './composed/prose'
 export {
   Sidebar,
   SidebarBrand,
