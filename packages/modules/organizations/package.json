@@ -16,7 +16,7 @@
     "@repo/ports": "workspace:*",
     "@repo/ui": "workspace:*",
     "drizzle-orm": "^0.45.2",
-    "lucide-react": "1.37.0",
+    "lucide-react": "1.39.0",
     "zod": "^4.5.0"
   },
   "peerDependencies": {
