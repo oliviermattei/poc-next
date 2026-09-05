@@ -1,4 +1,4 @@
-import { and, eq, isNull, like, lt, ne, or, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, like, lt, ne, or, sql } from 'drizzle-orm'
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core'
 
 import type {
@@ -141,6 +141,19 @@ export function createDrizzleAuthUserRepository(db: AuthDatabase): AuthUserRepos
         .returning({ id: authUser.id })
 
       return updated.length > 0
+    },
+
+    findByIds: async (userIds) => {
+      // **Une instruction pour N identifiants** (revue s32, R3-3). La liste vide
+      // ne part pas en base : `inArray(col, [])` est une condition qu'aucun
+      // dialecte ne traite pareil, et il n'y a de toute façon rien à lire.
+      if (userIds.length === 0) {
+        return []
+      }
+
+      const rows = await db.select(columns).from(authUser).where(inArray(authUser.id, [...userIds]))
+
+      return rows.map(toRecord)
     },
 
     markEmailVerified: async (userId) => {

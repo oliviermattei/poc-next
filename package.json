@@ -54,6 +54,7 @@
     "@repo/module-i18n": "workspace:*",
     "@repo/module-marketing": "workspace:*",
     "@repo/module-mcp-server": "workspace:*",
+    "@repo/module-notifications": "workspace:*",
     "@repo/module-organizations": "workspace:*",
     "@repo/module-rate-limit": "workspace:*",
     "@repo/module-storage": "workspace:*",

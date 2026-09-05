@@ -22,6 +22,7 @@ import {
   acceptRefusalMessageKey,
   configureOrganizations,
   EMPTY_ORGANIZATIONS_VIEW,
+  MEMBER_JOINED_NOTIFICATION,
   INVITATION_QUOTA_PER_WINDOW,
   INVITATION_QUOTA_WINDOW_SECONDS,
   ORGANIZATION_ACTIONS,
@@ -34,6 +35,7 @@ import {
   organizationRoutePath,
   refusalMessageKey,
   resetOrganizationsService,
+  type NotifyRecipient,
   type OrganizationRole,
   type OrganizationSecurityEvent,
   type OrganizationsService,
@@ -171,6 +173,38 @@ const tokenOf = (link: string): string => new URL(link).searchParams.get('token'
  */
 const securityEvents: OrganizationSecurityEvent[] = []
 
+/**
+ * Les émissions de notification, capturées (s32).
+ *
+ * Ce qui est doublé est **l'émission**, pas la règle qu'elle applique : ce
+ * fichier mesure qui ce module désigne comme destinataire, et rien de ce que le
+ * centre en fait — les préférences, l'écriture in-app et le périmètre de lecture
+ * sont éprouvés là où ils vivent (`tests/notifications.test.ts`).
+ */
+interface NotificationEmission {
+  readonly type: string
+  readonly userId: string
+  readonly email: string
+  readonly organizationId: string | null
+  readonly data: Readonly<Record<string, unknown>>
+  readonly stored: Readonly<Record<string, unknown>>
+}
+
+const emissions: NotificationEmission[] = []
+
+const notify: NotifyRecipient = async (input) => {
+  emissions.push({
+    type: input.type,
+    userId: input.recipient.userId,
+    email: input.recipient.email,
+    organizationId: input.organizationId,
+    data: input.data,
+    stored: input.stored,
+  })
+
+  return { ok: true }
+}
+
 /** Compteur d'identifiants : déterministes, donc lisibles dans un échec. */
 let sequence = 0
 
@@ -271,6 +305,7 @@ beforeAll(async () => {
     emailLocale: defaultLocale,
     now: () => clock,
     securityLog: (event) => securityEvents.push(event),
+    notify,
     // s23 — ce que la nouvelle taille de l'organisation traverse avant qu'une
     // écriture d'appartenance soit validée (ADR 046). Ici, un accord : cette
     // suite mesure les organisations, pas la facturation. Le refus et la
@@ -876,13 +911,90 @@ describe.runIf(databaseReachable)('l’acceptation d’une invitation', () => {
     expect(view.current?.role).toBe('member')
   })
 
+  it('prévient les membres déjà là, une fois chacun, et personne d’autre (s32)', async () => {
+    // **Le seul producteur de notification du produit.** Ce qui se mesure ici
+    // est le choix des destinataires — la règle qui décide *qui peut voir* une
+    // notification vit dans le module `notifications`, et y est éprouvée : ce
+    // cas n'en rejoue pas la matrice, il vérifie que le producteur passe par
+    // elle en émettant **une fois par destinataire**, avec son identifiant.
+
+    // Une organisation étrangère, montée avant : son membre ne doit jamais
+    // entrer dans l'émission d'une autre.
+    const outsider = await anAccount()
+
+    await anOrganization(outsider)
+
+    const founder = await anAccount()
+    const organizationId = await anOrganization(founder)
+
+    const firstEmail = `s15-notify-${randomUUID()}@example.test`
+    const first = await anAccount(firstEmail)
+
+    await call('invite', { session: founder, body: { organizationId, email: firstEmail } })
+    await call('acceptInvitation', {
+      session: first,
+      body: { token: tokenOf(lastInvitationLink()) },
+    })
+
+    const secondEmail = `s15-notify-${randomUUID()}@example.test`
+    const second = await anAccount(secondEmail)
+
+    await call('invite', { session: founder, body: { organizationId, email: secondEmail } })
+
+    const organization = (await service.useCases.viewOrganizations(founder.userId)).current
+
+    emissions.length = 0
+
+    await call('acceptInvitation', {
+      session: second,
+      body: { token: tokenOf(lastInvitationLink()) },
+    })
+
+    // Une émission par membre **déjà là**, et une seule : le fondateur et le
+    // premier invité. Le tri rend l'échec lisible, il ne relâche rien.
+    expect(emissions.map((emission) => emission.userId).sort()).toEqual(
+      [founder.userId, first.userId].sort(),
+    )
+
+    // Le nouveau venu ne s'apprend pas son propre arrivée, et l'organisation
+    // voisine n'en sait rien.
+    expect(emissions.map((emission) => emission.userId)).not.toContain(second.userId)
+    expect(emissions.map((emission) => emission.userId)).not.toContain(outsider.userId)
+
+    for (const emission of emissions) {
+      expect(emission.type).toBe(MEMBER_JOINED_NOTIFICATION)
+      expect(emission.organizationId).toBe(organizationId)
+      // Ce que le texte du type attend, dans l'email qui part **maintenant** :
+      // qui est arrivé, et où.
+      expect(emission.data).toEqual({
+        member: secondEmail,
+        organization: organization?.name,
+      })
+      // **Ce qui est écrit, et relu après que le compte nommé a disparu**
+      // (revue s32, R1) : une référence, jamais une adresse. La ligne appartient
+      // à un autre membre, donc la purge du compte arrivé ne la touche pas.
+      expect(emission.stored).toEqual({
+        member: second.userId,
+        organization: organization?.name,
+      })
+      expect(JSON.stringify(emission.stored)).not.toContain('@')
+    }
+  })
+
   it('se rejoue sans créer une seconde appartenance, et le second essai le dit', async () => {
     // `docs/reliability.md` §1 : « idempotent » se prouve en exécutant deux
     // fois et en constatant **un** effet.
     const { guest, organizationId, token } = await anInvitation()
 
     await call('acceptInvitation', { session: guest, body: { token } })
+
+    emissions.length = 0
+
     const replayed = await call('acceptInvitation', { session: guest, body: { token } })
+
+    // Un rejeu ne prévient personne une seconde fois : rien n'a été consommé,
+    // donc rien n'est arrivé (`docs/reliability.md` §1).
+    expect(emissions).toEqual([])
 
     expect(replayed.headers.get('location')).toBe(
       `${APP_URL}/invitations/accept?token=${token}&error=invitation_accepted`,

@@ -39,6 +39,7 @@ import {
 } from '../domain/permissions'
 import { authorizeOrganization, type OrganizationAccess } from './organization-access'
 import {
+  MEMBER_JOINED_NOTIFICATION,
   SeatSyncRefusedError,
   type OrganizationsDependencies,
   type SeatSyncRefusal,
@@ -351,6 +352,7 @@ export function createOrganizationsUseCases(
     now,
     tokens,
     securityLog,
+    notify,
   } = dependencies
 
   /** La lecture conjointe, enveloppée : le port garde son receveur. */
@@ -358,6 +360,65 @@ export function createOrganizationsUseCases(
     readonly userId: string
     readonly organizationId: string
   }) => repository.findMembership(input)
+
+  /**
+   * **Le seul producteur de notification du produit** (s32).
+   *
+   * Prévient les membres **déjà là** qu'un compte vient de les rejoindre. Le
+   * nouveau venu en est retiré : il sait qu'il vient d'accepter.
+   *
+   * Trois choses ne se décident pas ici, et c'est le point :
+   *
+   * 1. **qui peut voir la notification** — l'émission est faite une fois **par
+   *    destinataire**, avec son propre identifiant, donc la ligne écrite est
+   *    la sienne. Un membre d'une autre organisation n'apparaît pas dans cette
+   *    liste, et la lecture applique de toute façon son propre périmètre ;
+   * 2. **par quel canal elle arrive** — les préférences du compte, par type et
+   *    par canal, sont appliquées par le centre. Ce module n'en connaît aucune ;
+   * 3. **si elle arrive** — module `notifications` coupé, l'émission retombe sur
+   *    ce que le socle prévoit, sans que ce fichier le sache.
+   *
+   * Le résultat n'est pas lu : une notification qui ne part pas ne doit pas
+   * annuler une adhésion qui, elle, est écrite. C'est la règle du journal de
+   * sécurité, appliquée à l'identique.
+   */
+  const announceArrival = async (
+    access: OrganizationAccess,
+    joiner: string,
+  ): Promise<void> => {
+    const members = await repository.listMemberIdentities(access)
+    const arrival = members.find((member) => member.userId === joiner)
+
+    for (const member of members) {
+      if (member.userId === joiner) {
+        continue
+      }
+
+      await notify({
+        type: MEMBER_JOINED_NOTIFICATION,
+        recipient: {
+          userId: member.userId,
+          email: member.email,
+          // La langue **du site** : ce module ne tient aucune préférence de
+          // langue, et la deviner d'ailleurs serait la deviner. C'est la même
+          // règle que celle de l'email d'invitation.
+          locale: emailLocale,
+        },
+        organizationId: access.organizationId,
+        // **Ce qui part maintenant** : l'email nomme la personne, il est
+        // délivré dans la foulée et ne se relit pas.
+        data: { member: arrival?.email ?? '', organization: access.name },
+        // **Ce qui est écrit** : l'identifiant du compte, jamais son adresse
+        // (revue s32, R1). La ligne appartient à un autre membre, donc la purge
+        // du compte arrivé ne la touche pas : une adresse écrite ici lui
+        // survivrait, pendant que le contrat du module promet `'erase'`. Le nom
+        // affiché est résolu à la lecture, et un compte effacé s'y lit comme
+        // effacé. Le nom de l'organisation n'est pas une donnée personnelle : il
+        // décrit le périmètre que le destinataire a déjà sous les yeux.
+        stored: { member: joiner, organization: access.name },
+      })
+    }
+  }
 
   /** L'accès demandé par un corps de requête, ou le refus qui ne dit rien. */
   const accessFrom = async (
@@ -823,6 +884,8 @@ export function createOrganizationsUseCases(
       // L'organisation acceptée devient courante : sans cela, l'invité
       // atterrirait sur « Choisir une organisation » (constat F7 de s15).
       await repository.setActiveOrganization(access)
+
+      await announceArrival(access, userId)
 
       return { status: 'ok', organizationId: access.organizationId }
     },

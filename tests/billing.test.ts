@@ -702,6 +702,10 @@ beforeAll(async () => {
     // écriture d'appartenance peut être refusée par l'extérieur, et il lui
     // donne le nombre de membres qu'elle produirait.
     seatSync: async (change) => await seatSync(change),
+    // s32 : cette suite mesure la facturation, pas les notifications. L'émission
+    // est acceptée sans être lue — le choix des destinataires est éprouvé dans
+    // `tests/organizations.test.ts`, au producteur.
+    notify: () => Promise.resolve({ ok: true }),
   })
 
   configureBilling(suiteBilling())

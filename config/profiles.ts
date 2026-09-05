@@ -45,6 +45,12 @@ import type { AvailableModuleId } from './features'
  * vérifié par **aucune exécution** tant qu'aucun profil ne le coupe, et
  * `tests/minimal-profile.test.ts` mesure que le balayage le couvre plutôt que
  * de le supposer.
+ * `notifications` les a rejoints en s32, pour la même raison et sur le même
+ * critère : « module non activé, aucune route ni entrée de navigation de
+ * notifications, et aucune table sur une base vierge ». Les deux premières
+ * moitiés sont éprouvées contre un registre construit par
+ * `tests/notifications.test.ts` ; la troisième ne se mesure que sur le
+ * **schéma réel** d'une base où le module n'a jamais migré, c'est-à-dire ici.
  *
  * `pnpm test:minimal-profile` joue ce profil dans une **copie** du dépôt : il
  * n'est pas la configuration livrée, et éditer cette liste ne change rien à
@@ -59,5 +65,5 @@ export interface ModuleProfileDeclaration {
 
 export const minimalProfile = {
   id: 'minimal',
-  cut: ['organizations', 'billing', 'i18n', 'blog', 'docs', 'admin'],
+  cut: ['organizations', 'billing', 'i18n', 'blog', 'docs', 'admin', 'notifications'],
 } as const satisfies ModuleProfileDeclaration

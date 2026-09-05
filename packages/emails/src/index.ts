@@ -6,3 +6,24 @@
  */
 export { EmailTemplateError, createEmailRenderer, qualifyEmailTemplateId } from './render'
 export { TransactionalEmail, type TransactionalEmailProps } from './transactional-email'
+export {
+  createNotificationEmitter,
+  createNotificationTypeRegistry,
+  defineNotificationType,
+  notificationTemplateId,
+  NotificationTypeError,
+  NOTIFICATION_CHANNELS,
+  NOTIFICATION_TEMPLATE_NAMESPACE,
+  type EmitNotificationError,
+  type EmitNotificationErrorCode,
+  type EmitNotificationInput,
+  type EmitNotificationResult,
+  type NotificationCentre,
+  type NotificationChannel,
+  type NotificationEmitter,
+  type NotificationRecipient,
+  type NotificationTypeDeclaration,
+  type NotificationTypeRegistry,
+  type RecordNotificationInput,
+  type RecordNotificationResult,
+} from './notifications'

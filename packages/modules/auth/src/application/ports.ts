@@ -62,6 +62,14 @@ export interface AuthUserRepository {
     readonly at: Date
     readonly reason: string | null
   }): Promise<boolean>
+  /**
+   * Les comptes de plusieurs identifiants, **en une seule lecture**.
+   *
+   * Elle existe pour que l'affichage d'une page qui nomme N comptes ne fasse pas
+   * N requêtes (revue s32, ronde 3, R3-3). Les identifiants absents ne sont pas
+   * dans la réponse : c'est ce qui distingue un compte effacé d'un compte lu.
+   */
+  findByIds(userIds: readonly string[]): Promise<readonly AuthUserRecord[]>
   /** Marque l'email vérifié. Rend `false` si aucun compte ne correspond. */
   markEmailVerified(userId: string): Promise<boolean>
   /** Remplace l'email et le marque vérifié. Rend `false` si l'adresse est déjà prise. */

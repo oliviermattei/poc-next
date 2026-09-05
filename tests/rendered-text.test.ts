@@ -116,6 +116,30 @@ vi.mock('../apps/web/lib/storage', async (importOriginal) => {
 })
 
 /**
+ * Les notifications : **la base, et rien d'autre** (s32).
+ *
+ * `available` reste celui du vrai point de composition — c'est lui qui décide
+ * si l'écran rend ou refuse, et si le shell porte un badge. Le doubler ferait de
+ * ce fichier une démonstration de sa propre fixture. Seules les deux lectures
+ * sont remplacées, comme pour `lib/organizations` et `lib/storage`.
+ */
+vi.mock('../apps/web/lib/notifications', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../apps/web/lib/notifications')>()
+  const { FIXTURE_NOTIFICATIONS, FIXTURE_UNREAD_NOTIFICATIONS } = await import(
+    './fixtures/screen-viewer'
+  )
+
+  return {
+    ...actual,
+    notifications: {
+      ...actual.notifications,
+      view: () => Promise.resolve(FIXTURE_NOTIFICATIONS),
+      unreadCount: () => Promise.resolve(FIXTURE_UNREAD_NOTIFICATIONS),
+    },
+  }
+})
+
+/**
  * La facturation : **le point de composition, et rien d'autre**.
  *
  * `available` reste celui du vrai point de composition — c'est lui qui décide si
@@ -559,6 +583,8 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       FIXTURE_IP,
       FIXTURE_MEMBER_EMAIL,
       FIXTURE_NAME,
+      FIXTURE_NOTIFICATIONS,
+      FIXTURE_UNREAD_NOTIFICATIONS,
       FIXTURE_BILLING_ENDING,
       FIXTURE_BILLING_NONE,
       FIXTURE_BILLING_PAST_DUE,
@@ -613,6 +639,11 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       // s18 — les initiales du repli d'avatar : une donnée **dérivée du nom**,
       // affichée telle quelle et venue d'aucun catalogue.
       FIXTURE_INITIALS,
+      // s32 — le compteur du badge de notifications. Il est rendu par le
+      // **shell**, donc sur chaque écran d'un compte connecté : il entre dans
+      // le jeu commun pour la même raison que les initiales, et pas dans les
+      // données d'un écran.
+      String(FIXTURE_UNREAD_NOTIFICATIONS),
       // s19 — le prix formaté par `Intl`. Il s'affiche tel quel et ne vient
       // d'aucun catalogue : c'est une donnée, comme un nom d'organisation.
       FIXTURE_BILLING_PRICE,
@@ -656,6 +687,8 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
     const organizationsMounted = organizations.available
     const { billing } = await import('../apps/web/lib/billing')
     const billingMounted = billing.available
+    const { notifications } = await import('../apps/web/lib/notifications')
+    const notificationsMounted = notifications.available
     /**
      * **Ce que l'écran réservé fait dans cette configuration, dérivé de la
      * déclaration** et non concédé : il répond 404 quand `config/gating.ts` ne
@@ -1159,6 +1192,32 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         screenData: cataloguePrices,
         render: async () =>
           (await import('../apps/web/app/pricing/page')).default({ searchParams: noParams }),
+      },
+      {
+        // s32. L'écran du centre de notifications. Il refuse quand le module
+        // n'est pas monté — le refus attendu est **dérivé** de l'état du
+        // module, jamais concédé.
+        id: 'notifications',
+        file: 'notifications/page.tsx',
+        viewer: SIGNED_IN,
+        refuses: notificationsMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        // Les trois URL des routes du module, le périmètre d'une notification
+        // et le canal d'une préférence : des chemins montés et des
+        // identifiants, jamais du texte. Déclarés **sur cet écran** : ailleurs,
+        // une prop nommée `read` portant une chaîne fait toujours rougir, et le
+        // garde-fou de prose reste actif ici aussi.
+        technicalProps: ['read', 'readAll', 'setPreference', 'organizationId', 'channel'],
+        // Les numéros de page rendus par la pagination du design system : des
+        // **données**, comme un prix ou un nom, et **dérivées de la fixture**
+        // plutôt que recopiées — une page de plus entre ici sans que personne y
+        // pense. Leur nom accessible, lui, est un marqueur.
+        screenData: Array.from({ length: FIXTURE_NOTIFICATIONS.pageCount }, (_unused, index) =>
+          String(index + 1),
+        ),
+        render: async () =>
+          (await import('../apps/web/app/notifications/page')).default({
+            searchParams: noParams,
+          }),
       },
       {
         // s15. L'écran refuse quand le module n'est pas monté — comme une page

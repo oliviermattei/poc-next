@@ -917,6 +917,63 @@ describe('le rendu des pages publiques', () => {
       postgres.restore()
     }
   })
+
+  /**
+   * **Le badge de notifications du shell, module monté** (s32, critère 2).
+   *
+   * Il a son cas à lui, et la raison est le défaut relevé en revue (F2) : le cas
+   * ci-dessus rend le shell sous le registre **réduit** que le cas du plan de
+   * site laisse en vigueur. `notifications` n'y est pas monté, `unreadCount`
+   * rend donc zéro sans rien lire, et faire lire le compteur au shell pour un
+   * visiteur anonyme laissait la mesure verte — le garde était nommé, il ne
+   * mordait pas.
+   *
+   * Ici le module est **monté de force**, dans les deux configurations du dépôt
+   * — celle qui l'active comme celle qui le coupe —, et le cas commence par
+   * vérifier qu'il l'est : sans cette ligne, il retomberait dans la vacuité
+   * qu'il existe pour fermer.
+   */
+  it('ne lit aucun compteur de notifications pour un visiteur sans session', async () => {
+    viewer.value = ANONYMOUS
+
+    vi.resetModules()
+    vi.doMock('../apps/web/lib/module-registry', async () => {
+      const { buildRegistry: build } = await import('@repo/core')
+      const { availableModules: modules, requiredModules: base } = await import(
+        '../config/features'
+      )
+      const { notificationsModule } = await import('@repo/module-notifications')
+
+      return {
+        moduleRegistry: build({
+          available: [...modules],
+          enabled: [...new Set([...base, notificationsModule.id])],
+          required: [...base],
+          locales: [...appLocales],
+        }),
+      }
+    })
+
+    const { notifications } = await import('../apps/web/lib/notifications')
+
+    // L'anti-vacuité, et c'est tout le sujet de ce cas : module coupé,
+    // `unreadCount` rend zéro sans toucher la base et la mesure serait vraie
+    // quoi que le shell écrive.
+    expect(notifications.available).toBe(true)
+
+    const postgres = instrumentPostgres()
+
+    try {
+      const { AppShell } = await import('../apps/web/app/app-shell')
+
+      await AppShell({ children: null })
+
+      expect(postgres.seen).toEqual([])
+    } finally {
+      postgres.restore()
+      vi.doUnmock('../apps/web/lib/module-registry')
+    }
+  })
 })
 
 /* ------------------------------------------------------------------------- */

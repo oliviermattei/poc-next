@@ -137,6 +137,14 @@ export interface AuthUseCases {
    */
   identifyAccount(email: string): Promise<{ readonly userId: string } | null>
   viewAccount(userId: string): Promise<AccountView | null>
+  /**
+   * Les comptes de plusieurs identifiants, **en une seule lecture**.
+   *
+   * Un identifiant inconnu n'a pas d'entrée : l'appelant y lit « ce compte
+   * n'existe plus », ce dont le centre de notifications a besoin pour afficher
+   * une ligne qui nomme quelqu'un de parti (s32, R1).
+   */
+  viewAccounts(userIds: readonly string[]): Promise<readonly AccountView[]>
   changeName(input: { readonly userId: string; readonly name: string }): Promise<boolean>
   /** Les sessions actives du compte, la courante en tête, sans aucun jeton. */
   listSessions(input: {
@@ -526,6 +534,15 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
             twoFactorEnabled: user.twoFactorEnabled,
           }
     },
+
+    viewAccounts: async (userIds) =>
+      (await users.findByIds(userIds)).map((user) => ({
+        userId: user.id,
+        name: user.name,
+        email: user.email,
+        emailVerified: user.emailVerified,
+        twoFactorEnabled: user.twoFactorEnabled,
+      })),
 
     changeName: async ({ userId, name }) => await users.changeName(userId, name),
 
