@@ -53,6 +53,9 @@ importers:
       '@repo/mailer-testing':
         specifier: workspace:*
         version: link:packages/mailer-testing
+      '@repo/module-admin':
+        specifier: workspace:*
+        version: link:packages/modules/admin
       '@repo/module-auth':
         specifier: workspace:*
         version: link:packages/modules/auth
@@ -512,6 +515,31 @@ importers:
       vitest:
         specifier: ^4.1.11
         version: 4.1.11(@types/node@22.20.1)(vite@8.2.2(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))
+
+  packages/modules/admin:
+    dependencies:
+      '@repo/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@repo/module-auth':
+        specifier: workspace:*
+        version: link:../auth
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@types/pg@8.23.1)(kysely@0.29.5)(pg@8.23.0)
+      zod:
+        specifier: ^4.5.0
+        version: 4.5.4
+    devDependencies:
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../../../tooling/typescript
+      '@types/node':
+        specifier: ^22
+        version: 22.20.1
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
 
   packages/modules/auth:
     dependencies:

@@ -28,11 +28,40 @@ export interface AuthUserRecord {
    * que l'écran de compte sache quelle forme prendre.
    */
   readonly twoFactorEnabled: boolean
+  /**
+   * Le compte est-il banni (s37a) ?
+   *
+   * Il est **lu ici** et pas seulement en base : le refus de connexion est une
+   * règle du socle, et la règle a besoin de l'état, pas d'une requête.
+   */
+  readonly banned: boolean
 }
 
 export interface AuthUserRepository {
   findByEmail(email: string): Promise<AuthUserRecord | null>
   findById(userId: string): Promise<AuthUserRecord | null>
+  /**
+   * **Le seul état lu sur le chemin de la création de session** (s37a).
+   *
+   * Distinct de `findById` parce qu'il est appelé à chaque ouverture de
+   * session, sur tous les parcours : il ne rend qu'une colonne, et il rend
+   * `true` pour un compte introuvable — un compte qu'on ne trouve pas
+   * n'ouvre pas de session, c'est le sens fermé.
+   */
+  isBanned(userId: string): Promise<boolean>
+  /**
+   * Écrit l'état de bannissement. Rend `false` si aucun compte ne correspond.
+   *
+   * `bannedAt` et le motif sont **effacés** au débannissement : les garder
+   * ferait d'un compte rendu à son propriétaire un compte qui porte encore la
+   * marque de sa sanction.
+   */
+  setBanned(input: {
+    readonly userId: string
+    readonly banned: boolean
+    readonly at: Date
+    readonly reason: string | null
+  }): Promise<boolean>
   /** Marque l'email vérifié. Rend `false` si aucun compte ne correspond. */
   markEmailVerified(userId: string): Promise<boolean>
   /** Remplace l'email et le marque vérifié. Rend `false` si l'adresse est déjà prise. */

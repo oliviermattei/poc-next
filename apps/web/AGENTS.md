@@ -24,7 +24,7 @@ module (`packages/modules/<module>/src/domain`).
   `@repo/payments-testing` pour le mode local — **uniquement** dans
   `lib/billing.ts`, qui est le point de composition de la facturation (s19) ;
 - les modules du projet, **uniquement** parce que `config/features.ts` les
-  référence : `@repo/module-auth`, `@repo/module-billing`,
+  référence : `@repo/module-admin`, `@repo/module-auth`, `@repo/module-billing`,
   `@repo/module-blog`,
   `@repo/module-consent`, `@repo/module-docs`, `@repo/module-i18n`, `@repo/module-marketing`,
   `@repo/module-organizations`, `@repo/module-storage`,
@@ -34,8 +34,9 @@ module (`packages/modules/<module>/src/domain`).
   de l'i18n, `lib/marketing.ts`, celui du site public, `lib/organizations.ts`,
   celui des organisations, `lib/storage.ts`, celui du stockage,
   `lib/billing.ts`, celui de la facturation, `lib/consent.ts`, celui du
-  consentement, `lib/blog.ts`, celui du blog, et `lib/docs.ts`, celui de la
-  documentation (voir plus bas). **Aucun nombre
+  consentement, `lib/blog.ts`, celui du blog, `lib/docs.ts`, celui de la
+  documentation, et `lib/admin.ts`, celui de l'administration de plateforme
+  (voir plus bas). **Aucun nombre
   n'est écrit ici, et c'est délibéré** : la phrase annonçait « sept » au-dessus
   de huit noms, la story qui a ajouté le huitième n'ayant pas touché au
   décompte. D'autres fichiers de `lib/` importent un module **déjà monté** pour
@@ -1303,6 +1304,44 @@ un par catégorie, sur opt-in explicite `CONSENT_SCRIPT_PROBE=1` — même forme
 la sonde de traduction manquante de s09, et posé par `playwright.config.ts`, pas
 par le `.env` d'un poste. Sans le drapeau : aucun script déclaré, aucune
 bannière, aucun cookie, et la route répond 404. C'est l'état livré.
+
+## Le montage de l'administration de plateforme (s37a)
+
+Un fichier, sur le modèle exact des organisations :
+
+- `lib/admin.ts` porte le **choix** — le module `admin` est-il monté ? C'est le
+  seul fichier de l'application qui connaisse `@repo/module-admin`. Il donne au
+  module les trois choses qu'il ne peut pas se procurer : la connexion (ADR
+  020), l'adresse du premier superadmin lue dans l'environnement — le module
+  n'en lit aucune —, et le **port des comptes**, servi par le module `auth`.
+
+| | module activé | module coupé |
+|---|---|---|
+| `/api/modules/admin/*` | servi au seul superadmin, **404** aux autres | **404** pour tout le monde |
+| rôle de superadmin | la table du module | il n'en existe aucun |
+| compte déjà banni | reste banni | **reste banni** |
+
+**L'état « banni » n'est pas dans ce module** (ADR 058) : il vit dans `auth`,
+avec les comptes, parce que le chemin de connexion appartient au socle et ne
+peut pas consulter un module qui peut être absent. `lib/admin.ts` ne fait que
+brancher la surface d'administration sur le socle — c'est là que la décision se
+voit, en trois lignes.
+
+**C'est la seule garde de démarrage du dépôt qui avertit au lieu de refuser.**
+Le mailer, l'authentification, le stockage et le paiement arrêtent le processus
+en nommant leur variable ; `SUPERADMIN_EMAIL` absente ne fait qu'écrire un
+avertissement qui la nomme. La raison est le critère lui-même : une plateforme
+sans superadmin doit pouvoir **démarrer**, sans quoi on ne pourrait jamais en
+désigner un — la variable nomme une adresse dont le compte n'existe pas encore
+sur une base vierge. Le back-office, lui, répond 404 à tout le monde tant que
+personne ne l'administre, **jamais 403** : un 403 confirmerait qu'il existe.
+
+L'avertissement est une **fonction** (`missingSuperadminWarning`) et non un
+`console.warn` en ligne, pour la raison qui a sorti la permission de facturation
+de `lib/billing.ts` : ce qui est écrit dans `lib/startup.ts` n'est neutralisable
+par aucun test. `tests/admin.test.ts` porte les deux moitiés — la règle, et le
+témoin qu'elle est réellement appelée au démarrage, avec une attente **dérivée
+de la configuration** : module coupé, il n'y a rien à avertir.
 
 ## Le montage du mailer
 

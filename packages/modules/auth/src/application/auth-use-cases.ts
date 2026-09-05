@@ -1,6 +1,7 @@
 import { MODULE_ROUTE_PREFIX, type ModuleExportPayload, type ModuleScope } from '@repo/core'
 import type { SendEmailResult } from '@repo/ports'
 
+import { parseBanReason } from '../domain/ban'
 import { canUnlinkSignInMethod } from '../domain/oauth'
 import { describePasskeys, type DescribedPasskey } from '../domain/passkey'
 import { describeSecurityEvent } from '../domain/security-event'
@@ -167,10 +168,37 @@ export interface AuthUseCases {
     readonly userId: string
     readonly passkeyId: string
   }): Promise<PasskeyRevocationOutcome>
+  /**
+   * **Bannit un compte** (s37a) : la marque, puis la révocation de ses sessions.
+   *
+   * L'écriture vit dans le socle et pas dans le module `admin` (ADR 058) : le
+   * chemin de connexion appartient à `auth`, et il ne peut pas consulter un
+   * module qui peut être coupé. C'est la **surface** qui appelle ceci — le
+   * back-office — qui est optionnelle.
+   *
+   * Rend un résultat discriminé, jamais une exception : l'appelant est un
+   * module qui doit traduire « ce compte n'existe pas » en une réponse HTTP.
+   */
+  banAccount(input: {
+    readonly userId: string
+    readonly reason: unknown
+  }): Promise<BanOutcome>
+  /** Lève le bannissement, et efface la marque avec lui. */
+  unbanAccount(input: { readonly userId: string }): Promise<BanOutcome>
   purgeAccount(scope: ModuleScope): Promise<void>
   exportAccount(scope: ModuleScope): Promise<ModuleExportPayload>
   log: AuthDependencies['log']
 }
+
+/**
+ * Ce que rend un bannissement ou sa levée.
+ *
+ * `revokedSessions` n'est pas décoratif : c'est ce qui rend « bannir révoque
+ * les sessions » observable par l'appelant, et par la suite de tests.
+ */
+export type BanOutcome =
+  | { readonly ok: true; readonly revokedSessions: number }
+  | { readonly ok: false; readonly error: 'not_found' | 'invalid_reason' }
 
 /** Sépare le sujet d'un changement d'email : compte et adresse visée. */
 const EMAIL_CHANGE_SEPARATOR = ' '
@@ -585,6 +613,53 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
       )
 
       return revoked
+    },
+
+    /**
+     * **Le bannissement** (s37a), et son ordre — qui est la garantie.
+     *
+     * 1. la marque est écrite **et commise** : à partir de cet instant, le
+     *    crochet de création de session refuse toute nouvelle session, sur tous
+     *    les parcours ;
+     * 2. les sessions en cours sont révoquées.
+     *
+     * L'ordre inverse laisserait une fenêtre où une connexion ouverte entre les
+     * deux écritures survivrait au bannissement. Révoquer sans marquer serait
+     * pire encore : la personne se reconnecte à la seconde suivante.
+     */
+    banAccount: async ({ userId, reason }) => {
+      const parsed = parseBanReason(reason)
+
+      // **Refusé, jamais tronqué** : un motif trop long est une erreur d'usage
+      // qui doit remonter à qui l'écrit, pas une valeur que la base raccourcit.
+      if (!parsed.ok) {
+        return { ok: false, error: 'invalid_reason' }
+      }
+
+      const marked = await users.setBanned({
+        userId,
+        banned: true,
+        at: now(),
+        reason: parsed.reason,
+      })
+
+      if (!marked) {
+        return { ok: false, error: 'not_found' }
+      }
+
+      return { ok: true, revokedSessions: await sessions.revokeAllForUser(userId) }
+    },
+
+    unbanAccount: async ({ userId }) => {
+      const lifted = await users.setBanned({
+        userId,
+        banned: false,
+        at: now(),
+        reason: null,
+      })
+
+      // Aucune session à révoquer : lever une sanction ne déconnecte personne.
+      return lifted ? { ok: true, revokedSessions: 0 } : { ok: false, error: 'not_found' }
     },
 
     /**

@@ -39,6 +39,13 @@ import type { AvailableModuleId } from './features'
  * 404 sur une vraie requête HTTP**, la garde ajoutée par la troisième revue de
  * s29. C'est la seule qui morde sur un module qui n'apporte que des écrans.
  *
+ * `admin` les a rejoints en s37a, et il apporte l'inverse : quatre routes et
+ * une table, aucune entrée de navigation. Le critère 14 de la story — « module
+ * non activé : aucune route de back-office, aucun rôle de superadmin » — n'est
+ * vérifié par **aucune exécution** tant qu'aucun profil ne le coupe, et
+ * `tests/minimal-profile.test.ts` mesure que le balayage le couvre plutôt que
+ * de le supposer.
+ *
  * `pnpm test:minimal-profile` joue ce profil dans une **copie** du dépôt : il
  * n'est pas la configuration livrée, et éditer cette liste ne change rien à
  * l'application tant que la recette n'est pas lancée.
@@ -52,5 +59,5 @@ export interface ModuleProfileDeclaration {
 
 export const minimalProfile = {
   id: 'minimal',
-  cut: ['organizations', 'billing', 'i18n', 'blog', 'docs'],
+  cut: ['organizations', 'billing', 'i18n', 'blog', 'docs', 'admin'],
 } as const satisfies ModuleProfileDeclaration

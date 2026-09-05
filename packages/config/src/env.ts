@@ -272,6 +272,31 @@ const envShape = {
    * ne l'active jamais — il ne fait que restreindre l'opt-in.
    */
   PAYMENTS_LOCAL_MODE: z.literal(PAYMENTS_LOCAL_MODE_ENABLED).optional(),
+  /**
+   * **L'adresse du premier superadmin** (s37a).
+   *
+   * Une adresse, et pas un identifiant de compte : c'est ce qui se lit et
+   * s'écrit dans un `.env` sur une base vierge, où aucun compte n'existe encore
+   * — un identifiant y serait illisible, et surtout inconnaissable avant
+   * l'inscription. La contrepartie est assumée : elle **désigne** le premier
+   * superadmin, elle ne l'authentifie pas. Une fois la table du module `admin`
+   * peuplée, c'est elle qui fait foi, et changer cette variable ne redésigne
+   * personne.
+   *
+   * **Optionnelle**, et c'est délibéré (critère 3 de la story) : une plateforme
+   * sans superadmin doit pouvoir **démarrer**, sans quoi on ne pourrait jamais
+   * en désigner un. Le démarrage se contente d'un avertissement qui nomme cette
+   * variable (`apps/web/lib/admin.ts`), et le back-office répond 404 tant que
+   * personne ne l'administre — jamais 403, qui confirmerait qu'il existe.
+   */
+  SUPERADMIN_EMAIL: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .refine((value) => z.email().safeParse(value).success, {
+      message: 'must be an email address (admin@example.com)',
+    })
+    .optional(),
   /** Expéditeur. Obligatoire dès qu'une clé est configurée : voir la règle croisée. */
   EMAIL_FROM: z
     .string()

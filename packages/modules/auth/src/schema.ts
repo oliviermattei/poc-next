@@ -52,6 +52,34 @@ export const authUser = pgTable(
     // C'est le greffon `two-factor` qui la bascule, jamais une route — elle
     // porte `input: false` du côté de la bibliothèque.
     twoFactorEnabled: boolean('two_factor_enabled').notNull().default(false),
+    /**
+     * **Le compte est-il banni** (s37a) ?
+     *
+     * Trois colonnes, et elles sont **ici, dans le socle**, alors que la
+     * surface qui les écrit vit dans le module `admin` (ADR 058). « Banni »
+     * n'est pas une fonctionnalité d'administration : c'est un état du compte,
+     * et `auth` possède déjà les comptes et la décision de laisser entrer. Les
+     * mettre dans le module optionnel obligerait le chemin de connexion —
+     * socle — à consulter un module qui peut ne pas être là.
+     *
+     * Conséquence assumée : module `admin` coupé, plus personne ne peut bannir,
+     * et un compte **déjà banni reste banni**. Le débannir serait un nettoyage,
+     * et le nettoyage est au cimetière du PRD.
+     *
+     * Ajoutées **avec un défaut**, comme `two_factor_enabled` : la version
+     * encore en ligne ne les lit pas et continue d'écrire sans elles
+     * (`docs/reliability.md` §4).
+     */
+    banned: boolean('banned').notNull().default(false),
+    bannedAt: timestamp('banned_at', { withTimezone: true, mode: 'date' }),
+    /**
+     * Le motif, **lisible d'un superadmin et de personne d'autre**.
+     *
+     * Il ne sort jamais dans une réponse de connexion : un compte banni reçoit
+     * le refus d'un identifiant invalide, sans quoi le message devient un
+     * oracle d'énumération (`docs/security.md` §7).
+     */
+    bannedReason: text('banned_reason'),
     image: text('image'),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),

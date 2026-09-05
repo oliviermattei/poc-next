@@ -1094,6 +1094,11 @@ const authUseCasesWith = (mailer: ReturnType<typeof createRecordingMailer>) =>
       changeEmail: () => Promise.resolve(false),
       changeName: () => Promise.resolve(false),
       deleteById: () => Promise.resolve(false),
+      // s37a : la doublure refuse **fermé** — un compte qu'elle ne connaît pas
+      // est banni. Aucun cas de ce fichier n'ouvre de session ; ce qui compte
+      // est qu'elle ne dise pas « non banni » par défaut.
+      isBanned: () => Promise.resolve(true),
+      setBanned: () => Promise.resolve(false),
     },
     sessions: {
       countForUser: () => Promise.resolve(0),

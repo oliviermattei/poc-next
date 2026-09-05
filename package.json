@@ -43,6 +43,7 @@
     "@repo/emails": "workspace:*",
     "@repo/eslint-config": "workspace:*",
     "@repo/mailer-testing": "workspace:*",
+    "@repo/module-admin": "workspace:*",
     "@repo/module-auth": "workspace:*",
     "@repo/module-billing": "workspace:*",
     "@repo/module-blog": "workspace:*",

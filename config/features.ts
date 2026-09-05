@@ -1,4 +1,5 @@
 import type { AnyModuleDefinition, ModuleIdOf } from '@repo/core'
+import { adminModule } from '@repo/module-admin'
 import { authModule } from '@repo/module-auth'
 import { billingModule } from '@repo/module-billing'
 import { blogModule } from '@repo/module-blog'
@@ -34,6 +35,7 @@ import { storageModule } from '@repo/module-storage'
  * plus une configuration.
  */
 export const availableModules = [
+  adminModule,
   authModule,
   billingModule,
   blogModule,
@@ -81,6 +83,7 @@ export const requiredModules = ['auth', 'rate-limit'] as const satisfies readonl
  * sa purge ni son export ne sont appelés.
  */
 export const enabledModules = [
+  'admin',
   'auth',
   'billing',
   'blog',
