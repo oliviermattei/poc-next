@@ -4,41 +4,49 @@
 
 ## REPRENDRE ICI
 
-**Bloquant, et il n'est pas dans le dépôt : la CI de GitHub Actions est à
-l'arrêt au niveau du compte.** Depuis le 05/09 vers 04:10, **tous** les jobs
-échouent en 3 à 4 secondes, sans un seul journal (`BlobNotFound`), y compris le
-scan de secrets et la sonde d'enregistrement. `dev` est touché comme les
-branches : vert à 03:33, rouge à 04:10, **sans qu'aucun commit ne touche
-`.github/`** entre les deux. Le dépôt est **privé**, donc les minutes Actions
-sont facturées et plafonnées.
+**Un seul bloquant, et il n'est pas dans le dépôt : GitHub Actions est à l'arrêt
+au niveau du compte** depuis le 05/09 vers 04:10. Tous les jobs meurent en 3 à 4
+secondes, sans journal (`BlobNotFound`), sur `dev` comme sur les branches, **sans
+qu'aucun commit ne touche `.github/`** entre le dernier run vert (03:33) et le
+premier rouge (04:10). Dépôt **privé**, donc minutes facturées. Hypothèse qui
+colle à tous les faits : **quota épuisé ou limite de dépense atteinte**. Non
+vérifiable d'ici — lire la facturation demande la portée `user`
+(`gh auth refresh -h github.com -s user`). Voir aussi `githubstatus.com`.
 
-Hypothèse qui colle à tous les faits : **quota de minutes épuisé ou limite de
-dépense atteinte**. Non vérifiable d'ici — lire la facturation demande la portée
-`user` (`gh auth refresh -h github.com -s user`). Voir aussi
-`githubstatus.com`.
+**Deux stories sont prêtes et attendent la CI, revues et vertes en local :**
 
-**`s30-docs-site` est prête et n'est pas fusionnée** : demande de fusion **12**,
-revue passée (`Max severity: minor`, ship autorisé), suite locale verte à
-**2122 / 8 sautés**. Elle n'a pas été mergée **volontairement** : elle touche
-`packages/ui`, partagé avec le blog, et merger sans CI verte serait exactement ce
-que cette séance a passé son temps à refuser. **Quand la CI revient : vérifier
-les contrôles par événement, puis merger.**
+| Story | PR | Revue | Suite locale |
+|---|---|---|---|
+| `s30-docs-site` | **12** | passée, `minor` | 2122 / 8 sautés |
+| `s47-seat-limit` | **13** | passée, `minor` | 2088 / 8 sautés |
 
-**Ce qui ne demande aucune CI et peut continuer sans elle** : les recherches. Il
-en manque treize, dont **cinq immédiatement faisables** (dépendances toutes
-fusionnées) : `s46-auth-screens-design`, `s54-docs-recherche`,
-`s51-traces-des-echecs`, `s52-derniers-intermittents`, `s39-monitoring-analytics`.
-Les autres attendent s32 ou s37.
+Leurs surfaces sont **disjointes** — documentation et `packages/ui` d'un côté,
+facturation et autorisations de l'autre — donc elles fusionnent dans n'importe
+quel ordre sans conflit. **Quand la CI revient : relancer les contrôles des deux
+demandes de fusion, lire l'état par événement, puis merger.**
 
-**Six recherches d'avance sont déjà sur `dev`** : `s31` (3), `s32` (4), `s37`
-(**5, découpe requise**), `s47` (2), `s49` (2), `s54` — non, s54 n'en a pas
-encore.
+**Je me suis arrêté à deux branches en attente, et c'est une règle écrite**
+(P19) : au-delà, le coût des rebases dépasse le gain. Ce n'est pas la CI qui
+limite le travail sans elle — recherche, design, plan, exécution et revue
+tournent tous en local —, c'est la divergence des branches.
 
-**Ce que s30 apporte au dépôt une fois fusionnée**, et qu'il faut savoir pour
-planifier la suite : l'échelle de prose vit désormais dans `packages/ui` (ADR
-055), donc s31 peut la réutiliser sans dépendre du blog ; et une garde confronte
-enfin le tableau de `packages/ui/AGENTS.md` au baril — elle a fermé une dérive
-ouverte depuis s18.
+**Onze recherches d'avance sont sur `dev`**, prêtes à planifier dès la reprise :
+`s31` (3), `s32` (4), `s37` (**5, découpe requise en s37a/b/c**), `s39` (**4**,
+la seule story qui doive ouvrir la CSP), `s46` (2, la seule dont la note n'a pas
+été relevée), `s47` (livrée), `s49` (2), `s51` (2), `s52` (**4**, sept cas et au
+moins trois causes), `s53` (livrée), `s54` (3).
+
+**Trois choses à savoir avant de reprendre une story de contenu :**
+
+1. **Un `loading.tsx` transforme un `notFound()` en HTTP 200** — mesuré sur trois
+   placements. Le 404 est une règle du socle de sécurité. Une garde générique
+   l'attrape désormais : toute adresse de navigation d'un module coupé doit
+   répondre **404 sur une vraie requête HTTP**.
+2. **L'échelle de prose vit dans `packages/ui`** depuis s30 (ADR 055), donc s31
+   peut la réutiliser sans dépendre du blog.
+3. **La quinzième clé du contrat (`publicUrls`, ADR 054)** porte les URL qu'un
+   module publie ; `robots.ts` et `sitemap.ts` ne connaissent plus aucun module
+   par son nom, et un `grep` le vérifie.
 
 Premier numéro d'ADR libre : **056**.
 
@@ -47,7 +55,7 @@ Premier numéro d'ADR libre : **056**.
 | | |
 |---|---|
 | Stories closes | **35 sur 53** (s01 → s29, s36, s41, s45, s48, s50, s53) |
-| En vol | s30 — prête, **en attente de CI** (blocage de compte) |
+| En vol | s30 et s47 — prêtes, **en attente de CI** (blocage de compte) |
 | Restantes | 18 — dont s49, s51 et s52, nées de constats de revue |
 | Tests | **2064 + 8 sautés**, 107 parcours navigateur |
 | ADR | **50** (jusqu'à 050 ; 051 libre) |
