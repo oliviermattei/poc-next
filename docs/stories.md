@@ -904,6 +904,8 @@ Contrainte PRD : adapter avec **Inngest comme seule implémentation**. trigger.d
 ---
 
 ## Story s34-account-deletion — Supprimer son compte ou son organisation
+
+> **Périmètre restreint au serveur le 05/09.** Les écrans sont dans `s34b-suppression-ecrans`. Le critère 1 décrit une saisie de confirmation : elle est **vérifiée côté serveur et mesurée ici**, mais l'écran qui la présente est livré par la tranche suivante.
 **As a** User **I want** supprimer définitivement mon compte ou mon organisation **so that** je puisse exercer mon droit à l'effacement.
 
 ### Complexity
@@ -952,6 +954,28 @@ Parité partielle MakerKit (`NEXT_PUBLIC_ENABLE_PERSONAL_ACCOUNT_DELETION`, `...
 Le contrat de module de s03 porte déjà `purge` **et la politique de rétention** : cette story les orchestre, elle ne les crée pas. Introduire ici la déclaration de rétention aurait obligé à rouvrir chaque module écrit depuis s03 — l'erreur que s03 évite justement pour `purge` et `export`. Si un module livré entre s03 et ici ne l'a pas implémentée, c'est un manquement à corriger dans ce module.
 
 ---
+
+## Story s34b-suppression-ecrans — Supprimer son compte depuis l'application
+**As a** User **I want** supprimer mon compte ou mon organisation depuis l'application **so that** je n'aie pas à appeler une API pour exercer mon droit à l'effacement.
+
+> **Découpée de `s34` le 05/09.** `s34` a livré tout le côté serveur — confirmation vérifiée côté serveur, purge de chaque module activé, rétention, sessions révoquées, email, annulation d'abonnement, repli sans le module de tâches. **Elle n'a livré aucun écran** : le plan n'en portait pas de tâche, ce qui était une omission de plan et non un abandon. La revue l'a relevée. Cette tranche porte la partie visible, et elle seule.
+
+### Complexity
+2
+
+### Acceptance criteria
+- [ ] L'écran de compte porte une affordance de suppression, séparée des autres cartes et visuellement distincte d'une action réversible
+- [ ] La confirmation par saisie de l'email est présentée à l'écran ; la vérification reste **côté serveur**, l'écran ne décide de rien
+- [ ] L'écran d'organisation porte la même affordance pour un propriétaire, et rien pour un membre
+- [ ] Le refus du dernier propriétaire s'affiche avec son message, sans que l'écran ait à le deviner
+- [ ] Un parcours navigateur couvre la suppression de compte de bout en bout — c'est aujourd'hui la garantie qui manque : `s34` n'a **aucun** parcours
+- [ ] Composé exclusivement des composants du design system
+
+### Dependencies
+s34-account-deletion
+
+### Agentic notes
+Le serveur est fait et éprouvé : `POST /api/modules/auth/delete-account` et `POST /organizations/delete` existent, avec leurs refus mesurés. Les commentaires de route disent déjà que la méthode `POST` est choisie « parce que la route est appelée par un `<form>` d'écran » — **ce formulaire est ce que cette story livre**.
 
 ## Story s35-data-export — Exporter ses données
 **As a** User **I want** télécharger l'ensemble de mes données **so that** j'exerce mon droit à la portabilité.
