@@ -49,3 +49,33 @@ Le port mailer (`packages/ports/src/mailer.ts`) rend un résultat discriminé, j
 La story est notée **3**. **Ma note : 4** — non pour la difficulté du centre de notifications, qui est un CRUD paginé, mais parce que deux critères sur sept (6 et 7) portent une décision d'architecture transverse dont dépendent s37 et s43, et que le critère 6 est vulnérable au balayage vide. La partie visible est simple ; la partie qui engage le reste ne l'est pas.
 
 Pas de proposition de découpe : les sept critères partagent le registre de types, et le séparer produirait une story qui ne close rien.
+
+## Re-vérification du 05/09 — contre `dev` au commit `cc67f98`
+
+La recherche ci-dessus est datée du commit `66b90e3`. **45 commits et 121 fichiers
+de code plus tard**, elle a été re-vérifiée point par point avant d'être utilisée
+pour planifier. Ce qui suit dit ce qui a été balayé, et ce qui a cédé.
+
+**Une dérive réelle, et elle est bloquante pour l'échafaudage.** Le contrat de
+module a gagné une quinzième clé obligatoire, `publicUrls` (s53, ADR 054), qui
+**n'existait pas** au commit daté : `git show 66b90e3:packages/core/src/module.ts`
+n'en contient aucune occurrence, `packages/core/src/module.ts:414` et `:477` en
+contiennent deux aujourd'hui. Un module échafaudé sur les faits de la recherche
+déclarerait quatorze clés et ne compilerait pas. En pratique `npx ks` la génère —
+mais un plan qui énumère le contrat de mémoire l'oublierait.
+
+**Ce qui tient, vérifié sur le disque :** `packages/ports/src/mailer.ts`,
+`packages/core/src/registry.ts` et `docs/security.md` existent toujours ;
+l'agrégation des entrées de navigation vit toujours dans `registry.ts`
+(`RegistryNavigationEntry`, ligne 63).
+
+**Un faux positif de ma part, consigné parce qu'il est instructif.** J'ai d'abord
+mesuré **huit** sites d'appel du mailer contre les sept annoncés, et cru à une
+dérive. Le huitième était `packages/modules/marketing/src/application/public-forms.test.ts` —
+un fichier de test. Hors test, sept : la recherche a raison. C'est exactement
+l'artefact de grep qui a produit le faux « 25 appelants d'`Alert` » corrigé en
+s49 le même jour, dans l'autre sens. **Un compte n'est une mesure que si l'on
+dit ce qui a été balayé.**
+
+Portée de cette re-vérification : les quatre points d'ancrage déclarés et le
+contrat de module. Elle n'a pas rejoué les pièges ni les questions ouvertes.
