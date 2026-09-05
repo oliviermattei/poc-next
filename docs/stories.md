@@ -1057,11 +1057,15 @@ Le point dur est le critère 4 : le bannissement est une action d'administration
 - [ ] Une liste des organisations, avec recherche et pagination, est accessible aux superadmins lorsque le module organisations est activé ; module coupé, l'entrée disparaît du back-office
 - [ ] Le détail d'une organisation affiche ses membres et leurs rôles, son offre et l'état de son abonnement
 
+- [ ] La révocation du rôle de superadmin compte les superadmins **capables de se connecter**, et non les lignes de rôle : bannir un pair puis révoquer l'autre ne peut plus laisser la plateforme sans administrateur
+
 ### Dependencies
 s37a-superadmin-et-bannissement, s21-trials-and-gating
 
 ### Agentic notes
 L'impersonation est une élévation de privilège : rotation de session obligatoire, et journalisation aux deux bouts.
+
+**Le critère de révocation ci-dessus n'est pas cosmétique.** s37a a fermé trois des quatre écritures menant à « plus aucun superadmin capable de se connecter » ; la quatrième — bannir un pair non-dernier **puis** révoquer l'autre — reste ouverte et **ne se répare pas seule** : la ligne du banni subsiste, le compte renvoie 1, la révocation autorise. La fermer demande d'élargir `AdminAccountsPort` pour que le comptage connaisse l'état « banni », qui vit dans le socle (ADR 058) — c'est une décision de forme, d'où son report ici plutôt qu'une rustine dans s37a. Le tableau des quatre chemins balayés est dans `packages/modules/admin/AGENTS.md`.
 
 ## Story s37c-inscriptions-publiques — Consulter et exporter les inscriptions
 **As a** Admin **I want** consulter et exporter les inscriptions publiques **so that** je puisse exploiter les demandes entrantes.
