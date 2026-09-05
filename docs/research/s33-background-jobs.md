@@ -1,6 +1,6 @@
 # Research — Story s33-background-jobs
 
-> Vérifiée contre `dev` au commit `69f2308`, en lecture seule. Aucune base, aucun conteneur, aucun worktree — une recherche ne se connecte à rien.
+> Vérifiée contre `dev` au commit `71098e2`, en lecture seule. Aucune base, aucun conteneur, aucun worktree — une recherche ne se connecte à rien.
 
 ## Les cinq faits structurants
 
