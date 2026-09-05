@@ -1,6 +1,6 @@
 import type { ModuleScope } from '@repo/core'
 import type { SeatSyncOutcome } from '@repo/module-billing'
-import type { SeatSync } from '@repo/module-organizations'
+import type { SeatSync, SeatSyncVerdict } from '@repo/module-organizations'
 
 /**
  * **Ce que la nouvelle taille d'une organisation doit traverser avant que
@@ -16,13 +16,19 @@ import type { SeatSync } from '@repo/module-organizations'
  *
  * Ce qu'elle décide tient en une ligne, et les deux sens coûtent cher :
  *
- * - `false` **annule** l'ajout ou le retrait du membre. C'est le critère 6 : un
- *   fournisseur en panne n'ajoute personne ;
- * - `true` laisse l'écriture se valider. **Ne rien avoir à faire en fait
+ * - un refus **annule** l'ajout ou le retrait du membre. C'est le critère 6 de
+ *   s23 : un fournisseur en panne n'ajoute personne ;
+ * - l'accord laisse l'écriture se valider. **Ne rien avoir à faire en fait
  *   partie** : module de facturation coupé, périmètre sans client, offre au
  *   forfait. Confondre « rien à faire » avec « échec » rendrait les
  *   organisations inutilisables dans tout projet qui ne vend rien — c'est le
  *   critère 8.
+ *
+ * **Deux refus depuis s47, et ils ne se replient pas l'un sur l'autre.** Une
+ * panne du fournisseur dit « réessayez » ; un plafond atteint dit « ce n'est
+ * pas à vous de réessayer ». Les confondre ferait recharger indéfiniment un
+ * écran qui ne changera pas d'avis — c'est exactement ce que s23 refusait déjà
+ * en distinguant sa panne de « lien invalide ».
  */
 
 /** Ce que la règle a besoin de connaître de la facturation, et rien de plus. */
@@ -31,6 +37,8 @@ export interface SeatSyncBilling {
   readonly syncSeats: (input: {
     readonly scope: ModuleScope
     readonly seats: number
+    /** L'écriture ajoute-t-elle un membre ? Seul un ajout peut franchir un plafond (s47). */
+    readonly adds?: boolean
   }) => Promise<SeatSyncOutcome>
 }
 
@@ -42,20 +50,34 @@ export interface SeatSyncBilling {
  * moitié. Le même motif que `emailOfScope` avec `lib/auth`.
  */
 export function seatSyncOf(load: () => Promise<SeatSyncBilling>): SeatSync {
-  return async ({ organizationId, seats }): Promise<boolean> => {
+  return async ({ organizationId, seats, adds }): Promise<SeatSyncVerdict> => {
     const billing = await load()
 
     // Facturation coupée : **aucune question posée**, et aucune connexion
-    // ouverte pour apprendre qu'il n'y a rien à faire.
+    // ouverte pour apprendre qu'il n'y a rien à faire. **Aucun plafond non
+    // plus** (s47, critère 5) — et par la valeur vide, pas par une condition
+    // sur un nom de module : il n'y a rien ici qui nomme `billing`.
     if (!billing.available) {
-      return true
+      return { ok: true }
     }
 
     const outcome = await billing.syncSeats({
       scope: { kind: 'organization', organizationId },
       seats,
+      adds,
     })
 
-    return outcome.status !== 'failed'
+    if (outcome.status === 'failed') {
+      return { ok: false, refusal: 'seat_sync_unavailable' }
+    }
+
+    // **Le plafond** (s47) : l'écriture est annulée comme sur une panne, mais
+    // le motif est différent — et c'est lui qui décide de ce que l'invité lit,
+    // donc de ce qu'il fera ensuite.
+    if (outcome.status === 'over_limit') {
+      return { ok: false, refusal: 'seat_limit_reached' }
+    }
+
+    return { ok: true }
   }
 }

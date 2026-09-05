@@ -38,7 +38,11 @@ import {
   type OrganizationPermissions,
 } from '../domain/permissions'
 import { authorizeOrganization, type OrganizationAccess } from './organization-access'
-import { SeatSyncRefusedError, type OrganizationsDependencies } from './ports'
+import {
+  SeatSyncRefusedError,
+  type OrganizationsDependencies,
+  type SeatSyncRefusal,
+} from './ports'
 
 /**
  * Les cas d'usage du module : créer, basculer, renommer, décrire, purger,
@@ -310,16 +314,24 @@ const INVITATION_TOKEN = z.object({ token: z.string().trim().min(1).max(256) })
  * plus haut — au-dessus de cette ligne, un refus est une donnée comme les
  * autres, et le compilateur oblige l'appelant à le traiter.
  */
-const SEAT_SYNC_REFUSED = Symbol('seat_sync_refused')
+type SeatSyncRefusedValue = { readonly seatSyncRefusal: SeatSyncRefusal }
+
+/**
+ * Le refus, **avec son motif** (s47) : depuis que l'extérieur peut refuser pour
+ * deux raisons, un marqueur sans contenu obligerait à en redevenir une ici, et
+ * ce serait un motif inventé plutôt que rapporté.
+ */
+const isSeatSyncRefused = (value: unknown): value is SeatSyncRefusedValue =>
+  typeof value === 'object' && value !== null && 'seatSyncRefusal' in value
 
 const refusingSeatSync = async <T>(
   write: () => Promise<T>,
-): Promise<T | typeof SEAT_SYNC_REFUSED> => {
+): Promise<T | SeatSyncRefusedValue> => {
   try {
     return await write()
   } catch (error) {
     if (error instanceof SeatSyncRefusedError) {
-      return SEAT_SYNC_REFUSED
+      return { seatSyncRefusal: error.refusal }
     }
 
     throw error
@@ -766,11 +778,29 @@ export function createOrganizationsUseCases(
         }),
       )
 
-      if (consumed === SEAT_SYNC_REFUSED) {
-        // **Rien n'a été écrit** (ADR 046) : l'invitation est toujours vivante,
-        // et réessayer est la bonne action. Lui répondre « lien invalide »
-        // l'enverrait en demander une nouvelle pour rien.
-        return { status: 'refused', refusal: 'seat_sync_unavailable' }
+      if (isSeatSyncRefused(consumed)) {
+        /**
+         * **Rien n'a été écrit** (ADR 046) : l'invitation est toujours vivante.
+         * Lui répondre « lien invalide » l'enverrait en demander une nouvelle
+         * pour rien — et ce serait vrai des deux motifs.
+         *
+         * Ce qu'ils ne partagent pas, c'est la suite : `seat_sync_unavailable`
+         * se réessaie, `seat_limit_reached` (s47) ne se réessaiera jamais tant
+         * que personne d'autre n'aura agi. Le motif est donc **rapporté**, pas
+         * choisi ici.
+         *
+         * **Pas de 404** : `docs/security.md` §3 réserve le 404 à la ressource
+         * d'autrui. Ici l'invité tient un lien valide vers une organisation qui
+         * l'a bel et bien invité ; c'est l'opération qui est refusée, pas la
+         * ressource qui est cachée — le même raisonnement que s21 pour une
+         * fonctionnalité réservée.
+         *
+         * **Plusieurs invitations en attente peuvent dépasser le plafond
+         * ensemble** alors qu'aucune ne le dépasse seule : le refus porte sur
+         * l'acceptation, et une invitation en attente n'occupe aucun siège. Le
+         * premier accepteur prend la place, les suivants arrivent ici.
+         */
+        return { status: 'refused', refusal: consumed.seatSyncRefusal }
       }
 
       if (consumed === null) {
@@ -832,8 +862,8 @@ export function createOrganizationsUseCases(
         }),
       )
 
-      if (removed === SEAT_SYNC_REFUSED) {
-        return { status: 'refused', refusal: 'seat_sync_unavailable' }
+      if (isSeatSyncRefused(removed)) {
+        return { status: 'refused', refusal: removed.seatSyncRefusal }
       }
 
       if (removed) {

@@ -46,3 +46,43 @@ export function offerSyncsSeats(offer: Pick<BillingOffer, 'perSeat' | 'mode'>): 
 export function billableSeats(members: number | null): number | null {
   return members === null || members < 1 ? null : members
 }
+
+/**
+ * **Le plafond de membres que porte une offre**, ou `null` — s47, critère 1.
+ *
+ * Elle ne reçoit **que** `seatLimit`, et c'est la décision 2 du plan écrite
+ * dans un type plutôt que dans un commentaire : cette règle ne peut pas voir
+ * `perSeat` ni `mode`, donc elle ne peut pas être refermée dessus par
+ * symétrie avec `offerSyncsSeats`. Cette symétrie serait fausse — la
+ * synchronisation exclut l'achat unique parce qu'il n'a **aucun abonnement à
+ * corriger**, tandis qu'un plafond se vend précisément au forfait (« jusqu'à
+ * cinq membres », prix fixe), et c'est même son emploi le plus courant.
+ *
+ * Le champ est facultatif : absent et `null` disent la même chose, une offre
+ * illimitée.
+ */
+export function offerSeatLimit(offer: Pick<BillingOffer, 'seatLimit'>): number | null {
+  return offer.seatLimit ?? null
+}
+
+/**
+ * **Cet effectif dépasse-t-il ce plafond ?** — la règle, réduite à deux nombres.
+ *
+ * `members` est l'effectif **après** l'écriture, jamais un delta : c'est la
+ * même convention que `SeatSync` du module `organizations`, et c'est ce qui
+ * rend la question rejouable. L'inégalité est donc stricte — un plafond de cinq
+ * laisse passer le cinquième membre et refuse le sixième ; une inégalité large
+ * plafonnerait l'offre à quatre.
+ *
+ * **Elle ne retire jamais personne** (critère 4). Un plafond abaissé sous
+ * l'effectif — ici, ou par un changement d'offre — rend `true` sur le prochain
+ * ajout et rien d'autre : cette fonction ne rend pas de liste de membres, et
+ * aucune couche au-dessus n'en fabrique une. Le cimetière du PRD refuse toute
+ * suppression de données hors d'un `eject` explicite.
+ *
+ * `null` est **l'absence de plafond**, pas un plafond de zéro : une offre qui
+ * n'en déclare pas reste illimitée.
+ */
+export function exceedsSeatLimit(members: number, limit: number | null): boolean {
+  return limit !== null && members > limit
+}

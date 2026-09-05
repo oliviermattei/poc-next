@@ -30,6 +30,23 @@ import type { BillingOffer } from '@repo/module-billing'
  * sécurité du contenu sans une seule origine tierce (ADR 027) : ouvrir le
  * checkout par une soumission de formulaire demanderait d'ajouter
  * `checkout.stripe.com` et `billing.stripe.com` à `config/security.ts`.
+ *
+ * **`seatLimit` plafonne l'équipe** (s47) : absent comme `null` — la valeur
+ * livrée sur les deux abonnements —, l'offre reste illimitée ; un entier
+ * positif refuse le prochain ajout de membre au-delà de ce nombre. Quatre
+ * choses à savoir avant de le poser :
+ *
+ * - il **ne dépend pas de `perSeat`** : plafonner un forfait est légitime, et
+ *   c'est même l'emploi courant (« jusqu'à cinq membres », prix fixe) ;
+ * - il est **refusé non nul sur une offre `one_time`**, au démarrage et en
+ *   nommant le champ : un achat unique n'a pas d'abonnement vivant d'où tirer
+ *   son offre, donc rien n'appliquerait le plafond ;
+ * - il **ne retire personne**. Abaissé sous l'effectif d'une organisation — ici
+ *   ou par un changement d'offre —, il laisse les membres en place et refuse
+ *   les ajouts suivants ;
+ * - il est appliqué à l'**acceptation** d'une invitation, pas à son envoi.
+ *   Plusieurs invitations en attente peuvent donc dépasser le plafond
+ *   ensemble : le premier accepteur prend la place, les suivants sont refusés.
  */
 export const billingOffers = [
   {
@@ -41,6 +58,7 @@ export const billingOffers = [
     interval: 'month',
     trialDays: 14,
     perSeat: false,
+    seatLimit: null,
   },
   {
     id: 'pro-yearly',
@@ -51,10 +69,14 @@ export const billingOffers = [
     interval: 'year',
     trialDays: 14,
     perSeat: false,
+    seatLimit: null,
   },
   /**
-   * **L'achat unique** (s20) — `mode: 'one_time'`, donc ni périodicité ni
-   * période d'essai : le catalogue refuse les deux au démarrage pour ce mode.
+   * **L'achat unique** (s20) — `mode: 'one_time'`, donc ni périodicité, ni
+   * période d'essai, ni plafond de sièges : le catalogue refuse les trois au
+   * démarrage pour ce mode. `seatLimit` est simplement **absent** ici, et
+   * c'est voulu : le champ est facultatif, et le poser à un nombre ferait
+   * échouer le démarrage en le nommant.
    *
    * Il ne s'agit pas d'un abonnement déguisé : il n'expire pas, il ne se
    * renouvelle pas, et un périmètre ne peut le posséder qu'une fois (ADR 038).

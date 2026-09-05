@@ -44,6 +44,27 @@ Deux gardes en découlent, et elles sont éprouvées par mutation dans
   silence de la base doit interrompre la réconciliation, pas réduire une
   facture.
 
+**Le plafond de sièges d'une offre n'a pas la condition de `offerSyncsSeats`**
+(s47, `domain/seats.ts`). Cette dernière exclut l'achat unique et le forfait
+parce qu'ils n'ont **aucune quantité à corriger** ; un plafond, lui, se vend
+précisément au forfait — « jusqu'à cinq membres », prix fixe —, et c'est même
+son emploi le plus courant. `offerSeatLimit` ne reçoit donc que `seatLimit` :
+elle ne *peut pas* voir `perSeat` ni `mode`. Deux conséquences à ne pas
+retourner :
+
+- dans `syncSeats`, le plafond est évalué **avant** `offerSyncsSeats`. L'inverse
+  rendrait illimitée toute offre au forfait — mesuré à nouveau après la revue,
+  **3 cas rouges** dans `tests/billing.test.ts` et non deux : « accepte
+  l'invitation qui atteint le plafond et refuse la suivante », « ne consomme pas
+  l'invitation qu'elle refuse » et « n'expulse personne quand le plafond passe
+  sous l'effectif, et laisse retirer » ;
+- il ne mord que sur un **ajout** (`adds`), et jamais sur un retrait : un
+  plafond abaissé sous l'effectif laisse tous les membres en place et refuse les
+  ajouts suivants (critère 4 de s47, et le cimetière du PRD). Mesuré, **1 cas
+  rouge** quand `adds` est ignoré — « n'expulse personne quand le plafond passe
+  sous l'effectif, et laisse retirer », le seul qui retire un membre au-dessus
+  du plafond.
+
 **`requires: []`, et c'est une décision.** Un abonnement appartient tantôt à une
 organisation, tantôt à un compte, selon la configuration. Déclarer
 `organizations` en requis rendrait la facturation impossible sans multi-tenant.

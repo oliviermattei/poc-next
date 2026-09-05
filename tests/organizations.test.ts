@@ -18,6 +18,8 @@ import {
 import { createRecordingMailer } from '@repo/mailer-testing'
 import { authModule, authUser } from '@repo/module-auth'
 import {
+  ACCEPT_REFUSALS,
+  acceptRefusalMessageKey,
   configureOrganizations,
   EMPTY_ORGANIZATIONS_VIEW,
   INVITATION_QUOTA_PER_WINDOW,
@@ -30,6 +32,7 @@ import {
   permissionsOf,
   organizationsModule,
   organizationRoutePath,
+  refusalMessageKey,
   resetOrganizationsService,
   type OrganizationRole,
   type OrganizationSecurityEvent,
@@ -273,7 +276,7 @@ beforeAll(async () => {
     // suite mesure les organisations, pas la facturation. Le refus et la
     // quantité qui en part sont éprouvés dans `tests/billing.test.ts`, où le
     // vrai couplage est branché.
-    seatSync: () => Promise.resolve(true),
+    seatSync: () => Promise.resolve({ ok: true }),
   })
 })
 
@@ -2486,6 +2489,84 @@ describe('les clés composées du module', () => {
     for (const key of organizationsMessageKeys()) {
       expect(Object.keys(catalogue)).toContain(key)
     }
+  })
+})
+
+/* -------------------------------------------------------------------------- *
+ * s47 — **deux messages pour un seul motif, et c'est une décision de sécurité.**
+ *
+ * Qui accepte une invitation **n'est pas membre** de l'organisation. Lui nommer
+ * le plafond de l'offre d'un tiers lui apprendrait quelque chose de cette
+ * organisation — quelle offre elle a prise, combien de places elle a. Le
+ * propriétaire, lui, doit le savoir : c'est lui qui peut agir.
+ *
+ * Le partage se fait donc sur l'**écran**, pas sur le motif : un seul code de
+ * refus, deux textes.
+ * -------------------------------------------------------------------------- */
+describe('ce que l’écran d’acceptation dit du plafond', () => {
+  it('n’y donne pas le message que voit un membre', () => {
+    expect(acceptRefusalMessageKey('seat_limit_reached')).not.toBe(
+      refusalMessageKey('seat_limit_reached'),
+    )
+  })
+
+  /**
+   * **Le partage ne vaut que pour ce motif-là**, et la liste est **dérivée** :
+   * un motif ajouté à `ACCEPT_REFUSALS` demain sera couvert sans que ce cas
+   * soit réécrit. Sans lui, détourner *tous* les motifs vers un texte vague
+   * passerait le cas précédent.
+   */
+  it('laisse tous les autres motifs à leur message', () => {
+    const shared = ACCEPT_REFUSALS.filter((refusal) => refusal !== 'seat_limit_reached')
+
+    expect(shared.length).toBeGreaterThan(0)
+
+    for (const refusal of shared) {
+      expect(acceptRefusalMessageKey(refusal)).toBe(refusalMessageKey(refusal))
+    }
+  })
+
+  /**
+   * **Ce que l'invité lit, mot pour mot** — dans chaque langue servie.
+   *
+   * L'assertion négative est **ancrée** par une positive, et l'ancrage n'est
+   * pas décoratif : « ne contient rien de ceci » passe sur une chaîne vide, sur
+   * une clé oubliée, sur un message supprimé. Le vocabulaire cherché est le
+   * même pour les deux messages, et le message du membre **doit** en contenir :
+   * c'est ce qui prouve que la liste sait mordre, donc que le silence du second
+   * en est un.
+   */
+  const DISCLOSING: Readonly<Record<string, readonly string[]>> = {
+    fr: ['offre', 'plafond', 'limite', 'abonnement', 'forfait'],
+    en: ['plan', 'offer', 'limit', 'cap', 'subscription'],
+  }
+
+  it.each(appLocales)('ne nomme ni l’offre ni le plafond à qui n’est pas membre (%s)', (locale) => {
+    const catalogue = flatMessagesFor(locale, registry)
+    const words = DISCLOSING[locale] ?? []
+    const forMembers = catalogue[refusalMessageKey('seat_limit_reached')] ?? ''
+    const forGuests = catalogue[acceptRefusalMessageKey('seat_limit_reached')] ?? ''
+    const naming = (message: string): readonly string[] =>
+      words.filter((word) => message.toLowerCase().includes(word))
+
+    // Le vocabulaire est **connu de cette langue** : sans cela, une locale
+    // ajoutée rendrait le cas vert sans rien chercher.
+    expect(words.length).toBeGreaterThan(0)
+
+    // **L'ancrage.** Le message du membre nomme la limite atteinte (critère 2),
+    // et il porte une phrase, pas un mot.
+    expect(naming(forMembers).length).toBeGreaterThan(0)
+    expect(forMembers.length).toBeGreaterThan(40)
+
+    // **La décision 3.** Celui de l'invité dit quelque chose — il existe, il
+    // est long, il n'est pas la copie de l'autre — et ne nomme rien de
+    // l'organisation.
+    expect(forGuests.length).toBeGreaterThan(40)
+    expect(forGuests).not.toBe(forMembers)
+    expect(naming(forGuests)).toEqual([])
+    // Aucun chiffre non plus : le plafond est un nombre, et il ne doit pas
+    // fuiter par un gabarit interpolé.
+    expect(forGuests).not.toMatch(/\d/)
   })
 })
 
