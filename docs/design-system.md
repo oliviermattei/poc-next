@@ -40,6 +40,11 @@ Tailwind v4 : pas de `tailwind.config.js`. Les tokens sont des variables CSS dé
   --info: oklch(0.62 0.16 250);
   --info-foreground: oklch(0.985 0 0);
 
+  --destructive-subtle-foreground: oklch(0.510 0.245 27.325);
+  --success-subtle-foreground: oklch(0.500 0.17 149);
+  --warning-subtle-foreground: oklch(0.535 0.16 86);
+  --info-subtle-foreground: oklch(0.520 0.16 250);
+
   /* Bordures et focus */
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
@@ -73,6 +78,11 @@ Tailwind v4 : pas de `tailwind.config.js`. Les tokens sont des variables CSS dé
   --warning-foreground: oklch(0.145 0 0);
   --info: oklch(0.70 0.14 250);
   --info-foreground: oklch(0.145 0 0);
+
+  --destructive-subtle-foreground: oklch(0.704 0.191 22.216);
+  --success-subtle-foreground: oklch(0.70 0.15 149);
+  --warning-subtle-foreground: oklch(0.83 0.14 86);
+  --info-subtle-foreground: oklch(0.70 0.14 250);
 
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
@@ -208,6 +218,41 @@ Tous dans `packages/ui`. Un module compose avec cette liste ; il ne crée pas se
 | `CookieBanner` | Bannière de consentement (s36) |
 | `Stepper` | Parcours en étapes (s37 — intégration) |
 | `MarketingSection` | Enveloppe des sections pilotées par `config/marketing.ts` (s10) |
+
+#### `Alert` — texte sur teinte, et le jeton qui va avec (s49)
+
+**La règle : le texte d'une teinte à 10 % emploie `--<sémantique>-subtle-foreground`, jamais le jeton de remplissage.** Un jeton sémantique nu (`--warning`, `--success`, `--destructive`, `--info`) est un **fond** — c'est ce que `Badge` en fait, avec son `*-foreground` quasi noir par-dessus. Écrit en **texte** sur `bg-<sem>/10`, il est illisible : `warning` mesurait **1,83 : 1** en mode clair, et c'est dans cette variante que s28 a placé le refus de limitation de débit. Aucun réglage d'un jeton unique ne satisfait les deux métiers (ADR 056).
+
+Les quatre paires, **mesurées** par `pnpm test:contrast` sur les jetons livrés — texte sur `bg-<sem>/10` composé au-dessus de `--card` :
+
+| variante | mode clair, avant | mode clair, après | mode sombre | jeton de texte (clair) |
+|---|---|---|---|---|
+| `destructive` | 3,99 : 1 | **4,84 : 1** | 5,46 : 1 | `oklch(0.510 0.245 27.325)` |
+| `success` | 3,03 : 1 | **4,84 : 1** | 6,12 : 1 | `oklch(0.500 0.17 149)` |
+| `warning` | **1,83 : 1** | **4,85 : 1** | 8,63 : 1 | `oklch(0.535 0.16 86)` |
+| `info` | 3,24 : 1 | **4,88 : 1** | 5,82 : 1 | `oklch(0.520 0.16 250)` |
+
+Seuil visé : **4,5 : 1**, WCAG AA pour le **texte normal** — `Alert` rend du `text-sm`, le seuil « grand texte » à 3 : 1 ne s'y applique pas. Le mode sombre passait déjà : les jetons `-subtle-foreground` y **reprennent la valeur du jeton sémantique**, donc aucun changement d'apparence. Teinte et chroma sont conservées en clair : c'est le codage par la couleur que la sémantique achète, et un texte quasi noir sur les quatre variantes l'effacerait.
+
+**Rendu dans un navigateur, les quatre variantes et les deux thèmes.** `pnpm test:contrast` mesure sur le papier : elle convertit l'OKLCH avec son propre convertisseur et **suppose** que le fond effectif est la carte. `e2e/alert-contrast.spec.ts` mesure ce que Chromium a réellement peint — sa conversion, sa composition des fonds empilés, sa cascade de thème —, sur les écrans qui emploient déjà ces variantes : `/sign-in` au retour d'un fournisseur refusé (`destructive`), `/pricing` au retour d'un paiement (`info` et `warning`), la confirmation du formulaire de contact (`success`). Relevé le 5 septembre 2026, Chromium 151.0.7922.34 (Playwright 1.62.1), application en `next dev` :
+
+| variante | écran | clair | sombre |
+|---|---|---|---|
+| `destructive` | `/sign-in?oauth=denied` | 4,83 : 1 — `#ce0000` sur `#fce5e6` | 6,19 : 1 — `#ff6467` sur `#231313` |
+| `success` | confirmation du formulaire de contact | 4,84 : 1 — `#007b22` sur `#e7f5ec` | 6,11 : 1 — `#4fb768` sur `#1c271f` |
+| `warning` | `/pricing?checkout=cancelled` | 4,85 : 1 — `#966200` sur `#fdf7e6` | 10,00 : 1 — `#f0c04e` sur `#201c10` |
+| `info` | `/pricing?checkout=success` | 4,89 : 1 — `#006ac0` sur `#e9f3fc` | 6,67 : 1 — `#53a3f2` sur `#101921` |
+
+Ces chiffres-là sont **un relevé, pas une garantie** : ce que la suite tient d'une exécution à l'autre est le seuil de 4,5 : 1, pas la valeur. Les écarts avec le tableau précédent sont attendus, mais ils **ne se lisent pas d'un bloc** : la commande suppose partout la carte (`SURFACE_TOKEN` vaut `--card`), et les quatre écrans ne posent pas tous leur alerte sur la même surface.
+
+En **clair**, la question ne se pose pas : `--background` et `--card` y valent tous deux `oklch(1 0 0)`, donc la surface est la même quoi qu'il arrive, et le centième perdu ici ou là est la quantification du pixel à huit bits. En **sombre**, les deux jetons diffèrent (`oklch(0.145 0 0)` contre `oklch(0.205 0 0)`), et la ligne à lire dépend de l'écran :
+
+- **trois lignes sur la page** (`--background`), hors de toute carte : `destructive` sur `/sign-in`, `warning` et `info` sur `/pricing`, où l'alerte est un bandeau posé avant le tableau des tarifs. Le fond y est plus sombre que la carte, donc leurs rapports sont **plus hauts** que ceux du papier — c'est exactement l'écart que `SURFACE_TOKEN` annonce en se plaçant sur la borne défavorable ;
+- **une ligne sur la carte** (`--card`) : `success`. `ContactForm` enveloppe `PublicForm` dans un `<Card>` (`apps/web/app/public-form.tsx`) et la confirmation **remplace** le formulaire à l'intérieur. Le navigateur y mesure 6,11 là où le papier annonce 6,12 : **un centième d'écart**. La surface que `SURFACE_TOKEN` suppose n'est donc plus une hypothèse que rien ne rend — une variante la rend pour de bon, et le chiffre concorde.
+
+Ce que le rendu ne dit pas : un seul navigateur, rien sur les bordures, et quatre écrans seulement. Sur combien d'appelants ? Le compte se relève, il ne se recopie pas : `grep -rnE '<Alert([[:space:]]|>|$)' --include='*.tsx' apps packages` en trouve **23, répartis sur 17 fichiers** (relevé le 5 septembre 2026). Le `$` et l'espace ne sont pas décoratifs : un `<Alert` nu compte aussi `<AlertTitle>` et `<AlertDescription>`, et rend 25.
+
+**Ce que s49 ne mesure pas, et qui reste donc inconnu** : les bordures `border-<sem>/50`, soumises au seuil **3 : 1** des éléments non textuels et non couvertes par la commande ; les `Badge`, les icônes et les états de focus, dont le contraste n'a pas été calculé. `pnpm test:contrast` balaie **les variantes de `packages/ui/src/components/alert.tsx`, et elles seules** — ce qu'elle a mesuré se lit dans sa sortie.
 
 ## UI patterns
 

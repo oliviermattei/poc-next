@@ -306,6 +306,7 @@ export const SOCLE_STEP_DISPOSITION: Readonly<Record<string, SocleDisposition>> 
   "Photographier l'arbre après configuration": { kind: 'executed' },
   Typage: { kind: 'executed' },
   Lint: { kind: 'executed' },
+  Contraste: { kind: 'executed' },
   'Régénérer les migrations des modules activés': { kind: 'executed' },
   Migrations: { kind: 'executed' },
   'Tests unitaires': { kind: 'executed' },

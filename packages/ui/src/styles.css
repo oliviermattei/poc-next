@@ -59,6 +59,27 @@
   --info: oklch(0.62 0.16 250);
   --info-foreground: oklch(0.985 0 0);
 
+  /**
+   * **Texte sur teinte** — une famille distincte du remplissage (s49, ADR 056).
+   *
+   * `--warning` et ses trois sœurs sont des **fonds** : à `oklch(0.79 …)` le
+   * jaune est un bon remplissage de `Badge` et un texte illisible. Les employer
+   * comme texte sur `bg-<sem>/10` donnait 1,83 : 1 pour `warning` en mode clair,
+   * soit un refus d'authentification que personne ne pouvait lire. Teinte et
+   * chroma sont conservées — c'est le codage par la couleur que la sémantique
+   * achète —, seule la clarté descend jusqu'au seuil.
+   *
+   * En sombre, elles **reprennent la valeur du jeton sémantique** : il passait
+   * déjà (5,46 / 6,12 / 8,63 / 5,82 sur la carte), et le changer serait une
+   * régression d'apparence sans bénéfice. `pnpm test:contrast` mesure chaque
+   * paire qu'elle dérive de l'`Alert`, dans les deux modes — le compte se lit
+   * dans sa sortie, pas ici.
+   */
+  --destructive-subtle-foreground: oklch(0.510 0.245 27.325);
+  --success-subtle-foreground: oklch(0.500 0.17 149);
+  --warning-subtle-foreground: oklch(0.535 0.16 86);
+  --info-subtle-foreground: oklch(0.520 0.16 250);
+
   /* Bordures et focus */
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
@@ -92,6 +113,19 @@
   --warning-foreground: oklch(0.145 0 0);
   --info: oklch(0.70 0.14 250);
   --info-foreground: oklch(0.145 0 0);
+
+  /*
+   * Les quatre valeurs ci-dessus, **recopiées** depuis le jeton sémantique de
+   * ce bloc et non renvoyées par `var(--warning)` : `pnpm test:contrast` lit
+   * cette feuille en texte et ne résout pas `var(…)` — elle refuserait en le
+   * nommant (`scripts/contrast-rules.ts`, `parseColor`). Le prix de la copie
+   * est qu'elle est muette : changer `--warning` ici sans changer sa copie
+   * ferait diverger deux valeurs que l'ADR 056 dit identiques.
+   */
+  --destructive-subtle-foreground: oklch(0.704 0.191 22.216);
+  --success-subtle-foreground: oklch(0.70 0.15 149);
+  --warning-subtle-foreground: oklch(0.83 0.14 86);
+  --info-subtle-foreground: oklch(0.70 0.14 250);
 
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
@@ -133,6 +167,11 @@
   --color-warning-foreground: var(--warning-foreground);
   --color-info: var(--info);
   --color-info-foreground: var(--info-foreground);
+
+  --color-destructive-subtle-foreground: var(--destructive-subtle-foreground);
+  --color-success-subtle-foreground: var(--success-subtle-foreground);
+  --color-warning-subtle-foreground: var(--warning-subtle-foreground);
+  --color-info-subtle-foreground: var(--info-subtle-foreground);
 
   --color-border: var(--border);
   --color-input: var(--input);
