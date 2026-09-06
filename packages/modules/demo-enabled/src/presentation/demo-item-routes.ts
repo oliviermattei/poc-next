@@ -36,6 +36,29 @@ export const DEMO_PREMIUM_FEATURE = 'premium-report'
  */
 export const DEMO_PREMIUM_SCREEN_PATH = '/premium'
 
+/**
+ * **Le rôle de plateforme que ce module démontre** (s56).
+ *
+ * Ce module déclarait `admin`, un rôle que **rien** dans le produit ne sait
+ * accorder : `admin_platform_role.role` est une colonne libre, mais la
+ * désignation par `SUPERADMIN_EMAIL` et la promotion du back-office n'y
+ * écrivent que `superadmin`. La route et l'entrée étaient donc inatteignables
+ * même une fois `ModuleSession.roles` peuplé — un exemple qui ne s'exécute
+ * jamais ne démontre rien, et c'est exactement le défaut que cette story
+ * corrige.
+ *
+ * Le nom est **recopié** ici plutôt qu'importé, et c'est une contrainte de la
+ * modularité : `admin` est un module **optionnel**, ce module-ci ne le requiert
+ * pas, et l'importer le rendrait indissociable de lui. La divergence est
+ * rattrapée par une commande — `e2e/admin.spec.ts` promeut un compte par le
+ * chemin du produit et exige que cette route le serve, en comparant ce rôle-ci
+ * à `SUPERADMIN_ROLE` du module qui le possède.
+ *
+ * Module `admin` coupé, personne ne porte ce rôle : la route répond 404 à tout
+ * le monde, ce qui est le sens fermé.
+ */
+const DEMO_PLATFORM_ROLE = 'superadmin'
+
 /** Zod à la frontière (socle de sécurité §4) : le corps entrant n'est pas de confiance. */
 const createItemBodySchema = z.object({ title: z.string() })
 
@@ -88,7 +111,7 @@ export function createDemoItemRoutes(useCases: DemoItemUseCases): readonly Modul
     {
       method: 'GET',
       path: '/demo-enabled/admin/report',
-      protection: { level: 'role', role: 'admin' },
+      protection: { level: 'role', role: DEMO_PLATFORM_ROLE },
       handler: async () => Response.json({ count: (await useCases.listDemoItems()).length }),
     },
     {
@@ -136,10 +159,11 @@ export function createDemoItemRoutes(useCases: DemoItemUseCases): readonly Modul
  *    l'application sert et dont le module ne connaît que le chemin
  *    (`DEMO_PREMIUM_SCREEN_PATH`, comme `BILLING_SCREEN_PATH`). Jamais un
  *    chemin inventé, qui répondrait 404.
- * 2. **La protection déclarée est lue.** L'entrée `admin` vise la route
- *    réservée au rôle `admin` : elle n'apparaît que pour une session qui le
- *    porte (`visibleNavigation`). Sans elle, `protection` serait un champ que
- *    le contrat déclare et que personne n'exerce.
+ * 2. **La protection déclarée est lue.** L'entrée `admin-report` vise la route
+ *    réservée au rôle de plateforme : elle n'apparaît que pour une session qui
+ *    le porte (`visibleNavigation`), et `e2e/admin.spec.ts` le mesure sur le
+ *    **rendu**. Sans elle, `protection` serait un champ que le contrat déclare
+ *    et que personne n'exerce.
  */
 export const demoItemNavigation: readonly NavigationEntry[] = [
   {
@@ -154,7 +178,7 @@ export const demoItemNavigation: readonly NavigationEntry[] = [
     href: `${MODULE_ROUTE_PREFIX}/demo-enabled/admin/report`,
     labelKey: 'navigation.adminReport',
     order: 20,
-    protection: { level: 'role', role: 'admin' },
+    protection: { level: 'role', role: DEMO_PLATFORM_ROLE },
   },
   {
     /**

@@ -40,6 +40,22 @@ export interface PlatformRoleRepository {
    */
   superadminsAmong(userIds: readonly string[]): Promise<readonly string[]>
   /**
+   * **Les rôles de plateforme que ce compte porte** (s56), tels que la table
+   * les porte.
+   *
+   * C'est la lecture que le socle consomme à chaque résolution de session, par
+   * la fonction que le point de composition lui injecte : `ModuleSession.roles`
+   * en sort, et le niveau de protection `role` s'y décide. Elle est donc
+   * **exacte et non élargie** — les rôles de ce compte, pas ceux d'un autre, pas
+   * une constante — parce que le sens du défaut y est ouvert : une lecture trop
+   * large sert une route réservée à qui n'y a pas droit.
+   *
+   * Elle ne désigne personne au passage : la désignation du premier superadmin
+   * appartient aux chemins d'administration, et la rejouer ici mettrait deux
+   * lectures de plus sur le chemin le plus chaud du produit.
+   */
+  rolesOf(userId: string): Promise<readonly string[]>
+  /**
    * Accorde le rôle. `granted: false` quand le compte le portait déjà — c'est
    * une réponse, pas un échec : la désignation du premier superadmin est
    * rejouée à chaque requête d'administration et doit rester sans effet

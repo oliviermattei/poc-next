@@ -269,6 +269,26 @@ export function createDrizzlePlatformRoleRepository(
       return rows.map((row) => row.userId)
     },
 
+    /**
+     * **Les rôles de ce compte** (s56), lus sur la seule table de ce module.
+     *
+     * Une lecture, indexée par `admin_platform_role_unique` — c'est le prix que
+     * paie une résolution de session dans un produit qui déclare une protection
+     * `role`, et il n'est payé que là (`apps/web/lib/auth.ts` le dérive du
+     * registre).
+     *
+     * Aucun filtre sur le nom du rôle : la colonne est libre, et n'en rendre
+     * qu'un connu ferait mentir la session sur ce que la base porte.
+     */
+    rolesOf: async (userId) => {
+      const rows = await db
+        .select({ role: adminPlatformRole.role })
+        .from(adminPlatformRole)
+        .where(eq(adminPlatformRole.userId, userId))
+
+      return rows.map((row) => row.role)
+    },
+
     isSuperadmin: async (userId) => {
       const [row] = await db
         .select({ id: adminPlatformRole.id })

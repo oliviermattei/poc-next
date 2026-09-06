@@ -18,22 +18,31 @@ import { parseSessionTarget } from '../domain/back-office'
  * ## Pourquoi `authenticated` et non `role`
  *
  * `RouteProtection.level: 'role'` existe et interroge `ModuleSession.roles`.
- * Le répartiteur y répond **403** quand la session ne porte pas le rôle
- * (`packages/core/src/registry.ts`), et un 403 confirme que le back-office
- * existe — ce que les critères 3 et 4 de la story refusent explicitement. Les
- * routes sont donc déclarées `authenticated`, et la garde de superadmin est
- * **ici**, où elle peut répondre 404.
+ * **Deux des trois raisons de ne pas s'en servir ont disparu avec s56** : cette
+ * liste était vide partout — le niveau ne servait donc personne —, et le
+ * répartiteur répondait 403, ce qui confirme que le back-office existe. Depuis
+ * s56 les rôles de plateforme sont peuplés à chaque résolution de session, et
+ * le répartiteur répond 404 à une protection `role` non satisfaite.
+ *
+ * La troisième raison, elle, tient toujours, et c'est pourquoi ces routes n'ont
+ * **pas** été rebasculées ici (s56 s'en interdit explicitement, ce serait une
+ * autre story) : la garde du back-office refuse **avant** de juger le rôle une
+ * session **empruntée** (s37b1), et elle **journalise** le refus. Un niveau
+ * déclaré au contrat ne sait exprimer ni l'un ni l'autre — un superadmin dont
+ * on emprunte la session entrerait dans le back-office.
  *
  * Elle relit le rôle en base à chaque requête : le pouvoir suit la ligne, pas
  * le jeton de session (ADR 030). Une révocation mord donc à l'instant, sans
- * reconnexion.
+ * reconnexion — ce que la lecture de s56 tient désormais aussi, pour la même
+ * raison et par le même moyen.
  *
  * **Ce que cette forme ne cache pas, et il faut le savoir** : un appelant
  * **anonyme** reçoit 401 du répartiteur, comme sur toute route authentifiée du
- * dépôt. L'existence d'un chemin sous `/admin/` se lit donc sans compte. Ce qui
- * est fermé, et que la story demande, est la distinction entre « ce compte-ci
- * administre » et « ce compte-là n'administre pas » : les deux reçoivent la
- * même réponse qu'une URL inventée.
+ * dépôt. L'existence d'un chemin sous `/admin/` se lit donc sans compte — une
+ * route `role`, elle, répond 404 même à l'anonyme depuis s56. Ce qui est fermé,
+ * et que la story demande, est la distinction entre « ce compte-ci administre »
+ * et « ce compte-là n'administre pas » : les deux reçoivent la même réponse
+ * qu'une URL inventée.
  *
  * ## L'ordre : autorisation, **puis** validation
  *
@@ -455,9 +464,11 @@ export const ADMIN_USERS_SCREEN_PATH = '/admin/users'
  *
  * `surface: 'admin'` : elle n'apparaît **pas** dans la barre latérale du
  * produit. Un lien « Administration » visible de tous divulguerait l'existence
- * du back-office à chaque compte connecté, et `ModuleSession.roles` ne porte pas
- * le rôle de plateforme — il est relu en base à chaque requête (ADR 030), donc
- * une protection `role` sur cette entrée ne serait satisfaite par personne.
+ * du back-office à chaque compte connecté. C'est la **surface** qui l'en tient
+ * à l'écart, et elle seule : depuis s56, `ModuleSession.roles` porte bien le
+ * rôle de plateforme, et une protection `role` sur cette entrée serait donc
+ * satisfaite — mais elle ne dirait rien de la session empruntée que la garde du
+ * back-office refuse.
  *
  * Elle est rendue par les écrans du back-office eux-mêmes, qui sont déjà
  * derrière la garde. C'est la forme que s31 a établie pour le pied de page : le

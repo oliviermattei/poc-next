@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import type { AnyModuleDefinition, ModuleSession, NavigationEntry } from './module'
-import { resolveDataOwner, visibleNavigation } from './protection'
+import type {
+  AnyModuleDefinition,
+  ModuleRoute,
+  ModuleSession,
+  NavigationEntry,
+} from './module'
+import { declaresRoleProtection, resolveDataOwner, visibleNavigation } from './protection'
 import { buildRegistry } from './registry'
 
 /**
@@ -27,12 +32,15 @@ const entry = (
   ...(surface === undefined ? {} : { surface }),
 })
 
-const moduleWith = (entries: readonly NavigationEntry[]): AnyModuleDefinition => ({
+const moduleWith = (
+  entries: readonly NavigationEntry[],
+  routes: readonly ModuleRoute[] = [],
+): AnyModuleDefinition => ({
   id: 'm',
   requires: [],
   schema: {},
   migrations: null,
-  routes: [],
+  routes,
   navigation: entries,
   publicUrls: () => [],
   messages: {
@@ -84,6 +92,17 @@ describe('navigation visible selon la protection déclarée', () => {
     expect(visibleIds({ userId: 'u', roles: ['admin'] })).toEqual(['public', 'membre', 'admin'])
   })
 
+  it('ne montre pas l’entrée à une session qui porte un **autre** rôle', () => {
+    // Le quatrième acteur, et il n'était pas énuméré tant que `roles` valait
+    // `[]` partout (s56) : porter un rôle n'est pas porter **celui-là**. Une
+    // règle élargie — « cette session porte au moins un rôle » — servirait
+    // l'entrée et la route à qui ne le porte pas.
+    expect(visibleIds({ userId: 'u', roles: ['administrateur', 'admin-adjoint'] })).toEqual([
+      'public',
+      'membre',
+    ])
+  })
+
   /**
    * **Une entrée est déclarée pour une surface** (s31).
    *
@@ -107,6 +126,64 @@ describe('navigation visible selon la protection déclarée', () => {
     // Sans quoi la surface serait une porte dérobée : une entrée réservée
     // deviendrait publique en changeant de surface.
     expect(footerIds({ userId: 'u', roles: [] })).toEqual(['pied', 'pied-prive'])
+  })
+})
+
+/**
+ * **Le produit se sert-il du niveau `role` ?** (s56)
+ *
+ * La question a un coût derrière elle : peupler `ModuleSession.roles` demande
+ * une lecture **à chaque résolution de session**, c'est-à-dire sur le chemin le
+ * plus chaud du produit. Si aucun module activé ne déclare de protection
+ * `role`, personne ne peut consulter ces rôles et la lecture ne sert à rien.
+ *
+ * La réponse se dérive donc du registre, et le point de composition la pose une
+ * fois : rien n'écrit de nom de module, rien n'écrit de nombre. Les **deux**
+ * surfaces comptent — une entrée de navigation réservée à un rôle a besoin des
+ * mêmes rôles que la route qu'elle désigne.
+ */
+describe('le registre déclare-t-il une protection de rôle', () => {
+  const registryOf = (
+    entries: readonly NavigationEntry[],
+    routes: readonly ModuleRoute[] = [],
+  ) => buildRegistry({ available: [moduleWith(entries, routes)], enabled: ['m'], locales: ['fr'] })
+
+  const route = (path: string, protection: ModuleRoute['protection']): ModuleRoute => ({
+    method: 'GET',
+    path,
+    protection,
+    handler: () => Promise.resolve(new Response(null)),
+  })
+
+  it('répond non quand aucune route ni entrée activée n’en déclare', () => {
+    expect(
+      declaresRoleProtection(
+        registryOf(
+          [entry('public', 10, { level: 'public' }), entry('membre', 20, { level: 'authenticated' })],
+          [
+            route('/membre', { level: 'authenticated' }),
+            route('/offre', { level: 'entitlement', feature: 'f' }),
+          ],
+        ),
+      ),
+    ).toBe(false)
+  })
+
+  it('répond oui pour une route réservée à un rôle', () => {
+    expect(
+      declaresRoleProtection(
+        registryOf([entry('public', 10, { level: 'public' })], [route('/r', { level: 'role', role: 'r' })]),
+      ),
+    ).toBe(true)
+  })
+
+  it('répond oui pour une entrée de navigation réservée à un rôle, sans route', () => {
+    // La seconde surface, et elle n'est pas décorative : une entrée dont la
+    // protection ne peut être satisfaite par personne serait invisible pour
+    // tout le monde, en silence.
+    expect(
+      declaresRoleProtection(registryOf([entry('admin', 30, { level: 'role', role: 'r' })])),
+    ).toBe(true)
   })
 })
 

@@ -1150,6 +1150,9 @@ const authUseCasesWith = (mailer: ReturnType<typeof createRecordingMailer>) =>
       Promise.resolve({ ok: false, purged: [], failed: 'auth', message: 'hors sujet ici' }),
     soleOwnerships: () => Promise.resolve([]),
     releaseOrganizations: () => Promise.resolve([]),
+    // s56 : aucun rôle de plateforme n'entre ici — la langue d'un email n'en
+    // dépend pas, et la forme fermée est la liste vide.
+    platformRolesOf: () => Promise.resolve([]),
     jobs: {
       emit: () =>
         Promise.resolve({

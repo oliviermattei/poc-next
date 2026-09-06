@@ -36,6 +36,7 @@ import {
   type AuthService,
 } from '@repo/module-auth'
 import { BILLING_DISPLAY_STATES } from '@repo/module-billing'
+import { demoEnabledModule } from '@repo/module-demo-enabled'
 import { ORGANIZATION_ROLES, organizationsModule } from '@repo/module-organizations'
 import { BAN_REASON_MAX_LENGTH } from '@repo/module-auth'
 import { sql } from 'drizzle-orm'
@@ -455,6 +456,16 @@ beforeAll(async () => {
     mailer,
     secret: TEST_SECRET,
     appUrl: APP_URL,
+    /**
+     * **Les rôles de plateforme, branchés comme le point de composition les
+     * branche** (s56) : le socle ne lit pas la table du module, il reçoit la
+     * fonction — exactement comme il reçoit son mailer.
+     *
+     * Une doublure aurait prouvé que `resolveActiveSession` recopie ce qu'on lui
+     * donne ; ici, la session servie porte ce que la **table** porte, et la
+     * révocation d'un rôle se mesure sur la même session.
+     */
+    platformRolesOf: async (userId) => await service.useCases.platformRolesOf(userId),
   })
 })
 
@@ -770,6 +781,114 @@ describe.runIf(databaseReachable)('la promotion et la révocation', () => {
       actor: promoted.session.userId,
       target: promoted.session.userId,
     })
+  })
+})
+
+/**
+ * **Les rôles de plateforme portés par la session servie** (s56).
+ *
+ * Ce que ces cas mesurent, et que rien d'autre ne mesurait : `ModuleSession.roles`
+ * valait `[]`, **écrit en dur** dans `resolveActiveSession`, si bien que le
+ * niveau de protection `role` refusait tout le monde partout. Le correctif
+ * **inverse le sens du défaut** — un tableau vide fermait, une lecture trop
+ * large ouvrirait —, donc chaque cas porte son cas négatif : un compte sans
+ * rôle, un compte voisin, un rôle retiré.
+ *
+ * La mesure porte sur la **session servie**, résolue d'un vrai cookie par le
+ * même service que les routes, jamais sur `sessionOf` — celle-ci recopie ce
+ * qu'on lui donne et le prouve déjà dans son propre `domain`.
+ */
+describe.runIf(databaseReachable)('les rôles de plateforme portés par la session', () => {
+  it('porte le rôle que la table porte, et rien pour le compte d’à côté', async () => {
+    const designated = await signedIn()
+    const ordinary = await signedIn()
+
+    configure(designated.email)
+
+    // La désignation a lieu à la première requête d'administration : c'est le
+    // chemin du produit, pas une écriture directe dans la table.
+    expect(
+      (
+        await call('grantSuperadmin', {
+          session: { userId: designated.userId, roles: [] },
+          body: { userId: designated.userId },
+        })
+      ).status,
+    ).toBe(200)
+
+    const served = await auth.resolveSession(requestWith(designated.cookie))
+    const neighbour = await auth.resolveSession(requestWith(ordinary.cookie))
+
+    expect(served?.roles).toEqual([SUPERADMIN_ROLE])
+    // **Le cas négatif, dans le même souffle** : une lecture qui oublierait de
+    // filtrer sur le compte donnerait le rôle du premier au second.
+    expect(neighbour?.roles).toEqual([])
+  })
+
+  it('ne porte aucun rôle quand le module qui les possède est coupé', async () => {
+    // Un compte **réellement** superadmin : c'est ce qui rend le cas mordant.
+    // Sans lui, « aucun rôle » serait vrai d'une base vide, pour la mauvaise
+    // raison.
+    const designated = await signedIn()
+
+    configure(designated.email)
+    await call('grantSuperadmin', {
+      session: { userId: designated.userId, roles: [] },
+      body: { userId: designated.userId },
+    })
+    expect(await superadminRows()).toBe(1)
+
+    vi.resetModules()
+    // Le registre du produit, **sans** le module d'administration, et rien
+    // d'autre de doublé : ce qui est mesuré est le point de composition réel,
+    // qui ne peut plus lire les rôles parce que le module n'est pas monté.
+    vi.doMock('../apps/web/lib/module-registry', () => ({
+      moduleRegistry: buildRegistry({
+        available: [authModule, adminModule, demoEnabledModule],
+        enabled: ['auth', 'demo-enabled'],
+        locales: [...appLocales],
+      }),
+    }))
+
+    try {
+      const { platformRolesOf } = await import('../apps/web/lib/auth')
+
+      // La liste vient **par la valeur** : aucune connexion n'est ouverte, et
+      // aucune condition sur un nom de module n'est écrite chez l'appelant.
+      await expect(platformRolesOf(designated.userId)).resolves.toEqual([])
+    } finally {
+      vi.doUnmock('../apps/web/lib/module-registry')
+      vi.resetModules()
+    }
+  })
+
+  it('cesse de porter un rôle retiré, sur la même session et sans reconnexion', async () => {
+    const designated = await signedIn()
+    const promoted = await signedIn()
+
+    configure(designated.email)
+    // La désignation, puis la promotion : deux superadmins, sans quoi la
+    // révocation serait refusée par le garde-fou du dernier.
+    await call('grantSuperadmin', {
+      session: { userId: designated.userId, roles: [] },
+      body: { userId: promoted.userId },
+    })
+
+    expect((await auth.resolveSession(requestWith(promoted.cookie)))?.roles).toEqual([
+      SUPERADMIN_ROLE,
+    ])
+
+    const revoked = await call('revokeSuperadmin', {
+      session: { userId: designated.userId, roles: [] },
+      body: { userId: promoted.userId },
+    })
+
+    expect(revoked.status).toBe(200)
+
+    // **Le critère qui interdit de porter les rôles dans le jeton** : la même
+    // session, le même cookie, aucune reconnexion — et le rôle a disparu. Le
+    // pouvoir suit la ligne, pas le jeton (ADR 030, `docs/security.md` §2).
+    expect((await auth.resolveSession(requestWith(promoted.cookie)))?.roles).toEqual([])
   })
 })
 
@@ -2384,9 +2503,10 @@ describe('l’entrée du back-office se dérive du registre', () => {
 
   it('ne paraît jamais dans la barre latérale du produit', () => {
     // Un lien « Administration » visible de tout compte connecté divulguerait
-    // l'existence du back-office (`docs/security.md` §7). La surface est ce qui
-    // l'en tient à l'écart, et `ModuleSession.roles` ne porte pas le rôle de
-    // plateforme — une protection `role` ne serait satisfaite par personne.
+    // l'existence du back-office (`docs/security.md` §7). La **surface** est ce
+    // qui l'en tient à l'écart, et depuis s56 elle est seule à le faire : les
+    // rôles de plateforme sont peuplés, donc une protection `role` serait
+    // satisfaite par un superadmin — la session ci-dessous n'en porte aucun.
     const sidebar = visibleNavigation(
       buildRegistry({
         available: [authModule, adminModule, organizationsModule],
@@ -2547,6 +2667,73 @@ describe('le vocabulaire emprunté par le back-office', () => {
         `${locale} — rôles sans libellé`,
       ).toEqual([])
     }
+  })
+})
+
+/**
+ * **Où se paie la lecture des rôles** (s56) — la seule vraie décision de la
+ * story, prise au point de composition.
+ *
+ * Peupler `ModuleSession.roles` demande une lecture à **chaque** résolution de
+ * session, c'est-à-dire sur le chemin le plus chaud du produit — celui dont la
+ * revue de `s37b2` venait de retirer deux requêtes. La porter dans le jeton
+ * serait rapide et périmerait, ce qui raterait la révocation immédiate. La
+ * sortie est de **dériver du registre** : si aucun module activé ne déclare de
+ * protection `role`, personne ne peut consulter ces rôles et la lecture ne
+ * répond à aucune question.
+ *
+ * Ces deux cas mesurent le **point de composition lui-même**, pas une fonction
+ * pure à côté : le registre est doublé, la lecture du module `admin` aussi, et
+ * ce qui est observé est la fonction que `apps/web/lib/auth.ts` construit. Un
+ * câblage inconditionnel rend le second cas rouge.
+ */
+describe('la lecture des rôles de plateforme se dérive du registre', () => {
+  const readerOf = async (
+    enabled: readonly string[],
+  ): Promise<{
+    readonly platformRolesOf: (userId: string) => Promise<readonly string[]>
+    readonly read: ReturnType<typeof vi.fn>
+  }> => {
+    const read = vi.fn(() => Promise.resolve(['témoin']))
+
+    vi.resetModules()
+    vi.doMock('../apps/web/lib/module-registry', () => ({
+      moduleRegistry: buildRegistry({
+        available: [authModule, adminModule, demoEnabledModule],
+        enabled: [...enabled],
+        locales: [...appLocales],
+      }),
+    }))
+    // Le module qui porte les rôles est doublé : ce qui se mesure ici est la
+    // décision de le lire, pas ce qu'il lit — cela se prouve contre une vraie
+    // base, plus haut dans ce fichier.
+    vi.doMock('../apps/web/lib/admin', () => ({ admin: { platformRolesOf: read } }))
+
+    const { platformRolesOf } = await import('../apps/web/lib/auth')
+
+    return { platformRolesOf, read }
+  }
+
+  it('branche la lecture quand un module activé déclare une protection de rôle', async () => {
+    const { platformRolesOf, read } = await readerOf(['auth', 'admin', 'demo-enabled'])
+
+    await expect(platformRolesOf('usr_1')).resolves.toEqual(['témoin'])
+    expect(read).toHaveBeenCalledWith('usr_1')
+  })
+
+  it('ne lit rien quand aucun module activé n’en déclare : la liste vient par la valeur', async () => {
+    // L'anti-vacuité est dans le cas du dessus : sans lui, « aucune lecture »
+    // serait vrai d'un câblage qui ne lit jamais rien.
+    const { platformRolesOf, read } = await readerOf(['auth', 'admin'])
+
+    await expect(platformRolesOf('usr_1')).resolves.toEqual([])
+    expect(read).not.toHaveBeenCalled()
+  })
+
+  afterEach(() => {
+    vi.doUnmock('../apps/web/lib/module-registry')
+    vi.doUnmock('../apps/web/lib/admin')
+    vi.resetModules()
   })
 })
 

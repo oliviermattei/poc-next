@@ -13,8 +13,9 @@ import type { OrganizationRole } from './organization'
  *
  * 1. **Ce n'est pas `RouteProtection.level: 'role'`.** Le niveau déclaré au
  *    contrat de module interroge `ModuleSession.roles`
- *    (`packages/core/src/protection.ts`), une liste **de plateforme** — vide en
- *    production aujourd'hui, réservée au superadmin de s37. Un rôle
+ *    (`packages/core/src/protection.ts`), une liste **de plateforme** — peuplée
+ *    depuis s56 des rôles de `admin_platform_role`, c'est-à-dire du superadmin
+ *    de s37, et de rien d'autre. Un rôle
  *    d'organisation dépend de **quelle** organisation : le ranger dans la
  *    session y mettrait une autorité organisationnelle, ce que l'ADR 025 refuse
  *    précisément. **Toutes** les routes du module restent `authenticated` — elles

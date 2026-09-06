@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
@@ -19,9 +19,11 @@ import {
   purgeModules,
   type AnyModuleDefinition,
 } from '@repo/core'
+import { SUPERADMIN_ROLE } from '@repo/module-admin'
 import {
   createDemoItem,
   DEMO_PREMIUM_FEATURE,
+  demoEnabledModule,
   demoItemUseCases,
   InvalidDemoItemError,
 } from '@repo/module-demo-enabled'
@@ -583,7 +585,17 @@ const demoRegistry = buildRegistry({
 const requestTo = (path: string, init?: RequestInit): Request =>
   new Request(`http://localhost${MODULE_ROUTE_PREFIX}${path}`, init)
 
-const asAdmin = { resolveSession: () => Promise.resolve({ userId: 'u-admin', roles: ['admin'] }) }
+/**
+ * **Le rôle exigé, dérivé de la route qui l'exige** (s56) : une valeur recopiée
+ * ici resterait verte après un renommage du rôle, en mesurant une session que
+ * plus aucune route ne sert.
+ */
+const roleRoute = demoEnabledModule.routes.find((route) => route.protection.level === 'role')
+const requiredRole = roleRoute?.protection.level === 'role' ? roleRoute.protection.role : ''
+
+const asAdmin = {
+  resolveSession: () => Promise.resolve({ userId: 'u-admin', roles: [requiredRole] }),
+}
 const asMember = { resolveSession: () => Promise.resolve({ userId: 'u-member', roles: [] }) }
 
 const countItemsOf = async (ownerId: string): Promise<number> => {
@@ -637,15 +649,48 @@ describe('acheminement des requêtes vers les modules activés', () => {
     expect(await countItemsOf('u-member')).toBe(before)
   })
 
-  it('refuse une route réservée à un rôle quand la session ne l’a pas', async () => {
+  /**
+   * **Une protection de rôle non satisfaite répond 404** (s56, ADR 068), et la
+   * décision est consignée plutôt que laissée au lecteur.
+   *
+   * Le répartiteur répondait 403, ce qui **confirme l'existence** de la route à
+   * qui n'y a pas droit : c'est exactement ce que le §3 du socle de sécurité
+   * refuse pour la ressource d'autrui, et c'est la raison pour laquelle `s37a`
+   * puis `s37b2` ont contourné ce niveau en gardant dans le module. Une route
+   * réservée à un rôle est indistinguable d'une URL inventée pour quiconque ne
+   * le porte pas — **anonyme compris** : laisser 401 à l'anonyme redonnerait
+   * l'information à qui se déconnecte.
+   *
+   * Le niveau `entitlement` garde son 403, et ce n'est pas une incohérence : le
+   * catalogue d'offres **vend** la fonctionnalité, son existence est publique,
+   * seul son usage est réservé (ADR 043).
+   */
+  it('répond 404, et non 403, à une session qui ne porte pas le rôle', async () => {
+    // **Un seul témoin de refus** : la matrice des acteurs — sans rôle, rôle
+    // voisin — est énumérée là où la règle vit
+    // (`packages/core/src/protection.test.ts`). Ce qui se prouve ici est propre
+    // au transport : le code de refus, et le fait que le gestionnaire n'est pas
+    // atteint.
     const response = await dispatchAllowingRateLimit(
       demoRegistry,
       requestTo('/demo-enabled/admin/report'),
       asMember,
     )
 
-    expect(response.status).toBe(403)
-    await expect(response.json()).resolves.not.toHaveProperty('count')
+    expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toEqual({ error: 'not_found' })
+  })
+
+  it('répond 404 à l’appel anonyme d’une route réservée à un rôle', async () => {
+    // 404 et non 401 : un 401 dirait « cette route existe, connectez-vous »,
+    // c'est-à-dire l'existence que le cas ci-dessus cache aux connectés.
+    const response = await dispatchAllowingRateLimit(
+      demoRegistry,
+      requestTo('/demo-enabled/admin/report'),
+    )
+
+    expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toEqual({ error: 'not_found' })
   })
 
   it('sert la route réservée à un rôle quand la session le porte', async () => {
@@ -671,6 +716,137 @@ describe('acheminement des requêtes vers les modules activés', () => {
 
     expect(response.status).toBe(201)
     expect(await countItemsOf('u-admin')).toBe(1)
+  })
+})
+
+/**
+ * **Un rôle exigé est un rôle que le produit sait accorder** (s56, constat 4 de
+ * la revue).
+ *
+ * Cette story existe pour fermer une classe de défaut — *une garde que personne
+ * ne peut satisfaire* — et elle en a livré une seconde instance : le module de
+ * démonstration exigeait `admin`, un nom que **rien** n'écrit dans
+ * `admin_platform_role`. Seule la suite navigateur le voyait ; mesuré en revue,
+ * `DEMO_PLATFORM_ROLE = 'admin'` laissait `pnpm test` entièrement vert. Le
+ * terminal a donc sa garde ici.
+ *
+ * **Les deux côtés sont dérivés**, sans quoi ce cas *suivrait* la divergence au
+ * lieu de l'attraper :
+ *
+ * - les rôles **exigés** viennent de l'annuaire des modules — pas des seuls
+ *   modules activés : toute configuration est un produit livrable, et une route
+ *   inatteignable dans un profil qui coupe la démonstration l'est tout autant ;
+ * - le vocabulaire **accordable** vient du module qui écrit la table, par son
+ *   unique site d'insertion — jamais d'une liste recopiée ici, qui resterait
+ *   verte après un renommage.
+ *
+ * Ce que ce cas ne dit **pas** : qu'un compte porte effectivement le rôle, ni
+ * qu'une route le serve. Cela demande une base et un cookie, et c'est
+ * `e2e/admin.spec.ts` qui le mesure.
+ */
+describe('un rôle exigé par une protection est un rôle accordable', () => {
+  const PLATFORM_ROLE_WRITE =
+    /insert\((?:\w+\.)?adminPlatformRole\)|insert\s+into\s+"?admin_platform_role"?/i
+
+  const productionSources = (directory: string): readonly string[] => {
+    const root = join(REPO_ROOT, directory)
+
+    if (!existsSync(root)) {
+      return []
+    }
+
+    const walk = (current: string): readonly string[] =>
+      readdirSync(current, { withFileTypes: true }).flatMap((entry) => {
+        const full = join(current, entry.name)
+
+        if (entry.isDirectory()) {
+          return entry.name === 'node_modules' || entry.name === '.next' ? [] : walk(full)
+        }
+
+        return /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) ? [full] : []
+      })
+
+    return walk(root)
+  }
+
+  const writers = ['packages', 'apps', 'config', 'scripts']
+    .flatMap((directory) => productionSources(directory))
+    .filter((file) => PLATFORM_ROLE_WRITE.test(readFileSync(file, 'utf8')))
+    .map((file) => relative(REPO_ROOT, file))
+
+  /**
+   * Les noms que le domaine du module publie, et leur valeur. Un identifiant
+   * écrit dans la table sans figurer ici fait rougir le cas ci-dessous : il
+   * force une décision au lieu d'hériter du silence.
+   */
+  const publishedRoleValues: Readonly<Record<string, string>> = { SUPERADMIN_ROLE }
+
+  /**
+   * Les noms de rôle que le site d'insertion écrit, lus dans son `.values({…})`
+   * — et pas ailleurs dans le fichier : `select({ role: adminPlatformRole.role })`
+   * nomme une **colonne**, pas un rôle.
+   */
+  const roleNamesWrittenBy = (file: string): readonly string[] => {
+    const source = readFileSync(join(REPO_ROOT, file), 'utf8')
+    const insertAt = source.search(PLATFORM_ROLE_WRITE)
+    const valuesAt = insertAt === -1 ? -1 : source.indexOf('.values({', insertAt)
+    const closesAt = valuesAt === -1 ? -1 : source.indexOf('})', valuesAt)
+    const values = closesAt === -1 ? '' : source.slice(valuesAt, closesAt)
+
+    return [...values.matchAll(/\brole:\s*([A-Za-z_$][\w$]*)/g)].map((match) => match[1] ?? '')
+  }
+
+  const declaredRoles = availableModules
+    .flatMap((module) => [
+      ...module.routes.map((route) => ({
+        site: `${module.id} ${route.method} ${route.path}`,
+        protection: route.protection,
+      })),
+      ...module.navigation.map((entry) => ({
+        site: `${module.id} navigation ${entry.href}`,
+        protection: entry.protection,
+      })),
+    ])
+    .flatMap((declaration) =>
+      declaration.protection.level === 'role'
+        ? [{ site: declaration.site, role: declaration.protection.role }]
+        : [],
+    )
+
+  it('n’a qu’un écrivain de la table des rôles, et c’est le module qui la possède', () => {
+    // Un balayage vide passerait pour une raison qui n'en est pas une, et un
+    // second écrivain accorderait un vocabulaire que le cas suivant ignorerait.
+    expect(writers).toEqual([
+      'packages/modules/admin/src/infrastructure/drizzle-platform-role-repository.ts',
+    ])
+  })
+
+  it('n’écrit que des rôles que le domaine de ce module nomme', () => {
+    const written = writers.flatMap((file) => roleNamesWrittenBy(file))
+
+    // Anti-vacuité : un découpage qui cesse de correspondre rendrait ce cas et
+    // le suivant verts en ne lisant rien.
+    expect(written.length).toBeGreaterThan(0)
+    expect(written.filter((name) => !(name in publishedRoleValues))).toEqual([])
+  })
+
+  it('exige, partout où une protection nomme un rôle, un rôle accordable', () => {
+    const grantable = new Set(
+      writers
+        .flatMap((file) => roleNamesWrittenBy(file))
+        .flatMap((name) => (name in publishedRoleValues ? [publishedRoleValues[name] ?? ''] : [])),
+    )
+
+    // Anti-vacuité, des deux côtés : sans protection de rôle déclarée, ou sans
+    // vocabulaire lu, la comparaison ci-dessous ne comparerait rien.
+    expect(declaredRoles.length).toBeGreaterThan(0)
+    expect(grantable.size).toBeGreaterThan(0)
+
+    expect(
+      declaredRoles
+        .filter((declaration) => !grantable.has(declaration.role))
+        .map((declaration) => `${declaration.site} exige « ${declaration.role} »`),
+    ).toEqual([])
   })
 })
 
