@@ -246,6 +246,12 @@ const APPLICATION_SEGMENTS = [
   // module est coupé** — et c'est du disque que `tests/organizations.test.ts`
   // dérive. Même raison que `billing` et `blog` plus haut.
   'notifications',
+  // Le parcours d'intégration (s40) : il n'a **aucune** entrée de navigation —
+  // la racine y mène tant qu'il reste à faire, et cesse d'y mener une fois
+  // terminé —, donc rien ne le dérive du registre. Son fichier d'écran existe
+  // sur le disque quel que soit l'état du module, et c'est du disque que
+  // `tests/organizations.test.ts` dérive.
+  'onboarding',
   'organizations',
   // L'écran d'une fonctionnalité réservée à une offre payante (s21) : un écran
   // servi par l'application, donc un identifiant qu'aucune organisation ne peut

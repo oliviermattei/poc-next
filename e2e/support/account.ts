@@ -2,10 +2,11 @@ import { readdir, readFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 
+import { ONBOARDING_SCREEN_PATH } from '@repo/module-onboarding'
 import { expect, type Page } from '@playwright/test'
 
 import { clickOnce } from './interaction'
-import { anonymousLanding, publicPath, urlOf } from './locale'
+import { anonymousLanding, onboardingCourseMounted, publicPath, urlOf } from './locale'
 
 /**
  * Les gestes communs aux parcours : inscrire un compte, lire son email, se
@@ -171,16 +172,118 @@ export const signOut = async (page: Page): Promise<void> => {
 }
 
 /**
+ * **Referme le parcours d'intégration d'un compte** (s40), à la porte que le
+ * produit lui offre : celle du parcours **terminé**.
+ *
+ * Pourquoi cette fonction existe. Depuis s40, la racine mène au parcours tant
+ * qu'il reste à faire — c'est le critère 1 de la story —, si bien qu'un compte
+ * fraîchement inscrit n'atterrit plus au tableau de bord. **Tout parcours de la
+ * suite qui ouvre une session** en est concerné, et ils rougissaient presque
+ * tous sur la seule assertion d'atterrissage d'`aSignedInAccount`. Le nombre
+ * n'est pas écrit ici, exprès : aucune commande ne le maintiendrait vrai, et
+ * `AGENTS.md` demande de dériver un compte plutôt que de le taper — ce que
+ * cette prose s'était déjà permis, avec deux chiffres faux dès la revue.
+ *
+ * Pourquoi l'état est **posé** et non parcouru. Franchir les étapes au
+ * navigateur demanderait, pour **chaque** compte de la suite, de saisir un nom
+ * puis de passer les étapes restantes — un formulaire et trois chargements de
+ * page par parcours, et un nom choisi qui contredirait `app-shell.spec.ts`, qui
+ * mesure précisément ce que change le premier nom saisi. Ce que ces parcours
+ * mesurent n'est pas l'intégration : c'est ce qui vient après.
+ *
+ * **Ce que ce raccourci ne masque pas** : `e2e/onboarding.spec.ts` fait le
+ * parcours réel, au navigateur, sans jamais appeler cette fonction — l'écran,
+ * l'étape obligatoire qu'on ne peut pas passer, et la porte à sens unique. Le
+ * **parcours doré** le traverse aussi, et pour une autre raison : il mesure le
+ * chemin réel d'un acheteur, qui passe désormais par là (la décision et son
+ * motif sont dans `e2e/golden-path/golden-path.spec.ts`). Les règles, elles,
+ * sont mesurées par `tests/onboarding.test.ts` et par le `domain` du module.
+ *
+ * Module coupé, il n'y a **rien à refermer** : la décision est dérivée de
+ * `config/features.ts`, aucun identifiant n'est comparé ailleurs, et la table
+ * n'existe alors pas.
+ */
+export const closeOnboardingCourse = async (email: string): Promise<void> => {
+  if (!onboardingCourseMounted()) {
+    return
+  }
+
+  const { createDatabaseClient } = await import('@repo/db')
+  const { getEnv } = await import('@repo/config')
+  const { loadRootEnv } = await import('@repo/config/server')
+
+  loadRootEnv()
+
+  const connection = createDatabaseClient({
+    connectionString: getEnv().DATABASE_URL,
+    maxConnections: 1,
+  })
+
+  try {
+    const { sql } = await import('drizzle-orm')
+
+    // Une seule écriture, paramétrée, et **rejouable** : la clé primaire du
+    // compte arbitre, et une seconde exécution ne déplace pas l'instant de fin.
+    await connection.db.execute(
+      sql`insert into onboarding_progress (user_id, cleared_steps, completed_at)
+          select id, '[]'::jsonb, now() from auth_user where email = ${email}
+          on conflict (user_id) do nothing`,
+    )
+  } finally {
+    await connection.close()
+  }
+}
+
+/**
+ * **Franchit ce qu'il reste du parcours d'intégration**, à la porte que
+ * l'écran offre — l'exact opposé du raccourci ci-dessus, et l'autre moitié de
+ * la décision qu'il documente.
+ *
+ * **Aucune étape n'est nommée** : la boucle clique ce que l'écran propose, et
+ * s'arrête quand la page a quitté le parcours. C'est ce qui la rend vraie de
+ * toute configuration — un module coupé retire une étape, et rien ici ne
+ * change. Écrire « trois étapes » y ferait entrer par la porte du harnais la
+ * liste en dur que la story existe pour interdire.
+ *
+ * La borne est un garde-fou, pas une attente : si le parcours ne se termine
+ * pas, l'appelant rougit sur son assertion d'atterrissage, avec l'URL réelle
+ * sous les yeux. Le locator, lui, **attend l'apparition du bouton** : après une
+ * soumission, l'étape change de forme, et une lecture instantanée du DOM verrait
+ * l'état d'avant.
+ *
+ * Deux appelants, et c'est pourquoi cette fonction est ici plutôt que dans un
+ * parcours : `e2e/onboarding.spec.ts`, dont c'est le sujet, et le parcours doré,
+ * qui referme le parcours d'un acheteur après l'avoir suivi.
+ */
+export const clearRemainingOnboardingSteps = async (page: Page): Promise<void> => {
+  const onCourse = (): boolean =>
+    new URL(page.url()).pathname.endsWith(ONBOARDING_SCREEN_PATH)
+
+  for (let guard = 0; guard < 8 && onCourse(); guard += 1) {
+    await page
+      .getByRole('button', { name: /^(Continuer|Passer cette étape)$/ })
+      .first()
+      .click()
+    await page.waitForLoadState('networkidle')
+  }
+}
+
+/**
  * Inscrit un compte, suit son lien de vérification, et le connecte.
  *
  * La connexion aboutit au **tableau de bord** (critère 1 de s08) : un parcours
  * qui a besoin de l'écran de compte le demande ensuite, explicitement.
+ *
+ * Depuis s40, elle referme d'abord le parcours d'intégration : sans cela, la
+ * racine mènerait au parcours et non au tableau de bord. Le parcours lui-même a
+ * son propre fichier, qui n'emprunte pas ce chemin.
  */
 export const aSignedInAccount = async (page: Page, prefix: string): Promise<string> => {
   const email = anEmail(prefix)
 
   await signUp(page, email)
   await page.goto(await linkSentTo(email))
+  await closeOnboardingCourse(email)
   await signIn(page, email)
   await expect(page).toHaveURL(urlOf('/'))
 

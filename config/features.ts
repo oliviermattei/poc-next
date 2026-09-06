@@ -14,6 +14,7 @@ import { jobsModule } from '@repo/module-jobs'
 import { marketingModule } from '@repo/module-marketing'
 import { mcpServerModule } from '@repo/module-mcp-server'
 import { notificationsModule } from '@repo/module-notifications'
+import { onboardingModule } from '@repo/module-onboarding'
 import { organizationsModule } from '@repo/module-organizations'
 import { rateLimitModule } from '@repo/module-rate-limit'
 import { storageModule } from '@repo/module-storage'
@@ -52,6 +53,7 @@ export const availableModules = [
   marketingModule,
   mcpServerModule,
   notificationsModule,
+  onboardingModule,
   organizationsModule,
   rateLimitModule,
   storageModule,
@@ -104,6 +106,7 @@ export const enabledModules = [
   'marketing',
   'mcp-server',
   'notifications',
+  'onboarding',
   'organizations',
   'rate-limit',
   'storage',

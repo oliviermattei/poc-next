@@ -20,6 +20,7 @@ import * as jobs from './jobs'
 import * as marketing from './marketing'
 import * as mcpServer from './mcp-server'
 import * as notifications from './notifications'
+import * as onboarding from './onboarding'
 import * as organizations from './organizations'
 import * as rateLimit from './rate-limit'
 import * as storage from './storage'
@@ -39,6 +40,7 @@ export const enabledModuleSchemas = [
   { id: 'marketing', schema: marketing },
   { id: 'mcp-server', schema: mcpServer },
   { id: 'notifications', schema: notifications },
+  { id: 'onboarding', schema: onboarding },
   { id: 'organizations', schema: organizations },
   { id: 'rate-limit', schema: rateLimit },
   { id: 'storage', schema: storage },

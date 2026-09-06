@@ -5,6 +5,7 @@ import type {
   DescribedSignInMethod,
 } from '@repo/module-auth'
 import { REVENUE_PERIODS, REVENUE_STATES, type BillingView } from '@repo/module-billing'
+import { courseOf } from '@repo/module-onboarding'
 import { permissionsOf } from '@repo/module-organizations'
 import { initialsOf } from '@repo/ui'
 
@@ -595,3 +596,25 @@ export const FIXTURE_ADMIN_ORGANIZATION_DETAIL = {
   organization: FIXTURE_ADMIN_ORGANIZATION,
   members: [{ userId: 'usr_1', email: FIXTURE_EMAIL, role: 'owner' }],
 } as const
+
+/**
+ * **Le parcours d'intégration que voit l'écran de s40 pendant ce rendu.**
+ *
+ * Trois étapes, et ce n'est pas de la générosité : elles portent les **trois**
+ * états du fil — franchie, en cours, à venir —, dont chacun ajoute un libellé
+ * au balayage, et une seule en laisserait deux dehors. L'étape en cours est
+ * facultative et non remplie, ce qui est la seule combinaison qui rende à la
+ * fois le bouton « passer » et l'action de l'étape.
+ *
+ * Le parcours est **dérivé** de la règle du module, jamais recopié : un
+ * littéral perdrait la première clé ajoutée à `OnboardingCourse`, et son état
+ * cesserait de correspondre à ce que la règle produit.
+ */
+export const FIXTURE_ONBOARDING_COURSE = courseOf(
+  [
+    { id: 'profile', required: true, fields: ['name', 'avatar'], satisfied: true },
+    { id: 'organization', required: false, fields: ['organization'], satisfied: false },
+    { id: 'offer', required: false, fields: ['offer'], satisfied: false },
+  ],
+  { clearedSteps: ['profile'], completedAt: null },
+)

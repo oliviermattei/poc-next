@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test'
 import {
   aSignedInAccount,
   anEmail,
+  closeOnboardingCourse,
   linkSentTo,
   PASSWORD,
   signIn,
@@ -138,6 +139,9 @@ test('une session révoquée depuis un autre appareil est refusée par le serveu
 
   await signUp(page, email)
   await page.goto(await linkSentTo(email))
+  // Ce parcours mesure la révocation de session, pas l'intégration (s40) : le
+  // parcours est refermé pour que la racine serve le tableau de bord.
+  await closeOnboardingCourse(email)
   await signIn(page, email)
   await expect(page).toHaveURL(urlOf('/'))
 
@@ -182,6 +186,8 @@ test('changer son mot de passe depuis l’écran révoque l’autre session', as
 
   await signUp(page, email)
   await page.goto(await linkSentTo(email))
+  // Ce parcours mesure le changement de mot de passe, pas l'intégration (s40).
+  await closeOnboardingCourse(email)
   await signIn(page, email)
   await expect(page).toHaveURL(urlOf('/'))
 

@@ -1,0 +1,21 @@
+{
+  "screen.title": "Bienvenue",
+  "screen.description": "Quelques étapes pour rendre votre espace utilisable.",
+  "screen.trailLabel": "Progression du parcours",
+  "screen.trailItem": "{step} : {state}",
+  "screen.position": "Étape {position} sur {total} — {detail}",
+  "screen.state.cleared": "franchie",
+  "screen.state.current": "en cours",
+  "screen.state.upcoming": "à venir",
+  "screen.continue": "Continuer",
+  "screen.skip": "Passer cette étape",
+  "screen.required": "Cette étape est obligatoire : renseignez-la pour continuer.",
+  "step.profile.title": "Votre profil",
+  "step.profile.description": "Choisissez le nom sous lequel on vous verra.",
+  "step.organization.title": "Votre organisation",
+  "step.organization.description": "Créez l’espace que vous partagerez avec votre équipe.",
+  "step.organization.action": "Créer une organisation",
+  "step.offer.title": "Votre offre",
+  "step.offer.description": "Choisissez l’offre qui vous convient, ou décidez plus tard.",
+  "step.offer.action": "Voir les offres"
+}

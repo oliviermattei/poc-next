@@ -79,6 +79,15 @@ import type { AvailableModuleId } from './features'
  * configuration coupée** — c'est-à-dire l'autre moitié de « prouver la garde
  * dans les deux configurations ».
  *
+ * `onboarding` les a rejoints en s40, et il apporte la garantie que la story
+ * vend : « module non activé, l'utilisateur atteint directement le tableau de
+ * bord après inscription ». Elle n'est vérifiée par **aucune exécution** tant
+ * qu'aucun profil ne le coupe — et le profil minimal la rend d'autant plus
+ * intéressante qu'il coupe aussi `organizations` et `billing`, c'est-à-dire
+ * deux des trois étapes. Ce que la recette balaie de lui : ses deux routes
+ * d'écriture, qui doivent répondre 404, et sa table `onboarding_progress`, qui
+ * ne doit pas exister sur une base vierge.
+ *
  * `pnpm test:minimal-profile` joue ce profil dans une **copie** du dépôt : il
  * n'est pas la configuration livrée, et éditer cette liste ne change rien à
  * l'application tant que la recette n'est pas lancée.
@@ -103,5 +112,6 @@ export const minimalProfile = {
     'jobs',
     'changelog',
     'analytics',
+    'onboarding',
   ],
 } as const satisfies ModuleProfileDeclaration
