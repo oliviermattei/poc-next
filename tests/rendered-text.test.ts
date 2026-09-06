@@ -825,7 +825,19 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       let paragraph: string[] = []
 
       const flush = (): void => {
-        for (const piece of paragraph.join('\n').split(/`([^`]+)`/)) {
+        /*
+         * Deux découpes, et la seconde est arrivée avec s54 : le code en ligne
+         * **et** le libellé d'un lien Markdown. Le rendu fait de
+         * `texte [libellé](/cible) suite` **trois** nœuds de texte, là où le
+         * paragraphe n'en est qu'un — sans cette découpe, un lien posé dans le
+         * contenu fait rougir ce fichier en citant les trois morceaux.
+         */
+        const pieces = paragraph
+          .join('\n')
+          .split(/`([^`]+)`/)
+          .flatMap((part) => part.split(/\[([^\]]*)\]\([^)]*\)/))
+
+        for (const piece of pieces) {
           const text = piece.trim()
 
           if (text !== '') {
@@ -892,7 +904,25 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           ]),
           ...docsCatalog.pages
             .filter((page) => page.locale === defaultLocale)
-            .flatMap((page) => [page.title, page.description, ...page.headings.map((h) => h.text)]),
+            .flatMap((page) => [
+              page.title,
+              page.description,
+              ...page.headings.map((h) => h.text),
+              /*
+               * **Le corps en texte simple** (s54). L'écran porte l'index de
+               * recherche, donc le corps de **toutes** les pages, et pas
+               * seulement celui de la page servie : l'index est ce qui permet
+               * de chercher ailleurs que sur la page qu'on lit. Il n'est pas
+               * rendu — la palette ne monte qu'à l'ouverture —, mais il
+               * traverse les props, et ce filet regarde les props.
+               *
+               * Ce que cela élargit, et il faut le dire : une chaîne posée dans
+               * le corps de **n'importe quelle** page devient acceptable sur cet
+               * écran, là où seule celle de la première l'était. C'est du
+               * contenu de fichier livré dans les deux cas.
+               */
+              page.text,
+            ]),
           ...docsBodyStrings(
             readFileSync(
               join(

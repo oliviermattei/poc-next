@@ -13,10 +13,12 @@ import {
 import type { ReactNode } from 'react'
 
 import { DOCS_PATH, docsPagePath, type DocsNavigationSection } from '../application/docs-catalog'
+import type { DocsSearchEntry } from '../application/docs-search'
 import type { DocsPage } from '../domain/docs-page'
 import { DOCS_KEYS } from '../domain/message-keys'
 import type { DocsIntl } from './docs-intl'
 import { DocsMobileSidebar } from './docs-mobile-sidebar'
+import { DocsSearch } from './docs-search'
 import { DocsSidebar } from './docs-sidebar'
 import { DocsToc } from './docs-toc'
 
@@ -53,12 +55,26 @@ export interface DocsPageViewProps {
    * disparaît de sa langue, une page de documentation se sert quand même.
    */
   readonly translated: boolean
+  /**
+   * L'index de recherche de la langue servie, **construit au build** (s54).
+   *
+   * Vide quand le module est coupé, et la palette disparaît alors avec lui —
+   * aucune ligne de cet écran ne nomme un module.
+   */
+  readonly search: readonly DocsSearchEntry[]
   readonly intl: DocsIntl
   /** Le corps compilé de la page. */
   readonly children: ReactNode
 }
 
-export function DocsPageView({ tree, page, translated, intl, children }: DocsPageViewProps) {
+export function DocsPageView({
+  tree,
+  page,
+  translated,
+  search,
+  intl,
+  children,
+}: DocsPageViewProps) {
   const section = tree.find((entry) => entry.section === page.section)
   /*
    * **Les `href` sont mis en forme ici, une fois.** La navigation latérale est
@@ -78,7 +94,23 @@ export function DocsPageView({ tree, page, translated, intl, children }: DocsPag
 
   return (
     <div className="grid min-w-0 gap-6 lg:grid-cols-[13rem_minmax(0,1fr)_11rem] lg:items-start lg:gap-8">
-      <div className="min-w-0 lg:col-start-1 lg:row-start-1">
+      <div className="flex min-w-0 flex-col gap-3 lg:col-start-1 lg:row-start-1">
+        {/* La recherche au-dessus de l'arbre, dans les deux dispositions :
+            c'est la même colonne, et elle est la première chose qu'on lit. Les
+            `href` sont mis en forme ici, comme ceux de l'arbre. */}
+        <DocsSearch
+          entries={search.map((entry) => ({ ...entry, href: intl.path(entry.href) }))}
+          labels={{
+            open: intl.t(DOCS_KEYS.searchOpen),
+            title: intl.t(DOCS_KEYS.searchTitle),
+            description: intl.t(DOCS_KEYS.searchDescription),
+            placeholder: intl.t(DOCS_KEYS.searchPlaceholder),
+            empty: intl.t(DOCS_KEYS.searchEmpty),
+            results: intl.t(DOCS_KEYS.searchResults),
+            close: intl.t(DOCS_KEYS.searchClose),
+            untranslated: intl.t(DOCS_KEYS.searchUntranslated),
+          }}
+        />
         {/* Sous `lg` : un déclencheur qui ouvre la navigation dans un `Sheet`.
             À partir de `lg` : la colonne, dans le flux. */}
         <DocsMobileSidebar

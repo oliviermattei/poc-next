@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { DocsPage, DocsSection } from '../domain/docs-page'
+import { InvalidDocsPageError, type DocsPage, type DocsSection } from '../domain/docs-page'
 import {
   DOCS_PATH,
   EMPTY_DOCS_CATALOG,
@@ -23,6 +23,7 @@ const page = (
   order: number,
   locale = 'fr',
   title = `${section}/${slug}`,
+  links: readonly string[] = [],
 ): DocsPage => ({
   section,
   slug,
@@ -31,6 +32,8 @@ const page = (
   description: 'x',
   order,
   headings: [],
+  links,
+  text: '',
 })
 
 const section = (id: string, order: number, locale = 'fr', title = id): DocsSection => ({
@@ -192,5 +195,104 @@ describe('le repli i18n — l’inverse de celui du blog', () => {
 
   it('désigne la première page de l’arbre, celle vers laquelle `/docs` mène', () => {
     expect(firstDocsPage(bilingual, 'fr')?.slug).toBe('traduite')
+  })
+})
+
+/* ------------------------------------------------------------------------- *
+ * La passe croisée (s54).
+ *
+ * **Ce n'est pas le premier refus qui traverse deux fichiers**, et les cas
+ * ci-dessus le montrent : « une section sans manifeste » et « une page écrite
+ * seulement dans une traduction » (s30) confrontent déjà une page à d'autres
+ * fichiers. Ce qui est neuf est la **nature** de la relation — ces deux-là
+ * cherchent un fichier que les coordonnées de la page désignent, là où un lien
+ * est une référence **écrite par l'auteur**, de cible arbitraire, résolue
+ * contre le catalogue entier.
+ *
+ * Elle porte sur le **catalogue**, pas sur le disque : les pages sont déjà lues
+ * et validées, et un second balayage divergerait du premier au premier
+ * changement de règle.
+ * ------------------------------------------------------------------------- */
+
+describe('les liens internes, croisés sur l’ensemble du contenu', () => {
+  const linking = (from: readonly string[], locale = 'fr') =>
+    catalog(
+      [
+        page('prise-en-main', 'installer', 1, locale, 'Installer', from),
+        ...(locale === 'fr' ? [] : [page('prise-en-main', 'installer', 1)]),
+        page('reference', 'modules', 1),
+      ],
+      [section('prise-en-main', 1), section('reference', 2)],
+    )
+
+  it('accepte un lien vers une page que l’arbre porte', () => {
+    expect(() => linking(['/docs/reference/modules'])).not.toThrow()
+  })
+
+  it('refuse un lien vers une page que l’arbre ne porte pas', () => {
+    expect(() => linking(['/docs/reference/inexistante'])).toThrow(InvalidDocsPageError)
+    // Une section entière qui n'existe pas est le même défaut, pas un autre.
+    expect(() => linking(['/docs/inconnue/modules'])).toThrow(InvalidDocsPageError)
+  })
+
+  it('accepte l’entrée de la documentation elle-même', () => {
+    // `/docs` ne désigne aucune page : il redirige vers la première. Le
+    // refuser interdirait le lien de retour le plus naturel du contenu.
+    expect(() => linking([DOCS_PATH])).not.toThrow()
+  })
+
+  it('ne juge pas un lien qui sort de la documentation', () => {
+    /*
+     * `/pricing` appartient à un module que la configuration peut couper, et ce
+     * catalogue n'en sait rien. Refuser ici ferait échouer le build d'un projet
+     * dont la page existe, accepter en silence est la seule réponse honnête —
+     * et c'est nommé dans le commentaire de la passe, pas tu.
+     */
+    expect(() => linking(['/pricing'])).not.toThrow()
+  })
+
+  it('croise une traduction avec l’arbre canonique, pas avec sa seule langue', () => {
+    /*
+     * **La question que la recherche laissait ouverte, tranchée** : une page
+     * anglaise qui cite une page écrite en français seulement pointe vers une
+     * adresse qui **répond** — le repli de s30 la sert. Le lien n'est donc pas
+     * mort, et le croiser avec les seules pages anglaises le déclarerait mort à
+     * tort. L'arbre servi est celui de la langue par défaut : c'est lui qui
+     * décide, dans toutes les langues.
+     */
+    expect(() => linking(['/docs/reference/modules'], 'en')).not.toThrow()
+  })
+
+  it('nomme le fichier fautif **et** la cible manquante', () => {
+    /*
+     * Les deux bouts, et le critère l'exige. Un refus qui ne nomme que le
+     * fichier envoie relire toute la page ; un refus qui ne nomme que la cible
+     * envoie la chercher dans tout le contenu.
+     */
+    let message = ''
+
+    try {
+      linking(['/docs/reference/inexistante'])
+    } catch (error) {
+      message = (error as Error).message
+    }
+
+    expect(message).toContain('prise-en-main/installer.mdx')
+    expect(message).toContain('/docs/reference/inexistante')
+  })
+
+  it('cite la cible telle qu’elle est écrite, fragment compris', () => {
+    // Le fragment n'est pas jugé — le critère parle d'une page inexistante —,
+    // mais l'auteur doit retrouver dans son fichier la chaîne que le refus
+    // affiche.
+    let message = ''
+
+    try {
+      linking(['/docs/reference/inexistante#une-ancre'])
+    } catch (error) {
+      message = (error as Error).message
+    }
+
+    expect(message).toContain('/docs/reference/inexistante#une-ancre')
   })
 })

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -150,6 +150,49 @@ describe('transmission de `DATABASE_URL` jusqu’à l’application', () => {
     }
 
     expect(turbo.globalDependencies ?? []).toContain('.env')
+  })
+
+  it('turbo compte les dossiers de contenu lus au build dans la clé de cache', async () => {
+    /*
+     * **Mesuré à la revue de s54** : un lien mort ajouté dans `content/`, puis
+     * `pnpm build` — sortie 0, `FULL TURBO`. `turbo run build --force` refusait
+     * bien, en nommant les deux bouts. Le contenu vit hors de `apps/web` et
+     * n'était dans aucune dépendance globale : une modification de contenu ne
+     * changeait pas l'empreinte de la tâche, donc aucun refus de build ne
+     * pouvait rougir sur un cache chaud — celui de s54 comme ceux de s29 et s30
+     * sur le frontmatter. La CI n'était pas concernée (elle ne garde pas le
+     * cache), un poste l'était entièrement.
+     *
+     * **Les racines sont dérivées du code qui les lit**, jamais recopiées : une
+     * quatrième source de contenu (`lib/<quelque-chose>.ts` visant
+     * `../../<racine>/…`) entre dans la mesure sans qu'on l'y inscrive. Le
+     * balayage vide est refusé pour la même raison qu'ailleurs dans ce dépôt :
+     * zéro racine trouvée rendrait ce cas vert en ne vérifiant rien.
+     */
+    const libDirectory = fileURLToPath(new URL('../apps/web/lib/', import.meta.url))
+    const roots = new Set<string>()
+
+    for (const file of await readdir(libDirectory)) {
+      const source = await readFile(join(libDirectory, file), 'utf8')
+
+      for (const [, root] of source.matchAll(/'\.\.\/\.\.\/([^'/]+)\/[^']*'/g)) {
+        // `..` vient des imports remontant plus haut (`'../../../config/i18n'`) :
+        // ce n'est pas une racine de contenu, c'est le chemin du module voisin.
+        if (root !== undefined && !root.startsWith('.')) {
+          roots.add(root)
+        }
+      }
+    }
+
+    const turbo = JSON.parse(await readFile(TURBO_CONFIG_PATH, 'utf8')) as {
+      globalDependencies?: string[]
+    }
+
+    expect(roots.size, [...roots].join(', ')).toBeGreaterThan(0)
+
+    for (const root of roots) {
+      expect(turbo.globalDependencies ?? [], root).toContain(`${root}/**`)
+    }
   })
 })
 

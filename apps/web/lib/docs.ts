@@ -5,9 +5,11 @@ import {
   EMPTY_DOCS_CATALOG,
   docsModule,
   provideDocsContent,
+  docsSearchIndex,
   readDocsDirectory,
   resolveDocsCatalog,
   type DocsCatalog,
+  type DocsSearchEntry,
 } from '@repo/module-docs'
 
 import { appLocales, defaultLocale } from '../../../config/i18n'
@@ -83,6 +85,33 @@ export const docsCatalog: DocsCatalog = moduleRegistry.moduleIds.includes(docsMo
       defaultLocale,
     })
   : EMPTY_DOCS_CATALOG
+
+/**
+ * L'index de recherche, **une fois par langue servie, au chargement du module**.
+ *
+ * C'est ce que « construit au build et servi statiquement » veut dire ici : la
+ * même lecture qui fait échouer `pnpm build` sur un frontmatter invalide
+ * construit l'index, et c'est aussi ici que son **plafond de taille** refuse.
+ * Construit à la requête, il serait recalculé pour chaque visiteur ; servi par
+ * une route, il tomberait sous la limitation de débit d'une route publique
+ * (ADR 050), ce qui est absurde pour une frappe au clavier.
+ *
+ * Module coupé, le catalogue est vide : chaque langue rend un index vide, et
+ * l'écran n'affiche aucune palette.
+ */
+export const docsSearchIndexes: Readonly<Record<string, readonly DocsSearchEntry[]>> =
+  Object.fromEntries(
+    localeRouting.locales.map((locale) => [locale, docsSearchIndex(docsCatalog, locale)]),
+  )
+
+/**
+ * L'index de la langue servie, ou celui de la langue par défaut.
+ *
+ * Le repli n'invente rien : `localeRouting.locales` porte exactement les langues
+ * servies, et une locale hors de cette liste n'atteint pas cet écran.
+ */
+export const docsSearchIndexFor = (locale: string): readonly DocsSearchEntry[] =>
+  docsSearchIndexes[locale] ?? []
 
 /**
  * Donne au module son catalogue.

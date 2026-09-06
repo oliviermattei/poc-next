@@ -11,13 +11,16 @@ import { describe, expect, it } from 'vitest'
 import { DocsPageView, docsProseComponents } from '@repo/module-docs/presentation'
 
 import {
+  DOCS_KEYS,
   DOCS_PATH,
+  DOCS_SEARCH_INDEX_MAX_BYTES,
   EMPTY_DOCS_CATALOG,
   InvalidDocsPageError,
   docsNavigationTree,
   docsPagePath,
   docsPageView,
   docsPublicUrls,
+  docsSearchIndex,
   documentHeadings,
   provideDocsContent,
   readDocsDirectory,
@@ -167,6 +170,69 @@ describe('la documentation livrée avec le dépôt', () => {
     expect(french.some((page) => !english.has(`${page.section}/${page.slug}`))).toBe(true)
   })
 
+  it('se fait des liens à lui-même, sans quoi la passe croisée ne balaie rien', () => {
+    /*
+     * **La garde contre l'inertie de la passe croisée** (s54). Un contenu sans
+     * aucun lien interne rendrait la validation verte en ne comparant rien —
+     * exactement le « balayage vide » que `pnpm test:minimal-profile` et
+     * `pnpm test:contrast` refusent chacune de leur côté.
+     *
+     * **Dans les deux langues, et la traversée est vérifiée, plus affirmée.**
+     * La première rédaction disait « c'est le seul endroit du dépôt où la règle
+     * *on croise avec l'arbre canonique, pas avec sa seule langue* porte sur du
+     * contenu réel » : une exhaustivité que rien ne dérive, écrite sur un
+     * contenu que la story venait elle-même de poser — ce que la règle racine
+     * « ne jamais revendiquer l'exhaustivité » interdit, et ce que la revue de
+     * s54 a relevé ailleurs dans ce même diff. Le cas mesure donc ce qu'il
+     * nommait : qu'un lien écrit dans une langue **autre** que celle par défaut
+     * vise une page que sa propre langue ne porte pas. Il ne dit rien de ce qui
+     * existe ailleurs dans le dépôt.
+     *
+     * Traduire la page ainsi visée fait rougir ce cas : il faudra alors un
+     * autre lien qui traverse les langues, sans quoi plus rien n'exercerait le
+     * croisement sur du contenu réel.
+     */
+    const internal = catalog.pages.flatMap((page) =>
+      page.links.filter((link) => link.startsWith(`${DOCS_PATH}/`)),
+    )
+
+    expect(internal.length).toBeGreaterThan(2)
+    expect(new Set(catalog.pages.filter((page) => page.links.length > 0).map((page) => page.locale)))
+      .toEqual(new Set(LOCALES))
+
+    const crossing = catalog.pages
+      .filter((page) => page.locale !== 'fr')
+      .flatMap((page) => {
+        const own = new Set(
+          catalog.pages
+            .filter((other) => other.locale === page.locale)
+            .map((other) => docsPagePath(other.section, other.slug)),
+        )
+
+        return page.links.filter(
+          (link) => link.startsWith(`${DOCS_PATH}/`) && !own.has(link.split('#')[0] ?? ''),
+        )
+      })
+
+    expect(crossing.length, crossing.join(', ')).toBeGreaterThan(0)
+  })
+
+  it('refuse un lien mort déposé dans le contenu, en nommant les deux bouts', () => {
+    /*
+     * La passe croisée mesurée **sur le disque livré**, pas sur une fixture : ce
+     * qui fait échouer `pnpm build` est la lecture du dossier de contenu par le
+     * point de composition, et c'est cette chaîne-là qui doit refuser.
+     */
+    const directory = scratch({
+      'fr/guide/section.json': '{"title": "Guide", "order": 1}',
+      'fr/guide/a.mdx': `${PAGE('A', 1)}\nVoir [ailleurs](/docs/guide/nulle-part).\n`,
+    })
+
+    expect(() => resolveDocsCatalog({ ...tree(directory, ['fr']), defaultLocale: 'fr' })).toThrow(
+      /guide\/a\.mdx.*\/docs\/guide\/nulle-part/s,
+    )
+  })
+
   it('ne laisse aucun `loading.tsx` sur le chemin de la documentation', () => {
     /*
      * Mesuré en s29 sur trois placements : la coquille est vidée avant que la
@@ -227,6 +293,7 @@ const renderPage = async (locale: string, section: string, slug: string): Promis
       tree: docsNavigationTree(catalog, locale),
       page: resolved.page,
       translated: resolved.translated,
+      search: docsSearchIndex(catalog, locale),
       intl,
       children: loaded.default({ components: docsProseComponents }),
     }) as ReactElement,
@@ -395,5 +462,80 @@ describe('ce que la documentation donne à indexer', () => {
 
   it('n’annonce rien quand le module est coupé', () => {
     expect(contribute(false)).toEqual([])
+  })
+})
+
+describe('la palette de recherche', () => {
+  const FIRST = shipped[0]?.pages[0]
+
+  it('tient sous le plafond de l’index, dans chaque langue servie', () => {
+    /*
+     * **Le plafond, mesuré sur le contenu livré** (s54). `docsSearchIndex` le
+     * refuse au-delà — donc pendant `pnpm build` —, mais un refus qu'aucun
+     * contenu réel n'approche ne dit rien de ce que le visiteur télécharge. Ce
+     * cas journalise la mesure et garde le balayage non vide : un index sans
+     * entrée passerait tous les plafonds du monde.
+     */
+    for (const locale of LOCALES) {
+      const index = docsSearchIndex(catalog, locale)
+      const bytes = new TextEncoder().encode(JSON.stringify(index)).length
+
+      expect(index.length, locale).toBeGreaterThan(1)
+      expect(bytes, `${locale} : ${bytes} octets`).toBeLessThanOrEqual(DOCS_SEARCH_INDEX_MAX_BYTES)
+    }
+  })
+
+  it('propose la recherche quand la documentation porte des pages', async () => {
+    const html = await renderPage('fr', FIRST?.section ?? '', FIRST?.slug ?? '')
+
+    expect(html).toContain(DOCS_KEYS.searchOpen)
+  })
+
+  it('ne propose rien quand l’index est vide', () => {
+    /*
+     * **Le critère 5** : module coupé, aucun écran de recherche. La décision se
+     * lit sur l'index — une **donnée** —, jamais sur l'identifiant d'un module.
+     * Sans ce cas, une palette rendue sans condition passerait le précédent.
+     */
+    const resolved = docsPageView(catalog, {
+      locale: 'fr',
+      section: FIRST?.section ?? '',
+      slug: FIRST?.slug ?? '',
+    })
+
+    const html = renderToStaticMarkup(
+      DocsPageView({
+        tree: shipped,
+        page: resolved?.page as never,
+        translated: true,
+        search: [],
+        intl,
+        children: null,
+      }) as ReactElement,
+    )
+
+    expect(html).not.toContain(DOCS_KEYS.searchOpen)
+  })
+
+  it('n’émet aucun attribut `style` : la palette ne se rend pas côté serveur', async () => {
+    /*
+     * `cmdk` pose un attribut `style` en ligne sur son étiquette masquée, et
+     * `style-src-attr` est la seule directive CSP qui ne connaisse pas les
+     * nonces (s45). Monté dans un dialogue, il n'existe qu'après ouverture,
+     * donc dans le DOM du navigateur — jamais dans le HTML servi.
+     *
+     * **Ce que ce cas attrape** : la palette rendue dans le **flux** de la page
+     * plutôt que dans un dialogue. Mutation posée, il rougit.
+     *
+     * **Ce qu'il n'attrape pas, et c'est mesuré** : un dialogue ouvert dès le
+     * rendu serveur. `react-dom/server` ne rend pas les portails, si bien que
+     * le contenu du dialogue n'apparaît dans aucun balisage, ouvert ou fermé —
+     * mutation posée sur l'état initial, la suite est restée verte. Ce cas-là
+     * ne se voit que dans un navigateur : `e2e/docs.spec.ts` ouvre la palette
+     * et compte les violations de la console.
+     */
+    const html = await renderPage('fr', FIRST?.section ?? '', FIRST?.slug ?? '')
+
+    expect(html).not.toMatch(/\sstyle="/)
   })
 })

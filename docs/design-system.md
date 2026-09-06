@@ -195,11 +195,11 @@ règles que personne n'a exercées.
 Tous dans `packages/ui`. Un module compose avec cette liste ; il ne crée pas ses propres primitives.
 
 > **Ce tableau est un catalogue d'intention, pas un inventaire — mesuré le 06/09.**
-> Sur les 32 composants nommés ci-dessous, **16 n'existent pas** dans
+> Sur les 32 composants nommés ci-dessous, **15 n'existent pas** dans
 > `packages/ui/src` : `Select`, `RadioGroup`, `Switch`, `Form`, `Skeleton`,
 > `Dialog`, `Popover`, `Tooltip`, `AlertDialog`, `Tabs`, `Table`, `DataTable`,
-> `Command`, `Progress`, `ScrollArea`, `Toaster`. Composer avec l'un d'eux ne
-> compile pas.
+> `Progress`, `ScrollArea`, `Toaster`. Composer avec l'un d'eux ne
+> compile pas. `Command` en est sorti le 06/09 : s54 l'a livré.
 >
 > La liste ci-dessus est **datée et mesurée**, jamais à recopier : elle vieillit
 > dès qu'une story en livre un. La commande qui la refait est
