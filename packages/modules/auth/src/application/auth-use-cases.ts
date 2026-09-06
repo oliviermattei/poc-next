@@ -23,6 +23,8 @@ import {
   tokenIdentifierPrefix,
   type TokenPurpose,
 } from '../domain/one-time-token'
+import { DATA_EXPORT_DOWNLOAD_PATH, DATA_EXPORT_EMAIL_TEMPLATE } from '../domain/data-export'
+import { createDataExportUseCases, type DataExportUseCases } from './data-export-use-cases'
 import type { AuthDependencies, PasskeyRevocationOutcome, UnlinkOutcome } from './ports'
 
 /**
@@ -64,6 +66,8 @@ export const AUTH_EMAIL_TEMPLATES = {
   accountDeleted: 'account-deleted',
   /** s34 : la suppression demandée qui n'a pas pu aboutir, et pourquoi. */
   accountDeletionBlocked: 'account-deletion-blocked',
+  /** s35 : le lien de téléchargement d'une archive d'export. */
+  dataExport: DATA_EXPORT_EMAIL_TEMPLATE,
 } as const
 
 export interface IssuedToken {
@@ -250,6 +254,13 @@ export interface AuthUseCases {
   runAccountPurge(input: { readonly userId: string } & RecipientLocale): Promise<void>
   purgeAccount(scope: ModuleScope): Promise<void>
   exportAccount(scope: ModuleScope): Promise<ModuleExportPayload>
+  /**
+   * **L'export de ses données** (s35), ou `null` quand rien ne le câble.
+   *
+   * `null` plutôt qu'une surface qui lève : les routes le lisent pour répondre
+   * 404 — une fonctionnalité non montée n'existe pas, elle ne répond pas 500.
+   */
+  readonly dataExport: DataExportUseCases | null
   log: AuthDependencies['log']
 }
 
@@ -319,6 +330,31 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
 
   /** Une URL absolue vers un **écran** de l'application. */
   const screenUrl = (path: string): string => new URL(path, appUrl).toString()
+
+  /**
+   * L'export de ses données (s35), **monté seulement s'il est câblé**.
+   *
+   * Le module ne sait pas construire une archive : elle traverse tous les
+   * modules activés, et seul le registre sait lesquels le sont. Sans ce
+   * câblage, les routes d'export répondent 404 plutôt que de servir à moitié.
+   */
+  const dataExport =
+    dependencies.dataExport === undefined
+      ? null
+      : createDataExportUseCases({
+          dataExport: dependencies.dataExport,
+          jobs: dependencies.jobs,
+          users,
+          mailer,
+          log,
+          emailLocaleFor,
+          downloadUrl: (token) =>
+            new URL(
+              `${MODULE_ROUTE_PREFIX}${DATA_EXPORT_DOWNLOAD_PATH}?token=${encodeURIComponent(token)}`,
+              appUrl,
+            ).toString(),
+          now,
+        })
 
   const issueToken: AuthUseCases['issueToken'] = async ({ purpose, value, ttlSeconds }) => {
     const token = tokenFactory.generate()
@@ -1017,6 +1053,21 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
     },
 
     purgeAccount: async (scope) => {
+      /**
+       * **Les demandes d'export du périmètre partent d'abord**, et pour les
+       * deux formes de périmètre.
+       *
+       * La cascade de `requested_by` emporte déjà les demandes d'un compte
+       * effacé ; elle n'emporte pas celles d'une **organisation** effacée, dont
+       * le périmètre n'est lié à aucune clé étrangère (ADR 018 : `auth` ne
+       * référence pas un module qu'il ne requiert pas). L'archive d'une
+       * organisation supprimée survivrait donc à sa suppression, et c'est la
+       * forme exacte de trou que s34 a fermée trois fois.
+       */
+      if (dataExport !== null) {
+        await dataExport.purgeDataExports(scope)
+      }
+
       if (scope.kind !== 'user') {
         return
       }
@@ -1046,8 +1097,13 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
     },
 
     exportAccount: async (scope) => {
+      // La trace des demandes d'export **est** une donnée personnelle : elle
+      // dit qui a demandé quoi, et quand. Elle est donc dans l'archive, et la
+      // catégorie `data-export` du contrat n'est pas une exception.
+      const dataExports = dataExport === null ? [] : await dataExport.listDataExportTraces(scope)
+
       if (scope.kind !== 'user') {
-        return { account: null }
+        return { account: null, dataExports }
       }
 
       const user = await users.findById(scope.userId)
@@ -1058,7 +1114,10 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
             ? null
             : { id: user.id, email: user.email, emailVerified: user.emailVerified },
         activeSessions: await sessions.countForUser(scope.userId),
+        dataExports,
       }
     },
+
+    dataExport,
   }
 }

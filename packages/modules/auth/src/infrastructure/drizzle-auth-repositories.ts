@@ -48,7 +48,12 @@ const escapeLikePattern = (value: string): string =>
 
 export type AuthDatabase = Pick<
   PgDatabase<PgQueryResultHKT>,
-  'select' | 'insert' | 'update' | 'delete'
+  // `execute` a rejoint la liste en s35 : la revendication d'une demande
+  // d'export prend un verrou consultatif (`pg_advisory_xact_lock`), qui ne
+  // s'appelle pas autrement. Il n'ouvre aucune lecture non périmétrée — ce
+  // module n'a pas de périmètre organisationnel à tenir, contrairement à
+  // `organizations`, où `execute` est refusé partout sauf dans un fichier.
+  'select' | 'insert' | 'update' | 'delete' | 'execute'
 > &
   AuthTransactions
 
@@ -66,7 +71,10 @@ export type AuthDatabase = Pick<
 export interface AuthTransactions {
   transaction<TResult>(
     run: (
-      transaction: Pick<PgDatabase<PgQueryResultHKT>, 'select' | 'insert' | 'update' | 'delete'>,
+      transaction: Pick<
+        PgDatabase<PgQueryResultHKT>,
+        'select' | 'insert' | 'update' | 'delete' | 'execute'
+      >,
     ) => Promise<TResult>,
   ): Promise<TResult>
 }

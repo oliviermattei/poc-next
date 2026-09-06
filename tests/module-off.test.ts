@@ -91,7 +91,8 @@ describe('un module non activé', () => {
     const purged = await purgeModules(registry, scope)
 
     expect(purged).toEqual({ ok: true, purged: ['demo-enabled'] })
-    expect(Object.keys(exported)).toEqual(['demo-enabled'])
+    expect(exported.ok).toBe(true)
+    expect(Object.keys(exported.ok ? exported.payloads : {})).toEqual(['demo-enabled'])
 
     const items = await demoItemUseCases.listDemoItems()
     const notes = await demoNoteUseCases.listDemoNotes()

@@ -40,10 +40,11 @@ import { appRateLimiter } from './rate-limit'
  * | route de rappel | montée, gardée par la signature | 404 | **404, elle n'existe pas** |
  * | démarrage | valide les clés | valide l'opt-in | **le journalise** |
  *
- * Le repli du module coupé n'est pas un confort : la suppression de compte
- * (s34) et l'export (s35) sont des obligations légales du socle et orchestrent
- * leurs traitements par tâche. Sans repli, couper les jobs supprimerait un
- * droit.
+ * Le repli du module coupé n'est pas un confort : l'export de ses données
+ * (s35) est une obligation légale du socle et orchestre sa construction par
+ * tâche — `auth.data-export`. Sans repli, couper les jobs supprimerait un
+ * droit ; `tests/data-export.test.ts` mesure les deux régimes du module,
+ * `tests/jobs.test.ts` celui de ce fichier.
  */
 
 /** Le module est-il activé ? La configuration décide, pas un `if` épars. */
@@ -118,9 +119,29 @@ const dispatch = async (
 /**
  * **Le repli du module coupé** : l'émission s'exécute dans la requête appelante.
  *
- * Le précédent existe et il est exécuté : `purgeModules` et `exportModules` sont
- * synchrones depuis s03. Ce qui est ajouté ici, c'est que le repli **borne son
- * coût** — une seule tentative, sans reprise et sans attente : la requête d'un
+ * **Le précédent qu'annonçait s33 n'existait pas** — et il existe maintenant.
+ * Cette phrase promettait en s33 que « `purgeModules` et `exportModules` sont
+ * synchrones depuis s03, et exécutées » ; à l'écriture de s33, ni l'une ni
+ * l'autre n'avait d'appelant hors des tests. Les deux clés sont branchées
+ * depuis :
+ *
+ * - `purgeModules` par **s34**, en deux points de composition — la suppression
+ *   de compte (`lib/auth.ts`, `purgeScope`) et celle d'une organisation
+ *   (`lib/organizations.ts`). **Deux appelants, un par périmètre du contrat** :
+ *   en ajouter un troisième pour le même périmètre purgerait deux fois ;
+ * - `exportModules` par **s35**, à travers `buildDataExportArchive`
+ *   (`lib/auth.ts`, `collectArchive`).
+ *
+ * Le balayage qui le dit : `purgeModules|exportModules` sur `apps/` et
+ * `packages/`, hors tests.
+ *
+ * Et c'est s35 qui **dépend** de ce repli : la construction d'une archive est
+ * émise comme tâche (`auth.data-export`), donc module `jobs` coupé, elle
+ * s'exécute ici, dans la requête appelante — un export est une obligation
+ * légale du socle, il ne disparaît pas avec un module optionnel.
+ *
+ * Ce que ce repli ajoute, c'est qu'il **borne son coût** — une seule
+ * tentative, sans reprise et sans attente : la requête d'un
  * utilisateur n'a pas à payer trois tentatives et trente secondes de recul pour
  * une tâche que le fournisseur aurait reprise hors ligne. C'est la réserve que
  * la revue de s32 a posée sur sa boucle d'émission synchrone : un repli ne doit

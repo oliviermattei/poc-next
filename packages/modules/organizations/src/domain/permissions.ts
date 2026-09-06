@@ -74,6 +74,21 @@ export const ORGANIZATION_ACTION = {
    * la construction de la matrice, pas par une seconde énumération.
    */
   delete: 'organization.delete',
+  /**
+   * **L'export des données de l'organisation** (s35, critère 5).
+   *
+   * Réservé au propriétaire, et il est ici pour la raison exacte qui y a mis la
+   * facturation : la matrice rôle × action s'écrit **une fois**, et ce module
+   * est celui qui possède les rôles. L'écrire dans le point de composition —
+   * ou dans `auth`, qui sert la route — la ferait exister à deux endroits, et
+   * le second serait celui qui ment (revue de s17, F4).
+   *
+   * `admin` ne l'a pas : l'archive contient les données de **tous** les
+   * membres, y compris celles d'un `owner`, et le critère 5 dit « réservé à un
+   * owner ». Un `admin` administre l'organisation ; il n'en emporte pas la
+   * copie complète.
+   */
+  exportData: 'organization.export',
 } as const
 
 export type OrganizationAction = (typeof ORGANIZATION_ACTION)[keyof typeof ORGANIZATION_ACTION]
@@ -81,8 +96,14 @@ export type OrganizationAction = (typeof ORGANIZATION_ACTION)[keyof typeof ORGAN
 /**
  * La même liste, en tableau — **dérivée**, jamais recopiée.
  *
- * Deux écritures des mêmes six identifiants divergeraient, et la première à
+ * Deux écritures des mêmes identifiants divergeraient, et la première à
  * diverger serait celle que la matrice n'énumère pas.
+ *
+ * **Aucun nombre ici** : cette phrase a dit « six » alors qu'il y en avait huit,
+ * puis neuf. Un compte écrit à côté d'une liste vieillit à chaque ajout sans
+ * que rien ne rougisse — la liste **est** le compte, et
+ * `organization-rules.test.ts` confronte `ORGANIZATION_ACTIONS` à la matrice
+ * qu'il énumère à la main.
  */
 export const ORGANIZATION_ACTIONS = Object.values(
   ORGANIZATION_ACTION,

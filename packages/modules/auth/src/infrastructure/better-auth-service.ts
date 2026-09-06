@@ -14,11 +14,13 @@ import { twoFactor } from 'better-auth/plugins/two-factor'
 import { passkey } from '@better-auth/passkey'
 import { createOTP } from '@better-auth/utils/otp'
 import { symmetricDecrypt } from 'better-auth/crypto'
-import { createHmac } from 'node:crypto'
+import { createHmac, randomUUID } from 'node:crypto'
 
 import { createAuthUseCases } from '../application/auth-use-cases'
+import { createDataExportTokenSigner } from './data-export-signer'
+import { createDrizzleDataExportRepository } from './drizzle-data-export-repository'
 import type { AuthService } from '../application/auth-service'
-import type { AuthDependencies, SecurityLog } from '../application/ports'
+import type { AuthDependencies, DataExportDependencies, SecurityLog } from '../application/ports'
 import { defaultAuthPolicy, type AuthPolicy } from '../domain/auth-policy'
 import {
   LOCAL_OAUTH_AUTHORIZE_PATH,
@@ -177,7 +179,24 @@ export interface ConfigureAuthOptions {
    * n'aurait lu que cette surface aurait cru à un repli qui n'existe pas ici.
    */
   readonly jobs?: Jobs
+  /**
+   * **Ce que l'export de données ne peut pas se procurer** (s35).
+   *
+   * Absent, les deux routes d'export répondent 404 : la fonctionnalité n'est
+   * pas montée à moitié. Le module possède sa table et sa signature ; il ne
+   * possède ni le registre — donc pas l'archive —, ni l'appartenance à une
+   * organisation. Le port de tâches, lui, est celui du module : `jobs`
+   * ci-dessus, un seul pour l'effacement (s34) et pour l'export (s35).
+   */
+  readonly dataExport?: AppDataExportOptions
 }
+
+/** Ce que le point de composition apporte à l'export (s35). */
+export type AppDataExportOptions = Pick<
+  DataExportDependencies,
+  'collectArchive' | 'authorizeOrganization'
+> &
+  Partial<Pick<DataExportDependencies, 'requests' | 'signer' | 'generateId'>>
 
 /** Un fournisseur réel et ses identifiants. Les deux, ou rien. */
 export interface OAuthProviderCredentials {
@@ -345,6 +364,27 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
           },
         }),
     },
+    /**
+     * **L'export de ses données** (s35) — monté seulement si l'application le
+     * câble, parce qu'il traverse des modules que `auth` ne connaît pas.
+     *
+     * Ce qui est construit ici est ce qui appartient à ce module : le magasin
+     * sur sa table, et la signature du lien, qui dérive du **secret de
+     * l'application** — aucune variable d'environnement de plus. Ce qui vient
+     * du point de composition est ce que `auth` ne peut pas savoir : comment
+     * construire l'archive de tous les modules activés, qui a le droit
+     * d'exporter une organisation, et par où passent les tâches de fond.
+     */
+    ...(options.dataExport === undefined
+      ? {}
+      : {
+          dataExport: {
+            requests: createDrizzleDataExportRepository({ db: options.db }),
+            signer: createDataExportTokenSigner(options.secret),
+            generateId: () => `dex_${randomUUID()}`,
+            ...options.dataExport,
+          },
+        }),
   }
 
   const useCases = createAuthUseCases(dependencies)

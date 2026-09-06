@@ -12,14 +12,14 @@ import {
   type DescribedSession,
   type DescribedSignInMethod,
 } from '@repo/module-auth'
-import { purgeModules, type ModuleSession } from '@repo/core'
+import { buildDataExportArchive, purgeModules, type ModuleSession } from '@repo/core'
 import { headers } from 'next/headers'
 import { after } from 'next/server'
 
 import { resolveAuthConfig } from './auth-config'
-import { moduleRegistry } from './module-registry'
 import { LOCALE_COOKIE, localeRouting } from './locale-routing'
 import { createAppMailer } from './mailer'
+import { moduleRegistry } from './module-registry'
 import { resolveOAuthConfig } from './oauth-config'
 
 /**
@@ -156,6 +156,31 @@ export function appAuth(options: AppAuthOptions = {}): AuthService {
        */
       jobs: {
         emit: async (emission) => await (await import('./jobs')).appJobs().emit(emission),
+      },
+      /**
+       * **L'export de ses données** (s35) — les deux choses que le module ne
+       * peut pas se procurer.
+       *
+       * `collectArchive` traverse **tous les modules activés** : seul le
+       * registre sait lesquels le sont, et `@repo/module-auth` ne peut pas
+       * l'importer sans inverser la dépendance qui fait toute la modularité.
+       * C'est le pendant exact de `purgeScope` ci-dessus — deux clés du contrat
+       * que le socle déclarait et que rien n'appelait, branchées ici toutes les
+       * deux.
+       *
+       * `authorizeOrganization` est la décision du module qui possède les
+       * rôles, lue par `lib/organizations.ts` — la matrice ne se rejoue pas
+       * ici. **L'import est différé**, pour la raison exacte de `soleOwnerships`.
+       *
+       * Le port de tâches n'est **pas** répété ici : l'export emprunte celui du
+       * module (`jobs` ci-dessus), comme l'effacement de compte. Deux ports
+       * pour deux tâches du même module seraient deux vérités sur « où
+       * s'exécute une tâche ».
+       */
+      dataExport: {
+        collectArchive: async (scope) => await buildDataExportArchive(moduleRegistry, scope),
+        authorizeOrganization: async (input) =>
+          await (await import('./organizations')).organizations.exportPermission(input),
       },
     })
   }

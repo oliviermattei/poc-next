@@ -452,16 +452,73 @@ export async function purgeModules(
   return { ok: true, purged }
 }
 
-/** Export des données du périmètre, module activé par module activé. */
+/**
+ * Ce que rend un export de périmètre : **tout, ou le nom de ce qui a manqué**.
+ *
+ * La forme est discriminée comme celle d'un port (`AGENTS.md`) : le compilateur
+ * force l'appelant à écarter l'échec avant de lire les charges, si bien qu'une
+ * archive amputée ne peut pas être livrée par distraction.
+ *
+ * **Sœur de `PurgeModulesOutcome`, et volontairement**. La branche d'échec porte
+ * les mêmes trois champs, sous les mêmes noms : ce qui a abouti, le module
+ * fautif (`failed`), ce qu'il a dit (`message`). Deux formes différentes pour la
+ * même idée obligeraient chaque appelant à apprendre deux vocabulaires.
+ *
+ * **La seule asymétrie est la branche de succès**, et elle a sa raison : une
+ * purge n'a rien à rendre que la liste de ce qu'elle a fait, un export **est**
+ * ce qu'il rend. `payloads` porte donc les données, et la liste des modules
+ * lus s'en dérive — l'écrire en plus serait un second compte à tenir juste.
+ */
+export type ExportModulesOutcome =
+  | {
+      readonly ok: true
+      readonly payloads: Readonly<Record<string, ModuleExportPayload>>
+    }
+  | {
+      readonly ok: false
+      /** Les modules déjà lus au moment de l'échec : une trace, pas une archive. */
+      readonly exported: readonly string[]
+      /** Le module qui a levé. Sans son nom, l'échec est irréparable. */
+      readonly failed: string
+      /** Ce que le module a dit, tel quel — jamais une charge utile. */
+      readonly message: string
+    }
+
+/**
+ * Export des données du périmètre, module activé par module activé.
+ *
+ * **Un export partiel est un échec, pas une archive** — et c'est plus lourd ici
+ * que pour la purge. Une purge qui s'arrête laisse des données qu'un rejeu
+ * effacera ; une archive qui s'arrête est **remise à une personne** qui exerce
+ * son droit à la portabilité et qui n'a aucun moyen de savoir ce qui lui
+ * manque. Le refus nomme donc le module, et la demande reste rejouable : rien
+ * n'est écrit ici, l'appelant peut redemander.
+ *
+ * L'ordre est **direct** — celui du graphe, le requis avant son dépendant —,
+ * contrairement à `purgeModules` qui le renverse. Une lecture n'a pas la
+ * contrainte d'une suppression : rien ne disparaît pendant qu'on lit.
+ */
 export async function exportModules(
   registry: ModuleRegistry,
   scope: ModuleScope,
-): Promise<Readonly<Record<string, ModuleExportPayload>>> {
+): Promise<ExportModulesOutcome> {
   const payloads: Record<string, ModuleExportPayload> = {}
+  const exported: string[] = []
 
   for (const module of registry.modules) {
-    payloads[module.id] = await module.export(scope)
+    try {
+      payloads[module.id] = await module.export(scope)
+    } catch (thrown) {
+      return {
+        ok: false,
+        exported,
+        failed: module.id,
+        message: thrown instanceof Error ? thrown.message : String(thrown),
+      }
+    }
+
+    exported.push(module.id)
   }
 
-  return payloads
+  return { ok: true, payloads }
 }

@@ -11,6 +11,7 @@ import {
   defineModule,
   exportModules,
   purgeModules,
+  type ExportModulesOutcome,
   unflattenMessages,
   visibleNavigation,
   type ModuleSession,
@@ -328,6 +329,27 @@ const APP_URL = 'http://localhost:3000'
  * une URL publique — tout ce que cette suite n'a pas à monter pour parler de
  * notifications. Ce qui est doublé est un **contrat**, pas une règle.
  */
+/**
+ * La charge d'un module dans un export, **l'échec écarté**.
+ *
+ * `exportModules` rend une forme discriminée depuis s35 : lire les charges sans
+ * avoir écarté le refus ne compile pas, et une archive amputée ne peut donc pas
+ * être lue comme une archive.
+ */
+const payloadOf = (
+  outcome: ExportModulesOutcome,
+  moduleId: string,
+): { notifications: readonly unknown[]; preferences: readonly unknown[] } => {
+  if (!outcome.ok) {
+    throw new Error(`export refusé par « ${outcome.failed} » : ${outcome.message}`)
+  }
+
+  return outcome.payloads[moduleId] as {
+    notifications: readonly unknown[]
+    preferences: readonly unknown[]
+  }
+}
+
 const authStandIn = defineModule({
   id: 'auth',
   requires: [],
@@ -946,10 +968,7 @@ describe.skipIf(!databaseReachable)('la purge et l’export du module', () => {
       body: { type: EMAIL_TYPE, channel: 'email', enabled: true },
     })
 
-    const exported = (await exportModules(registry, scope))['notifications'] as {
-      notifications: readonly unknown[]
-      preferences: readonly unknown[]
-    }
+    const exported = payloadOf(await exportModules(registry, scope), 'notifications')
 
     expect(exported.notifications).toHaveLength(1)
     expect(exported.preferences).toHaveLength(1)
@@ -959,10 +978,7 @@ describe.skipIf(!databaseReachable)('la purge et l’export du module', () => {
 
     expect((await listOf(session)).unreadCount).toBe(0)
 
-    const after = (await exportModules(registry, scope))['notifications'] as {
-      notifications: readonly unknown[]
-      preferences: readonly unknown[]
-    }
+    const after = payloadOf(await exportModules(registry, scope), 'notifications')
 
     expect(after.notifications).toEqual([])
     expect(after.preferences).toEqual([])

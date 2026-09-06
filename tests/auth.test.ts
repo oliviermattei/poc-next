@@ -415,7 +415,10 @@ describe.skipIf(!databaseReachable)('frontière — tout email passe par le port
     expect(outboundCalls).toEqual([])
   }, 60_000)
 
-  it('déclare les cinq templates au contrat, dans toutes ses locales', () => {
+  // Le titre ne porte plus de nombre : « les cinq templates » a vieilli en une
+  // story (s34 en déclarait cinq, s35 en déclare six). La liste **est** le
+  // compte, et c'est elle qui rougit.
+  it('déclare ses templates au contrat, dans toutes ses locales', () => {
     const locales = Object.keys(authModule.messages)
 
     expect(authModule.emails.map((template) => template.id).sort()).toEqual([
@@ -423,6 +426,8 @@ describe.skipIf(!databaseReachable)('frontière — tout email passe par le port
       // suppression qui n'a pas pu aboutir.
       'account-deleted',
       'account-deletion-blocked',
+      // s35 : le lien d'export de données.
+      'data-export-ready',
       'magic-link',
       'reset-password',
       'verify-email',

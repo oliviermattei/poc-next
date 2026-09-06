@@ -25,6 +25,17 @@ export {
   type WebhookHandler,
 } from './module'
 export {
+  auditDataCategoryCoverage,
+  buildDataExportArchive,
+  scopeIdOf,
+  DATA_EXPORT_FORMAT_VERSION,
+  type BuildDataExportArchiveOutcome,
+  type DataCategoryException,
+  type DataCategoryFinding,
+  type DataExportArchive,
+  type DataExportModuleEntry,
+} from './data-export'
+export {
   buildRegistry,
   dispatchModuleRequest,
   exportModules,
@@ -33,6 +44,7 @@ export {
   routeIsRateLimited,
   MODULE_ROUTE_PREFIX,
   type DispatchOptions,
+  type ExportModulesOutcome,
   type ModuleRegistry,
   type PurgeModulesOutcome,
   type RegistryEmailTemplate,

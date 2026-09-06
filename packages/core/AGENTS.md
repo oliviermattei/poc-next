@@ -179,3 +179,46 @@ Les contraintes portées par le compilateur ne se prouvent pas avec
 `expectTypeOf` : elles se prouvent en compilant réellement des fichiers qui
 doivent échouer (`tests/fixtures/typing/`). Une contrainte de typage qu'aucune
 commande n'a vue échouer n'existe pas.
+
+## L'export d'un périmètre (s35)
+
+`exportModules` rend une **forme discriminée** depuis s35, comme un port : lire
+les charges sans avoir écarté l'échec ne compile pas. Un module qui lève arrête
+la construction en se nommant, et rien n'est livré — un export partiel est pire
+qu'un échec, parce que la personne qui reçoit l'archive n'a aucun moyen de
+savoir ce qui lui manque.
+
+**Elle est la sœur de `PurgeModulesOutcome` (s34), et les deux se lisent avec le
+même vocabulaire** : la branche d'échec porte `failed` (le module fautif),
+`message` (ce qu'il a dit) et la liste de ce qui a abouti — `purged` là,
+`exported` ici. La **seule** asymétrie est la branche de succès : une purge n'a
+rien à rendre que la liste de ce qu'elle a fait, un export **est** ce qu'il rend.
+`payloads` porte donc les données, et la liste des modules lus s'en dérive.
+
+`src/data-export.ts` porte deux fonctions de plus, et aucune ne connaît de
+module par son nom :
+
+- `buildDataExportArchive` assemble l'enveloppe — version de format, date,
+  périmètre, une entrée par module activé avec ses `dataCategories` et sa
+  charge. L'archive est **entièrement en JSON** : le seul module qui possède des
+  octets, `storage`, n'en rend qu'un manifeste, sans clé d'objet et **sans
+  empreinte** — la personne qui la reçoit constate qu'un fichier existe, pas ce
+  qu'il contient (`docs/decisions/062-…`) ;
+- `auditDataCategoryCoverage` confronte les catégories déclarées à ce que
+  l'export produit (`docs/decisions/063-…`). Le contrat autorise
+  `dataCategories: ['x']` avec `export: async () => ({})`, et **rien ne
+  vérifiait que les trois clés s'accordent** — `admin` est arrivé exactement dans
+  cet état à la fusion de s34. Une catégorie déclarée est désormais soit
+  exportée, soit **exceptée avec sa raison écrite** ; la table des exceptions est
+  reçue et vit dans `tests/data-export.test.ts`, une seizième clé du contrat
+  obligeant à rouvrir les seize modules déjà écrits pour y déclarer `{}`. La
+  commande qui échoue est `pnpm test`, en nommant le module et la catégorie.
+
+Le garde ne compare **pas** les noms des clés d'une charge utile aux noms des
+catégories : `billing` déclare `subscription` et rend `subscriptions`,
+`marketing` déclare `contact-message` et rend `messages`. Une correspondance par
+le nom serait une couverture par sous-chaîne, c'est-à-dire une illusion. Ce qu'il
+mesure est ce qui se mesure : un module qui dit détenir des données personnelles
+et n'en rend aucune. **Il travaille donc par module, pas par catégorie**, et il
+ne voit que les catégories **déclarées** — une donnée personnelle qu'aucune
+catégorie ne nomme lui est invisible.
