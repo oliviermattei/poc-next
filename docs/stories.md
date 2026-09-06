@@ -1030,6 +1030,31 @@ Piège : le consentement conditionne le **chargement** du script, pas seulement 
 
 ---
 
+## Story s55-harnais-sans-env — Rejouer la suite dans la forme de la CI
+**As a** Dev **I want** rejouer la suite sans le `.env` du poste **so that** un test qui dépend de mon environnement rougisse chez moi et non en intégration continue.
+
+> **Ajoutée le 06/09**, sur la proposition P29 du retour d'expérience — la mieux étayée du document, parce que son coût d'inaction est mesuré : **trois rouges de CI en trois stories consécutives** (`s32`, `s34` évitée de justesse, `s35`), toujours la même cause.
+
+### Complexity
+1
+
+### Acceptance criteria
+- [ ] Une commande rejoue la suite **sans le fichier `.env` du dépôt**, avec les seules variables que le job de CI fournit — désarmer les variables du shell ne suffit pas, `loadRootEnv()` les relit sur le disque
+- [ ] La commande échoue si un fichier de test lit une variable qu'il n'a pas déclarée, et **nomme le fichier et la variable**
+- [ ] Elle est jouée par la CI, ou son absence de la CI est écrite avec sa raison
+- [ ] Un test qui déclare l'intégralité de ce qu'il lit passe dans les deux régimes ; la commande ne demande pas de désarmer ce que le harnais fournit légitimement
+- [ ] Le plancher : la commande refuse un balayage qui ne trouverait aucun fichier de test
+
+### Dependencies
+s02-quality-harness
+
+### Agentic notes
+**La règle est déjà écrite deux fois et a été enfreinte trois fois.** `AGENTS.md` la porte depuis `s18`/`s19` (P9), P25bis l'a reprécisée après `s32`, et un précédent exécutable existe dans `tests/admin.test.ts`. Ce qui manque n'est pas une quatrième écriture : c'est la commande. *Une règle qu'aucune commande ne vérifie est de la documentation.*
+
+**Deux formes ont été identifiées, et la seconde est retenue** : un garde dérivé sur la fermeture transitive des imports devinerait ce qui sera lu ; une exécution réelle sans `.env` le **mesure**. Coût : une exécution de suite de plus.
+
+**Piège** : la CI ne fournit pas *rien*, elle fournit un ensemble précis (`DATABASE_URL` et les drapeaux de mode local). La commande doit reproduire **cet** ensemble, pas l'absence totale — sinon elle rougit sur des fichiers corrects et finira désarmée, ce que P8 documente.
+
 ## Story s37-admin-users — Administrer les utilisateurs et les organisations
 
 > **DÉCOUPÉE le 05/09** en `s37a-superadmin-et-bannissement`, `s37b-back-office` et `s37c-inscriptions-publiques`, sur verdict de complexité **5** de sa recherche (notée 3 ici avant que quiconque ait ouvert un fichier). Cette entrée reste pour l'historique et ses dépendances ; **ne pas l'implémenter telle quelle**.
