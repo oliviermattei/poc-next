@@ -1268,6 +1268,46 @@ La seconde est plus honnête : elle **mesure** au lieu de deviner ce qui sera lu
 
 ---
 
+## P36bis — La revue lit le code, elle ne mesure pas son coût : c'est CodeQL qui a trouvé
+
+`s39` a livré `POST /analytics/client-error`, **volontairement non authentifiée** — il faut capter les erreurs d'avant-session. Le corps est donc choisi par un appelant anonyme, et il traverse un analyseur de trace de pile écrit en expression régulière.
+
+Trois lectures ont passé dessus : l'implémenteur qui l'a écrit, la revue anti-hallucination — qui a **nommé cette route** dans ses constats, pour son quota — et moi. Aucune n'a regardé le motif. **CodeQL l'a signalé en sévérité haute** (`js/polynomial-redos`), et la mesure prise ensuite est sans appel :
+
+```
+'at ' + '  '.repeat(2000)   →  4 003 caractères  →  43,9 s de CPU
+```
+
+Une requête de 4 Ko, quarante-quatre secondes de cœur. La limitation de débit borne le **nombre** de requêtes, jamais le coût de l'une d'elles : c'était un déni de service à requête unique.
+
+**Ce que ça dit du dispositif.** La revue mutante mesure ce qui se passe **si le code est faux**. Elle ne mesure pas ce qui se passe **si l'entrée est hostile** — aucune mutation ne fait apparaître une entrée que personne n'a imaginée. Ce sont deux familles disjointes, et le dépôt n'en outillait qu'une. L'analyse statique n'est donc pas une redondance de la revue : c'est la seule des deux qui parte de l'**entrée** plutôt que du code.
+
+**Deux gardes, et pourquoi il en faut deux.** Le correctif rend l'analyseur linéaire *et* borne l'entrée avant lecture (100 lignes, 512 caractères). Les mutations le montrent mieux qu'un argument :
+
+| Neutralisé | Rouges |
+|---|---|
+| la borne retirée, analyseur linéaire gardé | **2** |
+| l'ancienne expression restaurée, borne gardée | **0** |
+| les deux retirés — le code livré avant cette manche | **5** |
+
+Le zéro de la deuxième ligne **est** le résultat : la borne désamorce l'expression quelle qu'elle soit. C'est elle qui protégera la prochaine expression écrite là, par quelqu'un qui n'aura pas lu cette page.
+
+**Règle** : une frontière qui accepte du texte d'un appelant anonyme se borne **avant** d'être analysée, et la borne se teste comme un invariant, pas comme une optimisation. Et quand un constat de revue nomme une route publique pour un arbitrage, la question suivante est *« que coûte une requête ? »*, pas seulement *« combien en accepte-t-on ? »*.
+
+---
+
+## P37bis — Une dette à écrire plutôt qu'à corriger depuis la branche voisine
+
+La CI de `s39` a rougi une fois sur `tests/admin.test.ts` : `deadlock detected` (`40P01`) entre deux processus de test, sur `delete from admin_platform_role`. Verte au rejeu.
+
+La cause n'est pas l'intermittence, c'est un **protocole de verrouillage à moitié suivi**. Depuis `s37b1`, le code de production prend un verrou consultatif avant de toucher aux rôles de plateforme — c'est ce qui sérialise les décomptes. Le test, lui, supprime la table sans le prendre : deux transactions saisissent alors les lignes dans l'ordre inverse, et PostgreSQL tranche en tuant l'une des deux.
+
+**Elle n'a pas été corrigée depuis `s39`**, et c'est délibéré : le défaut appartient aux tests d'`admin`, la branche de `s39` n'a rien à y faire, et un correctif opportuniste dans une story voisine est exactement ce qui rend les diffs illisibles. Écrite ici, elle est réparable par la story qui touchera ce fichier — `s37b2` est en cours dessus.
+
+**Règle** : un défaut découvert par la CI d'une story qui ne le cause pas s'écrit, il ne se corrige pas en passant. Ce qui vaut aussi bien pour la trace : sans mesure écrite, la prochaine occurrence repart d'un rejeu vert et d'une hypothèse.
+
+---
+
 ## P34bis — Le worktree hérite de l'environnement d'un développeur là où il lui faut celui du projet
 
 **Mesuré deux fois le 06/09, sur deux stories différentes, avec la même racine.**
@@ -1726,6 +1766,8 @@ C'est la **troisième** occurrence du même défaut dans ce même fichier : une 
 | 06/09 | Troisième « vert dans une seule configuration » dans apps/web/lib/organizations.ts, trouvé par la recette et non par la lecture | garantie dérivée du disque, qui survit à la coupure | P33bis |
 | 06/09 | `pnpm test:e2e` ne démarre dans aucun worktree : chaque story livre sa suite navigateur non jouée | worktree-manager dérive l'environnement de `.env.example` | P34bis |
 | 06/09 | Un attendu dérivé des deux côtés ne rougit plus quand on retire ce qu'il mesure | prise rendue au fichier : toute adresse annoncée doit être servie | P35bis |
+| 06/09 | CodeQL trouve un ReDoS haute sévérité sur une route publique anonyme, après trois lectures humaines | 4 Ko de requête, 43,9 s de CPU ; borne d'entrée + analyseur linéaire | P36bis |
+| 06/09 | Deadlock PostgreSQL entre deux processus de test : la suppression ne prend pas le verrou que la production prend | écrite comme dette, non corrigée depuis la branche voisine | P37bis |
 
 ---
 
