@@ -69,6 +69,7 @@ export {
   type NestedMessages,
 } from './i18n'
 export {
+  declaresRoleProtection,
   navigationSurfaceOf,
   resolveDataOwner,
   satisfiesProtection,

@@ -13,7 +13,12 @@ import {
   type DescribedSession,
   type DescribedSignInMethod,
 } from '@repo/module-auth'
-import { buildDataExportArchive, purgeModules, type ModuleSession } from '@repo/core'
+import {
+  buildDataExportArchive,
+  declaresRoleProtection,
+  purgeModules,
+  type ModuleSession,
+} from '@repo/core'
 import { headers } from 'next/headers'
 import { after } from 'next/server'
 
@@ -75,6 +80,50 @@ const readRequestLocale = (request: Request): string => {
     acceptLanguage: request.headers.get('accept-language'),
   })
 }
+
+/**
+ * **Les rôles de plateforme de la session, et où leur lecture se paie** (s56).
+ *
+ * Le socle ne peut pas les lire : ils vivent dans la table du module `admin`,
+ * qui déclare `auth` dans ses `requires` — l'inverse fermerait le cycle. Il
+ * reçoit donc la fonction, comme il reçoit `purgeScope`, `soleOwnerships` et
+ * `releaseOrganizations`, et c'est ici qu'elle est branchée.
+ *
+ * **Elle n'est branchée que si le produit s'en sert**, et c'est la décision de
+ * la story : la lecture tombe sur `resolveActiveSession`, c'est-à-dire à chaque
+ * requête servie par le répartiteur et à chaque rendu authentifié. Si aucun
+ * module activé ne déclare de protection `role`, personne ne peut consulter ces
+ * rôles et la lecture ne répondrait à aucune question. `declaresRoleProtection`
+ * pose la question au **registre** : aucun nom de module n'est écrit ici, aucun
+ * nombre non plus, et couper ou activer un module suffit à changer la réponse.
+ *
+ * **La configuration livrée est du côté qui paie, et il faut le lire ainsi.**
+ * « Un produit qui n'utilise pas le niveau ne paie rien » est vrai, mais ce
+ * n'est pas le défaut : `demo-enabled` est activé dans `config/features.ts` et
+ * déclare une protection `role`, donc la branche prise ici est celle de la
+ * lecture — **une requête indexée de plus par résolution de session
+ * aboutie**, sur le chemin le plus chaud du produit. Ce n'est pas un accident :
+ * c'est le prix du critère 5 (un rôle retiré ferme sans reconnexion), et le
+ * seul moyen de ne pas le payer est de ne déclarer aucune protection `role`,
+ * pas de mettre les rôles en cache. `tests/marketing.test.ts` compte les
+ * requêtes d'un rendu authentifié : c'est là que se voit un branchement qui
+ * cesserait d'être dérivé.
+ *
+ * Ce qu'elle ne fait **pas** : mettre les rôles en cache. Ils sont relus à
+ * chaque résolution, sans quoi un rôle retiré continuerait d'ouvrir sa route
+ * jusqu'à la prochaine connexion (`docs/security.md` §2).
+ *
+ * **L'import est différé**, pour la raison exacte de `soleOwnerships` :
+ * `lib/admin.ts` importe ce fichier-ci, et un import statique en sens inverse
+ * fermerait le cycle. Module `admin` coupé, il rend une liste vide sans ouvrir
+ * de connexion — par la valeur.
+ */
+const NO_ROLES = (): Promise<readonly string[]> => Promise.resolve([])
+
+export const platformRolesOf: (userId: string) => Promise<readonly string[]> =
+  declaresRoleProtection(moduleRegistry)
+    ? async (userId) => await (await import('./admin')).admin.platformRolesOf(userId)
+    : NO_ROLES
 
 export interface AppAuthOptions {
   readonly env?: Env
@@ -147,6 +196,12 @@ export function appAuth(options: AppAuthOptions = {}): AuthService {
        */
       releaseOrganizations: async (userId) =>
         await (await import('./organizations')).organizations.releaseOrganizations(userId),
+      /**
+       * **Les rôles de plateforme de la session** (s56), dérivés du registre
+       * juste au-dessus : branchés quand un module activé déclare une
+       * protection `role`, liste vide sinon — par la valeur.
+       */
+      platformRolesOf,
       /**
        * **Le port d'émission de tâches** (s33) : l'effacement quitte la requête
        * quand le module `jobs` est activé, et s'exécute dedans quand il est
@@ -266,7 +321,7 @@ export interface Viewer {
  * Les deux ensemble, parce que le shell a besoin des deux et qu'une seconde
  * résolution serait une seconde lecture du cookie. La session reste celle que
  * le module rend — elle n'est jamais reconstruite à partir du compte, sans quoi
- * les rôles de s17 disparaîtraient en silence dans la navigation.
+ * les rôles de plateforme (s56) disparaîtraient en silence dans la navigation.
  *
  * Le compte lu est **celui de la session**, jamais un identifiant reçu d'un
  * paramètre : aucun chemin n'affiche le compte d'un autre (`docs/security.md`

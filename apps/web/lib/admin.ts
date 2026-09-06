@@ -422,6 +422,17 @@ export interface AdminFeature {
     readonly viewerId: string
     readonly organizationId: string
   }) => Promise<BackOfficeView<AdminOrganizationView>>
+  /**
+   * **Les rôles de plateforme d'un compte** (s56), pour la session que le socle
+   * sert.
+   *
+   * C'est la quatrième fonction que `lib/auth.ts` branche sur ce qu'il ne peut
+   * pas se procurer, à côté de `purgeScope`, `soleOwnerships` et
+   * `releaseOrganizations`. Module coupé : la liste est **vide par la valeur**,
+   * sans ouvrir de connexion — donc aucune route réservée à un rôle ne s'ouvre,
+   * et rien nulle part ne teste un nom de module.
+   */
+  readonly platformRolesOf: (userId: string) => Promise<readonly string[]>
 }
 
 /** Le refus, écrit une fois : module coupé, aucune lecture n'ouvre de connexion. */
@@ -461,6 +472,8 @@ export const admin: AdminFeature = mounted
           viewerId,
           organizationId,
         }),
+      platformRolesOf: async (userId) =>
+        await backOfficeService().useCases.platformRolesOf(userId),
     }
   : {
       available: false,
@@ -469,6 +482,9 @@ export const admin: AdminFeature = mounted
       account: () => Promise.resolve(ABSENT),
       organizations: () => Promise.resolve(ABSENT),
       organization: () => Promise.resolve(ABSENT),
+      // Aucun rôle, donc aucune route réservée à un rôle : le sens fermé, et il
+      // vient de la **valeur**, pas d'une condition écrite plus haut.
+      platformRolesOf: () => Promise.resolve([]),
     }
 
 /**

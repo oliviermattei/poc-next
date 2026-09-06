@@ -73,10 +73,23 @@ test('une route protégée refuse l’appel anonyme sans atteindre son gestionna
   for (const route of protectedRoutes) {
     const response = await request.get(`${MODULE_ROUTE_PREFIX}${route.path}`)
 
-    // 401 et non 403 : aucune authentification n'existe encore (s07), le
-    // serveur ne sait pas qui appelle et refuse pour cette raison.
-    expect(response.status(), `${route.moduleId} ${route.path}`).toBe(401)
-    expect(await response.json()).toEqual({ error: 'unauthorized' })
+    /**
+     * **Le refus attendu est dérivé du niveau déclaré**, jamais écrit une fois
+     * pour toutes :
+     *
+     * - `authenticated` et `entitlement` → **401** : le serveur ne sait pas qui
+     *   appelle et refuse pour cette raison (s07) ;
+     * - `role` → **404** (s56) : une route réservée à un rôle est
+     *   indistinguable d'une URL inventée pour qui ne le porte pas, **anonyme
+     *   compris** — un 401 lui apprendrait qu'elle existe.
+     */
+    const refusal =
+      route.protection.level === 'role'
+        ? { status: 404, body: { error: 'not_found' } }
+        : { status: 401, body: { error: 'unauthorized' } }
+
+    expect(response.status(), `${route.moduleId} ${route.path}`).toBe(refusal.status)
+    expect(await response.json()).toEqual(refusal.body)
   }
 })
 

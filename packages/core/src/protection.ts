@@ -18,7 +18,16 @@ import type { ModuleRegistry, RegistryNavigationEntry } from './registry'
  * implémentations de cette règle divergeraient au premier rôle ajouté.
  *
  * Ce prédicat ne connaît ni requête, ni réponse HTTP : c'est le répartiteur qui
- * traduit un refus en 401 ou en 403, selon qu'il sait ou non qui appelle.
+ * traduit un refus en statut, et la traduction dépend du **niveau**, pas
+ * seulement de ce qu'il sait de l'appelant :
+ *
+ * - `authenticated` : 401 sans session — le second cas, 403, n'existe pas, ce
+ *   niveau étant satisfait par toute session ;
+ * - `role` : **404 pour tout le monde**, anonyme compris (s56, ADR 068). Un 403
+ *   confirme l'existence de la route à qui n'y a pas droit, et un 401 la
+ *   confirme à qui n'est pas connecté ;
+ * - `entitlement` : 403, et ce n'est pas une incohérence — le catalogue d'offres
+ *   **vend** la fonctionnalité, son existence est publique (ADR 043).
  *
  * **Il ne répond que la moitié de la question sur une route réservée à une
  * offre** (`level: 'entitlement'`, ADR 043), et c'est écrit plutôt que subi :
@@ -43,6 +52,29 @@ export const satisfiesProtection = (
 
   return protection.level !== 'role' || session.roles.includes(protection.role)
 }
+
+/**
+ * **Un module activé déclare-t-il une protection de rôle ?** (s56)
+ *
+ * Une question posée au registre, et une seule fois : peupler
+ * `ModuleSession.roles` demande une lecture à **chaque** résolution de session,
+ * donc sur le chemin le plus chaud du produit. Quand rien ne déclare ce niveau,
+ * personne ne peut consulter ces rôles, et cette lecture ne répondrait à aucune
+ * question. Un produit qui n'utilise pas le niveau ne paie donc rien ; celui
+ * qui l'utilise paie une lecture par résolution, et sa révocation est immédiate.
+ * **La configuration livrée est du second côté** — `demo-enabled` déclare une
+ * protection `role` —, et ce que cela coûte est écrit au point de branchement
+ * (`apps/web/lib/auth.ts`), pas ici : ce prédicat ne sait pas quel registre on
+ * lui passe.
+ *
+ * Elle est dérivée du **registre** — donc des modules réellement activés —, et
+ * porte sur les deux surfaces : une entrée de navigation réservée à un rôle a
+ * besoin des mêmes rôles que la route qu'elle désigne. Aucun appelant n'a ainsi
+ * à nommer un module, ni à compter quoi que ce soit.
+ */
+export const declaresRoleProtection = (registry: ModuleRegistry): boolean =>
+  registry.routes.some((route) => route.protection.level === 'role') ||
+  registry.navigation.some((entry) => entry.protection.level === 'role')
 
 /**
  * Les entrées de navigation que cette session a le droit de voir.

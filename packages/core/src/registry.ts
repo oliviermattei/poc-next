@@ -347,9 +347,33 @@ export async function dispatchModuleRequest(
   const session = (await options.resolveSession?.(request)) ?? null
 
   if (!satisfiesProtection(route.protection, session)) {
-    // La même règle décide de la visibilité d'une entrée de navigation ; seule
-    // la traduction du refus est propre au transport : 401 quand on ne sait pas
-    // qui appelle, 403 quand on le sait et que ça ne suffit pas.
+    /**
+     * La même règle décide de la visibilité d'une entrée de navigation ; seule
+     * la traduction du refus est propre au transport.
+     *
+     * **Deux refus, et le second est une décision de s56 — ADR 068**, qui
+     * supersède la raison écrite au § Decision de l'ADR 058.
+     *
+     * - `authenticated` : 401 quand on ne sait pas qui appelle, 403 quand on le
+     *   sait et que ça ne suffit pas — le second cas n'existe pas, ce niveau
+     *   étant satisfait par toute session.
+     * - `role` : **404 pour tout le monde**, connecté sans le rôle comme
+     *   anonyme. Un 403 confirme l'existence de la route à qui n'y a pas droit,
+     *   et un 401 la confirme à qui n'est pas connecté ; c'est ce que le §3 du
+     *   socle de sécurité refuse, et c'est la raison pour laquelle `s37a` puis
+     *   `s37b2` ont contourné ce niveau en gardant **dans** le module — la
+     *   garde du back-office existe parce que celui-ci répondait 403. Une route
+     *   réservée à un rôle est donc indistinguable d'une URL inventée pour
+     *   quiconque ne le porte pas.
+     *
+     * Le niveau `entitlement` garde son 403, plus bas, et ce n'est pas une
+     * incohérence : le catalogue d'offres **vend** la fonctionnalité, son
+     * existence est publique, seul son usage est réservé (ADR 043).
+     */
+    if (route.protection.level === 'role') {
+      return refuse('not_found', 404)
+    }
+
     return session === null ? refuse('unauthorized', 401) : refuse('forbidden', 403)
   }
 

@@ -1,6 +1,8 @@
-import { adminRoutePath } from '@repo/module-admin'
+import { MODULE_ROUTE_PREFIX, navigationSurfaceOf } from '@repo/core'
+import { adminRoutePath, SUPERADMIN_ROLE } from '@repo/module-admin'
 import { expect, test, type Page } from '@playwright/test'
 
+import { moduleRegistry } from '../apps/web/lib/module-registry'
 import { E2E_SUPERADMIN_EMAIL } from '../playwright.config'
 import { PASSWORD, aSignedInAccount, linkSentTo, signIn, signUp } from './support/account'
 import { publicPath } from './support/locale'
@@ -31,31 +33,57 @@ import { publicPath } from './support/locale'
  * La base de cette suite lui est dédiée, comme pour le compteur de débit que le
  * préambule vide (`e2e/support/warm-up.ts`).
  */
-const resetPlatformRoles = async (): Promise<void> => {
+const onDatabase = async (
+  run: (
+    connection: Awaited<ReturnType<typeof openConnection>>,
+  ) => Promise<void>,
+): Promise<void> => {
+  const connection = await openConnection()
+
+  try {
+    await run(connection)
+  } finally {
+    await connection.close()
+  }
+}
+
+const openConnection = async () => {
   const { createDatabaseClient } = await import('@repo/db')
   const { getEnv } = await import('@repo/config')
   const { loadRootEnv } = await import('@repo/config/server')
 
   loadRootEnv()
 
-  const connection = createDatabaseClient({
-    connectionString: getEnv().DATABASE_URL,
-    maxConnections: 1,
-  })
+  return createDatabaseClient({ connectionString: getEnv().DATABASE_URL, maxConnections: 1 })
+}
 
-  try {
+/**
+ * **Retire les rôles de plateforme, et rien d'autre** (s56).
+ *
+ * Séparé de la remise à zéro ci-dessous parce que le critère 5 en dépend :
+ * effacer aussi le compte fermerait la route pour **deux** raisons — plus de
+ * rôle, et plus de session —, et la mesure ne dirait plus laquelle a joué.
+ */
+const revokePlatformRoles = async (): Promise<void> => {
+  await onDatabase(async (connection) => {
     const { sql } = await import('drizzle-orm')
 
-    // Deux ordres, et pas un bloc `do $$` : un bloc anonyme n'accepte aucun
-    // paramètre lié, et l'adresse en est un — l'interpoler serait la seule
-    // façon de tenir dans un bloc, ce que ce dépôt ne fait nulle part.
     await connection.db.execute(sql`delete from admin_platform_role`)
+  })
+}
+
+const resetPlatformRoles = async (): Promise<void> => {
+  await revokePlatformRoles()
+  await onDatabase(async (connection) => {
+    const { sql } = await import('drizzle-orm')
+
+    // Un ordre paramétré, et pas un bloc `do $$` : un bloc anonyme n'accepte
+    // aucun paramètre lié, et l'adresse en est un — l'interpoler serait la
+    // seule façon de tenir dans un bloc, ce que ce dépôt ne fait nulle part.
     await connection.db.execute(
       sql`delete from auth_user where email = ${E2E_SUPERADMIN_EMAIL}`,
     )
-  } finally {
-    await connection.close()
-  }
+  })
 }
 
 /** Le compte désigné, inscrit, vérifié et connecté. */
@@ -188,4 +216,121 @@ test('le bandeau d’impersonation survit à une navigation complète', async ({
   // la page.
   await page.getByRole('button', { name: 'Rendre la main' }).click()
   await expect(page.getByText('Session empruntée')).toHaveCount(0)
+})
+
+/**
+ * **Le niveau de protection `role`, exercé de bout en bout** (s56, critères 2 à
+ * 5).
+ *
+ * Ce que ce parcours mesure, et qu'aucun test unitaire ne peut mesurer : la
+ * chaîne entière — cookie réel → session résolue par le socle → rôles lus dans
+ * la table du module `admin` → répartiteur → réponse HTTP —, plus le **rendu**
+ * de l'entrée de navigation, que le registre ne prouve pas.
+ *
+ * Tout y est **dérivé du registre** : la route et l'entrée viennent des modules
+ * activés, jamais d'un chemin recopié. Un produit qui ne déclarerait aucune
+ * protection `role` n'a rien à exercer, et le parcours le dit plutôt que de
+ * passer en silence.
+ */
+const roleRoute = moduleRegistry.routes.find(
+  (route) => route.method === 'GET' && route.protection.level === 'role',
+)
+const roleEntry = moduleRegistry.navigation.find((entry) => entry.protection.level === 'role')
+
+/**
+ * **Le témoin d'anti-vacuité de l'absence mesurée plus bas** (revue de s56,
+ * constat 3).
+ *
+ * `locator.all()` **n'attend pas** : une barre latérale qui n'aurait pas encore
+ * rendu — ou pas du tout — renvoie `[]`, et « l'entrée réservée n'y est pas »
+ * devient vrai pour la pire des raisons. Une entrée que **toute** session
+ * authentifiée voit — dérivée du registre, jamais recopiée — prouve que la
+ * barre est là avant qu'on y cherche une absence.
+ */
+const alwaysVisibleEntry = moduleRegistry.navigation.find(
+  (entry) => navigationSurfaceOf(entry) === 'app' && entry.protection.level !== 'role',
+)
+
+test('une route réservée à un rôle sert son porteur, et 404 aux autres', async ({
+  page,
+  browser,
+}) => {
+  test.skip(
+    roleRoute === undefined || roleEntry === undefined || alwaysVisibleEntry === undefined,
+    'aucun module activé ne déclare de protection « role », ou aucune entrée de navigation ' +
+      'visible de tous ne peut témoigner du rendu : il n’y a rien à exercer',
+  )
+
+  if (roleRoute === undefined || roleEntry === undefined || alwaysVisibleEntry === undefined) return
+
+  /**
+   * **Le seul rôle que le produit sache accorder.** La désignation par
+   * `SUPERADMIN_EMAIL` et la promotion du back-office n'en écrivent pas d'autre
+   * dans `admin_platform_role` ; une route qui en exigerait un autre serait
+   * inatteignable, ce que cette story existe pour corriger. La comparaison est
+   * ici plutôt que sous-entendue : elle rougit au lieu de sauter.
+   */
+  expect(roleRoute.protection.level === 'role' && roleRoute.protection.role).toBe(SUPERADMIN_ROLE)
+
+  const path = `${MODULE_ROUTE_PREFIX}${roleRoute.path}`
+
+  await aSignedInSuperadmin(page)
+
+  // La désignation a lieu à la première requête d'administration : c'est elle
+  // qui nomme le premier superadmin sur une plateforme qui n'en a aucun.
+  await page.goto(publicPath('/admin/users'))
+  await expect(page.getByRole('heading', { name: 'Comptes', level: 1 })).toBeVisible()
+
+  // **Servie au porteur du rôle** — la session est la même, aucune reconnexion.
+  const served = await page.request.get(path)
+
+  expect(served.status()).toBe(200)
+
+  // **Et l'entrée de navigation suit, mesurée sur le rendu** (critère 3) : le
+  // registre la déclare pour tout le monde, seul le rendu distingue.
+  await page.goto(publicPath('/account'))
+
+  const linksFor = async (target: Page): Promise<readonly (string | null)[]> =>
+    await Promise.all(
+      (await target.getByRole('navigation', { name: 'Modules' }).getByRole('link').all()).map(
+        (link) => link.getAttribute('href'),
+      ),
+    )
+
+  expect(await linksFor(page)).toContain(publicPath(roleEntry.href))
+
+  // **Un compte qui ne porte pas le rôle**, dans un autre contexte.
+  const other = await browser.newContext()
+  const stranger = await other.newPage()
+
+  await aSignedInAccount(stranger, 's56-sans-role')
+
+  const refused = await stranger.request.get(path)
+
+  // 404, et jamais 403 : le second confirmerait que la route existe.
+  expect(refused.status()).toBe(404)
+  expect(refused.status()).not.toBe(403)
+  expect(await refused.json()).toEqual({ error: 'not_found' })
+
+  await stranger.goto(publicPath('/account'))
+
+  const strangerLinks = await linksFor(stranger)
+
+  // Le témoin d'abord : sans lui, une barre non rendue rendrait l'absence
+  // suivante verte sans avoir rien mesuré.
+  expect(strangerLinks).toContain(publicPath(alwaysVisibleEntry.href))
+  expect(strangerLinks).not.toContain(publicPath(roleEntry.href))
+
+  await other.close()
+
+  // **Le rôle retiré ferme, sans nouvelle connexion** (critère 5) : la table
+  // est vidée, la session du navigateur est inchangée, et la route qui servait
+  // à l'instant répond 404. C'est ce qui interdit de porter les rôles dans le
+  // jeton.
+  await revokePlatformRoles()
+
+  const closed = await page.request.get(path)
+
+  expect(closed.status()).toBe(404)
+  expect(await closed.json()).toEqual({ error: 'not_found' })
 })

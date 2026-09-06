@@ -761,14 +761,30 @@ et le nombre vieillira : ce qui compte est qu'il ne soit pas nul, la commande qu
 le dit est `pnpm test` avec `users.deleteById` neutralisé. L'appel explicite est
 une ceinture, il n'est pas la bretelle — ne pas le citer comme la garantie.
 
-**L'orchestration n'est pas dans ce module, elle y arrive.** `purgeScope`
-(l'effacement de tous les modules activés), `soleOwnerships` (les organisations
-qu'un compte bloquerait en partant) et `jobs` (le port d'émission) sont
-**injectés** par `apps/web/lib/auth.ts`, comme le mailer : `@repo/core` construit
-le registre à partir des modules, donc un module ne peut pas le lire. Les trois
-sont **fail-closed** en l'absence de câblage — la purge échoue en nommant ce qui
-manque, l'émission refuse — sauf `soleOwnerships`, qui rend une liste vide parce
-que c'est l'état légitime d'un projet dont le module `organizations` est coupé.
+**L'orchestration n'est pas dans ce module, elle y arrive.** Ce qui demande de
+connaître les **autres** modules est **injecté** par `apps/web/lib/auth.ts`,
+comme le mailer : `@repo/core` construit le registre à partir des modules, donc
+un module ne peut pas le lire. **La liste est `AuthDependencies`**
+(`src/application/ports.ts`), jamais un compte écrit ici ; ce tableau dit ce que
+chaque clé fait quand rien ne la branche, parce que c'est là que se décide si le
+défaut ouvre ou ferme :
+
+| Clé | Sans câblage |
+|---|---|
+| `purgeScope` (l'effacement de tous les modules activés) | **fail-closed** : la purge échoue en nommant ce qui manque |
+| `jobs` (le port d'émission) | **fail-closed** : l'émission refuse |
+| `dataExport.collectArchive` (l'archive qui traverse les modules) | **fail-closed** : les deux routes répondent 404 |
+| `soleOwnerships` (les organisations qu'un compte bloquerait en partant) | liste vide — l'état légitime d'un projet dont `organizations` est coupé |
+| `releaseOrganizations` (les organisations qu'un départ libère) | idem |
+| `platformRolesOf` (les rôles de plateforme, s56) | liste vide — l'état d'un projet dont `admin` est coupé, et c'est le **sens fermé** : aucun rôle porté, donc aucune route `role` ouverte |
+
+`platformRolesOf` est une clé **obligatoire** de `AuthDependencies`, comme ses
+sœurs : c'est le compilateur qui refuse un point de composition qui l'oublie
+(`pnpm typecheck`).
+L'option homonyme de `ConfigureAuthOptions`, elle, est facultative — son absence
+vaut la liste vide, jamais une devinette. Elle est appelée à **chaque**
+résolution de session qui aboutit, et le prix de cet appel se lit à son point de
+branchement (`apps/web/lib/auth.ts`).
 
 **L'ordre de l'effacement, et la raison pour laquelle il rend l'opération
 rejouable :** `auth` est purgé **en dernier** (ordre inverse du graphe, ADR 029,

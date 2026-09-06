@@ -96,6 +96,21 @@ export interface AdminUseCases {
    * (ADR 030). Une révocation mord donc à l'instant, sans reconnexion.
    */
   isSuperadmin(userId: string): Promise<boolean>
+  /**
+   * **Les rôles de plateforme d'un compte** (s56), pour la session que le socle
+   * sert.
+   *
+   * Distincte de `isSuperadmin` par ce qu'elle ne fait pas : elle ne **désigne**
+   * personne. La désignation du premier superadmin est rejouée à chaque requête
+   * d'administration ; la rejouer à chaque résolution de session ajouterait un
+   * décompte et une lecture de compte sur le chemin le plus chaud du produit,
+   * pour un état — « aucun superadmin » — que le premier écran d'administration
+   * répare déjà.
+   *
+   * Elle relit la base à chaque appel, et c'est le critère : un rôle retiré
+   * cesse d'ouvrir sa route sans nouvelle connexion.
+   */
+  platformRolesOf(userId: string): Promise<readonly string[]>
   grantSuperadmin(input: {
     readonly actorId: string
     readonly userId: string
@@ -327,6 +342,8 @@ export function createAdminUseCases(dependencies: AdminDependencies): AdminUseCa
 
       return await roles.isSuperadmin(userId)
     },
+
+    platformRolesOf: async (userId) => await roles.rolesOf(userId),
 
     grantSuperadmin: async ({ actorId, userId }) => {
       const outcome = await roles.grantSuperadmin({

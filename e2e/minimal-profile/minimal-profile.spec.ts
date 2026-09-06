@@ -135,11 +135,14 @@ test('aucune route d’un module coupé n’est joignable (critère 3)', async (
   // rendrait les absences ci-dessus vertes pour la pire des raisons.
   //
   // Les routes des modules **activés** répondent, elles : 401 sans session pour
-  // une route protégée, le statut du gestionnaire pour une route publique.
-  // Jamais 404, qui est réservé à « aucune route activée ne correspond »
-  // (`dispatchModuleRequest`). Seules les `GET` sont appelées : une écriture
-  // anonyme sur une route publique aurait un effet de bord, ce qu'un contrôle
-  // n'a pas à payer.
+  // une route `authenticated`, le statut du gestionnaire pour une route
+  // publique. **404 n'est plus réservé à « aucune route activée ne
+  // correspond »** : depuis s56 (ADR 068), une route `role` d'un module activé
+  // répond 404 à l'anonyme, exprès. Le contrôle ci-dessous n'exige donc pas que
+  // *chaque* route active réponde — il exige qu'au moins une le fasse, ce qui
+  // suffit à écarter « le montage est mort ». Seules les `GET` sont appelées :
+  // une écriture anonyme sur une route publique aurait un effet de bord, ce
+  // qu'un contrôle n'a pas à payer.
   const readable = moduleRegistry.routes.filter((route) => route.method === 'GET')
   const answered: string[] = []
 

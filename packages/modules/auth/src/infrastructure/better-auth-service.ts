@@ -183,6 +183,15 @@ export interface ConfigureAuthOptions {
    */
   readonly releaseOrganizations?: (userId: string) => Promise<readonly string[]>
   /**
+   * **Les rôles de plateforme d'un compte** (s56), reçus du point de
+   * composition qui possède le registre et le module qui les porte.
+   *
+   * Absente, aucun rôle n'est porté : c'est l'état d'un projet dont le module
+   * `admin` est coupé, et c'est le **sens fermé** — un tableau vide refuse
+   * toute route réservée à un rôle. Le sens ouvert serait de deviner.
+   */
+  readonly platformRolesOf?: (userId: string) => Promise<readonly string[]>
+  /**
    * Le port d'émission de tâches (s33).
    *
    * **Absent, la suppression de compte est refusée** — `emit` rend
@@ -386,6 +395,12 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
     soleOwnerships: options.soleOwnerships ?? ((): Promise<readonly string[]> => Promise.resolve([])),
     releaseOrganizations:
       options.releaseOrganizations ?? ((): Promise<readonly string[]> => Promise.resolve([])),
+    /**
+     * **Le sens fermé, par la valeur** : sans câblage, un compte ne porte aucun
+     * rôle et aucune route réservée à un rôle ne s'ouvre.
+     */
+    platformRolesOf:
+      options.platformRolesOf ?? ((): Promise<readonly string[]> => Promise.resolve([])),
     /**
      * **Fail-closed, comme `purgeScope`.** Le repli synchrone existe déjà et
      * n'est pas ici : `lib/jobs.ts` rend un port qui exécute dans la requête
@@ -1202,12 +1217,20 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
       }
 
       return {
-        // La règle vit dans le `domain` : un compte non vérifié n'a pas de
-        // session, et les rôles arriveront avec s17 sans que ce fichier bouge.
+        /**
+         * La règle vit dans le `domain` : un compte non vérifié n'a pas de
+         * session. Les **rôles de plateforme**, eux, sont **reçus** (s56) : ce
+         * module ne connaît pas la table qui les porte, et le point de
+         * composition branche la lecture — ou la liste vide, quand aucun module
+         * activé ne déclare de protection `role`.
+         *
+         * Ils sont relus à chaque résolution, jamais portés par le jeton : une
+         * révocation mord à l'instant, sans reconnexion.
+         */
         session: sessionOf({
           userId: resolved.user.id,
           emailVerified: resolved.user.emailVerified,
-          roles: [],
+          roles: await dependencies.platformRolesOf(resolved.user.id),
         }),
         sessionId: resolved.session.id,
         impersonatedBy: borrowerOnRow(resolved.session),

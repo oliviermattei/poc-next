@@ -550,6 +550,26 @@ export interface AuthDependencies {
    */
   readonly releaseOrganizations: (userId: string) => Promise<readonly string[]>
   /**
+   * **Les rôles de plateforme d'un compte** (s56) — la quatrième fonction de
+   * cette famille, et elle arrive pour la raison des trois autres.
+   *
+   * Les rôles vivent dans la table du module `admin`, qui déclare `auth` dans
+   * ses `requires` : ce module-ci ne peut pas les lire sans fermer le cycle. Il
+   * reçoit donc la fonction, exactement comme il reçoit son mailer, et le point
+   * de composition de l'application la branche.
+   *
+   * **Module `admin` coupé : la liste est vide — par la valeur, jamais par une
+   * condition sur un nom de module.** Et c'est le sens fermé : aucun rôle ne se
+   * porte, donc aucune route réservée à un rôle ne s'ouvre.
+   *
+   * Elle est appelée à **chaque** résolution de session qui aboutit, et jamais
+   * mise en cache dans le jeton : un rôle retiré doit cesser d'ouvrir sa route
+   * sans nouvelle connexion (`docs/security.md` §2, révocation côté serveur).
+   * Ce que cela coûte est décidé plus haut : le point de composition ne branche
+   * la lecture que si un module activé déclare une protection `role`.
+   */
+  readonly platformRolesOf: (userId: string) => Promise<readonly string[]>
+  /**
    * **Le port d'émission de tâches** (s33) : le seul chemin par lequel
    * l'effacement quitte la requête.
    *

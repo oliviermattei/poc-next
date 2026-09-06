@@ -76,12 +76,14 @@ qu'elle a un second appelant : `publicPath` préfixe sans condition, `/api…`
 compris, et une contribution vers une route montée serait sinon annoncée sous
 une langue que rien ne sert (constat M3 de la revue de s29).
 
-Une entrée de navigation déclare aussi sa **surface** (`surface`, s31, ADR 066) :
-la barre latérale de l'application (`'app'`, le défaut) ou le pied de page du site
-public (`'footer'`). `visibleNavigation(registry, session, surface)` filtre sur
-elle, et les deux ensembles sont disjoints — une entrée de pied de page dans la
-barre latérale mettrait un lien de service au rang des fonctionnalités du
-produit. Le champ est **facultatif**, à la différence de `protection` : son
+Une entrée de navigation déclare aussi sa **surface** (`surface`, s31, ADR 066).
+**La liste est le type `NavigationSurface` de `src/module.ts`**, jamais celle-ci :
+elle valait deux à l'écriture de cette ligne et trois à la lecture de s56 —
+`'app'` (la barre latérale de l'application, le défaut), `'footer'` (le pied de
+page du site public) et `'admin'` (le back-office, s37b2).
+`visibleNavigation(registry, session, surface)` filtre sur elle, et les ensembles
+sont disjoints — une entrée de pied de page dans la barre latérale mettrait un
+lien de service au rang des fonctionnalités du produit. Le champ est **facultatif**, à la différence de `protection` : son
 défaut est ce qu'avaient les modules écrits avant lui, là où `protection` n'a pas
 de défaut sûr. Ce n'est **pas** une décision d'indexation : `publicUrls` reste la
 seule source du plan de site (ADR 054).
@@ -93,15 +95,32 @@ elle-même (`satisfiesProtection`) est écrite une seule fois, dans
 `src/protection.ts` — deux implémentations divergeraient au premier rôle ajouté.
 
 **Quatre niveaux depuis s21** : `public`, `authenticated`, `role`, et
-`entitlement` — réservé à une offre payante (ADR 043). Le quatrième est le seul
-que `satisfiesProtection` ne tranche **pas** entièrement, et il faut le savoir
-avant d'y toucher : elle en répond la moitié « session » — sans session, 401
-comme une route authentifiée —, l'autre moitié étant asynchrone (savoir quelles
+`entitlement` — réservé à une offre payante (ADR 043).
+
+**Chaque niveau a son statut de refus, et ils ne sont pas tous là où on les
+attend** — c'est le répartiteur qui traduit, `satisfiesProtection` ne connaît
+aucun code HTTP :
+
+| Niveau non satisfait | Statut | Pourquoi |
+|---|---|---|
+| `authenticated` | **401** | il n'y a pas d'autre cas : toute session le satisfait |
+| `role` | **404**, y compris à l'**anonyme** (s56, ADR 068) | un 403 confirmerait l'existence de la route à qui n'y a pas droit, un 401 la confirmerait à qui se déconnecte. Une route réservée à un rôle est donc indistinguable d'une URL inventée. Conséquence à connaître : 404 confond désormais « module non activé » et « rôle non porté » |
+| `entitlement` | **403** | le catalogue d'offres **vend** la fonctionnalité : son existence est publique, seul son usage est réservé (ADR 043) |
+
+`role` est le seul niveau dont la valeur lue — `ModuleSession.roles` — arrive
+d'un module **optionnel** : elle est **injectée** au point de composition, et
+`declaresRoleProtection(registry)` y décide si la lecture est branchée du tout
+(s56). Le registre est la seule source de cette décision : aucun nom de module
+n'est écrit nulle part.
+
+`entitlement` est le seul niveau que `satisfiesProtection` ne tranche **pas**
+entièrement, et il faut le savoir avant d'y toucher : elle en répond la moitié
+« session » — sans session, 401 comme une route authentifiée —, l'autre moitié
+étant asynchrone (savoir quelles
 offres un périmètre détient demande une lecture, que le filtre de navigation ne
 peut pas attendre). Cette seconde moitié vit dans `dispatchModuleRequest`, elle
 est **fail-closed** (`DispatchOptions.resolveFeatures` absent ⇒ 403), et elle
-répond **403 et non 404** : l'existence d'une fonctionnalité vendue est
-publique, seul son usage est réservé. Un appelant qui prendrait
+répond **403 et non 404**, à l'inverse de `role`. Un appelant qui prendrait
 `satisfiesProtection` pour la garde entière n'aurait aucun gating — c'est
 pourquoi il n'y a qu'un appelant côté serveur, et que le refus est éprouvé au
 répartiteur (`tests/module-registry.test.ts`).
@@ -122,7 +141,9 @@ et **avant** la résolution de session, qui lit la base à chaque requête.
 
 Une entrée de navigation `entitlement` reste **visible** à toute session, et
 c'est une décision : le critère de s21 demande une invitation à souscrire, pas
-une disparition.
+une disparition. Une entrée `role` **disparaît**, elle, et c'est la symétrie du
+404 : une entrée visible vers une route qui répond « ça n'existe pas »
+divulguerait exactement ce que le statut cache.
 
 **Ce qui a été prouvé par mutation** sur le gating (s21) — le compte est le
 nombre de cas passés au rouge, mesurés le 2 septembre 2026.
