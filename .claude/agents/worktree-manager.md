@@ -31,6 +31,22 @@ Procedure, fail-closed:
    Missing optional variants are not errors; a missing environment file that
    the project's test command requires is a blocker to report. Never copy
    tracked source changes or arbitrary untracked files.
+   **A worktree is a test environment, so it carries no provider secret.** For
+   every variable the tracked `.env.example` leaves empty, empty it in the copy
+   too; for every variable it sets to an explicit local mode, take that value
+   from it. Both lists are derived from `.env.example`, never written here —
+   the file is the reference and it moves with the code. Copy the machine-local
+   values (database address, secrets the project generates for itself, ports)
+   from the base `.env` unchanged.
+   **The reason is measured, twice on 06/09.** The base `.env` carries a real
+   payment key; the browser suite's config posts the explicit local mode; the
+   startup guard refuses both together, by design. The result was that
+   `pnpm test:e2e` could not start in any worktree, every story shipped its
+   browser suite unrun, and a written list of URLs in `e2e/` reached CI. A
+   second story lost time the same day because `pnpm dev` refused for want of
+   the storage and jobs local modes, which the base `.env` does not carry. Both
+   are the same defect: the worktree inherited a developer's environment where
+   it needed the project's declared local one.
 5. Install dependencies in the worktree with the project's locked package
    manager command. Prefer an offline/frozen install when the local store is
    sufficient; report any network or credential blocker instead of changing

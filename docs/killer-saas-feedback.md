@@ -1268,6 +1268,40 @@ La seconde est plus honnête : elle **mesure** au lieu de deviner ce qui sera lu
 
 ---
 
+## P34bis — Le worktree hérite de l'environnement d'un développeur là où il lui faut celui du projet
+
+**Mesuré deux fois le 06/09, sur deux stories différentes, avec la même racine.**
+
+Le `.env` de la base porte une vraie clé de paiement. `playwright.config.ts` pose le mode local explicite. Le garde de démarrage **refuse les deux ensemble** — correctement, c'est la règle du dépôt : un port ne doit jamais pouvoir confondre un envoi réel et une capture. Conséquence : `pnpm test:e2e` **ne démarre dans aucun worktree**, donc chaque story livre sa suite navigateur non jouée.
+
+Ce que ça a coûté ce jour-là : une **liste d'URL écrite** dans `e2e/marketing.spec.ts` est passée en revue, en local, dans `pnpm test`, dans `test:minimal-profile` et dans `test:sans-env` — les cinq — pour rougir en CI. Aller-retour complet. Le fichier disait pourtant, en commentaire, qu'il refusait de figer l'ordre du graphe des modules ; il en figeait le contenu.
+
+Même jour, seconde story : `pnpm dev` refuse dans le worktree faute des modes locaux du stockage et des tâches, que le `.env` de la base ne porte pas.
+
+**La racine est unique** : le worktree copie l'environnement d'un développeur, alors qu'il lui faut l'environnement **déclaré du projet**. Ce dernier existe déjà, il est suivi, et il est exact : `.env.example` laisse les clés fournisseur vides et arme les modes locaux.
+
+**Correctif appliqué au workflow, pas au dépôt** (`.claude/agents/worktree-manager.md`) : le worktree copie du `.env` de la base les seules valeurs propres à la machine, **vide toute variable que `.env.example` laisse vide**, et **prend de lui tout mode local explicite**. Les deux listes sont dérivées de `.env.example`, jamais recopiées dans la consigne — sinon elles vieilliraient, ce que P20 a déjà mesuré ailleurs.
+
+**Ce que ça ne corrige pas** : les stories déjà livrées l'ont été sans que `e2e/` tourne chez l'implémenteur. La CI l'a joué pour elles, ce qui suffit à la garantie mais déplace la boucle de retour d'une minute à un quart d'heure.
+
+---
+
+## P35bis — Un attendu dérivé des deux côtés ne mord plus : il faut lui rendre une prise
+
+En corrigeant la liste écrite ci-dessus, l'implémenteur a reçu une consigne précise : dériver l'attendu du registre, puis prouver la morsure en retirant la contribution d'un module. Il a **contredit la consigne avec une mesure**, et il avait raison :
+
+| Mutation | `e2e/marketing.spec.ts` | Suite unitaire |
+|---|---|---|
+| un module ne contribue plus aucune URL publique | **0 rouge** | **2 rouges** |
+
+Une fois les deux côtés dérivés de la même source, retirer la contribution retire aussi l'attente : le cas reste vert en ne vérifiant rien. C'est le **balayage vide** de `s26` et `s48`, déguisé en dérivation réussie.
+
+La sortie n'est pas de revenir à la liste écrite. C'est de donner au fichier une prise que la dérivation ne peut pas dissoudre — ici : **toute adresse annoncée doit être réellement servie**. Le lien « ce qu'un module déclare correspond à ce qu'il porte sur le disque » se prouve, lui, dans la suite unitaire contre les vrais catalogues.
+
+**Règle** : quand un attendu et l'observé viennent de la même source, la question n'est plus « est-ce dérivé ? » mais **« que reste-t-il qui puisse échouer ? »**. Si la réponse est *rien*, le cas est décoratif, et il vaut mieux le savoir en l'écrivant qu'en le découvrant à la story suivante.
+
+---
+
 ## P31bis — Une ligne de câblage n'a de garde que si quelqu'un a essayé de la supprimer
 
 **Deux stories, le même geste, le même résultat.** La revue de `s33` avait mesuré que retirer `assertJobsConfiguration(env)` de `apps/web/lib/startup.ts` laissait **2 407 cas verts**. La leçon a été écrite — et bien écrite : elle vit dans `tests/env-wiring.test.ts`, en commentaire, à côté du cas qui la corrige, avec son compte.
@@ -1690,6 +1724,8 @@ C'est la **troisième** occurrence du même défaut dans ce même fichier : une 
 | 06/09 | Quatre points de composition de s39 supprimables sans qu'aucun des 2 605 cas ne bouge, la leçon de s33 étant écrite à côté | ronde de correction : un cas par lien, pas par feuille | P31bis |
 | 06/09 | s39 livre le couple de régimes que le parcours doré a livré à moitié vide, avec un plancher qui refuse l'ensemble capturé vide | 9 rouges quand l'adaptateur devient muet | P32bis |
 | 06/09 | Troisième « vert dans une seule configuration » dans apps/web/lib/organizations.ts, trouvé par la recette et non par la lecture | garantie dérivée du disque, qui survit à la coupure | P33bis |
+| 06/09 | `pnpm test:e2e` ne démarre dans aucun worktree : chaque story livre sa suite navigateur non jouée | worktree-manager dérive l'environnement de `.env.example` | P34bis |
+| 06/09 | Un attendu dérivé des deux côtés ne rougit plus quand on retire ce qu'il mesure | prise rendue au fichier : toute adresse annoncée doit être servie | P35bis |
 
 ---
 
