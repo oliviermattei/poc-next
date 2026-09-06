@@ -194,21 +194,34 @@ règles que personne n'a exercées.
 
 Tous dans `packages/ui`. Un module compose avec cette liste ; il ne crée pas ses propres primitives.
 
-> **Ce tableau est un catalogue d'intention, pas un inventaire — mesuré le 06/09.**
-> Sur les 32 composants nommés ci-dessous, **15 n'existent pas** dans
-> `packages/ui/src` : `Select`, `RadioGroup`, `Switch`, `Form`, `Skeleton`,
-> `Dialog`, `Popover`, `Tooltip`, `AlertDialog`, `Tabs`, `Table`, `DataTable`,
-> `Progress`, `ScrollArea`, `Toaster`. Composer avec l'un d'eux ne
-> compile pas. `Command` en est sorti le 06/09 : s54 l'a livré.
+> **Ce tableau est un catalogue d'intention, pas un inventaire.**
 >
-> La liste ci-dessus est **datée et mesurée**, jamais à recopier : elle vieillit
-> dès qu'une story en livre un. La commande qui la refait est
-> `ls packages/ui/src/components packages/ui/src/composed` confrontée aux noms
-> de ce tableau — et tant qu'aucun test ne le fait, ce paragraphe est de la
-> documentation, pas une règle. **Une story qui a besoin d'un composant absent
-> le livre dans `packages/ui`** (copie shadcn/ui sur Radix, ADR 022), elle ne
-> le réécrit pas dans son module et ne le remplace pas par une primitive
-> maison.
+> **Absents de `packages/ui/src` — 14** : `Select`, `RadioGroup`, `Switch`,
+> `Form`, `Skeleton`, `Dialog`, `Popover`, `Tooltip`, `AlertDialog`, `Tabs`,
+> `DataTable`, `Progress`, `ScrollArea`, `Toaster`. Composer avec l'un d'eux ne
+> compile pas.
+>
+> **Cette note n'est plus de la documentation : `pnpm test` la tient.**
+> `tests/design-system.test.ts` refuse qu'un nom de la ligne ci-dessus soit
+> exporté par le baril de `packages/ui`, et confronte le nombre écrit à la
+> liste qu'il annonce. Elle a été prise en défaut le jour même de son écriture
+> (06/09) : `Table` y figurait alors que s37b2 l'avait livré et que le baril
+> l'exporte — le compte annonçait alors 15, et « 32 composants nommés
+> ci-dessous » était un relevé à la main que rien ne refaisait (le tableau en
+> nomme 45, composés maison compris). `Command` en était sorti le même jour,
+> livré par s54.
+>
+> **Ce que la commande balaie, et ce qu'elle ne balaie pas** : elle lit cette
+> ligne-ci et le baril. Elle ne dit rien du sens inverse — un composant du
+> tableau absent du baril et non listé ici lui échappe, et c'est voulu :
+> `NotificationCenter`, `PricingTable` et `Stepper` vivent dans des modules, pas
+> dans `packages/ui`.
+>
+> **Une story qui a besoin d'un composant absent le livre dans `packages/ui`**
+> (copie shadcn/ui sur Radix, ADR 022), elle ne le réécrit pas dans son module
+> et ne le remplace pas par une primitive maison. Quand elle le fait, elle
+> retire son nom de la ligne ci-dessus **et** en corrige le nombre : sans quoi
+> la commande rougit.
 
 | Composant | Usage |
 |---|---|
@@ -282,9 +295,20 @@ Ce que le rendu ne dit pas : un seul navigateur, rien sur les bordures, et quatr
 ## UI patterns
 
 ### Formulaires
-react-hook-form et Zod, **le même schéma Zod côté client et côté serveur** — il vient de la couche `application` du module. Erreur affichée sous le champ, jamais en tooltip. Bouton de soumission en état `pending` et désactivé pendant l'envoi. Erreur globale du formulaire dans un `Alert` `destructive` au-dessus des champs.
 
-Exception de sécurité : sur les écrans d'authentification, un identifiant inconnu et un mot de passe erroné produisent **le même message générique** (s07).
+**Ce que le dépôt fait réellement**, mesuré le 6 septembre 2026 : `<form method="post">` natif, envoi par `fetch`, validation Zod **côté serveur** (la route du module), et le refus rendu dans un `Alert` **au-dessus des champs** — `destructive` en général, `warning` pour une limitation de débit. Bouton de soumission en état `pending` pendant l'envoi et désactivé jusqu'à l'hydratation (§ « Avant l'hydratation »).
+
+**Pas de react-hook-form, et pas d'erreur par champ.** La règle écrite ici était « react-hook-form et Zod, même schéma des deux côtés, erreur sous le champ ». La bibliothèque n'est **dans aucun `package.json` ni dans `pnpm-lock.yaml`** (`grep -rn react-hook-form --include=package.json .` et `grep -c react-hook-form pnpm-lock.yaml` : zéro, relevé le 6 septembre 2026), `packages/ui` n'exporte ni `Form`, ni `FormField`, ni `FormMessage` — la note du § « Composants disponibles » le tient par une commande —, et **aucun** des 15 fichiers `.tsx` qui rendent un `<form method="post">` sous `apps/web/app`, `packages/modules` et `packages/ui/src` ne l'importe (balayage du 6 septembre 2026 : `grep -rl '<form method="post"' apps/web/app packages/modules packages/ui/src`). La règle décrivait donc un dépôt qui n'a jamais existé.
+
+**Sur les écrans d'authentification, l'erreur globale n'est pas un pis-aller : c'est la règle.** Le serveur ne nomme aucun champ, et il ne le doit pas — compte inconnu, mot de passe faux et adresse non vérifiée rendent le **même** message (`docs/security.md` §7, s07). Une erreur posée sous le champ « Adresse email » rétablirait dans le navigateur l'énumération de comptes que la route vient de fermer. Ces écrans-là garderont leur `Alert` au-dessus des champs même le jour où le reste du dépôt gagnera l'erreur par champ.
+
+#### Lacune : la liaison de formulaire, et la largeur d'un écran centré (s46)
+
+Deux manques relevés en habillant les écrans d'authentification, **signalés et non comblés** — c'est ce que ce document exige d'un besoin qu'il ne couvre pas.
+
+**1. `Form` / `FormField` / `FormMessage` n'ont pas été livrés, et s46 a choisi de ne pas les livrer.** Quatre stories ont copié un composant manquant plutôt que d'improviser (`Pagination` en s29, `Breadcrumb` en s30, `Table` en s37b2, `Command` en s54) ; ici, non. Ces trois-là ne sont pas des composants shadcn/ui autonomes : ce sont les **liaisons de react-hook-form**, absente du dépôt. Les livrer pour six écrans qui rendent un ou deux champs et un bouton ferait entrer une bibliothèque, une abstraction et un second endroit où vit la validation — la généralisation que le cimetière du PRD refuse. **La story qui aura besoin d'une erreur par champ tranchera** : elle livrera la liaison dans `packages/ui`, ou elle écrira pourquoi elle s'en passe. Ce qu'elle ne pourra pas faire, c'est l'appliquer aux écrans d'authentification (voir juste au-dessus).
+
+**2. Le système ne fixe aucune largeur de lecture pour un formulaire centré.** Il borne la **prose** (`max-w-2xl`, § « Échelle de prose »), pas une colonne de saisie : un écran d'authentification sans borne s'étale sur toute la largeur d'un écran large, et un champ email de 1 400 px est illisible autant qu'il est laid. s46 a choisi `max-w-md` pour ses six écrans — **c'est le choix de ces écrans, pas une règle du système**, et il est écrit dans chacun d'eux. Le jour où un autre écran centré arrivera (une page de facturation vide, un écran d'invitation), soit le système gagne une largeur nommée, soit chaque écran continue de la choisir. Rien ne le mesure aujourd'hui ; ce qui est mesuré, c'est l'absence de débordement à 380 px (`e2e/auth-screens.spec.ts`).
 
 ### États
 - **Chargement** : `Skeleton` reproduisant la forme du contenu attendu. Jamais de spinner plein écran, jamais de saut de mise en page.
