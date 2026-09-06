@@ -1684,3 +1684,33 @@ s17-roles-permissions, s37b1-decompte-et-impersonation
 **Le piège est le sens du défaut** : un tableau vide qui refuse tout est confortable, et c'est pourquoi personne ne l'a vu pendant huit stories. Le correctif inverse la charge — à partir de là, une erreur de peuplement **ouvre** au lieu de fermer. Chaque critère doit donc porter son cas négatif, et la revue mutera dans ce sens-là.
 `packages/modules/organizations/src/domain/permissions.ts:14` prend soin de dire que les permissions d'organisation ne sont **pas** ce niveau-là : ne pas les confondre. Ce qui peuple `roles`, ce sont les rôles de **plateforme** (`admin_platform_role`), pas l'appartenance à une organisation.
 `s37b2` a mesuré la conséquence côté produit : le back-office n'est atteignable que par URL, faute d'entrée de navigation qui puisse être rendue.
+
+---
+
+## Story s57-contraste-des-jetons — Rendre visibles le focus et le bouton destructif
+**As a** Visiteur **I want** voir où se trouve le focus et lire un bouton destructif **so that** je puisse utiliser le produit au clavier et en thème sombre.
+
+> **Ajoutée le 06/09, sur deux mesures faites pendant `s46`**, indépendamment confirmées par sa revue avec `scripts/contrast-rules.ts` :
+> - **`--ring` sur `--background`, thème clair : 2,59 : 1**, contre les **3 : 1** que la WCAG demande à un indicateur de focus non textuel. Cela concerne **tous** les contrôles focusables du dépôt.
+> - **`Button variant="destructive"`, thème sombre : 2,77 : 1**, contre 4,5 : 1 pour du texte normal (4,56 en clair, tout juste).
+>
+> Les deux sont **préexistants** — `s46` les a trouvés en habillant les écrans d'authentification, ne les a pas introduits, et a délibérément refusé de les plier dans `pnpm test:contrast` : étendre une commande verte à un défaut de jeton l'aurait rendue rouge sans que personne l'ait décidé. C'est cette décision-là qui appartient à une story.
+
+### Complexity
+2
+
+### Acceptance criteria
+- [ ] `--ring` atteint **au moins 3 : 1** sur les fonds sur lesquels il est réellement peint, dans les deux thèmes, et le jeton reste unique — pas une exception par composant
+- [ ] `Button variant="destructive"` atteint **4,5 : 1** dans les deux thèmes, texte sur fond
+- [ ] `pnpm test:contrast` **cesse de ne mesurer que l'`Alert`** : elle couvre les jetons livrés qui portent du texte ou un indicateur non textuel, **avec le seuil qui correspond à chacun** — 4,5 : 1 pour du texte normal, 3 : 1 pour un indicateur non textuel
+- [ ] Ce que la commande **ne** mesure **pas** est écrit dans sa propre sortie, pas seulement dans un document
+- [ ] Les variantes et les jetons sont **dérivés** des fichiers livrés, jamais recopiés : un jeton ajouté demain entre dans la mesure sans qu'on y pense
+- [ ] Aucun écran ne change d'apparence au-delà de ce que le changement de jeton implique — les captures des cinq écrans d'authentification restent reconnaissables
+
+### Dependencies
+s49-contraste-des-alertes, s46-auth-screens-design
+
+### Agentic notes
+**Le piège est le sens de la commande.** `pnpm test:contrast` est verte aujourd'hui parce qu'elle regarde peu. L'élargir la rendra rouge sur des défauts réels — c'est le but, et c'est pourquoi la correction des jetons et l'élargissement de la mesure doivent atterrir **ensemble**, dans cette story et pas dans deux.
+**Le focus ne se voit pas sur une capture** : la revue de `s46` l'a écrit noir sur blanc. La mesure doit porter sur le jeton, pas sur un rendu.
+`docs/decisions/056` a fixé la portée des jetons sémantiques ; si la correction la déborde, elle demande un ADR qui le supersède.
