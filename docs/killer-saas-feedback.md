@@ -1313,6 +1313,22 @@ Je l'avais écrit de bonne foi, à partir d'un rapport de revue exact : `s37b2` 
 
 ---
 
+## P41bis — Un rayon d'action se mesure sur toutes les recettes, ou il n'est pas mesuré
+
+`s40` change l'endroit où atterrit **tout compte connecté**. Son implémenteur l'a vu venir, a mesuré le dégât — 38 parcours rouges sur la suite navigateur — et l'a réparé dans le harnais plutôt qu'en affaiblissant le critère. Bon réflexe, bonne exécution.
+
+**Il s'est arrêté à la suite qu'il connaissait.** `pnpm test:golden-path` et `pnpm test:minimal-profile` vivent sous d'autres configurations, avec leurs propres harnais. La revue a joué le parcours doré : **trois échecs sur quatre**, déterministes, sur le **premier critère de succès du PRD**.
+
+**Et rien ne l'aurait dit.** Le job de CI du parcours doré ne s'arme qu'à la première capture Stripe versionnée, et `tests/fixtures/stripe-events/` n'en porte aucune. La commande serait partie rouge en silence, et la story suivante en aurait hérité en l'attribuant à elle-même — c'est [P39bis](#p39bis) à l'envers : au lieu de deux branches qui accusent le tronc, un tronc rouge que personne ne regarde.
+
+**La règle** : quand un changement touche une invariante que **plusieurs** harnais asservissent — un atterrissage, une redirection, une forme d'URL, un état de session —, la liste des recettes à rejouer n'est pas « celle que je connais », c'est **toutes celles qui démarrent l'application**. Elles sont sept. Les nommer coûte une minute ; ne pas les nommer a coûté une ronde de revue complète et un `critical`.
+
+**Corollaire mesuré le même jour** : la ronde de correction a joué `pnpm test:socle`, qu'aucune consigne ne demandait — et c'est là que le parcours d'intégration tourne avec `organizations` coupé, donc **deux étapes au lieu de trois**. Une garde qui ne mord que dans une configuration n'est prouvée que par la configuration qui la fait mordre.
+
+**Second corollaire, sur la médecine légale** : des artefacts rouges inexpliqués traînaient dans le worktree. Plutôt que de hausser les épaules, l'implémenteur a trouvé le mécanisme — `cloneRepository` recopie les fichiers **modifiés**, et un fichier **indexé mais identique au disque** n'y figure pas, si bien qu'un passage lancé entre un `git add` et un `git commit` mesure **HEAD** en silence. Un rouge qu'on ne s'explique pas vaut d'être expliqué : celui-ci était une lacune de mesure de la recette, pas un défaut de la story.
+
+---
+
 ## P36bis — La revue lit le code, elle ne mesure pas son coût : c'est CodeQL qui a trouvé
 
 `s39` a livré `POST /analytics/client-error`, **volontairement non authentifiée** — il faut capter les erreurs d'avant-session. Le corps est donc choisi par un appelant anonyme, et il traverse un analyseur de trace de pile écrit en expression régulière.
@@ -1816,6 +1832,7 @@ C'est la **troisième** occurrence du même défaut dans ce même fichier : une 
 | 06/09 | `ModuleSession.roles` vide depuis huit stories : le niveau de protection `role` refuse tout le monde | trouvé en voulant s'en servir, story s56 ajoutée | P38bis |
 | 06/09 | Deux branches indépendantes rougissent sur le même cas de parcours : un compte partagé entre parcours parallèles | 3/3 verts en isolation, vert au rejeu ; écrit comme dette du harnais | P39bis |
 | 06/09 | Le plan de s56 nommait un garde qui n'aurait pas rougi — deux faits vrais, une conclusion fausse | l'implémenteur l'a mesuré et a construit le garde au bon endroit | P40bis |
+| 06/09 | Rayon d'action de s40 mesuré sur une suite, supposé pour les autres : parcours doré rouge, `critical` en revue | traversée du parcours par le fondateur, sept recettes balayées | P41bis |
 
 ---
 
