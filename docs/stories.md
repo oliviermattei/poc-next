@@ -1655,7 +1655,7 @@ L'image Open Graph par défaut est un **manque du design system** signalé par `
 s30-docs-site
 
 ### Agentic notes
-Sortie de s30 le 05/09, avant d'écrire son plan : les deux critères partagent une **passe croisée sur l'ensemble du contenu au build** que le reste de s30 n'a pas besoin de construire. s29 valide chaque fichier isolément (frontmatter Zod, refus nommant le fichier) et ne croise jamais deux fichiers — c'est ce mécanisme-là qui est neuf.
+Sortie de s30 le 05/09, avant d'écrire son plan : les deux critères partagent une **passe croisée sur l'ensemble du contenu au build** que le reste de s30 n'a pas besoin de construire. s29 valide chaque fichier isolément (frontmatter Zod, refus nommant le fichier). **Précision du 06/09** : `s30` croisait déjà deux fichiers en deux endroits (une section sans `section.json` dans la langue par défaut, une page écrite seulement en traduction) — la rédaction initiale disait le contraire. Ce qui est neuf est la **référence écrite par l'auteur**, arbitraire, résolue contre le catalogue entier.
 **Piège de sécurité** : si la recherche passe par une route, `docs/security.md` impose la limitation de débit sur tout point d'entrée public servi par le répartiteur (ADR 050), et `routeIsRateLimited` la pose sans qu'elle le déclare. Un index statique interrogé côté client l'évite entièrement — argument de plus pour le build, en plus du temps de réponse.
 **Piège de taille** : un index servi au client est téléchargé par chaque visiteur. Le critère ne fixe pas de plafond ; le plan devrait en poser un et le mesurer, sinon la promesse « sans service externe » se paie ailleurs.
 
