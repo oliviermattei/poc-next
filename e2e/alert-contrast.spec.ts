@@ -8,8 +8,9 @@ import { billing } from '../apps/web/lib/billing'
 import { marketingFormsAvailable, marketingSite } from '../apps/web/lib/marketing'
 import { flatMessagesFor } from '../apps/web/lib/messages'
 import { defaultLocale } from '../config/i18n'
-import { CONTRAST_THRESHOLD, contrastRatio, type Rgb } from '../scripts/contrast-rules'
+import { CONTRAST_THRESHOLD, contrastRatio } from '../scripts/contrast-rules'
 import { publicPath } from './support/locale'
+import { painted } from './support/painted'
 
 /**
  * **Le contraste des `Alert`, mesuré par le navigateur lui-même** (s49).
@@ -67,96 +68,6 @@ const publicSite = marketingSite.sections.length > 0
 const aClient = (): Record<string, string> => ({
   'x-forwarded-for': `198.51.100.${String(Math.floor(Math.random() * 250) + 1)}, 10.0.0.1`,
 })
-
-type Painted = {
-  /** La couleur du texte, telle que le navigateur l'a peinte, en sRGB [0, 1]. */
-  readonly text: Rgb
-  /** Le fond effectif sous ce texte, tous calques composés. */
-  readonly background: Rgb
-  readonly textHex: string
-  readonly backgroundHex: string
-}
-
-/**
- * **Ce que le navigateur a peint sous ce texte**, et non ce qu'un convertisseur
- * en déduit.
- *
- * Les fonds sont empilés de la racine vers l'alerte dans un `canvas` de un
- * pixel : c'est Chromium qui lit `oklch(…)` ou le `color-mix` que Tailwind
- * émet, c'est lui qui compose l'alpha, et la lecture du pixel rend le sRGB à
- * huit bits — celui de l'écran. Une couleur que le navigateur ne saurait pas
- * repeindre **arrête** la mesure au lieu d'en rendre une fausse.
- */
-const painted = async (alert: Locator): Promise<Painted> =>
-  await alert.evaluate((node: HTMLElement) => {
-    const layers: string[] = []
-
-    for (let current: Element | null = node; current !== null; current = current.parentElement) {
-      layers.push(window.getComputedStyle(current).backgroundColor)
-    }
-
-    const canvas = document.createElement('canvas')
-
-    canvas.width = 1
-    canvas.height = 1
-
-    const context = canvas.getContext('2d')
-
-    if (context === null) {
-      throw new Error('Aucun contexte 2d : le navigateur ne peut pas rendre sa propre mesure.')
-    }
-
-    const SENTINEL = '#010203'
-
-    const paint = (colour: string): void => {
-      context.fillStyle = SENTINEL
-      context.fillStyle = colour
-
-      if (context.fillStyle === SENTINEL && colour !== SENTINEL) {
-        throw new Error(
-          `Le navigateur n’a pas su repeindre « ${colour} » : la mesure serait fausse, ` +
-            'donc elle n’a pas lieu.',
-        )
-      }
-
-      context.fillRect(0, 0, 1, 1)
-    }
-
-    const sample = (): readonly [number, number, number, number] => {
-      const data = context.getImageData(0, 0, 1, 1).data
-
-      return [data[0] ?? 0, data[1] ?? 0, data[2] ?? 0, data[3] ?? 0]
-    }
-
-    const hex = (channels: readonly number[]): string =>
-      `#${channels.map((channel) => channel.toString(16).padStart(2, '0')).join('')}`
-
-    // De la racine vers l'alerte : l'ordre dans lequel le navigateur empile ses
-    // fonds. `body` porte `--background`, opaque, donc la pile se ferme.
-    for (const layer of [...layers].reverse()) {
-      paint(layer)
-    }
-
-    const [br, bg, bb, ba] = sample()
-
-    if (ba !== 255) {
-      throw new Error(
-        `Le fond composé sous l’alerte n’est pas opaque (alpha ${ba}) : aucun calque de la pile ` +
-          'ne ferme le fond, et le rapport mesuré serait celui d’un fond inventé.',
-      )
-    }
-
-    paint(window.getComputedStyle(node).color)
-
-    const [tr, tg, tb] = sample()
-
-    return {
-      text: [tr / 255, tg / 255, tb / 255] as const,
-      background: [br / 255, bg / 255, bb / 255] as const,
-      textHex: hex([tr, tg, tb]),
-      backgroundHex: hex([br, bg, bb]),
-    }
-  })
 
 const THEMES = [
   { label: 'clair', colorScheme: 'light' as const, dark: false },

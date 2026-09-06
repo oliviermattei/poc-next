@@ -1,4 +1,4 @@
-import { Alert } from '@repo/ui'
+import { Alert, Card, CardContent, cn, PageHeader, Separator } from '@repo/ui'
 
 import { authRoutePath, readOAuthFailureClass, safeRedirectPath } from '../../lib/auth'
 import { appIntl } from '../../lib/i18n'
@@ -21,6 +21,12 @@ import { PasskeyButton } from './passkey-button'
  * `/account` faute de tableau de bord ; s08 en livre un, et le commentaire
  * ci-dessus redevient vrai. Une demande explicite (`?next=/account`) reste
  * respectée : c'est le repli qui change, pas la règle.
+ *
+ * **Une carte, deux moyens** (s46). Le mot de passe, la passkey et les
+ * fournisseurs mènent à la même session : ils tiennent dans la même carte,
+ * séparés par le `Separator` du système. Le lien de connexion est en dessous,
+ * après le séparateur, parce qu'il ne se termine pas ici — il se termine dans
+ * une boîte email.
  */
 /**
  * Les deux seuls messages qu'un retour de fournisseur en échec peut produire,
@@ -31,6 +37,15 @@ const OAUTH_ERROR_KEYS = {
   denied: 'app.auth.oauth.error.denied',
   failed: 'app.auth.oauth.error.failed',
 } as const
+
+/**
+ * Les classes d'un lien secondaire, écrites une fois pour les trois liens de
+ * bas d'écran. Ce sont celles de `CookieBanner` : même rang, même traitement.
+ */
+const LINK_CLASSNAME = cn(
+  'rounded-sm underline underline-offset-4',
+  'hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring',
+)
 
 export default async function SignInPage({
   searchParams,
@@ -55,14 +70,29 @@ export default async function SignInPage({
   )}`
 
   return (
-    <main>
-      <h1>{t('app.signIn.title')}</h1>
+    <main className="mx-auto flex w-full max-w-md min-w-0 flex-col gap-6">
+      <PageHeader title={t('app.signIn.title')} />
 
-      {params.verified === undefined ? null : <p role="status">{t('app.signIn.verified')}</p>}
-      {params.email_changed === undefined ? null : (
-        <p role="status">{t('app.signIn.emailChanged')}</p>
+      {/*
+        Les trois retours d'un parcours qui vient d'aboutir ailleurs. `success`
+        et `role="status"` : une confirmation ne coupe pas la lecture d'un
+        lecteur d'écran, contrairement à `role="alert"`.
+      */}
+      {params.verified === undefined ? null : (
+        <Alert variant="success" role="status">
+          {t('app.signIn.verified')}
+        </Alert>
       )}
-      {params.reset === undefined ? null : <p role="status">{t('app.signIn.reset')}</p>}
+      {params.email_changed === undefined ? null : (
+        <Alert variant="success" role="status">
+          {t('app.signIn.emailChanged')}
+        </Alert>
+      )}
+      {params.reset === undefined ? null : (
+        <Alert variant="success" role="status">
+          {t('app.signIn.reset')}
+        </Alert>
+      )}
 
       {/*
         Le refus d'un retour de fournisseur, en **deux messages et pas plus**.
@@ -77,62 +107,87 @@ export default async function SignInPage({
         </Alert>
       )}
 
-      {/*
-        La passkey en premier : c'est le moyen le plus rapide quand il est
-        disponible, et le placer en bas en ferait un dernier recours. Aucune
-        adresse n'est demandée — le point d'entrée du serveur ne prend aucun
-        paramètre (`docs/security.md` §7). Le bouton n'est rendu que si le
-        navigateur sait faire ; sinon, tout ce qui suit reste servi.
-      */}
-      <PasskeyButton
-        optionsAction={authRoutePath('passkeyAuthenticateOptions')}
-        verifyAction={authRoutePath('passkeyAuthenticate')}
-        destination={destination}
-        twoFactorDestination={twoFactorDestination}
-      />
+      <Card className="min-w-0">
+        <CardContent className="flex min-w-0 flex-col gap-6">
+          {/*
+            La passkey en premier : c'est le moyen le plus rapide quand il est
+            disponible, et le placer en bas en ferait un dernier recours. Aucune
+            adresse n'est demandée — le point d'entrée du serveur ne prend aucun
+            paramètre (`docs/security.md` §7). Le bouton n'est rendu que si le
+            navigateur sait faire ; sinon, tout ce qui suit reste servi.
+          */}
+          <PasskeyButton
+            optionsAction={authRoutePath('passkeyAuthenticateOptions')}
+            verifyAction={authRoutePath('passkeyAuthenticate')}
+            destination={destination}
+            twoFactorDestination={twoFactorDestination}
+          />
 
-      <OAuthProviderButtons next={next === null ? undefined : safeRedirectPath(next, '/')} />
+          <OAuthProviderButtons next={next === null ? undefined : safeRedirectPath(next, '/')} />
 
-      <AuthForm
-        action={authRoutePath('signIn')}
-        fields={[
-          { name: 'email', labelKey: 'app.auth.field.email', type: 'email', autoComplete: 'email' },
-          {
-            name: 'password',
-            labelKey: 'app.auth.field.password',
-            type: 'password',
-            autoComplete: 'current-password',
-          },
-        ]}
-        submitLabelKey="app.signIn.submit"
-        redirectTo={destination}
-        // La destination est **transportée** jusqu'à l'écran de vérification :
-        // le second facteur n'est pas une escale qui fait oublier où on allait.
-        // Elle repasse par la même règle de liste blanche là-bas — cet écran
-        // n'est pas le seul à filtrer.
-        twoFactorRedirectTo={twoFactorDestination}
-      />
+          <AuthForm
+            action={authRoutePath('signIn')}
+            fields={[
+              {
+                name: 'email',
+                labelKey: 'app.auth.field.email',
+                type: 'email',
+                autoComplete: 'email',
+              },
+              {
+                name: 'password',
+                labelKey: 'app.auth.field.password',
+                type: 'password',
+                autoComplete: 'current-password',
+              },
+            ]}
+            submitLabelKey="app.signIn.submit"
+            redirectTo={destination}
+            // La destination est **transportée** jusqu'à l'écran de
+            // vérification : le second facteur n'est pas une escale qui fait
+            // oublier où on allait. Elle repasse par la même règle de liste
+            // blanche là-bas — cet écran n'est pas le seul à filtrer.
+            twoFactorRedirectTo={twoFactorDestination}
+          />
 
-      <h2>{t('app.signIn.magicLink.title')}</h2>
-      <AuthForm
-        action={authRoutePath('magicLink')}
-        fields={[
-          {
-            name: 'email',
-            labelKey: 'app.auth.field.magicLinkEmail',
-            type: 'email',
-            autoComplete: 'email',
-          },
-        ]}
-        hiddenValues={{ callbackURL: destination }}
-        submitLabelKey="app.signIn.magicLink.submit"
-        successMessageKey="app.signIn.magicLink.sent"
-      />
+          <Separator />
 
-      <p>
-        <a href={path('/forgot-password')}>{t('app.signIn.links.forgotPassword')}</a> ·{' '}
-        <a href={path('/verify-email')}>{t('app.signIn.links.unverified')}</a> ·{' '}
-        <a href={path('/sign-up')}>{t('app.signIn.links.signUp')}</a>
+          <div className="flex min-w-0 flex-col gap-4">
+            {/*
+              `h2` du **document**, à la taille d'un titre de sous-section
+              (`h3` du design system, `text-xl`) : c'est une section de la
+              carte, pas une seconde page. `/two-factor` écrit son second
+              formulaire exactement ainsi.
+            */}
+            <h2 className="text-xl font-semibold">{t('app.signIn.magicLink.title')}</h2>
+            <AuthForm
+              action={authRoutePath('magicLink')}
+              fields={[
+                {
+                  name: 'email',
+                  labelKey: 'app.auth.field.magicLinkEmail',
+                  type: 'email',
+                  autoComplete: 'email',
+                },
+              ]}
+              hiddenValues={{ callbackURL: destination }}
+              submitLabelKey="app.signIn.magicLink.submit"
+              successMessageKey="app.signIn.magicLink.sent"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <p className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-muted-foreground">
+        <a className={LINK_CLASSNAME} href={path('/forgot-password')}>
+          {t('app.signIn.links.forgotPassword')}
+        </a>
+        <a className={LINK_CLASSNAME} href={path('/verify-email')}>
+          {t('app.signIn.links.unverified')}
+        </a>
+        <a className={LINK_CLASSNAME} href={path('/sign-up')}>
+          {t('app.signIn.links.signUp')}
+        </a>
       </p>
     </main>
   )

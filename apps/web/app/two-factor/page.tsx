@@ -1,4 +1,4 @@
-import { Separator } from '@repo/ui'
+import { Card, CardContent, PageHeader, Separator } from '@repo/ui'
 
 import { authRoutePath, safeRedirectPath } from '../../lib/auth'
 import { appIntl } from '../../lib/i18n'
@@ -20,6 +20,16 @@ import { TwoFactorForm } from './two-factor-form'
  * code de l'application, et le code de secours. Le second est un moyen de
  * dernier recours ; le mettre derrière un bouton de bascule le rendrait
  * introuvable au moment précis où on le cherche.
+ *
+ * **Habillé avec les cinq autres** (s46, constat F4 de la revue). Cet écran
+ * était resté hors de la famille — pas de carte, pas de largeur de lecture, un
+ * `<h1>` écrit à la main — alors qu'il est un écran d'authentification, servi
+ * au milieu du parcours de connexion. Il prend donc la même colonne bornée, le
+ * même `PageHeader` et la même carte, et **les deux moyens tiennent dans une
+ * seule carte** pour la même raison que `/sign-in` : ils mènent à la même
+ * session. La liste balayée par `e2e/auth-screens.spec.ts` n'est plus écrite,
+ * elle est dérivée du disque : un septième écran y entre sans que personne
+ * n'ait à y penser.
  */
 export default async function TwoFactorPage({
   searchParams,
@@ -32,39 +42,54 @@ export default async function TwoFactorPage({
   const destination = path(safeRedirectPath(next, '/'))
 
   return (
-    <main className="flex flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-semibold">{t('app.twoFactor.title')}</h1>
-        <p className="text-sm text-muted-foreground">{t('app.twoFactor.description')}</p>
-      </div>
+    <main className="mx-auto flex w-full max-w-md min-w-0 flex-col gap-6">
+      <PageHeader title={t('app.twoFactor.title')} description={t('app.twoFactor.description')} />
 
-      <TwoFactorForm
-        action={authRoutePath('twoFactorVerify')}
-        labelKey="app.twoFactor.codeLabel"
-        submitLabelKey="app.twoFactor.submit"
-        autoComplete="one-time-code"
-        numeric
-        destination={destination}
-      />
+      <Card className="min-w-0">
+        <CardContent className="flex min-w-0 flex-col gap-6">
+          <TwoFactorForm
+            action={authRoutePath('twoFactorVerify')}
+            labelKey="app.twoFactor.codeLabel"
+            submitLabelKey="app.twoFactor.submit"
+            autoComplete="one-time-code"
+            numeric
+            destination={destination}
+          />
 
-      <Separator />
+          <Separator />
 
-      <div className="flex flex-col gap-2">
-        <h2 className="text-xl font-semibold">{t('app.twoFactor.backup.title')}</h2>
-        <p className="text-xs text-muted-foreground">{t('app.twoFactor.backup.description')}</p>
-      </div>
+          <div className="flex min-w-0 flex-col gap-4">
+            {/*
+              `h2` du document, à la taille d'un titre de sous-section
+              (`text-xl`) : c'est une section de la carte, pas une seconde page.
+              `/sign-in` écrit son second formulaire exactement ainsi.
+            */}
+            <div className="flex min-w-0 flex-col gap-2">
+              <h2 className="text-xl font-semibold">{t('app.twoFactor.backup.title')}</h2>
+              <p className="text-sm text-muted-foreground">
+                {t('app.twoFactor.backup.description')}
+              </p>
+            </div>
 
-      <TwoFactorForm
-        action={authRoutePath('twoFactorBackupCode')}
-        labelKey="app.twoFactor.backup.codeLabel"
-        submitLabelKey="app.twoFactor.backup.submit"
-        autoComplete="off"
-        variant="secondary"
-        destination={destination}
-      />
+            <TwoFactorForm
+              action={authRoutePath('twoFactorBackupCode')}
+              labelKey="app.twoFactor.backup.codeLabel"
+              submitLabelKey="app.twoFactor.backup.submit"
+              autoComplete="off"
+              variant="secondary"
+              destination={destination}
+            />
+          </div>
+        </CardContent>
+      </Card>
 
-      <p className="text-xs">
-        <a href={path('/sign-in')}>{t('app.twoFactor.links.signIn')}</a>
+      <p className="text-sm text-muted-foreground">
+        <a
+          className="rounded-sm underline underline-offset-4 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          href={path('/sign-in')}
+        >
+          {t('app.twoFactor.links.signIn')}
+        </a>
       </p>
     </main>
   )

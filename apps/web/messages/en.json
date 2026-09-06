@@ -38,6 +38,7 @@
   "app.auth.error.invalid": "Invalid request. Check the information you entered.",
   "app.auth.error.throttled": "Too many attempts. Try again in a few minutes.",
   "app.auth.error.throttledIn": "Too many attempts. Try again in {minutes, plural, one {# minute} other {# minutes}}.",
+  "app.auth.noscript": "Submitting this form requires JavaScript, which appears to be disabled. Enable it, then reload the page.",
   "app.signIn.title": "Sign in",
   "app.signIn.submit": "Sign in",
   "app.signIn.verified": "Your address is verified. You can sign in.",

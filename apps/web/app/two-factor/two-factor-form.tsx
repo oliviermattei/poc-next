@@ -4,7 +4,11 @@ import { Alert, Button, Input, Label } from '@repo/ui'
 import { useTranslations } from 'next-intl'
 import { useState, type FormEvent } from 'react'
 
-import { retryAfterMinutes, type RefusalMessage } from '../refusal-message'
+import {
+  AUTH_NOSCRIPT_KEY,
+  retryAfterMinutes,
+  type RefusalMessage,
+} from '../refusal-message'
 import { useHydrated } from '../use-hydrated'
 
 /**
@@ -148,6 +152,15 @@ export function TwoFactorForm(props: TwoFactorFormProps) {
           required
         />
       </div>
+
+      {/*
+        Le bouton éteint dit pourquoi : même règle, même formulation et même
+        clé que `app/auth-form.tsx` — c'est le même geste sur le même parcours
+        (s46, constat F5 de la revue).
+      */}
+      <noscript>
+        <Alert variant="warning">{t(AUTH_NOSCRIPT_KEY)}</Alert>
+      </noscript>
 
       <div>
         <Button

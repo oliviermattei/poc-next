@@ -1,9 +1,10 @@
 'use client'
 
+import { Alert, Button, Input, Label } from '@repo/ui'
 import { useTranslations } from 'next-intl'
-import { useState, type FormEvent } from 'react'
+import { useId, useState, type FormEvent } from 'react'
 
-import { retryAfterMinutes, type RefusalMessage } from './refusal-message'
+import { AUTH_NOSCRIPT_KEY, retryAfterMinutes, type RefusalMessage } from './refusal-message'
 import { useHydrated } from './use-hydrated'
 
 /**
@@ -24,6 +25,18 @@ import { useHydrated } from './use-hydrated'
  * Il parle aux **routes du module**, pas à une action serveur : c'est le
  * navigateur qui reçoit le `Set-Cookie` de la session, et le parcours exercé en
  * production est exactement celui que `tests/auth.test.ts` mesure.
+ *
+ * **Il compose avec `packages/ui`, sans `Form`** (s46). `docs/design-system.md`
+ * annonce `Form`, `FormField` et `FormMessage` comme la voie du dépôt pour un
+ * formulaire ; ils n'existent pas, et ce sont les liaisons de
+ * `react-hook-form`, qui n'est pas une dépendance de ce dépôt. Les livrer pour
+ * cinq écrans qui rendent un ou deux champs et un bouton ferait entrer une
+ * bibliothèque et une abstraction pour rien. **C'est un manque du design system
+ * signalé, pas comblé sur place**, et il est signalé **là où le prochain agent
+ * le lira** : `docs/design-system.md`, § « Lacune : la liaison de formulaire, et
+ * la largeur d'un écran centré (s46) ». Ici l'erreur est
+ * **globale** — le serveur ne nomme aucun champ, et il ne le doit pas : compte
+ * inconnu et mot de passe faux sont indiscernables (`docs/security.md` §7).
  *
  * Les libellés arrivent en **clés de traduction**, jamais en texte : c'est
  * l'écran appelant qui nomme la clé, le formulaire qui la résout. Passer le
@@ -87,27 +100,47 @@ export interface AuthFormProps {
  * `tests/rate-limiting.test.ts` la neutralise à sa propre ligne, et
  * `e2e/rate-limiting.spec.ts` lit ensuite l'alerte dans un navigateur.
  */
+const REFUSAL_KEYS = {
+  throttled: 'app.auth.error.throttled',
+  throttledIn: 'app.auth.error.throttledIn',
+  unauthorized: 'app.auth.error.unauthorized',
+  mail: 'app.auth.error.mail',
+  invalid: 'app.auth.error.invalid',
+} as const
+
 export const authRefusalOf = (status: number, minutes: number | null): RefusalMessage => {
   if (status === 429) {
     return minutes === null
-      ? { key: 'app.auth.error.throttled', minutes: null }
-      : { key: 'app.auth.error.throttledIn', minutes }
+      ? { key: REFUSAL_KEYS.throttled, minutes: null }
+      : { key: REFUSAL_KEYS.throttledIn, minutes }
   }
 
   if (status === 401) {
-    return { key: 'app.auth.error.unauthorized', minutes: null }
+    return { key: REFUSAL_KEYS.unauthorized, minutes: null }
   }
 
   if (status === 502) {
-    return { key: 'app.auth.error.mail', minutes: null }
+    return { key: REFUSAL_KEYS.mail, minutes: null }
   }
 
-  return { key: 'app.auth.error.invalid', minutes: null }
+  return { key: REFUSAL_KEYS.invalid, minutes: null }
 }
 
 export function AuthForm(props: AuthFormProps) {
   const t = useTranslations()
   const hydrated = useHydrated()
+  /**
+   * **Le préfixe des identifiants de champ, propre à cette instance.**
+   *
+   * L'écran de connexion monte **deux** formulaires, et tous deux portent un
+   * champ nommé `email` : un identifiant tiré du seul nom du champ était donc
+   * en double dans le document, et l'étiquette « Adresse email (lien de
+   * connexion) » désignait le champ du formulaire de mot de passe — pour un
+   * lecteur d'écran, pour un clic sur l'étiquette, et pour le `getByLabel` des
+   * parcours. `useId` rend un préfixe stable entre le rendu du serveur et
+   * l'hydratation, ce qu'un compteur de module ne ferait pas.
+   */
+  const uid = useId()
   const [refusal, setRefusal] = useState<RefusalMessage | null>(null)
   const [done, setDone] = useState(false)
   const [pending, setPending] = useState(false)
@@ -154,29 +187,68 @@ export function AuthForm(props: AuthFormProps) {
   }
 
   if (done && props.successMessageKey !== undefined) {
-    return <p role="status">{t(props.successMessageKey)}</p>
+    // La confirmation **remplace** le formulaire, comme dans
+    // `app/public-form.tsx` : c'est le seul état qui ne laisse pas croire
+    // qu'il faut renvoyer.
+    return (
+      <Alert variant="success" role="status">
+        {t(props.successMessageKey)}
+      </Alert>
+    )
   }
 
+  const throttled =
+    refusal?.key === REFUSAL_KEYS.throttled || refusal?.key === REFUSAL_KEYS.throttledIn
+
   return (
-    <form method="post" onSubmit={submit}>
-      {props.fields.map((field) => (
-        <p key={field.name}>
-          <label htmlFor={field.name}>{t(field.labelKey)}</label>{' '}
-          <input
-            id={field.name}
-            name={field.name}
-            type={field.type}
-            autoComplete={field.autoComplete}
-            required
-          />
-        </p>
-      ))}
+    <form method="post" onSubmit={submit} className="flex min-w-0 flex-col gap-4">
       {refusal === null ? null : (
-        <p role="alert">{t(refusal.key, { minutes: refusal.minutes ?? 0 })}</p>
+        // `warning` plutôt que `destructive` pour un refus de débit : rien
+        // n'est cassé, il faut attendre. C'est la distinction que
+        // `app/public-form.tsx` fait depuis s11 et que `two-factor-form.tsx`
+        // reprend ; le refus reste **au-dessus** des champs, comme le design
+        // system l'exige d'une erreur globale de formulaire.
+        <Alert variant={throttled ? 'warning' : 'destructive'} role="alert">
+          {t(refusal.key, { minutes: refusal.minutes ?? 0 })}
+        </Alert>
       )}
-      <button type="submit" disabled={pending || !hydrated}>
+
+      {props.fields.map((field) => {
+        // L'expression vit **hors du JSX** : un littéral d'un seul mot entre
+        // accolades dans des enfants est lu comme du texte affiché par
+        // `tests/i18n.test.ts`, et il a raison de le lire ainsi.
+        const fieldId = `${uid}${field.name}`
+
+        return (
+          <div key={field.name} className="flex min-w-0 flex-col gap-2">
+            <Label htmlFor={fieldId}>{t(field.labelKey)}</Label>
+            <Input
+              id={fieldId}
+              name={field.name}
+              type={field.type}
+              autoComplete={field.autoComplete}
+              required
+            />
+          </div>
+        )
+      })}
+
+      {/*
+        **Le bouton éteint dit pourquoi.** Sans JavaScript, `useHydrated` le
+        laisse éteint pour toujours : l'écran a l'air fini et ne l'est pas.
+        C'est ce que `apps/web/AGENTS.md` exige depuis le constat F5 de la revue
+        de s11, et ce que `app/public-form.tsx` et `app/billing-actions.tsx`
+        faisaient déjà — pas ces écrans-ci, jusqu'à s46. Un `<noscript>` ne
+        demande ni script en ligne ni source de politique de sécurité du contenu
+        supplémentaire.
+      */}
+      <noscript>
+        <Alert variant="warning">{t(AUTH_NOSCRIPT_KEY)}</Alert>
+      </noscript>
+
+      <Button type="submit" className="w-full" pending={pending} disabled={!hydrated}>
         {t(props.submitLabelKey)}
-      </button>
+      </Button>
     </form>
   )
 }

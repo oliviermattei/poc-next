@@ -261,6 +261,43 @@ describe('les tokens de `packages/ui` sont ceux du design system', () => {
     expect(claimed.filter((name) => exported.has(name))).toEqual([])
   })
 
+  it('ne déclare « absent » aucun composant que le baril exporte, et compte ce qu’il liste', async () => {
+    /*
+     * **La commande que la note du document réclamait.** `docs/design-system.md`
+     * porte une note datée disant quels composants du tableau n'existent pas
+     * dans `packages/ui` ; elle-même écrivait « tant qu'aucun test ne le fait,
+     * ce paragraphe est de la documentation, pas une règle ». Elle a été prise
+     * en défaut le jour de son écriture : `Table` y figurait alors que s37b2
+     * l'avait livré et que le baril l'exporte (constat 3 de la revue de s46).
+     *
+     * Deux côtés dérivés, comme pour `packages/ui/AGENTS.md` juste au-dessus :
+     * les noms cités dans la note, et les exports réels du baril. Le **nombre**
+     * écrit dans la note est confronté à la liste qu'elle donne — un compte
+     * tapé à la main vieillit à côté de sa propre liste.
+     *
+     * Ce que cette ligne **ne** dit **pas** : qu'un composant du tableau absent
+     * du baril figure bien dans la note. Ce sens-là rougirait sur
+     * `NotificationCenter`, `PricingTable` et `Stepper`, qui vivent dans des
+     * modules et non dans `packages/ui`.
+     */
+    const document = read('/docs/design-system.md')
+    const start = document.indexOf('**Absents de')
+
+    expect(start, 'la note « Absents de `packages/ui/src` »').toBeGreaterThan(0)
+
+    const segment = document.slice(start, document.indexOf('.', document.indexOf(':', start)))
+    const claimed = [...new Set([...segment.matchAll(/`(\w+)`/g)].map((match) => match[1] ?? ''))]
+    const written = Number(/—\s*(\d+)\*\*/.exec(segment)?.[1] ?? Number.NaN)
+
+    // Garde contre l'inertie : une extraction qui ne trouve rien passerait.
+    expect(claimed.length).toBeGreaterThan(5)
+    expect(written, segment).toBe(claimed.length)
+
+    const exported = new Set(Object.keys(await import('@repo/ui')))
+
+    expect(claimed.filter((name) => exported.has(name))).toEqual([])
+  })
+
   it('n’a pas de fichier de configuration JavaScript (Tailwind v4, ADR 010)', () => {
     // Un `tailwind.config.js` déposé à côté serait lu par Tailwind v4 s'il
     // était référencé, et surtout : il ferait croire au prochain agent que la

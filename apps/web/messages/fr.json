@@ -38,6 +38,7 @@
   "app.auth.error.invalid": "Demande invalide. Vérifiez les informations saisies.",
   "app.auth.error.throttled": "Trop de tentatives. Réessayez dans quelques minutes.",
   "app.auth.error.throttledIn": "Trop de tentatives. Réessayez dans {minutes, plural, one {# minute} other {# minutes}}.",
+  "app.auth.noscript": "L’envoi de ce formulaire demande JavaScript, qui semble désactivé. Activez-le puis rechargez la page.",
   "app.signIn.title": "Se connecter",
   "app.signIn.submit": "Se connecter",
   "app.signIn.verified": "Votre adresse est vérifiée. Vous pouvez vous connecter.",

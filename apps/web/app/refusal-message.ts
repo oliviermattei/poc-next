@@ -49,3 +49,19 @@ export const retryAfterMinutes = (response: Response): number | null => {
 
   return Number.isFinite(seconds) && seconds > 0 ? Math.ceil(seconds / 60) : null
 }
+
+/**
+ * **L'explication du bouton éteint**, partagée par les formulaires des écrans
+ * d'authentification.
+ *
+ * Ici pour la même raison que le reste de ce fichier : ces formulaires doivent
+ * en dire la même chose, et ce module est le seul de ce dossier qui ne porte
+ * aucun composant — un `import` depuis `two-factor-form.tsx` n'y tire pas
+ * `AuthForm` dans le lot de `/two-factor`. Elle est écrite **par clé entière**
+ * comme les refus : une clé composée échapperait au contrôle d'existence des
+ * clés dans chaque locale (s09).
+ *
+ * `app/public-form.tsx` et `app/billing-actions.tsx` portent la leur, qui vient
+ * du catalogue de leur module — pas de clé commune à inventer entre eux.
+ */
+export const AUTH_NOSCRIPT_KEY = 'app.auth.noscript'
