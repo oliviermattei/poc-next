@@ -69,7 +69,7 @@
     "@repo/ui": "workspace:*",
     "@rowanmanning/feed-parser": "^2.1.4",
     "@types/mdx": "^2.0.14",
-    "@types/node": "^22",
+    "@types/node": "^26",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "better-auth": "1.7.2",
