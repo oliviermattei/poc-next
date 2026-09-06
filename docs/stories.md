@@ -1204,7 +1204,7 @@ s37a-superadmin-et-bannissement
 s37b1-decompte-et-impersonation, s21-trials-and-gating
 
 ### Agentic notes
-**404 et non 403** pour un non-superadmin : le répartiteur répond 403 à une protection `role` non satisfaite, ce qui confirmerait l'existence du back-office — `s37a` a établi la forme, la garde vit dans le module.
+**404 et non 403** pour un non-superadmin. *(Corrigé le 06/09 : le répartiteur répondait 403 à une protection `role` non satisfaite, ce qui confirmait l'existence du back-office ; **ADR 068** le fait répondre 404 à tout le monde, anonyme compris. La garde reste dans le module pour une autre raison, qui elle survit : elle refuse une session empruntée **avant** de juger le rôle, ce qu'un niveau déclaré ne sait pas exprimer.)*
 
 Le module n'a **aucun écran** aujourd'hui : `adminNavigation` est vide. Tout est neuf, et c'est ce qui fait le poids de cette tranche.
 
