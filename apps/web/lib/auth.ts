@@ -159,6 +159,22 @@ export function appAuth(options: AppAuthOptions = {}): AuthService {
         emit: async (emission) => await (await import('./jobs')).appJobs().emit(emission),
       },
       /**
+       * **Le port d'analytique** (s39) : le seul chemin par lequel ce module
+       * mesure, et il est décidé ici.
+       *
+       * Module `analytics` coupé, ou aucune clé configurée : `lib/analytics.ts`
+       * rend un port inerte, qui n'émet **aucun appel réseau**. Ce module ne
+       * connaît pas la différence — c'est le critère 5, et la moitié du
+       * critère 8.
+       *
+       * Différé pour la même raison de cycle que `jobs` : les ports sont
+       * construits au premier appel, jamais à l'import.
+       */
+      analytics: {
+        track: async (event) => await (await import('./analytics')).appAnalytics().track(event),
+        page: async (view) => await (await import('./analytics')).appAnalytics().page(view),
+      },
+      /**
        * **L'export de ses données** (s35) — les deux choses que le module ne
        * peut pas se procurer.
        *

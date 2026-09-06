@@ -35,6 +35,7 @@ export {
   type DataExportDatabase,
 } from './infrastructure/drizzle-data-export-repository'
 export { AuthNotConfiguredError, type AuthService } from './application/auth-service'
+export { SIGN_UP_EVENT } from './domain/analytics-events'
 export { defaultAuthPolicy, type AuthPolicy } from './domain/auth-policy'
 export {
   LOCAL_OAUTH_PROVIDER_ID,

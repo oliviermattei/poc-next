@@ -4,6 +4,7 @@ import { provideMarketing } from '@repo/module-marketing'
 import { admin } from './admin'
 import { appAuth } from './auth'
 import { billing } from './billing'
+import { prepareAnalytics } from './analytics'
 import { consent } from './consent'
 import { localeRouting } from './locale-routing'
 import { prepareModuleContent } from './module-content'
@@ -105,4 +106,16 @@ export function prepareModuleServices(): void {
   // lequel `/api/modules/jobs/inngest` répondrait 404 pendant qu'Inngest
   // l'appelle.
   prepareJobs()
+  // s39 — sans cette ligne, `/api/modules/analytics/client-error` répond **500**
+  // en disant que le module n'est pas configuré : le répartiteur monte la route,
+  // il ne construit ni le port de monitoring, ni la configuration que sert
+  // `/analytics/script.js`. Module coupé, l'appel ne fait rien — les routes
+  // n'existent alors pas.
+  //
+  // **Le mode de défaillance est mesuré**, et il ne l'était pas : la revue a
+  // trouvé que retirer cette ligne laissait 2 605 cas verts, alors même que le
+  // commentaire annonçait le 500. `tests/analytics.test.ts` (« donne au module
+  // ce qu'aucune requête ne procure ») dispatche désormais un corps valide et
+  // exige 204.
+  prepareAnalytics()
 }

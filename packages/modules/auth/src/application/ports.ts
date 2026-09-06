@@ -3,7 +3,7 @@ import type {
   ModuleScope,
   PurgeModulesOutcome,
 } from '@repo/core'
-import type { Jobs, Mailer, SendEmailResult } from '@repo/ports'
+import type { Analytics, Jobs, Mailer, SendEmailResult } from '@repo/ports'
 
 import type { AuthPolicy } from '../domain/auth-policy'
 import type { StoredPasskey } from '../domain/passkey'
@@ -520,6 +520,16 @@ export interface AuthDependencies {
    * différence, et c'est le critère 9.
    */
   readonly jobs: Jobs
+  /**
+   * **Le port d'analytique** (s39) : le seul chemin par lequel ce module mesure.
+   *
+   * Il est injecté et non construit, pour la raison qui vaut aussi pour `jobs` —
+   * `auth` est du socle, `analytics` est optionnel, et importer l'un depuis
+   * l'autre inverserait la dépendance. Aucune clé configurée, ou module coupé :
+   * le port est inerte et n'émet **aucun appel réseau**, sans que ce module
+   * connaisse la différence.
+   */
+  readonly analytics: Analytics
   /**
    * **Ce que le module ne peut pas se procurer** pour l'export (s35).
    *

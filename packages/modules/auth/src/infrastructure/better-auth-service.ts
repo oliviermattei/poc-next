@@ -4,7 +4,7 @@ import {
   type ModuleScope,
   type PurgeModulesOutcome,
 } from '@repo/core'
-import type { EmitJobResult, Jobs, Mailer } from '@repo/ports'
+import type { Analytics, AnalyticsResult, EmitJobResult, Jobs, Mailer } from '@repo/ports'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { APIError } from 'better-auth/api'
 import { betterAuth } from 'better-auth/minimal'
@@ -21,6 +21,7 @@ import { createDataExportTokenSigner } from './data-export-signer'
 import { createDrizzleDataExportRepository } from './drizzle-data-export-repository'
 import type { AuthService } from '../application/auth-service'
 import type { AuthDependencies, DataExportDependencies, SecurityLog } from '../application/ports'
+import { SIGN_UP_EVENT } from '../domain/analytics-events'
 import { defaultAuthPolicy, type AuthPolicy } from '../domain/auth-policy'
 import {
   LOCAL_OAUTH_AUTHORIZE_PATH,
@@ -134,6 +135,21 @@ export interface ConfigureAuthOptions {
    * savoir quand l'email a atterri.
    */
   readonly runInBackground?: (task: Promise<unknown>) => void
+  /**
+   * **Le port d'analytique** (s39), reçu comme le mailer et le port de tâches.
+   *
+   * Ce module est du socle, et `analytics` est un module optionnel : il ne peut
+   * donc pas l'importer sans inverser la dépendance qui fait toute la
+   * modularité. Ce qu'il reçoit est le **port** (`@repo/ports`), dont
+   * l'implémentation est décidée par le point de composition — le fournisseur
+   * quand une clé existe, un port inerte sinon, et un port inerte aussi quand
+   * le module `analytics` est coupé (critère 8).
+   *
+   * **Fail-closed, comme `jobs` et `purgeScope`** : sans câblage, rien n'est
+   * mesuré et la valeur rendue le dit. Un défaut qui rendrait `ok: true`
+   * ferait croire à une mesure qui n'a pas eu lieu.
+   */
+  readonly analytics?: Analytics
   /**
    * Les fournisseurs externes, **reçus** (s12).
    *
@@ -355,6 +371,29 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
      * fourni par le point de composition, et son absence est un câblage
      * manquant — pas une configuration valide.
      */
+    /**
+     * **Fail-closed, comme `jobs`.** Le port est toujours fourni par le point de
+     * composition, qui rend un port inerte quand aucune clé n'est configurée ou
+     * quand le module `analytics` est coupé. Son absence ici est donc un câblage
+     * manquant, pas une configuration valide.
+     */
+    analytics: options.analytics ?? {
+      track: (): Promise<AnalyticsResult> =>
+        Promise.resolve({
+          ok: false,
+          error: {
+            code: 'not_configured',
+            message:
+              'Le port d’analytique n’a pas été fourni : le point de composition de ' +
+              'l’application doit brancher appAnalytics() sur configureAuth().',
+          },
+        }),
+      page: (): Promise<AnalyticsResult> =>
+        Promise.resolve({
+          ok: false,
+          error: { code: 'not_configured', message: 'Le port d’analytique n’a pas été fourni.' },
+        }),
+    },
     jobs: options.jobs ?? {
       emit: (): Promise<EmitJobResult> =>
         Promise.resolve({
@@ -577,6 +616,42 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
      *   d'un compte inconnu.
      */
     databaseHooks: {
+      /**
+       * **L'événement de démonstration de s39** : une inscription **réussie**.
+       *
+       * Il est posé sur `user.create.after`, et cet endroit-là n'est pas un
+       * détail : c'est le seul que la bibliothèque atteint **après** que le
+       * compte est écrit. Un `before`, ou un appel depuis la route, mesurerait
+       * aussi les inscriptions refusées — un mot de passe trop court, une
+       * adresse déjà prise —, et l'événement suivrait alors un compte qui
+       * n'existe pas.
+       *
+       * **Il ne porte que l'identifiant.** Ni l'adresse, ni le nom : la charge
+       * utile part chez un tiers et y est conservée (`docs/security.md` §5), et
+       * l'implémentation du port filtre par-dessus, au dernier point avant le
+       * réseau.
+       *
+       * **Il quitte le temps de réponse** (`runInBackground`), pour la raison
+       * qui a fait sortir l'email de réinitialisation : le coût d'un appel
+       * réseau ne doit pas s'ajouter à celui d'une inscription. Son échec est
+       * une valeur que personne ne lit — un tiers absent dégrade
+       * (`docs/reliability.md` §2), il ne casse pas une inscription réussie.
+       */
+      user: {
+        create: {
+          after: async (user: { readonly id: string }): Promise<void> => {
+            runInBackground(
+              dependencies.analytics.track({
+                name: SIGN_UP_EVENT,
+                distinctId: user.id,
+                properties: {},
+              }),
+            )
+
+            return await Promise.resolve()
+          },
+        },
+      },
       session: {
         create: {
           before: async (session: { readonly userId: string }) => {

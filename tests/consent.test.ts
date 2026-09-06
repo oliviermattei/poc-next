@@ -234,9 +234,13 @@ describe('la route de décision', () => {
   })
 
   it('n’est montée nulle part quand le module n’est pas activé', async () => {
+    // `analytics` (s39) déclare `requires: ['consent']` : le couper avec lui est
+    // ce que le registre exige, et c'est la moitié utile du couplage — on ne peut
+    // pas servir un script tiers sur une installation sans consentement.
+    const dependents = new Set<string>([consentModule.id, 'analytics'])
     const withoutConsent = buildRegistry({
       available: [...availableModules],
-      enabled: enabledModules.filter((id) => id !== consentModule.id),
+      enabled: enabledModules.filter((id) => !dependents.has(id)),
       required: [...requiredModules],
       locales: [...appLocales],
     })

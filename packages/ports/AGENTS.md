@@ -10,9 +10,10 @@ attendait un cinquième port quand il fallait dire le sixième) : `mailer.ts`
 (`Mailer`, s06) pose le gabarit, `storage.ts` (`Storage`, s18) en est le premier héritier,
 `payments.ts` (`Payments`, s19, Stripe) le second, `rate-limit.ts`
 (`RateLimiter`, s28) le troisième — et le seul dont l'implémentation ne soit pas
-un tiers —, `jobs.ts` (`Jobs`, s33, Inngest) le quatrième. L'analytique et le
-monitoring (s39) suivront **le même gabarit**, alors il est écrit ici plutôt que
-déduit :
+un tiers —, `jobs.ts` (`Jobs`, s33, Inngest) le quatrième, `analytics.ts`
+(`Analytics`, s39, PostHog) et `monitoring.ts` (`Monitoring`, s39, Sentry) les
+deux derniers arrivés. Tous suivent **le même gabarit**, alors il est écrit ici
+plutôt que déduit :
 
 *(La liste est celle de `src/` au moment où ces lignes sont écrites, et
 `tests/agents-md.test.ts` la **dérive du disque**. Ce que la commande tient
@@ -28,7 +29,7 @@ quatrième revue.)*
 | Un fichier par capacité, un seul package | un port n'a aucune dépendance d'exécution : un package par port multiplierait les manifestes sans rien isoler. Ce qu'il faut isoler, c'est un SDK — donc un package par **adapter** |
 | L'opération rend un résultat discriminé, elle ne lève pas | une exception remonte par défaut : l'appelant qui l'oublie rend un 500. `ok` oblige à regarder l'échec avant de lire le succès. `docs/reliability.md` §2 : une panne de tiers **dégrade** — **sauf pour `rate-limit.ts`, une exception assumée et écrite** (voir plus bas) |
 | Les collaborateurs sont injectés (rendu, journal, horloge, hasard) | c'est ce qui rend un adapter testable sans réseau, et ce qui interdit qu'une implémentation soit choisie par `NODE_ENV` |
-| La forme du journal est **fermée** | `docs/security.md` §5 : `JobsLogRecord` n'a aucun champ où mettre une charge utile, une clé de fournisseur, une adresse ou un corps de requête — il porte le job, sa clé d'idempotence, le numéro de tentative et un message assaini. `MailerLogRecord` n'a aucun champ où mettre un destinataire, un sujet, un corps ou une clé. `StorageLogRecord` n'en a aucun où mettre une clé d'objet — qui porte l'identifiant du propriétaire —, un octet ou une URL signée. `RateLimitLogRecord` n'en a aucun où mettre un corps de requête, un mot de passe, un jeton, une adresse email ou la clé du seau : il porte l'IP et la route **en clair** — c'est le critère 6 de s28 —, et **lequel** des deux seaux a refusé, jamais sa valeur. Le compilateur tient la moitié de la garantie ; l'assainissement du `message` du fournisseur tient l'autre, et se prouve par mutation |
+| La forme du journal est **fermée** | `docs/security.md` §5 : `JobsLogRecord` n'a aucun champ où mettre une charge utile, une clé de fournisseur, une adresse ou un corps de requête — il porte le job, sa clé d'idempotence, le numéro de tentative et un message assaini. `MailerLogRecord` n'a aucun champ où mettre un destinataire, un sujet, un corps ou une clé. `StorageLogRecord` n'en a aucun où mettre une clé d'objet — qui porte l'identifiant du propriétaire —, un octet ou une URL signée. `RateLimitLogRecord` n'en a aucun où mettre un corps de requête, un mot de passe, un jeton, une adresse email ou la clé du seau : il porte l'IP et la route **en clair** — c'est le critère 6 de s28 —, et **lequel** des deux seaux a refusé, jamais sa valeur. `AnalyticsLogRecord` n'a aucun champ où mettre une propriété d'événement, un identifiant de visiteur ou une clé de projet : il porte le nom de l'événement, l'issue, et les **noms** des propriétés retirées, jamais leurs valeurs. `MonitoringLogRecord` n'en a aucun où mettre une trace, un contexte ou un DSN : il porte le type levé et l'issue, jamais le message de l'erreur — que le processus a déjà écrit. Le compilateur tient la moitié de la garantie ; l'assainissement du `message` du fournisseur tient l'autre, et se prouve par mutation |
 
 ## Ce que `Storage` ajoute au gabarit, et pourquoi
 
@@ -121,6 +122,42 @@ Le **cinquième** port (s33), et le seul dont la surface soit **coupée en deux*
 Son mode local **n'exige aucun service** : il exécute en mémoire
 (`@repo/jobs-testing`), sur opt-in explicite (`JOBS_LOCAL_RUNNER=1`), jamais
 déduit de `NODE_ENV`.
+
+## Ce que `analytics.ts` et `monitoring.ts` ajoutent au gabarit, et pourquoi
+
+Les **sixième et septième** ports (s39, PostHog et Sentry), livrés ensemble
+parce qu'ils partagent les trois mêmes propriétés :
+
+- **leur échec dégrade**, et cela **remet la règle générale en majorité**. Avant
+  s39, la seule section de ce fichier qui parlât de dégradation était
+  l'exception : `rate-limit.ts`, qui **refuse**. Un agent qui lisait la règle la
+  plus proche du code y trouvait donc d'abord son contre-exemple. Depuis s39,
+  cinq ports sur sept dégradent, et `rate-limit.ts` reste la seule exception,
+  pour la raison écrite plus bas — son magasin est notre propre base.
+  `docs/reliability.md` §2 est explicite pour ceux-ci : « pas d'analytics →
+  l'application tourne » ;
+- **« aucune clé » est une valeur, pas une panne** : `not_configured`. C'est
+  l'état livré du boilerplate, et le rendre en `ok: true` rendrait
+  indiscernables « le fournisseur a reçu » et « personne n'a rien reçu ». Le
+  critère 5 de s39 se mesure alors sur les **appels sortants** — aucun n'est
+  émis — et non sur l'absence d'erreur ;
+- **le filtrage des champs sensibles appartient à l'implémentation**, pas à
+  l'appelant, et il est écrit **une fois par adaptateur** — la même décision que
+  pour le classement transitoire/définitif d'Inngest, et pour la même raison : un
+  adaptateur ne dépend d'aucun package du dépôt sauf celui-ci. Le placer plus
+  haut (au point de composition, dans un module) le rendrait contournable par
+  quiconque tient l'adaptateur ; il vit donc au dernier point avant le réseau, et
+  se prouve sur la **requête capturée**.
+
+Ce que `monitoring.ts` ajoute seul : **il n'est pas appelé par le code métier**.
+Une erreur non gérée n'est pas un geste, elle est attrapée — au crochet serveur
+de Next et à la frontière d'erreur du navigateur. Le port existe pour que ces
+deux points aient une surface qui ne lève pas : lever depuis un gestionnaire
+d'erreur remplacerait l'erreur d'origine par la nôtre.
+
+`analytics.ts`, lui, est **la seule surface d'appel** du code métier (critère 3
+de s39), et c'est une garantie qu'aucun compilateur ne tient : elle est balayée
+par `tests/analytics.test.ts`, **avec son plancher**.
 
 ## Imports autorisés
 

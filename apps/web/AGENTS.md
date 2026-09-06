@@ -26,9 +26,19 @@ module (`packages/modules/<module>/src/domain`).
 - `@repo/adapter-inngest` pour l'unique implémentation du port `Jobs`, et
   `@repo/jobs-testing` pour l'exécuteur en mémoire — **uniquement** dans
   `lib/jobs.ts`, qui est le point de composition des tâches de fond (s33) ;
+- `@repo/adapter-posthog` et `@repo/adapter-sentry` pour les uniques
+  implémentations des ports `Analytics` et `Monitoring` — **uniquement** dans
+  `lib/analytics-config.ts`, la règle qui décide de l'observabilité (s39). Il
+  n'y a pas d'outil de mode local ici, et ce n'est pas un oubli : aucune clé
+  n'est un **état valide**, pas un repli à opter — le port est alors inerte et
+  n'émet aucun appel. `tests/analytics.test.ts` **balaie les deux** — la liste
+  des adaptateurs y est écrite une fois et parcourue, et son plancher refuse
+  qu'elle se vide : un second importeur de l'un **ou** de l'autre fait rougir
+  `pnpm test`. La phrase disait déjà « les deux » quand le balayage ne
+  connaissait que `posthog` (constat 5 de la revue de s39) ;
 - les modules du projet, **uniquement** parce que `config/features.ts` les
   référence : `@repo/module-admin`, `@repo/module-auth`, `@repo/module-billing`,
-  `@repo/module-blog`, `@repo/module-changelog`,
+  `@repo/module-analytics`, `@repo/module-blog`, `@repo/module-changelog`,
   `@repo/module-consent`, `@repo/module-docs`, `@repo/module-i18n`, `@repo/module-marketing`,
   `@repo/module-notifications`, `@repo/module-jobs`,
   `@repo/module-organizations`, `@repo/module-storage`,
@@ -39,11 +49,14 @@ module (`packages/modules/<module>/src/domain`).
   celui des organisations, `lib/storage.ts`, celui du stockage,
   `lib/billing.ts`, celui de la facturation, `lib/consent.ts`, celui du
   consentement, `lib/blog.ts`, celui du blog, `lib/docs.ts`, celui de la
-  documentation, et `lib/admin.ts`, celui de l'administration de plateforme
-  (voir plus bas). **Aucun nombre
-  documentation, `lib/notifications.ts`, celui des notifications, et
-  `lib/jobs.ts`, celui des tâches de fond (voir plus
-  bas). **Aucun nombre
+  documentation, `lib/admin.ts`, celui de l'administration de plateforme,
+  `lib/notifications.ts`, celui des notifications, `lib/jobs.ts`, celui des
+  tâches de fond, et `lib/analytics.ts`, celui de l'observabilité — les deux
+  ports de s39 et l'état du module `analytics` (voir plus bas).
+  `lib/report-client-error.ts` ne monte rien : il **poste** vers la route de ce
+  module depuis le navigateur, et n'en cite le nom que dans sa prose — il est
+  chargé par un composant client, où importer un barril de module ferait entrer
+  `@repo/core` et le contrat dans le bundle. **Aucun nombre
   n'est écrit ici, et c'est délibéré** : la phrase annonçait « sept » au-dessus
   de huit noms, la story qui a ajouté le huitième n'ayant pas touché au
   décompte. D'autres fichiers de `lib/` importent un module **déjà monté** pour

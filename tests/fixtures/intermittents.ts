@@ -127,6 +127,16 @@ export const COLD_GRAPH_ENTRY_POINTS = ['apps/web/next.config', 'apps/web/instru
 export const COLD_GRAPH_MEASURED_WITH_MARGIN: Readonly<Record<string, string>> = {
   'tests/jobs.test.ts': 'pire cas 2 318–2 499 ms sous 16 boucles, 5 passages — deux fois de marge',
   'tests/admin.test.ts': 'pire cas 634–768 ms sous 16 boucles, 5 passages — six fois de marge',
+  // s39 : **faux positif du balayage, et il vaut d'être écrit**. Ce fichier ne
+  // *charge* pas le graphe — il **lit** `apps/web/next.config.ts` comme du texte,
+  // pour vérifier que les cartes source sont générées. Le balayage cherche une
+  // sous-chaîne et ne peut pas faire la différence ; l'exempter au vu de sa
+  // mesure vaut mieux que d'élargir le motif, qui rendrait le balayage aveugle
+  // à un vrai appelant écrit de la même façon. Mesuré le 06/09, 3 passages :
+  // pire cas 1 705 ms, soit dix-sept fois de marge.
+  'tests/analytics.test.ts':
+    'ne charge pas le graphe : il lit `apps/web/next.config.ts` en texte. ' +
+    'Pire cas 1 705 ms sur 3 passages — dix-sept fois de marge',
 }
 
 export const INTERMITTENT_CASES: readonly IntermittentCase[] = [

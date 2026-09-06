@@ -1154,6 +1154,21 @@ const authUseCasesWith = (mailer: ReturnType<typeof createRecordingMailer>) =>
           error: { code: 'unknown_job', message: 'aucune file dans cette suite' },
         }),
     },
+    // s39 : le port d'analytique est une dépendance du module comme le mailer.
+    // Cette suite mesure la **langue des emails** : elle ne mesure rien de
+    // l'analytique, et le port inerte le dit plutôt que de faire semblant.
+    analytics: {
+      track: () =>
+        Promise.resolve({
+          ok: false,
+          error: { code: 'not_configured', message: 'aucune mesure dans cette suite' },
+        }),
+      page: () =>
+        Promise.resolve({
+          ok: false,
+          error: { code: 'not_configured', message: 'aucune mesure dans cette suite' },
+        }),
+    },
   } satisfies AuthDependencies)
 
 describe('les emails transactionnels partent dans la langue du destinataire', () => {

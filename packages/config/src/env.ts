@@ -327,6 +327,63 @@ const envShape = {
    */
   JOBS_LOCAL_RUNNER: z.literal(JOBS_LOCAL_RUNNER_ENABLED).optional(),
   /**
+   * **La clé de projet PostHog** (s39). Absente, l'application tourne et
+   * **n'émet aucun appel d'analyse** — c'est l'état livré du boilerplate, et le
+   * critère 5 de la story.
+   *
+   * Il n'y a **pas** de mode local pour ce port, contrairement au mailer, au
+   * stockage, au paiement et aux tâches, et ce n'est pas un oubli : un mode
+   * local existe pour rendre hors ligne un service dont le développeur a besoin.
+   * L'analytique n'a rien à rendre — un drapeau ne serait qu'une seconde manière
+   * de ne rien envoyer, sans le dire.
+   */
+  POSTHOG_KEY: z.string().min(1).optional(),
+  /**
+   * L'origine du fournisseur, sans barre oblique finale.
+   *
+   * **Obligatoire dès que la clé est là, et jamais devinée** : PostHog a
+   * plusieurs régions, et une valeur par défaut enverrait des données
+   * personnelles européennes vers un autre continent sans que personne l'ait
+   * écrit. C'est aussi l'origine à déclarer dans `config/security.ts` (champs
+   * `connect` et `img`) : `'strict-dynamic'` autorise le **script**, pas les
+   * appels réseau qu'il émet.
+   */
+  POSTHOG_HOST: z
+    .string()
+    .refine((value) => /^https?:\/\/[^\s/]+$/.test(value), {
+      message: 'must be an http(s) origin without a trailing slash (https://eu.i.posthog.com)',
+    })
+    .optional(),
+  /**
+   * **Le DSN Sentry** (s39) : `https://<clé publique>@<hôte>/<projet>`.
+   *
+   * Absent, aucune erreur n'est remontée et l'application tourne — la même
+   * dégradation que l'analytique (`docs/reliability.md` §2). Le journal du
+   * processus reste le journal : cette story ne remonte pas ce que le socle
+   * journalise déjà.
+   *
+   * Ce n'est **pas** un secret au sens de la §5 : la clé publique d'un DSN est
+   * embarquée dans le navigateur par construction. Le jeton qui, lui, en est un
+   * — `SENTRY_AUTH_TOKEN` — n'est jamais lu par l'application : il n'appartient
+   * qu'à l'outil d'envoi des cartes source.
+   */
+  SENTRY_DSN: z
+    .string()
+    .refine((value) => /^https?:\/\/[^@\s]+@[^/\s]+\/\d+$/.test(value), {
+      message: 'must be a Sentry DSN (https://<public-key>@<host>/<project-id>)',
+    })
+    .optional(),
+  /**
+   * La version déployée, écrite dans chaque erreur remontée.
+   *
+   * C'est elle qui permet au fournisseur de retrouver les **cartes source** de
+   * ce build-là : une trace lisible (critère 1) suppose que l'événement et
+   * l'artefact portent le même nom de version. `scripts/source-maps.ts` lit la
+   * même variable — sans quoi les cartes seraient envoyées sous un nom que
+   * personne ne cherche.
+   */
+  SENTRY_RELEASE: z.string().min(1).optional(),
+  /**
    * **L'adresse du premier superadmin** (s37a).
    *
    * Une adresse, et pas un identifiant de compte : c'est ce qui se lit et
@@ -515,6 +572,26 @@ export const envSchema = z.object(envShape).superRefine((value, ctx) => {
       code: 'custom',
       path: ['INNGEST_EVENT_KEY'],
       message: 'is required when INNGEST_SIGNING_KEY is set',
+    })
+  }
+
+  // L'analytique : la clé et l'hôte vont **ensemble**. Une clé seule laisserait
+  // le choix de la région à une valeur par défaut, donc à personne ; un hôte
+  // seul est une origine déclarée que rien n'appelle. Les deux fautes sont
+  // nommées au démarrage plutôt qu'au premier événement perdu.
+  if (value.POSTHOG_KEY !== undefined && value.POSTHOG_HOST === undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['POSTHOG_HOST'],
+      message: 'is required when POSTHOG_KEY is set',
+    })
+  }
+
+  if (value.POSTHOG_HOST !== undefined && value.POSTHOG_KEY === undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['POSTHOG_KEY'],
+      message: 'is required when POSTHOG_HOST is set',
     })
   }
 

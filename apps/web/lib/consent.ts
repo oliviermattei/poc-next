@@ -1,4 +1,5 @@
 import { CONSENT_SCRIPT_PROBE_ENABLED, getEnv, type Env } from '@repo/config'
+import { analyticsScript, ANALYTICS_MODULE_ID, ANALYTICS_SCRIPT_PATH } from '@repo/module-analytics'
 import {
   CONSENT_COOKIE,
   consentModule,
@@ -12,6 +13,8 @@ import {
 } from '@repo/module-consent'
 import { cookies } from 'next/headers'
 
+import { enabledModules } from '../../../config/features'
+import { resolveAnalyticsConfig } from './analytics-config'
 import { moduleRegistry } from './module-registry'
 
 /**
@@ -94,12 +97,40 @@ export const probeEnabled = (env: Env): boolean =>
 /**
  * **Le registre** : les scripts non essentiels que ce déploiement déclare.
  *
- * Vide dans l'état livré du boilerplate — aucun script tiers n'y est livré. Le
- * module est alors inerte par construction : aucune bannière, aucun cookie,
- * rien d'injecté.
+ * Vide dans l'état livré du boilerplate — aucune clé d'analytique n'y est
+ * livrée. Le module `consent` est alors inerte par construction : aucune
+ * bannière, aucun cookie, rien d'injecté.
+ *
+ * **C'est ici que s39 branche PostHog**, et nulle part ailleurs, aux deux
+ * conditions qui font le critère 8 : le module `analytics` est activé, **et**
+ * une clé est configurée. Couper l'un ou l'autre vide la liste — donc, par
+ * dérivation et sans qu'une ligne le dise, fait disparaître la bannière de
+ * consentement, faute de script non essentiel à déclarer. C'est la garantie qui
+ * traverse deux modules, et c'est `resolveConsentState` (s36) qui la tient, pas
+ * ce fichier.
+ *
+ * La liste des modules activés arrive **en argument**, avec la configuration
+ * livrée pour valeur par défaut : c'est ce qui permet d'éprouver les deux
+ * configurations — module activé et module coupé — dans le même processus de
+ * test, sans réécrire `config/features.ts`. Une garde qui ne mord que dans une
+ * configuration est une garde que la CI peut ne jamais jouer.
  */
-export function resolveNonEssentialScripts(env: Env): readonly NonEssentialScript[] {
-  return probeEnabled(env) ? PROBE_SCRIPTS : []
+export function resolveNonEssentialScripts(
+  env: Env,
+  mountedModules: readonly string[] = enabledModules,
+): readonly NonEssentialScript[] {
+  const analytics = mountedModules.includes(ANALYTICS_MODULE_ID)
+    ? resolveAnalyticsConfig(env)
+    : null
+
+  return [
+    ...(probeEnabled(env) ? PROBE_SCRIPTS : []),
+    // Le script est servi par **notre** origine : c'est la route du module qui
+    // porte la clé de projet et l'hôte, le script en ligne étant refusé par la
+    // politique livrée. Le chargeur du fournisseur est ensuite injecté par ce
+    // script-là, ce que `'strict-dynamic'` autorise.
+    ...(analytics === null ? [] : [analyticsScript(ANALYTICS_SCRIPT_PATH)]),
+  ]
 }
 
 export interface ConsentFeature {

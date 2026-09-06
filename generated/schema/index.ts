@@ -7,6 +7,7 @@
 
 import type { ModuleSchema } from '@repo/db'
 import * as admin from './admin'
+import * as analytics from './analytics'
 import * as auth from './auth'
 import * as billing from './billing'
 import * as blog from './blog'
@@ -25,6 +26,7 @@ import * as storage from './storage'
 
 export const enabledModuleSchemas = [
   { id: 'admin', schema: admin },
+  { id: 'analytics', schema: analytics },
   { id: 'auth', schema: auth },
   { id: 'billing', schema: billing },
   { id: 'blog', schema: blog },
