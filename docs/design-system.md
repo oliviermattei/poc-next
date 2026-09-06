@@ -20,7 +20,7 @@ Tailwind v4 : pas de `tailwind.config.js`. Les tokens sont des variables CSS dé
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
   --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  --muted-foreground: oklch(0.54 0 0);
 
   /* Primaire — LE token que chaque projet remplace */
   --primary: oklch(0.205 0 0);
@@ -34,11 +34,11 @@ Tailwind v4 : pas de `tailwind.config.js`. Les tokens sont des variables CSS dé
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.985 0 0);
   --success: oklch(0.62 0.17 149);
-  --success-foreground: oklch(0.985 0 0);
+  --success-foreground: oklch(0.205 0 0);
   --warning: oklch(0.79 0.16 86);
   --warning-foreground: oklch(0.205 0 0);
   --info: oklch(0.62 0.16 250);
-  --info-foreground: oklch(0.985 0 0);
+  --info-foreground: oklch(0.205 0 0);
 
   --destructive-subtle-foreground: oklch(0.510 0.245 27.325);
   --success-subtle-foreground: oklch(0.500 0.17 149);
@@ -48,7 +48,7 @@ Tailwind v4 : pas de `tailwind.config.js`. Les tokens sont des variables CSS dé
   /* Bordures et focus */
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --ring: oklch(0.556 0 0);
 
   --radius: 0.5rem;
 }
@@ -71,7 +71,7 @@ Tailwind v4 : pas de `tailwind.config.js`. Les tokens sont des variables CSS dé
   --accent-foreground: oklch(0.985 0 0);
 
   --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.985 0 0);
+  --destructive-foreground: oklch(0.145 0 0);
   --success: oklch(0.70 0.15 149);
   --success-foreground: oklch(0.145 0 0);
   --warning: oklch(0.83 0.14 86);
@@ -86,7 +86,6 @@ Tailwind v4 : pas de `tailwind.config.js`. Les tokens sont des variables CSS dé
 
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
 }
 ```
 
@@ -281,16 +280,41 @@ Seuil visé : **4,5 : 1**, WCAG AA pour le **texte normal** — `Alert` rend du 
 | `warning` | `/pricing?checkout=cancelled` | 4,85 : 1 — `#966200` sur `#fdf7e6` | 10,00 : 1 — `#f0c04e` sur `#201c10` |
 | `info` | `/pricing?checkout=success` | 4,89 : 1 — `#006ac0` sur `#e9f3fc` | 6,67 : 1 — `#53a3f2` sur `#101921` |
 
-Ces chiffres-là sont **un relevé, pas une garantie** : ce que la suite tient d'une exécution à l'autre est le seuil de 4,5 : 1, pas la valeur. Les écarts avec le tableau précédent sont attendus, mais ils **ne se lisent pas d'un bloc** : la commande suppose partout la carte (`SURFACE_TOKEN` vaut `--card`), et les quatre écrans ne posent pas tous leur alerte sur la même surface.
+Ces chiffres-là sont **un relevé, pas une garantie** : ce que la suite tient d'une exécution à l'autre est le seuil de 4,5 : 1, pas la valeur. Les écarts avec le tableau précédent sont attendus, mais ils **ne se lisent pas d'un bloc** : la commande compose la teinte de l'`Alert` au-dessus de la carte — la surface **déclarée** pour cette source depuis s57 —, et les quatre écrans ne posent pas tous leur alerte sur la même surface.
 
 En **clair**, la question ne se pose pas : `--background` et `--card` y valent tous deux `oklch(1 0 0)`, donc la surface est la même quoi qu'il arrive, et le centième perdu ici ou là est la quantification du pixel à huit bits. En **sombre**, les deux jetons diffèrent (`oklch(0.145 0 0)` contre `oklch(0.205 0 0)`), et la ligne à lire dépend de l'écran :
 
-- **trois lignes sur la page** (`--background`), hors de toute carte : `destructive` sur `/sign-in`, `warning` et `info` sur `/pricing`, où l'alerte est un bandeau posé avant le tableau des tarifs. Le fond y est plus sombre que la carte, donc leurs rapports sont **plus hauts** que ceux du papier — c'est exactement l'écart que `SURFACE_TOKEN` annonce en se plaçant sur la borne défavorable ;
-- **une ligne sur la carte** (`--card`) : `success`. `ContactForm` enveloppe `PublicForm` dans un `<Card>` (`apps/web/app/public-form.tsx`) et la confirmation **remplace** le formulaire à l'intérieur. Le navigateur y mesure 6,11 là où le papier annonce 6,12 : **un centième d'écart**. La surface que `SURFACE_TOKEN` suppose n'est donc plus une hypothèse que rien ne rend — une variante la rend pour de bon, et le chiffre concorde.
+- **trois lignes sur la page** (`--background`), hors de toute carte : `destructive` sur `/sign-in`, `warning` et `info` sur `/pricing`, où l'alerte est un bandeau posé avant le tableau des tarifs. Le fond y est plus sombre que la carte, donc leurs rapports sont **plus hauts** que ceux du papier — c'est exactement l'écart qu'annonce une surface déclarée sur la borne défavorable ;
+- **une ligne sur la carte** (`--card`) : `success`. `ContactForm` enveloppe `PublicForm` dans un `<Card>` (`apps/web/app/public-form.tsx`) et la confirmation **remplace** le formulaire à l'intérieur. Le navigateur y mesure 6,11 là où le papier annonce 6,12 : **un centième d'écart**. La surface déclarée pour l'`Alert` n'est donc pas une hypothèse que rien ne rend — une variante la rend pour de bon, et le chiffre concorde.
 
 Ce que le rendu ne dit pas : un seul navigateur, rien sur les bordures, et quatre écrans seulement. Sur combien d'appelants ? Le compte se relève, il ne se recopie pas : `grep -rnE '<Alert([[:space:]]|>|$)' --include='*.tsx' apps packages` en trouve **23, répartis sur 17 fichiers** (relevé le 5 septembre 2026). Le `$` et l'espace ne sont pas décoratifs : un `<Alert` nu compte aussi `<AlertTitle>` et `<AlertDescription>`, et rend 25.
 
-**Ce que s49 ne mesure pas, et qui reste donc inconnu** : les bordures `border-<sem>/50`, soumises au seuil **3 : 1** des éléments non textuels et non couvertes par la commande ; les `Badge`, les icônes et les états de focus, dont le contraste n'a pas été calculé. `pnpm test:contrast` balaie **les variantes de `packages/ui/src/components/alert.tsx`, et elles seules** — ce qu'elle a mesuré se lit dans sa sortie.
+**Ce que s49 ne mesurait pas** : les bordures `border-<sem>/50`, les `Badge`, les icônes et les états de focus. La commande balayait **les variantes de `alert.tsx`, et elles seules**. C'est ce que s57 a élargi — voir la section suivante ; ce qui reste dehors se lit dans la sortie de la commande, jamais dans une liste recopiée ici.
+
+#### Le focus et les remplissages sémantiques, mesurés à leur propre seuil (s57)
+
+**Deux espèces de paires, donc deux seuils.** Un texte demande 4,5 : 1 ; un **élément non textuel** — un indicateur de focus — demande 3 : 1 (WCAG SC 1.4.11). `pnpm test:contrast` porte les deux depuis s57 : chaque paire déclare ce qu'elle est, et son seuil en découle. Un seuil unique serait trop sévère pour l'anneau, ou trop laxiste pour le texte si on le baissait.
+
+**La commande a cessé de ne regarder qu'un fichier.** Elle balaie tous les composants de `packages/ui/src/components` et dérive de leurs classes les paires qu'ils peignent **au repos** — un `hover:` décrit un état, pas ce qu'un visiteur voit en arrivant. Elle a trouvé cinq défauts préexistants, dont deux nommés dans la story et trois qu'aucune mesure ne regardait :
+
+| jeton | paire | mode | avant | après |
+|---|---|---|---|---|
+| `--ring` | `--ring` sur `--background`, `--card`, `--popover` | clair | **2,59 : 1** | **4,73 : 1** |
+| `--ring` | `--ring` sur `--muted` | clair | 2,38 : 1 | 4,34 : 1 |
+| `--destructive-foreground` | sur `--destructive` (`Button`, `Badge`) | sombre | **2,77 : 1** | **6,84 : 1** |
+| `--success-foreground` | sur `--success` (`Badge`) | clair | 3,25 : 1 | 5,29 : 1 |
+| `--info-foreground` | sur `--info` (`Badge`) | clair | 3,49 : 1 | 4,92 : 1 |
+| `--muted-foreground` | sur `--muted` (repli d'`Avatar`) | clair | 4,34 : 1 | 4,64 : 1 |
+
+Trois principes ont guidé les corrections, et aucune n'invente de jeton :
+
+- **l'anneau change de couleur, rien d'autre.** Ni son épaisseur (`ring-2`), ni son décalage, ni sa forme : ce serait une décision de design, pas de contraste. Et il reste **un seul jeton** — `:root` porte désormais la valeur des deux modes, `.dark` ne le redéclare plus, une copie identique n'étant qu'une divergence en attente ;
+- **le texte d'un remplissage clair est sombre.** `--warning-foreground` l'était déjà en clair, ses trois sœurs le sont en sombre : `success`, `info` en clair et `destructive` en sombre les rejoignent. Assombrir le remplissage aurait changé la couleur de tout ce qui est sémantique ; retourner le texte est le geste minimal ;
+- **les variantes de l'`Alert` n'ont pas bougé.** Quatre d'entre elles tiennent 4,84 à 4,88 : 1 en clair contre un plancher de 4,50 : s49 a arbitré leur composition, et un centième les ferait céder.
+
+**La surface n'est plus supposée.** `SURFACE_TOKEN`, une constante globale valant `--card`, n'existe plus : une paire teintée porte la surface sur laquelle elle est **réellement** peinte, et une source teintée qui n'en déclare aucune est **refusée** — le jour où un second composant teinté arrive, la décision est forcée au lieu d'hériter du `--card` d'hier. **Le refus ne porte que là où une paire existe** : il n'y a de surface à connaître que si la même chaîne peint aussi du texte au repos. Un voile (`bg-foreground/50` dans `Sheet` et `Command`) n'a pas de texte à lui — lui déclarer une surface serait une cérémonie qui ne mesurerait rien —, et il est donc **compté et nommé** dans la sortie de la commande, avec les textes qui héritent de leur surface et les couleurs d'état (constat m4 de la revue de s57 : la règle écrite était plus large que le code). Les surfaces contre lesquelles l'anneau est mesuré sont dérivées des fonds **opaques peints hors d'une variante** : un `bg-primary` de `Button` est un remplissage, pas une surface, et l'anneau — un `box-shadow` posé hors de l'élément — n'y tombe jamais.
+
+**Et ce que le papier ne peut pas dire**, `e2e/focus-contrast.spec.ts` le mesure : la couleur que Chromium a réellement peinte dans le `box-shadow`, contre la pile de fonds réellement composée sous l'élément focalisé, sur chaque arrêt de tabulation de l'écran de connexion, dans les deux thèmes.
 
 ## UI patterns
 
