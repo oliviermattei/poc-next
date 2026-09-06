@@ -7,6 +7,7 @@ import {
 
 import type { AdminService } from '../application/admin-service'
 import { parseAccountTarget } from '../domain/platform-role'
+import { parseSessionTarget } from '../domain/back-office'
 
 /**
  * Les routes du module, **énumérées une par une**, avec leur niveau de
@@ -49,6 +50,8 @@ const PATHS = {
   unbanAccount: '/admin/accounts/unban',
   startImpersonation: '/admin/impersonation/start',
   stopImpersonation: '/admin/impersonation/stop',
+  revokeAccountSession: '/admin/accounts/session/revoke',
+  sendPasswordReset: '/admin/accounts/password-reset',
 } as const
 
 /** Le chemin public d'une route du module, préfixe de montage compris. */
@@ -65,6 +68,78 @@ export const adminRoutePath = (path: keyof typeof PATHS): string =>
  * où aucun superadmin n'est configuré.
  */
 const notFound = (): Response => Response.json({ error: 'not_found' }, { status: 404 })
+
+/**
+ * **La soumission vient-elle d'un formulaire natif ?** — la question posée une
+ * fois, et les deux décisions qui en dépendent sont dérivées d'elle.
+ *
+ * Elle décide de la **forme de la réponse**, jamais de l'autorisation : un
+ * navigateur qui poste un formulaire doit repartir sur un écran (303), un
+ * appelant programmatique attend un corps. Sans cette distinction, le clic sur
+ * « Révoquer » laissait la personne devant un document JSON — et rendre du JSON
+ * à tout le monde aurait cassé les appelants de `s37b1`.
+ *
+ * **Elle reconnaît ce que la requête annonce être, jamais ce qu'elle n'annonce
+ * pas** (revue de s37b2, constat F10). Elle s'écrivait « tout ce qui n'est pas
+ * `application/json` », si bien qu'un appelant JSON omettant l'en-tête — ce que
+ * la spécification permet — recevait 400 sur un corps que `s37b1` acceptait, et
+ * une redirection à la place de son document. Un navigateur, lui, **annonce
+ * toujours** le type d'un formulaire : `application/x-www-form-urlencoded`, ou
+ * `multipart/form-data` s'il en portait un fichier. Le sens par défaut est donc
+ * « JSON », qui est celui d'avant cette story.
+ *
+ * Le refus, lui, ne change pas de forme : un non-superadmin reçoit **404**, pas
+ * une redirection — sinon la redirection elle-même confirmerait l'existence de
+ * l'écran.
+ */
+const isFormSubmission = (request: Request): boolean => {
+  const declared = request.headers.get('content-type') ?? ''
+
+  return declared.includes('form-urlencoded') || declared.includes('multipart/form-data')
+}
+
+/**
+ * **Le corps d'une soumission, quelle que soit sa forme** (s37b2).
+ *
+ * Les routes de `s37a` n'étaient appelées que par du code, donc en JSON. Les
+ * deux gestes du back-office, eux, sont postés par un `<form method="post">` de
+ * l'écran de détail — donc en `application/x-www-form-urlencoded`. Lire
+ * uniquement le JSON rendait 400 sur chaque clic, sans que rien ne le dise.
+ *
+ * Le décodage et la forme de la réponse sortent du **même** prédicat : deux
+ * lectures de `content-type` finiraient par diverger, et c'est déjà arrivé ici —
+ * l'une nommait le JSON, l'autre nommait son absence.
+ *
+ * Le `domain` valide ensuite : c'est lui la frontière, pas ce décodage. C'est la
+ * forme que `organizations` emploie depuis s15, pour la même raison.
+ */
+const submittedBody = async (request: Request): Promise<unknown> =>
+  isFormSubmission(request)
+    ? await request
+        .formData()
+        .then((form) => Object.fromEntries(form.entries()))
+        .catch(() => null)
+    : await request.json().catch(() => null)
+
+/**
+ * Un retour à l'écran, **vers une constante de ce module**.
+ *
+ * L'origine vient de la requête entrante, le chemin est écrit ici : aucune
+ * redirection n'est pilotée par une valeur reçue (`docs/security.md` §4). 303 et
+ * non 302 : la méthode devient un `GET`, donc un rechargement ne renvoie pas le
+ * formulaire.
+ */
+const seeOther = (request: Request, path: string, setCookie?: string): Response =>
+  new Response(null, {
+    status: 303,
+    headers:
+      setCookie === undefined
+        ? { location: new URL(path, request.url).toString() }
+        : {
+            location: new URL(path, request.url).toString(),
+            'set-cookie': setCookie,
+          },
+  })
 
 const badRequest = (reason: string): Response =>
   Response.json({ error: 'invalid_request', reason }, { status: 400 })
@@ -104,25 +179,17 @@ export function createAdminRoutes(service: () => AdminService): readonly ModuleR
       return notFound()
     }
 
-    const admin = service()
+    // **La règle est écrite une fois**, dans les cas d'usage (s37b2) : les
+    // écrans du back-office posent exactement la même question, et deux copies
+    // auraient divergé — la seconde étant celle qui laisse entrer. Elle refuse
+    // une session **empruntée** avant de juger le rôle (s37b1), relit le rôle en
+    // base, journalise le refus, et son échec de lecture est fermé.
+    const authorized = await service().useCases.authorizeBackOffice({
+      request,
+      userId: context.session.userId,
+    })
 
-    // **Une session empruntée n'administre jamais** (s37b1), quel que soit le
-    // rôle du compte emprunté. Le chemin se découvre en production : le compte
-    // emprunté est promu pendant l'emprunt, et sa session ouvrirait alors le
-    // back-office à qui l'a empruntée — donc l'enchaînement d'un emprunt depuis
-    // un emprunt, et un journal dont l'acteur n'est plus celui qui agit.
-    //
-    // Le refus est le même 404 : il ne distingue rien de plus qu'une URL
-    // inventée.
-    if (await admin.useCases.isBorrowedSession(request)) {
-      admin.useCases.logAccessRefused(context.session.userId)
-
-      return notFound()
-    }
-
-    if (!(await admin.useCases.isSuperadmin(context.session.userId))) {
-      admin.useCases.logAccessRefused(context.session.userId)
-
+    if (!authorized) {
       return notFound()
     }
 
@@ -134,8 +201,7 @@ export function createAdminRoutes(service: () => AdminService): readonly ModuleR
     request: Request,
     run: (target: { userId: string; reason: string | null }) => Promise<Response>,
   ): Promise<Response> => {
-    const body: unknown = await request.json().catch(() => null)
-    const target = parseAccountTarget(body)
+    const target = parseAccountTarget(await submittedBody(request))
 
     return target === null ? badRequest('compte visé manquant') : await run(target)
   }
@@ -268,9 +334,17 @@ export function createAdminRoutes(service: () => AdminService): readonly ModuleR
 
         const outcome = await service().useCases.stopImpersonation({ request })
 
-        return outcome.ok
-          ? withSession(outcome.setCookie, { stopped: true })
-          : notFound()
+        if (!outcome.ok) {
+          return notFound()
+        }
+
+        // **Le bandeau de la coquille poste ici** (s37b2), depuis un formulaire
+        // natif : un 200 JSON laisserait la personne devant un document au lieu
+        // de la rendre à son propre compte. La session neuve part dans le
+        // cookie de la redirection, comme dans celui de la réponse JSON.
+        return isFormSubmission(request)
+          ? seeOther(request, '/', outcome.setCookie)
+          : withSession(outcome.setCookie, { stopped: true })
       },
     },
     {
@@ -293,15 +367,109 @@ export function createAdminRoutes(service: () => AdminService): readonly ModuleR
           }),
         ),
     },
+    {
+      /**
+       * **Révoquer une session d'un tiers** (s37b2, critère 3).
+       *
+       * La révocation est **appliquée côté serveur** (`docs/security.md` §2) :
+       * la ligne de session est effacée, et le cookie qui la portait ne désigne
+       * plus personne à la requête suivante. Ce n'est pas un bouton qu'on
+       * masque.
+       *
+       * **404 quand rien n'a été révoqué**, et pas 409 : l'identifiant de
+       * session est une valeur reçue, et distinguer « pas à ce compte » de
+       * « n'existe pas » en ferait un oracle d'appartenance.
+       */
+      method: 'POST',
+      path: PATHS.revokeAccountSession,
+      protection: { level: 'authenticated' },
+      handler: async (request, context) =>
+        await asSuperadmin(request, context, async (actorId) => {
+          const target = parseSessionTarget(await submittedBody(request))
+
+          if (target === null) {
+            return badRequest('session visée manquante')
+          }
+
+          const outcome = await service().useCases.revokeAccountSession({
+            actorId,
+            userId: target.userId,
+            sessionId: target.sessionId,
+          })
+
+          if (!outcome.ok) {
+            return conflict('accounts_unavailable')
+          }
+
+          if (!outcome.revoked) {
+            return notFound()
+          }
+
+          return isFormSubmission(request)
+            ? seeOther(request, `${ADMIN_USERS_SCREEN_PATH}/${target.userId}`)
+            : Response.json({ revoked: true })
+        }),
+    },
+    {
+      /**
+       * **Déclencher une réinitialisation de mot de passe** (s37b2, critère 3).
+       *
+       * Le corps ne porte qu'un **identifiant** : l'adresse est relue du socle
+       * par le point de composition, jamais reçue d'ici. Un back-office qui
+       * accepterait une adresse serait un chemin de réinitialisation vers
+       * n'importe quelle boîte.
+       */
+      method: 'POST',
+      path: PATHS.sendPasswordReset,
+      protection: { level: 'authenticated' },
+      handler: async (request, context) =>
+        await asSuperadmin(request, context, async (actorId) =>
+          await withTarget(request, async (target) => {
+            const outcome = await service().useCases.sendPasswordReset({
+              actorId,
+              userId: target.userId,
+            })
+
+            if (!outcome.ok) {
+              return conflict('accounts_unavailable')
+            }
+
+            if (!outcome.sent) {
+              return notFound()
+            }
+
+            return isFormSubmission(request)
+              ? seeOther(request, `${ADMIN_USERS_SCREEN_PATH}/${target.userId}`)
+              : Response.json({ sent: true })
+          }),
+        ),
+    },
   ]
 }
 
+/** Le chemin de l'écran des comptes. Écrit une fois : deux copies divergeraient. */
+export const ADMIN_USERS_SCREEN_PATH = '/admin/users'
+
 /**
- * **Aucune entrée de navigation à cette tranche.**
+ * **L'entrée de navigation du back-office** (s37b2), et sa surface.
  *
- * Une entrée doit mener à quelque chose que l'application sert
- * (`packages/core/src/module.ts`) : les écrans du back-office sont `s37b`, et
- * une entrée qui pointerait vers une route d'API rendrait du JSON brut au
- * premier clic — le défaut relevé en revue de s21. Elle arrivera avec l'écran.
+ * `surface: 'admin'` : elle n'apparaît **pas** dans la barre latérale du
+ * produit. Un lien « Administration » visible de tous divulguerait l'existence
+ * du back-office à chaque compte connecté, et `ModuleSession.roles` ne porte pas
+ * le rôle de plateforme — il est relu en base à chaque requête (ADR 030), donc
+ * une protection `role` sur cette entrée ne serait satisfaite par personne.
+ *
+ * Elle est rendue par les écrans du back-office eux-mêmes, qui sont déjà
+ * derrière la garde. C'est la forme que s31 a établie pour le pied de page : le
+ * module qui veut un lien ici le **déclare**, et il disparaît avec lui.
  */
-export const adminNavigation: readonly NavigationEntry[] = []
+export const adminNavigation: readonly NavigationEntry[] = [
+  {
+    id: 'users',
+    href: ADMIN_USERS_SCREEN_PATH,
+    labelKey: 'navigation.users',
+    order: 10,
+    protection: { level: 'authenticated' },
+    surface: 'admin',
+  },
+]

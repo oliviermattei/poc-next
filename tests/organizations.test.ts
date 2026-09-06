@@ -2125,6 +2125,94 @@ describe.runIf(databaseReachable)('ce que l’écran voit', () => {
   })
 })
 
+/**
+ * **Les lectures du back-office** (s37b2) : le périmètre **plateforme**.
+ *
+ * C'est la première famille de lectures de ce module sans propriétaire plus
+ * étroit que la plateforme elle-même, et elle est éprouvée **ici**, à côté de la
+ * règle : `tests/admin.test.ts` les remplace par une doublure, parce que ce
+ * qu'il mesure est la garde de superadmin, pas la lecture.
+ */
+describe.runIf(databaseReachable)('les lectures du back-office', () => {
+  it('liste les organisations avec leur effectif, sans aucune appartenance', async () => {
+    const founder = await anAccount()
+    const slug = aSlug()
+
+    await call('create', { session: founder, body: { name: `Studio ${slug}`, slug } })
+
+    // La recherche désigne **cette** organisation ; l'appelant, lui, n'en est
+    // membre d'aucune — la lecture n'est pas périmétrée par une appartenance,
+    // et c'est exactement ce que le back-office demande.
+    const listed = await service.useCases.backOffice.listOrganizations({
+      search: slug,
+      limit: 50,
+      offset: 0,
+    })
+
+    expect(listed.total).toBe(1)
+    expect(listed.organizations[0]?.memberCount).toBe(1)
+    expect(listed.organizations[0]?.slug).toBe(slug)
+
+    // Et sans recherche, la page est bornée : le back-office ne lit jamais la
+    // table entière.
+    const paged = await service.useCases.backOffice.listOrganizations({
+      search: null,
+      limit: 2,
+      offset: 0,
+    })
+
+    expect(paged.organizations.length).toBeLessThanOrEqual(2)
+    expect(paged.total).toBeGreaterThanOrEqual(1)
+  })
+
+  it('cherche un pour-cent, il ne rend pas la table entière', async () => {
+    const founder = await anAccount()
+
+    await anOrganization(founder)
+
+    // Le joker de `like` écrit par l'appelant : échappé, il ne trouve rien.
+    // Non échappé, il rendrait toutes les organisations.
+    const searched = await service.useCases.backOffice.listOrganizations({
+      search: '%',
+      limit: 50,
+      offset: 0,
+    })
+
+    expect(searched.total).toBe(0)
+    expect(searched.organizations).toEqual([])
+  })
+
+  it('rend le détail d’une organisation, ses membres et leurs rôles', async () => {
+    const founder = await anAccount()
+    const organizationId = await anOrganization(founder)
+
+    const detail = await service.useCases.backOffice.describeOrganization(organizationId)
+
+    expect(detail?.organization.organizationId).toBe(organizationId)
+    expect(detail?.members.map((member) => member.role)).toEqual(['owner'])
+    // Aucun jeton, aucune invitation : ce que le détail rend est ce que le
+    // type déclare.
+    expect(JSON.stringify(detail)).not.toContain('token')
+  })
+
+  it('rend `null` sur une organisation que la base ne connaît pas', async () => {
+    await expect(
+      service.useCases.backOffice.describeOrganization('org_inconnue'),
+    ).resolves.toBeNull()
+  })
+
+  it('rend les appartenances d’un compte, avec leur rôle', async () => {
+    const founder = await anAccount()
+    const organizationId = await anOrganization(founder)
+
+    const memberships = await service.useCases.backOffice.membershipsOf(founder.userId)
+
+    expect(memberships).toEqual([
+      expect.objectContaining({ organizationId, role: 'owner' }),
+    ])
+  })
+})
+
 describe.runIf(databaseReachable)('la purge et l’export du module', () => {
   /** Un copropriétaire, posé en base : ce cas mesure la purge, pas l'invitation. */
   const aCoOwner = async (organizationId: string): Promise<ModuleSession> => {

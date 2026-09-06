@@ -26,6 +26,14 @@ export interface ViewerFixture {
     readonly email: string
     readonly emailVerified: boolean
   } | null
+  /**
+   * **L'emprunteur de la session en cours**, ou `null` (s37b2).
+   *
+   * Il vient de la **même** résolution que la session : la coquille l'affiche
+   * sans rien relire, et c'est ce que mesure « n'émet aucune requête propre
+   * pour un compte connecté » dans `tests/marketing.test.ts`.
+   */
+  readonly impersonatedBy: string | null
 }
 
 export const FIXTURE_NAME = 'Alice Martin'
@@ -42,9 +50,19 @@ export const SIGNED_IN: ViewerFixture = {
     email: FIXTURE_EMAIL,
     emailVerified: true,
   },
+  impersonatedBy: null,
 }
 
-export const ANONYMOUS: ViewerFixture = { session: null, account: null }
+export const ANONYMOUS: ViewerFixture = { session: null, account: null, impersonatedBy: null }
+
+/**
+ * **Le même compte, vu à travers une session empruntée** (s37b2, critère 5).
+ *
+ * L'identifiant est celui de l'**emprunteur** — le superadmin —, jamais celui
+ * du compte affiché : c'est la colonne `impersonated_by` de la session, et la
+ * coquille en tire le bandeau sans relire quoi que ce soit.
+ */
+export const BORROWED: ViewerFixture = { ...SIGNED_IN, impersonatedBy: 'usr_9' }
 
 /**
  * L'avatar que voient le shell et l'écran de compte pendant ce rendu (s18).
@@ -465,3 +483,86 @@ export const FIXTURE_NOTIFICATIONS = {
     },
   ],
 }
+
+/* ------------------------------------------------------------------------- *
+ * s37b2 — le back-office. Les vues que ses quatre écrans reçoivent.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * Une page de comptes **de deux lignes**, et les deux ne se ressemblent pas :
+ * l'une administre et est bannie, l'autre non et n'a pas vérifié son adresse.
+ * C'est ce qui fait passer les cinq badges de la liste sous le filet des textes
+ * rendus — une seule ligne en laisserait trois dehors.
+ */
+export const FIXTURE_ADMIN_ACCOUNTS = {
+  page: 1,
+  pageCount: 2,
+  total: 21,
+  search: null,
+  accounts: [
+    {
+      userId: 'usr_1',
+      name: FIXTURE_NAME,
+      email: FIXTURE_EMAIL,
+      emailVerified: true,
+      banned: false,
+      createdAt: FIXTURE_SESSION_CREATED_AT,
+      superadmin: true,
+    },
+    {
+      userId: 'usr_2',
+      name: 'Bob Durand',
+      email: 'bob@example.test',
+      emailVerified: false,
+      banned: true,
+      createdAt: FIXTURE_SESSION_CREATED_AT,
+      superadmin: false,
+    },
+  ],
+} as const
+
+export const FIXTURE_ADMIN_ACCOUNT = {
+  account: {
+    userId: 'usr_1',
+    name: FIXTURE_NAME,
+    email: FIXTURE_EMAIL,
+    emailVerified: true,
+    banned: false,
+    createdAt: FIXTURE_SESSION_CREATED_AT,
+  },
+  sessions: [
+    {
+      sessionId: 'ses_1',
+      createdAt: FIXTURE_SESSION_CREATED_AT,
+      expiresAt: new Date('2026-02-15T09:30:00Z'),
+      ipAddress: FIXTURE_IP,
+      userAgent: FIXTURE_USER_AGENT,
+    },
+  ],
+  superadmin: true,
+  memberships: [
+    { organizationId: 'org_1', name: FIXTURE_ORGANIZATION_NAME, role: 'owner' },
+  ],
+} as const
+
+const FIXTURE_ADMIN_ORGANIZATION = {
+  organizationId: 'org_1',
+  name: FIXTURE_ORGANIZATION_NAME,
+  slug: 'studio-martin',
+  memberCount: 2,
+  offerId: 'pro',
+  subscriptionState: 'active',
+} as const
+
+export const FIXTURE_ADMIN_ORGANIZATIONS = {
+  page: 1,
+  pageCount: 1,
+  total: 1,
+  search: null,
+  organizations: [FIXTURE_ADMIN_ORGANIZATION],
+} as const
+
+export const FIXTURE_ADMIN_ORGANIZATION_DETAIL = {
+  organization: FIXTURE_ADMIN_ORGANIZATION,
+  members: [{ userId: 'usr_1', email: FIXTURE_EMAIL, role: 'owner' }],
+} as const

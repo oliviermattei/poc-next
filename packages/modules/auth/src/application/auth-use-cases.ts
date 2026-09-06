@@ -26,7 +26,12 @@ import {
 } from '../domain/one-time-token'
 import { DATA_EXPORT_DOWNLOAD_PATH, DATA_EXPORT_EMAIL_TEMPLATE } from '../domain/data-export'
 import { createDataExportUseCases, type DataExportUseCases } from './data-export-use-cases'
-import type { AuthDependencies, PasskeyRevocationOutcome, UnlinkOutcome } from './ports'
+import type {
+  AuthAccountSummary,
+  AuthDependencies,
+  PasskeyRevocationOutcome,
+  UnlinkOutcome,
+} from './ports'
 
 /**
  * Un moyen de connexion, tel qu'un écran de paramètres l'affiche.
@@ -209,6 +214,22 @@ export interface AuthUseCases {
    * une ligne qui nomme quelqu'un de parti (s32, R1).
    */
   viewAccounts(userIds: readonly string[]): Promise<readonly AccountView[]>
+  /**
+   * **Une page de comptes, avec sa recherche** (s37b2) — la seule lecture du
+   * module qui parcoure les comptes au lieu d'en désigner un.
+   *
+   * Elle existe pour le back-office, et le module `admin` ne l'atteint que par
+   * son port : c'est ce qui garde ses lectures de comptes derrière un
+   * identifiant plutôt qu'une adresse (`packages/modules/admin/src/schema.ts`).
+   * Aucune route publique ne l'expose, et l'autorisation est jugée avant elle.
+   */
+  searchAccounts(input: {
+    readonly search: string | null
+    readonly limit: number
+    readonly offset: number
+  }): Promise<{ readonly accounts: readonly AuthAccountSummary[]; readonly total: number }>
+  /** Le résumé d'**un** compte, pour le détail du back-office. `null` s'il n'existe pas. */
+  describeAccount(userId: string): Promise<AuthAccountSummary | null>
   changeName(input: { readonly userId: string; readonly name: string }): Promise<boolean>
   /** Les sessions actives du compte, la courante en tête, sans aucun jeton. */
   listSessions(input: {
@@ -771,6 +792,11 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
         emailVerified: user.emailVerified,
         twoFactorEnabled: user.twoFactorEnabled,
       })),
+
+    searchAccounts: async ({ search, limit, offset }) =>
+      await users.search({ search, limit, offset }),
+
+    describeAccount: async (userId) => await users.summaryOf(userId),
 
     changeName: async ({ userId, name }) => await users.changeName(userId, name),
 

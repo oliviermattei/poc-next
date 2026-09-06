@@ -1091,6 +1091,9 @@ const authUseCasesWith = (mailer: ReturnType<typeof createRecordingMailer>) =>
       findByEmail: () => Promise.resolve(null),
       findById: () => Promise.resolve(null),
       findByIds: () => Promise.resolve([]),
+      // s37b2 : aucune liste d'administration n'est rendue par cette suite.
+      search: () => Promise.resolve({ accounts: [], total: 0 }),
+      summaryOf: () => Promise.resolve(null),
       markEmailVerified: () => Promise.resolve(false),
       changeEmail: () => Promise.resolve(false),
       changeName: () => Promise.resolve(false),

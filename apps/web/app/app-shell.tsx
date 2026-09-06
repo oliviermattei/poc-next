@@ -1,8 +1,10 @@
+import { ImpersonationBanner } from '@repo/module-admin/presentation'
 import { ConsentBanner, ConsentScripts } from '@repo/module-consent/presentation'
 import { Badge, Button, LocaleSwitcher, Sidebar, SidebarBrand, ThemeToggle, cn } from '@repo/ui'
 import { BellIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 
+import { currentImpersonation } from '../lib/admin'
 import { authRoutePath, currentViewer } from '../lib/auth'
 import { currentConsent } from '../lib/consent'
 import { appIntl } from '../lib/i18n'
@@ -53,7 +55,7 @@ export async function AppShell({
    */
   readonly nonce?: string | null
 }) {
-  const { session, account } = await currentViewer()
+  const { session, account, impersonatedBy } = await currentViewer()
   const { locale, t, path } = await appIntl()
   const intl = { locale, t, path }
   const items = shellNavigation(moduleRegistry, session, intl)
@@ -89,6 +91,21 @@ export async function AppShell({
    * Aucune connexion à la base n'est ouverte pour cela.
    */
   const consentState = await currentConsent()
+  /**
+   * **L'emprunt de session en cours** (s37b2, critère 5).
+   *
+   * Rendu **ici, dans la coquille**, et pas dans une page : c'est ce qui fait
+   * survivre le bandeau à une navigation complète. Une page qui le rendrait le
+   * perdrait au premier lien suivi, et l'emprunteur continuerait d'agir au nom
+   * d'un client sans plus rien pour le lui rappeler.
+   *
+   * **Aucune lecture n'est faite ici** : l'emprunt arrive avec la session, dans
+   * la résolution que `currentViewer()` a déjà payée. Il était relu — deux
+   * allers-retours de base par page authentifiée, dans toutes les
+   * configurations (revue de s37b2, F3) —, et `tests/marketing.test.ts` compte
+   * désormais ce que le rendu d'un compte connecté coûte en propre.
+   */
+  const impersonation = currentImpersonation(impersonatedBy)
 
   return (
     <>
@@ -185,7 +202,45 @@ export async function AppShell({
             consentState.bannerRequired && 'pb-64 md:pb-36',
           )}
         >
-          <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-6">{children}</div>
+          <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-6">
+            {/*
+              **Au-dessus du contenu de la page, dans la coquille.** C'est la
+              position qui porte la garantie : le bandeau est rendu par ce
+              fichier, donc il est là sur chaque écran, y compris ceux qu'aucune
+              story d'administration n'a écrits.
+            */}
+            {impersonation === null ? null : (
+              <ImpersonationBanner
+                /*
+                  **Les textes viennent du catalogue de l'application**, pas de
+                  celui du module. Le bandeau est rendu dans toutes les
+                  configurations, y compris celle où `admin` est coupé — et le
+                  catalogue d'un module coupé n'existe plus, si bien qu'une clé
+                  `admin.*` ferait tomber **chaque écran** en 500 pour la
+                  personne dont la session est empruntée. Mesuré par
+                  `pnpm test:minimal-profile`.
+                */
+                labels={{
+                  title: t('app.shell.impersonation.title'),
+                  /*
+                    **Il nomme le compte emprunté**, comme le design l'exige :
+                    « vous agissez au nom d'un autre » sans dire duquel laisse
+                    l'emprunteur deviner sur quel dossier il travaille. Le nom
+                    est celui de la session en cours — donc du compte emprunté,
+                    jamais de l'emprunteur —, et il ne coûte aucune lecture : la
+                    coquille l'a déjà pour son menu de compte.
+                  */
+                  description: t('app.shell.impersonation.description', {
+                    account: account?.email ?? '',
+                  }),
+                  stop: t('app.shell.impersonation.stop'),
+                  noExit: t('app.shell.impersonation.noExit'),
+                }}
+                stopAction={impersonation.stopAction}
+              />
+            )}
+            {children}
+          </div>
         </main>
       </div>
     </div>

@@ -1,7 +1,14 @@
 import { randomUUID } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { buildRegistry, MODULE_ROUTE_PREFIX, type ModuleSession } from '@repo/core'
+import {
+  buildRegistry,
+  MODULE_ROUTE_PREFIX,
+  visibleNavigation,
+  type ModuleSession,
+} from '@repo/core'
 import {
   createDatabaseClient,
   planModuleMigrations,
@@ -13,11 +20,14 @@ import {
   adminModule,
   adminPlatformRole,
   adminRoutePath,
+  BACK_OFFICE_PAGE_SIZE,
   configureAdmin,
   resetAdminService,
   SUPERADMIN_ROLE,
   type AdminAccountsPort,
+  type AdminOrganizationsPort,
   type AdminSecurityEvent,
+  type AdminService,
 } from '@repo/module-admin'
 import {
   authModule,
@@ -25,6 +35,8 @@ import {
   resetAuthService,
   type AuthService,
 } from '@repo/module-auth'
+import { BILLING_DISPLAY_STATES } from '@repo/module-billing'
+import { ORGANIZATION_ROLES, organizationsModule } from '@repo/module-organizations'
 import { BAN_REASON_MAX_LENGTH } from '@repo/module-auth'
 import { sql } from 'drizzle-orm'
 import { getTableConfig } from 'drizzle-orm/pg-core'
@@ -90,6 +102,13 @@ const withoutAdmin = buildRegistry({
 
 let connection: DatabaseConnection
 let auth: AuthService
+/**
+ * Le service du module, **retenu** : les écrans du back-office (s37b2) passent
+ * par ses cas d'usage, pas par une route — ce sont des composants serveur.
+ */
+let service: AdminService
+/** Le mailer du socle, retenu : la réinitialisation de s37b2 se mesure sur l'envoi. */
+const mailer = createRecordingMailer()
 
 const securityEvents: AdminSecurityEvent[] = []
 
@@ -131,6 +150,13 @@ let blockedReadable = true
  */
 let borrowerReadable = true
 
+/**
+ * La **page de comptes** est-elle lisible ? Un seul cas la coupe : celui qui
+ * mesure qu'une liste qu'on n'a pas pu lire rend une erreur nommée, et non une
+ * liste vide — un back-office qui affiche « aucun compte » sur une panne ment.
+ */
+let listReadable = true
+
 const accounts: AdminAccountsPort = {
   findIdByEmail: async (email) => ({
     ok: true,
@@ -163,13 +189,123 @@ const accounts: AdminAccountsPort = {
       ? { ok: true, blocked: await auth.useCases.signInBlockedAmong(userIds) }
       : { ok: false }
   },
+  /**
+   * **Les lectures du back-office** (s37b2), câblées sur le **vrai** module
+   * `auth` comme les autres : la page de comptes vient de la base, la recherche
+   * la filtre en base, et la révocation efface une vraie ligne de session.
+   */
+  listAccounts: async (input) =>
+    listReadable
+      ? { ok: true, ...(await auth.useCases.searchAccounts(input)) }
+      : { ok: false },
+  describeAccount: async (userId) => {
+    if (!listReadable) {
+      return { ok: false }
+    }
+
+    const account = await auth.useCases.describeAccount(userId)
+
+    if (account === null) {
+      return { ok: true, detail: null }
+    }
+
+    return {
+      ok: true,
+      detail: {
+        account,
+        sessions: (
+          await auth.useCases.listSessions({ userId, currentSessionId: null })
+        ).map((session) => ({
+          sessionId: session.id,
+          createdAt: session.createdAt,
+          expiresAt: session.expiresAt,
+          ipAddress: session.ipAddress,
+          userAgent: session.userAgent,
+        })),
+      },
+    }
+  },
+  revokeSession: async ({ userId, sessionId }) => ({
+    ok: true,
+    revoked: await auth.useCases.revokeSession({ userId, sessionId }),
+  }),
+  /**
+   * La même ligne que `apps/web/lib/admin.ts` : le socle part d'un
+   * **identifiant** et relit l'adresse lui-même. Aucune adresse ne traverse le
+   * back-office.
+   */
+  sendPasswordReset: async ({ userId }) => ({
+    ok: true,
+    sent: await auth.requestPasswordResetFor(userId),
+  }),
+}
+
+/**
+ * **Les organisations, vues du back-office** — une doublure, et c'est la bonne
+ * forme ici.
+ *
+ * Elle remplace un **autre module**, pas la règle éprouvée : ce que ce fichier
+ * mesure est la garde du back-office et la mise en forme, jamais la lecture des
+ * appartenances, qui se prouve là où elle vit (`tests/organizations.test.ts`).
+ * Un seul témoin de refus lui suffit — un port en échec fait refuser l'écran.
+ */
+let organizationsReadable = true
+
+const ORGANIZATION = {
+  organizationId: 'org_s37b2',
+  name: 'Organisation de test',
+  slug: 'organisation-de-test',
+  memberCount: 2,
+  offerId: 'pro',
+  subscriptionState: 'active',
+} as const
+
+const organizations: AdminOrganizationsPort = {
+  listOrganizations: async ({ search }) =>
+    organizationsReadable
+      ? {
+          ok: true,
+          organizations:
+            search === null || ORGANIZATION.name.includes(search) ? [ORGANIZATION] : [],
+          total: search === null || ORGANIZATION.name.includes(search) ? 1 : 0,
+        }
+      : { ok: false },
+  describeOrganization: async (organizationId) =>
+    organizationsReadable
+      ? {
+          ok: true,
+          detail:
+            organizationId === ORGANIZATION.organizationId
+              ? {
+                  organization: ORGANIZATION,
+                  members: [
+                    { userId: 'usr_owner', email: 'owner@example.test', role: 'owner' },
+                  ],
+                }
+              : null,
+        }
+      : { ok: false },
+  membershipsOf: async () =>
+    organizationsReadable
+      ? {
+          ok: true,
+          memberships: [
+            {
+              organizationId: ORGANIZATION.organizationId,
+              name: ORGANIZATION.name,
+              role: 'owner',
+            },
+          ],
+        }
+      : { ok: false },
 }
 
 /** Reconfigure le module avec l'adresse désignée du moment. */
 const configure = (email: string | null): void => {
-  configureAdmin({
+  service = configureAdmin({
     db: connection.db,
     accounts,
+    organizations,
     designatedEmail: email,
     securityLog: (event) => securityEvents.push(event),
   })
@@ -198,7 +334,9 @@ const call = async (
     | 'banAccount'
     | 'unbanAccount'
     | 'startImpersonation'
-    | 'stopImpersonation',
+    | 'stopImpersonation'
+    | 'revokeAccountSession'
+    | 'sendPasswordReset',
   options: CallOptions = {},
 ): Promise<Response> =>
   await dispatchAllowingRateLimit(
@@ -314,7 +452,7 @@ beforeAll(async () => {
 
   auth = configureAuth({
     db: connection.db,
-    mailer: createRecordingMailer(),
+    mailer,
     secret: TEST_SECRET,
     appUrl: APP_URL,
   })
@@ -336,6 +474,9 @@ beforeEach(async () => {
   blockedGate = null
   blockedReadable = true
   borrowerReadable = true
+  listReadable = true
+  organizationsReadable = true
+  mailer.reset()
   configure(null)
 })
 
@@ -751,6 +892,426 @@ describe.runIf(databaseReachable)('le back-office réservé', () => {
         sql`select banned from auth_user where id = ${target.session.userId}`,
       ),
     ).resolves.toMatchObject({ rows: [{ banned: false }] })
+  })
+})
+
+/**
+ * **Le back-office en lecture** (s37b2), mesuré là où il décide : les cas
+ * d'usage. Les écrans sont des composants serveur — il n'y a pas de route à
+ * appeler —, et c'est ici que vit la garde qui répond **404 et jamais 403**.
+ */
+describe.runIf(databaseReachable)('les listes du back-office', () => {
+  /** Un superadmin réel : la désignation le nomme, puis il administre. */
+  const aSuperadmin = async (): Promise<{ userId: string; email: string }> => {
+    const { session, email } = await anAccount()
+
+    configure(email)
+    // Une requête servie déclenche la désignation : le rôle est en base après.
+    expect(
+      (await call('grantSuperadmin', { session, body: { userId: session.userId } })).status,
+    ).toBe(200)
+
+    return { userId: session.userId, email }
+  }
+
+  const request = (): Request => new Request(APP_URL)
+
+  it('sert une page de comptes, et la recherche la réduit', async () => {
+    const superadmin = await aSuperadmin()
+    const target = await anAccount()
+
+    const listed = await service.useCases.viewAccounts({
+      request: request(),
+      viewerId: superadmin.userId,
+      query: { search: null, page: 1 },
+    })
+
+    expect(listed.ok).toBe(true)
+
+    if (!listed.ok) {
+      return
+    }
+
+    expect(listed.view.accounts.length).toBeGreaterThan(0)
+    expect(listed.view.accounts.length).toBeLessThanOrEqual(BACK_OFFICE_PAGE_SIZE)
+    expect(listed.view.total).toBeGreaterThanOrEqual(2)
+
+    // La recherche porte sur l'adresse, et elle est **paramétrée** : le compte
+    // visé est le seul rendu.
+    const searched = await service.useCases.viewAccounts({
+      request: request(),
+      viewerId: superadmin.userId,
+      query: { search: target.email, page: 1 },
+    })
+
+    expect(searched.ok && searched.view.accounts.map((account) => account.email)).toEqual([
+      target.email,
+    ])
+    expect(searched.ok && searched.view.total).toBe(1)
+
+    /**
+     * **La colonne « Droits », dans ses deux états** (critère 1, revue F5).
+     *
+     * Le compte visé n'administre pas, le superadmin si — et c'est la seule
+     * mesure de `superadminsAmong` : la rendre vide laissait les cas verts, et
+     * l'écran aurait affiché « aucun droit » pour tout le monde, superadmins
+     * compris. Le second `expect` sans le premier ne mordrait pas : « faux
+     * partout » est ce que le défaut produit.
+     */
+    expect(searched.ok && searched.view.accounts.map((account) => account.superadmin)).toEqual([
+      false,
+    ])
+
+    const administrators = await service.useCases.viewAccounts({
+      request: request(),
+      viewerId: superadmin.userId,
+      query: { search: superadmin.email, page: 1 },
+    })
+
+    expect(
+      administrators.ok && administrators.view.accounts.map((account) => account.superadmin),
+    ).toEqual([true])
+  })
+
+  it('cherche un pour-cent, il ne rend pas la table entière', async () => {
+    const superadmin = await aSuperadmin()
+
+    // Le joker de `like` écrit par l'appelant : échappé, il ne trouve rien.
+    // Non échappé, il rendrait tous les comptes et le décompte mentirait.
+    const searched = await service.useCases.viewAccounts({
+      request: request(),
+      viewerId: superadmin.userId,
+      query: { search: '%', page: 1 },
+    })
+
+    expect(searched.ok && searched.view.total).toBe(0)
+  })
+
+  it('répond 404 à un compte qui n’administre pas, sans lire un seul compte', async () => {
+    const { email } = await anAccount()
+    const intruder = await anAccount()
+
+    configure(email)
+
+    let reads = 0
+    const counted = { ...accounts }
+
+    listReadable = true
+
+    const spying: AdminAccountsPort = {
+      ...counted,
+      listAccounts: async (input) => {
+        reads += 1
+
+        return await counted.listAccounts(input)
+      },
+    }
+
+    const guarded = configureAdmin({
+      db: connection.db,
+      accounts: spying,
+      organizations,
+      designatedEmail: email,
+      securityLog: (event) => securityEvents.push(event),
+    })
+
+    const refused = await guarded.useCases.viewAccounts({
+      request: request(),
+      viewerId: intruder.session.userId,
+      query: { search: null, page: 1 },
+    })
+
+    // 404, jamais 403 : un 403 confirmerait que le back-office existe.
+    expect(refused).toEqual({ ok: false, error: 'not_found' })
+    // Et le refus **n’atteint pas la couche de données** : une liste de comptes
+    // lue puis jetée serait une lecture qu'un non-superadmin a provoquée.
+    expect(reads).toBe(0)
+  })
+
+  it('refuse la liste quand la lecture des comptes échoue, au lieu de la dire vide', async () => {
+    const superadmin = await aSuperadmin()
+
+    listReadable = false
+
+    const refused = await service.useCases.viewAccounts({
+      request: request(),
+      viewerId: superadmin.userId,
+      query: { search: null, page: 1 },
+    })
+
+    expect(refused).toEqual({ ok: false, error: 'unavailable' })
+  })
+
+  it('sert le détail d’un compte : ses sessions, son rôle et ses organisations', async () => {
+    const superadmin = await aSuperadmin()
+    const target = await signedIn()
+
+    const detailed = await service.useCases.viewAccount({
+      request: request(),
+      viewerId: superadmin.userId,
+      userId: target.userId,
+    })
+
+    expect(detailed.ok).toBe(true)
+
+    if (!detailed.ok) {
+      return
+    }
+
+    expect(detailed.view.account.email).toBe(target.email)
+    expect(detailed.view.account.banned).toBe(false)
+    // La session ouverte par la connexion est là, **sans son jeton**.
+    expect(detailed.view.sessions.length).toBe(1)
+    expect(JSON.stringify(detailed.view.sessions)).not.toContain('token')
+    // Le rôle de plateforme est **relu en base**, pas déduit de l'appelant.
+    expect(detailed.view.superadmin).toBe(false)
+    expect(detailed.view.memberships.map((membership) => membership.role)).toEqual(['owner'])
+  })
+
+  it('répond 404 sur un compte que le socle ne connaît pas', async () => {
+    const superadmin = await aSuperadmin()
+
+    const missing = await service.useCases.viewAccount({
+      request: request(),
+      viewerId: superadmin.userId,
+      userId: 'usr_inconnu',
+    })
+
+    expect(missing).toEqual({ ok: false, error: 'not_found' })
+  })
+
+  it('répond 404 sur le détail à un compte qui n’administre pas', async () => {
+    const { email } = await anAccount()
+    const intruder = await anAccount()
+    const target = await anAccount()
+
+    configure(email)
+
+    const refused = await service.useCases.viewAccount({
+      request: request(),
+      viewerId: intruder.session.userId,
+      userId: target.session.userId,
+    })
+
+    expect(refused).toEqual({ ok: false, error: 'not_found' })
+  })
+
+  it('sert la liste des organisations, et son détail', async () => {
+    const superadmin = await aSuperadmin()
+
+    const listed = await service.useCases.viewOrganizations({
+      request: request(),
+      viewerId: superadmin.userId,
+      query: { search: null, page: 1 },
+    })
+
+    expect(listed.ok && listed.view.organizations.map((entry) => entry.slug)).toEqual([
+      'organisation-de-test',
+    ])
+
+    const detailed = await service.useCases.viewOrganization({
+      request: request(),
+      viewerId: superadmin.userId,
+      organizationId: 'org_s37b2',
+    })
+
+    expect(detailed.ok && detailed.view.members.map((member) => member.role)).toEqual(['owner'])
+    expect(detailed.ok && detailed.view.organization.subscriptionState).toBe('active')
+  })
+
+  it('répond 404 sur les organisations à un compte qui n’administre pas', async () => {
+    const { email } = await anAccount()
+    const intruder = await anAccount()
+
+    configure(email)
+
+    // **Un seul témoin de refus par porte** : la matrice des acteurs est
+    // éprouvée une fois, à la garde ; ceci prouve que cette porte-là l'appelle.
+    expect(
+      await service.useCases.viewOrganizations({
+        request: request(),
+        viewerId: intruder.session.userId,
+        query: { search: null, page: 1 },
+      }),
+    ).toEqual({ ok: false, error: 'not_found' })
+
+    expect(
+      await service.useCases.viewOrganization({
+        request: request(),
+        viewerId: intruder.session.userId,
+        organizationId: 'org_s37b2',
+      }),
+    ).toEqual({ ok: false, error: 'not_found' })
+  })
+})
+
+describe.runIf(databaseReachable)('les deux gestes du back-office', () => {
+  const aSuperadmin = async (): Promise<{ userId: string; email: string }> => {
+    const { session, email } = await anAccount()
+
+    configure(email)
+    expect(
+      (await call('grantSuperadmin', { session, body: { userId: session.userId } })).status,
+    ).toBe(200)
+
+    return { userId: session.userId, email }
+  }
+
+  it('révoque une session, et le serveur cesse de la servir', async () => {
+    const superadmin = await aSuperadmin()
+    const target = await signedIn()
+
+    // La session **vaut** avant : sans ce témoin, l'absence d'après ne prouve rien.
+    await expect(auth.resolveSession(requestWith(target.cookie))).resolves.not.toBeNull()
+
+    const sessions = await auth.useCases.listSessions({
+      userId: target.userId,
+      currentSessionId: null,
+    })
+    const sessionId = sessions[0]?.id ?? ''
+
+    const revoked = await call('revokeAccountSession', {
+      session: { userId: superadmin.userId, roles: [] },
+      body: { userId: target.userId, sessionId },
+    })
+
+    expect(revoked.status).toBe(200)
+    // **Côté serveur** (`docs/security.md` §2) : ce n'est pas un bouton qui a
+    // disparu d'un écran, c'est le cookie qui ne désigne plus personne.
+    await expect(auth.resolveSession(requestWith(target.cookie))).resolves.toBeNull()
+  })
+
+  it('accepte la soumission d’un formulaire natif, et renvoie sur l’écran', async () => {
+    const superadmin = await aSuperadmin()
+    const target = await signedIn()
+    const [session] = await auth.useCases.listSessions({
+      userId: target.userId,
+      currentSessionId: null,
+    })
+
+    // **Un `<form method="post">`, pas un appel JSON** : c'est ce que l'écran de
+    // détail envoie. Lire uniquement le JSON rendait 400 sur chaque clic, sans
+    // que rien ne le dise — et un 200 JSON aurait laissé la personne devant un
+    // document au lieu de son écran.
+    const submitted = await dispatchAllowingRateLimit(
+      registry,
+      new Request(`${APP_URL}${adminRoutePath('revokeAccountSession')}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          userId: target.userId,
+          sessionId: session?.id ?? '',
+        }).toString(),
+      }),
+      { resolveSession: () => Promise.resolve({ userId: superadmin.userId, roles: [] }) },
+    )
+
+    expect(submitted.status).toBe(303)
+    expect(submitted.headers.get('location')).toContain(`/admin/users/${target.userId}`)
+    await expect(auth.resolveSession(requestWith(target.cookie))).resolves.toBeNull()
+  })
+
+  /**
+   * **Un appelant JSON qui n'annonce pas son type** (revue de s37b2, constat
+   * F10).
+   *
+   * `s37b1` lisait le corps en JSON sans condition ; s37b2 a ajouté la
+   * soumission de formulaire, et l'a fait par un `sinon` — *tout ce qui n'est
+   * pas `application/json` est un formulaire*. Un appelant programmatique qui
+   * omet l'en-tête recevait donc 400 là où il fonctionnait, et une redirection
+   * 303 au lieu de son document.
+   *
+   * La décision se prend désormais sur ce que la requête **annonce être** — un
+   * formulaire —, jamais sur ce qu'elle n'annonce pas : un type absent reste du
+   * JSON, comme avant. Les deux moitiés (quel décodage, quelle forme de
+   * réponse) sortent du **même** prédicat, si bien qu'elles ne peuvent plus
+   * diverger.
+   */
+  it('sert un appelant JSON qui n’annonce pas son type, comme avant', async () => {
+    const superadmin = await aSuperadmin()
+    const target = await signedIn()
+    const [session] = await auth.useCases.listSessions({
+      userId: target.userId,
+      currentSessionId: null,
+    })
+
+    const answered = await dispatchAllowingRateLimit(
+      registry,
+      new Request(`${APP_URL}${adminRoutePath('revokeAccountSession')}`, {
+        method: 'POST',
+        // **Aucun `content-type`** : c'est tout le sujet du cas.
+        body: JSON.stringify({ userId: target.userId, sessionId: session?.id ?? '' }),
+      }),
+      { resolveSession: () => Promise.resolve({ userId: superadmin.userId, roles: [] }) },
+    )
+
+    expect(answered.status).toBe(200)
+    // Un document, pas une redirection : l'appelant n'est pas un navigateur.
+    expect(answered.headers.get('location')).toBeNull()
+    await expect(auth.resolveSession(requestWith(target.cookie))).resolves.toBeNull()
+  })
+
+  it('ne révoque pas la session d’un autre compte que celui qu’on vise', async () => {
+    const superadmin = await aSuperadmin()
+    const target = await signedIn()
+    const bystander = await signedIn()
+
+    const [session] = await auth.useCases.listSessions({
+      userId: bystander.userId,
+      currentSessionId: null,
+    })
+
+    // L'identifiant de session appartient à `bystander`, le compte visé est
+    // `target` : la condition est **dans l'écriture**, pas dans une lecture
+    // préalable, donc rien ne bouge et le refus ne distingue rien.
+    const refused = await call('revokeAccountSession', {
+      session: { userId: superadmin.userId, roles: [] },
+      body: { userId: target.userId, sessionId: session?.id ?? '' },
+    })
+
+    expect(refused.status).toBe(404)
+    await expect(auth.resolveSession(requestWith(bystander.cookie))).resolves.not.toBeNull()
+  })
+
+  it('répond 404 à un compte qui n’administre pas, sur les deux gestes', async () => {
+    const { email } = await anAccount()
+    const intruder = await anAccount()
+    const target = await signedIn()
+
+    configure(email)
+    // L'inscription de `signedIn()` a déjà fait partir un email de
+    // vérification : sans cette remise à zéro, l'absence mesurée plus bas
+    // serait vraie pour la mauvaise raison.
+    mailer.reset()
+
+    for (const path of ['revokeAccountSession', 'sendPasswordReset'] as const) {
+      const refused = await call(path, {
+        session: intruder.session,
+        body: { userId: target.userId, sessionId: 'peu-importe' },
+      })
+
+      expect(refused.status, path).toBe(404)
+    }
+
+    // Et rien n'est parti : le refus n'atteint pas le socle.
+    expect(mailer.sent.filter((email_) => email_.to === target.email)).toEqual([])
+  })
+
+  it('déclenche une réinitialisation vers l’adresse du compte visé', async () => {
+    const superadmin = await aSuperadmin()
+    const target = await signedIn()
+
+    mailer.reset()
+
+    const asked = await call('sendPasswordReset', {
+      session: { userId: superadmin.userId, roles: [] },
+      body: { userId: target.userId },
+    })
+
+    expect(asked.status).toBe(200)
+    // **L'adresse n'est jamais entrée par le back-office** : elle est relue de
+    // l'identifiant, ce qui est toute la borne d'import du module.
+    expect(mailer.sent.map((sent) => sent.to)).toEqual([target.email])
   })
 })
 
@@ -1600,6 +2161,50 @@ describe.runIf(databaseReachable)('un emprunt ne survit pas à ce qui ferme son 
    * portait l'échéance d'une heure à sept jours, et l'heure annoncée par
    * `AuthPolicy`, par `admin/AGENTS.md` et par l'ADR 064 était fausse.
    */
+  /**
+   * **La résolution de session porte l'emprunt** (revue de s37b2, F3).
+   *
+   * La coquille applicative affichait son bandeau au prix de deux
+   * allers-retours de base supplémentaires par page authentifiée : un second
+   * `getSession`, puis une lecture de la ligne de session. Elle lit désormais
+   * `impersonatedBy` **sur la ligne que la résolution vient de charger**.
+   *
+   * Ce cas est ce qui rend cette lecture opposable : la colonne appartient à ce
+   * dépôt (ADR 064), pas à la bibliothèque, et rien ne garantit contractuellement
+   * qu'elle traverse. Si une version cessait de la rendre, ce cas rougit — au
+   * lieu de laisser le bandeau disparaître en silence pour la seule personne
+   * qui a besoin de le voir.
+   */
+  it('rend l’emprunteur avec la session, et rien pour une session ordinaire', async () => {
+    const superadmin = await signedIn()
+    const target = await signedIn()
+
+    configure(superadmin.email)
+    await call('grantSuperadmin', {
+      cookie: superadmin.cookie,
+      body: { userId: superadmin.userId },
+    })
+
+    // Une session ordinaire : personne ne l'emprunte.
+    await expect(auth.resolveActiveSession(requestWith(target.cookie))).resolves.toMatchObject({
+      session: { userId: target.userId },
+      impersonatedBy: null,
+    })
+
+    const borrowed = cookieOf(
+      await call('startImpersonation', {
+        cookie: superadmin.cookie,
+        body: { userId: target.userId },
+      }),
+    )
+
+    // La session empruntée : elle nomme **l'emprunteur**, pas le compte affiché.
+    await expect(auth.resolveActiveSession(requestWith(borrowed))).resolves.toMatchObject({
+      session: { userId: target.userId },
+      impersonatedBy: superadmin.userId,
+    })
+  }, 60_000)
+
   it('ne prolonge pas une session empruntée à la première lecture', async () => {
     const superadmin = await signedIn()
     const target = await signedIn()
@@ -1715,6 +2320,109 @@ describe.runIf(databaseReachable)('le module coupé', () => {
  * Tout y est **dérivé du contrat** : les routes et la table viennent du module,
  * jamais d'une liste recopiée.
  */
+/**
+ * **L'entrée du back-office se dérive du registre** (s37b2, ADR 066).
+ *
+ * C'est la forme que `s31` a établie pour le pied de page, appliquée à une
+ * troisième surface : un module qui veut une entrée dans le back-office la
+ * **déclare** à son contrat, et elle disparaît avec lui — sans qu'aucun fichier
+ * de l'application, ni du module `admin`, ne le nomme.
+ *
+ * Aucune base ici : ce qui se prouve sur des contrats se prouve sans base.
+ */
+describe('l’entrée du back-office se dérive du registre', () => {
+  const adminSurface = (enabled: readonly string[]): readonly string[] =>
+    visibleNavigation(
+      buildRegistry({
+        available: [authModule, adminModule, organizationsModule],
+        enabled: [...enabled],
+        locales: [...appLocales],
+      }),
+      { userId: 'usr_1', roles: [] },
+      'admin',
+    ).map((entry) => `${entry.moduleId}:${entry.id}`)
+
+  it('rend l’entrée d’un module activé, et la retire avec lui', () => {
+    const withOrganizations = adminSurface(['auth', 'admin', 'organizations'])
+    const withoutOrganizations = adminSurface(['auth', 'admin'])
+
+    // Le contrôle positif : sans lui, l'absence ci-dessous serait vraie parce
+    // que la surface entière est vide.
+    expect(withOrganizations.length).toBeGreaterThan(withoutOrganizations.length)
+    expect(
+      withOrganizations.some((id) => id.startsWith(`${organizationsModule.id}:`)),
+    ).toBe(true)
+    expect(
+      withoutOrganizations.some((id) => id.startsWith(`${organizationsModule.id}:`)),
+    ).toBe(false)
+    // Et l'entrée du module `admin`, elle, est toujours là.
+    expect(withoutOrganizations.some((id) => id.startsWith(`${adminModule.id}:`))).toBe(true)
+  })
+
+  it('ne contribue plus rien quand le module d’administration est coupé', () => {
+    const registry = buildRegistry({
+      available: [authModule, adminModule, organizationsModule],
+      enabled: ['auth', 'organizations'],
+      locales: [...appLocales],
+    })
+
+    // `adminNavigation` cesse de contribuer, sur **toutes** les surfaces, et
+    // aucune de ses routes n'est dans la table de routage.
+    expect(registry.navigation.filter((entry) => entry.moduleId === adminModule.id)).toEqual([])
+    expect(registry.routes.filter((route) => route.moduleId === adminModule.id)).toEqual([])
+
+    // **Ce que cela ne fait pas**, dit plutôt que sous-entendu : l'entrée que
+    // `organizations` déclare pour la surface du back-office reste dans le
+    // registre. Elle n'est **rendue par personne** — le seul lecteur de cette
+    // surface est un écran du back-office, et il n'existe plus (les quatre
+    // répondent 404). C'est le pendant de la ligne du dessus : la surface
+    // disparaît avec son unique lecteur, pas avec ses contributeurs.
+    expect(adminSurface(['auth', 'organizations'])).toEqual([
+      `${organizationsModule.id}:admin-organizations`,
+    ])
+  })
+
+  it('ne paraît jamais dans la barre latérale du produit', () => {
+    // Un lien « Administration » visible de tout compte connecté divulguerait
+    // l'existence du back-office (`docs/security.md` §7). La surface est ce qui
+    // l'en tient à l'écart, et `ModuleSession.roles` ne porte pas le rôle de
+    // plateforme — une protection `role` ne serait satisfaite par personne.
+    const sidebar = visibleNavigation(
+      buildRegistry({
+        available: [authModule, adminModule, organizationsModule],
+        enabled: ['auth', 'admin', 'organizations'],
+        locales: [...appLocales],
+      }),
+      { userId: 'usr_1', roles: [] },
+    ).map((entry) => `${entry.moduleId}:${entry.id}`)
+
+    expect(sidebar.some((id) => id.startsWith(`${adminModule.id}:`))).toBe(false)
+    expect(sidebar).toContain(`${organizationsModule.id}:organizations`)
+  })
+
+  it('ne dépend d’aucun module de contenu, ni dans le module ni dans son point de composition', () => {
+    // La dérivation n'a de valeur que si rien ne nomme le module par ailleurs :
+    // une entrée dérivée du registre à côté d'un import direct serait un
+    // deuxième chemin, et le second est celui qui survit à la coupure.
+    const manifest: { readonly dependencies?: Record<string, string> } = JSON.parse(
+      readFileSync(join(REPO_ROOT, 'packages/modules/admin/package.json'), 'utf8'),
+    )
+
+    expect(Object.keys(manifest.dependencies ?? {})).not.toContain(
+      '@repo/module-organizations',
+    )
+
+    const composition = readFileSync(join(REPO_ROOT, 'apps/web/lib/back-office.ts'), 'utf8')
+    const modulesImported = [...composition.matchAll(/@repo\/module-([a-z-]+)/g)].map(
+      (match) => match[1],
+    )
+
+    // Le seul module que la composition du back-office connaît est celui du
+    // back-office lui-même.
+    expect([...new Set(modulesImported)]).toEqual([adminModule.id])
+  })
+})
+
 describe('le profil minimal balaie le back-office', () => {
   const sweep = sweepProfile({
     profileId: minimalProfile.id,
@@ -1789,6 +2497,56 @@ describe('le port des comptes, quand la lecture échoue', () => {
       ok: false,
       error: 'not_impersonating',
     })
+  })
+})
+
+/**
+ * **Les deux clés composées du back-office, contre les vocabulaires dont elles
+ * viennent** (revue de s37b2, constat F7).
+ *
+ * L'écran des organisations traduit un **état d'abonnement** et un **rôle de
+ * membre** par des clés construites : `admin.subscription.<état>` et
+ * `admin.role.<rôle>`. Les deux vocabulaires appartiennent à d'autres modules —
+ * `billing` et `organizations` —, que le module `admin` ne peut pas importer
+ * (il ne les requiert pas, et c'est la raison d'être de ses ports). Personne ne
+ * rougissait donc quand ils dérivaient, et `intl.t` **lève** : un septième état
+ * d'abonnement ou un quatrième rôle transformait l'écran en 500.
+ *
+ * Ce fichier est le seul endroit qui puisse tenir ce fil, parce qu'il est à la
+ * racine et voit les trois modules. **Rien n'y est recopié** : les deux listes
+ * sont dérivées de leur module d'origine, et les locales du contrat du module
+ * `admin` — ajouter une langue n'ajoute pas une ligne ici.
+ */
+describe('le vocabulaire emprunté par le back-office', () => {
+  const catalogues = Object.entries(adminModule.messages) as readonly (readonly [
+    string,
+    Record<string, string>,
+  ])[]
+
+  it('balaie réellement quelque chose : le module livre des catalogues et les listes ne sont pas vides', () => {
+    // L'anti-vacuité : une liste vide ou un catalogue absent rendrait les deux
+    // cas suivants verts sans rien vérifier.
+    expect(catalogues.length).toBeGreaterThan(0)
+    expect(BILLING_DISPLAY_STATES.length).toBeGreaterThan(0)
+    expect(ORGANIZATION_ROLES.length).toBeGreaterThan(0)
+  })
+
+  it('traduit chaque état d’abonnement que `billing` sait afficher', () => {
+    for (const [locale, catalogue] of catalogues) {
+      expect(
+        BILLING_DISPLAY_STATES.filter((state) => catalogue[`subscription.${state}`] === undefined),
+        `${locale} — états d’abonnement sans libellé`,
+      ).toEqual([])
+    }
+  })
+
+  it('traduit chaque rôle que `organizations` sait attribuer', () => {
+    for (const [locale, catalogue] of catalogues) {
+      expect(
+        ORGANIZATION_ROLES.filter((role) => catalogue[`role.${role}`] === undefined),
+        `${locale} — rôles sans libellé`,
+      ).toEqual([])
+    }
   })
 })
 

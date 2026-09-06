@@ -323,6 +323,14 @@ beforeAll(async () => {
 
   adminService = configureAdmin({
     db: connection.db,
+    // s37b2 : le back-office des organisations n'est pas ce que cette suite
+    // traverse. Les trois lectures rendent des listes vides.
+    organizations: {
+      listOrganizations: () =>
+        Promise.resolve({ ok: true as const, organizations: [], total: 0 }),
+      describeOrganization: () => Promise.resolve({ ok: true as const, detail: null }),
+      membershipsOf: () => Promise.resolve({ ok: true as const, memberships: [] }),
+    },
     // Aucune désignation automatique : cette suite promeut explicitement, et
     // une désignation par adresse rendrait le cas dépendant de l'ordre.
     designatedEmail: null,
@@ -338,6 +346,13 @@ beforeAll(async () => {
       stopImpersonation: () =>
         Promise.resolve({ ok: false as const, error: 'not_impersonating' as const }),
       borrowerOf: () => Promise.resolve({ ok: true as const, impersonatedBy: null }),
+      // s37b2 : le back-office n'est pas ce que cette suite traverse. Les
+      // lectures refusent **fermé**, ce qui rendrait une liste en alerte plutôt
+      // qu'en état vide si un cas y passait — aucun n'y passe.
+      listAccounts: () => Promise.resolve({ ok: false as const }),
+      describeAccount: () => Promise.resolve({ ok: false as const }),
+      revokeSession: () => Promise.resolve({ ok: false as const }),
+      sendPasswordReset: () => Promise.resolve({ ok: false as const }),
       endBorrowsBy: () => Promise.resolve({ ok: true as const, ended: [] }),
       sweepExpiredImpersonations: () => Promise.resolve({ ok: true as const, ended: [] }),
     },

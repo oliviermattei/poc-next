@@ -49,7 +49,12 @@ la liste** : un compte écrit à côté de lui vieillit à la ligne suivante.
   qu'une adresse (`docs/security.md` §7). L'exception est
   `tests/admin.test.ts`, qui est une suite, pas le module ;
 - `drizzle-orm` pour les déclarations de table et les requêtes ;
-- `zod` pour valider ce qui entre par une route ;
+- `zod` pour valider ce qui entre par une route, **ou par l'adresse d'un écran**
+  (s37b2 : la recherche, la pagination, l'identifiant d'une session visée) ;
+- `@repo/ui` pour **tout** ce qui s'affiche, `lucide-react` pour les icônes et
+  `react` en `peerDependencies` — **dans `src/presentation/` seulement**,
+  arrivés avec s37b2 et ses quatre écrans. Un import de `@radix-ui/*` est refusé
+  par `pnpm lint` (ADR 022) : le baril `@repo/ui` est la seule frontière ;
 - `@repo/typescript-config` pour la configuration du compilateur
   (`tsconfig.json`).
 
@@ -77,10 +82,49 @@ qu'il utilise (ADR 020). La règle est tenue par `pnpm lint`.
 
 ## Ce que cette tranche ne fait pas
 
-`s37b1` a livré le décompte corrigé et l'**impersonation** (ADR 064). Restent à
-`s37b2` : les listes, les détails d'utilisateur et d'organisation, et le bandeau
-d'impersonation ; les inscriptions publiques sont `s37c`. Aucune entrée de
-navigation ne mène au back-office, faute d'écran à servir.
+`s37b1` a livré le décompte corrigé et l'**impersonation** (ADR 064) ; `s37b2` a
+livré les **écrans** — listes, détails de compte et d'organisation, bandeau
+d'impersonation, révocation de session et réinitialisation de mot de passe.
+Restent dehors : les inscriptions publiques et l'export (`s37c`), et la
+**confirmation d'une action irréversible** — `ConfirmDialog` et `AlertDialog` ne
+sont pas livrés par le design system (lacune relevée par `s34b`, toujours
+ouverte). La révocation est donc un `Button` `destructive` dont le libellé nomme
+l'effet.
+
+## Ce que les écrans ajoutent, et où vit leur garde (s37b2)
+
+**La garde est écrite une fois**, dans `application/admin-use-cases.ts`
+(`authorizeBackOffice`) : les routes du module et ses écrans posent la même
+question, et deux copies auraient divergé au premier acteur ajouté. Elle refuse
+une session **empruntée** avant de juger le rôle, relit le rôle en base, et
+journalise le refus — la réponse, elle, ne distingue rien.
+
+**Les écrans sortent par un second point d'entrée**,
+`@repo/module-admin/presentation` (ADR 024) : le barril principal ne réexporte
+aucun `.tsx`, `config/features.ts` étant lu par `pnpm db:generate` et `pnpm ks`,
+qui ne compilent pas de JSX.
+
+**Le back-office lit les organisations par un second port**,
+`AdminOrganizationsPort`. Ce module ne déclare pas `organizations` dans ses
+`requires` : il ne peut ni l'importer, ni joindre ses tables. Module coupé, ce
+port rend des listes vides — **aucune méthode ne dit si le module existe**, et
+aucun écran ne porte de condition sur un identifiant de module. Ce qui disparaît
+alors est l'**entrée de navigation**, déclarée par `organizations` lui-même sur
+la surface `admin` (ADR 066).
+
+| Invariant de s37b2 | Comment il est tenu | Ce qui échoue si on le casse |
+|---|---|---|
+| **Un écran du back-office répond 404 à qui n'administre pas**, jamais 403 | `authorizeBackOffice`, la même garde que les routes | `tests/admin.test.ts` (« répond 404 à un compte qui n'administre pas, sans lire un seul compte », et deux témoins sur le détail et les organisations) |
+| **Un refus n'atteint pas la couche de données** | la garde passe avant la lecture, et le cas compte les appels au port | `tests/admin.test.ts`, même cas |
+| **Une lecture en échec refuse au lieu de dire « vide »** | `viewAccounts` rend `unavailable`, l'écran rend une `Alert` | `tests/admin.test.ts` (« refuse la liste quand la lecture des comptes échoue ») |
+| **Une révocation de session s'applique côté serveur** | le socle efface la ligne ; le cas mesure que le **cookie ne désigne plus personne** | `tests/admin.test.ts` (« révoque une session, et le serveur cesse de la servir ») |
+| **Une session d'un autre compte n'est pas révocable** | la condition est dans l'écriture du socle, pas dans une lecture préalable | `tests/admin.test.ts` (« ne révoque pas la session d'un autre compte ») |
+| **Aucune adresse n'entre par le back-office** | la réinitialisation part d'un **identifiant** ; le socle relit l'adresse (`AuthService.requestPasswordResetFor`) | `tests/admin.test.ts` (« déclenche une réinitialisation vers l'adresse du compte visé ») |
+| **Une recherche portant `%` ne rend pas la table entière** | les jokers de `like` sont échappés avant d'être liés | `tests/admin.test.ts` et `tests/organizations.test.ts` (« cherche un pour-cent ») |
+| **L'entrée « organisations » du back-office disparaît avec son module** | elle est déclarée par `organizations` (`surface: 'admin'`) et dérivée du registre | `pnpm test:minimal-profile`, et `tests/admin.test.ts` (« l'entrée du back-office se dérive du registre ») |
+| **La colonne « Droits » distingue réellement un superadmin** | `superadminsAmong` relit la table du rôle pour la page affichée, et la vue en tire `superadmin` ligne par ligne | `tests/admin.test.ts` (« sert une page de comptes, et la recherche la réduit ») — **la ligne manquait** : `superadminsAmong` rendant `[]` laissait toute la suite verte, et l'écran aurait dit « aucun droit » pour tout le monde, superadmins compris (revue de s37b2, constat F5). Le cas mesure les **deux** états ; « faux partout » est ce que le défaut produisait |
+| **Le vocabulaire emprunté aux autres modules est traduit** | l'écran construit `admin.subscription.<état>` et `admin.role.<rôle>` depuis des valeurs qui viennent de `billing` et d'`organizations`, et `intl.t` **lève** sur une clé absente | `tests/admin.test.ts` (« le vocabulaire emprunté par le back-office ») — il **dérive** les deux listes de leur module d'origine (`BILLING_DISPLAY_STATES`, `ORGANIZATION_ROLES`) et les locales du contrat de ce module : un septième état d'abonnement ou un quatrième rôle rougit ici au lieu de mettre l'écran en 500 |
+| **La coquille n'ouvre aucune lecture pour afficher le bandeau d'emprunt** | l'emprunteur arrive avec la session, dans la résolution que `currentViewer()` a déjà payée (`AuthService.resolveActiveSession`) | `tests/marketing.test.ts` (« n'émet aucune requête propre pour un compte connecté ») pour le coût, et `tests/admin.test.ts` (« rend l'emprunteur avec la session ») pour la lecture elle-même — la colonne `impersonated_by` appartient à ce dépôt, pas à la bibliothèque, et ce second cas est ce qui rend sa traversée opposable |
 
 **Ce que le module coupé emporte avec lui, depuis `s37b1`** : plus aucune
 impersonation ne s'ouvre, et une impersonation **en cours ne peut plus être

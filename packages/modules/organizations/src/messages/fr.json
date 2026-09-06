@@ -82,5 +82,6 @@
   "delete.submit": "Supprimer définitivement l’organisation",
   "error.confirmation_mismatch": "La saisie ne correspond pas au nom de l’organisation. Rien n’a été supprimé.",
   "error.billing_cancel_failed": "L’abonnement n’a pas pu être annulé chez le fournisseur de paiement : rien n’a été effacé. Réessayez dans un instant.",
-  "error.purge_failed": "L’effacement s’est interrompu. Réessayez : la suppression reprend là où elle s’est arrêtée."
+  "error.purge_failed": "L’effacement s’est interrompu. Réessayez : la suppression reprend là où elle s’est arrêtée.",
+  "navigation.adminOrganizations": "Organisations"
 }

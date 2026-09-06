@@ -368,6 +368,24 @@ export interface BillingUseCases {
    * locale et lit le catalogue entier, alors que la question posée à chaque
    * requête de route réservée doit rester une lecture.
    */
+  /**
+   * **L'offre et l'état d'abonnement d'un périmètre** (s37b2), sans session ni
+   * locale.
+   *
+   * Elle existe pour le back-office, qui affiche une colonne « état
+   * d'abonnement » sur des organisations dont il n'est membre d'aucune : `view`
+   * part d'une session et résout le périmètre depuis elle, ce qui ne peut pas
+   * répondre à cette question. Le **périmètre est donné**, comme pour `purge` et
+   * `export` — jamais lu d'un corps de requête.
+   *
+   * Elle ne rend ni prix ni catalogue : formater une offre demanderait une
+   * locale, et l'état affiché est celui que `BillingDisplayState` nomme déjà —
+   * un vocabulaire fermé, que l'appelant n'a pas à réinventer.
+   */
+  subscriptionOf(scope: ModuleScope): Promise<{
+    readonly offerId: string | null
+    readonly state: BillingDisplayState
+  }>
   entitledOffers(input: {
     readonly session: { readonly userId: string; readonly roles: readonly string[] }
   }): Promise<readonly string[]>
@@ -1125,6 +1143,21 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
      * Périmètre non résolu, ou aucun client chez le fournisseur : aucune offre,
      * et **aucune lecture inutile**.
      */
+    subscriptionOf: async (scope) => {
+      const at = now()
+      const customer = await repository.customerForScope(scope)
+      const subscriptions =
+        customer === null ? [] : await repository.subscriptionsOfCustomer(customer.id)
+      // **La même règle que la vue** : « lequel est *le* sien » est une
+      // décision du `domain`, pas une requête, et deux copies divergeraient.
+      const subscription = currentSubscriptionOf(subscriptions, at)
+
+      return {
+        offerId: subscription?.offerId ?? null,
+        state: displayStateOf(subscription, at),
+      }
+    },
+
     entitledOffers: async ({ session }) => {
       const scope = await ownerOf(session)
 

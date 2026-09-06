@@ -73,6 +73,7 @@ export {
   type PurchaseStatus,
 } from './domain/purchase'
 export {
+  BILLING_DISPLAY_STATES,
   SUBSCRIPTION_STATUSES,
   appliesAfter,
   currentSubscriptionOf,

@@ -71,6 +71,15 @@ export {
   SheetTitle,
   SheetTrigger,
 } from './components/sheet'
+export {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from './components/table'
 export { Textarea } from './components/textarea'
 
 export { CookieBanner, type CookieBannerProps } from './composed/cookie-banner'
@@ -91,7 +100,12 @@ export {
   type OrgSwitcherProps,
 } from './composed/org-switcher'
 export { PageHeader, type PageHeaderProps } from './composed/page-header'
-export { Pagination, type PaginationProps } from './composed/pagination'
+export {
+  PAGINATION_WINDOW,
+  Pagination,
+  paginationWindow,
+  type PaginationProps,
+} from './composed/pagination'
 export {
   PROSE_CLASSNAME,
   createProseComponents,

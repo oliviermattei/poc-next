@@ -14,6 +14,7 @@ import {
   requireOrganizationsService,
   type InvitationPreview,
   type OrganizationsService,
+  type OrganizationsUseCases,
   type OrganizationsView,
 } from '@repo/module-organizations'
 
@@ -138,6 +139,16 @@ export interface OrganizationsFeature {
     readonly userId: string
     readonly organizationId: string
   }) => Promise<'allowed' | 'refused' | 'unknown'>
+  /**
+   * **Les lectures du back-office** (s37b2), périmètre plateforme.
+   *
+   * Elles ne sont appelées que par `lib/admin.ts`, après une garde de
+   * superadmin. Module coupé, elles rendent des listes vides **sans toucher la
+   * base** : le back-office n'a alors rien à afficher, et c'est son entrée de
+   * navigation — dérivée du registre — qui disparaît, pas une condition écrite
+   * dans un écran.
+   */
+  readonly backOffice: OrganizationsUseCases['backOffice']
 }
 
 /**
@@ -158,6 +169,11 @@ const ABSENT_ORGANIZATIONS: OrganizationsFeature = {
   countMembers: () => Promise.resolve(null),
   soleOwnerships: () => Promise.resolve([]),
   releaseOrganizations: () => Promise.resolve([]),
+  backOffice: {
+    listOrganizations: () => Promise.resolve({ organizations: [], total: 0 }),
+    describeOrganization: () => Promise.resolve(null),
+    membershipsOf: () => Promise.resolve([]),
+  },
 }
 
 /**
@@ -185,6 +201,13 @@ const APPLICATION_SEGMENTS = [
   // `tests/organizations.test.ts` dérive les segments du disque, pas du
   // registre.
   'billing',
+  // Les quatre écrans du back-office (s37b2) : leurs fichiers existent sur le
+  // disque **même quand le module `admin` est coupé**, et c'est du disque que
+  // `tests/organizations.test.ts` dérive. Quatrième occurrence du même défaut,
+  // trouvée par la même commande — `pnpm test` était vert, la surface de
+  // navigation du back-office n'étant lue par personne dans cette
+  // configuration, et `pnpm test:minimal-profile` a rougi.
+  'admin',
   // Les deux écrans du blog (s29) : ils sont aussi dérivés de la navigation du
   // registre, mais leurs fichiers existent sur le disque **même quand le
   // module `blog` est coupé** — et c'est du disque que
@@ -382,6 +405,14 @@ export const organizations: OrganizationsFeature = mounted
         }
 
         return allows(membership.role, ORGANIZATION_ACTION.exportData) ? 'allowed' : 'refused'
+      },
+      backOffice: {
+        listOrganizations: async (input) =>
+          await organizationsService().useCases.backOffice.listOrganizations(input),
+        describeOrganization: async (organizationId) =>
+          await organizationsService().useCases.backOffice.describeOrganization(organizationId),
+        membershipsOf: async (userId) =>
+          await organizationsService().useCases.backOffice.membershipsOf(userId),
       },
     }
   : ABSENT_ORGANIZATIONS

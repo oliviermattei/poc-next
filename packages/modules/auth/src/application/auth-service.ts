@@ -21,6 +21,28 @@ import type { AuthUseCases } from './auth-use-cases'
  *   autres sessions survivent à un changement de mot de passe ;
  * - `resolveSession` est le crochet que le registre attend (s03).
  */
+/**
+ * **Ce qu'une seule résolution de session apprend** (revue de s37b2, F3).
+ *
+ * Trois champs, une lecture. `session` est `null` quand la ligne de session
+ * existe mais que le compte n'est pas vérifié : c'est la règle du `domain`
+ * (`sessionOf`), et la distinguer de « aucune session » est ce qui permet à
+ * `resolveSessionId` de rendre l'identifiant là où `resolveSession` rend `null`.
+ */
+export interface ResolvedSession {
+  readonly session: ModuleSession | null
+  readonly sessionId: string
+  /**
+   * **L'emprunteur de cette session**, ou `null` (s37b1, ADR 064).
+   *
+   * Lu sur la ligne de session que la résolution vient de charger, jamais par
+   * une seconde lecture. `tests/admin.test.ts` le mesure contre une vraie base :
+   * si la bibliothèque cessait de rendre la colonne, ce cas rougirait au lieu
+   * de laisser le bandeau d'emprunt disparaître en silence.
+   */
+  readonly impersonatedBy: string | null
+}
+
 export interface AuthService {
   handle(request: Request): Promise<Response>
   /**
@@ -49,6 +71,21 @@ export interface AuthService {
    * laquelle, dans la liste, est celle qu'on utilise en ce moment.
    */
   resolveSessionId(request: Request): Promise<string | null>
+  /**
+   * **La session de l'appelant, résolue une fois** — et les deux méthodes
+   * ci-dessus en sont dérivées (revue de s37b2, constat F3).
+   *
+   * Chaque résolution parle à la base. Les trois questions que la coquille
+   * applicative pose à chaque rendu — *qui est-ce ?*, *quelle session ?*,
+   * *est-elle empruntée ?* — se répondaient par trois résolutions, soit deux
+   * allers-retours de trop **par page authentifiée, dans toutes les
+   * configurations**. Une seule lecture les porte toutes les trois.
+   *
+   * Ce qui reste hors de `ModuleSession` reste dehors : le contrat du registre
+   * ne gagne rien ici, et c'est délibéré — l'identifiant de session et
+   * l'emprunt servent à la coquille, pas à l'autorisation d'un module.
+   */
+  resolveActiveSession(request: Request): Promise<ResolvedSession | null>
   /**
    * **Emprunte la session d'un compte** (s37b1) — l'élévation de privilège du
    * back-office.
@@ -83,6 +120,21 @@ export interface AuthService {
    * sur la nature de sa session.
    */
   borrowerOf(request: Request): Promise<string | null>
+  /**
+   * **Déclenche une réinitialisation de mot de passe pour ce compte** (s37b2).
+   *
+   * Elle part d'un **identifiant**, jamais d'une adresse : c'est le back-office
+   * qui l'appelle, et lui donner une adresse en ferait un chemin de
+   * réinitialisation vers n'importe quelle boîte. L'adresse est relue du compte,
+   * ici, où elle ne traverse aucune frontière.
+   *
+   * Elle vit dans le **service** et non dans les cas d'usage parce qu'elle passe
+   * par le point d'entrée de la bibliothèque : c'est lui qui sait fabriquer le
+   * jeton, en poser l'échéance et envoyer le lien. Rend `false` pour un compte
+   * inconnu — aucun email ne part alors.
+   */
+  requestPasswordResetFor(userId: string): Promise<boolean>
+
   /**
    * La langue dans laquelle un email part à qui a fait **cette** requête.
    *

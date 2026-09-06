@@ -154,18 +154,19 @@ vit dans `apps/web`.
 Ceux que s08 utilise réellement, et rien de plus — copier l'inventaire complet
 « pour plus tard » livrerait du code que personne n'a exercé :
 
-| Copiés | `Accordion`, `Alert`, `Avatar`, `Badge`, `Breadcrumb`, `Button`, `Card`, `Checkbox`, `Command`, `DropdownMenu`, `Input`, `Label`, `Separator`, `Sheet`, `Textarea` |
+| Copiés | `Accordion`, `Alert`, `Avatar`, `Badge`, `Breadcrumb`, `Button`, `Card`, `Checkbox`, `Command`, `DropdownMenu`, `Input`, `Label`, `Separator`, `Sheet`, `Table`, `Textarea` |
 | --- | --- |
 | Composés maison | `CookieBanner`, `EmptyState`, `LocaleSwitcher`, `MarketingSection`, `OrgSwitcher`, `PageHeader`, `Pagination`, `Sidebar` / `SidebarNav`, `ThemeProvider`, `ThemeToggle`, l'échelle de prose (`PROSE_CLASSNAME`, `proseComponents`) |
 
-Le reste de l'inventaire de `docs/design-system.md` — `Form`, `Table`,
+Le reste de l'inventaire de `docs/design-system.md` — `Form`,
 `DataTable`, `Tabs`, `Toaster`, `AlertDialog`, `Tooltip`,
 `Popover`, `Skeleton`, `Progress`, `ScrollArea`,
 `RadioGroup`, `Select`, `Switch`,
 `ConfirmDialog`, et les composés des stories à venir — **n'est pas encore
 copié**. C'est la liste au 6 septembre 2026, révisée par s10, s11, s18, s36,
-s29, s30 puis s54 ; le document fait foi, pas ce tableau — **et ce tableau avait
-déjà été pris en défaut deux fois**, ce qui est la raison de la phrase
+s29, s30, s54 puis s37b2 ; le document fait foi, pas ce tableau — **et ce
+tableau avait déjà été pris en défaut deux fois**, ce qui est la raison de la
+phrase
 précédente :
 
 - `Pagination` y est resté « non copié » alors que **s29** le livrait et
@@ -229,6 +230,39 @@ que deux avaient produit :
 
 `Checkbox` et `CookieBanner` sont arrivés avec **s36**, que le document attribue
 nommément au second (« Bannière de consentement (s36) »).
+
+**`Pagination` est fenêtré depuis s37b2**, et c'est un changement de
+comportement de ce package, pas une option d'appelant. Il rendait **une ancre par
+page** — écrit pour le blog, qui en compte une poignée. Les listes de plateforme
+du back-office paginent un domaine qui autorise 10 000 pages : la même `<nav>`
+aurait porté 10 000 ancres, plusieurs centaines de kilo-octets de HTML et un
+ordre de tabulation impraticable (revue de s37b2, constat F4). `paginationWindow`
+rend au plus `PAGINATION_WINDOW` pages (sept), centrées sur la page courante, et
+la fenêtre **glisse** aux extrémités plutôt que de rétrécir. En dessous de sept
+pages, le rendu est identique à celui d'avant : aucun appelant existant ne
+change.
+
+**Ni ellipse, ni saut à la première ou à la dernière page** : `docs/design-system.md`
+ne décrit aucune des deux formes, et les inventer ici serait décider du design
+system dans un commit de fonctionnalité. Le manque est signalé dans
+`docs/designs/s37b2-back-office-lecture.md`.
+
+La règle est éprouvée par `tests/design-system.test.ts` (« la fenêtre de
+pagination »), et ce n'est pas une exception à « pas de test de rendu par
+composant » plus bas : ce qui y est mesuré est une **fonction pure** — quelles
+pages, dans quel ordre —, jamais du balisage ni une classe. Elle vit à la racine
+plutôt que dans `src/`, où la règle du dépôt la mettrait : ce paquet n'a aucun
+fichier de test, et en ouvrir un a fait dépasser son délai à un cas d'un
+**autre** fichier — le coût d'une suite est dominé par le fichier, pas par le
+cas.
+
+`Table` est arrivé avec **s37b2** — le back-office est fait de listes, et le
+document l'annonçait depuis l'origine sans que ce paquet le porte. Copié **sans
+`TableFooter`** : aucun écran ne totalise une colonne, et ce paquet ne livre pas
+de code que personne n'exerce. `DataTable` **n'est pas livré**, délibérément :
+`Pagination`, `Input` et `EmptyState` composent déjà les trois choses qu'il
+avalerait, et un composé sur un seul appelant serait la généralisation que le
+cimetière du PRD refuse.
 
 **`Checkbox` est l'élément natif, et c'est une décision, pas un raccourci.**
 `@radix-ui/react-checkbox` rend un `<button>` doublé d'un `<input>` masqué : la
@@ -339,7 +373,10 @@ alternatif d'une image, et tout écran qu'aucun parcours ne visite.
   `method` sur tout `<form>` — elle vise aussi ce package, où vivront les
   composants `Form` du design system (revue de s08, C1) ;
 - `e2e/app-shell.spec.ts` : le thème, la navigation et le rendu sous 400 px dans
-  un vrai navigateur.
+  un vrai navigateur ;
+- `tests/design-system.test.ts` encore, groupe « la fenêtre de pagination » :
+  **la seule règle de calcul de ce package**, et une fonction pure — quelles
+  pages une pagination rend, et combien au plus (s37b2).
 
 Pas de test de rendu par composant : une assertion sur des classes ou sur du
 balisage rougit à chaque changement légitime et reste aveugle aux défauts. Ce qui

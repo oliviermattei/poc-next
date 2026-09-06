@@ -269,4 +269,83 @@ describe('les tokens de `packages/ui` sont ceux du design system', () => {
     expect(() => read('/packages/ui/tailwind.config.js')).toThrow()
     expect(() => read('/apps/web/tailwind.config.js')).toThrow()
   })
+
+  /**
+   * **Les pages qu'une pagination rend** — la seule règle de calcul du design
+   * system, donc la seule chose de `packages/ui` qui s'éprouve hors d'un
+   * navigateur (revue de s37b2, constat F4).
+   *
+   * `Pagination` a été écrit pour le blog (s29), qui compte ses pages sur une
+   * main : il rendait **une ancre par page**, sans borne. Les listes de
+   * plateforme de s37b2 paginent un domaine qui en autorise 10 000 — donc
+   * 10 000 ancres dans une seule `<nav>`, sur un écran qu'un superadmin ouvre
+   * pour chercher un compte.
+   *
+   * **Ni classe, ni balisage** : `packages/ui/AGENTS.md` refuse le test de rendu
+   * par composant, et à juste titre. Ce qui est mesuré est une **fonction
+   * pure** — quelles pages, dans quel ordre ; ce que le composant en fait se
+   * regarde dans un navigateur.
+   *
+   * **Ici plutôt que dans `packages/ui/src`**, où la règle du dépôt le mettrait
+   * : ce paquet n'a aucun fichier de test, et en ouvrir un a fait dépasser son
+   * délai à un cas d'un **autre** fichier (`tests/rgpd-screens.test.ts`, un
+   * import à froid de la coquille applicative sous 5 s), mesuré trois fois de
+   * suite et vert dès que le fichier disparaît. Le coût d'une suite est
+   * dominé par le **fichier**, pas par le cas ; celui-ci rejoint donc le fichier
+   * qui tient déjà `packages/ui` contre son document.
+   */
+  describe('la fenêtre de pagination', () => {
+    it('rend toutes les pages tant qu’elles tiennent dans la fenêtre', async () => {
+      const { PAGINATION_WINDOW, paginationWindow } = await import('@repo/ui')
+
+      // La borne exacte : le blog ne change pas de rendu tant qu'il reste
+      // dessous.
+      expect(paginationWindow(1, 1)).toEqual([1])
+      expect(paginationWindow(2, 3)).toEqual([1, 2, 3])
+      expect(paginationWindow(4, PAGINATION_WINDOW)).toEqual(
+        Array.from({ length: PAGINATION_WINDOW }, (_unused, index) => index + 1),
+      )
+    })
+
+    it('borne le nombre d’ancres, quelle que soit la taille du domaine', async () => {
+      const { PAGINATION_WINDOW, paginationWindow } = await import('@repo/ui')
+
+      // 10 000 pages, c'est ce que le domaine du back-office autorise.
+      expect(paginationWindow(5_000, 10_000)).toHaveLength(PAGINATION_WINDOW)
+      expect(paginationWindow(1, 10_000)).toHaveLength(PAGINATION_WINDOW)
+      expect(paginationWindow(10_000, 10_000)).toHaveLength(PAGINATION_WINDOW)
+    })
+
+    it('centre la fenêtre sur la page courante, et la contient toujours', async () => {
+      const { PAGINATION_WINDOW, paginationWindow } = await import('@repo/ui')
+      const middle = paginationWindow(5_000, 10_000)
+
+      expect(middle).toContain(5_000)
+      expect(middle[0]).toBe(5_000 - (PAGINATION_WINDOW - 1) / 2)
+      expect(middle.at(-1)).toBe(5_000 + (PAGINATION_WINDOW - 1) / 2)
+    })
+
+    it('colle aux bords plutôt que de sortir du domaine', async () => {
+      const { paginationWindow } = await import('@repo/ui')
+
+      // Aux extrémités, la fenêtre glisse : elle ne propose jamais une page 0
+      // ni une page au-delà de la dernière, et elle garde sa taille.
+      expect(paginationWindow(1, 10_000)[0]).toBe(1)
+      expect(paginationWindow(2, 10_000)[0]).toBe(1)
+      expect(paginationWindow(10_000, 10_000).at(-1)).toBe(10_000)
+      expect(paginationWindow(9_999, 10_000).at(-1)).toBe(10_000)
+    })
+
+    it('rend une suite contiguë et croissante, sans doublon', async () => {
+      const { paginationWindow } = await import('@repo/ui')
+
+      for (const page of [1, 2, 7, 4_999, 5_000, 9_998, 10_000]) {
+        const pages = paginationWindow(page, 10_000)
+
+        expect(pages).toEqual(
+          Array.from({ length: pages.length }, (_unused, index) => (pages[0] ?? 0) + index),
+        )
+      }
+    })
+  })
 })

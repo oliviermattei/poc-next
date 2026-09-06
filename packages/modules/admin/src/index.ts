@@ -27,12 +27,33 @@ export { AdminNotConfiguredError, type AdminService } from './application/admin-
 export type { AdminDatabase } from './infrastructure/drizzle-platform-role-repository'
 export type {
   AccountBanOutcome,
+  AdminAccount,
+  AdminAccountDetail,
+  AdminAccountSession,
   AdminAccountsPort,
+  AdminMembership,
+  AdminOrganization,
+  AdminOrganizationMember,
+  AdminOrganizationsPort,
   BanAccountOutcome,
   GrantOutcome,
   RevokeOutcome,
 } from './application/ports'
-export type { AdminUseCases } from './application/admin-use-cases'
+export type {
+  AdminAccountRow,
+  AdminAccountsView,
+  AdminAccountView,
+  AdminOrganizationsView,
+  AdminOrganizationView,
+  AdminUseCases,
+  BackOfficePage,
+  BackOfficeView,
+} from './application/admin-use-cases'
+export {
+  BACK_OFFICE_PAGE_SIZE,
+  parseBackOfficeQuery,
+  type BackOfficeQuery,
+} from './domain/back-office'
 export type { AdminSecurityEvent, AdminSecurityLog } from './domain/security-event'
 export { SUPERADMIN_ROLE } from './domain/platform-role'
-export { adminRoutePath } from './presentation/admin-routes'
+export { ADMIN_USERS_SCREEN_PATH, adminRoutePath } from './presentation/admin-routes'

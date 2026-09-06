@@ -300,6 +300,28 @@ const SESSION_COOKIE_ATTRIBUTES = {
   path: '/',
 } as const
 
+/**
+ * **L'emprunteur porté par la ligne de session que la bibliothèque vient de
+ * lire** (revue de s37b2, F3).
+ *
+ * `impersonated_by` est une colonne de **ce dépôt** (ADR 064) : Better Auth ne
+ * la déclare pas, et son type de session ne la connaît donc pas. Elle traverse
+ * quand même — mesuré en 1.7.2 : l'adapter rend la ligne, et le champ est
+ * présent quand il vaut quelque chose, absent sinon.
+ *
+ * On lit donc ce que la bibliothèque **rend**, sans lui redemander la ligne :
+ * c'est la lecture de trop qu'une page authentifiée payait à chaque rendu. Ce
+ * qui n'est pas une chaîne non vide vaut « aucun emprunt » — et
+ * `tests/admin.test.ts` mesure l'inverse contre une vraie base, si bien qu'une
+ * version de la bibliothèque qui cesserait de rendre la colonne fait rougir un
+ * cas, au lieu d'éteindre le bandeau d'emprunt en silence.
+ */
+const borrowerOnRow = (row: object): string | null => {
+  const borrower = (row as { readonly impersonatedBy?: unknown }).impersonatedBy
+
+  return typeof borrower === 'string' && borrower !== '' ? borrower : null
+}
+
 export function createBetterAuthService(options: ConfigureAuthOptions): AuthService {
   const policy = options.policy ?? defaultAuthPolicy
   const tokenFactory = createTokenFactory()
@@ -1134,27 +1156,69 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
       return sessionId === null ? null : await useCases.borrowerOf(sessionId)
     },
 
-    resolveSessionId: async (request) => {
-      const session = await auth.api.getSession({ headers: request.headers })
+    /**
+     * **La réinitialisation demandée depuis le back-office** (s37b2).
+     *
+     * L'adresse est **relue du compte**, à partir de son identifiant : c'est ce
+     * qui garde le back-office hors du chemin « je choisis vers quelle boîte
+     * part le lien ». Le reste est le parcours ordinaire — le même point
+     * d'entrée que le formulaire « mot de passe oublié », donc le même jeton, la
+     * même échéance et le même email.
+     */
+    requestPasswordResetFor: async (userId) => {
+      const account = await useCases.describeAccount(userId)
 
-      return session === null ? null : session.session.id
+      if (account === null) {
+        return false
+      }
+
+      // **Le point d'entrée de la bibliothèque, appelé directement** : c'est
+      // lui qui fabrique le jeton, pose son échéance et déclenche
+      // `sendResetPassword`. Aucune requête n'est forgée — une requête forgée
+      // vers une route du module aurait été un répartiteur de plus dans
+      // l'application (`tests/module-registry.test.ts`), et un import de la
+      // couche `presentation` depuis `infrastructure`, que le lint refuse.
+      //
+      // **Aucune requête, donc aucune langue de l'appelant** : l'email part
+      // dans la langue du site. C'est le bon défaut ici — le destinataire est le
+      // titulaire du compte, pas le superadmin qui demande.
+      await auth.api.requestPasswordReset({ body: { email: account.email } })
+
+      return true
     },
 
-    resolveSession: async (request) => {
-      const session = await auth.api.getSession({ headers: request.headers })
+    /**
+     * **La seule lecture de session de ce fichier** (revue de s37b2, F3).
+     *
+     * Les deux méthodes qui suivent en sont dérivées : elles appelaient chacune
+     * `getSession`, si bien qu'une coquille qui pose trois questions payait
+     * trois lectures. Une seule les porte.
+     */
+    resolveActiveSession: async (request) => {
+      const resolved = await auth.api.getSession({ headers: request.headers })
 
-      if (session === null) {
+      if (resolved === null) {
         return null
       }
 
-      // La règle vit dans le `domain` : un compte non vérifié n'a pas de
-      // session, et les rôles arriveront avec s17 sans que ce fichier bouge.
-      return sessionOf({
-        userId: session.user.id,
-        emailVerified: session.user.emailVerified,
-        roles: [],
-      })
+      return {
+        // La règle vit dans le `domain` : un compte non vérifié n'a pas de
+        // session, et les rôles arriveront avec s17 sans que ce fichier bouge.
+        session: sessionOf({
+          userId: resolved.user.id,
+          emailVerified: resolved.user.emailVerified,
+          roles: [],
+        }),
+        sessionId: resolved.session.id,
+        impersonatedBy: borrowerOnRow(resolved.session),
+      }
     },
+
+    resolveSessionId: async (request) =>
+      (await service.resolveActiveSession(request))?.sessionId ?? null,
+
+    resolveSession: async (request) =>
+      (await service.resolveActiveSession(request))?.session ?? null,
   }
 
   return service

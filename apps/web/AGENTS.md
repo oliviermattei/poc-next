@@ -62,6 +62,9 @@ module (`packages/modules/<module>/src/domain`).
   décompte. D'autres fichiers de `lib/` importent un module **déjà monté** pour
   en composer un service — `lib/billing-catalogue.ts`, `lib/billing-permission.ts`,
   `lib/blog-body.tsx`, `lib/changelog-body.tsx`, `lib/docs-body.tsx`,
+  `lib/back-office.ts` (la langue et la **navigation du back-office**, dérivée
+  du registre — s37b2 ; il ne nomme aucun module de contenu, il importe du
+  module `admin` le chemin de ses routes et le type de ses écrans),
   `lib/footer.ts` (les liens de pied de page, dérivés du registre — s31 ; il ne
   nomme aucun module, il importe le type de lien du site public), `lib/guest-account.ts`, `lib/module-services.ts`,
   `lib/module-content.ts` et `lib/public-urls.ts` (la syndication, s53 — le
@@ -76,7 +79,8 @@ module (`packages/modules/<module>/src/domain`).
   `@repo/module-billing/presentation`,
   `@repo/module-consent/presentation`, `@repo/module-blog/presentation`,
   `@repo/module-docs/presentation`,
-  `@repo/module-notifications/presentation`) : ses composants React n'ont pas
+  `@repo/module-notifications/presentation`, `@repo/module-admin/presentation`) :
+  ses composants React n'ont pas
   leur place dans le barril que lit `config/features.ts`, qu'aucun outil du
   dépôt ne compile en JSX (**ADR 024**, la règle de tout module à composants) ;
 - `zod` pour valider ce qui **entre** dans un écran. Zod à **chaque** frontière
@@ -1418,6 +1422,49 @@ de `lib/billing.ts` : ce qui est écrit dans `lib/startup.ts` n'est neutralisabl
 par aucun test. `tests/admin.test.ts` porte les deux moitiés — la règle, et le
 témoin qu'elle est réellement appelée au démarrage, avec une attente **dérivée
 de la configuration** : module coupé, il n'y a rien à avertir.
+
+### Les écrans du back-office (s37b2)
+
+Quatre écrans, et **aucun ne porte de garde** : `admin.accounts`,
+`admin.account`, `admin.organizations` et `admin.organization` rendent
+`{ok:false, error:'not_found'}` à qui n'administre pas, et la page appelle
+`notFound()`. La règle vit dans le module — la **même** que celle de ses
+routes — parce que deux copies auraient divergé, et que la seconde aurait été
+celle qui laisse entrer.
+
+| Écran | Ce qui le fait répondre 404 |
+|---|---|
+| `/admin/users`, `/admin/users/<id>` | le module `admin` est coupé, ou l'appelant n'administre pas |
+| `/admin/organizations`, `…/<id>` | **en plus** : le module `organizations` est coupé — une **donnée** (`organizations.available`), comme `/organizations` |
+
+**L'absence d'un module est décidée avant la session**, et ce n'est pas un
+détail d'ordre : une redirection vers la connexion apprendrait à un visiteur
+anonyme que l'écran existe, et le balayage de `pnpm test:minimal-profile` la lit
+comme un **200** — il suit les redirections. Mesuré : la première écriture
+redirigeait d'abord, et la recette a rougi sur `/admin/users`.
+
+**La navigation du back-office est dérivée du registre**, surface `admin`
+(ADR 066), par `lib/back-office.ts`. Un module qui veut une entrée là la
+**déclare** à son contrat : couper `organizations` retire son entrée sans
+qu'aucun fichier de `apps/web` ne le nomme, et son adresse répond alors 404 sur
+une vraie requête HTTP — les deux moitiés, mesurées par
+`pnpm test:minimal-profile`.
+
+**Le bandeau d'impersonation est rendu par `app/app-shell.tsx`**, jamais par une
+page : c'est ce qui le fait survivre à une navigation complète. Il est lu
+seulement quand il y a une session — un visiteur anonyme n'emprunte rien, et une
+lecture inconditionnelle ouvrirait une connexion à chaque rendu du shell, ce que
+`tests/marketing.test.ts` compte. Module `admin` coupé, le bandeau **reste
+rendu** sans son action de sortie : taire un emprunt en cours serait pire que de
+ne pas pouvoir le rendre à la main.
+
+**Ses textes viennent du catalogue de l'application** (`app.shell.impersonation.*`),
+pas de celui du module — c'est la seule exception du back-office, et elle est
+mesurée. Le catalogue d'un module coupé n'est pas dans celui de l'application :
+une clé `admin.*` y **lève**, donc chaque écran serait un 500 pour la personne
+dont la session est empruntée, précisément dans la configuration où le bandeau
+est le seul avertissement qui reste. `pnpm test:minimal-profile` a rougi
+là-dessus.
 ## Le montage des notifications (s32)
 
 Un fichier, sur le modèle exact des organisations — mais il porte **trois**

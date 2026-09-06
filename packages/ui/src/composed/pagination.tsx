@@ -36,6 +36,55 @@ const ITEM = cn(
   'inline-flex h-10 min-w-10 items-center justify-center rounded-lg border border-border px-3 text-sm',
 )
 
+/**
+ * **Le nombre maximum d'ancres de page rendues** — impair, pour que la fenêtre
+ * se centre.
+ *
+ * Sept : assez pour voir où l'on est et sauter de quelques pages, assez peu pour
+ * tenir sur une ligne sous 400 px.
+ */
+export const PAGINATION_WINDOW = 7
+
+/**
+ * **Les pages à rendre**, bornées (revue de s37b2, constat F4).
+ *
+ * Ce composant a été écrit pour le blog, qui compte ses pages sur une main, et
+ * il rendait **une ancre par page**. Le back-office de s37b2 pagine des listes
+ * de plateforme dont le domaine autorise 10 000 pages : la même `<nav>` aurait
+ * porté 10 000 ancres — plusieurs centaines de kilo-octets de HTML, un ordre de
+ * tabulation impraticable, et une page d'autant plus lourde qu'elle est peu
+ * utile.
+ *
+ * La fenêtre **glisse** plutôt que de sortir du domaine : aux extrémités elle
+ * colle au bord en gardant sa taille, si bien que le nombre d'ancres ne dépend
+ * pas de la page où l'on se trouve.
+ *
+ * **Ce qu'elle ne fait pas** : ni ellipse, ni saut à la première ou à la
+ * dernière page. Le design system ne décrit aucune des deux formes, et les
+ * inventer ici serait décider du design system dans un commit de
+ * fonctionnalité — le manque est signalé dans
+ * `docs/designs/s37b2-back-office-lecture.md`. Les listes du back-office
+ * portent une recherche, qui est le vrai outil de navigation au-delà de
+ * quelques pages.
+ */
+export function paginationWindow(
+  page: number,
+  pageCount: number,
+  size: number = PAGINATION_WINDOW,
+): readonly number[] {
+  const length = Math.min(Math.max(pageCount, 0), Math.max(size, 1))
+
+  if (length === 0) {
+    return []
+  }
+
+  // La fenêtre centrée, puis ramenée dans le domaine sans changer de taille.
+  const centred = page - Math.floor((length - 1) / 2)
+  const first = Math.min(Math.max(centred, 1), pageCount - length + 1)
+
+  return Array.from({ length }, (_unused, index) => first + index)
+}
+
 export function Pagination({
   page,
   pageCount,
@@ -45,7 +94,7 @@ export function Pagination({
   nextLabel,
   pageLabel,
 }: PaginationProps) {
-  const pages = Array.from({ length: pageCount }, (_unused, index) => index + 1)
+  const pages = paginationWindow(page, pageCount)
 
   return (
     <nav aria-label={label} className="flex flex-wrap items-center justify-center gap-1">

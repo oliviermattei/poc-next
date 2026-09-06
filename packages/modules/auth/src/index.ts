@@ -110,6 +110,7 @@ export {
   type AuthUseCases,
   type DescribedSignInMethod,
 } from './application/auth-use-cases'
+export type { AuthAccountSummary } from './application/ports'
 export type { DescribedSession } from './domain/session'
 export { createTokenFactory } from './infrastructure/token-factory'
 export { describeSecurityEvent, type SecurityEventRecord } from './domain/security-event'

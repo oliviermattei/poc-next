@@ -82,5 +82,6 @@
   "delete.submit": "Permanently delete the organization",
   "error.confirmation_mismatch": "What you typed does not match the organization’s name. Nothing was deleted.",
   "error.billing_cancel_failed": "The subscription could not be cancelled with the payment provider: nothing was erased. Try again in a moment.",
-  "error.purge_failed": "The erasure stopped part way. Try again: deletion resumes where it left off."
+  "error.purge_failed": "The erasure stopped part way. Try again: deletion resumes where it left off.",
+  "navigation.adminOrganizations": "Organizations"
 }

@@ -31,6 +31,15 @@ export interface PlatformRoleRepository {
   countSuperadmins(): Promise<number>
   isSuperadmin(userId: string): Promise<boolean>
   /**
+   * **Parmi ces comptes, ceux qui administrent** (s37b2).
+   *
+   * Une lecture pour une page entière, et non une par ligne : la colonne
+   * « droits » d'une liste de vingt comptes coûterait sinon vingt ordres. Elle
+   * ne lit que **la table de ce module**, celle du rôle de plateforme — aucune
+   * table du socle n'est atteinte.
+   */
+  superadminsAmong(userIds: readonly string[]): Promise<readonly string[]>
+  /**
    * Accorde le rôle. `granted: false` quand le compte le portait déjà — c'est
    * une réponse, pas un échec : la désignation du premier superadmin est
    * rejouée à chaque requête d'administration et doit rester sans effet
@@ -197,6 +206,168 @@ export interface AdminAccountsPort {
   sweepExpiredImpersonations(at: Date): Promise<
     { readonly ok: true; readonly ended: readonly EndedImpersonation[] } | { readonly ok: false }
   >
+  /**
+   * **Une page de comptes, avec sa recherche** (s37b2) — le troisième
+   * élargissement de ce port, et il suit la même porte que les deux premiers.
+   *
+   * La jointure vers `auth_user` aurait été le raccourci évident ; elle
+   * franchirait la borne d'import de `src/schema.ts`, posée pour que les
+   * lectures de comptes restent **ici**, derrière un port, et derrière un
+   * identifiant plutôt qu'une adresse (`docs/security.md` §7).
+   *
+   * `ok: false` est une lecture **en échec**, jamais « aucun compte » : un
+   * back-office qui afficherait un état vide sur une panne mentirait à celui
+   * qui administre.
+   */
+  listAccounts(input: {
+    readonly search: string | null
+    readonly limit: number
+    readonly offset: number
+  }): Promise<
+    | { readonly ok: true; readonly accounts: readonly AdminAccount[]; readonly total: number }
+    | { readonly ok: false }
+  >
+  /**
+   * **Un compte et ses sessions**, à partir de son identifiant.
+   *
+   * `detail: null` est un compte que le socle ne connaît pas : le back-office
+   * rend alors 404, comme pour n'importe quelle ressource inconnue.
+   */
+  describeAccount(userId: string): Promise<
+    { readonly ok: true; readonly detail: AdminAccountDetail | null } | { readonly ok: false }
+  >
+  /**
+   * **Révoque une session du compte visé** (critère 3), côté serveur.
+   *
+   * Le compte fait partie de la condition d'écriture, il n'est pas vérifié
+   * avant : `revoked: false` ne distingue donc pas « cette session n'est pas à
+   * ce compte » de « elle n'existe pas ».
+   */
+  revokeSession(input: {
+    readonly userId: string
+    readonly sessionId: string
+  }): Promise<{ readonly ok: true; readonly revoked: boolean } | { readonly ok: false }>
+  /**
+   * **Déclenche une réinitialisation de mot de passe** pour le compte visé.
+   *
+   * L'adresse n'entre pas ici : elle est **relue de l'identifiant** par le
+   * point de composition, qui poste ensuite sur la route publique du socle. Ce
+   * module ne manipule aucune adresse reçue d'une requête.
+   */
+  sendPasswordReset(input: {
+    readonly userId: string
+  }): Promise<{ readonly ok: true; readonly sent: boolean } | { readonly ok: false }>
+}
+
+/** Une organisation, telle que le back-office la liste (s37b2). */
+export interface AdminOrganization {
+  readonly organizationId: string
+  readonly name: string
+  readonly slug: string
+  readonly memberCount: number
+  /** L'offre détenue, ou `null` — module de facturation coupé compris. */
+  readonly offerId: string | null
+  /**
+   * L'état d'abonnement, tel que la facturation le nomme.
+   *
+   * Une **chaîne** et non une énumération de ce module : le vocabulaire
+   * appartient au module `billing`, et le recopier ici en ferait une seconde
+   * vérité qui divergerait au premier état ajouté.
+   */
+  readonly subscriptionState: string | null
+}
+
+/** Un membre d'une organisation, et son rôle. */
+export interface AdminOrganizationMember {
+  readonly userId: string
+  readonly email: string
+  readonly role: string
+}
+
+/** L'appartenance d'un compte, telle que son détail l'affiche. */
+export interface AdminMembership {
+  readonly organizationId: string
+  readonly name: string
+  readonly role: string
+}
+
+/**
+ * **Ce que le back-office sait des organisations** (s37b2) — un second port, et
+ * pour la même raison que le premier.
+ *
+ * Le module `admin` ne déclare pas `organizations` dans ses `requires` et ne
+ * peut donc ni l'importer, ni joindre ses tables. Il reçoit ce port du point de
+ * composition de l'application, qui sait, lui, si ce module est monté.
+ *
+ * **Aucune méthode ne dit si le module existe**, et c'est délibéré : module
+ * coupé, les lectures rendent des listes vides, et aucun écran ne porte de
+ * condition sur un identifiant de module. Ce qui disparaît alors est l'**entrée
+ * de navigation**, dérivée du registre (ADR 066, `surface: 'admin'`).
+ */
+export interface AdminOrganizationsPort {
+  listOrganizations(input: {
+    readonly search: string | null
+    readonly limit: number
+    readonly offset: number
+  }): Promise<
+    | {
+        readonly ok: true
+        readonly organizations: readonly AdminOrganization[]
+        readonly total: number
+      }
+    | { readonly ok: false }
+  >
+  describeOrganization(organizationId: string): Promise<
+    | {
+        readonly ok: true
+        readonly detail: {
+          readonly organization: AdminOrganization
+          readonly members: readonly AdminOrganizationMember[]
+        } | null
+      }
+    | { readonly ok: false }
+  >
+  /** Les appartenances d'un compte : la première carte de son détail. */
+  membershipsOf(userId: string): Promise<
+    { readonly ok: true; readonly memberships: readonly AdminMembership[] } | { readonly ok: false }
+  >
+}
+
+/**
+ * **Ce qu'une liste d'administration montre d'un compte** (s37b2).
+ *
+ * Le socle le remplit ; ce module ne fait que l'afficher. **Aucun jeton, aucun
+ * secret** : ce type *est* la liste de ce qui sort, et un champ ajouté ici est
+ * un champ qu'un écran rendra.
+ */
+export interface AdminAccount {
+  readonly userId: string
+  readonly name: string
+  readonly email: string
+  readonly emailVerified: boolean
+  readonly banned: boolean
+  readonly createdAt: Date
+}
+
+/**
+ * Une session active d'un compte, telle que le back-office l'affiche.
+ *
+ * **Le jeton n'en fait pas partie**, comme dans la liste de sessions qu'un
+ * compte voit de lui-même (`docs/security.md` §2) : un jeton rendu à un écran
+ * annule `HttpOnly`, et l'écran d'un superadmin n'y fait pas exception.
+ */
+export interface AdminAccountSession {
+  readonly sessionId: string
+  readonly createdAt: Date
+  readonly expiresAt: Date
+  readonly ipAddress: string | null
+  readonly userAgent: string | null
+}
+
+/** Le compte et ses sessions, en une seule lecture du socle. */
+export interface AdminAccountDetail {
+  readonly account: AdminAccount
+  readonly sessions: readonly AdminAccountSession[]
 }
 
 /** Un emprunt terminé : les deux comptes, parce que le journal nomme les deux. */
@@ -222,6 +393,8 @@ export type AccountImpersonation =
 export interface AdminDependencies {
   readonly roles: PlatformRoleRepository
   readonly accounts: AdminAccountsPort
+  /** Ce que le back-office sait des organisations (s37b2). Vide quand le module est coupé. */
+  readonly organizations: AdminOrganizationsPort
   /**
    * L'adresse du **premier** superadmin, telle que la configuration la nomme.
    *

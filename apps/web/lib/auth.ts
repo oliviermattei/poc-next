@@ -231,8 +231,14 @@ export async function currentSession(): Promise<ModuleSession | null> {
  * Les écrans n'ont pas de `Request` sous la main : Next leur donne les
  * en-têtes. Tout ce qui suit passe par le **même** service que les routes — une
  * seconde lecture du cookie, ailleurs, serait une seconde vérité.
+ *
+ * **Exportée depuis s37b2** : le back-office est fait de composants serveur, et
+ * sa garde interroge le socle sur la **requête** — savoir si la session de
+ * l'appelant est empruntée ne se lit pas autrement qu'en présentant son cookie.
+ * Reconstruire cette requête dans `lib/admin.ts` en aurait fait une seconde
+ * lecture, donc une seconde vérité.
  */
-async function incomingRequest(): Promise<Request> {
+export async function incomingRequest(): Promise<Request> {
   return new Request(new URL('/', resolveAuthConfig(getEnv()).appUrl), {
     headers: await headers(),
   })
@@ -242,6 +248,16 @@ async function incomingRequest(): Promise<Request> {
 export interface Viewer {
   readonly session: ModuleSession | null
   readonly account: AccountView | null
+  /**
+   * **L'emprunteur de la session en cours**, ou `null` (s37b2, critère 5).
+   *
+   * Il arrive **avec** la session, dans la même résolution : la coquille en
+   * tire son bandeau sans rien relire. Il était résolu à part — un second
+   * `getSession` plus une lecture de la ligne de session — soit deux
+   * allers-retours de base à chaque page authentifiée, dans toutes les
+   * configurations, module `admin` coupé compris (revue de s37b2, F3).
+   */
+  readonly impersonatedBy: string | null
 }
 
 /**
@@ -258,11 +274,16 @@ export interface Viewer {
  */
 export async function currentViewer(): Promise<Viewer> {
   const auth = appAuth()
-  const session = await auth.resolveSession(await incomingRequest())
+  const resolved = await auth.resolveActiveSession(await incomingRequest())
+  const session = resolved?.session ?? null
 
   return {
     session,
     account: session === null ? null : await auth.useCases.viewAccount(session.userId),
+    // **Aucune seconde lecture** : l'emprunt sort de la résolution ci-dessus.
+    // Il vaut `null` pour un anonyme comme pour un compte non vérifié — ni
+    // l'un ni l'autre n'a de session à emprunter.
+    impersonatedBy: session === null ? null : (resolved?.impersonatedBy ?? null),
   }
 }
 
