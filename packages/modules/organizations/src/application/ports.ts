@@ -22,6 +22,19 @@ import type { MembershipRecord, OrganizationAccess } from './organization-access
 /** Ce que rend une écriture dont l'identifiant public peut déjà être pris. */
 export type SlugOutcome = 'ok' | 'slug_unavailable'
 
+/**
+ * **Une organisation, telle que le back-office la liste** (s37b2).
+ *
+ * Déclarée ici, dans `application`, et pas dans `infrastructure` : c'est le
+ * besoin qui la nomme, et la couche qui exécute l'importe (ADR 006).
+ */
+export interface PlatformOrganizationSummary {
+  readonly organizationId: string
+  readonly name: string
+  readonly slug: string
+  readonly memberCount: number
+}
+
 export interface OrganizationRepository {
   /**
    * L'appartenance de **ce** compte à **cette** organisation, ou `null`.
@@ -109,6 +122,28 @@ export interface OrganizationRepository {
   deleteOrganization(organizationId: string): Promise<void>
 
   /** Les membres d'une organisation, pour l'export du périmètre organisation. */
+  /* ----------------------------------------------------------------------- *
+   * s37b2. Les trois lectures du **back-office**, périmètre plateforme. Elles
+   * ne sont atteintes que par le point de composition de l'application, après
+   * une garde de superadmin que ce module ne peut pas juger lui-même.
+   * ----------------------------------------------------------------------- */
+
+  /** Toutes les organisations, une page à la fois, avec leur effectif. */
+  listPlatformOrganizations(input: {
+    readonly search: string | null
+    readonly limit: number
+    readonly offset: number
+  }): Promise<{
+    readonly organizations: readonly PlatformOrganizationSummary[]
+    readonly total: number
+  }>
+
+  /** Une organisation désignée par la plateforme, ou `null`. */
+  findPlatformOrganization(organizationId: string): Promise<PlatformOrganizationSummary | null>
+
+  /** Les membres d'une organisation, avec leur adresse, pour le back-office. */
+  listPlatformMembers(organizationId: string): Promise<readonly MemberIdentity[]>
+
   listMembersOf(organizationId: string): Promise<readonly MembershipRecord[]>
 
   /**

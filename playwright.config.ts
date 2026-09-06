@@ -81,6 +81,15 @@ export const TRACES_OUTPUT_DIRECTORY = 'test-results'
  * d'autre n'exécute — ce qui est exactement le contraire de ce qu'il promet de
  * mesurer.
  */
+/**
+ * L'adresse que la configuration désigne comme premier superadmin (s37b2).
+ *
+ * Exportée pour que `e2e/admin.spec.ts` inscrive **ce** compte-là : deux valeurs
+ * ne se rencontreraient jamais, le parcours et la configuration ne partageant
+ * pas de processus.
+ */
+export const E2E_SUPERADMIN_EMAIL = 'superadmin-e2e@example.test'
+
 export const webServerEnv = (): Record<string, string> => ({
   // L'authentification exige un secret de signature et l'URL publique de
   // l'application. Elles sont posées **ici**, et pas laissées au `.env` du
@@ -107,6 +116,21 @@ export const webServerEnv = (): Record<string, string> => ({
   // déduit de `NODE_ENV`. Aucun identifiant Google ou GitHub n'est posé ici :
   // les deux ensemble seraient refusés au démarrage.
   OAUTH_LOCAL_PROVIDER: '1',
+  /**
+   * **L'adresse du premier superadmin** (s37b2), posée **ici** et pas laissée au
+   * `.env` du poste.
+   *
+   * Sans elle, le back-office répond 404 à tout le monde — l'avertissement de
+   * démarrage le dit — et `e2e/admin.spec.ts` ne pourrait mesurer que le refus.
+   * Elle est une **constante partagée** : le fichier de configuration et le
+   * parcours vivent dans deux processus, et une valeur tirée au hasard ici ne
+   * serait pas celle que le parcours inscrirait.
+   *
+   * Ce n'est pas un secret : ce serveur est éphémère, local, et le compte est
+   * effacé puis recréé par le parcours à chaque exécution.
+   */
+  SUPERADMIN_EMAIL: E2E_SUPERADMIN_EMAIL,
+
   // Monte le **mode de paiement local** (s19), et c'est ce qui rend
   // `e2e/billing.spec.ts` exerçable : le checkout se termine sur une route
   // servie par l'application, qui fabrique et signe les événements que le

@@ -221,13 +221,34 @@ export interface NavigationEntry {
 /**
  * Les surfaces où une entrée de navigation peut paraître.
  *
- * Deux, et elles ne se recouvrent pas : la barre latérale de l'application, et
- * le pied de page du site public. Une entrée déclarée pour l'une n'apparaît
- * jamais dans l'autre — un lien de service au rang des fonctionnalités du
- * produit serait une régression d'écran, et c'est exactement ce que le module
- * `consent` refusait en déclarant `navigation: []`.
+ * Trois, et elles ne se recouvrent pas : la barre latérale de l'application, le
+ * pied de page du site public, et la navigation du **back-office** (s37b2). Une
+ * entrée déclarée pour l'une n'apparaît jamais dans une autre — un lien de
+ * service au rang des fonctionnalités du produit serait une régression d'écran,
+ * et c'est exactement ce que le module `consent` refusait en déclarant
+ * `navigation: []`.
+ *
+ * **`admin` est arrivée avec s37b2 (ADR 067)**, et pour la raison exacte qui a
+ * fait naître `footer` en s31 : le back-office liste les comptes *et* les
+ * organisations, et la seconde entrée doit disparaître avec le module qui la
+ * porte. Écrite en dur dans un écran, elle aurait nommé `organizations` dans
+ * `apps/web` — puis nommé le module suivant au même endroit. Déclarée par le
+ * module, elle disparaît avec lui, sans condition.
+ *
+ * L'ADR 066 demandait, à la troisième surface, de trancher si la surface est
+ * encore une propriété de **l'entrée** ou une propriété de **l'écran** qui la
+ * rend. L'ADR 067 répond, et donne le critère : elle appartient à l'entrée tant
+ * qu'elle répond à « où ce lien a-t-il un sens ? ». Elle passerait à l'écran le
+ * jour où un même lien devrait paraître sur deux surfaces, ou où un écran
+ * voudrait choisir ses entrées autrement que par leur surface — pas au rang de
+ * la valeur suivante.
+ *
+ * **Elle n'est jamais rendue à un visiteur ordinaire** : la seule surface qui la
+ * lit est servie par des écrans que la garde de superadmin protège déjà. Sa
+ * `protection` reste néanmoins déclarée, comme partout — elle n'a pas de défaut
+ * sûr.
  */
-export type NavigationSurface = 'app' | 'footer'
+export type NavigationSurface = 'app' | 'footer' | 'admin'
 
 /**
  * **Ce qu'un module donne à indexer** (s53, ADR 054).

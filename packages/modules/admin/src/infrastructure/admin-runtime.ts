@@ -1,6 +1,6 @@
 import { AdminNotConfiguredError, type AdminService } from '../application/admin-service'
 import { createAdminUseCases } from '../application/admin-use-cases'
-import type { AdminAccountsPort } from '../application/ports'
+import type { AdminAccountsPort, AdminOrganizationsPort } from '../application/ports'
 import type { AdminSecurityLog } from '../domain/security-event'
 import { consoleSecurityLog } from './console-security-log'
 import {
@@ -29,6 +29,13 @@ export interface ConfigureAdminOptions {
    */
   readonly accounts: AdminAccountsPort
   /**
+   * **Ce que le back-office sait des organisations** (s37b2), fourni de la même
+   * façon : le module ne déclare pas `organizations` dans ses `requires` et ne
+   * peut donc ni l'importer, ni joindre ses tables. Module coupé, ce port rend
+   * des listes vides — aucune condition d'écran ne nomme un module.
+   */
+  readonly organizations: AdminOrganizationsPort
+  /**
    * L'adresse du **premier** superadmin, ou `null`.
    *
    * Le module ne lit aucune variable d'environnement (`docs/security.md` §5) :
@@ -48,6 +55,7 @@ const build = (options: ConfigureAdminOptions): AdminService => ({
   useCases: createAdminUseCases({
     roles: createDrizzlePlatformRoleRepository(options.db, options.accounts),
     accounts: options.accounts,
+    organizations: options.organizations,
     designatedEmail: options.designatedEmail,
     securityLog: options.securityLog ?? consoleSecurityLog,
     now: options.now ?? (() => new Date()),

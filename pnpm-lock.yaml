@@ -658,9 +658,15 @@ importers:
       '@repo/module-auth':
         specifier: workspace:*
         version: link:../auth
+      '@repo/ui':
+        specifier: workspace:*
+        version: link:../../ui
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.29.5)(pg@8.23.0)
+      lucide-react:
+        specifier: 1.39.0
+        version: 1.39.0(react@19.2.8)
       zod:
         specifier: ^4.5.0
         version: 4.5.4
@@ -671,6 +677,12 @@ importers:
       '@types/node':
         specifier: ^26
         version: 26.4.1
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.2.18
+      react:
+        specifier: ^19.2.0
+        version: 19.2.8
       typescript:
         specifier: ^7.0.2
         version: 7.0.2

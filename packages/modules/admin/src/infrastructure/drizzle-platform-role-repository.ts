@@ -1,4 +1,4 @@
-import { and, eq, gt, sql, type SQL } from 'drizzle-orm'
+import { and, eq, gt, inArray, sql, type SQL } from 'drizzle-orm'
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core'
 
 import type { AdminAccountsPort, GrantOutcome, PlatformRoleRepository } from '../application/ports'
@@ -247,6 +247,26 @@ export function createDrizzlePlatformRoleRepository(
       return blocked.ok
         ? signInCapableSuperadmins({ superadminIds, signInBlocked: blocked.blocked })
         : superadminIds.length
+    },
+
+    superadminsAmong: async (userIds) => {
+      // La liste vide ne part pas en base : `inArray(col, [])` n'est traité
+      // pareil par aucun dialecte, et il n'y a de toute façon rien à lire.
+      if (userIds.length === 0) {
+        return []
+      }
+
+      const rows = await db
+        .select({ userId: adminPlatformRole.userId })
+        .from(adminPlatformRole)
+        .where(
+          and(
+            inArray(adminPlatformRole.userId, [...userIds]),
+            eq(adminPlatformRole.role, SUPERADMIN_ROLE),
+          ),
+        )
+
+      return rows.map((row) => row.userId)
     },
 
     isSuperadmin: async (userId) => {

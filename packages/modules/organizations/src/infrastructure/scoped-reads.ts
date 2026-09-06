@@ -1,9 +1,13 @@
 import { authUser } from '@repo/module-auth'
-import { and, asc, count, eq, gte, inArray, isNull } from 'drizzle-orm'
+import { and, asc, count, eq, gte, ilike, inArray, isNull, or } from 'drizzle-orm'
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core'
 
 import type { MembershipRecord, OrganizationAccess } from '../application/organization-access'
-import type { InvitationRecord, MemberIdentity } from '../application/ports'
+import type {
+  InvitationRecord,
+  MemberIdentity,
+  PlatformOrganizationSummary,
+} from '../application/ports'
 import { FOUNDER_ROLE, type OrganizationRole } from '../domain/organization'
 import {
   organization,
@@ -57,6 +61,18 @@ import {
  *    relire, ici comme pour les tables du module.
  */
 
+/**
+ * **Les jokers de `like`, neutralisés** (s37b2).
+ *
+ * Une recherche qui contient `%` doit chercher un pour-cent, pas tout lire :
+ * sans cet échappement, `%` seul rendrait la table entière et le décompte de
+ * pages n'aurait rien à voir avec ce que l'appelant a demandé. Ce n'est pas une
+ * garde d'injection — la valeur est liée de toute façon —, c'est une garde de
+ * **sens**.
+ */
+const escapeLikePattern = (value: string): string =>
+  value.replaceAll(/[\\%_]/g, (match) => `\\${match}`)
+
 /** Ce dont une lecture a besoin, et rien de plus. */
 export type ReadableDatabase = Pick<PgDatabase<PgQueryResultHKT>, 'select'>
 
@@ -79,6 +95,28 @@ export interface PlatformUserScope {
   readonly kind: 'user'
   readonly userId: string
 }
+
+/**
+ * **Le périmètre de la plateforme entière** (s37b2) — le back-office, et lui
+ * seul.
+ *
+ * C'est la première lecture de ce module qui n'a **aucun** propriétaire plus
+ * étroit qu'elle, et c'est exactement pour cela qu'elle porte quand même un
+ * paramètre de périmètre : la discipline de ce fichier est que *toute* lecture
+ * nomme son propriétaire en premier argument, et un balayage de la table des
+ * organisations qui l'omettrait se relirait comme un oubli.
+ *
+ * Cette valeur ne vient **jamais** d'une requête : elle est écrite par le point
+ * de composition de l'application, qui l'a obtenue d'une garde de superadmin
+ * (`packages/modules/admin`). Le module `organizations` n'a pas de rôle de
+ * plateforme et ne peut donc pas juger de ce droit lui-même — c'est la même
+ * répartition que `purge` et `export`, dont le périmètre est aussi donné.
+ */
+export interface PlatformScope {
+  readonly kind: 'platform'
+}
+
+
 
 /**
  * Les colonnes d'une appartenance, jointes à son organisation.
@@ -199,6 +237,38 @@ export interface ScopedReads {
     scope: PlatformUserScope,
     email: string,
   ): Promise<readonly InvitationRecord[]>
+
+  /* ----------------------------------------------------------------------- *
+   * s37b2. Le périmètre **plateforme** : trois lectures du back-office. Elles
+   * prennent leur périmètre en premier paramètre comme toutes les autres, et
+   * celui-ci ne vient jamais d'une requête (voir `PlatformScope`).
+   * ----------------------------------------------------------------------- */
+
+  /**
+   * **Toutes les organisations, une page à la fois**, avec leur effectif.
+   *
+   * Le décompte des membres est agrégé **dans la même requête** : une lecture
+   * par ligne ferait N+1 ordres pour une page de vingt.
+   */
+  platformOrganizations(
+    scope: PlatformScope,
+    input: {
+      readonly search: string | null
+      readonly limit: number
+      readonly offset: number
+    },
+  ): Promise<{
+    readonly organizations: readonly PlatformOrganizationSummary[]
+    readonly total: number
+  }>
+
+  /** Une organisation, désignée par la plateforme. `null` quand elle n'existe pas. */
+  platformOrganizationOf(
+    scope: PlatformOrganizationScope,
+  ): Promise<PlatformOrganizationSummary | null>
+
+  /** Les membres d'une organisation **avec leur adresse**, pour le back-office. */
+  platformMembersOf(scope: PlatformOrganizationScope): Promise<readonly MemberIdentity[]>
 }
 
 /**
@@ -319,6 +389,87 @@ export function createScopedReads(db: ReadableDatabase): ScopedReads {
         .orderBy(asc(organizationMember.userId))
 
       return rows.map(toMembership)
+    },
+
+    platformOrganizations: async (_scope, { search, limit, offset }) => {
+      // Le motif est une **valeur liée**, et ses jokers sont échappés : `%`
+      // seul rendrait la table entière derrière un décompte faux.
+      const condition =
+        search === null
+          ? undefined
+          : or(
+              ilike(organization.name, `%${escapeLikePattern(search)}%`),
+              ilike(organization.slug, `%${escapeLikePattern(search)}%`),
+            )
+
+      const rows = await db
+        .select({
+          organizationId: organization.id,
+          name: organization.name,
+          slug: organization.slug,
+          memberCount: count(organizationMember.id),
+        })
+        .from(organization)
+        .leftJoin(organizationMember, eq(organizationMember.organizationId, organization.id))
+        .where(condition)
+        .groupBy(organization.id, organization.name, organization.slug)
+        // Un ordre **total** : le nom seul laisserait deux homonymes changer de
+        // place d'une page à l'autre, donc une ligne sur deux pages ou aucune.
+        .orderBy(asc(organization.name), asc(organization.id))
+        .limit(limit)
+        .offset(offset)
+
+      const [counted] = await db
+        .select({ total: count() })
+        .from(organization)
+        .where(condition)
+
+      return {
+        organizations: rows.map((row) => ({
+          organizationId: row.organizationId,
+          name: row.name,
+          slug: row.slug,
+          memberCount: Number(row.memberCount),
+        })),
+        total: counted?.total ?? 0,
+      }
+    },
+
+    platformOrganizationOf: async (scope) => {
+      const [row] = await db
+        .select({
+          organizationId: organization.id,
+          name: organization.name,
+          slug: organization.slug,
+        })
+        .from(organization)
+        .where(eq(organization.id, scope.organizationId))
+        .limit(1)
+
+      if (row === undefined) {
+        return null
+      }
+
+      return { ...row, memberCount: await countMembersOf(scope, db) }
+    },
+
+    platformMembersOf: async (scope) => {
+      const rows = await db
+        .select({
+          userId: organizationMember.userId,
+          role: organizationMember.role,
+          email: authUser.email,
+        })
+        .from(organizationMember)
+        .innerJoin(authUser, eq(authUser.id, organizationMember.userId))
+        .where(eq(organizationMember.organizationId, scope.organizationId))
+        .orderBy(asc(authUser.email))
+
+      return rows.map((row) => ({
+        userId: row.userId,
+        email: row.email,
+        role: row.role as OrganizationRole,
+      }))
     },
 
     memberIdentitiesOf: async (access) => {

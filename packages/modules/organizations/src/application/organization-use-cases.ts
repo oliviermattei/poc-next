@@ -43,7 +43,9 @@ import {
   MEMBER_JOINED_NOTIFICATION,
   SeatSyncRefusedError,
   SoleOwnershipError,
+  type MemberIdentity,
   type OrganizationsDependencies,
+  type PlatformOrganizationSummary,
   type SeatSyncRefusal,
 } from './ports'
 
@@ -216,6 +218,36 @@ export interface OrganizationsUseCases {
    * ferme. `tests/billing.test.ts` le vérifie sur le disque plutôt que de
    * l'affirmer.
    */
+  /**
+   * **Les lectures du back-office** (s37b2), périmètre plateforme.
+   *
+   * Groupées sous une clé plutôt qu'éparpillées : elles partagent un
+   * **propriétaire** — la plateforme — que ce module ne juge pas lui-même, et
+   * les voir ensemble est ce qui rend visible qu'aucune n'est périmétrée par une
+   * appartenance. Le droit d'y toucher est décidé par le module `admin`, avant.
+   */
+  readonly backOffice: {
+    listOrganizations(input: {
+      readonly search: string | null
+      readonly limit: number
+      readonly offset: number
+    }): Promise<{
+      readonly organizations: readonly PlatformOrganizationSummary[]
+      readonly total: number
+    }>
+    describeOrganization(organizationId: string): Promise<{
+      readonly organization: PlatformOrganizationSummary
+      readonly members: readonly MemberIdentity[]
+    } | null>
+    /** Les appartenances d'un compte, telles que son détail les affiche. */
+    membershipsOf(userId: string): Promise<
+      readonly {
+        readonly organizationId: string
+        readonly name: string
+        readonly role: OrganizationRole
+      }[]
+    >
+  }
   countMembers(organizationId: string): Promise<number>
   /* --------------------------------------------------------------------- *
    * s16
@@ -796,6 +828,31 @@ export function createOrganizationsUseCases(
      * s23 vrai par construction. Y ajouter les invitations facturerait des
      * sièges que personne n'occupe.
      */
+    backOffice: {
+      listOrganizations: async (input) => await repository.listPlatformOrganizations(input),
+
+      describeOrganization: async (organizationId) => {
+        const organization = await repository.findPlatformOrganization(organizationId)
+
+        return organization === null
+          ? null
+          : {
+              organization,
+              members: await repository.listPlatformMembers(organizationId),
+            }
+      },
+
+      // Aucune lecture neuve : c'est celle qu'un compte fait déjà de
+      // lui-même, appelée avec un identifiant que le back-office tient de sa
+      // propre page. Elle reste périmétrée par le compte visé.
+      membershipsOf: async (userId) =>
+        (await repository.listMemberships(userId)).map((membership) => ({
+          organizationId: membership.organizationId,
+          name: membership.name,
+          role: membership.role,
+        })),
+    },
+
     countMembers: async (organizationId) => await repository.countMembersOf(organizationId),
 
     inviteMember: async ({ userId, body }) => {

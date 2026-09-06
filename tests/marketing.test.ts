@@ -56,7 +56,7 @@ import type { RateLimiter } from '@repo/ports'
 
 import { createMemoryRateLimiter, dispatchAllowingRateLimit } from './fixtures/rate-limit'
 import { markerFor, pseudoRequestConfig } from './fixtures/pseudo-locale'
-import { ANONYMOUS, SIGNED_IN, type ViewerFixture } from './fixtures/screen-viewer'
+import { ANONYMOUS, BORROWED, SIGNED_IN, type ViewerFixture } from './fixtures/screen-viewer'
 
 /**
  * Le **câblage** du site public — ce que la règle seule ne peut pas dire.
@@ -106,6 +106,22 @@ vi.mock('../apps/web/lib/auth', async () => {
     safeRedirectPath,
     currentViewer: () => Promise.resolve(viewer.value),
     currentSessions: () => Promise.resolve([]),
+    /**
+     * **Le service, non doublé, et jamais appelé sans session** (s37b2).
+     *
+     * Le shell lit l'emprunt de session en cours par `lib/admin.ts`, qui monte
+     * sur `appAuth`. Il ne le lit que lorsqu'il y a une session — et c'est
+     * précisément ce que ce fichier mesure : un visiteur anonyme n'ouvre aucune
+     * connexion. Une doublure qui rendrait « aucun emprunt » rendrait la mesure
+     * vraie par la fixture plutôt que par le shell.
+     */
+    appAuth: () => {
+      throw new Error(
+        'appAuth() ne doit pas être appelé pendant le rendu d’un écran public : ' +
+          'cette suite mesure qu’aucune connexion n’est ouverte.',
+      )
+    },
+    incomingRequest: () => Promise.resolve(new Request('http://localhost/')),
   }
 })
 
@@ -972,6 +988,75 @@ describe('le rendu des pages publiques', () => {
     } finally {
       postgres.restore()
       vi.doUnmock('../apps/web/lib/module-registry')
+    }
+  })
+
+  /**
+   * **Le rendu d'un compte connecté, et ce qu'il coûte à la base** (revue de
+   * s37b2, constat F3).
+   *
+   * Le cas ci-dessus ne compte qu'un visiteur **anonyme** : la coquille y saute
+   * l'avatar, le compteur de notifications et l'emprunt de session, si bien
+   * qu'une requête ajoutée sur le chemin d'un compte connecté n'était vue par
+   * aucune commande. C'est exactement ce qui est passé : la coquille
+   * re-résolvait la session depuis le cookie **une ligne après** l'avoir
+   * résolue, plus une lecture de la ligne de session — deux allers-retours par
+   * page, dans toutes les configurations, module `admin` coupé compris.
+   *
+   * **Ce que ce cas mesure** : le coût **propre** de la coquille pour un
+   * appelant connecté, emprunt en cours compris. Les deux lectures qu'elle
+   * délègue — l'avatar (s18) et le compteur de notifications (s32) — sont
+   * remplacées par leur forme « module coupé », qui est celle du vrai point de
+   * composition : leur coût est le leur, il est déjà gardé chez eux, et sans
+   * cela ce cas exigerait une base joignable pour mesurer autre chose que ce
+   * qu'il porte.
+   *
+   * **Ce qu'il ne mesure pas** : le coût de ces deux lectures, ni celui de
+   * `currentViewer`, qui est doublé en tête de ce fichier — la résolution de
+   * session elle-même est comptée par « n'émet aucune requête SQL pour un
+   * visiteur sans session », plus bas.
+   *
+   * `appAuth` **lève** dans ce fichier, et c'est le second filet : la coquille
+   * qui re-résoudrait la session ferait échouer ce rendu au lieu de le
+   * renchérir silencieusement.
+   */
+  it('n’émet aucune requête propre pour un compte connecté, emprunt en cours compris', async () => {
+    viewer.value = BORROWED
+
+    vi.resetModules()
+    // Les deux lectures déléguées, dans leur forme « module coupé » : ce cas
+    // mesure la coquille, pas ses collaborateurs.
+    vi.doMock('../apps/web/lib/storage', () => ({
+      storage: { available: false, prepare: () => {}, avatarOf: () => Promise.resolve(null) },
+      fileUrl: () => '',
+    }))
+    vi.doMock('../apps/web/lib/notifications', async (importOriginal) => {
+      const actual =
+        await importOriginal<typeof import('../apps/web/lib/notifications')>()
+
+      return {
+        ...actual,
+        notifications: { ...actual.notifications, unreadCount: () => Promise.resolve(0) },
+      }
+    })
+
+    const postgres = instrumentPostgres()
+
+    try {
+      const { AppShell } = await import('../apps/web/app/app-shell')
+
+      // L'anti-vacuité : la coquille rend bien le bandeau d'emprunt, donc elle
+      // a bien parcouru la branche dont le coût est mesuré. Sans cette ligne,
+      // « aucune requête » serait vrai d'un rendu qui n'a rien fait.
+      const rendered = renderToStaticMarkup(withMessages(await AppShell({ children: null })))
+
+      expect(rendered).toContain(markerFor('app.shell.impersonation.title'))
+      expect(postgres.seen).toEqual([])
+    } finally {
+      postgres.restore()
+      vi.doUnmock('../apps/web/lib/storage')
+      vi.doUnmock('../apps/web/lib/notifications')
+      viewer.value = ANONYMOUS
     }
   })
 })

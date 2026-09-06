@@ -42,6 +42,23 @@ export interface AuthUserRecord {
   readonly banned: boolean
 }
 
+/**
+ * **Ce qu'une liste d'administration montre d'un compte** (s37b2).
+ *
+ * Distinct d'`AuthUserRecord` parce qu'il porte ce que le socle n'a jamais eu
+ * besoin de lire sur le chemin d'une session — la date d'inscription — et qu'il
+ * ne porte pas ce dont un écran n'a que faire. Le **jeton n'y est pas**, et il
+ * n'y a rien de plus à dire : ce type est la liste de ce qui sort.
+ */
+export interface AuthAccountSummary {
+  readonly userId: string
+  readonly name: string
+  readonly email: string
+  readonly emailVerified: boolean
+  readonly banned: boolean
+  readonly createdAt: Date
+}
+
 export interface AuthUserRepository {
   findByEmail(email: string): Promise<AuthUserRecord | null>
   findById(userId: string): Promise<AuthUserRecord | null>
@@ -75,6 +92,28 @@ export interface AuthUserRepository {
    * dans la réponse : c'est ce qui distingue un compte effacé d'un compte lu.
    */
   findByIds(userIds: readonly string[]): Promise<readonly AuthUserRecord[]>
+  /**
+   * **Les comptes de la plateforme, une page à la fois** (s37b2).
+   *
+   * Elle existe pour le back-office, et pour lui seul : c'est la seule lecture
+   * du module qui parcoure les comptes au lieu d'en désigner un. Le module
+   * `admin` ne l'atteint que par son port (`AdminAccountsPort.listAccounts`), et
+   * la recherche est une **valeur paramétrée**, jamais interpolée.
+   *
+   * `total` est le nombre de comptes qui correspondent, pas la taille de la
+   * page : sans lui, la pagination ne saurait pas combien de pages elle a.
+   */
+  search(input: {
+    readonly search: string | null
+    readonly limit: number
+    readonly offset: number
+  }): Promise<{ readonly accounts: readonly AuthAccountSummary[]; readonly total: number }>
+  /**
+   * Le même résumé, **pour un seul compte** : ce que le détail du back-office
+   * affiche. `null` quand le compte n'existe pas — le back-office rend alors
+   * 404, comme pour n'importe quelle ressource inconnue.
+   */
+  summaryOf(userId: string): Promise<AuthAccountSummary | null>
   /** Marque l'email vérifié. Rend `false` si aucun compte ne correspond. */
   markEmailVerified(userId: string): Promise<boolean>
   /** Remplace l'email et le marque vérifié. Rend `false` si l'adresse est déjà prise. */

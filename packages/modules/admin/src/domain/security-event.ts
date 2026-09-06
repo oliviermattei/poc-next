@@ -64,6 +64,21 @@ export type AdminSecurityEventName =
    * accordé les droits d'un pair sans qu'aucun changement de rôle ne soit écrit.
    */
   | 'admin.impersonation_refused'
+  /**
+   * **Une session d'un tiers révoquée depuis le back-office** (s37b2).
+   *
+   * Journalisée parce que c'est une coupure d'accès décidée par quelqu'un
+   * d'autre que son titulaire : `actor` est le superadmin, `target` le compte
+   * dont la session est morte. L'identifiant de session n'y entre pas — il
+   * n'apprend rien qu'un journal doive garder.
+   */
+  | 'admin.session_revoked'
+  /**
+   * **Une réinitialisation de mot de passe déclenchée depuis le back-office**
+   * (s37b2). L'adresse n'y entre pas : elle nomme une personne, l'identifiant
+   * suffit — c'est la règle de tout ce fichier.
+   */
+  | 'admin.password_reset_sent'
 
 export interface AdminSecurityEvent {
   readonly event: AdminSecurityEventName

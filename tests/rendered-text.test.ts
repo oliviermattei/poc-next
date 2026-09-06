@@ -80,6 +80,71 @@ vi.mock('../apps/web/lib/auth', async () => {
     // exactement ce que l'écran reçoit.
     currentDataExportRequests: () =>
       Promise.resolve(viewerState.value.session === null ? [] : FIXTURE_DATA_EXPORTS),
+    /**
+     * s37b2 — le shell lit l'emprunt de session en cours par `lib/admin.ts`,
+     * qui monte sur `appAuth`. Ce fichier double `lib/admin.ts` juste en
+     * dessous, donc rien n'appelle jamais ces deux-là ; ils existent parce que
+     * l'import de `lib/admin.ts` les résout.
+     */
+    appAuth: () => {
+      throw new Error('appAuth() n’est pas appelé pendant un rendu de cette suite.')
+    },
+    incomingRequest: () => Promise.resolve(new Request('http://localhost/')),
+  }
+})
+
+/**
+ * **Le back-office : les vues, et rien d'autre** (s37b2).
+ *
+ * `available` reste celui du vrai point de composition — c'est lui qui décide
+ * si les écrans rendent ou refusent —, et `currentImpersonation` reste doublé
+ * pour que le bandeau du shell soit **rendu** : sans lui, son texte ne passerait
+ * sous le filet sur aucun écran.
+ */
+vi.mock('../apps/web/lib/admin', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../apps/web/lib/admin')>()
+  const {
+    FIXTURE_ADMIN_ACCOUNT,
+    FIXTURE_ADMIN_ACCOUNTS,
+    FIXTURE_ADMIN_ORGANIZATION_DETAIL,
+    FIXTURE_ADMIN_ORGANIZATIONS,
+    viewerState,
+  } = await import('./fixtures/screen-viewer')
+
+  return {
+    ...actual,
+    admin: {
+      ...actual.admin,
+      // **`available` décide, la fixture ne décide pas.** Module coupé, les
+      // quatre lectures gardent le refus du vrai point de composition — sans
+      // quoi les écrans rendraient dans une configuration où ils doivent
+      // répondre 404, et la garde de refus de ce fichier serait aveugle.
+      // Mesuré : `pnpm test:minimal-profile` a rougi exactement là.
+      ...(actual.admin.available
+        ? {
+            accounts: () => Promise.resolve({ ok: true, view: FIXTURE_ADMIN_ACCOUNTS }),
+            account: () => Promise.resolve({ ok: true, view: FIXTURE_ADMIN_ACCOUNT }),
+            organizations: () =>
+              Promise.resolve({ ok: true, view: FIXTURE_ADMIN_ORGANIZATIONS }),
+            organization: () =>
+              Promise.resolve({ ok: true, view: FIXTURE_ADMIN_ORGANIZATION_DETAIL }),
+          }
+        : {}),
+    },
+    /**
+     * s37b2 — **le bandeau est rendu dès qu'il y a une session**, pour que ses
+     * textes passent sous le filet sur chaque écran connecté.
+     *
+     * La doublure lit l'état de l'appelant plutôt que son argument : depuis le
+     * constat F3 de la revue, l'emprunt arrive **avec** la session
+     * (`currentViewer().impersonatedBy`), et le faire dépendre de l'argument
+     * demanderait à chaque écran de ce fichier de déclarer un emprunt pour que
+     * le bandeau existe. Le compte nommé par le bandeau, lui, est bien celui de
+     * l'appelant — donc le compte emprunté — et son adresse est déjà énumérée
+     * comme une donnée.
+     */
+    currentImpersonation: () =>
+      viewerState.value.session === null ? null : { stopAction: '/api/modules/admin/stop' },
   }
 })
 
@@ -395,6 +460,11 @@ const TECHNICAL_PROPS = new Set([
   'side',
   'signInHref',
   'signOutAction',
+  // s37b2 — la route de sortie d'un emprunt de session, remise au bandeau du
+  // **shell**, donc présente sur chaque écran. Elle entre ici pour la même
+  // raison que `signOutAction` : ce n'est la prop d'aucun écran en particulier.
+  // Le garde-fou de prose reste actif — `stopAction="Rendre la main"` rougirait.
+  'stopAction',
   'size',
   // Le slug d'un document légal : il compose son URL et ses clés de
   // traduction, il ne s'affiche jamais. Le garde-fou de prose reste actif —
@@ -585,6 +655,10 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
     )
     const {
       ANONYMOUS,
+      FIXTURE_ADMIN_ACCOUNT,
+      FIXTURE_ADMIN_ACCOUNTS,
+      FIXTURE_ADMIN_ORGANIZATION_DETAIL,
+      FIXTURE_ADMIN_ORGANIZATIONS,
       FIXTURE_EMAIL,
       FIXTURE_EXPIRED_INVITED_EMAIL,
       FIXTURE_INITIALS,
@@ -667,6 +741,11 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         timeStyle: 'short',
         timeZone: 'UTC',
       }).format(FIXTURE_SESSION_CREATED_AT),
+      // s37b2 — la date dans le style **moyen** du back-office. Une donnée, au
+      // même titre que les deux ci-dessus, et dérivée du même instant.
+      new Intl.DateTimeFormat(defaultLocale, { dateStyle: 'medium' }).format(
+        FIXTURE_SESSION_CREATED_AT,
+      ),
     ])
 
     const rules: Omit<AcceptanceRules, 'screenProps'> = {
@@ -694,6 +773,14 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
     const { organizations } = await import('../apps/web/lib/organizations')
     const { consent } = await import('../apps/web/lib/consent')
     const organizationsMounted = organizations.available
+    const { admin } = await import('../apps/web/lib/admin')
+    /**
+     * **Ce que les écrans du back-office font dans cette configuration**,
+     * dérivé de l'état des deux modules et non concédé : les comptes refusent
+     * quand `admin` est coupé (la lecture rend alors `not_found`), les
+     * organisations refusent en plus quand leur propre module l'est.
+     */
+    const adminMounted = admin.available
     const { billing } = await import('../apps/web/lib/billing')
     const billingMounted = billing.available
     const { notifications } = await import('../apps/web/lib/notifications')
@@ -1299,6 +1386,105 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         render: async () =>
           (await import('../apps/web/app/notifications/page')).default({
             searchParams: noParams,
+          }),
+      },
+      {
+        /**
+         * s37b2 — la liste des comptes du back-office.
+         *
+         * Le refus attendu est **dérivé** de l'état du module : coupé, la
+         * lecture rend `not_found` et l'écran répond 404. Aucun 403 n'existe
+         * ici, dans aucune configuration.
+         */
+        id: 'back-office — comptes',
+        file: 'admin/users/page.tsx',
+        viewer: SIGNED_IN,
+        refuses: adminMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        // Les numéros de page rendus par la pagination du design system : des
+        // **données**, dérivées de la fixture plutôt que recopiées.
+        technicalProps: ['listPath'],
+        screenData: [
+          ...Array.from({ length: FIXTURE_ADMIN_ACCOUNTS.pageCount }, (_unused, index) =>
+            String(index + 1),
+          ),
+          ...FIXTURE_ADMIN_ACCOUNTS.accounts.map((account) => account.email),
+          ...FIXTURE_ADMIN_ACCOUNTS.accounts.map((account) => initialsOf(account.name)),
+        ],
+        render: async () =>
+          (await import('../apps/web/app/admin/users/page')).default({
+            searchParams: noParams,
+          }),
+      },
+      {
+        id: 'back-office — un compte',
+        file: 'admin/users/[id]/page.tsx',
+        viewer: SIGNED_IN,
+        refuses: adminMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        // Les deux routes du module, remises au détail : des chemins montés,
+        // jamais du texte. Le garde-fou de prose reste actif.
+        technicalProps: ['revokeSession', 'sendPasswordReset', 'listPath', 'userId'],
+        screenData: [
+          FIXTURE_ADMIN_ACCOUNT.account.email,
+          FIXTURE_ADMIN_ACCOUNT.sessions[0].userAgent,
+          FIXTURE_ADMIN_ACCOUNT.memberships[0].name,
+        ],
+        render: async () =>
+          (await import('../apps/web/app/admin/users/[id]/page')).default({
+            params: Promise.resolve({ id: FIXTURE_ADMIN_ACCOUNT.account.userId }),
+          }),
+      },
+      {
+        /**
+         * s37b2 — la liste des organisations du back-office. **Deux** refus
+         * possibles, tous deux dérivés : le module `organizations` coupé, elle
+         * n'existe pas ; le module `admin` coupé, la lecture refuse.
+         */
+        id: 'back-office — organisations',
+        file: 'admin/organizations/page.tsx',
+        viewer: SIGNED_IN,
+        refuses:
+          organizationsMounted && adminMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        technicalProps: ['listPath'],
+        screenData: [
+          ...FIXTURE_ADMIN_ORGANIZATIONS.organizations.map(
+            (organization) => organization.name,
+          ),
+          ...FIXTURE_ADMIN_ORGANIZATIONS.organizations.map(
+            (organization) => organization.offerId,
+          ),
+          ...FIXTURE_ADMIN_ORGANIZATIONS.organizations.map((organization) =>
+            String(organization.memberCount),
+          ),
+          ...FIXTURE_ADMIN_ORGANIZATIONS.organizations.map((organization) =>
+            initialsOf(organization.name),
+          ),
+        ],
+        render: async () =>
+          (await import('../apps/web/app/admin/organizations/page')).default({
+            searchParams: noParams,
+          }),
+      },
+      {
+        id: 'back-office — une organisation',
+        file: 'admin/organizations/[id]/page.tsx',
+        viewer: SIGNED_IN,
+        refuses:
+          organizationsMounted && adminMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        // `subscriptionState` est un **identifiant d'état**, pas un libellé :
+        // il compose la clé de catalogue du badge (`admin.subscription.<état>`).
+        technicalProps: ['listPath', 'organizationId', 'subscriptionState'],
+        screenData: [
+          FIXTURE_ADMIN_ORGANIZATION_DETAIL.organization.name,
+          FIXTURE_ADMIN_ORGANIZATION_DETAIL.organization.slug,
+          FIXTURE_ADMIN_ORGANIZATION_DETAIL.organization.offerId,
+          String(FIXTURE_ADMIN_ORGANIZATION_DETAIL.organization.memberCount),
+          FIXTURE_ADMIN_ORGANIZATION_DETAIL.members[0].email,
+        ],
+        render: async () =>
+          (await import('../apps/web/app/admin/organizations/[id]/page')).default({
+            params: Promise.resolve({
+              id: FIXTURE_ADMIN_ORGANIZATION_DETAIL.organization.organizationId,
+            }),
           }),
       },
       {

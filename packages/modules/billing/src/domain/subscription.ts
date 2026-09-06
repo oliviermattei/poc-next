@@ -172,13 +172,31 @@ export function currentSubscriptionOf<TSubscription extends SubscriptionSnapshot
  * abonnement `incomplete` n'accorde rien mais s'affiche « paiement échoué »,
  * parce que c'est ce que la personne doit lire pour agir.
  */
-export type BillingDisplayState =
-  | 'none'
-  | 'trialing'
-  | 'active'
-  | 'ending'
-  | 'past_due'
-  | 'expired'
+export const BILLING_DISPLAY_STATES = [
+  'none',
+  'trialing',
+  'active',
+  'ending',
+  'past_due',
+  'expired',
+] as const
+
+/**
+ * **Une liste, dont le type est dérivé** — et non l'inverse (revue de s37b2,
+ * constat F7).
+ *
+ * Une union de littéraux n'existe qu'à la compilation : personne ne peut la
+ * parcourir. Or ces états sortent du module par un port et deviennent des clés
+ * de traduction chez l'appelant — le back-office construit
+ * `admin.subscription.<état>` —, et `intl.t` **lève** sur une clé absente. Un
+ * septième état ajouté ici transformait donc un écran d'un autre module en 500,
+ * sans qu'aucune commande ne le voie. `tests/admin.test.ts` parcourt cette
+ * liste et exige un libellé pour chacun, dans chaque locale.
+ *
+ * `SUBSCRIPTION_STATUSES`, juste au-dessus, est déjà de cette forme : celui-ci
+ * s'y range.
+ */
+export type BillingDisplayState = (typeof BILLING_DISPLAY_STATES)[number]
 
 export function displayStateOf(
   subscription: SubscriptionSnapshot | null,

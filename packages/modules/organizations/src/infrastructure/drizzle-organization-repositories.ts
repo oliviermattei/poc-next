@@ -355,6 +355,20 @@ export function createDrizzleOrganizationRepository(
      * s16 — les écritures d'invitation et de retrait.
      * --------------------------------------------------------------------- */
 
+    /* --------------------------------------------------------------------- *
+     * s37b2. Le périmètre **plateforme** du back-office. Le `{ kind:
+     * 'platform' }` est écrit ici et nulle part ailleurs : il ne vient d'aucune
+     * requête, comme les périmètres de `purge` et d'`export`.
+     * --------------------------------------------------------------------- */
+    listPlatformOrganizations: async (input) =>
+      await reads.platformOrganizations({ kind: 'platform' }, input),
+
+    findPlatformOrganization: async (organizationId) =>
+      await reads.platformOrganizationOf({ kind: 'organization', organizationId }),
+
+    listPlatformMembers: async (organizationId) =>
+      await reads.platformMembersOf({ kind: 'organization', organizationId }),
+
     listMemberIdentities: async (access) => await reads.memberIdentitiesOf(access),
 
     listLiveInvitations: async (access) => await reads.liveInvitationsOf(access),

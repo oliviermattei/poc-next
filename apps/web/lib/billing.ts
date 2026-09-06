@@ -101,6 +101,18 @@ export interface BillingFeature {
    */
   readonly entitledOffers: (session: ModuleSession) => Promise<readonly string[]>
   /**
+   * **L'offre et l'état d'abonnement d'un périmètre** (s37b2) — ce que le
+   * back-office affiche d'une organisation dont il n'est membre d'aucune.
+   *
+   * Module coupé : `null` et `none`, **sans ouvrir de connexion**. Un projet
+   * qui ne vend rien n'a pas d'abonnement à afficher, et la colonne se rend
+   * vide sans qu'aucun écran ne nomme un module.
+   */
+  readonly subscriptionOf: (
+    scope: ModuleScope,
+  ) => Promise<{ readonly offerId: string | null; readonly state: string | null }>
+
+  /**
    * **La commande de réconciliation** (`docs/reliability.md` §5).
    *
    * Elle relit le fournisseur — la source de vérité — et réécrit le cache. Elle
@@ -162,6 +174,7 @@ const ABSENT_BILLING: BillingFeature = {
   syncSeats: () => Promise.resolve({ status: 'not_applicable' }),
   cancelSubscriptions: () => Promise.resolve({ status: 'not_applicable' }),
   localCheckout: () => null,
+  subscriptionOf: () => Promise.resolve({ offerId: null, state: null }),
 }
 
 const mounted = moduleRegistry.moduleIds.includes(billingModule.id)
@@ -506,6 +519,7 @@ export const billing: BillingFeature = mounted
       syncSeats: async (input) => await billingService().useCases.syncSeats(input),
       cancelSubscriptions: async (scope) =>
         await billingService().useCases.cancelSubscriptions(scope),
+      subscriptionOf: async (scope) => await billingService().useCases.subscriptionOf(scope),
       localCheckout: () => {
         // Lu à l'appel, pas à l'import : c'est la construction du port qui
         // décide, et elle est différée comme tout le reste.

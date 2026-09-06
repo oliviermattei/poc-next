@@ -66,6 +66,14 @@ export const organizationRoutePath = (path: keyof typeof PATHS): string =>
 export const ORGANIZATIONS_SCREEN_PATH = '/organizations'
 
 /**
+ * **L'écran d'administration des organisations** (s37b2).
+ *
+ * Le chemin vit ici, avec le module qui le déclare : c'est ce qui permet à
+ * `apps/web` de ne le connaître que par le registre.
+ */
+export const ADMIN_ORGANIZATIONS_SCREEN_PATH = '/admin/organizations'
+
+/**
  * Ce que rend une organisation dont l'appelant n'est pas membre.
  *
  * **404, jamais 403** (`docs/security.md` §3) : un 403 confirmerait que cette
@@ -281,5 +289,23 @@ export const organizationsNavigation: readonly NavigationEntry[] = [
     labelKey: 'navigation.organizations',
     order: 20,
     protection: { level: 'authenticated' },
+  },
+  {
+    /**
+     * **L'entrée du back-office** (s37b2), déclarée **ici** et pas là-bas.
+     *
+     * C'est ce qui la fait disparaître avec ce module sans qu'aucun fichier du
+     * back-office ne nomme `organizations` : le registre n'agrège que les
+     * modules activés, et la navigation de la surface `admin` en est dérivée.
+     * Écrite en dur dans un écran d'administration, elle aurait nommé ce module
+     * dans `apps/web` — puis le suivant au même endroit, ce que s31 a corrigé
+     * pour le pied de page (ADR 066).
+     */
+    id: 'admin-organizations',
+    href: ADMIN_ORGANIZATIONS_SCREEN_PATH,
+    labelKey: 'navigation.adminOrganizations',
+    order: 20,
+    protection: { level: 'authenticated' },
+    surface: 'admin',
   },
 ]

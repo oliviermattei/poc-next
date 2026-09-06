@@ -1,8 +1,9 @@
-import { and, eq, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm'
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core'
 
 import type {
   AuthAccountRepository,
+  AuthAccountSummary,
   AuthPasskeyRepository,
   AuthSessionRepository,
   AuthUserRecord,
@@ -101,6 +102,23 @@ const toRecord = (row: {
   banned: row.banned,
 })
 
+/** Le résumé d'un compte, tel qu'une liste d'administration l'affiche (s37b2). */
+const toSummary = (row: {
+  id: string
+  name: string
+  email: string
+  emailVerified: boolean
+  banned: boolean
+  createdAt: Date
+}): AuthAccountSummary => ({
+  userId: row.id,
+  name: row.name,
+  email: row.email,
+  emailVerified: row.emailVerified,
+  banned: row.banned,
+  createdAt: row.createdAt,
+})
+
 export function createDrizzleAuthUserRepository(db: AuthDatabase): AuthUserRepository {
   const columns = {
     id: authUser.id,
@@ -109,6 +127,16 @@ export function createDrizzleAuthUserRepository(db: AuthDatabase): AuthUserRepos
     emailVerified: authUser.emailVerified,
     twoFactorEnabled: authUser.twoFactorEnabled,
     banned: authUser.banned,
+  }
+
+  /** Les colonnes du résumé : celles-là, et **pas** `...authUser`. */
+  const summaryColumns = {
+    id: authUser.id,
+    name: authUser.name,
+    email: authUser.email,
+    emailVerified: authUser.emailVerified,
+    banned: authUser.banned,
+    createdAt: authUser.createdAt,
   }
 
   return {
@@ -172,6 +200,56 @@ export function createDrizzleAuthUserRepository(db: AuthDatabase): AuthUserRepos
       const rows = await db.select(columns).from(authUser).where(inArray(authUser.id, [...userIds]))
 
       return rows.map(toRecord)
+    },
+
+    /**
+     * **La page de comptes du back-office** (s37b2).
+     *
+     * La recherche est une **valeur liée**, jamais interpolée : `ilike` reçoit
+     * un paramètre, et les caractères de motif qu'un visiteur pourrait écrire
+     * (`%`, `_`, `\\`) sont échappés avant d'y entrer — sinon `%` seul rendrait
+     * la table entière derrière un compte de résultats faux.
+     *
+     * Deux lectures et pas une jointure : le décompte porte sur la **même**
+     * condition que la page, sans quoi la pagination compterait autre chose que
+     * ce qu'elle affiche.
+     */
+    search: async ({ search, limit, offset }) => {
+      const condition =
+        search === null
+          ? undefined
+          : or(
+              ilike(authUser.email, `%${escapeLikePattern(search)}%`),
+              ilike(authUser.name, `%${escapeLikePattern(search)}%`),
+            )
+
+      const rows = await db
+        .select(summaryColumns)
+        .from(authUser)
+        .where(condition)
+        // Un ordre **total** : `created_at` seul laisse deux inscriptions de la
+        // même milliseconde changer de place d'une page à l'autre, et une ligne
+        // se retrouve alors sur deux pages ou sur aucune.
+        .orderBy(desc(authUser.createdAt), asc(authUser.id))
+        .limit(limit)
+        .offset(offset)
+
+      const [counted] = await db
+        .select({ total: sql<number>`count(*)::int` })
+        .from(authUser)
+        .where(condition)
+
+      return { accounts: rows.map(toSummary), total: Number(counted?.total ?? 0) }
+    },
+
+    summaryOf: async (userId) => {
+      const [row] = await db
+        .select(summaryColumns)
+        .from(authUser)
+        .where(eq(authUser.id, userId))
+        .limit(1)
+
+      return row === undefined ? null : toSummary(row)
     },
 
     markEmailVerified: async (userId) => {
