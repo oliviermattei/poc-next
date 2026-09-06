@@ -35,6 +35,12 @@ export type {
   AdminOrganization,
   AdminOrganizationMember,
   AdminOrganizationsPort,
+  AdminOneTimeRevenue,
+  AdminRecurringRevenue,
+  AdminRevenue,
+  AdminRevenuePeriod,
+  AdminRevenuePort,
+  AdminRevenueState,
   BanAccountOutcome,
   GrantOutcome,
   RevokeOutcome,
@@ -45,12 +51,14 @@ export type {
   AdminAccountView,
   AdminOrganizationsView,
   AdminOrganizationView,
+  AdminRevenueView,
   AdminUseCases,
   BackOfficePage,
   BackOfficeView,
 } from './application/admin-use-cases'
 export {
   BACK_OFFICE_PAGE_SIZE,
+  parseBackOfficePeriod,
   parseBackOfficeQuery,
   type BackOfficeQuery,
 } from './domain/back-office'

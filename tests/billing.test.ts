@@ -6445,3 +6445,311 @@ describe('la simulation locale d’un tunnel invité', () => {
     ).toEqual([])
   })
 })
+
+/* -------------------------------------------------------------------------- *
+ * s38 — **le revenu de la plateforme entière**.
+ *
+ * La lecture ne part d'aucun périmètre de client : c'est la première du module
+ * dont le propriétaire est la plateforme elle-même. Elle porte quand même son
+ * périmètre en premier paramètre — la discipline de `scoped-reads.ts` (s37b2) —
+ * et cette valeur n'est écrite qu'au point de composition, jamais tirée d'une
+ * requête.
+ *
+ * **C'est ici que vit la composition**, et nulle part ailleurs : résoudre
+ * l'offre par le prix stocké, en tirer le montant, la devise et l'intervalle,
+ * puis les passer aux règles pures. `domain/revenue.test.ts` éprouve les règles ;
+ * il ne peut rien dire de leur câblage. La revue de s38 a mesuré le trou :
+ * résoudre l'offre par un prix inexistant, ou coder l'intervalle en dur à
+ * `'month'` — un abonnement annuel compté **douze fois trop cher** — laissaient
+ * 2794 cas verts.
+ *
+ * **Les assertions portent sur des écarts**, pas sur des égalités absolues : la
+ * lecture n'est bornée par aucun `where`, et un futur fichier qui sèmerait un
+ * abonnement rendrait instable une égalité exacte (relevé en revue).
+ * -------------------------------------------------------------------------- */
+
+describe.runIf(databaseReachable)('le revenu de la plateforme', () => {
+  const seedCustomer = async (id: string, kind: string, scopeId: string): Promise<void> => {
+    await connection.db.execute(sql`
+      insert into billing_customer (id, scope_kind, scope_id, provider_customer_id)
+      values (${id}, ${kind}, ${scopeId}, ${`cus_${id}`})
+    `)
+  }
+
+  const seedSubscription = async (input: {
+    readonly id: string
+    readonly customer: string
+    readonly priceId: string
+    readonly status: string
+    readonly quantity?: number
+  }): Promise<void> => {
+    await connection.db.execute(sql`
+      insert into billing_subscription (
+        provider_subscription_id, billing_customer_id, offer_id, price_id, status,
+        quantity, current_period_end, cancel_at_period_end, trial_end, last_event_at, last_event_id
+      ) values (
+        ${input.id}, ${input.customer}, null, ${input.priceId}, ${input.status},
+        ${input.quantity ?? 1}, ${new Date('2026-10-01T00:00:00.000Z')}, false, null,
+        ${new Date('2026-09-01T00:00:00.000Z')}, ${`evt_${input.id}`}
+      )
+    `)
+  }
+
+  const seedPurchase = async (input: {
+    readonly id: string
+    readonly customer: string
+    readonly status: string
+    readonly amount: number | null
+    readonly currency: string | null
+    readonly purchasedAt?: Date
+  }): Promise<void> => {
+    await connection.db.execute(sql`
+      insert into billing_purchase (
+        id, billing_customer_id, offer_id, price_id, provider_session_id, status,
+        amount, currency, purchased_at
+      ) values (
+        ${input.id}, ${input.customer}, 'lifetime', 'price_lifetime', ${`cs_${input.id}`},
+        ${input.status}, ${input.amount}, ${input.currency},
+        ${input.purchasedAt ?? new Date('2026-08-25T00:00:00.000Z')}
+      )
+    `)
+  }
+
+  /** L'instantané, sur la période demandée. Le périmètre est celui de l'application. */
+  const revenueOf = async (period: unknown = 'all') =>
+    await requireBillingService().useCases.platformRevenue({ kind: 'platform' }, { period })
+
+  /** Le montant d'une devise dans une liste, ou zéro : la base de l'écart. */
+  const amountIn = (
+    rows: readonly { readonly currency: string; readonly amount: number }[],
+    currency: string,
+  ): number => rows.find((row) => row.currency === currency)?.amount ?? 0
+
+  const countIn = (
+    states: readonly { readonly state: string; readonly subscriptions: number }[],
+    state: string,
+  ): number => states.find((row) => row.state === state)?.subscriptions ?? 0
+
+  /**
+   * L'offre du catalogue **de cette suite**, résolue par son prix — jamais un
+   * montant recopié : un catalogue modifié doit changer l'attendu avec lui.
+   */
+  const offerAt = (priceId: string) => {
+    const offer = CATALOGUE.find((candidate) => candidate.priceId === priceId)
+
+    if (offer === undefined) {
+      throw new Error(`Le catalogue de la suite ne déclare aucune offre au prix ${priceId}`)
+    }
+
+    return offer
+  }
+
+  /**
+   * **Le nombre central de la story, contre des lignes stockées** (constat 1 de
+   * la revue).
+   *
+   * Trois choses se prouvent ici et nulle part ailleurs : l'offre est résolue
+   * par le **prix** (`price_id` fait foi, `offer_id` est nul sur ces lignes),
+   * l'**intervalle** vient de cette offre — un annuel ramené au douzième, pas
+   * compté douze fois trop cher — et la **quantité** multiplie.
+   *
+   * L'attendu est un calcul **à la main** : le douzième est écrit ici, pas
+   * emprunté à `monthlyAmountOf`, sans quoi le cas serait vrai de n'importe
+   * quelle normalisation.
+   */
+  it('valorise chaque abonnement par le prix stocké, son intervalle et sa quantité', async () => {
+    const monthly = offerAt('price_pro_monthly')
+    const yearly = offerAt('price_pro_yearly')
+
+    // Le cas n'a de sens que si les deux offres ont des périodicités
+    // différentes : sinon l'erreur de facteur douze passerait inaperçue.
+    expect(monthly.interval).toBe('month')
+    expect(yearly.interval).toBe('year')
+    expect(monthly.currency).toBe(yearly.currency)
+
+    const before = await revenueOf()
+
+    await seedCustomer('bc_rev_user', 'user', 'usr_rev')
+    await seedCustomer('bc_rev_org', 'organization', 'org_rev')
+    // **Les deux formes de périmètre** : un `where` oublié ramènerait la lecture
+    // à un seul client sans que le nombre cesse d'être plausible.
+    await seedSubscription({
+      id: 'sub_rev_user',
+      customer: 'bc_rev_user',
+      priceId: monthly.priceId,
+      status: 'active',
+      quantity: 3,
+    })
+    await seedSubscription({
+      id: 'sub_rev_org',
+      customer: 'bc_rev_org',
+      priceId: yearly.priceId,
+      status: 'active',
+    })
+
+    const after = await revenueOf()
+    const expected = monthly.amount * 3 + Math.round(yearly.amount / 12)
+
+    expect(amountIn(after.recurring, monthly.currency) - amountIn(before.recurring, monthly.currency)).toBe(
+      expected,
+    )
+    expect(countIn(after.states, 'active') - countIn(before.states, 'active')).toBe(2)
+    expect(after.recurringUnvalued - before.recurringUnvalued).toBe(0)
+
+    // **Aucun appel au fournisseur** : l'état local fait foi (s19, s20), et
+    // `pnpm billing:reconcile` existe pour les divergences (ADR 046). Un écran
+    // d'administration qui dépendrait de la disponibilité de Stripe inverserait
+    // la ligne de fiabilité.
+    expect(calls).toEqual([])
+  })
+
+  /**
+   * **Un abonnement dont le prix a quitté le catalogue n'est pas un abonnement à
+   * zéro**, et c'est la composition qui le décide : c'est ici que le prix stocké
+   * rencontre — ou ne rencontre pas — une offre.
+   */
+  it('compte à part l’abonnement dont le prix ne figure plus au catalogue', async () => {
+    expect(CATALOGUE.some((offer) => offer.priceId === 'price_retire')).toBe(false)
+
+    const before = await revenueOf()
+
+    await seedCustomer('bc_rev_gone', 'user', 'usr_rev_gone')
+    await seedSubscription({
+      id: 'sub_rev_gone',
+      customer: 'bc_rev_gone',
+      priceId: 'price_retire',
+      status: 'active',
+    })
+
+    const after = await revenueOf()
+
+    expect(after.recurringUnvalued - before.recurringUnvalued).toBe(1)
+    expect(after.recurring).toEqual(before.recurring)
+    // Il reste compté **comme abonnement** : seul son montant est inconnu.
+    expect(countIn(after.states, 'active') - countIn(before.states, 'active')).toBe(1)
+  })
+
+  /**
+   * **Ce que la partition tient à l'échelle de la lecture** : un essai est
+   * compté en nombre et n'apporte aucun euro. Le compter serait compter de
+   * l'argent que personne n'a prélevé.
+   */
+  it('compte l’essai en cours sans lui prêter un euro', async () => {
+    const before = await revenueOf()
+
+    await seedCustomer('bc_rev_trial', 'organization', 'org_rev_trial')
+    await seedSubscription({
+      id: 'sub_rev_trial',
+      customer: 'bc_rev_trial',
+      priceId: 'price_pro_monthly',
+      status: 'trialing',
+    })
+
+    const after = await revenueOf()
+
+    expect(countIn(after.states, 'trialing') - countIn(before.states, 'trialing')).toBe(1)
+    expect(after.recurring).toEqual(before.recurring)
+    expect(after.recurringUnvalued).toBe(before.recurringUnvalued)
+  })
+
+  /**
+   * **Ce que le ponctuel constate** : un achat encaissé, et lui seul. Un achat
+   * en attente n'a rien prélevé, un achat remboursé a été rendu — les compter
+   * gonflerait un chiffre qui se présente comme un relevé.
+   */
+  it('ne constate que les achats encaissés, ni en attente ni remboursés', async () => {
+    // Un client par achat : l'unicité `(billing_customer_id, offer_id)` refuse
+    // deux achats de la même offre pour le même client (ADR 038).
+    for (const suffix of ['paid', 'pending', 'refunded']) {
+      await seedCustomer(`bc_rev_${suffix}`, 'user', `usr_rev_${suffix}`)
+    }
+
+    const before = await revenueOf()
+
+    await seedPurchase({
+      id: 'pur_paid',
+      customer: 'bc_rev_paid',
+      status: 'paid',
+      amount: 49_000,
+      currency: 'eur',
+    })
+    await seedPurchase({
+      id: 'pur_pending',
+      customer: 'bc_rev_pending',
+      status: 'pending',
+      amount: null,
+      currency: null,
+    })
+    await seedPurchase({
+      id: 'pur_refunded',
+      customer: 'bc_rev_refunded',
+      status: 'refunded',
+      amount: 49_000,
+      currency: 'eur',
+    })
+
+    const after = await revenueOf()
+
+    expect(amountIn(after.oneTime, 'eur') - amountIn(before.oneTime, 'eur')).toBe(49_000)
+    expect(calls).toEqual([])
+  })
+
+  /**
+   * **La période borne le constaté, et lui seul** (critère 4).
+   *
+   * Les deux moitiés sont lues dans le même appel : si la période bornait aussi
+   * les abonnements, le récurrent bougerait d'une période à l'autre — un nombre
+   * dont aucune donnée datée ne répond.
+   */
+  it('borne les achats à la période demandée, sans toucher au récurrent', async () => {
+    await seedCustomer('bc_rev_recent', 'user', 'usr_rev_recent')
+    await seedCustomer('bc_rev_old', 'user', 'usr_rev_old')
+    await seedCustomer('bc_rev_sub', 'user', 'usr_rev_sub')
+    await seedSubscription({
+      id: 'sub_rev_period',
+      customer: 'bc_rev_sub',
+      priceId: 'price_pro_monthly',
+      status: 'active',
+    })
+    await seedPurchase({
+      id: 'pur_recent',
+      customer: 'bc_rev_recent',
+      status: 'paid',
+      amount: 10_000,
+      currency: 'eur',
+      // Une semaine avant l'horloge de la suite (2026-09-01).
+      purchasedAt: new Date('2026-08-25T00:00:00.000Z'),
+    })
+    await seedPurchase({
+      id: 'pur_old',
+      customer: 'bc_rev_old',
+      status: 'paid',
+      amount: 70_000,
+      currency: 'eur',
+      // Huit mois plus tôt : hors des trente jours, dans les douze mois.
+      purchasedAt: new Date('2026-01-15T00:00:00.000Z'),
+    })
+
+    const all = await revenueOf('all')
+    const lastMonth = await revenueOf('30d')
+    const lastYear = await revenueOf('12m')
+
+    expect(amountIn(all.oneTime, 'eur')).toBe(80_000)
+    expect(amountIn(lastMonth.oneTime, 'eur')).toBe(10_000)
+    expect(amountIn(lastYear.oneTime, 'eur')).toBe(80_000)
+
+    // **Le récurrent ne bouge pas d'une période à l'autre**, et c'est la moitié
+    // du critère que l'écran doit dire à son lecteur.
+    expect(lastMonth.recurring).toEqual(all.recurring)
+    expect(lastMonth.states).toEqual(all.states)
+
+    // La période retenue revient avec l'instantané, et une valeur forgée
+    // retombe sur le défaut plutôt que de lever.
+    expect(lastMonth.periods.filter((period) => period.current).map((period) => period.id)).toEqual([
+      '30d',
+    ])
+    expect(
+      (await revenueOf('trimestre')).periods.filter((period) => period.current).map((p) => p.id),
+    ).toEqual(all.periods.filter((period) => period.current).map((period) => period.id))
+  })
+})

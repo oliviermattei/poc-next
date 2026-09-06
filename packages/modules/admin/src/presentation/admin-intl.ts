@@ -38,4 +38,17 @@ export interface AdminIntl {
    * instances.
    */
   readonly date: (value: Date) => string
+  /**
+   * Formate un montant en **unités mineures** dans sa devise (s38).
+   *
+   * Fournie par l'application, comme `date`, et pour la même raison : le module
+   * ne connaît pas la locale servie, et `Intl.NumberFormat` sans locale
+   * explicite rend une valeur qui dépend de l'environnement du **serveur** —
+   * donc un rendu différent d'une instance à l'autre.
+   *
+   * La devise est un **paramètre**, jamais une constante : le catalogue en
+   * déclare une par offre, et l'écran de revenus rend un montant par devise
+   * sans jamais les additionner.
+   */
+  readonly money: (amount: number, currency: string) => string
 }

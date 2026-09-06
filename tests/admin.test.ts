@@ -17,6 +17,7 @@ import {
 } from '@repo/db'
 import { createRecordingMailer } from '@repo/mailer-testing'
 import {
+  ADMIN_USERS_SCREEN_PATH,
   adminModule,
   adminPlatformRole,
   adminRoutePath,
@@ -26,6 +27,8 @@ import {
   SUPERADMIN_ROLE,
   type AdminAccountsPort,
   type AdminOrganizationsPort,
+  type AdminRevenue,
+  type AdminRevenuePort,
   type AdminSecurityEvent,
   type AdminService,
 } from '@repo/module-admin'
@@ -35,15 +38,29 @@ import {
   resetAuthService,
   type AuthService,
 } from '@repo/module-auth'
-import { BILLING_DISPLAY_STATES } from '@repo/module-billing'
+import {
+  BILLING_DISPLAY_STATES,
+  REVENUE_PERIODS,
+  REVENUE_STATES,
+  billingModule,
+} from '@repo/module-billing'
 import { demoEnabledModule } from '@repo/module-demo-enabled'
 import { ORGANIZATION_ROLES, organizationsModule } from '@repo/module-organizations'
 import { BAN_REASON_MAX_LENGTH } from '@repo/module-auth'
+import { AdminRevenueScreen } from '@repo/module-admin/presentation'
 import { sql } from 'drizzle-orm'
 import { getTableConfig } from 'drizzle-orm/pg-core'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { admin, adminAccountsPort, missingSuperadminWarning } from '../apps/web/lib/admin'
+import {
+  admin,
+  adminAccountsPort,
+  adminOrganizationsPort,
+  adminRevenuePort,
+  missingSuperadminWarning,
+} from '../apps/web/lib/admin'
 import { availableModules, enabledModules, requiredModules } from '../config/features'
 import { appLocales } from '../config/i18n'
 import { minimalProfile } from '../config/profiles'
@@ -301,12 +318,55 @@ const organizations: AdminOrganizationsPort = {
       : { ok: false },
 }
 
+/**
+ * **Ce que le back-office sait du revenu** (s38), doublé au même niveau que les
+ * organisations : le port, jamais le module `billing`, que `admin` ne requiert
+ * pas et ne peut donc pas importer.
+ */
+let revenueReadable = true
+
+/** Ce que la facturation a compté par état — deux états seulement. */
+const REVENUE_COUNTS: Readonly<Record<string, number>> = { active: 1, past_due: 2 }
+
+/**
+ * L'instantané que le port rend, **dans la forme que la facturation livre** :
+ * tous les états, ceux à zéro compris, et toutes les périodes. Les deux listes
+ * sont **dérivées** du module qui les possède — recopiées ici, elles resteraient
+ * vertes après un état ou une période de plus.
+ */
+const REVENUE_SNAPSHOT: AdminRevenue = {
+  recurring: [{ currency: 'eur', amount: 2900, subscriptions: 1 }],
+  recurringUnvalued: 0,
+  oneTime: [{ currency: 'eur', amount: 49_000, purchases: 1 }],
+  oneTimeUnvalued: 0,
+  states: REVENUE_STATES.map((state) => ({
+    state,
+    subscriptions: REVENUE_COUNTS[state] ?? 0,
+    counted: state === 'active',
+  })),
+  periods: REVENUE_PERIODS.map((id) => ({ id, current: id === 'all' })),
+}
+
+let revenueReads = 0
+/** La période **brute** que le module a transmise, telle quelle. */
+let revenuePeriods: (string | null)[] = []
+
+const revenue: AdminRevenuePort = {
+  read: async (period) => {
+    revenueReads += 1
+    revenuePeriods.push(period)
+
+    return revenueReadable ? { ok: true, revenue: REVENUE_SNAPSHOT } : { ok: false }
+  },
+}
+
 /** Reconfigure le module avec l'adresse désignée du moment. */
 const configure = (email: string | null): void => {
   service = configureAdmin({
     db: connection.db,
     accounts,
     organizations,
+    revenue,
     designatedEmail: email,
     securityLog: (event) => securityEvents.push(event),
   })
@@ -487,6 +547,9 @@ beforeEach(async () => {
   borrowerReadable = true
   listReadable = true
   organizationsReadable = true
+  revenueReadable = true
+  revenueReads = 0
+  revenuePeriods = []
   mailer.reset()
   configure(null)
 })
@@ -1130,6 +1193,7 @@ describe.runIf(databaseReachable)('les listes du back-office', () => {
       db: connection.db,
       accounts: spying,
       organizations,
+      revenue,
       designatedEmail: email,
       securityLog: (event) => securityEvents.push(event),
     })
@@ -1236,6 +1300,104 @@ describe.runIf(databaseReachable)('les listes du back-office', () => {
 
     expect(detailed.ok && detailed.view.members.map((member) => member.role)).toEqual(['owner'])
     expect(detailed.ok && detailed.view.organization.subscriptionState).toBe('active')
+  })
+
+  /**
+   * **Les deux moitiés du revenu, et leur statut** (s38).
+   *
+   * Le module `admin` ne calcule rien : il reçoit un instantané par un port,
+   * comme il reçoit les organisations. Ce que ce cas mesure ici est donc la
+   * **garde** et le passage — le calcul, lui, est éprouvé dans le module qui
+   * possède les montants.
+   */
+  it('sert le revenu de la plateforme à un superadmin', async () => {
+    const superadmin = await aSuperadmin()
+
+    const seen = await service.useCases.viewRevenue({
+      request: request(),
+      viewerId: superadmin.userId,
+      parameters: {},
+    })
+
+    expect(seen.ok && seen.view.revenue.recurring).toEqual([
+      { currency: 'eur', amount: 2900, subscriptions: 1 },
+    ])
+    expect(seen.ok && seen.view.revenue.oneTime).toEqual([
+      { currency: 'eur', amount: 49_000, purchases: 1 },
+    ])
+  })
+
+  /**
+   * **La période demandée atteint la facturation** (critère 4), et elle
+   * l'atteint **brute** : ce module en lit la forme, pas le vocabulaire. Sans ce
+   * fil, le sélecteur changerait l'adresse sans changer un seul chiffre.
+   */
+  it('transmet la période de l’adresse à la facturation, sans l’interpréter', async () => {
+    const superadmin = await aSuperadmin()
+
+    await service.useCases.viewRevenue({
+      request: request(),
+      viewerId: superadmin.userId,
+      parameters: { period: '30d' },
+    })
+    // Une valeur répétée devient **une** valeur, comme pour la recherche.
+    await service.useCases.viewRevenue({
+      request: request(),
+      viewerId: superadmin.userId,
+      parameters: { period: ['12m', '30d'] },
+    })
+    // Aucune période : `null`, jamais une chaîne vide qui ressemblerait à un choix.
+    await service.useCases.viewRevenue({
+      request: request(),
+      viewerId: superadmin.userId,
+      parameters: {},
+    })
+    // Une valeur que la facturation ne connaît pas passe quand même : c'est elle
+    // qui refuse, ici on ne recopie pas son vocabulaire.
+    await service.useCases.viewRevenue({
+      request: request(),
+      viewerId: superadmin.userId,
+      parameters: { period: 'trimestre' },
+    })
+
+    expect(revenuePeriods).toEqual(['30d', '12m', null, 'trimestre'])
+  })
+
+  /**
+   * **Un seul témoin de refus par porte**, et il porte la propriété qui compte :
+   * le refus **n'atteint pas la couche de données**. Un revenu lu puis jeté
+   * serait une lecture de toute la facturation provoquée par quelqu'un qui
+   * n'administre pas.
+   */
+  it('répond 404 sur le revenu à un compte qui n’administre pas, sans rien lire', async () => {
+    const { email } = await anAccount()
+    const intruder = await anAccount()
+
+    configure(email)
+    revenueReads = 0
+
+    expect(
+      await service.useCases.viewRevenue({
+        request: request(),
+        viewerId: intruder.session.userId,
+        parameters: { period: '30d' },
+      }),
+    ).toEqual({ ok: false, error: 'not_found' })
+    expect(revenueReads).toBe(0)
+  })
+
+  it('refuse le revenu quand la lecture échoue, au lieu de l’afficher à zéro', async () => {
+    const superadmin = await aSuperadmin()
+
+    revenueReadable = false
+
+    expect(
+      await service.useCases.viewRevenue({
+        request: request(),
+        viewerId: superadmin.userId,
+        parameters: {},
+      }),
+    ).toEqual({ ok: false, error: 'unavailable' })
   })
 
   it('répond 404 sur les organisations à un compte qui n’administre pas', async () => {
@@ -2453,13 +2615,32 @@ describe('l’entrée du back-office se dérive du registre', () => {
   const adminSurface = (enabled: readonly string[]): readonly string[] =>
     visibleNavigation(
       buildRegistry({
-        available: [authModule, adminModule, organizationsModule],
+        available: [authModule, adminModule, organizationsModule, billingModule],
         enabled: [...enabled],
         locales: [...appLocales],
       }),
       { userId: 'usr_1', roles: [] },
       'admin',
     ).map((entry) => `${entry.moduleId}:${entry.id}`)
+
+  /**
+   * **s38 — l'écran de revenus disparaît avec la facturation**, et rien du
+   * back-office ne nomme ce module : l'entrée est déclarée par `billing`
+   * lui-même (ADR 067), le registre n'agrège que les modules activés.
+   *
+   * Le contrôle positif est la première assertion : sans elle, l'absence
+   * serait vraie parce que la surface entière est vide.
+   */
+  it('retire l’entrée de revenus avec le module qui la déclare, et garde les autres', () => {
+    const withBilling = adminSurface(['auth', 'admin', 'organizations', 'billing'])
+    const withoutBilling = adminSurface(['auth', 'admin', 'organizations'])
+
+    expect(withBilling.some((id) => id.startsWith(`${billingModule.id}:`))).toBe(true)
+    expect(withoutBilling.some((id) => id.startsWith(`${billingModule.id}:`))).toBe(false)
+    // Et l'entrée de l'autre module contributeur reste : la surface n'a pas
+    // disparu, c'est bien une entrée qui est partie.
+    expect(withoutBilling.some((id) => id.startsWith(`${organizationsModule.id}:`))).toBe(true)
+  })
 
   it('rend l’entrée d’un module activé, et la retire avec lui', () => {
     const withOrganizations = adminSurface(['auth', 'admin', 'organizations'])
@@ -2499,6 +2680,46 @@ describe('l’entrée du back-office se dérive du registre', () => {
     expect(adminSurface(['auth', 'organizations'])).toEqual([
       `${organizationsModule.id}:admin-organizations`,
     ])
+  })
+
+  /**
+   * **Aucune adresse du back-office n'est atteignable depuis la barre latérale
+   * du produit** (s38).
+   *
+   * L'appartenance au back-office est une propriété de l'**entrée** (ADR 067) :
+   * oublier `surface: 'admin'` sur une entrée neuve ne casse rien à l'écran —
+   * elle s'affiche simplement dans le menu de **tout compte connecté**, et
+   * divulgue l'existence du back-office (`docs/security.md` §7). Le cas voisin
+   * ne voyait que les entrées du module `admin` ; celui qui a manqué en s38 est
+   * une entrée déclarée par **un autre module**.
+   *
+   * La racine du back-office est **dérivée** du chemin que le module déclare
+   * pour son propre écran, jamais écrite ici : la déplacer déplace ce filet
+   * avec elle.
+   */
+  it('ne laisse aucune adresse du back-office atteindre la navigation du produit', () => {
+    const registry = buildRegistry({
+      available: [authModule, adminModule, organizationsModule, billingModule],
+      enabled: ['auth', 'admin', 'organizations', 'billing'],
+      locales: [...appLocales],
+    })
+    const session = { userId: 'usr_1', roles: [] }
+    const root = `/${ADMIN_USERS_SCREEN_PATH.split('/')[1] ?? ''}`
+    const underRoot = (href: string): boolean =>
+      href === root || href.startsWith(`${root}/`)
+
+    // L'anti-vacuité : sans entrée sous cette racine, le filtre ci-dessous
+    // serait vide et ce cas passerait sur un registre qui ne déclare rien.
+    expect(
+      visibleNavigation(registry, session, 'admin').filter((entry) => underRoot(entry.href))
+        .length,
+    ).toBeGreaterThan(0)
+
+    expect(
+      visibleNavigation(registry, session)
+        .map((entry) => entry.href)
+        .filter((href) => underRoot(href)),
+    ).toEqual([])
   })
 
   it('ne paraît jamais dans la barre latérale du produit', () => {
@@ -2621,6 +2842,58 @@ describe('le port des comptes, quand la lecture échoue', () => {
 })
 
 /**
+ * **Les deux autres ports, quand la lecture échoue** (constat 4 de la revue de
+ * s38) — la même promesse, au même endroit, et elle n'était tenue par aucune
+ * commande.
+ *
+ * Le commentaire du port des revenus promettait « jamais un revenu à zéro, qui
+ * se lirait comme une réponse » : avaler la panne et rendre un instantané vide
+ * laissait pourtant **zéro** cas rouge. Celui des organisations (s37b2) était
+ * découvert de la même façon — s38 étendait un trou plutôt que d'en ouvrir un,
+ * et cette porte-ci les ferme tous les deux.
+ *
+ * **La liste des lectures est énumérée par le compilateur** : `Record<keyof …>`
+ * force une ligne pour toute méthode ajoutée à l'un des deux ports, plutôt que
+ * de laisser une lecture neuve hériter du silence.
+ *
+ * Ce que ce cas **ne** couvre **pas**, dit plutôt que sous-entendu : la lecture
+ * de facturation que le port des organisations appelle *après* une lecture
+ * réussie (`billingOf`) n'est pas enveloppée — une panne de ce côté-là remonte.
+ * C'est du code de s37b2, et le corriger changerait son comportement.
+ */
+describe('les ports du back-office adossés aux autres modules, quand la lecture échoue', () => {
+  const unreachable = (): never => {
+    throw new Error('base injoignable')
+  }
+
+  const revenuePort = adminRevenuePort(unreachable)
+  const organizationsPort = adminOrganizationsPort(unreachable, unreachable)
+
+  const reads: Record<
+    `revenue.${keyof AdminRevenuePort}` | `organizations.${keyof AdminOrganizationsPort}`,
+    () => Promise<unknown>
+  > = {
+    'revenue.read': async () => await revenuePort.read('30d'),
+    'organizations.listOrganizations': async () =>
+      await organizationsPort.listOrganizations({ search: null, limit: 20, offset: 0 }),
+    'organizations.describeOrganization': async () =>
+      await organizationsPort.describeOrganization('org_1'),
+    'organizations.membershipsOf': async () => await organizationsPort.membershipsOf('usr_1'),
+  }
+
+  it('rend un refus fermé sur chaque lecture, jamais une exception', async () => {
+    const entries = Object.entries(reads)
+
+    // L'anti-vacuité : une table vide rendrait la boucle verte sans rien lire.
+    expect(entries.length).toBeGreaterThan(0)
+
+    for (const [name, read] of entries) {
+      await expect(read(), name).resolves.toEqual({ ok: false })
+    }
+  })
+})
+
+/**
  * **Les deux clés composées du back-office, contre les vocabulaires dont elles
  * viennent** (revue de s37b2, constat F7).
  *
@@ -2656,6 +2929,24 @@ describe('le vocabulaire emprunté par le back-office', () => {
       expect(
         BILLING_DISPLAY_STATES.filter((state) => catalogue[`subscription.${state}`] === undefined),
         `${locale} — états d’abonnement sans libellé`,
+      ).toEqual([])
+    }
+  })
+
+  /**
+   * **Une période déclarée par la facturation force un libellé ici** (s38).
+   *
+   * Même fil que les états d'abonnement, et même conséquence : `intl.t` lève sur
+   * une clé absente, donc une quatrième période transformerait l'écran de
+   * revenus en 500 chez tous ceux qui l'ouvrent.
+   */
+  it('traduit chaque période que `billing` sait proposer', () => {
+    expect(REVENUE_PERIODS.length).toBeGreaterThan(0)
+
+    for (const [locale, catalogue] of catalogues) {
+      expect(
+        REVENUE_PERIODS.filter((period) => catalogue[`revenue.period.${period}`] === undefined),
+        `${locale} — périodes sans libellé`,
       ).toEqual([])
     }
   })
@@ -2818,5 +3109,232 @@ describe('l’avertissement de démarrage', () => {
   afterEach(() => {
     vi.unstubAllEnvs()
     vi.resetModules()
+  })
+})
+
+
+/**
+ * **Ce que l'écran de revenus dit de ses propres chiffres** (s38).
+ *
+ * Il rend les **clés** et non les textes : ce fichier mesure ce que l'écran
+ * décide, `tests/rendered-text.test.ts` mesure qu'il n'écrit rien en dur. Les
+ * textes eux-mêmes sont éprouvés juste en dessous, contre les catalogues.
+ */
+describe('l’écran de revenus', () => {
+  /**
+   * Une plateforme qui n'a **rien** vendu : les listes sont vides, mais les
+   * états et les périodes restent ceux que la facturation déclare — c'est ce
+   * qu'elle rend d'une lecture vide.
+   */
+  const EMPTY_REVENUE: AdminRevenue = {
+    recurring: [],
+    recurringUnvalued: 0,
+    oneTime: [],
+    oneTimeUnvalued: 0,
+    states: REVENUE_STATES.map((state) => ({ state, subscriptions: 0, counted: false })),
+    periods: REVENUE_PERIODS.map((id) => ({ id, current: id === 'all' })),
+  }
+
+  const render = (revenue: AdminRevenue = REVENUE_SNAPSHOT): string =>
+    renderToStaticMarkup(
+      createElement(AdminRevenueScreen, {
+        view: { revenue },
+        navigation: [],
+        screenPath: '/admin/revenue',
+        intl: {
+          // Les **valeurs** sont rendues avec leur clé : sans elles, un cas ne
+          // pourrait rien dire des nombres que l'écran calcule lui-même — et le
+          // total de la légende des états en est un.
+          t: (key: string, values?: Readonly<Record<string, string>>) =>
+            values === undefined
+              ? key
+              : `${key}(${Object.entries(values)
+                  .map(([name, value]) => `${name}=${value}`)
+                  .join(',')})`,
+          path: (pathname: string) => pathname,
+          date: () => '1 janvier 2026',
+          money: (amount: number, currency: string) => `${amount}:${currency}`,
+        },
+      }),
+    )
+
+  /**
+   * **Les deux chiffres n'ont pas le même statut, et l'écran le dit.**
+   *
+   * Ce n'est pas de la prudence rédactionnelle : le récurrent est dérivé d'une
+   * **déclaration locale** (`config/billing.ts`, dont l'en-tête dit que ces
+   * champs « ne servent qu'à l'affichage »), le ponctuel est ce qui a été
+   * **prélevé**. Sans ces deux phrases, un lecteur prend l'estimation pour de
+   * la comptabilité — et la première relecture qui les trouvera bavardes les
+   * supprimera si rien ne rougit.
+   */
+  it('porte un statut distinct sur chacune de ses deux moitiés', () => {
+    const markup = render()
+
+    expect(markup).toContain('admin.revenue.recurring.note')
+    expect(markup).toContain('admin.revenue.oneTime.note')
+  })
+
+  /**
+   * **La période est offerte, et l'écran dit à quelle moitié elle s'applique**
+   * (critère 4, et constat 3 de la revue).
+   *
+   * Le sélecteur porte sur le **constaté** : un achat a une date
+   * d'encaissement. Le récurrent, lui, est l'état d'aujourd'hui — aucun
+   * instantané daté du parc n'est stocké. Taire cette phrase serait pire que de
+   * ne pas offrir de période : le lecteur qui vient de choisir « 30 derniers
+   * jours » lirait le récurrent comme celui de ces trente jours.
+   */
+  it('offre chaque période et dit que le récurrent n’en dépend pas', () => {
+    // L'anti-vacuité : sans période déclarée, la boucle ci-dessous serait verte
+    // sur un écran qui ne rend aucun lien.
+    expect(REVENUE_PERIODS.length).toBeGreaterThan(1)
+
+    const markup = render()
+
+    for (const period of REVENUE_PERIODS) {
+      expect(markup, period).toContain(`admin.revenue.period.${period}`)
+      expect(markup, period).toContain(`/admin/revenue?period=${period}`)
+    }
+
+    expect(markup).toContain('admin.revenue.recurring.periodNote')
+    // La période retenue est **marquée**, sinon le sélecteur ne dirait pas où
+    // l'on est. La couleur seule ne dit rien à un lecteur d'écran.
+    expect(markup).toContain('aria-current="page"')
+  })
+
+  /**
+   * **Chaque état rend sa ligne, même à zéro** (constat 3 de la revue) : avec
+   * zéro essai en cours, l'écran n'affichait **aucun** chiffre d'essai, et le
+   * lecteur ne pouvait pas distinguer « 0 » de « non suivi ».
+   */
+  it('rend une ligne par état d’abonnement, y compris ceux que personne n’a', () => {
+    expect(REVENUE_STATES.length).toBeGreaterThan(0)
+
+    const markup = render()
+
+    for (const state of REVENUE_STATES) {
+      expect(markup, state).toContain(`admin.subscription.${state}`)
+    }
+  })
+
+  /**
+   * **Aucun total, ni entre devises ni entre les deux moitiés.** Une ligne de
+   * total serait le seul endroit où les deux natures de chiffre se
+   * confondraient — et elle se lirait comme le chiffre d'affaires.
+   */
+  it('rend une ligne par devise, et n’en additionne aucune', () => {
+    const markup = render({
+      ...REVENUE_SNAPSHOT,
+      recurring: [
+        { currency: 'eur', amount: 2900, subscriptions: 1 },
+        { currency: 'usd', amount: 4500, subscriptions: 2 },
+      ],
+    })
+
+    expect(markup).toContain('2900:eur')
+    expect(markup).toContain('4500:usd')
+    // La somme des deux, qui n'a aucun sens, n'est nulle part.
+    expect(markup).not.toContain('7400')
+  })
+
+  /**
+   * **Zéro est une réponse, et elle a sa forme** (critère de la story) : ni
+   * tiret, ni écran cassé. Le tiret dirait « on ne sait pas », ce qui n'est pas
+   * « aucun abonnement ».
+   */
+  it('rend son état vide et des zéros quand la plateforme n’a rien vendu', () => {
+    const markup = render(EMPTY_REVENUE)
+
+    expect(markup).toContain('admin.revenue.empty.title')
+    // Et la période reste offerte : une plateforme sans vente peut regarder
+    // ailleurs qu'aujourd'hui.
+    expect(markup).toContain('admin.revenue.period.30d')
+    expect(markup).toContain('admin.revenue.recurring.empty')
+    expect(markup).toContain('admin.revenue.oneTime.empty')
+    // **Le plancher du balayage** : sur zéro ligne, les assertions ci-dessus
+    // seraient vraies même d'un écran qui ne rend rien. Celle-ci dit que le
+    // rendu **non vide** est différent, donc que le cas mesure une bascule.
+    expect(render()).not.toContain('admin.revenue.empty.title')
+    expect(markup).not.toContain('—')
+  })
+
+  /**
+   * **La partition vient de la facturation, l'écran l'affiche.** Un état qui
+   * compte et un état qui ne compte pas ne portent pas le même libellé : sans
+   * cette distinction, la colonne serait décorative et le lecteur croirait que
+   * les six états sont dans le total.
+   */
+  it('distingue à l’écran les états qui comptent de ceux qui ne comptent pas', () => {
+    const markup = render()
+
+    expect(markup).toContain('admin.revenue.counted.yes')
+    expect(markup).toContain('admin.revenue.counted.no')
+  })
+
+  /**
+   * **Les légendes de table portent une information** (constat 6 de la revue).
+   *
+   * Deux d'entre elles répétaient mot pour mot le titre de leur carte : une
+   * légende qui redit le titre ne dit rien, et un lecteur d'écran l'entend deux
+   * fois. Chacune compte désormais ce qu'aucune autre ligne de l'écran ne dit —
+   * combien d'abonnements et d'achats ont rempli ces devises.
+   */
+  /**
+   * **Le seul nombre que cet écran calcule lui-même** (balayage P30) : le total
+   * de la légende des états. Les autres viennent de la facturation ; celui-ci
+   * est une somme faite ici, et il gouverne aussi la bascule vers l'état vide.
+   * Compter les **lignes** plutôt que les abonnements donnerait un total
+   * parfaitement plausible — et faux dès qu'un état est à zéro.
+   */
+  it('additionne des abonnements dans sa légende, pas des lignes de tableau', () => {
+    const total = REVENUE_STATES.reduce((sum, state) => sum + (REVENUE_COUNTS[state] ?? 0), 0)
+
+    // Le cas ne mesure quelque chose que si les deux comptes diffèrent.
+    expect(total).not.toBe(REVENUE_STATES.length)
+    expect(render()).toContain(`admin.revenue.states.caption(total=${String(total)})`)
+  })
+
+  it('donne à chaque légende de table un contenu que le titre ne porte pas', () => {
+    const markup = render({
+      ...REVENUE_SNAPSHOT,
+      recurring: [
+        { currency: 'eur', amount: 2900, subscriptions: 4 },
+        { currency: 'usd', amount: 4500, subscriptions: 3 },
+      ],
+      oneTime: [{ currency: 'eur', amount: 49_000, purchases: 5 }],
+    })
+
+    expect(markup).toContain('admin.revenue.recurring.caption')
+    expect(markup).toContain('admin.revenue.oneTime.caption')
+    // Le titre de la carte n'est **pas** ce que la légende répète.
+    expect(markup.split('admin.revenue.recurring.title')).toHaveLength(2)
+    expect(markup.split('admin.revenue.oneTime.title')).toHaveLength(2)
+  })
+})
+
+/**
+ * **Le texte du statut, contre les catalogues livrés** (s38).
+ *
+ * La clé rendue ne prouve rien du texte : c'est ici que la phrase du récurrent
+ * est tenue de **nommer sa source**, dans chaque locale du module. Une phrase
+ * qui dirait « revenu mensuel » sans dire d'où viennent les euros ferait passer
+ * une déclaration locale pour une lecture comptable.
+ */
+describe('ce que les catalogues disent du statut des deux chiffres', () => {
+  const catalogues = Object.entries(adminModule.messages) as readonly (readonly [
+    string,
+    Record<string, string>,
+  ])[]
+
+  it('balaie réellement quelque chose', () => {
+    expect(catalogues.length).toBeGreaterThan(0)
+  })
+
+  it('nomme le fichier dont le récurrent est dérivé, et ne le dit pas du ponctuel', () => {
+    for (const [locale, catalogue] of catalogues) {
+      expect(catalogue['revenue.recurring.note'], locale).toContain('config/billing.ts')
+      expect(catalogue['revenue.oneTime.note'], locale).not.toContain('config/billing.ts')
+    }
   })
 })

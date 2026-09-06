@@ -331,6 +331,22 @@ beforeAll(async () => {
       describeOrganization: () => Promise.resolve({ ok: true as const, detail: null }),
       membershipsOf: () => Promise.resolve({ ok: true as const, memberships: [] }),
     },
+    // s38 : le revenu n'est pas davantage ce que cette suite traverse. La
+    // lecture rend un instantané vide.
+    revenue: {
+      read: () =>
+        Promise.resolve({
+          ok: true as const,
+          revenue: {
+            recurring: [],
+            recurringUnvalued: 0,
+            oneTime: [],
+            oneTimeUnvalued: 0,
+            states: [],
+            periods: [],
+          },
+        }),
+    },
     // Aucune désignation automatique : cette suite promeut explicitement, et
     // une désignation par adresse rendrait le cas dépendant de l'ordre.
     designatedEmail: null,

@@ -350,6 +350,120 @@ export interface AdminOrganizationsPort {
 }
 
 /**
+ * **Un montant récurrent, dans sa devise** (s38) — jamais un total qui les
+ * mélange.
+ *
+ * Ce module ne calcule rien de tout cela : les montants appartiennent à la
+ * facturation, qui les groupe. Ce type dit ce que l'écran **reçoit**, dans le
+ * vocabulaire minimal qu'il affiche.
+ */
+export interface AdminRecurringRevenue {
+  readonly currency: string
+  /** En **unités mineures**, comme partout dans ce dépôt (2900 = 29,00 €). */
+  readonly amount: number
+  readonly subscriptions: number
+}
+
+/** La même chose pour le ponctuel : le compteur y nomme des achats. */
+export interface AdminOneTimeRevenue {
+  readonly currency: string
+  readonly amount: number
+  readonly purchases: number
+}
+
+/** Le nombre d'abonnements dans un état, et si cet état compte dans le revenu. */
+export interface AdminRevenueState {
+  /**
+   * L'état, tel que la facturation le nomme — une **chaîne**, comme
+   * `AdminOrganization.subscriptionState` et pour la même raison : le
+   * vocabulaire appartient à l'autre module, et le recopier ici en ferait une
+   * seconde vérité.
+   */
+  readonly state: string
+  readonly subscriptions: number
+  /** Cet état compte-t-il dans le récurrent ? **Décidé par la facturation.** */
+  readonly counted: boolean
+}
+
+/**
+ * **Une période proposée à l'écran** (s38, critère 4), et si c'est celle qui a
+ * servi à lire.
+ *
+ * L'identifiant est une **chaîne**, comme `AdminRevenueState.state` et pour la
+ * même raison : le vocabulaire des périodes appartient à la facturation, qui
+ * seule sait où chacune commence. Le recopier ici en ferait une seconde vérité,
+ * et la première à diverger serait celle qu'on lit. Le libellé, lui, est une
+ * clé du catalogue de ce module — `tests/admin.test.ts` en exige une par
+ * période déclarée, dans chaque locale, faute de quoi l'écran lèverait.
+ */
+export interface AdminRevenuePeriod {
+  readonly id: string
+  readonly current: boolean
+}
+
+/**
+ * **Ce que le back-office affiche du revenu** (s38), et son statut.
+ *
+ * Les deux moitiés ne se valent pas, et ce type est l'endroit où la différence
+ * devient structurelle plutôt que rédactionnelle : `recurring` est **estimé**
+ * depuis le catalogue déclaré du projet — le dépôt ne stocke aucun montant
+ * d'abonnement —, `oneTime` est **constaté**, c'est ce qui a été prélevé. Elles
+ * ne sont donc jamais additionnées, ici ni à l'écran.
+ *
+ * **La période ne s'applique qu'à `oneTime`**, et l'écran le dit : un achat
+ * porte une date d'encaissement, le parc d'abonnements n'a aucun instantané
+ * daté. Un lecteur qui croirait la période appliquée aux deux lirait le
+ * récurrent comme une valeur passée qu'aucune donnée ne connaît.
+ */
+export interface AdminRevenue {
+  readonly recurring: readonly AdminRecurringRevenue[]
+  /** Les abonnements qui comptent mais dont le prix n'est plus au catalogue. */
+  readonly recurringUnvalued: number
+  readonly oneTime: readonly AdminOneTimeRevenue[]
+  /** Les achats encaissés dont aucun montant n'a été enregistré, sur la période. */
+  readonly oneTimeUnvalued: number
+  /**
+   * **Tous** les états qu'un abonnement peut porter, ceux à zéro compris : un
+   * état absent de cette liste serait absent de l'écran, et le lecteur ne
+   * pourrait pas distinguer « 0 » de « non suivi ».
+   */
+  readonly states: readonly AdminRevenueState[]
+  /** Les périodes proposées, et celle qui a réellement borné `oneTime`. */
+  readonly periods: readonly AdminRevenuePeriod[]
+}
+
+/**
+ * **Ce que le back-office sait du revenu** (s38) — un troisième port, et pour
+ * la raison des deux premiers.
+ *
+ * Le module `admin` ne déclare pas `billing` dans ses `requires` : il ne peut
+ * ni l'importer, ni joindre ses tables, ni connaître ses offres. Il reçoit ce
+ * port du point de composition de l'application, qui sait, lui, si ce module est
+ * monté.
+ *
+ * **Aucune méthode ne dit si la facturation existe**, comme pour les
+ * organisations : module coupé, ce qui disparaît est l'**entrée de navigation**,
+ * déclarée par le module qui la porte (ADR 067), et l'écran répond 404 — pas
+ * une condition écrite ici.
+ *
+ * `ok: false` est une lecture **en échec**, jamais « aucun revenu » : un
+ * back-office qui afficherait zéro sur une panne mentirait à celui qui
+ * administre, et ce chiffre-là est précisément celui qu'on croit sur parole.
+ */
+export interface AdminRevenuePort {
+  /**
+   * `period` est la valeur **brute** lue dans l'adresse, ou `null` quand
+   * l'adresse n'en porte pas : c'est la facturation qui la valide, parce que
+   * c'est elle qui possède le vocabulaire. Ce qu'elle a retenu revient dans
+   * `AdminRevenue.periods`, si bien que la période affichée comme courante est
+   * celle qui a servi à lire.
+   */
+  read(
+    period: string | null,
+  ): Promise<{ readonly ok: true; readonly revenue: AdminRevenue } | { readonly ok: false }>
+}
+
+/**
  * **Ce qu'une liste d'administration montre d'un compte** (s37b2).
  *
  * Le socle le remplit ; ce module ne fait que l'afficher. **Aucun jeton, aucun
@@ -411,6 +525,8 @@ export interface AdminDependencies {
   readonly accounts: AdminAccountsPort
   /** Ce que le back-office sait des organisations (s37b2). Vide quand le module est coupé. */
   readonly organizations: AdminOrganizationsPort
+  /** Ce que le back-office sait du revenu (s38). Vide quand la facturation est coupée. */
+  readonly revenue: AdminRevenuePort
   /**
    * L'adresse du **premier** superadmin, telle que la configuration la nomme.
    *

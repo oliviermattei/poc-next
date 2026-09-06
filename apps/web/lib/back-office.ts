@@ -30,6 +30,23 @@ export const backOfficeIntl = (intl: AppIntl): AdminIntl => ({
   path: intl.path,
   date: (value) =>
     new Intl.DateTimeFormat(intl.locale, { dateStyle: 'medium' }).format(value),
+  /**
+   * **Un montant en unités mineures, dans sa devise** (s38).
+   *
+   * Fournie ici pour la raison de `date` : la locale servie est une donnée de
+   * l'application, et `Intl.NumberFormat` sans locale explicite rend une valeur
+   * qui dépend du serveur. La division par cent est celle de tout ce dépôt —
+   * les montants y sont en unités mineures (2900 = 29,00 €).
+   *
+   * Ce n'est **pas** un import de `formatOfferPrice` : ce fichier ne connaît
+   * qu'un module, celui du back-office (`tests/admin.test.ts` le vérifie), et
+   * emprunter la fonction à `billing` en ferait un second.
+   */
+  money: (amount, currency) =>
+    new Intl.NumberFormat(intl.locale, {
+      style: 'currency',
+      currency: currency.toUpperCase(),
+    }).format(amount / 100),
 })
 
 /**

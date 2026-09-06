@@ -83,6 +83,36 @@ export function parseBackOfficeQuery(input: unknown): BackOfficeQuery {
   return { search: parsed.data.q, page: parsed.data.page }
 }
 
+/**
+ * La période la plus longue acceptée d'une adresse. Au-delà, ce n'est plus un
+ * identifiant de période : rien n'est transmis plus bas.
+ */
+const MAX_PERIOD_LENGTH = 20
+
+const periodSchema = z.object({
+  period: firstValue.transform((value) => {
+    const trimmed = (value ?? '').trim()
+
+    return trimmed === '' || trimmed.length > MAX_PERIOD_LENGTH ? null : trimmed
+  }),
+})
+
+/**
+ * Lit la **période** demandée par une adresse (s38, critère 4) — et ne lève pas
+ * davantage que `parseBackOfficeQuery`.
+ *
+ * Ce module s'arrête à la forme : une valeur, taillée, bornée en longueur, ou
+ * `null`. **Il ne sait pas quelles périodes existent** — le vocabulaire
+ * appartient à la facturation, qui seule sait où chacune commence, et c'est elle
+ * qui refuse ce qu'elle ne connaît pas. Deux frontières, chacune sur ce qu'elle
+ * possède, plutôt qu'une liste recopiée qui divergerait.
+ */
+export function parseBackOfficePeriod(input: unknown): string | null {
+  const parsed = periodSchema.safeParse(input ?? {})
+
+  return parsed.success ? parsed.data.period : null
+}
+
 /** La fenêtre de lecture d'une page : ce que la requête paramétrée reçoit. */
 export function pageWindowOf(input: {
   readonly page: number

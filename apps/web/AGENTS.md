@@ -1423,12 +1423,12 @@ par aucun test. `tests/admin.test.ts` porte les deux moitiés — la règle, et 
 témoin qu'elle est réellement appelée au démarrage, avec une attente **dérivée
 de la configuration** : module coupé, il n'y a rien à avertir.
 
-### Les écrans du back-office (s37b2)
+### Les écrans du back-office (s37b2, s38)
 
-Quatre écrans, et **aucun ne porte de garde** : `admin.accounts`,
-`admin.account`, `admin.organizations` et `admin.organization` rendent
-`{ok:false, error:'not_found'}` à qui n'administre pas, et la page appelle
-`notFound()`. La règle vit dans le module — la **même** que celle de ses
+Les écrans, et **aucun ne porte de garde** : `admin.accounts`,
+`admin.account`, `admin.organizations`, `admin.organization` et `admin.revenue`
+rendent `{ok:false, error:'not_found'}` à qui n'administre pas, et la page
+appelle `notFound()`. La règle vit dans le module — la **même** que celle de ses
 routes — parce que deux copies auraient divergé, et que la seconde aurait été
 celle qui laisse entrer.
 
@@ -1436,6 +1436,30 @@ celle qui laisse entrer.
 |---|---|
 | `/admin/users`, `/admin/users/<id>` | le module `admin` est coupé, ou l'appelant n'administre pas |
 | `/admin/organizations`, `…/<id>` | **en plus** : le module `organizations` est coupé — une **donnée** (`organizations.available`), comme `/organizations` |
+| `/admin/revenue` (s38) | **en plus** : le module `billing` est coupé — même forme, `billing.available` |
+
+**Ce que la colonne de droite ne dit pas, et il faut le savoir** : la moitié
+`billing.available` de cette garde n'est **décidée par aucune commande**, et la
+moitié `organizations.available` de la ligne du dessus non plus (relevé en revue
+de `s37b2`, puis de `s38`). `config/profiles.ts` coupe `billing`, `organizations`
+et `admin` **ensemble** : `pnpm test:minimal-profile` mesure bien le 404, mais
+`!admin.available` suffirait à le produire, et rien ne dit laquelle des deux
+absences a tranché. La CI, elle, ne coupe pas `billing`. Ce qui le déciderait est
+un profil qui couperait `billing` **en gardant** `admin` — une ligne dans
+`config/profiles.ts`, mais qui change la recette de deux autres commandes ; c'est
+une décision de cadrage, pas un correctif de revue.
+
+**L'écran de revenus dit le statut de ses deux chiffres** (s38), et c'est une
+contrainte de l'application autant que du module : le récurrent est **estimé**
+depuis `config/billing.ts` — le dépôt ne stocke aucun montant d'abonnement —,
+le ponctuel est **constaté**. Il porte aussi une **période** (critère 4), passée
+en clair dans l'adresse (`?period=…`) et transmise **brute** par la page, comme
+la recherche des listes : la forme est lue par le back-office, le vocabulaire par
+`billing`. Elle ne borne que le constaté, et l'écran le dit. `lib/back-office.ts` fournit `money`, comme il
+fournit déjà `date`, pour la même raison : `Intl` sans locale explicite rend une
+valeur qui dépend du serveur. Il ne l'emprunte pas à `formatOfferPrice` de
+`billing` — `tests/admin.test.ts` exige que ce fichier ne connaisse **qu'un**
+module, celui du back-office.
 
 **L'absence d'un module est décidée avant la session**, et ce n'est pas un
 détail d'ordre : une redirection vers la connexion apprendrait à un visiteur

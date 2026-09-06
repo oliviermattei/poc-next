@@ -29,6 +29,12 @@ import {
   guestScopeReference,
   isGuestScopeKind,
 } from '../domain/guest'
+import {
+  parseRevenuePeriod,
+  revenuePeriodStart,
+  revenueSnapshotOf,
+  type RevenueSnapshot,
+} from '../domain/revenue'
 import { billableSeats, exceedsSeatLimit, offerSeatLimit, offerSyncsSeats } from '../domain/seats'
 import {
   entitledOfferIds,
@@ -53,6 +59,7 @@ import type {
   GuestAccount,
   GuestAccounts,
   GuestPromotion,
+  PlatformScope,
   PurchaseRecord,
   BillingCustomerRecord,
   ScopeEmailResolver,
@@ -386,6 +393,42 @@ export interface BillingUseCases {
     readonly offerId: string | null
     readonly state: BillingDisplayState
   }>
+  /**
+   * **Le revenu de la plateforme entière** (s38), à l'instant présent.
+   *
+   * Deux chiffres qui n'ont pas le même statut, et c'est la raison d'être de
+   * cette fonction plutôt que d'une somme :
+   *
+   * - le **récurrent** est *estimé* — `billing_subscription` ne stocke aucun
+   *   montant, les montants viennent du catalogue déclaré, dont l'en-tête dit
+   *   lui-même que « `priceId` est ce qui fait foi, `amount` et `currency` ne
+   *   servent qu'à l'affichage » ;
+   * - le **ponctuel** est *constaté* — `billing_purchase.amount` est « ce qui a
+   *   été réellement prélevé ».
+   *
+   * **Aucun appel au fournisseur** : l'état local fait foi (s19, s20), et
+   * `pnpm billing:reconcile` répare les divergences (ADR 046). Un écran qui
+   * interrogerait Stripe ferait dépendre le back-office de sa disponibilité —
+   * l'inverse de « un tiers absent dégrade ».
+   *
+   * Le périmètre est **donné** et vaut la plateforme entière : ce module n'a pas
+   * de rôle d'administration et ne peut pas juger de ce droit (voir
+   * `PlatformScope`).
+   */
+  platformRevenue(
+    scope: PlatformScope,
+    input: {
+      /**
+       * La période demandée par l'adresse, **brute** (critère 4).
+       *
+       * Elle entre non lue : c'est ce module qui possède le vocabulaire des
+       * périodes, et c'est donc lui qui le lit, avec Zod. Une valeur inconnue
+       * retombe sur le défaut plutôt que de lever, et la période retenue revient
+       * dans `RevenueSnapshot.periods`.
+       */
+      readonly period: unknown
+    },
+  ): Promise<RevenueSnapshot>
   entitledOffers(input: {
     readonly session: { readonly userId: string; readonly roles: readonly string[] }
   }): Promise<readonly string[]>
@@ -1156,6 +1199,49 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
         offerId: subscription?.offerId ?? null,
         state: displayStateOf(subscription, at),
       }
+    },
+
+    /**
+     * **Le revenu de la plateforme** (s38) — deux lectures, aucune écriture,
+     * aucun appel au fournisseur.
+     *
+     * L'état d'affichage est dérivé ici, par la **même** règle que l'écran de
+     * facturation (`displayStateOf`) : une seconde règle de « cet abonnement
+     * court-il ? » divergerait, et c'est celle du revenu qui compterait faux.
+     *
+     * Le montant est résolu **par le prix**, jamais par `offer_id` : le prix est
+     * ce qui fait foi, `offer_id` n'est qu'une copie écrite à l'ouverture.
+     *
+     * **La période ne borne que les achats** (critère 4) : ils portent une date
+     * d'encaissement, donc ils appartiennent à une période. Les abonnements sont
+     * lus **sans borne** — le récurrent est un instantané de l'état courant, et
+     * le dépôt ne stocke aucun instantané daté du parc. Borner leur lecture par
+     * une date rendrait un nombre qui n'a pas de sens, et l'écran dit à côté du
+     * chiffre que la période ne le concerne pas.
+     */
+    platformRevenue: async (scope, input) => {
+      const at = now()
+      const period = parseRevenuePeriod(input.period)
+      const [subscriptions, purchases] = await Promise.all([
+        repository.platformSubscriptions(scope),
+        repository.platformPaidPurchases(scope, revenuePeriodStart(period, at)),
+      ])
+
+      return revenueSnapshotOf({
+        period,
+        subscriptions: subscriptions.map((subscription) => {
+          const offer = offerForPrice(catalogue, subscription.priceId)
+
+          return {
+            state: displayStateOf(subscription, at),
+            amount: offer?.amount ?? null,
+            currency: offer?.currency ?? null,
+            interval: offer?.interval ?? null,
+            quantity: subscription.quantity,
+          }
+        }),
+        purchases,
+      })
     },
 
     entitledOffers: async ({ session }) => {

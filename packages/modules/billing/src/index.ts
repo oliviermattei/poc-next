@@ -85,6 +85,24 @@ export {
   type SubscriptionStatus,
 } from './domain/subscription'
 export {
+  DEFAULT_REVENUE_PERIOD,
+  REVENUE_CONTRIBUTIONS,
+  REVENUE_PERIODS,
+  REVENUE_STATES,
+  countsTowardRecurringRevenue,
+  monthlyAmountOf,
+  parseRevenuePeriod,
+  revenueContributionOf,
+  revenuePeriodStart,
+  revenueSnapshotOf,
+  type OneTimeByCurrency,
+  type RecurringByCurrency,
+  type RevenueContribution,
+  type RevenuePeriod,
+  type RevenuePeriodChoice,
+  type RevenueSnapshot,
+} from './domain/revenue'
+export {
   BILLING_KEYS,
   BILLING_MODULE_ID,
   BILLING_REFUSAL_KEYS,
@@ -108,6 +126,7 @@ export {
 export type {
   BillingPermission,
   EndingTrial,
+  PlatformScope,
   GuestAccount,
   GuestAccounts,
   ScopeEmailResolver,
@@ -148,6 +167,7 @@ export {
   type ConfigureBillingOptions,
 } from './infrastructure/billing-runtime'
 export {
+  ADMIN_REVENUE_SCREEN_PATH,
   BILLING_SCREEN_PATH,
   PRICING_SCREEN_PATH,
   billingNavigation,

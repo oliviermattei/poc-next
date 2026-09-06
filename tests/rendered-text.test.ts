@@ -108,6 +108,7 @@ vi.mock('../apps/web/lib/admin', async (importOriginal) => {
     FIXTURE_ADMIN_ACCOUNTS,
     FIXTURE_ADMIN_ORGANIZATION_DETAIL,
     FIXTURE_ADMIN_ORGANIZATIONS,
+    FIXTURE_ADMIN_REVENUE,
     viewerState,
   } = await import('./fixtures/screen-viewer')
 
@@ -128,6 +129,7 @@ vi.mock('../apps/web/lib/admin', async (importOriginal) => {
               Promise.resolve({ ok: true, view: FIXTURE_ADMIN_ORGANIZATIONS }),
             organization: () =>
               Promise.resolve({ ok: true, view: FIXTURE_ADMIN_ORGANIZATION_DETAIL }),
+            revenue: () => Promise.resolve({ ok: true, view: FIXTURE_ADMIN_REVENUE }),
           }
         : {}),
     },
@@ -659,6 +661,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       FIXTURE_ADMIN_ACCOUNTS,
       FIXTURE_ADMIN_ORGANIZATION_DETAIL,
       FIXTURE_ADMIN_ORGANIZATIONS,
+      FIXTURE_ADMIN_REVENUE,
       FIXTURE_EMAIL,
       FIXTURE_EXPIRED_INVITED_EMAIL,
       FIXTURE_INITIALS,
@@ -684,6 +687,17 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       viewerState,
     } = await import('./fixtures/screen-viewer')
     const { AppShell } = await import('../apps/web/app/app-shell')
+
+    /**
+     * Le montant tel que `backOfficeIntl` le formate (s38) — la **même**
+     * expression, dans la même locale. Un formatage recopié à la main ici
+     * finirait par diverger de celui qui est rendu.
+     */
+    const formattedMoney = (amount: number, currency: string): string =>
+      new Intl.NumberFormat(defaultLocale, {
+        style: 'currency',
+        currency: currency.toUpperCase(),
+      }).format(amount / 100)
 
     const config = pseudoRequestConfig(defaultLocale)
     const keys = new Set(catalogueKeys(defaultLocale))
@@ -1485,6 +1499,51 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
             params: Promise.resolve({
               id: FIXTURE_ADMIN_ORGANIZATION_DETAIL.organization.organizationId,
             }),
+          }),
+      },
+      {
+        /**
+         * s38 — l'écran de revenus du back-office. **Deux** refus possibles,
+         * tous deux dérivés : le module `billing` coupé, il n'existe pas ; le
+         * module `admin` coupé, la lecture refuse.
+         */
+        id: 'back-office — revenus',
+        file: 'admin/revenue/page.tsx',
+        viewer: SIGNED_IN,
+        refuses: billingMounted && adminMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        // `screenPath` est une **adresse**, injectée par la page comme
+        // `listPath` l'est aux listes : elle n'a rien à voir avec un catalogue.
+        technicalProps: ['screenPath'],
+        // Les montants formatés, les devises et les décomptes : des
+        // **données**, dérivées de la fixture plutôt que recopiées.
+        screenData: [
+          ...FIXTURE_ADMIN_REVENUE.revenue.recurring.flatMap((row) => [
+            row.currency.toUpperCase(),
+            String(row.subscriptions),
+            // Le montant tel que l'application le formate — **dérivé**, jamais
+            // recopié : un jeu de fixture qui change entre ici sans que
+            // personne y pense ferait rougir, ce qui est le comportement voulu.
+            formattedMoney(row.amount, row.currency),
+          ]),
+          ...FIXTURE_ADMIN_REVENUE.revenue.oneTime.flatMap((row) => [
+            row.currency.toUpperCase(),
+            String(row.purchases),
+            formattedMoney(row.amount, row.currency),
+          ]),
+          ...FIXTURE_ADMIN_REVENUE.revenue.states.map((state) => String(state.subscriptions)),
+          String(
+            FIXTURE_ADMIN_REVENUE.revenue.states.reduce(
+              (total, state) => total + state.subscriptions,
+              0,
+            ),
+          ),
+        ],
+        render: async () =>
+          // La période **arrive par l'adresse** (s38, critère 4) : le rendu la
+          // pose comme Next la poserait, et l'écran doit la marquer comme
+          // courante sans que rien ne soit écrit en dur dans la page.
+          (await import('../apps/web/app/admin/revenue/page')).default({
+            searchParams: Promise.resolve({ period: '12m' }),
           }),
       },
       {

@@ -2,6 +2,7 @@ import {
   BACK_OFFICE_PAGE_SIZE,
   pageCountOf,
   pageWindowOf,
+  parseBackOfficePeriod,
   type BackOfficeQuery,
 } from '../domain/back-office'
 import { designatesFirstSuperadmin } from '../domain/platform-role'
@@ -13,6 +14,7 @@ import type {
   AdminMembership,
   AdminOrganization,
   AdminOrganizationMember,
+  AdminRevenue,
   BanAccountOutcome,
   GrantOutcome,
   RevokeOutcome,
@@ -65,6 +67,17 @@ export interface AdminOrganizationsView extends BackOfficePage {
 export interface AdminOrganizationView {
   readonly organization: AdminOrganization
   readonly members: readonly AdminOrganizationMember[]
+}
+
+/**
+ * **Ce que l'écran de revenus reçoit** (s38).
+ *
+ * Un seul champ, et c'est délibéré : ce module ne compose pas le revenu avec
+ * autre chose. Ce que l'écran ajoute — dire *lequel* des deux chiffres est
+ * estimé — est une affaire de présentation, pas de vue.
+ */
+export interface AdminRevenueView {
+  readonly revenue: AdminRevenue
 }
 
 /**
@@ -191,6 +204,26 @@ export interface AdminUseCases {
     readonly viewerId: string
     readonly query: BackOfficeQuery
   }): Promise<BackOfficeView<AdminOrganizationsView>>
+  /**
+   * **Le revenu de la plateforme** (s38) — la seule lecture du back-office qui
+   * ne liste rien.
+   *
+   * Ni recherche, ni pagination : ce sont des indicateurs, pas une liste. Une
+   * **période** est en revanche sélectionnable (critère 4), et elle ne borne que
+   * la moitié constatée : un achat porte une date d'encaissement, le parc
+   * d'abonnements n'a aucun instantané daté, donc le récurrent reste l'**état
+   * courant** et l'écran le dit.
+   *
+   * Comme les autres lectures du back-office : la garde d'abord, et son refus
+   * est un `not_found` que l'écran rend en 404. Et comme les autres, le
+   * paramètre d'adresse entre **brut** : ce module en lit la forme, la
+   * facturation en lit le vocabulaire.
+   */
+  viewRevenue(input: {
+    readonly request: Request
+    readonly viewerId: string
+    readonly parameters: unknown
+  }): Promise<BackOfficeView<AdminRevenueView>>
   viewOrganization(input: {
     readonly request: Request
     readonly viewerId: string
@@ -223,7 +256,8 @@ export interface AdminUseCases {
 }
 
 export function createAdminUseCases(dependencies: AdminDependencies): AdminUseCases {
-  const { roles, accounts, organizations, designatedEmail, securityLog, now } = dependencies
+  const { roles, accounts, organizations, revenue, designatedEmail, securityLog, now } =
+    dependencies
 
   /**
    * **Une fin d'emprunt se journalise là où le début l'a été**, avec les deux
@@ -561,6 +595,19 @@ export function createAdminUseCases(dependencies: AdminDependencies): AdminUseCa
           search: query.search,
         },
       }
+    },
+
+    viewRevenue: async ({ request, viewerId, parameters }) => {
+      if (!(await authorize({ request, userId: viewerId }))) {
+        return NOT_FOUND
+      }
+
+      const read = await revenue.read(parseBackOfficePeriod(parameters))
+
+      // Une lecture en échec **refuse**. Zéro est une réponse — une plateforme
+      // qui ne vend rien encore —, une panne n'en est pas une, et confondre les
+      // deux ferait afficher « aucun revenu » à un projet qui encaisse.
+      return read.ok ? { ok: true, view: { revenue: read.revenue } } : UNAVAILABLE
     },
 
     viewOrganization: async ({ request, viewerId, organizationId }) => {
