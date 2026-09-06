@@ -38,7 +38,7 @@ Dépendances déclarées : `s37a` (fusionnée), `s21` (fusionnée).
 
 ## Questions ouvertes
 
-- **Reprendre le greffon `admin` pour la seule impersonation, ou l'écrire ?** Décision principale, ADR requis. L'ADR 058 rejette le greffon pour le rôle et le bannissement ; il ne dit rien de l'impersonation.
+- ~~**Reprendre le greffon `admin` pour la seule impersonation, ou l'écrire ?**~~ **Tranchée le 06/09, par la mesure.** Le greffon déclare `banned`, `banReason`, `banExpires` et `impersonatedBy` (vérifié dans le paquet installé). Or `s37a` a **déjà livré** `banned`, `bannedAt` et `bannedReason` à la main. L'adopter signifierait accepter un modèle de bannissement en double — ou se battre contre le greffon — pour une capacité dont **une seule colonne** est nécessaire, `impersonatedBy`. **Écrire l'impersonation à la main**, dans la continuité de l'ADR 058 et du précédent de `s15`. L'ADR de cette story consignera la mesure plutôt que le précédent seul.
 - **Une session d'impersonation expirée est-elle une fin ?** Le critère demande un événement aux deux bouts.
 - **Le bandeau survit-il à une navigation complète ?** « Permanent » ne dit pas s'il tient à travers un rechargement, une autre organisation, une déconnexion partielle.
 - **Que voit un superadmin banni ?** `s37a` refuse sa connexion ; le back-office n'existe donc pas pour lui — à confirmer plutôt qu'à supposer.
