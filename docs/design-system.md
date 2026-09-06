@@ -194,6 +194,22 @@ règles que personne n'a exercées.
 
 Tous dans `packages/ui`. Un module compose avec cette liste ; il ne crée pas ses propres primitives.
 
+> **Ce tableau est un catalogue d'intention, pas un inventaire — mesuré le 06/09.**
+> Sur les 32 composants nommés ci-dessous, **16 n'existent pas** dans
+> `packages/ui/src` : `Select`, `RadioGroup`, `Switch`, `Form`, `Skeleton`,
+> `Dialog`, `Popover`, `Tooltip`, `AlertDialog`, `Tabs`, `Table`, `DataTable`,
+> `Command`, `Progress`, `ScrollArea`, `Toaster`. Composer avec l'un d'eux ne
+> compile pas.
+>
+> La liste ci-dessus est **datée et mesurée**, jamais à recopier : elle vieillit
+> dès qu'une story en livre un. La commande qui la refait est
+> `ls packages/ui/src/components packages/ui/src/composed` confrontée aux noms
+> de ce tableau — et tant qu'aucun test ne le fait, ce paragraphe est de la
+> documentation, pas une règle. **Une story qui a besoin d'un composant absent
+> le livre dans `packages/ui`** (copie shadcn/ui sur Radix, ADR 022), elle ne
+> le réécrit pas dans son module et ne le remplace pas par une primitive
+> maison.
+
 | Composant | Usage |
 |---|---|
 | `Button` | Actions. Variantes `default`, `secondary`, `outline`, `ghost`, `destructive`. Porte son état `pending`. |
