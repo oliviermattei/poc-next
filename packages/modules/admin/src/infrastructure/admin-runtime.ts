@@ -1,6 +1,10 @@
 import { AdminNotConfiguredError, type AdminService } from '../application/admin-service'
 import { createAdminUseCases } from '../application/admin-use-cases'
-import type { AdminAccountsPort, AdminOrganizationsPort } from '../application/ports'
+import type {
+  AdminAccountsPort,
+  AdminOrganizationsPort,
+  AdminRevenuePort,
+} from '../application/ports'
 import type { AdminSecurityLog } from '../domain/security-event'
 import { consoleSecurityLog } from './console-security-log'
 import {
@@ -36,6 +40,13 @@ export interface ConfigureAdminOptions {
    */
   readonly organizations: AdminOrganizationsPort
   /**
+   * **Ce que le back-office sait du revenu** (s38), fourni pour la même raison :
+   * le module ne déclare pas `billing` dans ses `requires`, ne l'importe pas et
+   * ne connaît aucune de ses offres. Facturation coupée, ce port rend un revenu
+   * vide — aucune condition d'écran ne nomme un module.
+   */
+  readonly revenue: AdminRevenuePort
+  /**
    * L'adresse du **premier** superadmin, ou `null`.
    *
    * Le module ne lit aucune variable d'environnement (`docs/security.md` §5) :
@@ -56,6 +67,7 @@ const build = (options: ConfigureAdminOptions): AdminService => ({
     roles: createDrizzlePlatformRoleRepository(options.db, options.accounts),
     accounts: options.accounts,
     organizations: options.organizations,
+    revenue: options.revenue,
     designatedEmail: options.designatedEmail,
     securityLog: options.securityLog ?? consoleSecurityLog,
     now: options.now ?? (() => new Date()),

@@ -4,7 +4,7 @@ import type {
   DescribedSession,
   DescribedSignInMethod,
 } from '@repo/module-auth'
-import type { BillingView } from '@repo/module-billing'
+import { REVENUE_PERIODS, REVENUE_STATES, type BillingView } from '@repo/module-billing'
 import { permissionsOf } from '@repo/module-organizations'
 import { initialsOf } from '@repo/ui'
 
@@ -560,6 +560,35 @@ export const FIXTURE_ADMIN_ORGANIZATIONS = {
   total: 1,
   search: null,
   organizations: [FIXTURE_ADMIN_ORGANIZATION],
+} as const
+
+/**
+ * **Le revenu de plateforme, dans sa forme la plus fournie** (s38).
+ *
+ * Deux devises — pour que le balayage passe sur des lignes qui ne sont jamais
+ * additionnées —, un abonnement et un achat non valorisables, et des états des
+ * deux côtés de la partition : chaque branche de l'écran est ainsi rendue, donc
+ * chaque texte passe sous le filet.
+ */
+export const FIXTURE_ADMIN_REVENUE = {
+  revenue: {
+    recurring: [
+      { currency: 'eur', amount: 2900, subscriptions: 1 },
+      { currency: 'usd', amount: 4500, subscriptions: 2 },
+    ],
+    recurringUnvalued: 1,
+    oneTime: [{ currency: 'eur', amount: 49_000, purchases: 1 }],
+    oneTimeUnvalued: 1,
+    // Les états et les périodes sont **dérivés** du module qui les possède :
+    // recopiés, ils resteraient verts après un état ou une période de plus,
+    // alors que chacun ajoute un libellé à rendre.
+    states: REVENUE_STATES.map((state) => ({
+      state,
+      subscriptions: state === 'active' ? 3 : state === 'past_due' ? 1 : 0,
+      counted: state === 'active',
+    })),
+    periods: REVENUE_PERIODS.map((id) => ({ id, current: id === '12m' })),
+  },
 } as const
 
 export const FIXTURE_ADMIN_ORGANIZATION_DETAIL = {

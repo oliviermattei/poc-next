@@ -11,6 +11,9 @@ import {
   type AdminAccountView,
   type AdminOrganizationsPort,
   type AdminOrganizationsView,
+  type AdminRevenue,
+  type AdminRevenuePort,
+  type AdminRevenueView,
   type AdminOrganizationView,
   type BackOfficeView,
 } from '@repo/module-admin'
@@ -356,6 +359,43 @@ export const adminOrganizationsPort = (
   },
 })
 
+/**
+ * **Ce que le back-office sait du revenu** (s38).
+ *
+ * Le module `admin` ne déclare pas `billing` dans ses `requires` : il ne peut ni
+ * l'importer, ni lire ses tables, ni connaître ses offres. Ce fichier tient les
+ * deux bouts, comme il le fait pour les organisations — et il ne décide rien du
+ * calcul : le revenu est agrégé dans le module qui **possède** les montants.
+ *
+ * **Aucune condition sur un module ici.** Facturation coupée, la lecture rend un
+ * revenu vide sans ouvrir de connexion ; ce qui disparaît alors est l'**entrée
+ * de navigation**, déclarée par le module qui la porte (ADR 067), et l'écran
+ * répond 404.
+ *
+ * L'import est **différé**, pour la raison exacte du port des organisations :
+ * `lib/billing.ts` importe le point de composition de l'authentification, et un
+ * import statique en sens inverse fermerait le cycle.
+ */
+export const adminRevenuePort = (
+  read: (period: string | null) => Promise<AdminRevenue>,
+): AdminRevenuePort => ({
+  read: async (period) => {
+    const snapshot = await readOr(async () => await read(period))
+
+    // **Un port ne lève pas** : une base injoignable devient un refus, que le
+    // module rend en `unavailable` et l'écran en alerte — jamais un revenu à
+    // zéro, qui se lirait comme une réponse. `tests/admin.test.ts` neutralise
+    // ce `readOr` et exige un rouge : sans lui, la branche `{ ok: false }` du
+    // module n'était atteignable par rien (constat MJ4 de la revue de s37b1,
+    // reconduit en s38).
+    return snapshot.ok ? { ok: true, revenue: snapshot.value } : { ok: false }
+  },
+})
+
+const revenue: AdminRevenuePort = adminRevenuePort(
+  async (period) => await (await import('./billing')).billing.revenue(period),
+)
+
 const organizations: AdminOrganizationsPort = adminOrganizationsPort(
   async () => (await import('./organizations')).organizations.backOffice,
   async (organizationId) =>
@@ -384,6 +424,7 @@ const provide = (): void => {
     db: getDatabase().db,
     accounts,
     organizations,
+    revenue,
     designatedEmail: designatedEmailOf(getEnv()),
   }))
 }
@@ -394,8 +435,9 @@ export interface AdminFeature {
   /** Donne au module ce qu'il ne peut pas se procurer, sans rien construire. */
   readonly prepare: () => void
   /**
-   * **Les quatre lectures du back-office** (s37b2), telles que ses écrans les
-   * demandent.
+   * **Les lectures du back-office** (s37b2, s38), telles que ses écrans les
+   * demandent — une par écran, aucun compte écrit ici : il vieillirait à côté
+   * du type, et il l'a déjà fait (« quatre » pour cinq méthodes).
    *
    * Chacune porte sa **garde dans le module** : elle rend `not_found` à un
    * compte qui n'administre pas, et l'écran traduit ce refus en 404 — jamais en
@@ -433,6 +475,14 @@ export interface AdminFeature {
    * et rien nulle part ne teste un nom de module.
    */
   readonly platformRolesOf: (userId: string) => Promise<readonly string[]>
+  /**
+   * Le revenu de la plateforme (s38) : ni recherche, ni page — des indicateurs,
+   * et une **période** (critère 4) qui ne borne que la moitié constatée.
+   */
+  readonly revenue: (input: {
+    readonly viewerId: string
+    readonly parameters: unknown
+  }) => Promise<BackOfficeView<AdminRevenueView>>
 }
 
 /** Le refus, écrit une fois : module coupé, aucune lecture n'ouvre de connexion. */
@@ -474,6 +524,12 @@ export const admin: AdminFeature = mounted
         }),
       platformRolesOf: async (userId) =>
         await backOfficeService().useCases.platformRolesOf(userId),
+      revenue: async ({ viewerId, parameters }) =>
+        await backOfficeService().useCases.viewRevenue({
+          request: await incomingRequest(),
+          viewerId,
+          parameters,
+        }),
     }
   : {
       available: false,
@@ -485,6 +541,7 @@ export const admin: AdminFeature = mounted
       // Aucun rôle, donc aucune route réservée à un rôle : le sens fermé, et il
       // vient de la **valeur**, pas d'une condition écrite plus haut.
       platformRolesOf: () => Promise.resolve([]),
+      revenue: () => Promise.resolve(ABSENT),
     }
 
 /**

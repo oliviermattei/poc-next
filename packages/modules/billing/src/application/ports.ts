@@ -165,6 +165,51 @@ export interface SubscriptionWrite {
   readonly lastEventId: string
 }
 
+/**
+ * **Le périmètre de la plateforme entière** (s38) — le back-office, et lui seul.
+ *
+ * C'est la première lecture de ce module qui n'a aucun propriétaire plus étroit
+ * qu'elle, et c'est exactement pour cela qu'elle porte quand même un paramètre
+ * de périmètre : la discipline du dépôt est que toute lecture nomme son
+ * propriétaire en **premier** argument (`scoped-reads.ts`, s37b2), et un
+ * balayage de la table des abonnements qui l'omettrait se relirait comme un
+ * oubli.
+ *
+ * Cette valeur ne vient **jamais** d'une requête : elle est écrite par le point
+ * de composition de l'application, qui l'a obtenue d'une garde de superadmin
+ * (`packages/modules/admin`). Le module `billing` n'a pas de rôle de plateforme
+ * et ne peut donc pas juger de ce droit lui-même — la même répartition que
+ * `purge` et `export`, dont le périmètre est aussi donné.
+ */
+export interface PlatformScope {
+  readonly kind: 'platform'
+}
+
+/**
+ * Un abonnement, tel que le revenu de plateforme le lit : **les colonnes que
+ * l'état d'affichage et le montant demandent**, et rien d'autre.
+ *
+ * Ni identifiant de client, ni référence chez le fournisseur : ce sont des
+ * références externes, et un écran d'administration n'en a pas l'usage
+ * (`docs/security.md` §7). Le prix y est parce que c'est **lui qui fait foi**
+ * pour retrouver l'offre du catalogue — jamais `offer_id`, qui est une copie
+ * écrite au moment de l'ouverture.
+ */
+export interface PlatformSubscriptionRow {
+  readonly priceId: string
+  readonly status: SubscriptionStatus
+  readonly quantity: number
+  readonly currentPeriodEnd: Date
+  readonly cancelAtPeriodEnd: boolean
+  readonly trialEnd: Date | null
+}
+
+/** Un achat **encaissé**, tel que le revenu de plateforme le lit. */
+export interface PlatformPurchaseRow {
+  readonly amount: number | null
+  readonly currency: string | null
+}
+
 export interface BillingRepository {
   /** Le client du fournisseur rattaché à ce périmètre, ou `null`. */
   customerForScope(scope: ModuleScope): Promise<BillingCustomerRecord | null>
@@ -330,6 +375,43 @@ export interface BillingRepository {
     readonly billingCustomerId: string
     readonly purchases: readonly PurchaseReconcileWrite[]
   }): Promise<number>
+
+  /**
+   * **Tous les abonnements de la plateforme** (s38), quel que soit le périmètre
+   * de leur client.
+   *
+   * C'est la seule lecture de ce port qui ne part pas d'un client, et elle est
+   * **non paginée** : l'état d'affichage d'un abonnement se dérive (statut,
+   * annulation programmée, terme d'essai, instant présent) — SQL ne sait pas le
+   * calculer sans recopier `displayStateOf`, et une seconde copie de cette
+   * règle serait celle qui divergerait. Deux conséquences assumées : le coût
+   * croît avec le nombre d'abonnements, et l'écran ne montre que l'**état
+   * courant**, jamais un historique.
+   */
+  platformSubscriptions(scope: PlatformScope): Promise<readonly PlatformSubscriptionRow[]>
+
+  /**
+   * **Les achats encaissés de la plateforme** (s38) — `paid`, et rien d'autre.
+   *
+   * Un achat en attente n'a rien prélevé, un achat remboursé a été rendu : les
+   * compter gonflerait un chiffre qui se présente comme un relevé.
+   *
+   * `since` est le début de la période retenue, ou `null` pour « depuis le
+   * début » (critère 4). Le filtre est **dans la requête** plutôt qu'après la
+   * lecture : c'est ce qui empêche un appelant d'oublier de l'appliquer, et
+   * c'est la seule moitié du revenu qu'une période peut borner — un achat porte
+   * une date d'encaissement, un abonnement ne porte aucun instantané daté.
+   *
+   * **Ce qu'une période borne emporte** : un achat encaissé dont la date
+   * d'encaissement est absente n'appartient à aucune période bornée, il n'est
+   * donc rendu que sur « depuis le début ». Le cas ne devrait pas exister —
+   * `purchased_at` est écrit à la confirmation — mais il ne se lit pas comme un
+   * zéro : c'est l'écart entre les deux périodes qui le montre.
+   */
+  platformPaidPurchases(
+    scope: PlatformScope,
+    since: Date | null,
+  ): Promise<readonly PlatformPurchaseRow[]>
 
   /** Efface les données de facturation d'un périmètre. Rend le nombre de clients effacés. */
   deleteScope(scope: ModuleScope): Promise<number>

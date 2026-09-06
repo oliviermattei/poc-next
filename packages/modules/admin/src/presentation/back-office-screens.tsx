@@ -39,6 +39,7 @@ import type {
   AdminAccountView,
   AdminOrganizationsView,
   AdminOrganizationView,
+  AdminRevenueView,
 } from '../application/admin-use-cases'
 import type { AdminIntl } from './admin-intl'
 
@@ -116,12 +117,47 @@ const K = {
   organizationBillingDescription: 'admin.organization.billingDescription',
   organizationMembersCaption: 'admin.organization.membersCaption',
   columnMember: 'admin.organization.column.member',
+  revenueTitle: 'admin.revenue.title',
+  revenueDescription: 'admin.revenue.description',
+  periodLabel: 'admin.revenue.periodLabel',
+  recurringTitle: 'admin.revenue.recurring.title',
+  recurringNote: 'admin.revenue.recurring.note',
+  recurringPeriodNote: 'admin.revenue.recurring.periodNote',
+  recurringEmpty: 'admin.revenue.recurring.empty',
+  recurringCaption: 'admin.revenue.recurring.caption',
+  oneTimeTitle: 'admin.revenue.oneTime.title',
+  oneTimeNote: 'admin.revenue.oneTime.note',
+  oneTimeEmpty: 'admin.revenue.oneTime.empty',
+  oneTimeCaption: 'admin.revenue.oneTime.caption',
+  statesTitle: 'admin.revenue.states.title',
+  statesDescription: 'admin.revenue.states.description',
+  statesCaption: 'admin.revenue.states.caption',
+  columnCurrency: 'admin.revenue.column.currency',
+  columnAmount: 'admin.revenue.column.amount',
+  columnSubscriptions: 'admin.revenue.column.subscriptions',
+  columnPurchases: 'admin.revenue.column.purchases',
+  columnState: 'admin.revenue.column.state',
+  columnCounted: 'admin.revenue.column.counted',
+  countedYes: 'admin.revenue.counted.yes',
+  countedNo: 'admin.revenue.counted.no',
+  revenueEmptyTitle: 'admin.revenue.empty.title',
+  revenueEmptyDescription: 'admin.revenue.empty.description',
   columnRole: 'admin.organization.column.role',
   none: 'admin.none',
 } as const
 
 /** L'état d'abonnement, traduit par une clé — jamais par la valeur brute. */
 const subscriptionKey = (state: string): string => `admin.subscription.${state}`
+
+/**
+ * La période, traduite par une clé — la même discipline que l'état.
+ *
+ * Le vocabulaire appartient à la facturation ; ce module n'en connaît que
+ * l'identifiant, et `intl.t` **lève** sur une clé absente. `tests/admin.test.ts`
+ * exige donc un libellé par période déclarée, dans chaque locale : une période
+ * ajoutée là-bas force une décision ici plutôt que de rendre un écran en 500.
+ */
+const periodKey = (period: string): string => `admin.revenue.period.${period}`
 
 /** Le rôle d'un membre, traduit par une clé — la même discipline. */
 const roleKey = (role: string): string => `admin.role.${role}`
@@ -738,6 +774,284 @@ export function AdminOrganizationScreen({
             <Badge variant="secondary">
               {intl.t(subscriptionKey(view.organization.subscriptionState))}
             </Badge>
+          )}
+        </CardContent>
+      </Card>
+    </BackOfficeShell>
+  )
+}
+
+export interface AdminRevenueScreenProps {
+  readonly view: AdminRevenueView
+  readonly intl: AdminIntl
+  readonly navigation: readonly BackOfficeNavigationItem[]
+  /**
+   * Le chemin **interne** de cet écran, injecté comme `links.listPath` l'est
+   * aux listes, et pour la même raison : il est déclaré par le module qui porte
+   * les montants (`ADMIN_REVENUE_SCREEN_PATH`, dans `billing`), et ce module-ci
+   * ne le connaît pas. Le préfixe de langue est reposé par `intl.path`.
+   */
+  readonly screenPath: string
+}
+
+/**
+ * **Le choix de la période** (critère 4) — des **liens**, pas un formulaire.
+ *
+ * Une période *est* une adresse : elle se copie, se met en signet, se recharge,
+ * et elle fonctionne avant l'hydratation. C'est la raison qui a fait de la
+ * pagination des liens, et elle vaut deux fois ici : cet écran n'a aucun
+ * composant client.
+ *
+ * La période retenue est celle que la **facturation** a validée, pas celle que
+ * l'adresse portait : une valeur inconnue retombe sur le défaut, et c'est ce
+ * défaut qui s'affiche comme courant. `aria-current` porte la distinction pour
+ * qui n'a pas la couleur.
+ */
+function PeriodPicker({
+  periods,
+  screenPath,
+  intl,
+}: {
+  readonly periods: readonly { readonly id: string; readonly current: boolean }[]
+  readonly screenPath: string
+  readonly intl: AdminIntl
+}) {
+  return (
+    <nav aria-label={intl.t(K.periodLabel)} className="flex flex-wrap gap-2">
+      {periods.map((period) => (
+        <Button
+          key={period.id}
+          asChild
+          variant={period.current ? 'default' : 'outline'}
+        >
+          <a
+            href={`${intl.path(screenPath)}?period=${encodeURIComponent(period.id)}`}
+            aria-current={period.current ? 'page' : undefined}
+          >
+            {intl.t(periodKey(period.id))}
+          </a>
+        </Button>
+      ))}
+    </nav>
+  )
+}
+
+/**
+ * **Un tableau de montants, dans une devise à la fois.**
+ *
+ * Aucune ligne de total : `config/billing.ts` déclare une devise par offre, et
+ * un total qui additionnerait des euros et des dollars serait faux dans les
+ * deux sans que rien ne le montre. La décision est prise dans le `domain` de la
+ * facturation ; cet écran ne la rattrape pas en fin de tableau.
+ */
+function CurrencyTable({
+  caption,
+  countColumn,
+  rows,
+  intl,
+}: {
+  readonly caption: string
+  readonly countColumn: string
+  readonly rows: readonly {
+    readonly currency: string
+    readonly amount: number
+    readonly count: number
+  }[]
+  readonly intl: AdminIntl
+}) {
+  return (
+    <Table>
+      <TableCaption>{caption}</TableCaption>
+      <TableHeader>
+        <TableRow>
+          <TableHead>{intl.t(K.columnCurrency)}</TableHead>
+          <TableHead>{intl.t(K.columnAmount)}</TableHead>
+          <TableHead>{countColumn}</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map((row) => (
+          <TableRow key={row.currency}>
+            <TableCell>{row.currency.toUpperCase()}</TableCell>
+            <TableCell>{intl.money(row.amount, row.currency)}</TableCell>
+            <TableCell>{String(row.count)}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  )
+}
+
+/**
+ * `/admin/revenue` — **les deux moitiés du revenu, et ce que chacune vaut**
+ * (s38).
+ *
+ * L'écran dit lui-même le statut de ses chiffres, et ce n'est pas de la
+ * prudence rédactionnelle : le récurrent est **estimé** — le dépôt ne stocke
+ * aucun montant d'abonnement, ces euros viennent de `config/billing.ts`, dont
+ * l'en-tête dit que ces champs « ne servent qu'à l'affichage » —, le ponctuel
+ * est **constaté**, c'est ce qui a été prélevé. Sans ces deux phrases, une
+ * déclaration locale devient de la comptabilité au premier lecteur pressé.
+ *
+ * Les deux ne sont jamais additionnées, et aucun total inter-devises n'existe.
+ */
+export function AdminRevenueScreen({
+  view,
+  intl,
+  navigation,
+  screenPath,
+}: AdminRevenueScreenProps) {
+  const subscriptions = view.revenue.states.reduce(
+    (total, state) => total + state.subscriptions,
+    0,
+  )
+
+  return (
+    <BackOfficeShell
+      navigation={navigation}
+      navigationLabel={intl.t(K.breadcrumbRoot)}
+      header={
+        <>
+          <PageHeader title={intl.t(K.revenueTitle)} description={intl.t(K.revenueDescription)} />
+          <PeriodPicker periods={view.revenue.periods} screenPath={screenPath} intl={intl} />
+        </>
+      }
+    >
+      <Card>
+        <CardHeader>
+          <CardTitle>{intl.t(K.recurringTitle)}</CardTitle>
+          {/*
+            **Le statut du chiffre, à côté du chiffre.** Il porte aussi ce qui
+            n'a pas pu être valorisé : un abonnement dont le prix a quitté le
+            catalogue ferait sinon baisser le total sans que rien ne le dise.
+          */}
+          <CardDescription>
+            {intl.t(K.recurringNote, { unvalued: String(view.revenue.recurringUnvalued) })}
+          </CardDescription>
+          {/*
+            **La période ne s'applique pas à ce chiffre-ci**, et le taire serait
+            pire que de ne pas offrir de période du tout : le lecteur vient de
+            choisir « 30 derniers jours », et il lirait ce nombre comme le
+            récurrent de ces trente jours. Le dépôt ne stocke aucun instantané
+            daté du parc d'abonnements ; ce nombre est celui d'aujourd'hui, et il
+            n'en existe aucun autre.
+          */}
+          <CardDescription>{intl.t(K.recurringPeriodNote)}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {view.revenue.recurring.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{intl.t(K.recurringEmpty)}</p>
+          ) : (
+            <CurrencyTable
+              // La légende **compte**, elle ne répète pas le titre de la carte :
+              // combien d'abonnements ont rempli ces devises, ce qu'aucune autre
+              // ligne de l'écran ne dit.
+              caption={intl.t(K.recurringCaption, {
+                subscriptions: String(
+                  view.revenue.recurring.reduce((total, row) => total + row.subscriptions, 0),
+                ),
+                currencies: String(view.revenue.recurring.length),
+              })}
+              countColumn={intl.t(K.columnSubscriptions)}
+              rows={view.revenue.recurring.map((row) => ({
+                currency: row.currency,
+                amount: row.amount,
+                count: row.subscriptions,
+              }))}
+              intl={intl}
+            />
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{intl.t(K.oneTimeTitle)}</CardTitle>
+          <CardDescription>
+            {intl.t(K.oneTimeNote, { unvalued: String(view.revenue.oneTimeUnvalued) })}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {view.revenue.oneTime.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{intl.t(K.oneTimeEmpty)}</p>
+          ) : (
+            <CurrencyTable
+              caption={intl.t(K.oneTimeCaption, {
+                purchases: String(
+                  view.revenue.oneTime.reduce((total, row) => total + row.purchases, 0),
+                ),
+                currencies: String(view.revenue.oneTime.length),
+              })}
+              countColumn={intl.t(K.columnPurchases)}
+              rows={view.revenue.oneTime.map((row) => ({
+                currency: row.currency,
+                amount: row.amount,
+                count: row.purchases,
+              }))}
+              intl={intl}
+            />
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{intl.t(K.statesTitle)}</CardTitle>
+          <CardDescription>{intl.t(K.statesDescription)}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {subscriptions === 0 ? (
+            /*
+              **Zéro est une réponse, et elle a sa forme.** Pas de tiret : un
+              tiret dit « on ne sait pas », ce qui n'est pas la même chose
+              qu'« aucun abonnement ». L'action est absente parce qu'il n'y en a
+              aucune à proposer — un back-office ne vend rien.
+
+              La condition porte sur le **total**, pas sur la longueur de la
+              liste : celle-ci porte désormais tous les états, ceux à zéro
+              compris, si bien qu'elle n'est jamais vide. Un état absent de
+              l'écran laisserait un lecteur incapable de distinguer « 0 » de
+              « non suivi ».
+            */
+            <EmptyState
+              title={intl.t(K.revenueEmptyTitle)}
+              description={intl.t(K.revenueEmptyDescription)}
+              action={null}
+            />
+          ) : (
+            <Table>
+              <TableCaption>
+                {intl.t(K.statesCaption, { total: String(subscriptions) })}
+              </TableCaption>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{intl.t(K.columnState)}</TableHead>
+                  <TableHead>{intl.t(K.columnSubscriptions)}</TableHead>
+                  <TableHead>{intl.t(K.columnCounted)}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {view.revenue.states.map((state) => (
+                  <TableRow key={state.state}>
+                    <TableCell>
+                      <Badge variant="secondary">{intl.t(subscriptionKey(state.state))}</Badge>
+                    </TableCell>
+                    <TableCell>{String(state.subscriptions)}</TableCell>
+                    <TableCell>
+                      {/*
+                        **Ce que la facturation a décidé, pas cet écran.** La
+                        partition « compte / ne compte pas » vit dans son
+                        `domain` : la recopier ici en ferait une seconde vérité,
+                        et la première à diverger serait celle qu'on lit.
+                      */}
+                      <Badge variant={state.counted ? 'default' : 'outline'}>
+                        {intl.t(state.counted ? K.countedYes : K.countedNo)}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           )}
         </CardContent>
       </Card>

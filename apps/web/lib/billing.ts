@@ -8,12 +8,15 @@ import {
   billingModule,
   billingRoutePath,
   EMPTY_BILLING_VIEW,
+  parseRevenuePeriod,
   provideBilling,
+  revenueSnapshotOf,
   requireBillingService,
   type BillingService,
   type BillingView,
   type ConfigureBillingOptions,
   type EndingTrial,
+  type RevenueSnapshot,
   type CancelSubscriptionsOutcome,
   type SeatSyncOutcome,
 } from '@repo/module-billing'
@@ -111,6 +114,22 @@ export interface BillingFeature {
   readonly subscriptionOf: (
     scope: ModuleScope,
   ) => Promise<{ readonly offerId: string | null; readonly state: string | null }>
+  /**
+   * **Le revenu de la plateforme entière** (s38), pour le back-office.
+   *
+   * Le périmètre `platform` est écrit **ici**, au point de composition, et nulle
+   * part ailleurs : c'est la discipline de `scoped-reads.ts` — une lecture qui
+   * n'a aucun propriétaire plus étroit qu'elle porte quand même son périmètre,
+   * et cette valeur ne vient jamais d'une requête. Le droit d'appeler, lui, est
+   * jugé par le module `admin`, qui possède le rôle de superadmin.
+   *
+   * Module coupé : un revenu vide, **sans ouvrir de connexion**. Un projet qui
+   * ne vend rien n'a pas de revenu à afficher.
+   *
+   * `period` est la valeur **brute** de l'adresse, ou `null` : le vocabulaire
+   * des périodes appartient au module, qui le lit avec Zod (critère 4).
+   */
+  readonly revenue: (period: string | null) => Promise<RevenueSnapshot>
 
   /**
    * **La commande de réconciliation** (`docs/reliability.md` §5).
@@ -175,6 +194,13 @@ const ABSENT_BILLING: BillingFeature = {
   cancelSubscriptions: () => Promise.resolve({ status: 'not_applicable' }),
   localCheckout: () => null,
   subscriptionOf: () => Promise.resolve({ offerId: null, state: null }),
+  // **Dérivé, jamais recopié** : « aucune vente » est ce que le `domain` rend
+  // d'une lecture vide. Un littéral écrit ici perdrait la première clé ajoutée
+  // à l'instantané, et rendrait un objet qu'aucun écran ne saurait lire.
+  revenue: (period) =>
+    Promise.resolve(
+      revenueSnapshotOf({ subscriptions: [], purchases: [], period: parseRevenuePeriod(period) }),
+    ),
 }
 
 const mounted = moduleRegistry.moduleIds.includes(billingModule.id)
@@ -520,6 +546,10 @@ export const billing: BillingFeature = mounted
       cancelSubscriptions: async (scope) =>
         await billingService().useCases.cancelSubscriptions(scope),
       subscriptionOf: async (scope) => await billingService().useCases.subscriptionOf(scope),
+      // Le périmètre plateforme, **écrit une fois**, au seul endroit qui a le
+      // droit de l'écrire.
+      revenue: async (period) =>
+        await billingService().useCases.platformRevenue({ kind: 'platform' }, { period }),
       localCheckout: () => {
         // Lu à l'appel, pas à l'import : c'est la construction du port qui
         // décide, et elle est différée comme tout le reste.

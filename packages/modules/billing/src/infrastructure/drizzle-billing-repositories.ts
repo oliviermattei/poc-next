@@ -6,6 +6,8 @@ import type {
   BillingCustomerRecord,
   BillingRepository,
   EndingTrial,
+  PlatformPurchaseRow,
+  PlatformSubscriptionRow,
   PurchaseReconcileWrite,
   PurchaseRecord,
   SubscriptionRecord,
@@ -143,6 +145,13 @@ const scopeColumns = (scope: ModuleScope): { kind: ModuleScope['kind']; id: stri
   scope.kind === 'organization'
     ? { kind: 'organization', id: scope.organizationId }
     : { kind: 'user', id: scope.userId }
+
+/**
+ * Le statut d'un achat encaissé, écrit une fois — et **tiré du vocabulaire du
+ * domaine**, jamais d'un littéral libre : un mot recopié ici divergerait du
+ * jour où l'union en changerait.
+ */
+const PAID_PURCHASE_STATUS: PurchaseStatus = 'paid'
 
 const CUSTOMER_COLUMNS = {
   id: billingCustomer.id,
@@ -404,6 +413,53 @@ export function createDrizzleBillingRepository(db: BillingDatabase): BillingRepo
         .from(billingPurchase)
         .where(eq(billingPurchase.billingCustomerId, billingCustomerId))
         .orderBy(...purchaseReadOrder)) as readonly PurchaseRecord[],
+
+    /**
+     * **Toute la plateforme** (s38) — la seule lecture de ce dépôt qui ne porte
+     * aucune condition de client.
+     *
+     * Le périmètre est quand même son **premier paramètre** : il ne restreint
+     * rien ici, il dit d'où vient le droit de tout lire — du back-office, jamais
+     * d'une requête (`PlatformScope`). Les colonnes sont énumérées, comme
+     * partout : ce qui sort d'ici est ce qu'un écran affichera, et aucune
+     * référence du fournisseur n'en fait partie.
+     */
+    platformSubscriptions: async (_scope) =>
+      (await db
+        .select({
+          priceId: billingSubscription.priceId,
+          status: billingSubscription.status,
+          quantity: billingSubscription.quantity,
+          currentPeriodEnd: billingSubscription.currentPeriodEnd,
+          cancelAtPeriodEnd: billingSubscription.cancelAtPeriodEnd,
+          trialEnd: billingSubscription.trialEnd,
+        })
+        .from(billingSubscription)) as readonly PlatformSubscriptionRow[],
+
+    /**
+     * **Les achats encaissés**, et le filtre est dans la requête.
+     *
+     * `paid` est le seul statut qui dit qu'un montant a été prélevé
+     * (`purchaseGrantsAccess`) : `pending` n'a rien encaissé, `refunded` a été
+     * rendu. Filtrer après coup laisserait la porte ouverte à un appelant qui
+     * oublierait de le faire.
+     */
+    platformPaidPurchases: async (_scope, since) =>
+      (await db
+        .select({ amount: billingPurchase.amount, currency: billingPurchase.currency })
+        .from(billingPurchase)
+        .where(
+          // **La période est dans la requête**, à côté du statut : la borner
+          // après la lecture laisserait un appelant l'oublier, et le chiffre
+          // resterait plausible. `null` — « depuis le début » — n'ajoute aucune
+          // condition, plutôt qu'une date sentinelle que personne ne relit.
+          since === null
+            ? eq(billingPurchase.status, PAID_PURCHASE_STATUS)
+            : and(
+                eq(billingPurchase.status, PAID_PURCHASE_STATUS),
+                gte(billingPurchase.purchasedAt, since),
+              ),
+        )) as readonly PlatformPurchaseRow[],
 
     /**
      * Ouvre — ou rouvre — l'achat d'une offre, **sous la contrainte d'unicité**.

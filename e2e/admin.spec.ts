@@ -156,6 +156,63 @@ test('le back-office sert la liste des comptes au compte désigné, et 404 aux a
   await other.close()
 })
 
+/**
+ * **L'écran de revenus, sur le vrai chemin HTTP** (s38).
+ *
+ * Deux choses que rien d'autre ne mesure : le **404** d'un compte qui
+ * n'administre pas — sur une page, pas sur une route de module —, et le fait
+ * que l'écran dise **à l'écran** ce que valent ses deux chiffres, avec les
+ * textes réellement livrés. Les cas de `tests/admin.test.ts` rendent des clés ;
+ * ici, c'est la phrase que lit un être humain.
+ */
+test('le back-office sert les revenus au compte désigné, en disant ce qu’ils valent', async ({
+  page,
+  browser,
+}) => {
+  await aSignedInSuperadmin(page)
+
+  // L'entrée est **dérivée du registre** : elle est déclarée par le module de
+  // facturation, et c'est par elle qu'on arrive sur l'écran.
+  await page.goto(publicPath('/admin/users'))
+  await page.getByRole('link', { name: 'Revenus', exact: true }).click()
+
+  await expect(page.getByRole('heading', { name: 'Revenus', level: 1 })).toBeVisible()
+
+  // **Le statut des deux chiffres**, mot pour mot : l'un est dérivé d'une
+  // déclaration locale, l'autre est ce qui a été prélevé.
+  await expect(page.getByText('config/billing.ts')).toBeVisible()
+  await expect(page.getByText(/réellement prélevés/)).toBeVisible()
+
+  // **La période est une adresse** (critère 4) : elle se clique, elle change
+  // l'URL, et elle survit à un rechargement. C'est ce que mesure un parcours et
+  // qu'aucun rendu en mémoire ne dit — le lien est rendu par le module, mais
+  // l'adresse qu'il porte vient de la page.
+  await page.getByRole('link', { name: '30 derniers jours' }).click()
+
+  await expect(page).toHaveURL(/[?&]period=30d/)
+  await expect(page.getByRole('link', { name: '30 derniers jours' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
+  // Et le récurrent porte toujours ce que la période ne lui fait pas.
+  await expect(page.getByText(/ne s’applique pas à ce chiffre/)).toBeVisible()
+
+  // **Un autre compte, dans un autre contexte** : il n'administre pas, et il ne
+  // distingue pas cet écran d'une URL inventée.
+  const other = await browser.newContext()
+  const stranger = await other.newPage()
+
+  await aSignedInAccount(stranger, 's38-intrus')
+
+  const refused = await stranger.goto(publicPath('/admin/revenue'))
+
+  expect(refused?.status()).toBe(404)
+  // 404, et pas 403 : le second confirmerait que l'écran existe.
+  expect(refused?.status()).not.toBe(403)
+
+  await other.close()
+})
+
 test('le bandeau d’impersonation survit à une navigation complète', async ({ page, browser }) => {
   await aSignedInSuperadmin(page)
   await page.goto(publicPath('/admin/users'))

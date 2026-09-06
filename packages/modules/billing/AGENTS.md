@@ -1,12 +1,21 @@
 # packages/modules/billing — règles locales
 
-Le module de facturation (s19, s20, s22, s24). Il possède les offres, les
+Le module de facturation (s19, s20, s22, s24, s38). Il possède les offres, les
 abonnements, **les achats uniques**, le webhook entrant du fournisseur de
-paiement, **le tunnel de paiement d'un visiteur sans compte** et **l'écran
-public de tarifs** (`PricingTable`). Il ne possède **ni** le gating par offre
-(s21), **ni** les métriques de revenus (s38), **ni** les comptes : créer celui
-d'un paiement invité se fait au point de composition
+paiement, **le tunnel de paiement d'un visiteur sans compte**, **l'écran
+public de tarifs** (`PricingTable`) et, depuis s38, **le calcul du revenu de
+plateforme** (`domain/revenue.ts`). Il ne possède **ni** le gating par offre
+(s21), **ni l'écran** qui affiche ce revenu — il vit dans `admin`, qui possède
+le back-office et sa garde, et qui reçoit un instantané par un port —, **ni** les
+comptes : créer celui d'un paiement invité se fait au point de composition
 (`apps/web/lib/guest-account.ts`), parce que ce module ne connaît pas `auth`.
+
+La ligne d'avant disait que ce module ne possédait « pas les métriques de
+revenus (s38) ». Elle était fausse dans les deux sens dès que la story a été
+écrite : les montants, la partition des états et la normalisation des
+périodicités ne peuvent vivre que là où vivent les offres et les abonnements —
+`admin` ne déclare pas `billing` dans ses `requires` et ne peut donc rien en
+lire. Ce que `admin` possède est l'**écran** et la **garde**.
 
 **Ce qu'il possède de la page de tarifs, exactement** : l'écran
 (`presentation/pricing-table.tsx`), les deux règles qui le nourrissent
@@ -16,6 +25,50 @@ l'application, comme `/billing` : c'est elle qui lit `billing.available`, qui
 résout la session, qui formate le prix dans la langue servie et qui fournit les
 déclencheurs. La ligne d'avant disait que ce module ne possédait « pas la page
 de tarifs publique » ; elle était vraie avant s22 et fausse après.
+
+## Le revenu de plateforme (s38)
+
+**Les deux moitiés de ce calcul n'ont pas le même statut, et c'est structurel** :
+
+- le **récurrent** est *estimé*. `billing_subscription` ne stocke **aucun**
+  montant — `offer_id`, `price_id`, `status`, `quantity` —, si bien que les euros
+  viennent de `config/billing.ts`, dont l'en-tête dit lui-même que « `priceId`
+  est ce qui fait foi, `amount` et `currency` ne servent qu'à l'affichage » ;
+- le **ponctuel** est *constaté* : `billing_purchase.amount` est « ce qui a été
+  réellement prélevé ».
+
+Les deux ne sont **jamais additionnées**, ni entre elles, ni entre devises.
+`revenueSnapshotOf` tient deux accumulateurs séparés, et chacun est groupé par
+devise : un total inter-devises est faux dans les deux devises sans que rien ne
+le montre.
+
+| Invariant de s38 | Comment il est tenu | Ce qui échoue si on le casse |
+|---|---|---|
+| **Une offre annuelle vaut un douzième par mois, et `quantity` multiplie** | `monthlyAmountOf`, fonction pure, `interval` **typé** (un achat unique ne peut pas y entrer) | `domain/revenue.test.ts` ; mesuré : retirer la division par douze rougit 2 cas |
+| **Un intervalle de plus force une décision** | `MONTHS_PER_INTERVAL` est `satisfies Record<BillingInterval, number>` : le compilateur refuse un intervalle non classé, et la boucle du test rend `NaN` sur lui. Avant s38-fix, `interval === 'year' ? … : total` traitait en silence tout ce qui n'est pas annuel comme mensuel | `pnpm typecheck` **et** `domain/revenue.test.ts` ; mesuré : ajouter `'quarter'` à `BILLING_INTERVALS` produit 2 erreurs de compilation (nommant `revenue.ts`) et 1 cas rouge — avant le correctif, la suite entière restait verte |
+| **La composition est valorisée contre des lignes stockées** | l'offre est résolue **par le prix**, l'intervalle vient d'elle, la quantité multiplie — et c'est `application/billing-use-cases.ts` qui le câble, pas le `domain` | `tests/billing.test.ts` (« valorise chaque abonnement par le prix stocké, son intervalle et sa quantité ») ; mesuré : résoudre l'offre par un prix inexistant rougit 1 cas, coder l'intervalle en dur à `'month'` 1 cas — **les deux laissaient la suite entière verte avant s38-fix**, toutes les mutations ayant été posées dans le `domain`, où la composition n'est pas |
+| **La période ne borne que le constaté** | `platformPaidPurchases` reçoit un début de période, `platformSubscriptions` n'en reçoit aucun : un achat a une date d'encaissement, le parc d'abonnements n'a aucun instantané daté | `tests/billing.test.ts` (« borne les achats à la période demandée, sans toucher au récurrent ») ; mesuré : ignorer la période rougit 1 cas |
+| **Une période inconnue retombe sur le défaut, jamais en 500** | `parseRevenuePeriod`, Zod à la frontière ; la période **retenue** revient dans l'instantané, si bien que l'écran marque comme courante celle qui a servi à lire | `domain/revenue.test.ts` et `tests/billing.test.ts` |
+| **Un achat unique n'entre jamais dans le récurrent** | deux accumulateurs, deux types d'entrée. Rien dans le schéma ne l'interdit — `billing_purchase` n'a ni statut d'abonnement ni fin de période —, c'est une décision de calcul | `domain/revenue.test.ts` ; mesuré : verser les achats dans le seau du récurrent rougit 2 cas |
+| **Aucun total inter-devises** | le groupement est la forme de sortie, pas une mise en forme laissée à l'appelant | `domain/revenue.test.ts` ; mesuré : un seau unique rougit 2 cas |
+| **Un état d'affichage non classé est refusé** | `revenueContributionOf` **lève** en nommant l'état ; `satisfies Record<BillingDisplayState, …>` refuse à la compilation. Un `?? 'inactive'` ferait disparaître du revenu en silence | `domain/revenue.test.ts` ; mesuré : replier sur `inactive` rougit 1 cas, classer `past_due` comme comptant en rougit 1 |
+| **Ce qu'on ne sait pas valoriser est compté à part, jamais à zéro** | `recurringUnvalued` et `oneTimeUnvalued`, portés jusqu'à l'écran | `domain/revenue.test.ts` |
+| **La lecture est à l'échelle de la plateforme, et aucun appel au fournisseur** | `platformSubscriptions` et `platformPaidPurchases` prennent un `PlatformScope` en **premier** paramètre, écrit au seul point de composition ; l'état local fait foi (ADR 034, ADR 046) | `tests/billing.test.ts` (« le revenu de la plateforme ») ; mesuré : borner la lecture à une ligne rougit 1 cas, retirer le filtre `paid` en rougit 1 |
+
+**Ce que cette lecture ne fait pas**, dit plutôt que sous-entendu : elle ne
+pagine pas — l'état d'affichage d'un abonnement se dérive (statut, annulation
+programmée, terme d'essai, instant présent), ce que SQL ne sait pas calculer sans
+recopier `displayStateOf` —, et le **récurrent** ne rend que l'état courant :
+aucun instantané daté du parc n'est stocké, donc aucun historique n'est dérivable
+sans une table de plus.
+
+**La période, et la moitié à laquelle elle s'applique** (critère 4). Le
+vocabulaire vit ici — `REVENUE_PERIODS`, avec le début de chacune —, parce que
+c'est ici que vivent les dates. Il traverse le port du back-office en `string` :
+`admin` n'en lit que la forme, jamais le sens. Et il ne borne que
+`billing_purchase`, qui porte `purchased_at` ; borner les abonnements par une
+date rendrait un nombre dont aucune donnée ne répond, et l'écran dit à côté du
+récurrent que la période ne le concerne pas.
 
 ## Ce qu'il faut savoir avant d'y toucher
 

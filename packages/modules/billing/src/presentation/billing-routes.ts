@@ -50,6 +50,16 @@ export const BILLING_SCREEN_PATH = '/billing'
 export const PRICING_SCREEN_PATH = '/pricing'
 
 /**
+ * **L'écran de revenus du back-office** (s38), servi par l'application.
+ *
+ * Le chemin vit ici, avec le module qui porte les montants, exactement comme
+ * `ADMIN_ORGANIZATIONS_SCREEN_PATH` vit dans `organizations` : c'est ce qui
+ * fait disparaître l'écran **avec la facturation** sans qu'aucun fichier du
+ * back-office ne nomme ce module.
+ */
+export const ADMIN_REVENUE_SCREEN_PATH = '/admin/revenue'
+
+/**
  * Ce que le navigateur a le droit d'envoyer pour ouvrir un checkout : **un
  * identifiant d'offre, et rien d'autre**.
  *
@@ -296,5 +306,25 @@ export const billingNavigation: readonly NavigationEntry[] = [
     labelKey: 'navigation.billing',
     order: 40,
     protection: { level: 'authenticated' },
+  },
+  {
+    /**
+     * **L'entrée du back-office** (s38), déclarée **ici** et pas là-bas.
+     *
+     * C'est ce qui la fait disparaître avec ce module sans qu'aucun fichier du
+     * back-office ne nomme `billing` : le registre n'agrège que les modules
+     * activés, et la navigation de la surface `admin` en est dérivée (ADR 067).
+     * La même forme que l'entrée « organisations » de s37b2.
+     *
+     * `authenticated` comme les autres entrées de cette surface : le rôle de
+     * plateforme ne vit pas dans `ModuleSession.roles`, et la surface `admin`
+     * n'est lue que par un écran que sa garde a déjà autorisé.
+     */
+    id: 'admin-revenue',
+    href: ADMIN_REVENUE_SCREEN_PATH,
+    labelKey: 'navigation.adminRevenue',
+    order: 30,
+    protection: { level: 'authenticated' },
+    surface: 'admin',
   },
 ]
