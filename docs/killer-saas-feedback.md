@@ -1223,6 +1223,28 @@ désormais que le mécanisme d'anonymisation soit éprouvé *même si aucun modu
 socle ne le déclare* — sans quoi la story aurait livré un balayage vide. C'est le
 point : on corrige la prémisse, on ne supprime pas la difficulté.
 
+## P29 — Une règle écrite deux fois et enfreinte trois fois demande une commande, pas une troisième écriture
+
+**Mesuré sur la séance du 05-06/09.** Le même défaut a rougi la CI **trois fois**, dans trois stories différentes, toujours au même endroit : un fichier de `tests/` atteint `resolveAuthConfig` — par `appAuth()` ou par un point de composition — sans déclarer `AUTH_SECRET` et `APP_URL`. Le `.env` du worktree les fournit, le job de CI non.
+
+- **s32** : le garde ajouté en ronde 3 pour fermer une vacuité était lui-même vert par accident d'environnement.
+- **s34** : évité de justesse, parce que le garde de câblage a été écrit en **lisant la source** plutôt qu'en bootant la composition.
+- **s35** : le fichier entier tombe en **échec de suite**, donc tous ses cas — y compris ceux qui portent la signature avant effet et le schéma comme garde de production.
+
+**Le dépôt porte pourtant la leçon deux fois** : `AGENTS.md` (« le harnais déclare ce dont il a besoin, jamais le `.env` d'un poste », P9, après s18 et s19) et P25bis (après s32). Et un précédent exécutable existe, dans `tests/admin.test.ts`, qui énonce la règle dans le fichier lui-même en citant la revue de s06.
+
+**Trois écritures, trois infractions.** C'est la démonstration de la règle du dépôt appliquée à elle-même : *une règle qu'aucune commande ne vérifie est de la documentation.* Écrire P29 ne la fera pas mieux respecter que P9 et P25bis.
+
+**Ce qui mordrait, et personne ne l'a écrit :**
+
+1. **Un garde dérivé** — pour chaque fichier de `tests/` qui atteint `apps/web/lib/auth-config` (directement ou par la fermeture transitive de ses imports), exiger qu'il déclare les variables que le résolveur lit. La liste des variables est déjà dérivable : `resolveAuthConfig` les nomme. C'est le même patron que le garde de câblage de s34, qui lit la source plutôt que d'exécuter.
+2. **Ou une recette** : `pnpm test:sans-env`, qui rejoue la suite sans fichier `.env` et avec la seule `DATABASE_URL`. C'est la forme CI, et P25bis a montré que désarmer les variables ne la reproduit pas — `loadRootEnv()` relit le fichier.
+
+La seconde est plus honnête : elle **mesure** au lieu de deviner ce qui sera lu. Elle coûte une exécution de suite de plus, et elle transforme « je crois que ça passe en CI » en commande.
+
+**Non implémenté.** C'est une story, pas un correctif de fin de ronde — mais c'est la proposition la mieux étayée de ce document, parce que son coût d'inaction est mesuré : trois rouges de CI, trois allers-retours d'agent, sur trois stories consécutives.
+
+
 
 
 
@@ -1607,6 +1629,7 @@ point : on corrige la prémisse, on ne supprime pas la difficulté.
 | 05/09 | La CI casse exactement à l'endroit que la revue avait nommé comme non vérifié | diagnostic en deux minutes au lieu d'une instruction depuis zéro | P26 |
 | 05/09 | Le premier job à la demande doit déclarer une cadence dont il ne veut pas, et l'adaptateur l'arme quotidiennement à vide | non-opérant documenté, tenu par deux gardes | P27bis |
 | 05/09 | Un critère RGPD dont aucune catégorie de la configuration livrée n'est satisfaisante — deuxième fois après s48 | critère corrigé sur mesure, et l'exigence maintenue par un module de test | P28 |
+| 06/09 | Troisième rouge de CI sur la même cause : un test atteint la configuration d'authentification sans la déclarer | correctif par story, la règle est écrite deux fois et n'a pas suffi | P29 |
 
 ---
 
