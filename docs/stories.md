@@ -1658,3 +1658,29 @@ s30-docs-site
 Sortie de s30 le 05/09, avant d'écrire son plan : les deux critères partagent une **passe croisée sur l'ensemble du contenu au build** que le reste de s30 n'a pas besoin de construire. s29 valide chaque fichier isolément (frontmatter Zod, refus nommant le fichier) et ne croise jamais deux fichiers — c'est ce mécanisme-là qui est neuf.
 **Piège de sécurité** : si la recherche passe par une route, `docs/security.md` impose la limitation de débit sur tout point d'entrée public servi par le répartiteur (ADR 050), et `routeIsRateLimited` la pose sans qu'elle le déclare. Un index statique interrogé côté client l'évite entièrement — argument de plus pour le build, en plus du temps de réponse.
 **Piège de taille** : un index servi au client est téléchargé par chaque visiteur. Le critère ne fixe pas de plafond ; le plan devrait en poser un et le mesurer, sinon la promesse « sans service externe » se paie ailleurs.
+
+---
+
+## Story s56-roles-de-session — Servir une route réservée à un rôle
+**As a** Dev **I want** que le niveau de protection `role` soit satisfaisable **so that** une route ou une entrée réservée à un rôle serve réellement celui qui le porte.
+
+> **Ajoutée le 06/09, sur une mesure faite pendant `s37b2`.** `ModuleSession.roles` vaut `[]`, **écrit en dur** (`packages/modules/auth/src/infrastructure/better-auth-service.ts:1155`), sous un commentaire annonçant que « les rôles arriveront avec s17 » — `s17` est livrée depuis longtemps. Or `packages/core/src/protection.ts:44` décide l'accès d'une protection `role` en interrogeant ce tableau : **le niveau refuse donc tout le monde, partout**. Ce n'est pas une faille — le produit refuse trop, jamais trop peu — mais c'est un mécanisme déclaré que rien ne peut satisfaire, et deux modules l'utilisent déjà.
+
+### Complexity
+2
+
+### Acceptance criteria
+- [ ] `ModuleSession.roles` est **peuplé à partir de l'état réel du compte**, et le point qui le peuple est unique ; un test le mesure sur la session servie, pas sur la fonction qui la construit
+- [ ] Une route déclarant `protection: { level: 'role', role: … }` est **servie** au porteur du rôle et répond **404** à qui ne le porte pas — jamais 403, qui confirmerait son existence
+- [ ] Une entrée de navigation déclarant le même niveau est rendue pour le porteur et absente pour les autres, mesurée sur le rendu et non sur le registre
+- [ ] Les routes `role` du module de démonstration sont exercées **de bout en bout**, avec un compte qui porte le rôle et un compte qui ne le porte pas
+- [ ] Un rôle retiré cesse d'ouvrir la route **sans nouvelle connexion** — la révocation s'applique côté serveur (`docs/security.md`)
+- [ ] **Module `admin` coupé** : aucune route `role` ne devient accessible par défaut ; l'absence de rôle refuse, elle n'ouvre pas
+
+### Dependencies
+s17-roles-permissions, s37b1-decompte-et-impersonation
+
+### Agentic notes
+**Le piège est le sens du défaut** : un tableau vide qui refuse tout est confortable, et c'est pourquoi personne ne l'a vu pendant huit stories. Le correctif inverse la charge — à partir de là, une erreur de peuplement **ouvre** au lieu de fermer. Chaque critère doit donc porter son cas négatif, et la revue mutera dans ce sens-là.
+`packages/modules/organizations/src/domain/permissions.ts:14` prend soin de dire que les permissions d'organisation ne sont **pas** ce niveau-là : ne pas les confondre. Ce qui peuple `roles`, ce sont les rôles de **plateforme** (`admin_platform_role`), pas l'appartenance à une organisation.
+`s37b2` a mesuré la conséquence côté produit : le back-office n'est atteignable que par URL, faute d'entrée de navigation qui puisse être rendue.

@@ -1268,6 +1268,23 @@ La seconde est plus honnête : elle **mesure** au lieu de deviner ce qui sera lu
 
 ---
 
+## P38bis — Un défaut qui refuse trop ne se voit pas : huit stories l'ont traversé
+
+`ModuleSession.roles` vaut `[]`, écrit en dur, sous un commentaire annonçant que « les rôles arriveront avec `s17` ». `s17` est livrée depuis longtemps. `packages/core/src/protection.ts:44` décide pourtant l'accès d'une protection `role` en interrogeant ce tableau : **le niveau refuse tout le monde, partout**, et deux modules le déclarent déjà.
+
+Personne ne l'a vu — ni les huit stories écrites depuis, ni leurs revues, ni les recettes. La raison est structurelle, et elle vaut plus que le défaut : **le produit refusait trop, jamais trop peu**. Une garde trop stricte ne produit aucun symptôme observable — pas d'erreur, pas de fuite, pas de test rouge. Elle produit une absence, et une absence ressemble à un choix.
+
+Ce qui l'a trouvé n'est pas une relecture : c'est `s37b2` qui, voulant poser une entrée de navigation vers le back-office, a **mesuré** que `roles` était toujours vide et a renoncé à l'entrée plutôt que de livrer un lien invisible. Le défaut s'est révélé au moment où quelqu'un a essayé de s'en servir.
+
+**Deux règles en sortent.**
+
+1. **Un commentaire qui promet une story future se périme sans bruit.** Celui-ci nommait `s17` ; `s17` a livré autre chose (les permissions d'organisation, qui ne sont délibérément pas ce niveau-là) et personne n'est revenu. Une promesse dans un commentaire n'a pas de commande qui la vérifie — c'est de la documentation, exactement au sens que ce dépôt refuse. Ce qu'il fallait, c'était un test disant *« une route `role` est servie à son porteur »*, qui aurait rougi dès le premier jour.
+2. **Le correctif inverse la charge, et c'est le vrai risque.** Tant que le tableau est vide, une erreur ferme. Dès qu'il est peuplé, une erreur **ouvre**. La story qui répare (`s56`, ajoutée le 06/09) doit donc porter son cas négatif sur chaque critère, et sa revue muter dans ce sens — c'est le moment où le dépôt est le plus exposé, pas celui d'avant.
+
+**À chercher ailleurs** : toute garde dont l'échec est une absence — une entrée qui ne s'affiche pas, une route qui répond 404, un envoi qui ne part pas. Les trois se confondent avec une décision de conception, et aucune ne rougit.
+
+---
+
 ## P36bis — La revue lit le code, elle ne mesure pas son coût : c'est CodeQL qui a trouvé
 
 `s39` a livré `POST /analytics/client-error`, **volontairement non authentifiée** — il faut capter les erreurs d'avant-session. Le corps est donc choisi par un appelant anonyme, et il traverse un analyseur de trace de pile écrit en expression régulière.
@@ -1768,6 +1785,7 @@ C'est la **troisième** occurrence du même défaut dans ce même fichier : une 
 | 06/09 | Un attendu dérivé des deux côtés ne rougit plus quand on retire ce qu'il mesure | prise rendue au fichier : toute adresse annoncée doit être servie | P35bis |
 | 06/09 | CodeQL trouve un ReDoS haute sévérité sur une route publique anonyme, après trois lectures humaines | 4 Ko de requête, 43,9 s de CPU ; borne d'entrée + analyseur linéaire | P36bis |
 | 06/09 | Deadlock PostgreSQL entre deux processus de test : la suppression ne prend pas le verrou que la production prend | écrite comme dette, non corrigée depuis la branche voisine | P37bis |
+| 06/09 | `ModuleSession.roles` vide depuis huit stories : le niveau de protection `role` refuse tout le monde | trouvé en voulant s'en servir, story s56 ajoutée | P38bis |
 
 ---
 
