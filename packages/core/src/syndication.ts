@@ -252,3 +252,146 @@ export function robotsAllows(policy: RobotsPolicy, pathname: string): boolean {
     longestMatch(policy.rules.disallow, pathname)
   )
 }
+
+/* ------------------------------------------------------------------------- *
+ * Le flux — **RSS 2.0**, écrit ici et nulle part ailleurs (s31, ADR 065).
+ *
+ * Il vivait dans le `domain` du module `blog` (s53), qui était le seul à en
+ * avoir un. Le changelog en réclame un aussi, et le laisser là-bas lui aurait
+ * imposé `requires: ['blog']` : un produit qui coupe le blog aurait perdu ses
+ * nouveautés. Il est monté ici, à côté du plan de site et de la politique des
+ * robots — c'est la même famille, la syndication du contenu public, et
+ * `@repo/core` est ce que tout module a déjà le droit d'importer.
+ *
+ * Pure : des entrées entrent, un document sort. Aucune lecture de disque,
+ * aucune URL absolue construite ici — l'appelant fournit les liens, comme le
+ * plan de site reçoit les siens.
+ *
+ * **Pourquoi RSS 2.0 et pas Atom** : c'est le format qu'un lecteur de flux, un
+ * agrégateur ou une lettre d'information sait consommer sans exception, et le
+ * seul que les stories nomment. Un second format serait une seconde surface à
+ * tenir.
+ *
+ * **Pourquoi aucune bibliothèque de génération** : le document tient en une
+ * douzaine de balises, et une dépendance d'exécution de plus en est une de plus
+ * dans l'image de production. Le prix de ce choix est l'échappement, qui est la
+ * seule chose qu'un générateur ferait mieux — il est donc mesuré ici, et le
+ * document **servi** est passé à un analyseur de flux tiers
+ * (`@rowanmanning/feed-parser`) par `tests/blog.test.ts` et
+ * `tests/changelog.test.ts`.
+ *
+ * **Ce que cette mesure prouve, et ce qu'elle ne prouve pas.** L'analyseur se
+ * décrit lui-même comme *resilient* : il **lève** sur un document qui n'est pas
+ * un flux, et il **accepte** un `<channel>` sans titre, sans lien et sans
+ * description. Il établit donc « analysable comme flux », pas « valide au sens
+ * d'un validateur » — le dépôt n'embarque aucun validateur, et cette limite est
+ * elle-même un cas de `tests/blog.test.ts` pour qu'aucune relecture ne la
+ * regonfle. La conformité au format, elle, se vérifie en lisant la
+ * spécification : c'est ce qui a fait choisir `dc:creator` ci-dessous.
+ * ------------------------------------------------------------------------- */
+
+export interface FeedItem {
+  readonly title: string
+  readonly description: string
+  /** L'URL absolue de l'entrée, dans la langue du flux. */
+  readonly url: string
+  /** Date de publication, `AAAA-MM-JJ`. */
+  readonly date: string
+  /**
+   * Le nom d'affichage de l'auteur, **facultatif**.
+   *
+   * Un article de blog en a un ; une entrée de changelog n'en a pas — elle
+   * appartient à une version du produit, pas à quelqu'un. Absent, aucune balise
+   * n'est écrite : un `<dc:creator>` vide serait une signature attribuée à
+   * personne, que les agrégateurs affichent telle quelle.
+   */
+  readonly author?: string
+}
+
+export interface FeedInput {
+  readonly title: string
+  readonly description: string
+  readonly locale: string
+  /** L'URL absolue de la page correspondante, dans la langue du flux. */
+  readonly siteUrl: string
+  /** L'URL absolue du flux lui-même : RSS demande qu'il se désigne (`atom:link`). */
+  readonly feedUrl: string
+  readonly items: readonly FeedItem[]
+}
+
+/**
+ * L'échappement XML, appliqué à **toute** valeur du document.
+ *
+ * Les cinq entités prédéfinies de XML 1.0 §4.6. Un titre est du texte libre
+ * écrit dans un fichier `.mdx` : un `&` non échappé suffit à rendre le document
+ * illisible pour tout analyseur, et un `<` y ouvrirait une balise.
+ */
+const escapeXml = (value: string): string =>
+  value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&apos;')
+
+/**
+ * La date au format que RSS 2.0 exige (RFC 822, via RFC 1123).
+ *
+ * `toUTCString()` de la plateforme rend exactement cette forme. La date d'une
+ * entrée est un **jour de calendrier** : elle est lue à midi UTC pour qu'aucun
+ * décalage horaire de lecteur ne la fasse basculer sur la veille.
+ */
+const rfc822 = (date: string): string => new Date(`${date}T12:00:00Z`).toUTCString()
+
+/**
+ * Le flux, entrées du plus récent au plus ancien.
+ *
+ * L'ordre n'est pas cosmétique : un lecteur de flux affiche le document tel
+ * qu'il le reçoit, et un flux qui commence par l'entrée la plus ancienne montre
+ * du vieux contenu en tête à chaque visite.
+ */
+export function renderFeed(input: FeedInput): string {
+  const items = [...input.items]
+    .sort((left, right) => right.date.localeCompare(left.date))
+    .map((item) =>
+      [
+        '    <item>',
+        `      <title>${escapeXml(item.title)}</title>`,
+        `      <link>${escapeXml(item.url)}</link>`,
+        // `isPermaLink="true"` : l'identifiant **est** l'adresse. Un lecteur
+        // dédoublonne dessus, et une valeur qui changerait d'une lecture à
+        // l'autre republierait chaque entrée à chaque fois.
+        `      <guid isPermaLink="true">${escapeXml(item.url)}</guid>`,
+        `      <description>${escapeXml(item.description)}</description>`,
+        // **`dc:creator`, et non `<author>`** : RSS 2.0 définit
+        // `<item><author>` comme l'**adresse email** de l'auteur
+        // (`<author>lawyer@boyer.net (Lawyer Boyer)</author>`), et un nom nu y
+        // vaut `InvalidContact` au validateur de flux du W3C. Le frontmatter
+        // d'un article porte un nom d'affichage ; la seule façon de tenir
+        // `<author>` serait d'inventer une adresse, c'est-à-dire de publier une
+        // boîte aux lettres dans un document que des robots moissonnent.
+        // `dc:creator` est la convention prévue pour un nom seul, et son espace
+        // de noms est déclaré sur `<rss>`.
+        ...(item.author === undefined
+          ? []
+          : [`      <dc:creator>${escapeXml(item.author)}</dc:creator>`]),
+        `      <pubDate>${rfc822(item.date)}</pubDate>`,
+        '    </item>',
+      ].join('\n'),
+    )
+
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:dc="http://purl.org/dc/elements/1.1/">',
+    '  <channel>',
+    `    <title>${escapeXml(input.title)}</title>`,
+    `    <link>${escapeXml(input.siteUrl)}</link>`,
+    `    <description>${escapeXml(input.description)}</description>`,
+    `    <language>${escapeXml(input.locale)}</language>`,
+    `    <atom:link href="${escapeXml(input.feedUrl)}" rel="self" type="application/rss+xml"/>`,
+    ...items,
+    '  </channel>',
+    '</rss>',
+    '',
+  ].join('\n')
+}

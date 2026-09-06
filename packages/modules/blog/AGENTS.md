@@ -26,7 +26,12 @@ défaut que la confusion inverse a déjà coûté au dépôt.
 
 ## Imports autorisés
 
-- `@repo/core` pour le contrat de module et la qualification des clés ;
+- `@repo/core` pour le contrat de module, la qualification des clés et le
+  **constructeur de flux** (`renderFeed`) : il vivait dans le `domain` de ce
+  module (s53) et est monté au socle en s31 (ADR 065), quand le changelog en est
+  devenu le second consommateur. `renderBlogFeed` n'est plus qu'une enveloppe qui
+  parle d'articles ; ce qu'il reste ici est le vocabulaire du blog, jamais la
+  mécanique RSS ;
 - `@repo/ui` pour la présentation — jamais Radix directement (ADR 022). **C'est
   de là que vient l'échelle de prose** (`PROSE_CLASSNAME`, `proseComponents`) :
   s29 l'avait posée dans ce module, ADR 055 l'a remontée dans le design system

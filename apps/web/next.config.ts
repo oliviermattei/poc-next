@@ -60,6 +60,10 @@ const nextConfig: NextConfig = {
    * seraient couverts par aucun motif `.mdx`. Le même avertissement de traçage
    * est émis pour `lib/docs.ts`, donc la même remarque vaut : l'effet est
    * masqué aujourd'hui, la déclaration ne l'est pas.
+   *
+   * **Les nouveautés (s31) sont déclarées aux mêmes conditions** : leur en-tête
+   * est lu par `node:fs` à l'amorçage (`lib/changelog.ts`), leur corps est
+   * compilé par le bundler. Même assurance, même effet masqué aujourd'hui.
    */
   outputFileTracingIncludes: {
     '/blog': ['../../content/blog/**/*.mdx'],
@@ -69,6 +73,7 @@ const nextConfig: NextConfig = {
       '../../content/docs/**/*.mdx',
       '../../content/docs/**/section.json',
     ],
+    '/changelog': ['../../content/changelog/**/*.mdx'],
   },
 }
 

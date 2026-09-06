@@ -1,11 +1,11 @@
-import { robotsAllows, type RobotsPolicy } from '@repo/core'
+import { robotsAllows, type IndexableUrl, type RobotsPolicy } from '@repo/core'
 import { legalPath, marketingModule } from '@repo/module-marketing'
 import { expect, test } from '@playwright/test'
 
-import { blogCatalog } from '../apps/web/lib/blog'
-import { docsCatalog } from '../apps/web/lib/docs'
+import { localeRouting } from '../apps/web/lib/locale-routing'
 import { marketingSite } from '../apps/web/lib/marketing'
 import { flatMessagesFor } from '../apps/web/lib/messages'
+import { publicUrls, servedPath } from '../apps/web/lib/public-urls'
 import { defaultLocale } from '../config/i18n'
 import { publicPath, urlOf } from './support/locale'
 
@@ -20,9 +20,17 @@ import { publicPath, urlOf } from './support/locale'
  * question de FAQ.
  *
  * **Il doit passer dans les deux états de configuration.** Ses attentes sont
- * donc dérivées de `marketingSite`, jamais recopiées — même discipline que
- * `e2e/modules.spec.ts` avec le registre et `e2e/i18n.spec.ts` avec la forme
- * des URL.
+ * donc dérivées — de `marketingSite` pour les écrans, du **registre** pour ce
+ * qui est publié —, jamais recopiées : même discipline que `e2e/modules.spec.ts`
+ * avec le registre et `e2e/i18n.spec.ts` avec la forme des URL.
+ *
+ * **Et il doit passer sans être rouvert au module suivant.** La liste des URL
+ * publiques a été écrite ici jusqu'à s31, qui en a ajouté une : l'intégration
+ * continue est passée au rouge sur les deux branches de la matrice, dans un
+ * fichier qu'aucune commande locale ne joue — ni `pnpm test`, ni
+ * `pnpm test:minimal-profile`, ni `pnpm test:sans-env` ne le collectent. Une
+ * liste écrite dans `e2e/` est un défaut qui attend la story suivante, et il
+ * coûte un aller-retour de CI à chaque fois.
  */
 
 const catalogue = flatMessagesFor(defaultLocale)
@@ -30,29 +38,44 @@ const publicSite = marketingSite.sections.length > 0
 
 /**
  * **Le plan de site n'est plus celui du seul site public** (s53) : chaque
- * module activé y contribue ce qu'il publie. Les attentes sont donc dérivées
- * des **sources** — la configuration marketing et les articles lus sur le
- * disque —, jamais de la dérivation elle-même, qui est ce que ce fichier juge.
+ * module activé y contribue ce qu'il publie, par la quinzième clé du contrat.
+ * L'attente est donc **dérivée du registre**, et aucun module n'est nommé ici.
+ *
+ * Ce fichier a énuméré ses attentes module par module — la configuration
+ * marketing, les articles du disque, l'arbre de la documentation — jusqu'à ce
+ * que s31 en ajoute un treizième : l'intégration continue est passée au rouge
+ * sur une liste écrite, sur les deux branches de la matrice, dans le seul
+ * fichier qu'aucune commande locale ne joue. Le commentaire d'à côté refusait
+ * déjà de figer l'**ordre** du graphe des modules ; il en figeait le contenu.
+ *
+ * **Ce que cette dérivation ne peut plus prouver, et où c'est prouvé.** Les
+ * deux côtés de l'égalité viennent maintenant de `publicUrls()` : retirer la
+ * contribution d'un module rend ce cas vert, puisque l'attente la perd aussi.
+ * Ce lien-là — « ce que le module déclare correspond à ce qu'il sert » — est
+ * mesuré contre les catalogues réellement lus sur le disque par
+ * `tests/syndication.test.ts`, et la règle de fusion par
+ * `packages/core/src/syndication.test.ts`. Ce qui ne se prouve **que** ici, et
+ * qui est donc ce que ce fichier garde : le fichier est servi par Next, ses
+ * `<loc>` portent la forme publique de la langue, il en porte **un par
+ * contribution et rien d'autre**, et chaque adresse annoncée répond
+ * réellement.
  */
-const blogUrls = blogCatalog.index === null ? [] : [publicPath(blogCatalog.index.path)]
+const contributed = publicUrls()
 
 /**
- * **La documentation contribue à son tour** (s30), et elle diffère du blog sur
- * un point : une page non traduite est **servie** dans la langue par défaut, si
- * bien que chaque page est annoncée dans toutes les langues. Les URL sont donc
- * celles de l'arbre **canonique**, sans filtre de langue — filtrer sur
- * `defaultLocale` comme pour les articles serait ici la même chose par accident,
- * et faux dès qu'une page n'existerait qu'en traduction.
+ * Les formes publiques d'une contribution — une par langue **servie**.
+ *
+ * `servedPath` et non `publicPath` : un chemin qui ne prend pas de préfixe de
+ * langue (`/api…`) n'en reçoit pas ici non plus, exactement comme
+ * `app/robots.ts` le construit.
  */
-const docsUrls =
-  docsCatalog.index === null
-    ? []
-    : [
-        publicPath(docsCatalog.index.path),
-        ...docsCatalog.pages
-          .filter((page) => page.locale === docsCatalog.index?.defaultLocale)
-          .map((page) => publicPath(`${docsCatalog.index?.path ?? '/docs'}/${page.section}/${page.slug}`)),
-      ]
+const servedFormsOf = (entry: IndexableUrl): readonly string[] =>
+  entry.locales
+    .filter((locale) => localeRouting.locales.includes(locale))
+    .map((locale) => servedPath(entry.path, locale))
+
+/** Toutes les adresses qu'un robot doit pouvoir suivre, dédoublonnées. */
+const announcedPaths = [...new Set(contributed.flatMap(servedFormsOf))]
 
 /** Le texte attendu à l'écran, lu dans le catalogue de la langue servie. */
 const text = (key: string): string => {
@@ -64,20 +87,6 @@ const text = (key: string): string => {
 
   return value
 }
-
-/** Les URL publiques attendues, dans la langue par défaut. */
-const publicUrls = [
-  ...marketingSite.publicPaths.map((pathname) => publicPath(pathname)),
-  ...blogUrls,
-  ...[
-    ...new Set(
-      blogCatalog.articles
-        .filter((article) => article.locale === defaultLocale)
-        .map((article) => publicPath(`${blogCatalog.index?.path ?? '/blog'}/${article.slug}`)),
-    ),
-  ],
-  ...docsUrls,
-]
 
 /**
  * Des chemins que **rien** ne doit ouvrir à un robot, quel que soit l'état du
@@ -95,17 +104,67 @@ test('le plan de site référence exactement les pages publiques', async ({ requ
 
   const body = await response.text()
   const locations = [...body.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1] ?? '')
+  const servedPaths = locations.map((url) => new URL(url).pathname)
 
-  // Comparaison par ensemble : l'ordre suit celui du graphe des modules, que ce
-  // fichier n'a pas à figer.
-  expect([...locations.map((url) => new URL(url).pathname)].sort()).toEqual(
-    [...publicUrls].sort(),
-  )
+  // **Une adresse par contribution, et rien d'autre.** Ni l'ordre — il suit
+  // celui du graphe des modules —, ni la liste ne sont figés ici : les deux se
+  // dérivent du registre, si bien qu'un module de plus n'ouvre pas ce fichier.
+  expect(servedPaths).toHaveLength(contributed.length)
 
-  // Aucun module ne publie rien : le fichier ne référence **rien**.
-  if (!publicSite && blogCatalog.index === null && docsCatalog.index === null) {
+  for (const entry of contributed) {
+    const forms = servedFormsOf(entry)
+
+    // **Une** des formes servies, jamais laquelle : désigner la canonique
+    // reviendrait à recopier la règle de `sitemapEntries`, qui est éprouvée
+    // chez elle (un article traduit dans une seule langue n'a pas d'URL dans
+    // l'autre, et la donner pour canonique annoncerait un 404).
+    expect(
+      servedPaths.filter((pathname) => forms.includes(pathname)),
+      entry.path,
+    ).toHaveLength(1)
+  }
+
+  for (const pathname of servedPaths) {
+    expect(announcedPaths, pathname).toContain(pathname)
+  }
+
+  // Aucun module ne publie rien : le fichier ne référence **rien**. La
+  // condition est dérivée elle aussi — l'écrire « site public coupé, blog
+  // coupé, documentation coupée » était la même liste, un cran plus bas.
+  if (contributed.length === 0) {
     expect(locations).toEqual([])
   }
+})
+
+test('chaque adresse annoncée est réellement servie', async ({ request }) => {
+  // **Le balayage vide se dit**, il ne passe pas en vert : une configuration qui
+  // ne publie rien rendrait ce cas vrai sur zéro adresse, et le rapport le
+  // montrerait « passé ». Sauté, il se lit.
+  test.skip(announcedPaths.length === 0, 'Aucun module activé ne publie d’adresse.')
+
+  // Ce que le plan de site engage : ce qu'il donne à un moteur existe. Un
+  // chemin contribué que l'application ne sert pas — préfixe de langue de
+  // travers, page retirée sans sa contribution — n'apparaît nulle part
+  // ailleurs : le nœud ne voit pas le routeur de Next, et la comparaison
+  // ci-dessus dérive des deux côtés du même registre. C'est la seule assertion
+  // de ce fichier qu'un défaut de contribution fait rougir.
+  //
+  // **Redirections suivies**, et c'est une mesure : `/fr/docs` répond 307 vers
+  // la première page de l'arbre (s30). Ce qui est engagé n'est donc pas « cette
+  // adresse répond 200 du premier coup » mais « elle mène à une page » — un
+  // chemin contribué que personne ne sert finit en 404, redirections comprises.
+  //
+  // En parallèle : ces adresses se comptent en dizaines, et les demander une à
+  // une ferait de ce cas le plus lent du fichier pour rien — le serveur les
+  // sert déjà de front.
+  const served = await Promise.all(
+    announcedPaths.map(async (pathname) => ({
+      pathname,
+      status: (await request.get(pathname)).status(),
+    })),
+  )
+
+  expect(served.filter((entry) => entry.status !== 200)).toEqual([])
 })
 
 /**
@@ -148,7 +207,7 @@ test('le robots.txt n’ouvre que les pages publiques', async ({ request }) => {
     expect(robotsAllows(policy, publicPath(pathname)), pathname).toBe(false)
   }
 
-  for (const pathname of publicUrls) {
+  for (const pathname of announcedPaths) {
     expect(robotsAllows(policy, pathname), pathname).toBe(true)
   }
 
@@ -163,7 +222,7 @@ test('le robots.txt n’ouvre que les pages publiques', async ({ request }) => {
   // La ligne `Sitemap:` suit ce qui est publié, plus le seul site public : dès
   // qu'un module contribue une URL, elle réapparaît (s53, ADR 054). Sans
   // contribution, publier une adresse qui ne référence rien n'aurait aucun sens.
-  expect(body.includes('Sitemap:')).toBe(publicUrls.length > 0)
+  expect(body.includes('Sitemap:')).toBe(announcedPaths.length > 0)
 })
 
 test.describe('site public activé', () => {

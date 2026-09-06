@@ -1,11 +1,9 @@
 import { CONSENT_SCRIPT_PROBE_ENABLED, getEnv, type Env } from '@repo/config'
 import {
   CONSENT_COOKIE,
-  CONSENT_SCREEN_PATH,
   consentModule,
   declaredCategories,
   decodeConsentCookie,
-  FOOTER_LINK_KEY,
   provideConsent,
   resolveConsentState,
   type ConsentCategory,
@@ -150,29 +148,6 @@ export const consent: ConsentFeature = {
       provideConsent(() => ({ scripts: declaredScripts() }))
     }
   },
-}
-
-/** Un lien de pied de page, dans la forme que le module `marketing` accepte. */
-export interface ConsentFooterLink {
-  readonly key: string
-  readonly href: string
-  readonly label: string
-}
-
-/**
- * **Le premier point d'accès** : le lien du pied de page du site public.
- *
- * Il est construit ici — donc du côté du socle — et **donné** au module
- * `marketing`, qui ne sait pas ce qu'est le consentement. L'inverse (déclarer
- * la page dans `config/marketing.ts`) ferait disparaître ce point d'accès avec
- * le site public, c'est-à-dire exactement la non-conformité relevée par le
- * finding F57. Le second point d'accès, lui, vit dans les paramètres de compte
- * et ne dépend d'aucun module optionnel.
- */
-export function consentFooterLinks(t: (key: string) => string): readonly ConsentFooterLink[] {
-  return consent.available
-    ? [{ key: 'consent', href: CONSENT_SCREEN_PATH, label: t(FOOTER_LINK_KEY) }]
-    : []
 }
 
 /**

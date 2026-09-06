@@ -908,6 +908,42 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         ]
       : []
 
+    /**
+     * **Les nouveautés** (s31) — la troisième source de contenu par fichier.
+     *
+     * Tout est dérivé du contenu livré, comme pour le blog et la
+     * documentation : les en-têtes viennent du catalogue d'entrées, les corps
+     * sont relus sur le disque par la même fonction que la documentation :
+     * comme elle, une note porte des paragraphes sur plusieurs lignes, que
+     * Markdown réunit en un seul nœud de texte. La version du blog, ligne à
+     * ligne, rougissait dessus en le disant — c'est exactement le cas que son
+     * commentaire annonce.
+     *
+     * La date d'une version est celle de sa dernière entrée, et le libellé de
+     * catégorie vient du catalogue de messages : il n'a donc rien à faire ici.
+     */
+    const { changelogCatalog } = await import('../apps/web/lib/changelog')
+    const { changelogListView, formatChangelogDate } = await import('@repo/module-changelog')
+    const changelogMounted = changelogCatalog.index !== null
+    const changelogView = changelogListView(changelogCatalog, { locale: defaultLocale })
+    const changelogData = changelogMounted
+      ? [
+          ...changelogView.releases.flatMap((release) => [
+            formatChangelogDate(defaultLocale, release.date),
+            ...release.entries.flatMap((entry) => [
+              entry.title,
+              entry.description,
+              ...docsBodyStrings(
+                readFileSync(
+                  join(REPO_ROOT, 'content/changelog', defaultLocale, `${entry.slug}.mdx`),
+                  'utf8',
+                ),
+              ),
+            ]),
+          ]),
+        ]
+      : []
+
     const { featureGates } = await import('../apps/web/lib/feature-gates')
     const { DEMO_PREMIUM_FEATURE } = await import('@repo/module-demo-enabled')
     const premiumGated = featureGates().some((gate) => gate.id === DEMO_PREMIUM_FEATURE)
@@ -1464,6 +1500,18 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           (await import('../apps/web/app/blog/[slug]/page')).default({
             params: Promise.resolve({ slug: BLOG_SLUG }),
           }),
+      },
+      {
+        // s31. Les nouveautés, **publiques**. Elles refusent quand le module
+        // n'est pas monté, et le refus attendu est **dérivé** de l'état du
+        // module, comme pour le blog et la documentation.
+        id: 'nouveautés, la page',
+        file: 'changelog/page.tsx',
+        viewer: ANONYMOUS,
+        refuses: changelogMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        technicalProps: ['contactRecipient', 'newsletterSource', 'slug'],
+        screenData: changelogData,
+        render: async () => (await import('../apps/web/app/changelog/page')).default(),
       },
       {
         // L'entrée de la documentation : elle **redirige** vers la première

@@ -184,10 +184,14 @@ describe('tout est activé : le blog est indexable', () => {
   })
 
   it('n’indexe pas un écran au seul motif que sa navigation est publique', async () => {
-    // La décision de s53, mesurée : la configuration livrée compte **cinq**
-    // entrées de navigation publiques, dont `/sign-in`, `/pricing` et une route
-    // d'API. Les dériver aurait publié l'écran de connexion dans le plan de
-    // site (`docs/security.md` §7). Seule la quinzième clé décide (ADR 054).
+    // La décision de s53, mesurée : la configuration livrée porte des entrées
+    // de navigation publiques que **personne ne contribue au plan de site**,
+    // dont `/sign-in`. Les dériver aurait publié l'écran de connexion
+    // (`docs/security.md` §7). Seule la quinzième clé décide (ADR 054).
+    //
+    // **Leur nombre n'est pas écrit ici** : il valait cinq à l'écriture de ce
+    // cas, huit à la revue de s31, et le cas était resté vert — la liste se
+    // dérive du registre trois lignes plus bas, et c'est elle qui compte.
     const served = await servedFor(['marketing', 'blog', 'billing', 'organizations'])
     const policy = policyOf(served)
     const { moduleRegistry } = await import('../apps/web/lib/module-registry')
@@ -262,6 +266,34 @@ describe('le site public coupé, le blog activé', () => {
 
     expect(pathnamesOf(served)).not.toContain('/fr/contact')
     expect(pathnamesOf(served)).toContain('/fr/blog')
+  })
+})
+
+describe('les nouveautés, troisième contributeur (s31)', () => {
+  it('entrent dans le plan de site et le `robots.txt` sans y être nommées', async () => {
+    const served = await servedFor(['marketing', 'changelog'])
+    const policy = policyOf(served)
+    const { changelogCatalog } = await import('../apps/web/lib/changelog')
+
+    // Garde contre l'inertie : sans entrée lue sur le disque, tout ce qui suit
+    // serait vrai sur rien.
+    expect(changelogCatalog.entries.length).toBeGreaterThan(0)
+
+    // **Une seule URL, celle de la page** : les entrées vivent toutes dessus, et
+    // en annoncer une par entrée référencerait des adresses qui répondent 404.
+    expect(pathnamesOf(served)).toContain('/fr/changelog')
+    expect(pathnamesOf(served).filter((path) => path.startsWith('/fr/changelog'))).toHaveLength(1)
+    expect(robotsAllows(policy, '/fr/changelog')).toBe(true)
+
+    // La date de dernière modification est celle de l'entrée la plus récente de
+    // la langue servie, jamais celle du build.
+    const entrée = served.sitemap.find((url) => url.url.endsWith('/fr/changelog'))
+
+    expect(entrée?.lastModified).toBeDefined()
+
+    // Coupées, elles disparaissent du plan de site : le registre ne les agrège
+    // pas, et aucune condition n'est écrite nulle part.
+    expect(pathnamesOf(await servedFor(['marketing']))).not.toContain('/fr/changelog')
   })
 })
 

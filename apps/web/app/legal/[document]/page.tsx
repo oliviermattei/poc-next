@@ -9,7 +9,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { z } from 'zod'
 
-import { consentFooterLinks } from '../../../lib/consent'
+import { publicFooterLinks } from '../../../lib/footer'
 import { appIntl } from '../../../lib/i18n'
 import { marketingSite } from '../../../lib/marketing'
 
@@ -85,7 +85,7 @@ export default async function LegalPage({
       site={marketingSite}
       document={document}
       intl={{ t, path }}
-      footerLinks={consentFooterLinks(t)}
+      footerLinks={publicFooterLinks(t)}
     />
   )
 }

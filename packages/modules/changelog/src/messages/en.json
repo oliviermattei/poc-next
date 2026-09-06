@@ -1,0 +1,12 @@
+{
+  "list.title": "What's new",
+  "list.description": "What changed in the product, version by version.",
+  "empty.title": "No release notes yet",
+  "empty.description": "The next versions of the product will show up here.",
+  "footer.link": "What's new",
+  "release.title": "Version {version}",
+  "category.added": "Added",
+  "category.changed": "Changed",
+  "category.fixed": "Fixed",
+  "category.removed": "Removed"
+}

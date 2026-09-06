@@ -15,6 +15,7 @@ export {
   type ModuleScope,
   type ModuleSession,
   type NavigationEntry,
+  type NavigationSurface,
   type PublicUrl,
   type PublicUrlContext,
   type PublicUrlContribution,
@@ -67,13 +68,21 @@ export {
   type LocaleChoice,
   type NestedMessages,
 } from './i18n'
-export { resolveDataOwner, satisfiesProtection, visibleNavigation } from './protection'
+export {
+  navigationSurfaceOf,
+  resolveDataOwner,
+  satisfiesProtection,
+  visibleNavigation,
+} from './protection'
 export {
   carriesLocalePrefix,
   indexableUrls,
+  renderFeed,
   robotsAllows,
   robotsPolicy,
   sitemapEntries,
+  type FeedInput,
+  type FeedItem,
   type IndexableUrl,
   type RobotsInput,
   type RobotsPolicy,

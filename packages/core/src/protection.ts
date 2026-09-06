@@ -1,4 +1,9 @@
-import type { ModuleScope, ModuleSession, RouteProtection } from './module'
+import type {
+  ModuleScope,
+  ModuleSession,
+  NavigationSurface,
+  RouteProtection,
+} from './module'
 import type { ModuleRegistry, RegistryNavigationEntry } from './registry'
 
 /**
@@ -55,8 +60,23 @@ export const satisfiesProtection = (
 export const visibleNavigation = (
   registry: ModuleRegistry,
   session: ModuleSession | null,
+  surface: NavigationSurface = 'app',
 ): readonly RegistryNavigationEntry[] =>
-  registry.navigation.filter((entry) => satisfiesProtection(entry.protection, session))
+  registry.navigation.filter(
+    (entry) =>
+      navigationSurfaceOf(entry) === surface && satisfiesProtection(entry.protection, session),
+  )
+
+/**
+ * La surface d'une entrée, **avec son défaut appliqué une seule fois** (s31).
+ *
+ * Écrire `entry.surface ?? 'app'` à chaque appelant serait la même règle
+ * recopiée : le premier qui l'oublierait rendrait une entrée de pied de page
+ * dans la barre latérale, sans qu'aucune commande ne le dise.
+ */
+export const navigationSurfaceOf = (entry: {
+  readonly surface?: NavigationSurface
+}): NavigationSurface => entry.surface ?? 'app'
 
 /**
  * **À qui appartient la donnée qu'on s'apprête à lire ou à écrire.**

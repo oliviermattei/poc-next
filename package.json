@@ -50,6 +50,7 @@
     "@repo/module-auth": "workspace:*",
     "@repo/module-billing": "workspace:*",
     "@repo/module-blog": "workspace:*",
+    "@repo/module-changelog": "workspace:*",
     "@repo/module-consent": "workspace:*",
     "@repo/module-demo-disabled": "workspace:*",
     "@repo/module-demo-enabled": "workspace:*",

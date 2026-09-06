@@ -1,0 +1,12 @@
+{
+  "list.title": "Nouveautés",
+  "list.description": "Ce qui a changé dans le produit, version par version.",
+  "empty.title": "Aucune nouveauté publiée",
+  "empty.description": "Les prochaines versions du produit apparaîtront ici.",
+  "footer.link": "Nouveautés",
+  "release.title": "Version {version}",
+  "category.added": "Ajout",
+  "category.changed": "Modification",
+  "category.fixed": "Correction",
+  "category.removed": "Suppression"
+}

@@ -6,7 +6,7 @@ import { notFound } from 'next/navigation'
 import { z } from 'zod'
 
 import { blogCatalog } from '../../lib/blog'
-import { consentFooterLinks } from '../../lib/consent'
+import { publicFooterLinks } from '../../lib/footer'
 import { appIntl } from '../../lib/i18n'
 import { marketingFormsAvailable, marketingSite } from '../../lib/marketing'
 import { defaultLocale } from '../../../../config/i18n'
@@ -99,7 +99,7 @@ export default async function BlogPage({
         <MarketingFooter
           site={marketingSite}
           intl={{ t, path }}
-          extraLinks={consentFooterLinks(t)}
+          extraLinks={publicFooterLinks(t)}
         />
       ) : null}
     </>

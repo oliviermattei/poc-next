@@ -52,14 +52,39 @@ sortent.
 
 `indexableUrls(registry, context)` agrège **une seule source** : la quinzième
 clé du contrat, `publicUrls`. Elle ne lit **pas** les entrées de navigation
-publiques, et c'est une décision mesurée : la configuration livrée en compte
-cinq, dont `/sign-in`, `/pricing` et une route d'API. `public` est un niveau de
-**protection**, pas une décision d'indexation (`docs/security.md` §7).
+publiques, et c'est une décision mesurée : la configuration livrée en porte
+plusieurs que personne ne contribue au plan de site, dont `/sign-in`, `/pricing`
+et une route d'API. **Leur nombre n'est pas écrit ici** — il valait cinq à
+l'écriture de cette ligne, huit à la revue de s31 — : `tests/syndication.test.ts`
+le dérive du registre. `public` est un niveau de **protection**, pas une décision
+d'indexation (`docs/security.md` §7).
+
+`renderFeed(input)` construit le **flux RSS 2.0**, et il est ici depuis s31
+(ADR 065). Il vivait dans le `domain` du module `blog`, seul à en avoir un ; le
+changelog en réclamant un aussi, l'y laisser lui aurait imposé
+`requires: ['blog']` — un produit qui coupe le blog aurait perdu ses notes de
+version. `renderBlogFeed` en est devenue une enveloppe. Ce qu'il fait, et ce
+qu'il ne fait pas : il échappe les cinq entités XML, range du plus récent au plus
+ancien, écrit `dc:creator` **seulement** quand l'entrée porte un auteur, et il
+ne lit ni disque ni `APP_URL` — les URL absolues arrivent par l'appelant. Ce que
+mesure la suite est que le document servi est **analysable** par
+`@rowanmanning/feed-parser` ; le dépôt n'embarque aucun **validateur**, et la
+nuance est un cas de `tests/blog.test.ts` pour qu'elle ne se regonfle pas.
 
 `carriesLocalePrefix` est la règle d'`apps/web/proxy.ts`, écrite ici depuis
 qu'elle a un second appelant : `publicPath` préfixe sans condition, `/api…`
 compris, et une contribution vers une route montée serait sinon annoncée sous
 une langue que rien ne sert (constat M3 de la revue de s29).
+
+Une entrée de navigation déclare aussi sa **surface** (`surface`, s31, ADR 066) :
+la barre latérale de l'application (`'app'`, le défaut) ou le pied de page du site
+public (`'footer'`). `visibleNavigation(registry, session, surface)` filtre sur
+elle, et les deux ensembles sont disjoints — une entrée de pied de page dans la
+barre latérale mettrait un lien de service au rang des fonctionnalités du
+produit. Le champ est **facultatif**, à la différence de `protection` : son
+défaut est ce qu'avaient les modules écrits avant lui, là où `protection` n'a pas
+de défaut sûr. Ce n'est **pas** une décision d'indexation : `publicUrls` reste la
+seule source du plan de site (ADR 054).
 
 Le contrat porte aussi la **protection** des routes **et** des entrées de
 navigation, et les deux sont lues : `dispatchModuleRequest` refuse une route non

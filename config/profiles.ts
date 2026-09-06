@@ -52,6 +52,15 @@ import type { AvailableModuleId } from './features'
  * table `job_run` sont ce que la recette balaie ; le repli lui-même est mesuré
  * par `tests/jobs.test.ts`, qui construit les deux configurations.
  *
+ * `changelog` les a rejoints en s31, et il est le premier dont le critère de
+ * coupure porte sur **trois** absences : pas de page, pas de flux, et le lien
+ * qui disparaît du pied de page. Les deux premières sont ce que la recette
+ * balaie déjà — la route du flux, et l'adresse de son entrée de navigation,
+ * demandée en HTTP. La troisième est nouvelle : l'entrée est déclarée pour la
+ * **surface** du pied de page (s31), et `e2e/minimal-profile/` vérifie qu'aucune
+ * entrée de pied de page d'un module coupé n'y est rendue — dérivé de la
+ * surface, jamais d'un identifiant.
+ *
  * `notifications` les a rejoints en s32, pour la même raison et sur le même
  * critère : « module non activé, aucune route ni entrée de navigation de
  * notifications, et aucune table sur une base vierge ». Les deux premières
@@ -72,5 +81,15 @@ export interface ModuleProfileDeclaration {
 
 export const minimalProfile = {
   id: 'minimal',
-  cut: ['organizations', 'billing', 'i18n', 'blog', 'docs', 'admin', 'notifications', 'jobs'],
+  cut: [
+    'organizations',
+    'billing',
+    'i18n',
+    'blog',
+    'docs',
+    'admin',
+    'notifications',
+    'jobs',
+    'changelog',
+  ],
 } as const satisfies ModuleProfileDeclaration

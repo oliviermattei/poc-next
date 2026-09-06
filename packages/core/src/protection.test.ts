@@ -17,12 +17,14 @@ const entry = (
   id: string,
   order: number,
   protection: NavigationEntry['protection'],
+  surface?: NavigationEntry['surface'],
 ): NavigationEntry => ({
   id,
   href: `/${id}`,
   labelKey: `nav.${id}`,
   order,
   protection,
+  ...(surface === undefined ? {} : { surface }),
 })
 
 const moduleWith = (entries: readonly NavigationEntry[]): AnyModuleDefinition => ({
@@ -51,6 +53,8 @@ const registry = buildRegistry({
       entry('public', 10, { level: 'public' }),
       entry('membre', 20, { level: 'authenticated' }),
       entry('admin', 30, { level: 'role', role: 'admin' }),
+      entry('pied', 40, { level: 'public' }, 'footer'),
+      entry('pied-prive', 50, { level: 'authenticated' }, 'footer'),
     ]),
   ],
   enabled: ['m'],
@@ -61,6 +65,9 @@ const registry = buildRegistry({
 
 const visibleIds = (session: ModuleSession | null): readonly string[] =>
   visibleNavigation(registry, session).map((navigation) => navigation.id)
+
+const footerIds = (session: ModuleSession | null): readonly string[] =>
+  visibleNavigation(registry, session, 'footer').map((navigation) => navigation.id)
 
 describe('navigation visible selon la protection déclarée', () => {
   it('ne montre à un visiteur anonyme que les entrées publiques', () => {
@@ -75,6 +82,31 @@ describe('navigation visible selon la protection déclarée', () => {
 
   it('montre l’entrée réservée à un rôle à la session qui le porte', () => {
     expect(visibleIds({ userId: 'u', roles: ['admin'] })).toEqual(['public', 'membre', 'admin'])
+  })
+
+  /**
+   * **Une entrée est déclarée pour une surface** (s31).
+   *
+   * Le pied de page du site public annonçait ses liens par un import nommé du
+   * socle — `consentFooterLinks`, écrit dans sept fichiers de `apps/web/app`.
+   * Un second module à y mettre en aurait fait un second nom aux sept mêmes
+   * endroits. La surface est donc déclarée au contrat, et le pied de page se
+   * dérive du registre comme la barre latérale.
+   *
+   * Les deux sens comptent, et le premier est celui qu'on oublie : une entrée
+   * de pied de page ne doit **pas** paraître dans la barre latérale, où elle
+   * mettrait un lien de service au rang des fonctionnalités du produit.
+   */
+  it('ne mélange pas les surfaces : le pied de page n’est pas la barre latérale', () => {
+    expect(visibleIds({ userId: 'u', roles: ['admin'] })).not.toContain('pied')
+    expect(footerIds(null)).toEqual(['pied'])
+    expect(footerIds(null)).not.toContain('public')
+  })
+
+  it('applique la même protection sur le pied de page que sur la barre latérale', () => {
+    // Sans quoi la surface serait une porte dérobée : une entrée réservée
+    // deviendrait publique en changeant de surface.
+    expect(footerIds({ userId: 'u', roles: [] })).toEqual(['pied', 'pied-prive'])
   })
 })
 

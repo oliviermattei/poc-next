@@ -1,4 +1,4 @@
-import { MODULE_ROUTE_PREFIX } from '@repo/core'
+import { MODULE_ROUTE_PREFIX, navigationSurfaceOf, type NavigationSurface } from '@repo/core'
 import { expect, test, type Page } from '@playwright/test'
 
 import { moduleRegistry } from '../../apps/web/lib/module-registry'
@@ -33,6 +33,33 @@ const sweep = sweepProfile({
   enabled: [...moduleRegistry.moduleIds],
 })
 
+/**
+ * Les `href` réellement rendus dans le **pied de page** du site public (s31).
+ *
+ * Le pied de page est une seconde surface de navigation : depuis s31, un module
+ * y déclare son lien (`surface: 'footer'`), et le socle ne l'écrit plus dans
+ * chaque page. Le critère « le lien disparaît du pied de page » se dérive donc
+ * comme le reste — et il ne se mesure **pas** dans la région « Modules », qui
+ * est la barre latérale.
+ *
+ * Le balayage prend tous les liens du `<footer>`, y compris ceux du module
+ * `marketing` (documents légaux, contact) : c'est pour cela que la vérification
+ * ci-dessous est à sens unique — aucune entrée de pied de page d'un module coupé
+ * ne doit y figurer —, avec son contrôle positif à côté.
+ */
+const renderedFooterLinks = async (page: Page): Promise<string[]> => {
+  const links = page.locator('footer').getByRole('link')
+
+  return (await Promise.all((await links.all()).map((link) => link.getAttribute('href')))).filter(
+    (href): href is string => href !== null,
+  )
+}
+
+/** Les entrées de pied de page, coupées ou activées, dérivées de leur surface. */
+const footerEntriesOf = <T extends { readonly surface?: NavigationSurface }>(
+  entries: readonly T[],
+): readonly T[] => entries.filter((entry) => navigationSurfaceOf(entry) === 'footer')
+
 /** Les `href` réellement rendus dans la navigation des modules. */
 const renderedNavigation = async (page: Page): Promise<string[]> => {
   const links = page.getByRole('navigation', { name: 'Modules' }).getByRole('link')
@@ -50,7 +77,14 @@ const renderedNavigation = async (page: Page): Promise<string[]> => {
  * n'est étrangère au registre, et aucune entrée d'un module coupé n'apparaît.
  */
 const expectNavigationIsDerivedFromEnabledModules = (rendered: readonly string[]): void => {
-  const declared = new Set(moduleRegistry.navigation.map((entry) => publicPath(entry.href)))
+  // La barre latérale ne rend que les entrées de la surface « app » : une
+  // entrée de pied de page y serait un lien de service au rang des
+  // fonctionnalités du produit (`packages/core/src/protection.test.ts`).
+  const declared = new Set(
+    moduleRegistry.navigation
+      .filter((entry) => navigationSurfaceOf(entry) === 'app')
+      .map((entry) => publicPath(entry.href)),
+  )
 
   for (const href of rendered) {
     expect(declared.has(href), `l’entrée ${href} n’est déclarée par aucun module activé`).toBe(true)
@@ -194,6 +228,49 @@ test('l’écran d’une entrée de navigation coupée répond 404 sur HTTP (cri
   console.log(
     `Écrans des entrées coupées — ${sweep.navigation.length} adresse(s) vérifiées en 404 ; ` +
       `contrôle positif : ${served.join(' ; ')}.`,
+  )
+})
+
+/**
+ * **Le lien d'un module coupé a disparu du pied de page** (s31).
+ *
+ * C'est la troisième absence du critère « module non activé » du changelog — les
+ * deux autres, la page et le flux, sont tenues par les deux cas ci-dessus. Elle
+ * ne l'était par **aucune** exécution avant s31 : le pied de page recevait ses
+ * liens d'un import nommé du socle, que rien ne dérivait d'un module.
+ *
+ * **Rien ici ne nomme un module** : les liens attendus absents sont ceux que les
+ * modules coupés déclarent pour cette surface, et le contrôle positif est ce que
+ * les modules activés y déclarent.
+ */
+test('aucun lien de pied de page d’un module coupé n’est rendu (s31)', async ({ page }) => {
+  const cutFooterEntries = footerEntriesOf(sweep.navigation)
+  const servedFooterEntries = footerEntriesOf(moduleRegistry.navigation)
+
+  // Garde d'inertie, des deux côtés : sans entrée coupée, l'absence ne dit
+  // rien ; sans entrée servie, c'est le pied de page entier qui a disparu et
+  // l'absence est vraie pour la mauvaise raison.
+  expect(cutFooterEntries.length).toBeGreaterThan(0)
+  expect(servedFooterEntries.length).toBeGreaterThan(0)
+
+  await page.goto('/')
+
+  const rendered = await renderedFooterLinks(page)
+
+  expect(rendered.length).toBeGreaterThan(0)
+
+  for (const entry of cutFooterEntries) {
+    expect(rendered, `${entry.moduleId} ${entry.entryId}`).not.toContain(publicPath(entry.href))
+  }
+
+  for (const entry of servedFooterEntries) {
+    expect(rendered, `${entry.moduleId} ${entry.id}`).toContain(publicPath(entry.href))
+  }
+
+  console.log(
+    `Pied de page — ${cutFooterEntries.length} lien(s) de module coupé vérifié(s) absent(s), ` +
+      `${servedFooterEntries.length} lien(s) de module activé vérifié(s) présent(s), sur ` +
+      `${rendered.length} lien(s) rendus.`,
   )
 })
 

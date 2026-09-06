@@ -1,4 +1,5 @@
 import { prepareBlogContent } from './blog'
+import { prepareChangelogContent } from './changelog'
 import { prepareDocsContent } from './docs'
 import { prepareMarketingContent } from './marketing'
 
@@ -30,4 +31,5 @@ export function prepareModuleContent(): void {
   prepareMarketingContent()
   prepareBlogContent()
   prepareDocsContent()
+  prepareChangelogContent()
 }
