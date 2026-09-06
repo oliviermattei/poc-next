@@ -1117,6 +1117,8 @@ s17-roles-permissions
 Le point dur est le critère 4 : le bannissement est une action d'administration, mais **le refus vit sur le chemin de connexion, qui est du socle**. Ne pas faire consulter un module optionnel par `auth`.
 
 ## Story s37b-back-office — Consulter et assister un utilisateur
+
+> **DÉCOUPÉE le 06/09** en `s37b1-decompte-et-impersonation` et `s37b2-back-office-lecture`, sur verdict de complexité **4** de sa recherche. Entrée conservée pour l'historique ; **ne pas l'implémenter telle quelle**.
 **As a** Admin **I want** parcourir les comptes et me connecter à leur place **so that** je puisse assister mes clients.
 
 > Tranche 2 de 3 de `s37-admin-users`. Aucune autre story n'en dépend.
@@ -1152,6 +1154,59 @@ Aucune ne se répare seule : la ligne du banni subsiste, donc `SUPERADMIN_EMAIL`
 **La cause est unique** : `readFacts` compte `admin_platform_role`, et l'état `banned` vit dans le socle, hors de portée d'`AdminAccountsPort` (ADR 058). Corriger le seul prédicat du `delete` **ne fermerait pas** la première séquence — c'est l'erreur exacte que la première rédaction de ce critère induisait. Élargir le port, puis faire consulter le nouveau décompte par `revocationRefusal`, `banRefusal` **et** `grantSuperadmin` (promouvoir un compte banni gonfle le décompte d'un administrateur inutilisable).
 
 Le tableau des chemins balayés est dans `packages/modules/admin/AGENTS.md` ; il est lui aussi trop étroit et se corrige avec ce critère.
+
+## Story s37b1-decompte-et-impersonation — Compter les administrateurs capables d'entrer, et assister un client
+**As a** Admin **I want** que tout décompte de superadmins compte ceux qui peuvent se connecter, et pouvoir me connecter à la place d'un utilisateur **so that** la plateforme ne puisse jamais se retrouver sans administrateur et que je puisse assister mes clients.
+
+> **Découpée de `s37b` le 06/09**, sur verdict de complexité **4** de sa recherche — la ligne suit le risque, comme pour `s37`. Cette tranche porte **toute la sécurité** : la dette reportée de `s37a` et l'élévation de privilège. `s37b2` porte le back-office en lecture, et aucune story n'en dépend.
+
+### Complexity
+3
+
+### Acceptance criteria
+- [ ] **Tout** décompte de superadmins compte ceux **capables de se connecter**, et non les lignes de rôle — la révocation, le garde-fou de bannissement **et la promotion** : aucune séquence de gestes permis ne peut laisser la plateforme sans administrateur, ni deux bannissements successifs, ni un bannissement suivi d'une révocation
+- [ ] `grantSuperadmin` prend le même verrou consultatif que les deux autres écritures du rôle : promouvoir ne se fait plus hors sérialisation
+- [ ] L'impersonation ouvre une session au nom de l'utilisateur, avec **rotation de session**, et permet d'y mettre fin pour revenir au compte superadmin
+- [ ] Un superadmin ne peut pas impersonner un autre superadmin, ni **enchaîner** une impersonation depuis une session empruntée
+- [ ] Le début et la fin d'une impersonation émettent une entrée dans les logs applicatifs, avec l'identifiant du superadmin et celui de la cible ; **une session d'impersonation qui expire sans sortie explicite compte comme une fin**
+- [ ] **Module non activé** : aucune impersonation possible, et le décompte n'existe pas
+
+### Dependencies
+s37a-superadmin-et-bannissement
+
+### Agentic notes
+**La dette est mesurée, pas supposée.** Deux séquences de gestes *tous permis* laissent la plateforme sans superadmin capable de se connecter, et **aucune commande ne la répare** — il faut un `UPDATE` à la main en production. Les deux ont été mesurées contre PostgreSQL en revue de `s37a` : bannir un pair puis se bannir soi-même ; bannir un pair puis révoquer l'autre.
+
+**Le correctif n'est pas une jointure.** `admin/src/schema.ts` pose une borne délibérée et motivée : ce fichier est le seul du module à importer `@repo/module-auth`, et c'est ce qui garde les lectures de comptes **derrière le port injecté, donc derrière un identifiant plutôt qu'une adresse** (`docs/security.md` §7). Élargir `AdminAccountsPort` — c'est ce que la revue de `s37a` avait conclu.
+
+**Un décompte corrigé à deux endroits sur trois ne corrige rien.** La première rédaction de ce critère n'imputait l'aveuglement qu'à la révocation, et aurait laissé le chemin ouvert.
+
+**L'impersonation s'écrit à la main.** Tranché le 06/09 par la mesure : le greffon `admin` de Better Auth déclare `banned`, `banReason`, `banExpires` et `impersonatedBy`, or `s37a` a déjà livré `banned`, `bannedAt` et `bannedReason`. L'adopter signifierait un modèle de bannissement en double pour une capacité dont **une seule colonne** est nécessaire. ADR requis, consignant la mesure et non le seul précédent de l'ADR 058.
+
+## Story s37b2-back-office-lecture — Consulter les comptes et les organisations
+**As a** Admin **I want** parcourir les comptes et les organisations **so that** je voie ce que j'administre.
+
+> Tranche 2 de 2 de `s37b`. Aucune story n'en dépend, et elle ne close seule que si `s37b1` a livré les gardes.
+
+### Complexity
+3
+
+### Acceptance criteria
+- [ ] Un back-office réservé aux superadmins liste les utilisateurs avec recherche et pagination ; un non-superadmin reçoit **404**
+- [ ] Le détail d'un utilisateur affiche ses organisations, ses droits d'accès et ses sessions actives
+- [ ] Un superadmin peut révoquer une session et déclencher une réinitialisation de mot de passe
+- [ ] Une liste des organisations, avec recherche et pagination, est accessible aux superadmins lorsque le module organisations est activé ; module coupé, l'entrée disparaît du back-office
+- [ ] Le détail d'une organisation affiche ses membres et leurs rôles, son offre et l'état de son abonnement
+- [ ] Le bandeau d'impersonation est **permanent** et survit à une navigation complète
+- [ ] Composé exclusivement des composants du design system
+
+### Dependencies
+s37b1-decompte-et-impersonation, s21-trials-and-gating
+
+### Agentic notes
+**404 et non 403** pour un non-superadmin : le répartiteur répond 403 à une protection `role` non satisfaite, ce qui confirmerait l'existence du back-office — `s37a` a établi la forme, la garde vit dans le module.
+
+Le module n'a **aucun écran** aujourd'hui : `adminNavigation` est vide. Tout est neuf, et c'est ce qui fait le poids de cette tranche.
 
 ## Story s37c-inscriptions-publiques — Consulter et exporter les inscriptions
 **As a** Admin **I want** consulter et exporter les inscriptions publiques **so that** je puisse exploiter les demandes entrantes.
