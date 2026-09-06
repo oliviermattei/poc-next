@@ -67,3 +67,34 @@ export interface AccountBan {
 export function refusesSignIn(account: { readonly banned: boolean }): boolean {
   return account.banned
 }
+
+/**
+ * **Parmi ces comptes, ceux qui ne peuvent pas ouvrir de session** (s37b1).
+ *
+ * Elle existe pour un appelant précis : le module `admin`, qui doit compter
+ * les superadmins **capables de se connecter** sans jamais lire les tables du
+ * socle. Le décompte de `s37a` ne comptait que des lignes de rôle, si bien
+ * qu'un superadmin banni y comptait encore — et deux séquences de gestes tous
+ * permis laissaient la plateforme sans administrateur utilisable.
+ *
+ * **Un identifiant absent de la lecture est bloqué**, comme `isBanned` rend
+ * `true` pour un compte introuvable : c'est le sens fermé. Compter un compte
+ * qu'on n'a pas lu comme « capable d'entrer » ferait décider une garde sur une
+ * absence.
+ *
+ * Elle réutilise `refusesSignIn` plutôt que de relire `banned` : une seconde
+ * lecture de la même colonne serait une seconde règle, et la première à
+ * diverger déciderait pour l'autre.
+ */
+export function signInBlockedAmong(input: {
+  readonly requested: readonly string[]
+  readonly accounts: readonly { readonly id: string; readonly banned: boolean }[]
+}): readonly string[] {
+  const known = new Map(input.accounts.map((account) => [account.id, account]))
+
+  return input.requested.filter((userId) => {
+    const account = known.get(userId)
+
+    return account === undefined || refusesSignIn(account)
+  })
+}

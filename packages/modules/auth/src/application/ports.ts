@@ -98,8 +98,14 @@ export interface AuthSessionRepository {
    * limite à ce qu'un écran a le droit d'afficher.
    */
   listForUser(userId: string): Promise<readonly StoredSession[]>
-  /** Révoque toutes les sessions du compte. Rend le nombre de sessions supprimées. */
-  revokeAllForUser(userId: string): Promise<number>
+  /**
+   * Révoque **toutes les sessions du compte, et tous les emprunts qu'il tient**
+   * (s37b1, revue C3). Rend les lignes effacées : les emprunts qui s'y trouvent
+   * sont des fins que quelqu'un doit journaliser.
+   */
+  revokeAllForUser(userId: string): Promise<readonly BorrowedSession[]>
+  /** Éteint les seuls emprunts tenus par ce compte, sans toucher à ses sessions. */
+  revokeBorrowsBy(userId: string): Promise<readonly BorrowedSession[]>
   /**
    * Révoque **une** session, à condition qu'elle appartienne à ce compte.
    *
@@ -113,6 +119,55 @@ export interface AuthSessionRepository {
     readonly userId: string
     readonly sessionId: string
   }): Promise<boolean>
+  /**
+   * **Ouvre une session** (s37b1), pour l'impersonation et elle seule à ce jour.
+   *
+   * Toutes les autres sessions du produit sont créées par la bibliothèque : ce
+   * chemin-ci existe parce qu'aucune de ses routes n'ouvre une session **au nom
+   * d'un autre compte** sans justificatif. La ligne est écrite ici, avec son
+   * emprunteur ; le cookie est signé dans `infrastructure/`, avec le nom et les
+   * attributs que la bibliothèque impose.
+   *
+   * **Rend `false` pour un compte inconnu comme pour un compte banni**, et le
+   * refus est dans l'`insert` : c'est, pour ce chemin, la garde que
+   * `databaseHooks.session.create.before` tient pour ceux de la bibliothèque
+   * (`docs/security.md` §2). Le refus ne distingue pas les deux cas.
+   */
+  create(input: {
+    readonly id: string
+    readonly token: string
+    readonly userId: string
+    readonly impersonatedBy: string | null
+    readonly expiresAt: Date
+    readonly at: Date
+  }): Promise<boolean>
+  /**
+   * Ce qu'on sait d'une session par son identifiant : **qui l'emprunte**.
+   *
+   * `null` quand elle n'existe pas. C'est la lecture qui permet au back-office
+   * de refuser une session empruntée sans jamais lire une table hors de ce
+   * module.
+   */
+  findById(sessionId: string): Promise<BorrowedSession | null>
+  /** Efface une session par son identifiant. Rend `false` si elle n'existait plus. */
+  deleteById(sessionId: string): Promise<boolean>
+  /**
+   * **Efface les sessions empruntées échues, et dit lesquelles** (s37b1).
+   *
+   * L'effacement est ce qui rend le balayage rejouable sans effet
+   * supplémentaire (`docs/reliability.md` §1) : la seconde exécution ne trouve
+   * plus rien, donc n'émet plus rien. Une session expirée qu'on laisserait en
+   * place ferait réémettre son événement de fin à chaque passage.
+   */
+  deleteExpiredImpersonations(at: Date): Promise<readonly BorrowedSession[]>
+}
+
+/** Une session empruntée, telle que le magasin la connaît. Aucun jeton n'en sort. */
+export interface BorrowedSession {
+  readonly id: string
+  readonly userId: string
+  /** Le superadmin qui emprunte, ou `null` : la session est alors ordinaire. */
+  readonly impersonatedBy: string | null
 }
 
 /**

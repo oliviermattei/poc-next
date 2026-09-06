@@ -30,12 +30,13 @@ import { sql } from 'drizzle-orm'
 import { getTableConfig } from 'drizzle-orm/pg-core'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { admin, missingSuperadminWarning } from '../apps/web/lib/admin'
+import { admin, adminAccountsPort, missingSuperadminWarning } from '../apps/web/lib/admin'
 import { availableModules, enabledModules, requiredModules } from '../config/features'
 import { appLocales } from '../config/i18n'
 import { minimalProfile } from '../config/profiles'
 import { applyProfile, sweepProfile } from '../scripts/minimal-profile-rules'
 import { databaseUrl, isDatabaseReachable } from './fixtures/database'
+import { createPlatformRoleLock } from './fixtures/platform-role-lock'
 import { dispatchAllowingRateLimit } from './fixtures/rate-limit'
 
 /**
@@ -109,6 +110,27 @@ const anEmail = (): string => `s37a-${randomUUID()}@example.test`
  */
 let banGate: (() => Promise<void>) | null = null
 
+/**
+ * La même porte, posée dans la **lecture des comptes fermés** : elle sert au cas
+ * concurrent qui mesure que la promotion prend le verrou. `null` partout
+ * ailleurs.
+ */
+let blockedGate: (() => Promise<void>) | null = null
+
+/**
+ * La lecture des comptes est-elle possible ? Un seul cas la coupe : celui qui
+ * mesure qu'un port en échec **refuse** au lieu de décider sur un décompte
+ * qu'il n'a pas.
+ */
+let blockedReadable = true
+
+/**
+ * La **nature de la session de l'appelant** est-elle lisible ? Un seul cas la
+ * coupe, pour la même raison : ne pas savoir si une session est empruntée
+ * n'autorise pas à supposer qu'elle ne l'est pas.
+ */
+let borrowerReadable = true
+
 const accounts: AdminAccountsPort = {
   findIdByEmail: async (email) => ({
     ok: true,
@@ -120,6 +142,27 @@ const accounts: AdminAccountsPort = {
     return await auth.useCases.banAccount(input)
   },
   unban: async (input) => await auth.useCases.unbanAccount(input),
+  endBorrowsBy: async (userId) => ({ ok: true, ended: await auth.useCases.endBorrowsBy(userId) }),
+  startImpersonation: async (input) => await auth.startImpersonation(input),
+  stopImpersonation: async (input) => await auth.stopImpersonation(input),
+  borrowerOf: async (request) =>
+    borrowerReadable
+      ? { ok: true, impersonatedBy: await auth.borrowerOf(request) }
+      : { ok: false },
+  sweepExpiredImpersonations: async (at) => ({
+    ok: true,
+    ended: (await auth.useCases.sweepExpiredImpersonations(at)).map((ended) => ({
+      userId: ended.userId,
+      impersonatedBy: ended.impersonatedBy,
+    })),
+  }),
+  signInBlockedAmong: async (userIds) => {
+    await blockedGate?.()
+
+    return blockedReadable
+      ? { ok: true, blocked: await auth.useCases.signInBlockedAmong(userIds) }
+      : { ok: false }
+  },
 }
 
 /** Reconfigure le module avec l'adresse désignée du moment. */
@@ -135,21 +178,45 @@ const configure = (email: string | null): void => {
 interface CallOptions {
   readonly session?: ModuleSession | null
   readonly body?: unknown
+  /**
+   * Le cookie de session de l'appelant, quand le cas en exige un **vrai**.
+   *
+   * Les cas de `s37a` posent une `ModuleSession` : ce qu'ils mesurent ne dépend
+   * pas du cookie. L'impersonation, si — elle fait tourner la session, et une
+   * rotation ne se mesure que sur le jeton réellement posé. La session du
+   * répartiteur est alors résolue **du cookie**, exactement comme dans
+   * l'application.
+   */
+  readonly cookie?: string
 }
 
 /** Une requête d'administration, telle que l'application la sert. */
 const call = async (
-  path: 'grantSuperadmin' | 'revokeSuperadmin' | 'banAccount' | 'unbanAccount',
+  path:
+    | 'grantSuperadmin'
+    | 'revokeSuperadmin'
+    | 'banAccount'
+    | 'unbanAccount'
+    | 'startImpersonation'
+    | 'stopImpersonation',
   options: CallOptions = {},
 ): Promise<Response> =>
   await dispatchAllowingRateLimit(
     registry,
     new Request(`${APP_URL}${adminRoutePath(path)}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers:
+        options.cookie === undefined
+          ? { 'content-type': 'application/json' }
+          : { 'content-type': 'application/json', cookie: options.cookie },
       body: JSON.stringify(options.body ?? {}),
     }),
-    { resolveSession: () => Promise.resolve(options.session ?? null) },
+    {
+      resolveSession:
+        options.cookie === undefined
+          ? () => Promise.resolve(options.session ?? null)
+          : (request) => auth.resolveSession(request),
+    },
   )
 
 /** Une requête vers une route du module `auth`, pour mesurer la connexion. */
@@ -176,6 +243,43 @@ const anAccount = async (email?: string): Promise<{ session: ModuleSession; emai
   return { session: { userId, roles: [] }, email: address }
 }
 
+/** Les cookies qu'une réponse pose, tels qu'un navigateur les renverrait. */
+const cookieOf = (response: Response): string =>
+  response.headers
+    .getSetCookie()
+    .map((cookie) => cookie.split(';')[0] ?? '')
+    .filter((pair) => pair !== '')
+    .join('; ')
+
+/** Une requête nue portant ce cookie : de quoi demander au socle ce qu'il en dit. */
+const requestWith = (cookie: string): Request =>
+  new Request(APP_URL, { headers: { cookie } })
+
+/**
+ * Un compte réel **et connecté** : inscrit par le parcours du socle, vérifié,
+ * puis connecté. Le cookie rendu est celui de sa session.
+ */
+const signedIn = async (): Promise<{
+  readonly userId: string
+  readonly email: string
+  readonly cookie: string
+}> => {
+  const email = anEmail()
+
+  await callAuth('/sign-up/email', { email, password: PASSWORD })
+  await connection.db.execute(
+    sql`update auth_user set email_verified = true where email = ${email}`,
+  )
+
+  const response = await callAuth('/sign-in/email', { email, password: PASSWORD })
+
+  return {
+    userId: (await auth.useCases.identifyAccount(email))?.userId ?? '',
+    email,
+    cookie: cookieOf(response),
+  }
+}
+
 const superadminRows = async (): Promise<number> => {
   const counted = await connection.db.execute<{ count: number }>(
     sql`select count(*)::int as count from admin_platform_role where role = ${SUPERADMIN_ROLE}`,
@@ -184,11 +288,23 @@ const superadminRows = async (): Promise<number> => {
   return Number(counted.rows[0]?.count ?? 0)
 }
 
+/**
+ * **L'exclusivité sur la table du rôle**, le temps de chaque cas.
+ *
+ * Ce fichier vide `admin_platform_role` avant chaque cas — la désignation du
+ * premier superadmin n'a de sens que sur une base sans aucun superadmin —, et
+ * `tests/account-deletion.test.ts` y écrit les siennes au même moment. Le
+ * verrou est ce qui rend les deux fichiers compatibles ; le détail est dans
+ * `fixtures/platform-role-lock.ts`.
+ */
+const platformRoleLock = createPlatformRoleLock()
+
 beforeAll(async () => {
   if (!databaseReachable) {
     return
   }
 
+  await platformRoleLock.open()
   connection = createDatabaseClient({ connectionString: databaseUrl, maxConnections: 5 })
 
   await runModuleMigrations({
@@ -209,13 +325,24 @@ beforeEach(async () => {
     return
   }
 
+  await platformRoleLock.acquire()
+
   // Chaque cas part d'une plateforme **sans aucun superadmin** : c'est l'état
   // que le critère nomme (« base vierge »), et le seul dans lequel la
   // désignation a un sens.
   await connection.db.execute(sql`delete from admin_platform_role`)
   securityEvents.length = 0
   banGate = null
+  blockedGate = null
+  blockedReadable = true
+  borrowerReadable = true
   configure(null)
+})
+
+afterEach(async () => {
+  if (databaseReachable) {
+    await platformRoleLock.release()
+  }
 })
 
 afterAll(async () => {
@@ -223,6 +350,7 @@ afterAll(async () => {
   resetAuthService()
 
   if (databaseReachable) {
+    await platformRoleLock.close()
     // Les comptes de la suite, et eux seuls : les rôles suivent par cascade.
     await connection.db.execute(sql`delete from auth_user where email like 's37a-%'`)
     await connection.close()
@@ -280,6 +408,55 @@ describe.runIf(databaseReachable)('la désignation du premier superadmin', () =>
     await call('unbanAccount', { session, body: { userId: target.session.userId } })
 
     expect(await superadminRows()).toBe(1)
+  })
+
+  /**
+   * **Le quatrième décompte** (constat MJ2 de la revue de s37b1) : celui que la
+   * désignation regarde.
+   *
+   * Trois écritures partagent la lecture des comptes fermés ; la désignation est
+   * la quatrième, et le critère dit « **tout** décompte ». Ce qu'elle change est
+   * une **réparation** : une plateforme dont aucun porteur du rôle ne peut plus
+   * se connecter redevient désignable, là où un décompte de lignes la laissait
+   * définitivement muette. Elle était correcte et **rien ne la mesurait** —
+   * revenir au décompte de lignes laissait la suite entière verte.
+   *
+   * L'état de départ est atteint par un chemin réel, celui que
+   * `packages/modules/admin/AGENTS.md` décrit : bannir un pair superadmin est
+   * permis, et le **dernier compte capable** disparaît ensuite par l'effacement
+   * de son compte (`purgeAccount`, s34), qui emporte son rôle par cascade.
+   */
+  it('redésigne quand plus aucun porteur du rôle ne peut se connecter', async () => {
+    const first = await anAccount()
+    const peer = await anAccount()
+    const rescue = await anAccount()
+
+    configure(first.email)
+    await call('grantSuperadmin', { session: first.session, body: { userId: peer.session.userId } })
+    // Permis : il reste un superadmin capable de se connecter.
+    expect(
+      (await call('banAccount', { session: first.session, body: { userId: peer.session.userId } }))
+        .status,
+    ).toBe(200)
+
+    // Le dernier compte capable s'efface : son rôle part avec lui (cascade).
+    await connection.db.execute(sql`delete from auth_user where id = ${first.session.userId}`)
+
+    // Il reste **une ligne** de rôle, celle du banni — et zéro superadmin
+    // capable d'entrer.
+    expect(await superadminRows()).toBe(1)
+
+    configure(rescue.email)
+
+    const served = await call('grantSuperadmin', {
+      session: rescue.session,
+      body: { userId: rescue.session.userId },
+    })
+
+    // La désignation se redéclenche : la plateforme est réparable sans écriture
+    // à la main.
+    expect(served.status).toBe(200)
+    expect(await superadminRows()).toBe(2)
   })
 
   it('ne redésigne personne une fois qu’un superadmin existe', async () => {
@@ -519,6 +696,33 @@ describe.runIf(databaseReachable)('le back-office réservé', () => {
     expect(refused.status).toBe(404)
   })
 
+  /**
+   * **Ne pas savoir si la session est empruntée vaut refus** (constat MAJOR-1 de
+   * la seconde revue de s37b1).
+   *
+   * La garde du back-office demande au socle si la session de l'appelant est un
+   * emprunt. Le port peut échouer — c'est une lecture en base —, et la réponse à
+   * un échec est le **404**, pas « ce n'est donc pas un emprunt ». Sans ce cas,
+   * transformer l'échec en autorisation laissait la suite entière verte : la
+   * porte s'ouvrait en grand sur une panne de lecture.
+   */
+  it('répond 404 quand la nature de la session de l’appelant n’a pas pu être lue', async () => {
+    const { session, email } = await anAccount()
+
+    configure(email)
+    // La désignation a lieu ici : ce compte administre pour de bon.
+    expect(
+      (await call('grantSuperadmin', { session, body: { userId: session.userId } })).status,
+    ).toBe(200)
+
+    borrowerReadable = false
+
+    const refused = await call('grantSuperadmin', { session, body: { userId: session.userId } })
+
+    expect(refused.status).toBe(404)
+    await expect(refused.json()).resolves.toEqual({ error: 'not_found' })
+  })
+
   it('refuse un corps sans compte visé, et n’écrit rien', async () => {
     const { session, email } = await anAccount()
 
@@ -688,6 +892,205 @@ describe.runIf(databaseReachable)('bannir depuis le back-office', () => {
   })
 
   /**
+   * **Les deux séquences mesurées en revue de `s37a`** (s37b1), et ce qu'elles
+   * laissaient derrière elles.
+   *
+   * Chacune n'est faite que de gestes **permis** : bannir un pair est de la
+   * modération entre pairs, se bannir soi-même et se révoquer sont des gestes
+   * ordinaires. Le décompte ne comptait que des **lignes de rôle**, si bien
+   * qu'un superadmin banni — incapable de se connecter — comptait encore. Au
+   * bout des deux séquences, plus aucun superadmin ne pouvait entrer, la
+   * désignation par `SUPERADMIN_EMAIL` ne se redéclenchait jamais (le décompte
+   * de lignes rendait 1), et **aucune commande ne répare** cet état.
+   *
+   * Elles sont mesurées **contre la vraie base**, comme la revue de `s37a` les
+   * a mesurées : une doublure du décompte prouverait ce que la doublure croit.
+   */
+  it('refuse de bannir le dernier superadmin non banni, après le bannissement de son pair', async () => {
+    const { session, email } = await anAccount()
+    const peer = await anAccount()
+
+    configure(email)
+    await call('grantSuperadmin', { session, body: { userId: peer.session.userId } })
+
+    // Geste permis : le pair n'est pas le dernier.
+    expect(
+      (await call('banAccount', { session, body: { userId: peer.session.userId } })).status,
+    ).toBe(200)
+
+    // Deux **lignes** de rôle, mais un seul compte capable de se connecter.
+    expect(await superadminRows()).toBe(2)
+
+    const refused = await call('banAccount', {
+      session,
+      body: { userId: session.userId },
+    })
+
+    expect(refused.status).toBe(409)
+    await expect(refused.json()).resolves.toMatchObject({ reason: 'last_superadmin' })
+
+    // Et la plateforme reste administrable : le seul fait qui compte.
+    expect(
+      (await call('grantSuperadmin', { session, body: { userId: session.userId } })).status,
+    ).toBe(200)
+  })
+
+  it('refuse de révoquer le dernier superadmin non banni, après le bannissement de son pair', async () => {
+    const { session, email } = await anAccount()
+    const peer = await anAccount()
+
+    configure(email)
+    await call('grantSuperadmin', { session, body: { userId: peer.session.userId } })
+    expect(
+      (await call('banAccount', { session, body: { userId: peer.session.userId } })).status,
+    ).toBe(200)
+
+    const refused = await call('revokeSuperadmin', {
+      session,
+      body: { userId: session.userId },
+    })
+
+    expect(refused.status).toBe(409)
+    await expect(refused.json()).resolves.toMatchObject({ reason: 'last_superadmin' })
+
+    // La ligne est toujours là, et son porteur administre encore.
+    expect(await superadminRows()).toBe(2)
+    expect(
+      (await call('grantSuperadmin', { session, body: { userId: session.userId } })).status,
+    ).toBe(200)
+  })
+
+  /**
+   * **La promotion sérialisée avec la révocation** (s37b1, tâche 5), mesurée
+   * sur un cas **concurrent** — un cas séquentiel laisse cette garde verte.
+   *
+   * Ce que la fenêtre ouvre, quand la promotion ne prend pas le verrou : la
+   * révocation lit les porteurs du rôle et demande au socle lesquels sont
+   * fermés ; une promotion validée entre cette lecture et son `delete` ajoute
+   * une ligne dont personne n'a demandé si son porteur peut entrer. Le prédicat
+   * la compte comme un survivant, et le **dernier superadmin utilisable** perd
+   * son rôle. Aucune commande ne répare cet état.
+   */
+  it('sérialise la promotion : promouvoir un compte fermé ne fait pas retirer le dernier', async () => {
+    const { session, email } = await anAccount()
+    const closed = await anAccount()
+
+    configure(email)
+    // La désignation a lieu ici : ce compte est le seul superadmin.
+    await call('grantSuperadmin', { session, body: { userId: session.userId } })
+    // Un compte banni, sans rôle : c'est lui que la promotion concurrente vise.
+    expect(
+      (await call('banAccount', { session, body: { userId: closed.session.userId } })).status,
+    ).toBe(200)
+
+    // Plus aucune adresse désignée : la garde d'accès ne consulte donc plus les
+    // comptes, et la porte ci-dessous ne s'ouvre que dans la transaction de la
+    // révocation.
+    configure(null)
+
+    let release = (): void => {}
+    let entered = (): void => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const entering = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+
+    blockedGate = async () => {
+      entered()
+
+      await gate
+    }
+
+    try {
+      const revoking = call('revokeSuperadmin', { session, body: { userId: session.userId } })
+
+      // Le verrou est tenu, les porteurs du rôle sont lus, l'état des comptes
+      // est demandé au socle : c'est exactement la fenêtre.
+      await entering
+
+      const granting = call('grantSuperadmin', { session, body: { userId: closed.session.userId } })
+
+      // Sans verrou sur la promotion, elle est commise ici — et le prédicat de
+      // la révocation comptera sa ligne.
+      await new Promise((resolve) => setTimeout(resolve, 250))
+
+      release()
+
+      const refused = await revoking
+
+      expect(refused.status).toBe(409)
+      await expect(refused.json()).resolves.toMatchObject({ reason: 'last_superadmin' })
+      expect((await granting).status).toBe(200)
+
+      // Le seul fait qui compte : la plateforme est encore administrable.
+      expect(
+        (await call('grantSuperadmin', { session, body: { userId: session.userId } })).status,
+      ).toBe(200)
+    } finally {
+      release()
+      blockedGate = null
+    }
+  }, 30_000)
+
+  /**
+   * **Une lecture des comptes en échec refuse**, elle ne décide pas (s37b1).
+   *
+   * Le port ne lève pas : il rend un échec. Le prendre pour « personne n'est
+   * banni » ferait décider les deux gardes sur un décompte qu'elles n'ont pas —
+   * le sens ouvert, et la dette de `s37a` à nouveau.
+   */
+  it('refuse de bannir quand l’état des comptes n’a pas pu être lu', async () => {
+    const { session, email } = await anAccount()
+    const peer = await anAccount()
+
+    configure(email)
+    await call('grantSuperadmin', { session, body: { userId: peer.session.userId } })
+
+    blockedReadable = false
+
+    const refused = await call('banAccount', { session, body: { userId: peer.session.userId } })
+
+    expect(refused.status).toBe(409)
+    await expect(refused.json()).resolves.toMatchObject({ reason: 'accounts_unavailable' })
+    // Et rien n'a été écrit : le refus n'atteint pas le socle.
+    await expect(
+      connection.db.execute<{ banned: boolean }>(
+        sql`select banned from auth_user where id = ${peer.session.userId}`,
+      ),
+    ).resolves.toMatchObject({ rows: [{ banned: false }] })
+  })
+
+  /**
+   * **Le geste qui nettoie une plateforme à moitié fermée**, mesuré de bout en
+   * bout (minoritaire de la revue de s37b1 : la règle pure était éprouvée, le
+   * chemin servi ne l'était pas).
+   *
+   * Retirer son rôle à un superadmin **banni** ne retire rien à
+   * l'administrabilité — il ne pouvait déjà plus entrer. Sans cette permission,
+   * la seule sortie d'une plateforme à moitié fermée serait une écriture en base
+   * à la main.
+   */
+  it('laisse révoquer le rôle d’un superadmin banni, même s’il ne reste qu’un compte capable', async () => {
+    const { session, email } = await anAccount()
+    const peer = await anAccount()
+
+    configure(email)
+    await call('grantSuperadmin', { session, body: { userId: peer.session.userId } })
+    await call('banAccount', { session, body: { userId: peer.session.userId } })
+
+    // Un seul compte capable de se connecter : l'appelant.
+    const revoked = await call('revokeSuperadmin', {
+      session,
+      body: { userId: peer.session.userId },
+    })
+
+    expect(revoked.status).toBe(200)
+    expect(await superadminRows()).toBe(1)
+  })
+
+  /**
    * **La sérialisation avec la révocation**, mesurée et non raisonnée.
    *
    * Le garde-fou ne vaut que si aucune révocation ne peut se glisser entre la
@@ -748,6 +1151,518 @@ describe.runIf(databaseReachable)('bannir depuis le back-office', () => {
       banGate = null
     }
   }, 30_000)
+})
+
+describe.runIf(databaseReachable)('l’impersonation', () => {
+  /**
+   * **L'impersonation est une élévation de privilège** (s37b1), et
+   * `docs/security.md` §2 y impose la rotation de session : l'identifiant en
+   * cours n'est jamais réutilisé.
+   *
+   * Ce fichier la mesure **de bout en bout, sur de vrais cookies** : une
+   * doublure de session prouverait que le module appelle quelque chose, pas que
+   * le navigateur du superadmin se retrouve avec une session utilisable au nom
+   * d'autrui — ni que l'ancienne a cessé de valoir.
+   */
+  it('ouvre une session au nom du compte visé, et l’ancienne cesse de valoir', async () => {
+    const superadmin = await signedIn()
+    const target = await signedIn()
+
+    configure(superadmin.email)
+    await call('grantSuperadmin', {
+      cookie: superadmin.cookie,
+      body: { userId: superadmin.userId },
+    })
+
+    const started = await call('startImpersonation', {
+      cookie: superadmin.cookie,
+      body: { userId: target.userId },
+    })
+
+    expect(started.status).toBe(200)
+
+    // **Les attributs du socle**, sur le seul cookie de session que ce dépôt
+    // pose lui-même (ADR 064) : ils viennent de la bibliothèque, ils ne sont
+    // pas recopiés — mais rien ne le dirait si un jour ils l'étaient.
+    const posed = started.headers.get('set-cookie') ?? ''
+
+    expect(posed).toContain('HttpOnly')
+    expect(posed).toContain('Secure')
+    expect(posed).toContain('SameSite=Strict')
+
+    const borrowed = cookieOf(started)
+
+    // **La rotation** : ce n'est pas le même jeton…
+    expect(borrowed).not.toBe(superadmin.cookie)
+    // … il désigne le compte visé…
+    await expect(auth.resolveSession(requestWith(borrowed))).resolves.toMatchObject({
+      userId: target.userId,
+    })
+    // … et l'ancien ne vaut plus rien : une élévation qui laisserait la session
+    // précédente utilisable n'en serait pas une (mesuré en s14 sur l'enrôlement).
+    await expect(auth.resolveSession(requestWith(superadmin.cookie))).resolves.toBeNull()
+  }, 60_000)
+
+  it('rend la main : la sortie ferme la session empruntée et en rouvre une pour l’emprunteur', async () => {
+    const superadmin = await signedIn()
+    const target = await signedIn()
+
+    configure(superadmin.email)
+    await call('grantSuperadmin', {
+      cookie: superadmin.cookie,
+      body: { userId: superadmin.userId },
+    })
+
+    const borrowed = cookieOf(
+      await call('startImpersonation', {
+        cookie: superadmin.cookie,
+        body: { userId: target.userId },
+      }),
+    )
+
+    const stopped = await call('stopImpersonation', { cookie: borrowed })
+
+    expect(stopped.status).toBe(200)
+
+    const restored = cookieOf(stopped)
+
+    // La session rendue est celle de l'emprunteur, et c'est une **nouvelle** :
+    // la sortie fait tourner la session comme l'entrée.
+    await expect(auth.resolveSession(requestWith(restored))).resolves.toMatchObject({
+      userId: superadmin.userId,
+    })
+    expect(restored).not.toBe(borrowed)
+    // Et la session empruntée est morte : le retour n'en laisse pas une ouverte
+    // au nom du client.
+    await expect(auth.resolveSession(requestWith(borrowed))).resolves.toBeNull()
+  }, 60_000)
+
+  /**
+   * **Le premier des deux refus** (critère de la story) : un superadmin ne
+   * s'emprunte pas. Emprunter un pair reviendrait à s'accorder ses droits sans
+   * qu'aucun journal ne nomme un changement de rôle.
+   */
+  it('refuse d’emprunter la session d’un superadmin', async () => {
+    const superadmin = await signedIn()
+    const peer = await signedIn()
+
+    configure(superadmin.email)
+    await call('grantSuperadmin', { cookie: superadmin.cookie, body: { userId: peer.userId } })
+
+    const refused = await call('startImpersonation', {
+      cookie: superadmin.cookie,
+      body: { userId: peer.userId },
+    })
+
+    expect(refused.status).toBe(409)
+    await expect(refused.json()).resolves.toMatchObject({ reason: 'superadmin_target' })
+    // Aucune session n'a été ouverte, et celle de l'appelant est intacte.
+    expect(cookieOf(refused)).toBe('')
+    await expect(auth.resolveSession(requestWith(superadmin.cookie))).resolves.toMatchObject({
+      userId: superadmin.userId,
+    })
+  }, 60_000)
+
+  /**
+   * **Le second refus, et il n'était dans aucun critère** : une session
+   * **empruntée** n'administre pas.
+   *
+   * Le chemin se découvre en production : le compte emprunté est promu pendant
+   * l'emprunt. La session empruntée porte alors le compte d'un superadmin, et
+   * sans cette garde elle ouvrirait le back-office — donc l'enchaînement d'une
+   * impersonation depuis une impersonation, et un journal où l'acteur n'est
+   * plus celui qui agit.
+   */
+  /**
+   * **La journalisation aux deux bouts** (critère de la story), et les deux
+   * identifiants à chaque bout : sans la cible, le journal ne dit pas au nom de
+   * qui on est entré ; sans l'acteur, il ne dit pas qui est entré.
+   */
+  it('journalise le début et la fin de l’emprunt, avec les deux comptes', async () => {
+    const superadmin = await signedIn()
+    const target = await signedIn()
+
+    configure(superadmin.email)
+    await call('grantSuperadmin', {
+      cookie: superadmin.cookie,
+      body: { userId: superadmin.userId },
+    })
+
+    const borrowed = cookieOf(
+      await call('startImpersonation', {
+        cookie: superadmin.cookie,
+        body: { userId: target.userId },
+      }),
+    )
+
+    await call('stopImpersonation', { cookie: borrowed })
+
+    expect(securityEvents).toContainEqual({
+      event: 'admin.impersonation_started',
+      actor: superadmin.userId,
+      target: target.userId,
+    })
+    expect(securityEvents).toContainEqual({
+      event: 'admin.impersonation_ended',
+      actor: superadmin.userId,
+      target: target.userId,
+    })
+  }, 60_000)
+
+  it('journalise le refus d’emprunter un superadmin', async () => {
+    const superadmin = await signedIn()
+    const peer = await anAccount()
+
+    configure(superadmin.email)
+    await call('grantSuperadmin', { cookie: superadmin.cookie, body: { userId: peer.session.userId } })
+
+    await call('startImpersonation', {
+      cookie: superadmin.cookie,
+      body: { userId: peer.session.userId },
+    })
+
+    expect(securityEvents).toContainEqual({
+      event: 'admin.impersonation_refused',
+      actor: superadmin.userId,
+      target: peer.session.userId,
+    })
+  }, 60_000)
+
+  /**
+   * **Une session d'impersonation qui expire sans sortie explicite compte comme
+   * une fin** (tâche 8 du plan).
+   *
+   * Sans ce balayage, le second événement n'est jamais émis pour un emprunt
+   * abandonné : le journal n'aurait que des débuts, et lire « personne n'en est
+   * sorti » y serait faux. La tâche est prise **dans le contrat du module**, pas
+   * recopiée : une story qui la retirerait ferait rougir ce cas.
+   */
+  it('compte l’expiration d’un emprunt comme une fin, et ne la compte qu’une fois', async () => {
+    const superadmin = await signedIn()
+    const target = await signedIn()
+
+    configure(superadmin.email)
+    await call('grantSuperadmin', {
+      cookie: superadmin.cookie,
+      body: { userId: superadmin.userId },
+    })
+
+    await call('startImpersonation', {
+      cookie: superadmin.cookie,
+      body: { userId: target.userId },
+    })
+
+    // L'emprunt est abandonné : personne n'appelle la sortie, et son échéance
+    // passe.
+    await connection.db.execute(
+      sql`update auth_session set expires_at = now() - interval '1 minute'
+          where impersonated_by = ${superadmin.userId}`,
+    )
+
+    const [sweep] = adminModule.jobs
+
+    expect(sweep, 'le module doit déclarer la tâche de balayage').toBeDefined()
+
+    await sweep?.run({ key: 'test', data: {}, attempt: 1, now: new Date() })
+
+    const ended = securityEvents.filter(
+      (event) => event.event === 'admin.impersonation_ended' && event.actor === superadmin.userId,
+    )
+
+    expect(ended).toEqual([
+      {
+        event: 'admin.impersonation_ended',
+        actor: superadmin.userId,
+        target: target.userId,
+      },
+    ])
+
+    // **Rejouée**, elle ne trouve plus rien : la session a été effacée, et
+    // l'événement n'est pas réémis (`docs/reliability.md` §1).
+    await sweep?.run({ key: 'test', data: {}, attempt: 2, now: new Date() })
+
+    expect(
+      securityEvents.filter(
+        (event) => event.event === 'admin.impersonation_ended' && event.actor === superadmin.userId,
+      ),
+    ).toHaveLength(1)
+  }, 60_000)
+
+  it('refuse le back-office à une session empruntée, même quand le compte emprunté administre', async () => {
+    const superadmin = await signedIn()
+    const peer = await signedIn()
+    const target = await signedIn()
+    const someone = await anAccount()
+
+    configure(superadmin.email)
+    await call('grantSuperadmin', {
+      cookie: superadmin.cookie,
+      body: { userId: superadmin.userId },
+    })
+    await call('grantSuperadmin', { cookie: superadmin.cookie, body: { userId: peer.userId } })
+
+    const borrowed = cookieOf(
+      await call('startImpersonation', {
+        cookie: superadmin.cookie,
+        body: { userId: target.userId },
+      }),
+    )
+
+    expect(borrowed).not.toBe('')
+
+    // Le compte emprunté est promu **pendant** l'emprunt, par un autre
+    // superadmin : la session empruntée porte désormais un compte qui
+    // administre.
+    expect(
+      (await call('grantSuperadmin', { cookie: peer.cookie, body: { userId: target.userId } }))
+        .status,
+    ).toBe(200)
+
+    const chained = await call('startImpersonation', {
+      cookie: borrowed,
+      body: { userId: someone.session.userId },
+    })
+
+    // 404, comme une URL inventée : ce n'est pas 403, et ce n'est surtout pas
+    // une seconde session empruntée.
+    expect(chained.status).toBe(404)
+    expect(cookieOf(chained)).toBe('')
+  }, 60_000)
+})
+
+/**
+ * **Les quatre scénarios de la revue de `s37b1`**, mesurés contre PostgreSQL et
+ * gardés ici pour de bon.
+ *
+ * Ils partagent une seule cause : `sessions.create` écrit la ligne de session
+ * **en Drizzle**, donc hors du crochet `databaseHooks.session.create.before` de
+ * la bibliothèque — la garde dont `better-auth-service.ts` dit qu'elle est posée
+ * « au seul endroit que **tous** les parcours traversent … et tout parcours écrit
+ * demain y passent ». Cette story est le parcours qui a démenti la phrase.
+ *
+ * Ce que ces cas exigent est donc plus large que leurs quatre énoncés : **toute**
+ * session que ce dépôt ouvre passe par le même refus, et **tout** geste qui
+ * ferme un compte ferme aussi les sessions qu'il **tient** chez autrui.
+ */
+describe.runIf(databaseReachable)('un emprunt ne survit pas à ce qui ferme son emprunteur', () => {
+  /**
+   * **C1 — le retour de bannissement, en libre-service.** Tous les gestes sont
+   * permis, et à l'arrivée le compte banni s'est débanni lui-même.
+   */
+  it('n’ouvre aucune session à un superadmin banni pendant son emprunt, et ne le laisse pas se débannir', async () => {
+    const superadmin = await signedIn()
+    const peer = await signedIn()
+    const target = await signedIn()
+
+    configure(superadmin.email)
+    await call('grantSuperadmin', {
+      cookie: superadmin.cookie,
+      body: { userId: superadmin.userId },
+    })
+    await call('grantSuperadmin', { cookie: superadmin.cookie, body: { userId: peer.userId } })
+
+    const borrowed = cookieOf(
+      await call('startImpersonation', {
+        cookie: superadmin.cookie,
+        body: { userId: target.userId },
+      }),
+    )
+
+    expect(borrowed).not.toBe('')
+
+    // Le pair bannit l'emprunteur. Geste permis : il reste un superadmin.
+    expect(
+      (await call('banAccount', { cookie: peer.cookie, body: { userId: superadmin.userId } }))
+        .status,
+    ).toBe(200)
+
+    // La sortie ne doit **pas** rendre une session au compte banni.
+    const stopped = await call('stopImpersonation', { cookie: borrowed })
+    const restored = cookieOf(stopped)
+
+    await expect(auth.resolveSession(requestWith(restored))).resolves.toBeNull()
+
+    // Et le compte banni ne se débannit pas lui-même.
+    await call('unbanAccount', {
+      cookie: restored === '' ? borrowed : restored,
+      body: { userId: superadmin.userId },
+    })
+
+    await expect(
+      connection.db.execute<{ banned: boolean }>(
+        sql`select banned from auth_user where id = ${superadmin.userId}`,
+      ),
+    ).resolves.toMatchObject({ rows: [{ banned: true }] })
+  }, 60_000)
+
+  /**
+   * **C3 — bannir l'emprunteur doit éteindre l'emprunt.** `revokeAllForUser`
+   * filtrait sur `user_id` : la ligne empruntée porte celui de la **cible**, et
+   * survivait donc au bannissement de l'administrateur qui la tenait.
+   */
+  it('éteint la session empruntée quand l’emprunteur est banni', async () => {
+    const superadmin = await signedIn()
+    const peer = await signedIn()
+    const target = await signedIn()
+
+    configure(superadmin.email)
+    await call('grantSuperadmin', {
+      cookie: superadmin.cookie,
+      body: { userId: superadmin.userId },
+    })
+    await call('grantSuperadmin', { cookie: superadmin.cookie, body: { userId: peer.userId } })
+
+    const borrowed = cookieOf(
+      await call('startImpersonation', {
+        cookie: superadmin.cookie,
+        body: { userId: target.userId },
+      }),
+    )
+
+    await call('banAccount', { cookie: peer.cookie, body: { userId: superadmin.userId } })
+
+    await expect(auth.resolveSession(requestWith(borrowed))).resolves.toBeNull()
+    // La fin est journalisée : un emprunt fermé par un bannissement reste un
+    // emprunt fermé, et le journal nomme les deux comptes.
+    expect(securityEvents).toContainEqual({
+      event: 'admin.impersonation_ended',
+      actor: superadmin.userId,
+      target: target.userId,
+    })
+  }, 60_000)
+
+  /**
+   * **Le même geste, par le retrait du rôle** : un compte qui n'administre plus
+   * ne garde pas la session d'un client ouverte.
+   */
+  it('éteint la session empruntée quand le rôle de l’emprunteur est révoqué', async () => {
+    const superadmin = await signedIn()
+    const peer = await signedIn()
+    const target = await signedIn()
+
+    configure(superadmin.email)
+    await call('grantSuperadmin', {
+      cookie: superadmin.cookie,
+      body: { userId: superadmin.userId },
+    })
+    await call('grantSuperadmin', { cookie: superadmin.cookie, body: { userId: peer.userId } })
+
+    const borrowed = cookieOf(
+      await call('startImpersonation', {
+        cookie: superadmin.cookie,
+        body: { userId: target.userId },
+      }),
+    )
+
+    expect(
+      (await call('revokeSuperadmin', { cookie: peer.cookie, body: { userId: superadmin.userId } }))
+        .status,
+    ).toBe(200)
+
+    await expect(auth.resolveSession(requestWith(borrowed))).resolves.toBeNull()
+    expect(securityEvents).toContainEqual({
+      event: 'admin.impersonation_ended',
+      actor: superadmin.userId,
+      target: target.userId,
+    })
+  }, 60_000)
+
+  /**
+   * **MJ1 — un compte banni ne s'emprunte pas.** Le refus n'est pas une
+   * politesse : la session empruntée porte le compte du banni, et l'ouvrir
+   * revient à lui rendre une session par la bande.
+   */
+  it('refuse d’emprunter un compte banni', async () => {
+    const superadmin = await signedIn()
+    const target = await signedIn()
+
+    configure(superadmin.email)
+    await call('grantSuperadmin', {
+      cookie: superadmin.cookie,
+      body: { userId: superadmin.userId },
+    })
+    await call('banAccount', { cookie: superadmin.cookie, body: { userId: target.userId } })
+
+    const refused = await call('startImpersonation', {
+      cookie: superadmin.cookie,
+      body: { userId: target.userId },
+    })
+
+    expect(refused.status).not.toBe(200)
+    expect(cookieOf(refused)).toBe('')
+  }, 60_000)
+
+  /**
+   * **C2 — l'échéance courte doit tenir.** `shouldBeUpdated`
+   * (`api/routes/session.mjs`) vaut `expiresAt - expiresIn + updateAge <= now` :
+   * il est **toujours vrai** pour une ligne écrite avec une échéance plus courte
+   * que celle de la bibliothèque. Mesuré avant correction : la première lecture
+   * portait l'échéance d'une heure à sept jours, et l'heure annoncée par
+   * `AuthPolicy`, par `admin/AGENTS.md` et par l'ADR 064 était fausse.
+   */
+  it('ne prolonge pas une session empruntée à la première lecture', async () => {
+    const superadmin = await signedIn()
+    const target = await signedIn()
+
+    configure(superadmin.email)
+    await call('grantSuperadmin', {
+      cookie: superadmin.cookie,
+      body: { userId: superadmin.userId },
+    })
+
+    const borrowed = cookieOf(
+      await call('startImpersonation', {
+        cookie: superadmin.cookie,
+        body: { userId: target.userId },
+      }),
+    )
+
+    const deadlineOf = async (): Promise<number> => {
+      const rows = await connection.db.execute<{ seconds: number }>(
+        sql`select extract(epoch from (expires_at - now()))::int as seconds
+            from auth_session where impersonated_by = ${superadmin.userId}`,
+      )
+
+      return Number(rows.rows[0]?.seconds ?? 0)
+    }
+
+    expect(await deadlineOf()).toBeLessThanOrEqual(3600)
+
+    // Une lecture — celle que fait n'importe quelle requête servie.
+    await expect(auth.resolveSession(requestWith(borrowed))).resolves.toMatchObject({
+      userId: target.userId,
+    })
+
+    // L'échéance n'a pas bougé : elle reste celle de l'emprunt.
+    expect(await deadlineOf()).toBeLessThanOrEqual(3600)
+  }, 60_000)
+
+  /**
+   * **Et la fenêtre glissante reste intacte pour tout le monde d'autre** : la
+   * correction ci-dessus ne doit pas éteindre le renouvellement des sessions
+   * ordinaires, sans quoi elle changerait la durée de vie d'une connexion.
+   */
+  it('prolonge toujours une session ordinaire arrivant en fin de fenêtre', async () => {
+    const person = await signedIn()
+
+    // Six jours ont passé sur une session de sept : la bibliothèque la
+    // renouvelle à la lecture suivante.
+    await connection.db.execute(
+      sql`update auth_session set expires_at = now() + interval '6 days'
+          where user_id = ${person.userId}`,
+    )
+
+    await expect(auth.resolveSession(requestWith(person.cookie))).resolves.toMatchObject({
+      userId: person.userId,
+    })
+
+    const rows = await connection.db.execute<{ seconds: number }>(
+      sql`select extract(epoch from (expires_at - now()))::int as seconds
+          from auth_session where user_id = ${person.userId}`,
+    )
+
+    expect(Number(rows.rows[0]?.seconds ?? 0)).toBeGreaterThan(6 * 24 * 3600 + 3600)
+  }, 60_000)
 })
 
 describe.runIf(databaseReachable)('le module coupé', () => {
@@ -832,6 +1747,47 @@ describe('le profil minimal balaie le back-office', () => {
     expect(sweep.absentTables).toContainEqual({
       moduleId: adminModule.id,
       table: getTableConfig(adminPlatformRole).name,
+    })
+  })
+})
+
+/**
+ * **Un port ne lève pas** (`AGENTS.md` racine), et c'est au point de composition
+ * que la promesse se tient (constat MJ4 de la revue de s37b1).
+ *
+ * Les trois lectures branchées sur le socle parlent à la base. Sans cette
+ * enveloppe, une panne **levait** : la branche `{ ok: false }` du module — celle
+ * qui refuse un bannissement plutôt que de le décider sur un décompte qu'elle
+ * n'a pas, et celle qui refuse le back-office à une session dont elle ne sait
+ * pas si elle est empruntée — n'était atteignable par rien en production. Le
+ * sens fermé survivait par accident : l'exception remontait en 500.
+ *
+ * La panne est jouée par la panne la plus banale qui soit : le service
+ * d'authentification qui n'est pas là.
+ */
+describe('le port des comptes, quand la lecture échoue', () => {
+  const port = adminAccountsPort(() => {
+    throw new Error('base injoignable')
+  })
+
+  it('rend un refus, jamais une exception', async () => {
+    await expect(port.signInBlockedAmong(['usr_1'])).resolves.toEqual({ ok: false })
+    await expect(port.borrowerOf(new Request(APP_URL))).resolves.toEqual({ ok: false })
+    await expect(port.endBorrowsBy('usr_1')).resolves.toEqual({ ok: false })
+    await expect(port.sweepExpiredImpersonations(new Date())).resolves.toEqual({ ok: false })
+  })
+
+  it('n’ouvre ni ne ferme d’emprunt sur une panne, et le dit dans son vocabulaire', async () => {
+    await expect(
+      port.startImpersonation({
+        request: new Request(APP_URL),
+        actorId: 'usr_1',
+        userId: 'usr_2',
+      }),
+    ).resolves.toEqual({ ok: false, error: 'unknown_account' })
+    await expect(port.stopImpersonation({ request: new Request(APP_URL) })).resolves.toEqual({
+      ok: false,
+      error: 'not_impersonating',
     })
   })
 })

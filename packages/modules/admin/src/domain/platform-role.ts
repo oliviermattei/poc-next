@@ -62,8 +62,16 @@ export function designatesFirstSuperadmin(input: {
   return comparableEmail(input.designatedEmail) === comparableEmail(input.candidateEmail)
 }
 
-/** Ce qui empêche un bannissement. `null` : rien ne l'empêche. */
-export type BanRefusal = 'last_superadmin'
+/**
+ * Ce qui empêche un bannissement. `null` : rien ne l'empêche.
+ *
+ * `accounts_unavailable` n'est pas décidé par la règle ci-dessous : c'est ce
+ * que rend le chemin d'écriture quand l'état des comptes n'a **pas pu être
+ * lu** (s37b1). Un décompte de superadmins capables de se connecter demande
+ * l'état « banni », qui vit dans le socle derrière un port ; un port en échec
+ * ne vaut pas « personne n'est banni », et refuser est le sens fermé.
+ */
+export type BanRefusal = 'last_superadmin' | 'accounts_unavailable'
 
 /** Ce qui empêche une révocation. `null` : rien ne l'empêche. */
 export type RevocationRefusal = BanRefusal | 'not_superadmin'
@@ -73,8 +81,27 @@ export type RevocationRefusal = BanRefusal | 'not_superadmin'
  * ici : c'est `infrastructure/` qui le lit, **sous le verrou**, et le donne.
  */
 export interface PlatformRoleFacts {
+  /**
+   * Les superadmins **capables d'ouvrir une session** (s37b1), jamais les
+   * lignes de rôle.
+   *
+   * La distinction est toute la dette reportée de `s37a` : un superadmin banni
+   * porte encore sa ligne, et le décompte qui la comptait laissait deux
+   * séquences de gestes *tous permis* vider la plateforme de ses
+   * administrateurs utilisables — un état qu'aucune commande ne répare.
+   */
   readonly superadminCount: number
   readonly targetIsSuperadmin: boolean
+  /**
+   * La cible peut-elle encore ouvrir une session ?
+   *
+   * Ce qu'elle décide : lui retirer le rôle ou la bannir ne retire **rien** à
+   * l'administrabilité quand elle est déjà fermée. Sans ce fait, révoquer le
+   * rôle d'un superadmin banni serait refusé « c'est le dernier » alors qu'il
+   * n'en est pas un — et le seul geste qui nettoie l'état redouté serait
+   * interdit.
+   */
+  readonly targetCanSignIn: boolean
 }
 
 /**
@@ -100,7 +127,11 @@ export interface PlatformRoleFacts {
  * qui tranche si les deux venaient à diverger.
  */
 export function banRefusal(facts: PlatformRoleFacts): BanRefusal | null {
-  return facts.targetIsSuperadmin && facts.superadminCount <= 1 ? 'last_superadmin' : null
+  if (!facts.targetIsSuperadmin || !facts.targetCanSignIn) {
+    return null
+  }
+
+  return facts.superadminCount <= 1 ? 'last_superadmin' : null
 }
 
 /**
@@ -109,6 +140,24 @@ export function banRefusal(facts: PlatformRoleFacts): BanRefusal | null {
  */
 export function revocationRefusal(facts: PlatformRoleFacts): RevocationRefusal | null {
   return facts.targetIsSuperadmin ? banRefusal(facts) : 'not_superadmin'
+}
+
+/**
+ * **Le décompte que la désignation regarde** (s37b1).
+ *
+ * `designatesFirstSuperadmin` reçoit ce nombre, et il compte lui aussi les
+ * comptes **capables de se connecter** : le critère dit « tout décompte ». La
+ * conséquence est une réparation, pas une commodité — une plateforme dont tous
+ * les superadmins sont fermés redevient désignable par `SUPERADMIN_EMAIL`, là
+ * où un décompte de lignes l'aurait laissée définitivement muette.
+ */
+export function signInCapableSuperadmins(input: {
+  readonly superadminIds: readonly string[]
+  readonly signInBlocked: readonly string[]
+}): number {
+  const blocked = new Set(input.signInBlocked)
+
+  return input.superadminIds.filter((userId) => !blocked.has(userId)).length
 }
 
 /** La cible d'une action d'administration, telle que le corps la porte. */

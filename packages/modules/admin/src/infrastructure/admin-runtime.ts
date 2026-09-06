@@ -46,7 +46,7 @@ let provider: (() => ConfigureAdminOptions) | null = null
 
 const build = (options: ConfigureAdminOptions): AdminService => ({
   useCases: createAdminUseCases({
-    roles: createDrizzlePlatformRoleRepository(options.db),
+    roles: createDrizzlePlatformRoleRepository(options.db, options.accounts),
     accounts: options.accounts,
     designatedEmail: options.designatedEmail,
     securityLog: options.securityLog ?? consoleSecurityLog,

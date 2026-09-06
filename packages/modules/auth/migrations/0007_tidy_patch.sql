@@ -1,0 +1,3 @@
+ALTER TABLE "auth_session" ADD COLUMN "impersonated_by" text;--> statement-breakpoint
+ALTER TABLE "auth_session" ADD CONSTRAINT "auth_session_impersonated_by_auth_user_id_fk" FOREIGN KEY ("impersonated_by") REFERENCES "public"."auth_user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "auth_session_impersonated_by_idx" ON "auth_session" USING btree ("impersonated_by");

@@ -35,6 +35,7 @@ import {
   twoFactorRefusal,
   TWO_FACTOR_REFUSAL_STATUS,
 } from './two-factor'
+import { signInBlockedAmong } from './ban'
 import {
   describePasskeys,
   parsePasskeyName,
@@ -778,5 +779,38 @@ describe('liste des passkeys', () => {
       'pk-1',
       'pk-0',
     ])
+  })
+})
+
+/**
+ * **Le décompte des comptes capables d'ouvrir une session** (s37b1).
+ *
+ * La règle est ici, dans le socle, parce que « banni » y vit (ADR 058) : le
+ * module `admin` la reçoit par son port et ne lit jamais `auth_user`.
+ */
+describe('comptes incapables d’ouvrir une session', () => {
+  it('nomme les comptes bannis, et eux seuls', () => {
+    expect(
+      signInBlockedAmong({
+        requested: ['a', 'b', 'c'],
+        accounts: [
+          { id: 'a', banned: false },
+          { id: 'b', banned: true },
+          { id: 'c', banned: false },
+        ],
+      }),
+    ).toEqual(['b'])
+  })
+
+  it('compte un identifiant introuvable comme bloqué : c’est le sens fermé', () => {
+    // Un compte que la lecture ne rend pas ne prouve rien de sa capacité à
+    // entrer. Le tenir pour capable ferait décider une garde sur une absence.
+    expect(
+      signInBlockedAmong({ requested: ['a', 'disparu'], accounts: [{ id: 'a', banned: false }] }),
+    ).toEqual(['disparu'])
+  })
+
+  it('ne nomme personne quand la demande est vide', () => {
+    expect(signInBlockedAmong({ requested: [], accounts: [{ id: 'a', banned: true }] })).toEqual([])
   })
 })

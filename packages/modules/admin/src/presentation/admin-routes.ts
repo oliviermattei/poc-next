@@ -47,6 +47,8 @@ const PATHS = {
   revokeSuperadmin: '/admin/superadmins/revoke',
   banAccount: '/admin/accounts/ban',
   unbanAccount: '/admin/accounts/unban',
+  startImpersonation: '/admin/impersonation/start',
+  stopImpersonation: '/admin/impersonation/stop',
 } as const
 
 /** Le chemin public d'une route du module, préfixe de montage compris. */
@@ -70,6 +72,19 @@ const badRequest = (reason: string): Response =>
 const conflict = (reason: string): Response =>
   Response.json({ error: 'refused', reason }, { status: 409 })
 
+/**
+ * Une réponse qui **pose la session**, et rien d'autre.
+ *
+ * Le jeton n'est pas dans le corps : il est dans le cookie, `HttpOnly`, formé
+ * par le socle. Un jeton rendu à un écran annule `HttpOnly` — c'est la règle
+ * que les routes du second facteur appliquent déjà (`auth-routes.ts`).
+ */
+const withSession = (setCookie: string, body: unknown): Response =>
+  new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { 'content-type': 'application/json', 'set-cookie': setCookie },
+  })
+
 export function createAdminRoutes(service: () => AdminService): readonly ModuleRoute[] {
   /**
    * La garde, écrite **une fois** : le répartiteur a déjà exigé une session, il
@@ -79,6 +94,7 @@ export function createAdminRoutes(service: () => AdminService): readonly ModuleR
    * (`docs/security.md` §7).
    */
   const asSuperadmin = async (
+    request: Request,
     context: ModuleRouteContext,
     run: (actorId: string) => Promise<Response>,
   ): Promise<Response> => {
@@ -89,6 +105,20 @@ export function createAdminRoutes(service: () => AdminService): readonly ModuleR
     }
 
     const admin = service()
+
+    // **Une session empruntée n'administre jamais** (s37b1), quel que soit le
+    // rôle du compte emprunté. Le chemin se découvre en production : le compte
+    // emprunté est promu pendant l'emprunt, et sa session ouvrirait alors le
+    // back-office à qui l'a empruntée — donc l'enchaînement d'un emprunt depuis
+    // un emprunt, et un journal dont l'acteur n'est plus celui qui agit.
+    //
+    // Le refus est le même 404 : il ne distingue rien de plus qu'une URL
+    // inventée.
+    if (await admin.useCases.isBorrowedSession(request)) {
+      admin.useCases.logAccessRefused(context.session.userId)
+
+      return notFound()
+    }
 
     if (!(await admin.useCases.isSuperadmin(context.session.userId))) {
       admin.useCases.logAccessRefused(context.session.userId)
@@ -116,7 +146,7 @@ export function createAdminRoutes(service: () => AdminService): readonly ModuleR
       path: PATHS.grantSuperadmin,
       protection: { level: 'authenticated' },
       handler: async (request, context) =>
-        await asSuperadmin(context, async (actorId) =>
+        await asSuperadmin(request, context, async (actorId) =>
           await withTarget(request, async (target) => {
             const outcome = await service().useCases.grantSuperadmin({
               actorId,
@@ -134,7 +164,7 @@ export function createAdminRoutes(service: () => AdminService): readonly ModuleR
       path: PATHS.revokeSuperadmin,
       protection: { level: 'authenticated' },
       handler: async (request, context) =>
-        await asSuperadmin(context, async (actorId) =>
+        await asSuperadmin(request, context, async (actorId) =>
           await withTarget(request, async (target) => {
             const outcome = await service().useCases.revokeSuperadmin({
               actorId,
@@ -153,7 +183,7 @@ export function createAdminRoutes(service: () => AdminService): readonly ModuleR
       path: PATHS.banAccount,
       protection: { level: 'authenticated' },
       handler: async (request, context) =>
-        await asSuperadmin(context, async (actorId) =>
+        await asSuperadmin(request, context, async (actorId) =>
           await withTarget(request, async (target) => {
             const outcome = await service().useCases.banAccount({
               actorId,
@@ -170,7 +200,13 @@ export function createAdminRoutes(service: () => AdminService): readonly ModuleR
             // **409 pour le dernier superadmin**, comme à la révocation :
             // l'appelant administre, il connaît la cible, et le refus lui dit
             // ce qui l'empêche plutôt que de lui mentir sur l'existence.
-            if (outcome.error === 'last_superadmin') {
+            //
+            // `accounts_unavailable` y est **avec** lui (s37b1) : c'est un refus
+            // du même garde-fou, prononcé parce que l'état des comptes n'a pas
+            // pu être lu. Le rendre en 400 dirait « votre demande est mal
+            // formée » d'une panne de lecture, et inviterait à la réessayer
+            // autrement.
+            if (outcome.error === 'last_superadmin' || outcome.error === 'accounts_unavailable') {
               return conflict(outcome.error)
             }
 
@@ -181,11 +217,68 @@ export function createAdminRoutes(service: () => AdminService): readonly ModuleR
         ),
     },
     {
+      /**
+       * **L'emprunt de session** (s37b1) : une élévation de privilège, donc une
+       * rotation de session (`docs/security.md` §2). Le corps ne porte que la
+       * cible ; le jeton, lui, ne sort que dans un cookie `HttpOnly`.
+       */
+      method: 'POST',
+      path: PATHS.startImpersonation,
+      protection: { level: 'authenticated' },
+      handler: async (request, context) =>
+        await asSuperadmin(request, context, async (actorId) =>
+          await withTarget(request, async (target) => {
+            const outcome = await service().useCases.startImpersonation({
+              request,
+              actorId,
+              userId: target.userId,
+            })
+
+            if (outcome.ok) {
+              return withSession(outcome.setCookie, { impersonating: target.userId })
+            }
+
+            // **409 pour un superadmin visé**, comme les autres refus de ce
+            // module : l'appelant administre, il connaît la cible.
+            return outcome.error === 'unknown_account' ? notFound() : conflict(outcome.error)
+          }),
+        ),
+    },
+    {
+      /**
+       * **La sortie**, et la seule route de ce module qui ne passe pas par la
+       * garde de superadmin.
+       *
+       * Elle ne le peut pas : elle est appelée **depuis la session empruntée**,
+       * qui désigne le compte emprunté et que la garde refuse par principe. Son
+       * autorisation est le cookie lui-même — porter une session marquée d'un
+       * emprunteur est ce qui donne le droit d'y mettre fin, et rien d'autre
+       * n'est décidé ici.
+       *
+       * Module coupé, une impersonation en cours ne peut plus être rendue à la
+       * main : elle expire, et le balayage compte son expiration comme une fin.
+       */
+      method: 'POST',
+      path: PATHS.stopImpersonation,
+      protection: { level: 'authenticated' },
+      handler: async (request, context) => {
+        if (context.session === null) {
+          return notFound()
+        }
+
+        const outcome = await service().useCases.stopImpersonation({ request })
+
+        return outcome.ok
+          ? withSession(outcome.setCookie, { stopped: true })
+          : notFound()
+      },
+    },
+    {
       method: 'POST',
       path: PATHS.unbanAccount,
       protection: { level: 'authenticated' },
       handler: async (request, context) =>
-        await asSuperadmin(context, async (actorId) =>
+        await asSuperadmin(request, context, async (actorId) =>
           await withTarget(request, async (target) => {
             const outcome = await service().useCases.unbanAccount({
               actorId,

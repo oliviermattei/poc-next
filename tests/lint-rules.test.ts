@@ -1215,3 +1215,76 @@ describe('chaque module est tenu par une frontière (ADR 006, ADR 042)', () => {
     }
   })
 })
+
+/**
+ * **Un seul écrivain de session dans ce dépôt** (constats C1 et MJ1 de la revue
+ * de `s37b1`).
+ *
+ * La garde du socle — « un compte banni n'ouvre aucune session » — vit dans
+ * `databaseHooks.session.create.before`, et `better-auth-service.ts` la présente
+ * comme posée « au seul endroit que **tous** les parcours traversent … et tout
+ * parcours écrit demain y passent ». `s37b1` est le parcours qui a démenti la
+ * phrase : l'impersonation écrivait sa ligne de session en Drizzle, hors du
+ * crochet, et un compte banni y récupérait une session.
+ *
+ * La correction porte la garde **dans l'`insert`** de ce chemin-là. Ce cas est
+ * ce qui empêche le suivant de la sauter : si un second fichier se met à écrire
+ * `auth_session`, il ne peut plus hériter du silence — il doit décider, et le
+ * dire ici.
+ *
+ * Ce qui est balayé : le code de production des paquets et de l'application,
+ * hors fichiers de test. Ce qui ne l'est pas, et n'a pas à l'être : les
+ * écritures faites **par la bibliothèque** à travers son adapter, qui passent
+ * par le crochet.
+ */
+describe('l’écriture d’une session (s37b1)', () => {
+  const SESSION_WRITE = /insert\((\w+\.)?authSession\)|insert\s+into\s+"?auth_session"?/i
+
+  const productionSources = (directory: string): string[] => {
+    const root = join(REPO_ROOT, directory)
+
+    if (!existsSync(root)) {
+      return []
+    }
+
+    const walk = (current: string): string[] =>
+      readdirSync(current, { withFileTypes: true }).flatMap((entry) => {
+        const full = join(current, entry.name)
+
+        if (entry.isDirectory()) {
+          return entry.name === 'node_modules' || entry.name === '.next' ? [] : walk(full)
+        }
+
+        return /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) ? [full] : []
+      })
+
+    return walk(root)
+  }
+
+  const writers = ['packages', 'apps', 'config', 'scripts']
+    .flatMap((directory) => productionSources(directory))
+    .filter((file) => SESSION_WRITE.test(readFileSync(file, 'utf8')))
+    .map((file) => relative(REPO_ROOT, file))
+
+  it('n’a qu’un écrivain, et c’est celui qui porte la garde', () => {
+    // Un balayage vide passerait pour une raison qui n'en est pas une : sans
+    // cette borne, un motif qui cesse de correspondre rendrait ce cas vert.
+    expect(writers).toEqual([
+      'packages/modules/auth/src/infrastructure/drizzle-auth-repositories.ts',
+    ])
+  })
+
+  it('écrit sous condition du compte : la garde est dans l’instruction', () => {
+    const source = readFileSync(
+      join(REPO_ROOT, 'packages/modules/auth/src/infrastructure/drizzle-auth-repositories.ts'),
+      'utf8',
+    )
+
+    // La ligne n'est écrite que par un `insert … select … from auth_user`, dont
+    // la qualification exclut un compte banni. Une reprise en `.values(...)`
+    // — la forme d'avant la revue — ne porte aucune condition, et ce cas la
+    // refuse.
+    expect(source).toMatch(/insert\(authSession\)\s*\.select\(/)
+    expect(source).toMatch(/eq\(authUser\.banned, false\)/)
+  })
+})

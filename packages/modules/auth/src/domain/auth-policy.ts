@@ -41,6 +41,16 @@ export interface AuthPolicy {
    * téléphone.
    */
   readonly twoFactorChallengeTtlSeconds: number
+  /**
+   * Durée de vie d'une session **empruntée** (s37b1), en secondes.
+   *
+   * Bien plus courte qu'une session ordinaire, et c'est le point : une session
+   * d'impersonation est une élévation de privilège qui vit sur le poste d'un
+   * administrateur. Elle expire d'elle-même, et son expiration **compte comme
+   * une fin** — le balayage du module `admin` émet alors le second événement du
+   * journal, faute de quoi le journal mentirait par omission.
+   */
+  readonly impersonationTtlSeconds: number
 }
 
 /**
@@ -57,4 +67,5 @@ export const defaultAuthPolicy: AuthPolicy = {
   sessionTtlSeconds: 60 * 60 * 24 * 7,
   sessionRefreshAfterSeconds: 60 * 60 * 24,
   twoFactorChallengeTtlSeconds: 60 * 5,
+  impersonationTtlSeconds: 60 * 60,
 }

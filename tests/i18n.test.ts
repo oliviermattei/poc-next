@@ -1104,8 +1104,15 @@ const authUseCasesWith = (mailer: ReturnType<typeof createRecordingMailer>) =>
     sessions: {
       countForUser: () => Promise.resolve(0),
       listForUser: () => Promise.resolve([]),
-      revokeAllForUser: () => Promise.resolve(0),
+      revokeAllForUser: () => Promise.resolve([]),
+      revokeBorrowsBy: () => Promise.resolve([]),
       revokeForUser: () => Promise.resolve(false),
+      // s37b1 : ce fichier mesure des langues d'email, aucune session n'y est
+      // ouverte. La doublure refuse **fermé**, comme `isBanned` au-dessus.
+      create: () => Promise.resolve(false),
+      findById: () => Promise.resolve(null),
+      deleteById: () => Promise.resolve(false),
+      deleteExpiredImpersonations: () => Promise.resolve([]),
     },
     accounts: {
       listForUser: () => Promise.resolve([]),

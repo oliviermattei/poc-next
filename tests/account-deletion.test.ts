@@ -48,11 +48,12 @@ import {
 import type { EmitJobResult, JobEmission, Jobs, Mailer } from '@repo/ports'
 import { sql } from 'drizzle-orm'
 import { getTableConfig, PgTable } from 'drizzle-orm/pg-core'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { availableModules, enabledModules } from '../config/features'
 import { appLocales, defaultLocale } from '../config/i18n'
 import { databaseUrl, isDatabaseReachable } from './fixtures/database'
+import { createPlatformRoleLock } from './fixtures/platform-role-lock'
 import { dispatchAllowingRateLimit } from './fixtures/rate-limit'
 
 /**
@@ -80,6 +81,13 @@ import { dispatchAllowingRateLimit } from './fixtures/rate-limit'
  */
 
 const databaseReachable = await isDatabaseReachable()
+
+/**
+ * **L'exclusivité sur `admin_platform_role`** (s37b1) : ce fichier promeut des
+ * superadmins pendant que `tests/admin.test.ts` exige une table vide. Le détail,
+ * et la mesure qui l'a rendue nécessaire, sont dans le fixture.
+ */
+const platformRoleLock = createPlatformRoleLock()
 
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url))
 const APP_URL = 'http://localhost:3000'
@@ -271,6 +279,8 @@ beforeAll(async () => {
     return
   }
 
+  await platformRoleLock.open()
+
   connection = createDatabaseClient({ connectionString: databaseUrl, maxConnections: 5 })
 
   await runModuleMigrations({
@@ -320,6 +330,16 @@ beforeAll(async () => {
       findIdByEmail: () => Promise.resolve({ ok: true, userId: null }),
       ban: () => Promise.resolve({ ok: false, error: 'not_found' as const }),
       unban: () => Promise.resolve({ ok: false, error: 'not_found' as const }),
+      // Ce qui traverse cette suite est la purge, pas le décompte : aucun
+      // compte n'y est fermé, et aucun emprunt n'y est ouvert.
+      signInBlockedAmong: () => Promise.resolve({ ok: true as const, blocked: [] }),
+      startImpersonation: () =>
+        Promise.resolve({ ok: false as const, error: 'unknown_account' as const }),
+      stopImpersonation: () =>
+        Promise.resolve({ ok: false as const, error: 'not_impersonating' as const }),
+      borrowerOf: () => Promise.resolve({ ok: true as const, impersonatedBy: null }),
+      endBorrowsBy: () => Promise.resolve({ ok: true as const, ended: [] }),
+      sweepExpiredImpersonations: () => Promise.resolve({ ok: true as const, ended: [] }),
     },
     securityLog: () => {},
   })
@@ -375,6 +395,12 @@ beforeAll(async () => {
   })
 })
 
+afterEach(async () => {
+  if (databaseReachable) {
+    await platformRoleLock.release()
+  }
+})
+
 afterAll(async () => {
   resetAuthService()
   resetAdminService()
@@ -384,10 +410,19 @@ afterAll(async () => {
   if (databaseReachable) {
     await connection.db.execute(sql`delete from auth_user where email like 's34-%'`)
     await connection.close()
+    await platformRoleLock.close()
   }
 })
 
-beforeEach(() => {
+beforeEach(async () => {
+  // **L'exclusivité sur `admin_platform_role`** : ce fichier y promeut des
+  // comptes, `tests/admin.test.ts` a besoin qu'elle soit vide, et Vitest les
+  // exécute en parallèle sur la même base
+  // (`fixtures/platform-role-lock.ts`).
+  if (databaseReachable) {
+    await platformRoleLock.acquire()
+  }
+
   mailer.reset()
   recordingJobs.reset()
   fixtureNotes.length = 0
