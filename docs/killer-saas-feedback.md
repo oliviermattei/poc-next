@@ -1244,6 +1244,23 @@ La seconde est plus honnête : elle **mesure** au lieu de deviner ce qui sera lu
 
 **Non implémenté.** C'est une story, pas un correctif de fin de ronde — mais c'est la proposition la mieux étayée de ce document, parce que son coût d'inaction est mesuré : trois rouges de CI, trois allers-retours d'agent, sur trois stories consécutives.
 
+## P30 — La story qui ferme une classe de défaut est celle qui a le plus de chances de la reproduire
+
+**Trois fois dans la même séance, et chaque fois la revue l'a trouvé, jamais l'implémenteur.**
+
+- **`s33`** existe parce que la clé `jobs` du contrat était agrégée depuis toujours sans consommateur. Elle a livré `sweepJobRuns` — **exportée, jamais appelée** —, sur une table `job_run` qui croît sans borne. Le commentaire du module disait « `jobs: []`, et ce n'est pas ironique ».
+- **`s52`** existe parce que des comptes écrits vieillissent. Elle a livré **trois « trois »** dans son propre titre et ses notes, sous la note annonçant que le compte n'est plus écrit. Le registre en dérivait treize.
+- **`s55`** existe parce qu'une règle sans commande est de la documentation. Elle a construit **deux planchers** en citant `s26`, `s48` et `s51` par leur nom — et oublié le troisième, le plus central : rien ne vérifiait que son propre mécanisme était en vigueur.
+
+**Ce n'est pas de la distraction.** L'implémenteur de `s55` avait le piège écrit dans son plan, en toutes lettres, et l'a évité *sur les deux planchers qu'il a construits*. Celui de `s35` avait lu le docblock de la route publique de `s33` **pendant sa propre story**, pour une autre raison, sans faire le lien avec sa propre route publique — il l'a dit lui-même.
+
+**L'explication tient à la structure du travail** : une story qui ferme une classe écrit beaucoup de code neuf dans le domaine exact où elle vient d'établir que l'attention manque. Elle y écrit aussi les phrases les plus affirmatives du dépôt, puisqu'elle vient de prouver quelque chose. Les deux se combinent : du code neuf, non éprouvé, sous des affirmations plus fortes que d'habitude.
+
+**Règle** : quand une story ferme une classe de défaut, la revue applique **la classe à la story elle-même**, explicitement, avant de juger le reste. Pas « le correctif est-il juste » mais **« le correctif reproduit-il ce qu'il corrige »**. Les trois fois, c'est cette question qui a trouvé le défaut.
+
+**Ce que ça coûte, mesuré** : trois rondes de correction supplémentaires sur trois stories. **Ce que ça évite** : dans les trois cas, le défaut reproduit aurait été livré sur `dev` — une table sans borne, un compte périmé de plus, et une commande annonçant « 87 fichiers balayés » en ne vérifiant rien.
+
+
 
 
 
@@ -1630,6 +1647,7 @@ La seconde est plus honnête : elle **mesure** au lieu de deviner ce qui sera lu
 | 05/09 | Le premier job à la demande doit déclarer une cadence dont il ne veut pas, et l'adaptateur l'arme quotidiennement à vide | non-opérant documenté, tenu par deux gardes | P27bis |
 | 05/09 | Un critère RGPD dont aucune catégorie de la configuration livrée n'est satisfaisante — deuxième fois après s48 | critère corrigé sur mesure, et l'exigence maintenue par un module de test | P28 |
 | 06/09 | Troisième rouge de CI sur la même cause : un test atteint la configuration d'authentification sans la déclarer | correctif par story, la règle est écrite deux fois et n'a pas suffi | P29 |
+| 06/09 | Trois stories reproduisent la classe de défaut qu'elles ferment — s33, s52, s55 | trouvé par la revue les trois fois, jamais par l'implémenteur | P30 |
 
 ---
 
