@@ -51,6 +51,15 @@ Procedure, fail-closed:
    manager command. Prefer an offline/frozen install when the local store is
    sufficient; report any network or credential blocker instead of changing
    the lockfile.
+5bis. Verify that the project's dev command and its browser-test command can
+   actually start, and report the result of each. They fail for different
+   reasons than a build does — a missing local mode, a guard refusing two
+   contradictory settings — and a story that discovers it mid-flight pays a
+   round trip. When the browser suite takes its port from the environment
+   rather than from a file the project loads, **allocate a free one, verify it
+   is free, and return the exact command prefix to use**: worktrees run
+   concurrently, and two suites defaulting to the same port collide in a way
+   that reads as a test failure.
 6. Verify and return: absolute path, exact branch, HEAD, clean git status,
    environment filenames copied (names only, never values), whether the test
    environment is available, and dependency command/result.
