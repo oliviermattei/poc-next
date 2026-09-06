@@ -1299,6 +1299,20 @@ Le cas attend **une** session après révocation et en trouve **deux**. Mesuré 
 
 ---
 
+## P40bis — Un plan qui nomme la commande qui doit rougir doit l'avoir vue rougir
+
+Le plan de `s56` désignait le garde de sa décision la plus délicate : *« `tests/marketing.test.ts` compte désormais les requêtes d'un rendu authentifié ; c'est cette commande qui rougira si la dérivation est ratée. »* C'était **faux**, et l'implémenteur l'a mesuré : ce cas double `currentViewer`, et son cas qui compte les requêtes SQL ne couvre qu'une résolution **anonyme**. Un branchement inconditionnel y reste vert.
+
+Je l'avais écrit de bonne foi, à partir d'un rapport de revue exact : `s37b2` **a bien** étendu ce fichier à un rendu authentifié. Ce que je n'ai pas vérifié, c'est que le cas étendu soit celui qui compte les requêtes. Deux faits vrais, une conclusion fausse.
+
+**Pourquoi c'est pire qu'un plan qui ne nomme rien.** Un plan muet laisse l'implémenteur chercher son garde. Un plan qui nomme le mauvais lui donne une raison de ne pas chercher : la ligne a l'air vérifiée, elle cite un fichier et une story, elle est plausible. C'est le même mécanisme que les quatre commentaires de `s39` affirmant un test qui n'existait pas — sauf qu'ici l'affirmation vient du plan, donc de plus haut, donc avec plus d'autorité.
+
+**Règle** : nommer une commande dans un plan est une **affirmation vérifiable**, au même titre qu'un chiffre. Soit on l'a vue rougir, soit on écrit *« il faut un garde ici, à construire »* et on laisse l'implémenteur le placer. La formulation prudente n'est pas plus faible : elle est plus honnête sur ce qui a été mesuré, et elle demande explicitement le travail au lieu de le supposer fait.
+
+**Ce qui a marché malgré tout** : l'implémenteur a contredit le plan avec une mesure, construit le garde là où le défaut vit, et l'a dit dans son rapport. C'est la deuxième fois de la journée qu'un implémenteur corrige une consigne fausse par la mesure (voir [P35bis](#p35bis--un-attendu-dérivé-des-deux-côtés-ne-mord-plus--il-faut-lui-rendre-une-prise)) — ce qui suggère que la consigne « contredis-moi avec une mesure » vaut d'être dans chaque prompt d'implémentation, et pas seulement espérée.
+
+---
+
 ## P36bis — La revue lit le code, elle ne mesure pas son coût : c'est CodeQL qui a trouvé
 
 `s39` a livré `POST /analytics/client-error`, **volontairement non authentifiée** — il faut capter les erreurs d'avant-session. Le corps est donc choisi par un appelant anonyme, et il traverse un analyseur de trace de pile écrit en expression régulière.
@@ -1801,6 +1815,7 @@ C'est la **troisième** occurrence du même défaut dans ce même fichier : une 
 | 06/09 | Deadlock PostgreSQL entre deux processus de test : la suppression ne prend pas le verrou que la production prend | écrite comme dette, non corrigée depuis la branche voisine | P37bis |
 | 06/09 | `ModuleSession.roles` vide depuis huit stories : le niveau de protection `role` refuse tout le monde | trouvé en voulant s'en servir, story s56 ajoutée | P38bis |
 | 06/09 | Deux branches indépendantes rougissent sur le même cas de parcours : un compte partagé entre parcours parallèles | 3/3 verts en isolation, vert au rejeu ; écrit comme dette du harnais | P39bis |
+| 06/09 | Le plan de s56 nommait un garde qui n'aurait pas rougi — deux faits vrais, une conclusion fausse | l'implémenteur l'a mesuré et a construit le garde au bon endroit | P40bis |
 
 ---
 
