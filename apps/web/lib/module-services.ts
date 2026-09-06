@@ -12,6 +12,7 @@ import { prepareJobs } from './jobs'
 import { createAppMailer } from './mailer'
 import { marketingSite } from './marketing'
 import { notifications } from './notifications'
+import { onboarding } from './onboarding'
 import { organizations } from './organizations'
 import { appRateLimiter } from './rate-limit'
 import { storage } from './storage'
@@ -118,4 +119,9 @@ export function prepareModuleServices(): void {
   // ce qu'aucune requête ne procure ») dispatche désormais un corps valide et
   // exige 204.
   prepareAnalytics()
+  // s40 — sans cette ligne, les deux routes d'écriture du parcours répondent
+  // **500** en disant que le module n'est pas configuré : le répartiteur monte
+  // les routes, il ne construit rien. Module coupé, l'appel ne fait rien — les
+  // routes n'existent alors pas.
+  onboarding.prepare()
 }

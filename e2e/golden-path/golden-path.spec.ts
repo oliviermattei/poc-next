@@ -2,13 +2,20 @@ import { MODULE_ROUTE_PREFIX } from '@repo/core'
 import { createDatabaseClient } from '@repo/db'
 import { billingWebhookEvent, PRICING_SCREEN_PATH } from '@repo/module-billing'
 import { demoEnabledModule } from '@repo/module-demo-enabled'
+import { ONBOARDING_SCREEN_PATH } from '@repo/module-onboarding'
 import { expect, test, type Page } from '@playwright/test'
 
 import { billing } from '../../apps/web/lib/billing'
 import { organizations } from '../../apps/web/lib/organizations'
 import { resolveGoldenPathRegime, verifyEventIdMark } from '../../scripts/golden-path-regime'
-import { linkSentTo, PASSWORD, signIn, signUp } from '../support/account'
-import { publicPath, urlOf } from '../support/locale'
+import {
+  clearRemainingOnboardingSteps,
+  linkSentTo,
+  PASSWORD,
+  signIn,
+  signUp,
+} from '../support/account'
+import { onboardingCourseMounted, publicPath, signedInLanding, urlOf } from '../support/locale'
 import { humanDuration, measuredStep, totalOf, type StepMeasurement } from '../support/steps'
 
 /**
@@ -38,10 +45,49 @@ import { humanDuration, measuredStep, totalOf, type StepMeasurement } from '../s
  * n'était pas vierge. Des identités aléatoires auraient rendu ce défaut
  * invisible, ce qui est exactement l'erreur que la story cherche à ne pas
  * commettre.
+ *
+ * ## Le parcours d'intégration est **traversé**, jamais refermé (s40)
+ *
+ * Depuis s40, un compte neuf atterrit sur le parcours d'intégration avant le
+ * tableau de bord. Le reste de la suite le **referme** par une écriture en base
+ * (`closeOnboardingCourse`) : ce que ces parcours mesurent vient après
+ * l'intégration, et le leur faire traverser coûterait un formulaire par compte.
+ * Ici, non — et c'est une décision, pas une omission.
+ *
+ * Le parcours doré est « clone → premier paiement », c'est-à-dire le chemin
+ * **réel** d'un acheteur. Depuis s40 ce chemin passe par le parcours
+ * d'intégration : le refermer d'un `insert` ferait mesurer au premier critère de
+ * succès du PRD un chemin que plus personne n'emprunte — moins cher, et faux de
+ * ce qu'il prétend mesurer. Le fondateur le traverse donc pour de vrai : il
+ * **remplit** l'étape de profil, atteint l'organisation puis les offres **depuis
+ * le parcours**, et franchit la dernière étape. Deux garanties que la story vend
+ * se trouvent ainsi mesurées dans le parcours qui vend le produit — une étape qui
+ * disparaît parce que sa donnée existe (l'organisation créée), et une porte qui
+ * ne se rouvre pas.
+ *
+ * **Le coût est mesuré, jamais concédé** : la traversée porte ses propres étapes
+ * chronométrées, sous le même budget que les autres. Aucun budget n'est relevé
+ * pour elle.
+ *
+ * Les deux variantes de paiement, elles, ne traversent pas : leur sujet est la
+ * **forme** du paiement, et elles vont droit aux offres. Leur atterrissage est
+ * simplement **dérivé** (`signedInLanding`) — ni écrit en dur, ni refermé.
+ *
+ * Un dépôt qui coupe le module `onboarding` n'a rien à traverser : la décision
+ * est dérivée de la configuration, et le journal dit lequel des deux régimes a
+ * été mesuré.
  */
 
 /** Les mesures d'étape de l'exécution, journalisées à la fin de chaque parcours. */
 const measured: StepMeasurement[] = []
+
+/**
+ * **Y a-t-il un parcours d'intégration sur la route de l'acheteur ?**
+ *
+ * Dérivé, jamais écrit : couper le module est une ligne de `config/features.ts`,
+ * et le parcours doré doit rester vrai des deux côtés.
+ */
+const COURSE_ON_THE_WAY = onboardingCourseMounted()
 
 /**
  * Le budget d'une étape (critère 8), en millisecondes.
@@ -81,8 +127,40 @@ const premiumRoute = (): string => {
 const PREMIUM_ROUTE = premiumRoute()
 
 const FOUNDER = 'parcours-dore@example.test'
+/**
+ * Le nom que le fondateur **choisit** à l'étape de profil.
+ *
+ * Il n'est pas décoratif : l'inscription pose le nom à l'adresse, et l'étape
+ * obligatoire ne se franchit pas tant que ce nom-là n'a pas été remplacé.
+ */
+const FOUNDER_NAME = 'Camille Fondatrice'
 const BUYER = 'parcours-dore-achat@example.test'
 const ORGANIZATION = { name: 'Parcours doré', slug: 'parcours-dore' }
+
+/**
+ * **L'écran que l'étape en cours propose**, atteint depuis le parcours — ou
+ * demandé directement quand il n'y a pas de parcours à suivre.
+ *
+ * C'est ce que fait un acheteur : il suit ce qu'on lui propose. Le passage par
+ * la racine n'est pas décoratif — il mesure, **au milieu du chemin d'achat**,
+ * que le parcours reprend à l'étape en cours (critère 4 de s40) et que la
+ * précédente en est sortie.
+ *
+ * Le libellé de l'action vient du catalogue du module ; l'adresse, elle, est
+ * celle que le parcours doré demanderait de toute façon. Les deux régimes
+ * finissent donc sur la **même** assertion d'arrivée.
+ */
+const reachFromCourse = async (page: Page, action: string, screen: string): Promise<void> => {
+  if (COURSE_ON_THE_WAY) {
+    await page.goto('/')
+    await expect(page).toHaveURL(urlOf(ONBOARDING_SCREEN_PATH))
+    await page.getByRole('link', { name: action }).click()
+  } else {
+    await page.goto(publicPath(screen))
+  }
+
+  await expect(page).toHaveURL(urlOf(screen))
+}
 
 /** Le droit d'accès, des deux côtés du mur : l'écran **et** la route. */
 const expectFeatureGranted = async (page: Page): Promise<void> => {
@@ -128,6 +206,14 @@ const expectFeatureLocked = async (page: Page): Promise<void> => {
 test.beforeAll(() => {
   expect(billing.available, 'le parcours doré exige le module de facturation').toBe(true)
   expect(organizations.available, 'le parcours doré exige le module d’organisations').toBe(true)
+
+  // **Lequel des deux régimes a été mesuré**, dit à côté des durées : le
+  // parcours doré n'exige pas l'intégration — il la traverse quand elle est là.
+  console.log(
+    COURSE_ON_THE_WAY
+      ? '  parcours d’intégration : traversé par le fondateur (module activé)'
+      : '  parcours d’intégration : absent (module coupé), chaque étape va droit à son écran',
+  )
 })
 
 test.afterAll(() => {
@@ -140,11 +226,14 @@ test.afterAll(() => {
 
 /**
  * **Le parcours doré lui-même** (critère 1) : inscription, vérification
- * d'email, organisation, souscription, fonctionnalité réservée.
+ * d'email, parcours d'intégration, organisation, souscription, fonctionnalité
+ * réservée.
  *
- * Les cinq étapes sont enchaînées dans **un seul** cas : ce qui est mesuré est
- * la chaîne, et une étape qui ne mène pas à la suivante doit rougir plutôt que
- * de laisser la suivante repartir d'un état posé à la main.
+ * Les étapes sont enchaînées dans **un seul** cas : ce qui est mesuré est la
+ * chaîne, et une étape qui ne mène pas à la suivante doit rougir plutôt que de
+ * laisser la suivante repartir d'un état posé à la main. C'est aussi pourquoi
+ * l'intégration est traversée plutôt que refermée : la refermer poserait à la
+ * main, en base, l'état que l'acheteur atteint en cliquant.
  */
 test('un clone mène à un premier paiement, et le paiement ouvre la fonctionnalité', async ({
   page,
@@ -159,11 +248,31 @@ test('un clone mène à un premier paiement, et le paiement ouvre la fonctionnal
 
   await step('connexion', async () => {
     await signIn(page, FOUNDER)
-    await expect(page).toHaveURL(urlOf('/'))
+    // **L'atterrissage est dérivé** : le parcours d'intégration quand il est
+    // monté, le tableau de bord sinon. C'est là que cette commande partait
+    // rouge après s40, sur un motif ancré qui ne connaissait que le second.
+    await expect(page).toHaveURL(urlOf(signedInLanding()))
   })
 
+  if (COURSE_ON_THE_WAY) {
+    await step('parcours d’intégration : l’étape de profil', async () => {
+      await expect(page.getByRole('heading', { name: 'Bienvenue' })).toBeVisible()
+
+      // Le nom est saisi dans le formulaire que `/account` porte déjà — le
+      // parcours n'en écrit pas un second. Tant qu'il n'est pas choisi, l'étape
+      // obligatoire n'offre aucune sortie : ce refus-là est mesuré par
+      // `e2e/onboarding.spec.ts`, dont c'est le sujet.
+      await page.getByLabel('Nom').fill(FOUNDER_NAME)
+      await page.getByRole('button', { name: 'Enregistrer' }).click()
+      await expect(page.getByRole('status')).toBeVisible()
+
+      await page.getByRole('button', { name: 'Continuer' }).click()
+      await expect(page).toHaveURL(urlOf(ONBOARDING_SCREEN_PATH))
+    })
+  }
+
   await step('création de l’organisation', async () => {
-    await page.goto(publicPath('/organizations'))
+    await reachFromCourse(page, 'Créer une organisation', '/organizations')
 
     const form = page.getByRole('form', { name: 'Créer une organisation' })
 
@@ -184,7 +293,11 @@ test('un clone mène à un premier paiement, et le paiement ouvre la fonctionnal
   })
 
   await step('souscription d’une offre', async () => {
-    await page.goto('/billing')
+    // L'organisation existe désormais : son étape a **disparu du parcours par
+    // dérivation**, sans que personne ne l'ait franchie, et c'est l'offre qui
+    // est proposée. Rien ici ne le suppose — le libellé cliqué est celui de
+    // l'étape en cours, et le parcours rougirait s'il en restait une autre.
+    await reachFromCourse(page, 'Voir les offres', '/billing')
 
     const subscribe = page.getByRole('button', { name: 'Souscrire' }).first()
 
@@ -196,6 +309,26 @@ test('un clone mène à un premier paiement, et le paiement ouvre la fonctionnal
     // `?checkout=success` n'accorde rien par lui-même.
     await expect(page.getByText('Période d’essai').first()).toBeVisible()
   })
+
+  if (COURSE_ON_THE_WAY) {
+    await step('fin du parcours d’intégration', async () => {
+      await page.goto('/')
+      await expect(page).toHaveURL(urlOf(ONBOARDING_SCREEN_PATH))
+
+      // Ce qu'il reste est franchi comme l'écran le propose, sans nommer une
+      // étape : c'est la même boucle que le parcours dont l'intégration est le
+      // sujet.
+      await clearRemainingOnboardingSteps(page)
+
+      // **La porte à sens unique**, mesurée dans le parcours qui vend le
+      // produit : le parcours terminé mène au tableau de bord, et la racine n'y
+      // ramène plus. L'erreur qui compte de ce côté est la boucle.
+      await expect(page).toHaveURL(urlOf('/'))
+
+      await page.goto(ONBOARDING_SCREEN_PATH)
+      await expect(page).toHaveURL(urlOf('/'))
+    })
+  }
 
   await step('accès à la fonctionnalité réservée', async () => {
     await expectFeatureGranted(page)
@@ -215,7 +348,9 @@ test('un achat unique ouvre la même fonctionnalité qu’un abonnement', async 
     await signUp(page, BUYER)
     await page.goto(await linkSentTo(BUYER))
     await signIn(page, BUYER)
-    await expect(page).toHaveURL(urlOf('/'))
+    // L'atterrissage est dérivé : ce parcours ne traverse pas l'intégration —
+    // son sujet est la forme du paiement, et il va droit aux offres.
+    await expect(page).toHaveURL(urlOf(signedInLanding()))
   })
 
   await step('achat unique', async () => {
@@ -279,7 +414,9 @@ test('un paiement sans compte mène, par l’email reçu, à la fonctionnalité 
     await expect(page).toHaveURL(urlOf('/sign-in', '?reset=1'))
 
     await signIn(page, guestEmail)
-    await expect(page).toHaveURL(urlOf('/'))
+    // Même raison que la variante précédente : l'atterrissage est dérivé, et
+    // ce que ce parcours mesure est le chemin du paiement invité.
+    await expect(page).toHaveURL(urlOf(signedInLanding()))
   })
 
   await step('accès à la fonctionnalité après un paiement invité', async () => {

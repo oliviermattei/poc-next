@@ -162,9 +162,9 @@ Le reste de l'inventaire de `docs/design-system.md` — `Form`,
 `DataTable`, `Tabs`, `Toaster`, `AlertDialog`, `Tooltip`,
 `Popover`, `Skeleton`, `Progress`, `ScrollArea`,
 `RadioGroup`, `Select`, `Switch`,
-`ConfirmDialog`, et les composés des stories à venir — **n'est pas encore
+`ConfirmDialog`, `Stepper`, et les composés des stories à venir — **n'est pas encore
 copié**. C'est la liste au 6 septembre 2026, révisée par s10, s11, s18, s36,
-s29, s30, s54 puis s37b2 ; le document fait foi, pas ce tableau — **et ce
+s29, s30, s54, s37b2 puis s40 ; le document fait foi, pas ce tableau — **et ce
 tableau avait déjà été pris en défaut deux fois**, ce qui est la raison de la
 phrase
 précédente :

@@ -6,7 +6,7 @@ import { flatMessagesFor } from '../apps/web/lib/messages'
 import { organizations } from '../apps/web/lib/organizations'
 import { defaultLocale } from '../config/i18n'
 import { aSignedInAccount, linkSentTo, signIn, signUp } from './support/account'
-import { publicPath, urlOf } from './support/locale'
+import { publicPath, signedInLanding, urlOf } from './support/locale'
 
 /**
  * Les organisations, dans un vrai navigateur.
@@ -173,7 +173,9 @@ test('bascule d’organisation, et refuse celle d’un autre compte', async ({ p
   await signIn(stranger, strangerEmail)
   // La connexion doit avoir atterri : sans session, le répartiteur répondrait
   // 401, et le cas ne prouverait plus rien du périmètre organisationnel.
-  await expect(stranger).toHaveURL(urlOf('/'))
+  // L'atterrissage est **dérivé** (s40) : un compte neuf va au parcours
+  // d'intégration quand le module est activé, au tableau de bord sinon.
+  await expect(stranger).toHaveURL(urlOf(signedInLanding()))
 
   // **404, jamais 403** : un 403 confirmerait que cette organisation existe.
   const refused = await stranger.request.post('/api/modules/organizations/switch', {

@@ -254,7 +254,7 @@ Tous dans `packages/ui`. Un module compose avec cette liste ; il ne crée pas se
 | `NotificationCenter` | Cloche, badge de non-lues, liste (s32) |
 | `PricingTable` | Tarifs dérivés de `config/billing.ts` (s22) |
 | `CookieBanner` | Bannière de consentement (s36) |
-| `Stepper` | Parcours en étapes (s37 — intégration) |
+| `Stepper` | **Pas livré** — voir « Lacune : le fil d'étapes » plus bas. s40 compose avec `Badge` et `Separator` |
 | `MarketingSection` | Enveloppe des sections pilotées par `config/marketing.ts` (s10) |
 
 #### `Alert` — texte sur teinte, et le jeton qui va avec (s49)
@@ -342,6 +342,18 @@ Conséquence visible : un bref état grisé au premier rendu. C'est voulu, et c'
 **Ce qu'il faudrait pour que la règle revienne** : copier `AlertDialog` (Radix, ADR 022) dans `packages/ui`, puis composer `ConfirmDialog` par-dessus, et **reprendre les deux écrans**. Ce n'est pas gratuit : un dialogue modal déplace le piège de l'hydratation — le déclencheur d'un dialogue Radix n'ouvre rien avant que React ait repris la main, alors qu'un formulaire en ligne, lui, reste soumettable nativement. La story qui le fera devra donc trancher ce que `docs/design-system.md`, § « Avant l'hydratation », impose au déclencheur.
 
 Jusque-là, **la confirmation d'une action irréversible se compose en ligne**, et cette section fait foi contre la ligne du tableau.
+
+#### Lacune : le fil d'étapes (s40)
+
+**La ligne du tableau annonçait `Stepper`, « parcours en étapes (s37 — intégration) ». Le composant n'existe pas** : `packages/ui/src/components/` ne contient pas de `stepper.tsx`, et le baril ne l'exporte pas. Le suffixe se lisait « livré par la story d'intégration » ; s40 — la story en question, renumérotée — a constaté le manque en essayant de composer avec.
+
+**Ce qui est livré à la place**, sur le seul écran concerné (`/onboarding`) : un `<nav>` nommé, une pastille `Badge` par étape — `success` pour une étape franchie, `default` pour celle en cours, `outline` pour celle à venir —, séparées par un `Separator` vertical. **L'état de chaque étape est écrit en toutes lettres dans la pastille**, jamais porté par la seule couleur : une couleur de badge n'est lisible ni au clavier, ni par une aide technique. Rien d'inventé — aucun composant, aucun jeton hors du système.
+
+**Pourquoi ce n'est pas comblé, et pas seulement pas encore fait.** Un fil d'étapes est un titre, une position et un état ; livrer une primitive générique pour **un** appelant est la généralisation que le cimetière du PRD refuse, et `s46` a pris la même décision sur `Form` la veille. Un `Stepper` a par ailleurs des questions que personne n'a tranchées ici : est-il cliquable — donc une navigation qui contourne la porte à sens unique du parcours —, porte-t-il une barre de progression (`Progress` n'est pas copié non plus), que fait-il sous 400 px avec sept étapes ?
+
+**Ce qu'il faudrait pour que la règle revienne** : un **second** appelant. Le jour où un écran a besoin d'un fil d'étapes, la primitive se copie dans `packages/ui` avec ses états, et `/onboarding` la reprend — c'est la même conduite que `Pagination`, composée pour le blog puis exportée.
+
+Jusque-là, **un fil d'étapes se compose en ligne**, et cette section fait foi contre la ligne du tableau.
 
 ### Navigation
 La barre latérale est construite depuis les modules actifs (s08). Aucune entrée n'est écrite en dur : un module désactivé n'a pas d'entrée, sans condition dans le composant.

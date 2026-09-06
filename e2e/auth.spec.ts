@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 import { anEmail as anAddress, linkSentTo, PASSWORD, signIn, signUp } from './support/account'
-import { anonymousLanding, signInRedirectedFrom, urlOf } from './support/locale'
+import { anonymousLanding, signedInLanding, signInRedirectedFrom, urlOf } from './support/locale'
 
 /**
  * Le parcours d'authentification, dans un vrai navigateur.
@@ -35,8 +35,10 @@ test('inscription, vérification, connexion, écran protégé, déconnexion', as
   await expect(page).toHaveURL(urlOf('/sign-in', '?verified=1'))
   await expect(page.getByRole('status')).toContainText('vérifiée')
 
-  // La connexion aboutit au **tableau de bord** : c'est le critère 1 de s08.
-  // s07 repliait sur `/account`, faute de tableau de bord à atteindre.
+  // La connexion aboutit là où l'application envoie un compte neuf. C'était le
+  // tableau de bord (critère 1 de s08) ; depuis s40, c'est le **parcours
+  // d'intégration** tant qu'il reste à faire. L'attente est dérivée de la
+  // configuration : elle reste juste dans les deux états de modules.
   await signIn(page, email)
   // **L'instantané, et pas l'attente** (s50) : `toHaveURL` réessaie pendant
   // cinq secondes, donc il passe aussi bien quand la redirection est encore en
@@ -45,7 +47,7 @@ test('inscription, vérification, connexion, écran protégé, déconnexion', as
   // run 33894919551). `page.url()` ne réessaie pas : il rougit tant que le
   // geste rend la main avant que la connexion ait atterri. C'est ici qu'est
   // éprouvé le contrat de `signIn`, une fois, pour ses dix-sept appelants.
-  expect(page.url()).toMatch(urlOf('/'))
+  expect(page.url()).toMatch(urlOf(signedInLanding()))
 
   await page.goto('/account')
   // `exact` depuis s34b : la zone dangereuse de l'écran porte le titre
@@ -198,7 +200,7 @@ test('mot de passe oublié : le lien reçu mène à l’écran, et le nouveau mo
   await page.getByLabel('Adresse email', { exact: true }).fill(email)
   await page.getByLabel('Mot de passe').fill(newPassword)
   await page.getByRole('button', { name: 'Se connecter', exact: true }).click()
-  await expect(page).toHaveURL(urlOf('/'))
+  await expect(page).toHaveURL(urlOf(signedInLanding()))
 })
 
 test('la navigation montre « Mon compte » une fois connecté, jamais avant', async ({ page }) => {
@@ -214,7 +216,7 @@ test('la navigation montre « Mon compte » une fois connecté, jamais avant', a
 
   await page.goto('/sign-in')
   await signIn(page, email)
-  await expect(page).toHaveURL(urlOf('/'))
+  await expect(page).toHaveURL(urlOf(signedInLanding()))
 
   await expect(navigation.getByRole('link', { name: 'Mon compte' })).toHaveCount(1)
 })

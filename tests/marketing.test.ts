@@ -126,6 +126,30 @@ vi.mock('../apps/web/lib/auth', async () => {
 })
 
 /**
+ * **Le parcours d'intégration : sa lecture, et rien d'autre** (s40).
+ *
+ * `available` reste celui du vrai point de composition — c'est lui qui décide si
+ * la racine peut rediriger, et le doubler ferait de ce fichier une démonstration
+ * de sa propre fixture. Seule la lecture est remplacée, comme pour
+ * `lib/storage` et `lib/notifications` : la dérivation des étapes lit le compte,
+ * les appartenances et les droits, ce que ce fichier-ci ne mesure pas — il
+ * mesure ce que la **racine** coûte à un visiteur anonyme, qui n'a pas de
+ * parcours.
+ *
+ * Le parcours **restant à faire** est mesuré ailleurs, à l'endroit où il vit :
+ * `tests/onboarding.test.ts`, « la racine mène au parcours tant qu'il reste à
+ * faire ».
+ */
+vi.mock('../apps/web/lib/onboarding', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../apps/web/lib/onboarding')>()
+
+  return {
+    ...actual,
+    onboarding: { ...actual.onboarding, pending: () => Promise.resolve(false) },
+  }
+})
+
+/**
  * Le consentement de la requête — **le contexte de requête**, comme l'appelant.
  *
  * `currentConsent()` lit le cookie du visiteur par `next/headers`, qui n'existe

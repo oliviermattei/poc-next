@@ -41,6 +41,7 @@ module (`packages/modules/<module>/src/domain`).
   `@repo/module-analytics`, `@repo/module-blog`, `@repo/module-changelog`,
   `@repo/module-consent`, `@repo/module-docs`, `@repo/module-i18n`, `@repo/module-marketing`,
   `@repo/module-notifications`, `@repo/module-jobs`,
+  `@repo/module-onboarding`,
   `@repo/module-organizations`, `@repo/module-storage`,
   `@repo/module-demo-enabled` et `@repo/module-demo-disabled` aujourd'hui. Les
   **points de composition** font exception et importent leur module directement
@@ -51,8 +52,9 @@ module (`packages/modules/<module>/src/domain`).
   consentement, `lib/blog.ts`, celui du blog, `lib/docs.ts`, celui de la
   documentation, `lib/admin.ts`, celui de l'administration de plateforme,
   `lib/notifications.ts`, celui des notifications, `lib/jobs.ts`, celui des
-  tâches de fond, et `lib/analytics.ts`, celui de l'observabilité — les deux
-  ports de s39 et l'état du module `analytics` (voir plus bas).
+  tâches de fond, `lib/analytics.ts`, celui de l'observabilité — les deux
+  ports de s39 et l'état du module `analytics` (voir plus bas) —, et
+  `lib/onboarding.ts`, celui du parcours d'intégration (s40).
   `lib/report-client-error.ts` ne monte rien : il **poste** vers la route de ce
   module depuis le navigateur, et n'en cite le nom que dans sa prose — il est
   chargé par un composant client, où importer un barril de module ferait entrer
@@ -79,7 +81,8 @@ module (`packages/modules/<module>/src/domain`).
   `@repo/module-billing/presentation`,
   `@repo/module-consent/presentation`, `@repo/module-blog/presentation`,
   `@repo/module-docs/presentation`,
-  `@repo/module-notifications/presentation`, `@repo/module-admin/presentation`) :
+  `@repo/module-notifications/presentation`, `@repo/module-admin/presentation`,
+  `@repo/module-onboarding/presentation`) :
   ses composants React n'ont pas
   leur place dans le barril que lit `config/features.ts`, qu'aucun outil du
   dépôt ne compile en JSX (**ADR 024**, la règle de tout module à composants) ;
@@ -467,10 +470,14 @@ Deux fichiers, sur le modèle exact de l'i18n :
   **lisent** ce site sans jamais nommer de module. Depuis s53,
   `app/sitemap.ts` et `app/robots.ts` ne le lisent plus du tout : ils lisent le
   **registre** (voir « La syndication » plus bas). La racine a
-  trois branches — tableau de bord pour un visiteur connecté, accueil marketing
-  pour un visiteur anonyme, redirection vers la connexion quand il n'y a pas de
-  section — et les deux dernières se départagent sur `sections.length`,
-  c'est-à-dire sur une donnée.
+  quatre branches depuis s40 — redirection vers le parcours d'intégration pour
+  un visiteur connecté dont le parcours reste à finir, tableau de bord pour un
+  visiteur connecté (parcours terminé, ou module `onboarding` coupé : `pending`
+  rend alors `false` sans toucher la base), accueil marketing pour un visiteur
+  anonyme, redirection vers la connexion quand il n'y a pas de section — et
+  aucune ne nomme de module : les deux premières se départagent sur
+  `onboarding.pending()`, les deux dernières sur `sections.length`,
+  c'est-à-dire à chaque fois sur une donnée.
 
 La configuration (`config/marketing.ts`) n'est **validée que lorsque le module
 est monté** : un dépôt qui coupe le site public n'a pas à maintenir un fichier

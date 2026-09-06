@@ -1,7 +1,7 @@
 import { LOCAL_OAUTH_SLOT_PARAM } from '@repo/module-auth'
 import { expect, test } from '@playwright/test'
 
-import { anonymousLanding, publicPath, urlOf } from './support/locale'
+import { anonymousLanding, publicPath, signedInLanding, urlOf } from './support/locale'
 
 /**
  * La connexion par fournisseur externe, dans un vrai navigateur (s12).
@@ -62,8 +62,9 @@ test('le bouton de fournisseur ouvre une session, sans JavaScript', async ({ bro
   await page.getByRole('button', { name: LOCAL_PROVIDER_BUTTON }).click()
 
   // Sans JavaScript, le rebond du retour repose sur son `meta refresh`, que le
-  // navigateur suit tout seul.
-  await expect(page).toHaveURL(urlOf('/'))
+  // navigateur suit tout seul. L'atterrissage est **dérivé** (s40) : un compte
+  // neuf va au parcours d'intégration quand le module est activé.
+  await expect(page).toHaveURL(urlOf(signedInLanding()))
   await expect(page.getByRole('button', { name: /Mon compte|Compte/ })).toBeVisible()
 
   const cookies = await context.cookies()
@@ -151,7 +152,8 @@ test('le retour venu d’un autre site atterrit connecté', async ({ page, conte
 
   // La session est réellement utilisable après le retour : le rebond a provoqué
   // une seconde navigation same-site, et c'est celle-là qui porte le cookie.
-  await expect(page).toHaveURL(urlOf('/'))
+  // L'atterrissage est **dérivé** (s40), comme celui du cas précédent.
+  await expect(page).toHaveURL(urlOf(signedInLanding()))
   await expect(page.getByRole('button', { name: /Mon compte|Compte/ })).toBeVisible()
 
   await page.goto('/account')

@@ -216,6 +216,29 @@ vi.mock('../apps/web/lib/notifications', async (importOriginal) => {
 })
 
 /**
+ * **Le parcours d'intégration : sa lecture, et rien d'autre** (s40).
+ *
+ * `available` reste celui du vrai point de composition — c'est lui qui décide si
+ * l'écran rend ou refuse, et le doubler ferait de ce fichier une démonstration
+ * de sa propre fixture. Seules les deux lectures sont remplacées : `pending`
+ * rend `false` pour que la **racine** rende son tableau de bord plutôt que de
+ * rediriger, et `course` rend la fixture.
+ */
+vi.mock('../apps/web/lib/onboarding', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../apps/web/lib/onboarding')>()
+  const { FIXTURE_ONBOARDING_COURSE } = await import('./fixtures/screen-viewer')
+
+  return {
+    ...actual,
+    onboarding: {
+      ...actual.onboarding,
+      pending: () => Promise.resolve(false),
+      course: () => Promise.resolve(FIXTURE_ONBOARDING_COURSE),
+    },
+  }
+})
+
+/**
  * La facturation : **le point de composition, et rien d'autre**.
  *
  * `available` reste celui du vrai point de composition — c'est lui qui décide si
@@ -799,6 +822,8 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
     const billingMounted = billing.available
     const { notifications } = await import('../apps/web/lib/notifications')
     const notificationsMounted = notifications.available
+    const { onboarding } = await import('../apps/web/lib/onboarding')
+    const onboardingMounted = onboarding.available
     /**
      * **Ce que l'écran réservé fait dans cette configuration, dérivé de la
      * déclaration** et non concédé : il répond 404 quand `config/gating.ts` ne
@@ -1375,6 +1400,22 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         screenData: cataloguePrices,
         render: async () =>
           (await import('../apps/web/app/pricing/page')).default({ searchParams: noParams }),
+      },
+      {
+        // s40. L'écran du parcours d'intégration. Il refuse quand le module
+        // n'est pas monté — le refus attendu est **dérivé** de l'état du
+        // module, jamais concédé.
+        id: 'intégration',
+        file: 'onboarding/page.tsx',
+        viewer: SIGNED_IN,
+        refuses: onboardingMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        // Les deux URL des routes du module et l'identifiant de l'étape que
+        // les formulaires reportent : des chemins montés et un identifiant,
+        // jamais du texte. Déclarés **sur cet écran** : ailleurs, une prop
+        // nommée `skip` portant une chaîne fait toujours rougir, et le
+        // garde-fou de prose reste actif ici aussi.
+        technicalProps: ['continue', 'skip', 'fields', 'state'],
+        render: async () => (await import('../apps/web/app/onboarding/page')).default(),
       },
       {
         // s32. L'écran du centre de notifications. Il refuse quand le module

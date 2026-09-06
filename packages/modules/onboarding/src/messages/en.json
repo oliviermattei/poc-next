@@ -1,0 +1,21 @@
+{
+  "screen.title": "Welcome",
+  "screen.description": "A few steps to make your workspace usable.",
+  "screen.trailLabel": "Course progress",
+  "screen.trailItem": "{step}: {state}",
+  "screen.position": "Step {position} of {total} — {detail}",
+  "screen.state.cleared": "done",
+  "screen.state.current": "in progress",
+  "screen.state.upcoming": "upcoming",
+  "screen.continue": "Continue",
+  "screen.skip": "Skip this step",
+  "screen.required": "This step is required: fill it in to continue.",
+  "step.profile.title": "Your profile",
+  "step.profile.description": "Choose the name people will see.",
+  "step.organization.title": "Your organisation",
+  "step.organization.description": "Create the space you will share with your team.",
+  "step.organization.action": "Create an organisation",
+  "step.offer.title": "Your plan",
+  "step.offer.description": "Pick the plan that suits you, or decide later.",
+  "step.offer.action": "See the plans"
+}

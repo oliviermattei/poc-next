@@ -34,6 +34,7 @@
     "@repo/module-jobs": "workspace:*",
     "@repo/module-marketing": "workspace:*",
     "@repo/module-notifications": "workspace:*",
+    "@repo/module-onboarding": "workspace:*",
     "@repo/module-organizations": "workspace:*",
     "@repo/payments-testing": "workspace:*",
     "@repo/ports": "workspace:*",
