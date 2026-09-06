@@ -516,6 +516,75 @@ l'interface conditionnelle (`autocomplete="webauthn"` et `useBrowserAutofill`)
 n'est pas livrée — le bouton de `/sign-in` est explicite. Un attribut
 `autocomplete="webauthn"` posé sans l'appel qui l'arme ne fait rien du tout.
 
+## La seule session que ce dépôt ouvre lui-même (s37b1)
+
+**Toutes les sessions du produit sont ouvertes par la bibliothèque, sauf une** :
+celle d'une **impersonation**. Aucun point d'entrée de Better Auth n'ouvre une
+session au nom d'un autre compte sans justificatif — c'est ce que fournit son
+greffon `admin`, écarté par l'**ADR 064** parce qu'il apporterait un second
+modèle de bannissement là où `s37a` a livré le sien, pour une capacité qui tient
+en une colonne (`auth_session.impersonated_by`).
+
+**La garde du socle ne suit pas ce chemin toute seule, et c'est ce qui a coûté
+trois constats critiques en revue.** « Un compte banni n'ouvre aucune session »
+vit dans `databaseHooks.session.create.before`, que la **bibliothèque**
+traverse — pas une écriture Drizzle. La première rédaction de cette story
+écrivait la ligne sans la garde : un superadmin banni pendant son emprunt se
+rouvrait une session en rendant la main, puis se débannissait lui-même. La garde
+est donc **dans l'`insert`** de `AuthSessionRepository.create`
+(`insert … select … from auth_user where banned = false`), et
+`tests/lint-rules.test.ts` exige qu'il n'existe qu'**un** écrivain de
+`auth_session` dans le dépôt : le prochain ne peut plus hériter du silence.
+
+Quatre faits à connaître avant d'y toucher :
+
+- **la ligne est écrite ici** (`AuthSessionRepository.create`), avec son
+  emprunteur. La clé étrangère `impersonated_by → auth_user` est en **cascade** :
+  effacer le compte de l'emprunteur emporte les sessions qu'il a ouvertes chez
+  autrui, ce qui évite le défaut de `granted_by` mesuré en s34 (un identifiant de
+  compte effacé qui survit sur la ligne d'un tiers) ;
+- **le cookie est signé ici**, et c'est le seul endroit du dépôt qui reproduit un
+  fait d'infrastructure de la bibliothèque : `infrastructure/session-cookie.ts`
+  refait la signature de `better-call` (HMAC-SHA256, base64,
+  `encodeURIComponent`). Le **nom** et les **attributs**, eux, viennent de
+  `auth.$context` — rien n'est recopié de ce qui peut être demandé. La commande
+  qui rougit si la forme change : `pnpm test`, cas « ouvre une session au nom du
+  compte visé » de `tests/admin.test.ts`, qui renvoie le cookie obtenu au
+  résolveur de la bibliothèque ;
+- **la rotation est aux deux bouts** (`docs/security.md` §2) : l'entrée efface la
+  session de l'appelant, la sortie efface la session empruntée. Aucun jeton n'est
+  mis de côté entre les deux — le greffon, lui, range celui de l'administrateur
+  dans un cookie `admin_session` ;
+- **l'échéance courte ne tient pas toute seule** : `shouldBeUpdated`
+  (`api/routes/session.mjs`) est **toujours vrai** pour une ligne écrite plus
+  courte que `session.expiresIn`, si bien que la première lecture portait
+  l'heure d'un emprunt à sept jours — mesuré. `session-refresh-adapter.ts`
+  ajoute une qualification au renouvellement (`impersonated_by is null`), et
+  l'échéance redevient celle qu'annonce `AuthPolicy`. Le cas témoin qui garde la
+  correction **étroite** — les sessions ordinaires glissent toujours — est dans
+  `tests/admin.test.ts`.
+
+**Révoquer les sessions d'un compte, c'est aussi révoquer celles qu'il tient.**
+`revokeAllForUser` filtre `user_id` **et** `impersonated_by` : une session
+empruntée porte l'identifiant de la cible, si bien que bannir l'administrateur
+qui la tenait la laissait vivante. Elle rend les lignes effacées, et non plus un
+nombre : les emprunts qui s'y trouvent sont des fins que le module `admin`
+journalise.
+
+Qui a le droit d'emprunter n'est **pas** décidé ici : c'est le module `admin`,
+qui possède le rôle de plateforme. Ce module ne fait qu'exécuter, et il ne sait
+pas ce qu'est un superadmin.
+
+**Un emprunt passe outre le second facteur du compte emprunté**, et il faut le
+savoir avant de lire la suite : la ligne de session est écrite directement, donc
+aucun défi n'est posé — le compte emprunté n'est pas là pour y répondre, et c'est
+la fonctionnalité elle-même qui le veut. Les cinq voies d'entrée du module
+(mot de passe, magic link, fournisseur, passkey, code de secours) restent
+soumises au second facteur ; celle-ci n'en est pas une entrée, c'est une
+délégation. La conséquence est écrite dans
+`packages/modules/admin/AGENTS.md` : le rôle de superadmin **vaut** le second
+facteur de tous les comptes du produit.
+
 ## Ce que la bibliothèque fait déjà bien, et qu'il ne faut pas réécrire
 
 Mesuré dans le paquet **installé** (1.7.2), sur les quatre points regardés :
@@ -541,7 +610,8 @@ un inventaire de ce que la bibliothèque garantit.
 - `drizzle-orm` dans `src/schema.ts` et dans `infrastructure/` uniquement ;
 - `zod` pour la validation, y compris dans `domain/` où c'est la seule
   bibliothèque tierce admise ;
-- `node:crypto` dans `infrastructure/` pour les jetons ;
+- `node:crypto` dans `infrastructure/` pour les jetons **et pour la signature du
+  cookie de session d'une impersonation** (s37b1) ;
 - `@repo/typescript-config` pour la configuration du compilateur ;
 - `vitest` dans les fichiers de test.
 

@@ -180,6 +180,43 @@ describe('le registre livré, du point de vue de l’ordonnanceur', () => {
     )
   })
 
+  const adminEnabled = (enabledModules as readonly string[]).includes('admin')
+
+  /**
+   * **Le balayage des emprunts échus** (s37b1), et sa cadence — pas seulement
+   * sa présence.
+   *
+   * Ce qu'elle tient : une session d'impersonation abandonnée expire d'elle-même
+   * (la fenêtre glissante ne la prolonge pas, `session-refresh-adapter.ts`),
+   * mais **personne n'écrirait sa fin**. Ce balayage est le second bout du
+   * journal ; ramené à une échéance annuelle, il laisse le journal avec des
+   * débuts sans fin — et la suite entière restait verte, exactement le défaut
+   * relevé en s28 sur la tâche voisine.
+   *
+   * Sa minute est **hors des minutes rondes**, et c'est mesuré ici : le
+   * répartiteur local vide sa file en séquence, et deux tâches qui parlent à la
+   * base sur la même minute se retardent l'une l'autre.
+   */
+  it.runIf(adminEnabled)('déclare le balayage des emprunts échus, du back-office', () => {
+    const schedule = scheduleOf('admin', 'impersonation-expiry')
+
+    // Toutes les heures, à la minute 23 : jamais deux fois dans l'heure, jamais
+    // une échéance quotidienne ou annuelle.
+    expect(cronMatches(schedule, new Date('2026-09-05T10:23:00.000Z'))).toBe(true)
+    expect(cronMatches(schedule, new Date('2026-09-05T11:23:00.000Z'))).toBe(true)
+    expect(cronMatches(schedule, new Date('2026-12-24T04:23:00.000Z'))).toBe(true)
+    expect(cronMatches(schedule, new Date('2026-09-05T10:24:00.000Z'))).toBe(false)
+    expect(cronMatches(schedule, new Date('2026-09-05T10:00:00.000Z'))).toBe(false)
+    // Et jamais sur la même minute que les deux autres balayages qui parlent à
+    // la base : dérivé de leurs échéances, jamais recopié.
+    expect(
+      cronMatches(scheduleOf('rate-limit', 'sweep-closed-windows'), new Date('2026-09-05T10:23:00.000Z')),
+    ).toBe(false)
+    expect(cronMatches(scheduleOf('auth', 'data-export'), new Date('2026-09-05T10:23:00.000Z'))).toBe(
+      false,
+    )
+  })
+
   /**
    * Module coupé, il n'y a **rien à balayer** : la tâche disparaît avec lui, et
    * sa table aussi. Ce n'est pas une absence de garde, c'est la garantie

@@ -34,7 +34,10 @@ import {
 } from '../domain/oauth'
 import { digestBackupCode, digestBackupCodes } from '../domain/backup-code'
 import { refusesSignIn } from '../domain/ban'
+import { serializeSessionCookie } from '../domain/impersonation'
+import { signSessionCookieValue } from './session-cookie'
 import { withTwoFactorOnEverySignIn } from './two-factor-challenge'
+import { withoutBorrowedSessionRefresh } from './session-refresh-adapter'
 import {
   TOTP_DIGITS,
   TOTP_PERIOD_SECONDS,
@@ -530,7 +533,13 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
     // comparaison-et-échange de la bibliothèque n'est pas atomique sur
     // PostgreSQL, et deux consommations simultanées du même code réussissaient
     // toutes les deux — mesuré. Voir `infrastructure/two-factor-adapter.ts`.
-    database: withAtomicBackupCodeConsumption(options.db, drizzleAdapter(options.db, {
+    // Deux enveloppes, chacune pour **une** forme d'écriture précise : la
+    // consommation atomique d'un code de secours (s13), et le renouvellement de
+    // fenêtre glissante, qui ne doit jamais prolonger une session empruntée
+    // (s37b1, revue C2). Tout le reste passe intact à l'adapter.
+    database: withoutBorrowedSessionRefresh(
+      options.db,
+      withAtomicBackupCodeConsumption(options.db, drizzleAdapter(options.db, {
       provider: 'pg',
       // Les tables du **module**, indexées par le nom de modèle attendu.
       schema: {
@@ -544,7 +553,7 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
       // La consommation atomique d'un jeton s'exécute dans une transaction :
       // sans cela, deux clics simultanés sur le même lien passent tous les deux.
       transaction: true,
-    })),
+    }))),
     socialProviders,
     /**
      * **Le compte banni n'ouvre aucune session** (s37a), et la garde est posée
@@ -879,7 +888,26 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
     ? [...configuredProviders, LOCAL_OAUTH_PROVIDER_ID]
     : configuredProviders
 
-  return {
+  /**
+   * L'en-tête `Set-Cookie` d'une session de ce produit.
+   *
+   * Le **nom** et les **attributs** viennent de la bibliothèque
+   * (`auth.$context`), jamais d'une constante recopiée : un cookie de session
+   * dont le nom diverge est une session que le résolveur ne voit pas. Seule la
+   * signature est reproduite, et un cas la mesure.
+   */
+  const sessionCookie = async (token: string, maxAgeSeconds: number): Promise<string> => {
+    const context = await auth.$context
+
+    return serializeSessionCookie({
+      name: context.authCookies.sessionToken.name,
+      value: signSessionCookieValue({ token, secret: options.secret }),
+      maxAgeSeconds,
+      attributes: context.authCookies.sessionToken.attributes,
+    })
+  }
+
+  const service: AuthService = {
     policy,
     useCases,
     oauthProviders,
@@ -971,6 +999,66 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
         asResponse: true,
       }),
 
+    /**
+     * **Le cookie de l'emprunt**, posé avec le nom et les attributs de la
+     * bibliothèque.
+     *
+     * Rien n'est inventé : `auth.$context` rend `authCookies.sessionToken`,
+     * c'est-à-dire exactement le cookie que toutes les autres sessions du
+     * produit emploient — donc `HttpOnly`, `Secure` et `SameSite=Strict` du
+     * socle. Seule la **signature** est reproduite (`session-cookie.ts`), et un
+     * cas la mesure contre le résolveur de la bibliothèque.
+     */
+    startImpersonation: async ({ request, actorId, userId }) => {
+      const opened = await useCases.openImpersonation({
+        actorId,
+        userId,
+        // La session en cours est **remplacée**, pas conservée : c'est la
+        // rotation qu'exige `docs/security.md` §2.
+        rotates: await service.resolveSessionId(request),
+      })
+
+      if (!opened.ok) {
+        return { ok: false, error: opened.error }
+      }
+
+      return {
+        ok: true,
+        setCookie: await sessionCookie(opened.token, policy.impersonationTtlSeconds),
+        userId: opened.userId,
+        actorId,
+      }
+    },
+
+    stopImpersonation: async ({ request }) => {
+      const sessionId = await service.resolveSessionId(request)
+
+      if (sessionId === null) {
+        return { ok: false, error: 'not_impersonating' }
+      }
+
+      const closed = await useCases.closeImpersonation({ sessionId })
+
+      if (!closed.ok) {
+        return { ok: false, error: closed.error }
+      }
+
+      return {
+        ok: true,
+        setCookie: await sessionCookie(closed.token, policy.sessionTtlSeconds),
+        // Le compte **emprunté**, et l'emprunteur : le journal les nomme tous
+        // les deux, à la fin comme au début.
+        userId: closed.userId,
+        actorId: closed.actorId ?? '',
+      }
+    },
+
+    borrowerOf: async (request) => {
+      const sessionId = await service.resolveSessionId(request)
+
+      return sessionId === null ? null : await useCases.borrowerOf(sessionId)
+    },
+
     resolveSessionId: async (request) => {
       const session = await auth.api.getSession({ headers: request.headers })
 
@@ -993,4 +1081,6 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
       })
     },
   }
+
+  return service
 }

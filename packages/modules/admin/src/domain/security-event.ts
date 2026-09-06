@@ -43,6 +43,27 @@ export type AdminSecurityEventName =
    * si — c'est le signal d'une tentative d'élévation (`docs/security.md` §7).
    */
   | 'admin.access_refused'
+  /**
+   * **Une session empruntée** (s37b1). Journalisé aux **deux bouts**, avec les
+   * deux comptes : `actor` est le superadmin qui emprunte, `target` le compte
+   * emprunté. Sans le second événement, le journal dirait qui est entré et
+   * jamais qui en est sorti.
+   */
+  | 'admin.impersonation_started'
+  /**
+   * **La fin d'un emprunt**, sortie explicite **ou expiration**.
+   *
+   * L'expiration compte comme une fin : une session empruntée qu'on abandonne
+   * n'émettrait jamais son second événement, et un journal qui n'a que des
+   * débuts ment par omission. C'est le balayage du module qui l'émet.
+   */
+  | 'admin.impersonation_ended'
+  /**
+   * Un emprunt **refusé** : la cible est un superadmin. Journalisé pour la même
+   * raison que les autres refus — c'est le signal d'un geste qui se serait
+   * accordé les droits d'un pair sans qu'aucun changement de rôle ne soit écrit.
+   */
+  | 'admin.impersonation_refused'
 
 export interface AdminSecurityEvent {
   readonly event: AdminSecurityEventName

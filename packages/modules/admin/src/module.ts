@@ -1,4 +1,4 @@
-import { defineModule } from '@repo/core'
+import { defineModule, type ModuleJob } from '@repo/core'
 
 import { requireAdminService } from './infrastructure/admin-runtime'
 import enMessages from './messages/en.json' with { type: 'json' }
@@ -29,6 +29,39 @@ import { adminSchema } from './schema'
  * activé puis désactivé garde ses tables et ses données ; le débannir serait un
  * nettoyage, et le nettoyage est au cimetière du PRD.
  */
+/**
+ * **Le balayage des emprunts échus** (s37b1), et pourquoi il existe.
+ *
+ * La journalisation d'une impersonation vaut **aux deux bouts** — qui est
+ * entré, et quand il en est sorti. Une session empruntée qu'on abandonne
+ * n'émettrait jamais son second événement : le journal n'aurait que des débuts,
+ * et mentirait par omission sur les emprunts en cours. L'expiration compte donc
+ * comme une fin, et c'est cette tâche qui la constate.
+ *
+ * **Une fois par heure, et hors des minutes rondes.** Deux raisons, et aucune
+ * n'est esthétique :
+ *
+ * - ce balayage **constate**, il n'applique rien. La session empruntée cesse de
+ *   valoir à la seconde près, par sa date d'expiration, sans attendre personne ;
+ *   ce qui attend est la ligne du journal ;
+ * - l'ordonnanceur **local** vide sa file en séquence (`packages/jobs-testing/
+ *   src/in-memory-jobs.ts`) : une tâche qui parle à la base, posée sur une
+ *   minute ronde, retarde toutes celles de la même minute. Mesuré en écrivant
+ *   cette story — `tests/jobs.test.ts` a rougi tant que ce balayage tombait
+ *   toutes les cinq minutes, donc sur la même minute que celui de
+ *   `rate-limit`.
+ *
+ * Rejouée, elle ne trouve plus rien : le balayage **efface** les sessions qu'il
+ * nomme (`docs/reliability.md` §1).
+ */
+const impersonationSweep: ModuleJob = {
+  id: 'impersonation-expiry',
+  schedule: '23 * * * *',
+  run: async ({ now }) => {
+    await requireAdminService().useCases.endExpiredImpersonations(now)
+  },
+}
+
 export const adminModule = defineModule({
   id: 'admin',
   requires: ['auth'],
@@ -48,7 +81,7 @@ export const adminModule = defineModule({
   messages: { fr: frMessages, en: enMessages },
   emails: [],
   webhooks: [],
-  jobs: [],
+  jobs: [impersonationSweep],
   /**
    * **Une catégorie, et elle est la seule `anonymize` du dépôt** (s34, constat
    * F1 de la revue).

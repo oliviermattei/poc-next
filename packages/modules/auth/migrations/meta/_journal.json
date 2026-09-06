@@ -50,6 +50,13 @@
       "when": 1788657451351,
       "tag": "0006_gorgeous_hairball",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788668687161,
+      "tag": "0007_tidy_patch",
+      "breakpoints": true
     }
   ]
 }

@@ -13,7 +13,8 @@ import {
   confirmsAccount,
   parseAccountDeletion,
 } from '../domain/account-deletion'
-import { parseBanReason } from '../domain/ban'
+import { parseBanReason, signInBlockedAmong } from '../domain/ban'
+import { impersonationExpiry } from '../domain/impersonation'
 import { canUnlinkSignInMethod } from '../domain/oauth'
 import { describePasskeys, type DescribedPasskey } from '../domain/passkey'
 import { describeSecurityEvent } from '../domain/security-event'
@@ -35,6 +36,42 @@ import type { AuthDependencies, PasskeyRevocationOutcome, UnlinkOutcome } from '
  * masquer n'a jamais été une permission (`docs/security.md` §3), et c'est le
  * repository qui refuse, dans la même transaction que la suppression.
  */
+/**
+ * Ce que rend l'ouverture — ou la fermeture — d'un emprunt de session.
+ *
+ * Le **jeton** en sort, contrairement à tout le reste du module : il est la
+ * session, et il n'a qu'un destinataire, le cookie signé que
+ * `infrastructure/` pose. Aucune route ne le met dans un corps de réponse —
+ * un jeton rendu à un écran, c'est `HttpOnly` annulé.
+ */
+export type ImpersonationOutcome =
+  | {
+      readonly ok: true
+      readonly sessionId: string
+      readonly token: string
+      /** Le compte que la session désigne désormais. */
+      readonly userId: string
+      /** L'emprunteur, à la fermeture : c'est lui que le journal nomme. */
+      readonly actorId?: string
+    }
+  | { readonly ok: false; readonly error: 'unknown_account' | 'not_impersonating' }
+
+/** Un emprunt terminé, tel que le journal doit le nommer : les deux comptes. */
+export interface EndedImpersonation {
+  readonly userId: string
+  readonly impersonatedBy: string
+}
+
+/** Les emprunts d'un lot de sessions effacées — les autres n'en sont pas. */
+const endedImpersonationsOf = (
+  sessions: readonly { readonly userId: string; readonly impersonatedBy: string | null }[],
+): readonly EndedImpersonation[] =>
+  sessions.flatMap((session) =>
+    session.impersonatedBy === null
+      ? []
+      : [{ userId: session.userId, impersonatedBy: session.impersonatedBy }],
+  )
+
 export interface DescribedSignInMethod {
   readonly id: string
   readonly providerId: string
@@ -221,6 +258,63 @@ export interface AuthUseCases {
   /** Lève le bannissement, et efface la marque avec lui. */
   unbanAccount(input: { readonly userId: string }): Promise<BanOutcome>
   /**
+   * **Parmi ces comptes, ceux qui ne peuvent pas ouvrir de session** (s37b1).
+   *
+   * Elle existe pour le module `admin`, qui doit compter les superadmins
+   * **capables de se connecter** sans lire une table du socle : il part d'un
+   * ensemble d'identifiants qu'il possède déjà — les porteurs du rôle — et
+   * demande lesquels sont fermés. Ce n'est donc pas une liste de comptes
+   * bannis : rien ne se découvre ici qu'on ne nommait déjà.
+   */
+  signInBlockedAmong(userIds: readonly string[]): Promise<readonly string[]>
+  /**
+   * **Ouvre une session au nom d'un autre compte** (s37b1), marquée de son
+   * emprunteur.
+   *
+   * Elle n'autorise rien : le droit d'emprunter appartient au module `admin`,
+   * qui l'a déjà vérifié quand il appelle. Ce que le socle garantit ici est la
+   * forme — une session neuve, jamais la réutilisation de celle en cours, et
+   * une échéance courte.
+   *
+   * `rotates` porte l'identifiant de la session que l'élévation **remplace** :
+   * elle est effacée dans la foulée, sans quoi l'ancien identifiant resterait
+   * valable et la rotation n'en serait pas une (mesuré en s14 sur l'enrôlement
+   * d'une passkey).
+   */
+  openImpersonation(input: {
+    readonly actorId: string
+    readonly userId: string
+    readonly rotates: string | null
+  }): Promise<ImpersonationOutcome>
+  /**
+   * **Rend la main** : la session empruntée meurt, une session neuve s'ouvre
+   * pour l'emprunteur.
+   *
+   * Aucun jeton n'est conservé nulle part entre les deux — le greffon de la
+   * bibliothèque range celui de l'administrateur dans un second cookie signé ;
+   * une session neuve évite ce cookie, et fait tourner la session **aux deux
+   * bouts** de l'emprunt.
+   */
+  closeImpersonation(input: { readonly sessionId: string }): Promise<ImpersonationOutcome>
+  /**
+   * **Les emprunts échus, effacés, et nommés** (s37b1).
+   *
+   * Une session d'impersonation qui expire sans sortie explicite n'émettrait
+   * jamais le second événement du journal : c'est ce balayage qui la compte
+   * comme une fin. Rejoué, il ne trouve plus rien et n'émet plus rien —
+   * l'effacement *est* l'idempotence (`docs/reliability.md` §1).
+   */
+  sweepExpiredImpersonations(at: Date): Promise<readonly EndedImpersonation[]>
+  /**
+   * **Éteint les emprunts tenus par ce compte**, et les nomme (s37b1, revue C3).
+   *
+   * Appelée quand le compte cesse d'avoir le droit d'emprunter — le retrait du
+   * rôle. Le bannissement, lui, passe par `banAccount`, qui ferme tout.
+   */
+  endBorrowsBy(userId: string): Promise<readonly EndedImpersonation[]>
+  /** Qui emprunte cette session, `null` si elle est ordinaire ou inconnue. */
+  borrowerOf(sessionId: string): Promise<string | null>
+  /**
    * **Demande la suppression de son propre compte** (s34, critères 1, 2 et 9).
    *
    * Elle ne supprime rien : elle vérifie, puis elle **met en file**. Ce
@@ -271,7 +365,18 @@ export interface AuthUseCases {
  * les sessions » observable par l'appelant, et par la suite de tests.
  */
 export type BanOutcome =
-  | { readonly ok: true; readonly revokedSessions: number }
+  | {
+      readonly ok: true
+      readonly revokedSessions: number
+      /**
+       * Les emprunts que cette révocation vient de terminer (s37b1, revue C3).
+       *
+       * Le socle ne journalise pas les emprunts — c'est le module `admin` qui
+       * tient ce journal —, mais il est le seul à savoir lesquels il a fermés.
+       * Les taire ferait un journal avec des débuts sans fin.
+       */
+      readonly endedImpersonations: readonly EndedImpersonation[]
+    }
   | { readonly ok: false; readonly error: 'not_found' | 'invalid_reason' }
 
 /**
@@ -618,13 +723,20 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
       // (`docs/security.md` §2). Toutes, y compris celle qui a demandé le
       // changement : l'adresse de connexion vient de changer, et rien ne dit
       // que la session en cours est encore celle du propriétaire.
+      //
+      // **Depuis s37b1, « toutes » inclut les emprunts que ce compte tient**
+      // chez autrui : changer son adresse met donc fin à une impersonation en
+      // cours, et `sessionsRevoked` la compte. C'est cohérent — le geste dit
+      // « je ne suis plus sûr de qui tient cette session » — mais ce n'est pas
+      // évident, d'où cette ligne. La fin n'est pas journalisée dans le journal
+      // des emprunts : le module `admin` n'est pas dans ce chemin.
       const revoked = await sessions.revokeAllForUser(userId)
 
       log(
         describeSecurityEvent({
           event: 'auth.email_changed',
           actor: { userId },
-          details: { sessionsRevoked: revoked },
+          details: { sessionsRevoked: revoked.length },
         }),
       )
 
@@ -780,8 +892,90 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
         return { ok: false, error: 'not_found' }
       }
 
-      return { ok: true, revokedSessions: await sessions.revokeAllForUser(userId) }
+      // La révocation emporte aussi les emprunts que ce compte **tenait** chez
+      // autrui (revue s37b1, C3) : elle rend les lignes, et l'appelant en tire
+      // les fins à journaliser.
+      const revoked = await sessions.revokeAllForUser(userId)
+
+      return {
+        ok: true,
+        revokedSessions: revoked.length,
+        endedImpersonations: endedImpersonationsOf(revoked),
+      }
     },
+
+    openImpersonation: async ({ actorId, userId, rotates }) => {
+      const at = now()
+      const session = {
+        id: tokenFactory.generate(),
+        token: tokenFactory.generate(),
+        userId,
+        impersonatedBy: actorId,
+        expiresAt: impersonationExpiry({ at, ttlSeconds: policy.impersonationTtlSeconds }),
+        at,
+      }
+
+      if (!(await sessions.create(session))) {
+        // La clé étrangère a refusé : le compte visé n'existe pas (ou plus).
+        return { ok: false, error: 'unknown_account' }
+      }
+
+      // **La rotation**, et elle vient après l'ouverture : l'ordre inverse
+      // laisserait l'appelant sans aucune session si la création échouait.
+      if (rotates !== null) {
+        await sessions.deleteById(rotates)
+      }
+
+      return { ok: true, sessionId: session.id, token: session.token, userId }
+    },
+
+    closeImpersonation: async ({ sessionId }) => {
+      const borrowed = await sessions.findById(sessionId)
+
+      if (borrowed === null || borrowed.impersonatedBy === null) {
+        return { ok: false, error: 'not_impersonating' }
+      }
+
+      const at = now()
+      const restored = {
+        id: tokenFactory.generate(),
+        token: tokenFactory.generate(),
+        userId: borrowed.impersonatedBy,
+        impersonatedBy: null,
+        expiresAt: new Date(at.getTime() + policy.sessionTtlSeconds * 1000),
+        at,
+      }
+
+      if (!(await sessions.create(restored))) {
+        return { ok: false, error: 'unknown_account' }
+      }
+
+      await sessions.deleteById(sessionId)
+
+      return {
+        ok: true,
+        sessionId: restored.id,
+        token: restored.token,
+        userId: borrowed.userId,
+        actorId: borrowed.impersonatedBy,
+      }
+    },
+
+    sweepExpiredImpersonations: async (at) =>
+      (await sessions.deleteExpiredImpersonations(at)).flatMap((session) =>
+        session.impersonatedBy === null
+          ? []
+          : [{ userId: session.userId, impersonatedBy: session.impersonatedBy }],
+      ),
+
+    endBorrowsBy: async (userId) => endedImpersonationsOf(await sessions.revokeBorrowsBy(userId)),
+
+    borrowerOf: async (sessionId) => (await sessions.findById(sessionId))?.impersonatedBy ?? null,
+
+    signInBlockedAmong: async (userIds) =>
+      // La règle est dans le `domain`, et elle décide aussi du cas qui n'est
+      // pas dans la lecture : un identifiant introuvable est **bloqué**.
+      signInBlockedAmong({ requested: userIds, accounts: await users.findByIds(userIds) }),
 
     unbanAccount: async ({ userId }) => {
       const lifted = await users.setBanned({
@@ -792,7 +986,9 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
       })
 
       // Aucune session à révoquer : lever une sanction ne déconnecte personne.
-      return lifted ? { ok: true, revokedSessions: 0 } : { ok: false, error: 'not_found' }
+      return lifted
+        ? { ok: true, revokedSessions: 0, endedImpersonations: [] }
+        : { ok: false, error: 'not_found' }
     },
 
     /**
@@ -1085,6 +1281,21 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
        */
       const user = await users.findById(scope.userId)
 
+      /**
+       * **Une fin d'emprunt qui n'est journalisée nulle part, et c'est dit**
+       * (seconde revue de s37b1, MINOR-2).
+       *
+       * Depuis que cette révocation emporte aussi les emprunts que le compte
+       * **tient** chez autrui, effacer le compte d'un administrateur en cours
+       * d'emprunt y met fin — et le résultat est ici **jeté**, donc aucun
+       * `admin.impersonation_ended` ne part. C'est délibéré : ce chemin est une
+       * purge, il efface le compte que l'événement nommerait comme acteur, et
+       * la cascade de `auth_user` ferme de toute façon les mêmes lignes sans
+       * passer par ce code.
+       *
+       * Ce que le journal des emprunts couvre, et ce qu'il ne couvre pas, se lit
+       * dans `packages/modules/admin/AGENTS.md`.
+       */
       await sessions.revokeAllForUser(scope.userId)
 
       if (user !== null) {

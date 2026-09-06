@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, like, lt, ne, or, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm'
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core'
 
 import type {
@@ -265,17 +265,136 @@ export function createDrizzleAuthSessionRepository(db: AuthDatabase): AuthSessio
       return deleted.length > 0
     },
 
-    revokeAllForUser: async (userId) => {
-      // La révocation est **une suppression de ligne**, pas un drapeau : une
-      // session révoquée est refusée côté serveur parce qu'elle n'existe plus
-      // (`docs/security.md` §2).
-      const deleted = await db
+    /**
+     * **Les sessions du compte, et celles qu'il tient chez autrui** (constat C3
+     * de la revue de s37b1).
+     *
+     * Le filtre ne portait que sur `user_id` : une session **empruntée** porte
+     * l'identifiant de la cible, si bien que bannir l'administrateur qui la
+     * tenait la laissait vivante — un accès résiduel au compte d'un client,
+     * pour un compte fermé.
+     *
+     * La révocation est **une suppression de ligne**, pas un drapeau : une
+     * session révoquée est refusée côté serveur parce qu'elle n'existe plus
+     * (`docs/security.md` §2). Les lignes effacées sont rendues pour que
+     * l'appelant sache **quels emprunts il vient de terminer** : sans elles, la
+     * fin ne serait journalisée nulle part.
+     */
+    revokeAllForUser: async (userId) =>
+      await db
         .delete(authSession)
-        .where(eq(authSession.userId, userId))
+        .where(or(eq(authSession.userId, userId), eq(authSession.impersonatedBy, userId)))
+        .returning({
+          id: authSession.id,
+          userId: authSession.userId,
+          impersonatedBy: authSession.impersonatedBy,
+        }),
+
+    /**
+     * **Éteint les emprunts tenus par ce compte**, sans toucher à ses propres
+     * sessions (s37b1, revue C3).
+     *
+     * Elle sert au retrait du rôle : un compte qui n'administre plus ne garde
+     * pas ouverte la session d'un client. Le bannissement, lui, passe par
+     * `revokeAllForUser`, qui ferme tout.
+     */
+    revokeBorrowsBy: async (userId) =>
+      await db
+        .delete(authSession)
+        .where(eq(authSession.impersonatedBy, userId))
+        .returning({
+          id: authSession.id,
+          userId: authSession.userId,
+          impersonatedBy: authSession.impersonatedBy,
+        }),
+
+    /**
+     * **La ligne n'est écrite que si le compte peut ouvrir une session**, et le
+     * refus est **dans l'`insert`** (constats C1 et MJ1 de la revue de s37b1).
+     *
+     * La garde du socle vit dans `databaseHooks.session.create.before`, que la
+     * bibliothèque traverse à chaque parcours — et que cette écriture-ci
+     * **contournait**, parce qu'elle est en Drizzle. Deux séquences de gestes
+     * permis en découlaient : un superadmin banni pendant son emprunt se
+     * rouvrait une session en rendant la main, puis se débannissait ; et un
+     * compte banni pouvait être emprunté, ce qui lui rendait une session par la
+     * bande.
+     *
+     * `insert … select … from auth_user where banned = false` : une seule
+     * instruction, la garde dans sa propre qualification. Jamais une lecture qui
+     * décide suivie d'une écriture qui obéit (`docs/reliability.md` §1) — un
+     * bannissement validé entre les deux ouvrirait la session qu'il refuse.
+     *
+     * **Ce qui empêche le prochain d'écrire une session ailleurs** :
+     * `tests/lint-rules.test.ts` balaie le code du dépôt et exige qu'il n'existe
+     * qu'**un** écrivain de `auth_session` hors de la bibliothèque — celui-ci.
+     * Un second ferait rougir la suite au lieu d'hériter du silence.
+     *
+     * Rend `false` pour un compte inconnu **comme** pour un compte banni : le
+     * refus ne distingue pas, et l'appelant n'a pas à distinguer non plus.
+     */
+    create: async ({ id, token, userId, impersonatedBy, expiresAt, at }) => {
+      const created = await db
+        .insert(authSession)
+        .select(
+          db
+            .select({
+              // L'ordre et les noms sont ceux de la table : Drizzle refuse la
+              // requête si les deux divergent — la garde est dans la
+              // bibliothèque, pas dans la vigilance.
+              id: sql<string>`${id}::text`.as('id'),
+              token: sql<string>`${token}::text`.as('token'),
+              userId: authUser.id,
+              expiresAt: sql<Date>`${expiresAt}::timestamptz`.as('expires_at'),
+              ipAddress: sql<string | null>`null::text`.as('ip_address'),
+              userAgent: sql<string | null>`null::text`.as('user_agent'),
+              impersonatedBy: sql<string | null>`${impersonatedBy}::text`.as('impersonated_by'),
+              createdAt: sql<Date>`${at}::timestamptz`.as('created_at'),
+              updatedAt: sql<Date>`${at}::timestamptz`.as('updated_at'),
+            })
+            .from(authUser)
+            .where(and(eq(authUser.id, userId), eq(authUser.banned, false))),
+        )
         .returning({ id: authSession.id })
 
-      return deleted.length
+      return created.length > 0
     },
+
+    findById: async (sessionId) => {
+      const [row] = await db
+        .select({
+          id: authSession.id,
+          userId: authSession.userId,
+          impersonatedBy: authSession.impersonatedBy,
+        })
+        .from(authSession)
+        .where(eq(authSession.id, sessionId))
+        .limit(1)
+
+      return row ?? null
+    },
+
+    deleteById: async (sessionId) => {
+      const deleted = await db
+        .delete(authSession)
+        .where(eq(authSession.id, sessionId))
+        .returning({ id: authSession.id })
+
+      return deleted.length > 0
+    },
+
+    deleteExpiredImpersonations: async (at) =>
+      // **Un seul ordre**, et il rend ce qu'il a effacé : lire puis effacer
+      // laisserait la fenêtre où deux balayages émettent le même événement de
+      // fin (`docs/reliability.md` §1).
+      await db
+        .delete(authSession)
+        .where(and(isNotNull(authSession.impersonatedBy), lte(authSession.expiresAt, at)))
+        .returning({
+          id: authSession.id,
+          userId: authSession.userId,
+          impersonatedBy: authSession.impersonatedBy,
+        }),
   }
 }
 

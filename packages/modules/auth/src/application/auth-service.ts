@@ -50,6 +50,40 @@ export interface AuthService {
    */
   resolveSessionId(request: Request): Promise<string | null>
   /**
+   * **Emprunte la session d'un compte** (s37b1) — l'élévation de privilège du
+   * back-office.
+   *
+   * Elle est ici, et non dans les cas d'usage, pour la raison qui vaut déjà
+   * pour `changePassword` et `digestBackupCode` : ce qui manque aux cas d'usage
+   * est le **cookie**, dont le nom, les attributs et la signature appartiennent
+   * à la bibliothèque. Le droit d'emprunter, lui, a été jugé par le module
+   * `admin` avant l'appel — ce port n'autorise rien.
+   *
+   * La session de l'appelant est **remplacée** : `docs/security.md` §2 impose la
+   * rotation à toute élévation de privilège, et une élévation qui laisserait
+   * l'ancien identifiant valable n'en serait pas une.
+   */
+  startImpersonation(input: {
+    readonly request: Request
+    readonly actorId: string
+    readonly userId: string
+  }): Promise<ImpersonationHandover>
+  /**
+   * **Rend la main** : la session empruntée meurt, l'emprunteur en reçoit une
+   * neuve. Refusé quand la session de l'appelant n'est pas un emprunt.
+   */
+  stopImpersonation(input: { readonly request: Request }): Promise<ImpersonationHandover>
+  /**
+   * **Qui emprunte la session de cet appelant**, `null` quand elle est
+   * ordinaire — ou qu'il n'y en a pas.
+   *
+   * C'est la lecture qui permet au back-office de refuser une session
+   * empruntée. Une absence de session n'est pas un emprunt : qui est
+   * l'appelant est décidé par le répartiteur, cette question-ci ne porte que
+   * sur la nature de sa session.
+   */
+  borrowerOf(request: Request): Promise<string | null>
+  /**
    * La langue dans laquelle un email part à qui a fait **cette** requête.
    *
    * `null` est le destinataire dont rien n'est connu — invitation, guest
@@ -95,6 +129,25 @@ export interface AuthService {
   readonly useCases: AuthUseCases
   readonly policy: AuthPolicy
 }
+
+/**
+ * Le passage de main d'un emprunt de session, dans un sens comme dans l'autre.
+ *
+ * `setCookie` est l'en-tête **déjà formé** : le jeton ne sort jamais autrement,
+ * et surtout jamais dans un corps de réponse (`HttpOnly` n'existe que pour
+ * ça). Les deux identifiants sortent, eux : c'est ce que le journal nomme aux
+ * deux bouts.
+ */
+export type ImpersonationHandover =
+  | {
+      readonly ok: true
+      readonly setCookie: string
+      /** Le compte que la session désigne désormais. */
+      readonly userId: string
+      /** Le superadmin qui emprunte — ou qui vient de rendre la main. */
+      readonly actorId: string
+    }
+  | { readonly ok: false; readonly error: 'unknown_account' | 'not_impersonating' }
 
 /** Ce que le module n'est pas encore : un service configuré. */
 export class AuthNotConfiguredError extends Error {

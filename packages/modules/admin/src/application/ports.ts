@@ -86,7 +86,19 @@ export interface PlatformRoleRepository {
 
 /** Ce que rend un bannissement demandé au socle. */
 export type AccountBanOutcome =
-  | { readonly ok: true; readonly revokedSessions: number }
+  | {
+      readonly ok: true
+      readonly revokedSessions: number
+      /**
+       * **Les emprunts que ce bannissement vient de terminer** (revue s37b1,
+       * C3) : ceux du compte visé, et ceux qu'il tenait chez autrui.
+       *
+       * Le socle les ferme — il possède les sessions — mais c'est ici qu'est le
+       * journal des emprunts. Sans cette liste, une fin arriverait sans que rien
+       * ne l'écrive, et le journal n'aurait que des débuts.
+       */
+      readonly endedImpersonations: readonly EndedImpersonation[]
+    }
   | { readonly ok: false; readonly error: 'not_found' | 'invalid_reason' }
 
 /**
@@ -123,7 +135,88 @@ export interface AdminAccountsPort {
     readonly reason: string | null
   }): Promise<AccountBanOutcome>
   unban(input: { readonly userId: string }): Promise<AccountBanOutcome>
+  /**
+   * **Parmi ces comptes, ceux qui ne peuvent pas ouvrir de session** (s37b1).
+   *
+   * C'est ce qui permet de compter les superadmins **capables de se connecter**
+   * sans que ce module lise `auth_user` : il donne les identifiants qu'il tient
+   * déjà de sa propre table, et reçoit lesquels sont fermés. La jointure aurait
+   * été le correctif évident ; elle franchirait la borne d'import de
+   * `src/schema.ts`, posée pour que les lectures de comptes restent derrière ce
+   * port (`docs/security.md` §7).
+   *
+   * `ok: false` est une lecture **en échec**, pas « personne n'est bloqué » :
+   * l'appelant refuse alors le geste destructeur au lieu de le décider sur un
+   * décompte qu'il n'a pas.
+   */
+  signInBlockedAmong(userIds: readonly string[]): Promise<
+    { readonly ok: true; readonly blocked: readonly string[] } | { readonly ok: false }
+  >
+  /**
+   * **Ouvre une session au nom du compte visé** (s37b1), marquée de son
+   * emprunteur, et **fait tourner** celle de l'appelant.
+   *
+   * La requête y entre parce que la session est un **cookie** : qui appelle et
+   * quelle session il présente ne se lisent pas autrement, et le socle est le
+   * seul à savoir signer celui qu'il rend. Ce module ne fabrique aucun cookie
+   * et ne lit aucune table de sessions.
+   *
+   * Le **droit** d'emprunter est jugé ici, avant l'appel : ce port n'autorise
+   * rien.
+   */
+  startImpersonation(input: {
+    readonly request: Request
+    readonly actorId: string
+    readonly userId: string
+  }): Promise<AccountImpersonation>
+  /** Rend la main : la session empruntée meurt, l'emprunteur en reçoit une neuve. */
+  stopImpersonation(input: { readonly request: Request }): Promise<AccountImpersonation>
+  /**
+   * **Éteint les emprunts tenus par ce compte** (revue s37b1, C3).
+   *
+   * Appelée quand il cesse d'avoir le droit d'emprunter : le retrait du rôle.
+   * Un compte qui n'administre plus ne garde pas ouverte la session d'un client.
+   */
+  endBorrowsBy(userId: string): Promise<
+    { readonly ok: true; readonly ended: readonly EndedImpersonation[] } | { readonly ok: false }
+  >
+  /**
+   * **Qui emprunte la session de l'appelant**, `null` quand elle est ordinaire.
+   *
+   * `ok: false` est une lecture en échec : le back-office **refuse** alors,
+   * comme il refuse un décompte qu'il n'a pas pu faire.
+   */
+  borrowerOf(request: Request): Promise<
+    { readonly ok: true; readonly impersonatedBy: string | null } | { readonly ok: false }
+  >
+  /**
+   * **Les emprunts échus, effacés et nommés** (s37b1) : c'est ce qui fait de
+   * l'expiration une **fin**, et donc du second événement du journal un
+   * événement qui arrive toujours.
+   */
+  sweepExpiredImpersonations(at: Date): Promise<
+    { readonly ok: true; readonly ended: readonly EndedImpersonation[] } | { readonly ok: false }
+  >
 }
+
+/** Un emprunt terminé : les deux comptes, parce que le journal nomme les deux. */
+export interface EndedImpersonation {
+  readonly userId: string
+  readonly impersonatedBy: string
+}
+
+/**
+ * Ce que rend un passage de main. `setCookie` est l'en-tête **déjà formé** : le
+ * jeton de session ne traverse jamais ce module.
+ */
+export type AccountImpersonation =
+  | {
+      readonly ok: true
+      readonly setCookie: string
+      readonly userId: string
+      readonly actorId: string
+    }
+  | { readonly ok: false; readonly error: 'unknown_account' | 'not_impersonating' }
 
 /** Ce que le point de composition de l'application donne au module. */
 export interface AdminDependencies {

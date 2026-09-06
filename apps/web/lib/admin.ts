@@ -5,6 +5,7 @@ import {
   provideAdmin,
   type AdminAccountsPort,
 } from '@repo/module-admin'
+import type { AuthService, AuthUseCases } from '@repo/module-auth'
 
 import { appAuth } from './auth'
 import { moduleRegistry } from './module-registry'
@@ -43,15 +44,126 @@ const mounted = moduleRegistry.moduleIds.includes(adminModule.id)
  * levée et la résolution d'une adresse appartiennent au module `auth`, qui
  * possède les comptes. Ce fichier ne fait que brancher l'un sur l'autre.
  */
-const accounts: AdminAccountsPort = {
+/**
+ * **Un port ne lève pas** (`AGENTS.md` racine) : il rend un résultat discriminé,
+ * si bien que le compilateur oblige l'appelant à traiter l'échec.
+ *
+ * Les lectures branchées ci-dessous parlent à la base : une panne y **lève**, et
+ * la laisser remonter rendrait 500 là où le module a écrit un refus fermé —
+ * la branche `{ ok: false }` de `signInBlockedAmong` et de `borrowerOf` ne
+ * serait alors atteignable par rien (constat MJ4 de la revue de s37b1). Le sens
+ * fermé survivrait par accident, pas par décision.
+ *
+ * Rien n'est journalisé ici : le point de composition ne connaît pas le journal
+ * de sécurité du module, et l'échec est déjà visible — le module refuse en le
+ * nommant (`accounts_unavailable`).
+ */
+const readOr = async <TValue>(
+  read: () => Promise<TValue>,
+): Promise<{ readonly ok: true; readonly value: TValue } | { readonly ok: false }> => {
+  try {
+    return { ok: true, value: await read() }
+  } catch {
+    return { ok: false }
+  }
+}
+
+/**
+ * **Ce que ce point de composition a besoin de savoir de `auth`**, et rien de
+ * plus — la forme réduite de `lib/guest-account.ts`, pour la même raison :
+ * `appAuth()` monte l'application entière, et la règle éprouvée ici est
+ * ailleurs (« une lecture en échec rend un refus »).
+ */
+export type AdminAuth = Pick<AuthService, 'startImpersonation' | 'stopImpersonation' | 'borrowerOf'> & {
+  readonly useCases: Pick<
+    AuthUseCases,
+    | 'identifyAccount'
+    | 'banAccount'
+    | 'unbanAccount'
+    | 'signInBlockedAmong'
+    | 'endBorrowsBy'
+    | 'sweepExpiredImpersonations'
+  >
+}
+
+export const adminAccountsPort = (auth: () => AdminAuth): AdminAccountsPort => ({
   findIdByEmail: async (email) => {
-    const account = await appAuth().useCases.identifyAccount(email)
+    const account = await auth().useCases.identifyAccount(email)
 
     return { ok: true, userId: account?.userId ?? null }
   },
-  ban: async ({ userId, reason }) => await appAuth().useCases.banAccount({ userId, reason }),
-  unban: async ({ userId }) => await appAuth().useCases.unbanAccount({ userId }),
-}
+  ban: async ({ userId, reason }) => await auth().useCases.banAccount({ userId, reason }),
+  unban: async ({ userId }) => await auth().useCases.unbanAccount({ userId }),
+  /**
+   * **Le décompte des superadmins capables de se connecter** (s37b1) — délégué
+   * au socle, comme les trois autres.
+   *
+   * C'est ce branchement qui remplace la jointure interdite : le module donne
+   * des identifiants qu'il tient de sa propre table, `auth` répond lesquels ne
+   * peuvent pas ouvrir de session. Aucune adresse ne circule, aucune table du
+   * socle n'est lue depuis le module.
+   */
+  signInBlockedAmong: async (userIds) => {
+    const read = await readOr(async () => await auth().useCases.signInBlockedAmong(userIds))
+
+    return read.ok ? { ok: true, blocked: read.value } : { ok: false }
+  },
+  /**
+   * **L'emprunt de session** (s37b1) — délégué au socle jusqu'au cookie.
+   *
+   * Le module d'administration décide *qui* peut emprunter *qui* ; `auth` sait
+   * ouvrir une session, la faire tourner et signer son cookie. Aucune des deux
+   * moitiés ne sait faire l'autre, et c'est ce fichier qui les tient ensemble.
+   */
+  startImpersonation: async ({ request, actorId, userId }) => {
+    const opened = await readOr(
+      async () => await auth().startImpersonation({ request, actorId, userId }),
+    )
+
+    // Une panne n'ouvre pas d'emprunt, et ne rend pas 500 : le compte visé est
+    // rendu introuvable, le sens fermé de ce module.
+    return opened.ok ? opened.value : { ok: false, error: 'unknown_account' }
+  },
+  stopImpersonation: async ({ request }) => {
+    const closed = await readOr(async () => await auth().stopImpersonation({ request }))
+
+    return closed.ok ? closed.value : { ok: false, error: 'not_impersonating' }
+  },
+  borrowerOf: async (request) => {
+    const read = await readOr(async () => await auth().borrowerOf(request))
+
+    return read.ok ? { ok: true, impersonatedBy: read.value } : { ok: false }
+  },
+  endBorrowsBy: async (userId) => {
+    const ended = await readOr(async () => await auth().useCases.endBorrowsBy(userId))
+
+    return ended.ok
+      ? {
+          ok: true,
+          ended: ended.value.map((borrow) => ({
+            userId: borrow.userId,
+            impersonatedBy: borrow.impersonatedBy,
+          })),
+        }
+      : { ok: false }
+  },
+  sweepExpiredImpersonations: async (at) => {
+    const swept = await readOr(async () => await auth().useCases.sweepExpiredImpersonations(at))
+
+    return swept.ok
+      ? {
+          ok: true,
+          ended: swept.value.map((ended) => ({
+            userId: ended.userId,
+            impersonatedBy: ended.impersonatedBy,
+          })),
+        }
+      : { ok: false }
+  },
+})
+
+/** Le port réellement livré, branché sur le module `auth` de l'application. */
+const accounts: AdminAccountsPort = adminAccountsPort(appAuth)
 
 /**
  * L'adresse du premier superadmin, **normalisée par le schéma d'environnement**.

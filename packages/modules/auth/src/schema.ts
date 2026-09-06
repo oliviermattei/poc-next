@@ -107,12 +107,37 @@ export const authSession = pgTable(
     expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
     ipAddress: text('ip_address'),
     userAgent: text('user_agent'),
+    /**
+     * **Le superadmin qui emprunte cette session** (s37b1), ou `null` pour une
+     * session ordinaire.
+     *
+     * Une colonne, et une seule : c'est la mesure qui a fait écarter le greffon
+     * `admin` de Better Auth (ADR de la story). Elle est **ici, dans le socle**,
+     * pour la raison de l'ADR 058 — une session appartient à `auth`, et le
+     * chemin qui la résout ne peut pas consulter un module qui peut être coupé.
+     *
+     * Clé étrangère **avec cascade**, contrairement à `admin_platform_role.
+     * granted_by` : ici le lien pointe depuis une ligne éphémère, et effacer le
+     * compte de l'emprunteur doit emporter les sessions qu'il a ouvertes chez
+     * autrui. Sans elle, l'identifiant d'un compte effacé survivrait sur la
+     * session d'un tiers — le défaut mesuré en s34 (constat F1).
+     *
+     * Ajoutée **avec un défaut nul**, comme `banned` : la version encore en
+     * ligne ne la lit pas et continue d'écrire sans elle
+     * (`docs/reliability.md` §4).
+     */
+    impersonatedBy: text('impersonated_by').references(() => authUser.id, {
+      onDelete: 'cascade',
+    }),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   },
   (table) => [
     uniqueIndex('auth_session_token_key').on(table.token),
     index('auth_session_user_id_idx').on(table.userId),
+    // Le balayage des impersonations expirées lit **cette** colonne et
+    // l'échéance : sans index, il parcourrait toutes les sessions du produit.
+    index('auth_session_impersonated_by_idx').on(table.impersonatedBy),
   ],
 )
 
