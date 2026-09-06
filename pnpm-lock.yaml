@@ -1186,8 +1186,8 @@ importers:
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.9.1(jiti@2.7.0))
       '@next/eslint-plugin-next':
-        specifier: ^16.3.3
-        version: 16.3.3(eslint@10.9.1(jiti@2.7.0))
+        specifier: ^16.3.4
+        version: 16.3.4(eslint@10.9.1(jiti@2.7.0))
       eslint:
         specifier: ^10.9.1
         version: 10.9.1(jiti@2.7.0)
@@ -2264,8 +2264,8 @@ packages:
   '@next/env@16.3.4':
     resolution: {integrity: sha512-cjWZnUUa6jZq2kFaNe/ZyJdZonOZ/QoN0Zka2nz/FLOrfx14pQuM9c5RaSVkWMqgdt4ksgPAMWPyHSs/CyV48Q==}
 
-  '@next/eslint-plugin-next@16.3.3':
-    resolution: {integrity: sha512-pbEh30vvjKpDoTAmo1v3q2uM4JUi8QaEBpbmjWvGfoec2jLghy/WNtvzAT0bk+Ik9oz6etjt4YjXEk4BQnicCw==}
+  '@next/eslint-plugin-next@16.3.4':
+    resolution: {integrity: sha512-szW9y2Aumu4z88YXfTzcFsgUAg2k64uzbtcO5L9f1AKS4w/GUKJcbFllRflROVyNPgJtGOnvNxiyp3v6b+prIA==}
 
   '@next/mdx@16.3.4':
     resolution: {integrity: sha512-XEmW3ccWWNybofVOmgIEVhXtmNXM0u423iqkVXwPf29fht/tdpUiMDuMHQ4hMerE1477nOJrv5kM/F6qMcEMwA==}
@@ -7668,7 +7668,7 @@ snapshots:
 
   '@next/env@16.3.4': {}
 
-  '@next/eslint-plugin-next@16.3.3(eslint@10.9.1(jiti@2.7.0))':
+  '@next/eslint-plugin-next@16.3.4(eslint@10.9.1(jiti@2.7.0))':
     dependencies:
       '@eslint-community/eslint-utils': 4.9.1(eslint@10.9.1(jiti@2.7.0))
       fast-glob: 3.3.1
