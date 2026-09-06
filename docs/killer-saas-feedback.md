@@ -1285,6 +1285,20 @@ Ce qui l'a trouvé n'est pas une relecture : c'est `s37b2` qui, voulant poser un
 
 ---
 
+## P39bis — Deux branches indépendantes qui rougissent au même endroit accusent le tronc, pas elles-mêmes
+
+`s54` et `s37b2` ont échoué en CI sur le **même** cas de parcours — *une session révoquée depuis un autre appareil est refusée par le serveur* — l'une sur la branche `tous` de la matrice, l'autre sur `socle`. Les deux ne partageaient que `dev`.
+
+Le cas attend **une** session après révocation et en trouve **deux**. Mesuré ensuite : **3 passages sur 3 verts en isolation** locale, vert au rejeu en CI. Ce n'est donc pas la révocation qui échoue, c'est un second parcours qui ouvre une session pour le **même compte** pendant que celui-ci compte les siennes.
+
+**Ce qui vaut la peine d'être noté, c'est le raisonnement, pas le correctif.** Deux branches indépendantes qui rougissent au même endroit ne peuvent pas avoir la même cause chez elles. Le premier réflexe — relire le diff de la story — était le mauvais, deux fois. La question utile est : *qu'ont-elles en commun ?* La réponse est toujours le tronc, ou le harnais.
+
+**Le défaut de fond est un compte partagé entre parcours.** Une suite qui parallélise et qui partage un identifiant fabrique des interférences qui ressemblent à des régressions — et coûtent le double, puisqu'elles envoient chercher au mauvais endroit avant d'être reconnues. La sortie n'est pas de désarmer le cas ni de le marquer instable : c'est qu'un parcours qui **compte** ses propres sessions travaille sur un compte qui n'appartient qu'à lui.
+
+**Écrit plutôt que corrigé**, comme P37bis : le défaut appartient au harnais de parcours, aucune des deux stories ne le cause, et un correctif opportuniste dans l'une des deux aurait rendu son diff illisible. La prochaine story qui touche `e2e/app-shell.spec.ts` a ici la mesure et la cause.
+
+---
+
 ## P36bis — La revue lit le code, elle ne mesure pas son coût : c'est CodeQL qui a trouvé
 
 `s39` a livré `POST /analytics/client-error`, **volontairement non authentifiée** — il faut capter les erreurs d'avant-session. Le corps est donc choisi par un appelant anonyme, et il traverse un analyseur de trace de pile écrit en expression régulière.
@@ -1786,6 +1800,7 @@ C'est la **troisième** occurrence du même défaut dans ce même fichier : une 
 | 06/09 | CodeQL trouve un ReDoS haute sévérité sur une route publique anonyme, après trois lectures humaines | 4 Ko de requête, 43,9 s de CPU ; borne d'entrée + analyseur linéaire | P36bis |
 | 06/09 | Deadlock PostgreSQL entre deux processus de test : la suppression ne prend pas le verrou que la production prend | écrite comme dette, non corrigée depuis la branche voisine | P37bis |
 | 06/09 | `ModuleSession.roles` vide depuis huit stories : le niveau de protection `role` refuse tout le monde | trouvé en voulant s'en servir, story s56 ajoutée | P38bis |
+| 06/09 | Deux branches indépendantes rougissent sur le même cas de parcours : un compte partagé entre parcours parallèles | 3/3 verts en isolation, vert au rejeu ; écrit comme dette du harnais | P39bis |
 
 ---
 
