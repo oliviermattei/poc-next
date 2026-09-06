@@ -18,7 +18,7 @@
 # garde la règle, et `docker run` sans variables le prouve : le conteneur doit
 # sortir en nommant ce qui manque.
 
-FROM node:22-alpine AS base
+FROM node:26-alpine AS base
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 RUN corepack enable
@@ -103,7 +103,7 @@ CMD ["pnpm", "db:migrate"]
 # peut le prendre. Tout arrive par l'environnement du conteneur, et
 # l'instrumentation refuse le démarrage si quelque chose manque.
 # ---------------------------------------------------------------------------
-FROM node:22-alpine AS runner
+FROM node:26-alpine AS runner
 
 WORKDIR /app
 
