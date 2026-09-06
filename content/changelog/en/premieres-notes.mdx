@@ -1,0 +1,13 @@
+---
+version: "1.0"
+date: 2026-01-12
+category: added
+title: A release notes page
+description: The product now publishes its release notes, in every language it serves.
+---
+
+Every note is an `.mdx` file in the repository: it is written like the rest of
+the content, reviewed, and compiled by the bundler.
+
+An invalid frontmatter fails the build and names the offending file, rather than
+publishing a note without a date.

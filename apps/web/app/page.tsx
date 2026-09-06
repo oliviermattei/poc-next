@@ -6,7 +6,7 @@ import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 
 import { currentViewer } from '../lib/auth'
-import { consentFooterLinks } from '../lib/consent'
+import { publicFooterLinks } from '../lib/footer'
 import { NewsletterForm } from './public-form'
 import { appIntl } from '../lib/i18n'
 import { marketingSite } from '../lib/marketing'
@@ -94,7 +94,7 @@ export default async function HomePage() {
       // **fourni** par l'application : le module `marketing` ne sait pas ce
       // qu'est le consentement, et le déclarer chez lui ferait disparaître ce
       // point d'accès avec le site public.
-      footerLinks={consentFooterLinks(t)}
+      footerLinks={publicFooterLinks(t)}
     />
   )
 }

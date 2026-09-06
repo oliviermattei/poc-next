@@ -5,7 +5,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { z } from 'zod'
 
-import { consentFooterLinks } from '../../../../lib/consent'
+import { publicFooterLinks } from '../../../../lib/footer'
 import { docsCatalog } from '../../../../lib/docs'
 import { docsBody } from '../../../../lib/docs-body'
 import { appIntl } from '../../../../lib/i18n'
@@ -114,7 +114,7 @@ export default async function DocsPage({
         <MarketingFooter
           site={marketingSite}
           intl={{ t, path }}
-          extraLinks={consentFooterLinks(t)}
+          extraLinks={publicFooterLinks(t)}
         />
       ) : null}
     </>

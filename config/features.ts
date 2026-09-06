@@ -3,6 +3,7 @@ import { adminModule } from '@repo/module-admin'
 import { authModule } from '@repo/module-auth'
 import { billingModule } from '@repo/module-billing'
 import { blogModule } from '@repo/module-blog'
+import { changelogModule } from '@repo/module-changelog'
 import { consentModule } from '@repo/module-consent'
 import { docsModule } from '@repo/module-docs'
 import { demoDisabledModule } from '@repo/module-demo-disabled'
@@ -41,6 +42,7 @@ export const availableModules = [
   authModule,
   billingModule,
   blogModule,
+  changelogModule,
   consentModule,
   docsModule,
   i18nModule,
@@ -91,6 +93,7 @@ export const enabledModules = [
   'auth',
   'billing',
   'blog',
+  'changelog',
   'consent',
   'docs',
   'i18n',

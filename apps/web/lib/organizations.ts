@@ -191,6 +191,13 @@ const APPLICATION_SEGMENTS = [
   // `tests/organizations.test.ts` dérive. Même raison que `billing` juste
   // au-dessus, mesurée par `pnpm test:minimal-profile`, qui coupe ce module.
   'blog',
+  // L'écran des nouveautés (s31), pour la même raison encore, et trouvée par la
+  // même commande : `pnpm test` était vert — module activé, son entrée de
+  // navigation de pied de page suffisait —, et `pnpm test:minimal-profile`, qui
+  // coupe ce module, a rougi. C'est la troisième fois que ce défaut se produit
+  // dans ce fichier, et c'est exactement la règle « toute configuration est un
+  // produit livrable » de la méthode.
+  'changelog',
   // Les deux écrans de la documentation (s30), exactement pour la même raison,
   // et trouvée de la même façon : `pnpm test` était vert — module activé, son
   // entrée de navigation suffisait —, et `pnpm test:minimal-profile`, qui coupe

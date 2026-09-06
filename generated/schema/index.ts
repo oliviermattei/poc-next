@@ -10,6 +10,7 @@ import * as admin from './admin'
 import * as auth from './auth'
 import * as billing from './billing'
 import * as blog from './blog'
+import * as changelog from './changelog'
 import * as consent from './consent'
 import * as demoEnabled from './demo-enabled'
 import * as docs from './docs'
@@ -27,6 +28,7 @@ export const enabledModuleSchemas = [
   { id: 'auth', schema: auth },
   { id: 'billing', schema: billing },
   { id: 'blog', schema: blog },
+  { id: 'changelog', schema: changelog },
   { id: 'consent', schema: consent },
   { id: 'demo-enabled', schema: demoEnabled },
   { id: 'docs', schema: docs },

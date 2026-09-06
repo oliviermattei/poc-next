@@ -8,7 +8,7 @@ import { z } from 'zod'
 import { blogCatalog } from '../../../lib/blog'
 import { articleBody } from '../../../lib/blog-body'
 import { DEFAULT_OG_IMAGE } from '../../../lib/og-image'
-import { consentFooterLinks } from '../../../lib/consent'
+import { publicFooterLinks } from '../../../lib/footer'
 import { appIntl } from '../../../lib/i18n'
 import { marketingFormsAvailable, marketingSite } from '../../../lib/marketing'
 
@@ -94,7 +94,7 @@ export default async function BlogArticlePage({
         <MarketingFooter
           site={marketingSite}
           intl={{ t, path }}
-          extraLinks={consentFooterLinks(t)}
+          extraLinks={publicFooterLinks(t)}
         />
       ) : null}
     </>

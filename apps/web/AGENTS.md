@@ -28,7 +28,7 @@ module (`packages/modules/<module>/src/domain`).
   `lib/jobs.ts`, qui est le point de composition des tâches de fond (s33) ;
 - les modules du projet, **uniquement** parce que `config/features.ts` les
   référence : `@repo/module-admin`, `@repo/module-auth`, `@repo/module-billing`,
-  `@repo/module-blog`,
+  `@repo/module-blog`, `@repo/module-changelog`,
   `@repo/module-consent`, `@repo/module-docs`, `@repo/module-i18n`, `@repo/module-marketing`,
   `@repo/module-notifications`, `@repo/module-jobs`,
   `@repo/module-organizations`, `@repo/module-storage`,
@@ -48,7 +48,9 @@ module (`packages/modules/<module>/src/domain`).
   de huit noms, la story qui a ajouté le huitième n'ayant pas touché au
   décompte. D'autres fichiers de `lib/` importent un module **déjà monté** pour
   en composer un service — `lib/billing-catalogue.ts`, `lib/billing-permission.ts`,
-  `lib/blog-body.tsx`, `lib/docs-body.tsx`, `lib/guest-account.ts`, `lib/module-services.ts`,
+  `lib/blog-body.tsx`, `lib/changelog-body.tsx`, `lib/docs-body.tsx`,
+  `lib/footer.ts` (les liens de pied de page, dérivés du registre — s31 ; il ne
+  nomme aucun module, il importe le type de lien du site public), `lib/guest-account.ts`, `lib/module-services.ts`,
   `lib/module-content.ts` et `lib/public-urls.ts` (la syndication, s53 — le
   second ne nomme aucun module, il n'en **parle** que dans sa règle),
   `lib/rate-limit.ts` (le seau de limitation de débit, s28) et `lib/seat-sync.ts`.
@@ -500,6 +502,50 @@ supposé, et en deux moitiés (`tests/marketing.test.ts`) :
 Ce que cette mesure ne couvre pas, et qui est dit plutôt que sous-entendu : un
 composant **client** exécuté dans le navigateur ne passe par aucun de ces deux
 chemins — il n'a pas d'accès à la base, par construction.
+
+## Le montage des nouveautés (s31)
+
+Deux fichiers, sur le modèle exact du blog :
+
+- `lib/changelog.ts` porte le **choix** — le module `changelog` est-il monté ?
+  C'est le seul fichier de l'application qui connaisse `@repo/module-changelog`.
+  Il rend un `ChangelogCatalog` dont la **forme est la même dans les deux
+  états** : `index` vaut `null` quand le module est coupé, et l'écran répond
+  alors 404 sur une **donnée**, jamais sur un identifiant de module ;
+- `lib/changelog-body.tsx` charge le **corps** d'une entrée, compilé par le
+  bundler (ADR 053), pour la même raison et avec la même contrainte que
+  `lib/blog-body.tsx` — la page attend les corps avant de rendre.
+
+| | module activé | module coupé |
+|---|---|---|
+| `/changelog` | les versions, de la plus récente à la plus ancienne | **404** |
+| `/api/modules/changelog/feed.xml` | le flux RSS | **404**, par le répartiteur |
+| lien du pied de page | « Nouveautés » | absent, avec le module |
+
+**Ce que ce montage ne porte pas, et c'est le point de la story** : le lien du
+pied de page. Il est déclaré au contrat du module (`navigation`, avec
+`surface: 'footer'`) et dérivé du registre par `lib/footer.ts`. Aucun écran ne
+nomme le module — `tests/changelog.test.ts` balaie `app/` et refuse une seconde
+expression de lien de pied de page, ou un identifiant de module dans celle qui
+reste.
+
+Aucun `loading.tsx` au-dessus de cet écran, pour la raison écrite au blog
+ci-dessous : la coquille est flushée avant que la page ne décide, et le
+`notFound()` arrive alors en 200.
+
+## Le pied de page public, dérivé du registre (s31)
+
+`lib/footer.ts` est le **seul** endroit qui construise les liens de service du
+pied de page. Avant s31, ils venaient de `consentFooterLinks`
+(`lib/consent.ts`), importé nommément par **sept** fichiers de `app/` : un
+second module à y mettre en aurait fait un second nom aux sept mêmes endroits.
+
+La règle qui tient : un module qui veut un lien ici le **déclare**
+(`navigation`, `surface: 'footer'`), et `visibleNavigation(registry, session,
+'footer')` le rend. Un module coupé n'est pas dans le registre, donc son lien
+n'existe pas — sans condition écrite nulle part. Une entrée de pied de page
+n'apparaît **jamais** dans la barre latérale, et réciproquement : c'est ce que
+la surface distingue.
 
 ## Le montage du blog (s29)
 

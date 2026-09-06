@@ -5,9 +5,11 @@ import { buildRegistry } from './registry'
 import {
   carriesLocalePrefix,
   indexableUrls,
+  renderFeed,
   robotsAllows,
   robotsPolicy,
   sitemapEntries,
+  type FeedItem,
 } from './syndication'
 
 /**
@@ -310,5 +312,67 @@ describe('la politique des robots', () => {
     expect(
       robotsAllows({ rules: { userAgent: '*', allow: ['/blog/*$'], disallow: ['/'] } }, '/blog/x'),
     ).toBe(true)
+  })
+})
+
+/* ------------------------------------------------------------------------- *
+ * Le flux, **à l'endroit où il vit désormais** (s31).
+ *
+ * Il était dans le `domain` du module `blog` (s53) : le changelog en a besoin,
+ * et l'y laisser lui aurait imposé `requires: ['blog']` — un produit qui coupe
+ * le blog aurait perdu ses nouveautés (ADR 065). `renderBlogFeed` en est
+ * devenue une enveloppe, et les cas de `tests/blog.test.ts` valent tels quels :
+ * s'ils avaient dû changer, l'extraction aurait changé le comportement.
+ *
+ * Ce que ce bloc prouve **au primitif**, et que le blog ne pouvait pas prouver :
+ * un article a toujours un auteur, une entrée de changelog n'en a pas.
+ * ------------------------------------------------------------------------- */
+
+const feedFixture = (items: readonly FeedItem[]): string =>
+  renderFeed({
+    title: 'Nouveautés',
+    description: 'Ce qui a changé',
+    locale: 'fr',
+    siteUrl: 'https://app.test/fr/changelog',
+    feedUrl: 'https://app.test/api/modules/changelog/feed.xml',
+    items,
+  })
+
+describe('le flux', () => {
+  it('n’écrit un auteur que lorsqu’il y en a un', () => {
+    const withAuthor = feedFixture([
+      { title: 'A', description: 'a', url: 'https://app.test/a', date: '2026-01-02', author: 'Ana' },
+    ])
+    const without = feedFixture([
+      { title: 'A', description: 'a', url: 'https://app.test/a', date: '2026-01-02' },
+    ])
+
+    expect(withAuthor).toContain('<dc:creator>Ana</dc:creator>')
+    // Une entrée de changelog n'a pas d'auteur : un `<dc:creator>` vide serait
+    // une signature attribuée à personne, que les agrégateurs affichent.
+    expect(without).not.toContain('<dc:creator>')
+    // L'espace de noms reste déclaré : c'est le document qui le porte, pas
+    // l'entrée, et deux formes de `<rss>` selon le contenu divergeraient.
+    expect(without).toContain('xmlns:dc="http://purl.org/dc/elements/1.1/"')
+  })
+
+  it('range du plus récent au plus ancien, et échappe tout ce qu’il écrit', () => {
+    const body = feedFixture([
+      { title: 'Vieux', description: 'v', url: 'https://app.test/v', date: '2026-01-02' },
+      {
+        title: 'Tests & « pièges » : <script>',
+        description: 'un & et un <chevron>',
+        url: 'https://app.test/n?a=1&b=2',
+        date: '2026-03-04',
+      },
+    ])
+
+    // L'ordre : un lecteur de flux affiche le document tel qu'il le reçoit, et
+    // un flux qui commence par le plus ancien montre du vieux en tête.
+    expect(body.indexOf('<script>')).toBe(-1)
+    expect(body.indexOf('Tests &amp; « pièges » : &lt;script&gt;')).toBeLessThan(
+      body.indexOf('Vieux'),
+    )
+    expect(body).toContain('https://app.test/n?a=1&amp;b=2')
   })
 })

@@ -1,4 +1,5 @@
 import { BUILD_ENV_KEYS, ENV_KEYS } from '@repo/config'
+import type { NavigationSurface } from '@repo/core'
 import { getTableConfig, PgTable } from 'drizzle-orm/pg-core'
 import { z } from 'zod'
 
@@ -144,7 +145,17 @@ export interface ProfileModule {
   readonly id: string
   readonly requires: readonly string[]
   readonly routes: readonly { readonly method: string; readonly path: string }[]
-  readonly navigation: readonly { readonly id: string; readonly href: string }[]
+  readonly navigation: readonly {
+    readonly id: string
+    readonly href: string
+    /**
+     * La surface où l'entrée est rendue (s31, ADR 066). Absente : la barre
+     * latérale. Le type vient du contrat — **le seul import de `@repo/core` de
+     * ce fichier, et il est de type** : réécrire l'union ici la ferait vieillir
+     * à côté d'elle le jour où une troisième surface existe.
+     */
+    readonly surface?: NavigationSurface
+  }[]
   /** Tables Drizzle, indexées par nom d'export — la forme du contrat. */
   readonly schema: Record<string, unknown>
 }
@@ -161,6 +172,14 @@ export interface SweptEntry {
   readonly moduleId: string
   readonly entryId: string
   readonly href: string
+  /**
+   * La surface déclarée (s31), **transportée telle quelle**.
+   *
+   * Sans elle, « le lien disparaît du pied de page » ne serait pas dérivable :
+   * la recette ne saurait pas dans quelle région de la page chercher l'absence,
+   * et devrait nommer un module pour le savoir.
+   */
+  readonly surface?: NavigationSurface
 }
 
 /** Une table, et le module qui la déclare. */
@@ -247,6 +266,7 @@ export function sweepProfile(input: {
         moduleId: module.id,
         entryId: entry.id,
         href: entry.href,
+        ...(entry.surface === undefined ? {} : { surface: entry.surface }),
       })),
     ),
     absentTables: cut.flatMap((module) =>

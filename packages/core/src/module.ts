@@ -196,7 +196,38 @@ export interface NavigationEntry {
   readonly labelKey: string
   readonly order: number
   readonly protection: RouteProtection
+  /**
+   * **Où cette entrée est rendue** (s31, ADR 066). Absente : la barre latérale.
+   *
+   * Facultative, et l'asymétrie avec `protection` est délibérée : la surface par
+   * défaut est celle qu'avaient **toutes** les entrées écrites avant cette clé,
+   * et la rendre obligatoire aurait rouvert chacun de leurs modules pour y
+   * écrire la même valeur. `protection`, elle, n'a pas de défaut sûr.
+   *
+   * Elle existe parce que le pied de page du site public annonçait ses liens par
+   * un **import nommé** du socle (`consentFooterLinks`), écrit dans sept
+   * fichiers de `apps/web/app`. Un second module à y mettre en aurait fait un
+   * second nom aux sept mêmes endroits, puis un troisième. Le pied de page se
+   * dérive désormais du registre, comme la barre latérale : un module de plus
+   * ne touche aucun de ces fichiers.
+   *
+   * Ce n'est **pas** une décision d'indexation : `publicUrls` (ADR 054) reste la
+   * seule source du plan de site, pour la raison qu'ADR 054 écrit — `public` est
+   * un niveau de protection, pas un mérite d'index.
+   */
+  readonly surface?: NavigationSurface
 }
+
+/**
+ * Les surfaces où une entrée de navigation peut paraître.
+ *
+ * Deux, et elles ne se recouvrent pas : la barre latérale de l'application, et
+ * le pied de page du site public. Une entrée déclarée pour l'une n'apparaît
+ * jamais dans l'autre — un lien de service au rang des fonctionnalités du
+ * produit serait une régression d'écran, et c'est exactement ce que le module
+ * `consent` refusait en déclarant `navigation: []`.
+ */
+export type NavigationSurface = 'app' | 'footer'
 
 /**
  * **Ce qu'un module donne à indexer** (s53, ADR 054).
@@ -211,11 +242,12 @@ export interface NavigationEntry {
  *
  * **Ce qui n'entre pas dans l'index : les entrées de navigation publiques.**
  * Elles auraient été la source évidente, et la mesure les écarte. La
- * configuration livrée en compte cinq — `marketing /`, `auth /sign-in`,
- * `blog /blog`, `billing /pricing`, `demo-enabled
- * /api/modules/demo-enabled/items` : les dériver publierait l'écran de
- * connexion, la page de tarifs et une route d'API dans le `sitemap.xml` et le
- * `robots.txt`. **`public` est un niveau de protection — qui peut entrer —, pas
+ * configuration livrée en porte plusieurs — leur liste se **dérive** du registre
+ * dans `tests/syndication.test.ts`, elle n'est écrite nulle part, et le nombre
+ * qui figurait ici est passé de cinq à huit sans que rien ne le dise. Parmi
+ * elles, `auth /sign-in`, `billing /pricing` et une route d'API de
+ * `demo-enabled` : les dériver publierait l'écran de connexion, la page de
+ * tarifs et une route d'API dans le `sitemap.xml` et le `robots.txt`. **`public` est un niveau de protection — qui peut entrer —, pas
  * une décision d'indexation — ce qui mérite un index.** Un écran ouvert à tous
  * n'a pas à figurer dans un moteur, et l'y mettre est la divulgation gratuite de
  * surface que `docs/security.md` §7 refuse. Un module qui veut être indexé le
@@ -251,9 +283,10 @@ export interface PublicUrlContext {
  * La contribution d'un module aux URL publiques.
  *
  * Rendre `[]` est la déclaration d'un module qui ne publie rien — c'est le cas
- * de dix des douze modules du dépôt. Ce n'est pas une omission : le champ est
- * obligatoire, et `tests/fixtures/typing/missing-public-urls.ts` compile
- * réellement le refus.
+ * de la grande majorité des modules du dépôt, seuls ceux qui servent du contenu
+ * lu par un visiteur contribuant quelque chose. Ce n'est pas une omission : le
+ * champ est obligatoire, et `tests/fixtures/typing/missing-public-urls.ts`
+ * compile réellement le refus.
  */
 export type PublicUrlContribution = (context: PublicUrlContext) => readonly PublicUrl[]
 

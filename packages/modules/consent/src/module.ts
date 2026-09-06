@@ -4,6 +4,7 @@ import { CONSENT_MODULE_ID } from './domain/consent-category'
 import { requireConsentService } from './infrastructure/consent-runtime'
 import enMessages from './messages/en.json' with { type: 'json' }
 import frMessages from './messages/fr.json' with { type: 'json' }
+import { CONSENT_SCREEN_PATH } from './presentation/consent-paths'
 import { createConsentRoutes } from './presentation/consent-routes'
 
 /**
@@ -40,16 +41,33 @@ export const consentModule = defineModule({
   migrations: null,
   routes: createConsentRoutes(requireConsentService),
   /**
-   * Aucune entrée de navigation.
+   * **Une entrée, et sur le pied de page seulement** (s31, ADR 066).
    *
    * L'écran `/cookies` est servi par l'application, pas par une route de module,
    * et ses deux points d'accès sont **contextuels** : le pied de page du site
-   * public, et la carte des paramètres de compte. Une entrée de plus dans la
-   * barre latérale mettrait un réglage de confidentialité au même rang que les
-   * fonctionnalités du produit, et elle serait visible pour un visiteur anonyme
-   * qui n'a pas de barre latérale à lui.
+   * public, et la carte des paramètres de compte. Rien dans la barre latérale —
+   * une entrée de plus y mettrait un réglage de confidentialité au même rang que
+   * les fonctionnalités du produit, et elle serait visible pour un visiteur
+   * anonyme qui n'a pas de barre latérale à lui. C'est ce que `surface`
+   * distingue, et c'est ce que `visibleNavigation` fait respecter.
+   *
+   * Ce lien était construit par le socle (`consentFooterLinks`,
+   * `apps/web/lib/consent.ts`) et **importé nommément par sept fichiers** de
+   * `apps/web/app`. Il est déclaré ici depuis s31 : le pied de page se dérive du
+   * registre, et un module de plus n'ouvre aucun écran.
    */
-  navigation: [],
+  navigation: [
+    {
+      id: 'cookies',
+      href: CONSENT_SCREEN_PATH,
+      // La clé **non qualifiée** : le registre la préfixe du module, et le
+      // résultat est exactement `FOOTER_LINK_KEY`.
+      labelKey: 'footer.link',
+      order: 0,
+      protection: { level: 'public' },
+      surface: 'footer',
+    },
+  ],
   /**
    * Aucune URL publique : ce module ne publie pas de page indexable (s53).
    *

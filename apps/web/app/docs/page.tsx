@@ -4,7 +4,7 @@ import { MarketingFooter } from '@repo/module-marketing/presentation'
 import type { Metadata } from 'next'
 import { notFound, redirect } from 'next/navigation'
 
-import { consentFooterLinks } from '../../lib/consent'
+import { publicFooterLinks } from '../../lib/footer'
 import { docsCatalog } from '../../lib/docs'
 import { appIntl } from '../../lib/i18n'
 import { marketingFormsAvailable, marketingSite } from '../../lib/marketing'
@@ -70,7 +70,7 @@ export default async function DocsIndexPage() {
         <MarketingFooter
           site={marketingSite}
           intl={{ t, path }}
-          extraLinks={consentFooterLinks(t)}
+          extraLinks={publicFooterLinks(t)}
         />
       ) : null}
     </>
