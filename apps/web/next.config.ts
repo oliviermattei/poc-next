@@ -22,6 +22,21 @@ const nextConfig: NextConfig = {
   //
   // Elle ne change rien à `next dev` : c'est une sortie de build.
   output: 'standalone',
+  /**
+   * **Les cartes source du navigateur** (s39, critère 1).
+   *
+   * Sans elles, une erreur client arrive minifiée chez le fournisseur : la
+   * « trace lisible » que le critère demande n'existe alors nulle part. Les
+   * générer ne suffit pas — il faut les **envoyer** et **ne pas les servir**,
+   * et c'est `pnpm sourcemaps:release` qui fait les deux dans cet ordre.
+   *
+   * **Conséquence à connaître avant d'y toucher** : activées, les cartes
+   * atterrissent dans `.next/static`, que le serveur sert sous `/_next/static`.
+   * Un build livré sans élagage exposerait donc le code source du produit. Le
+   * `Dockerfile` appelle `pnpm sourcemaps:prune` pour cette raison, et
+   * `tests/analytics.test.ts` refuse un `Dockerfile` qui ne l'appellerait plus.
+   */
+  productionBrowserSourceMaps: true,
   // Les packages du monorepo sont livrés en TypeScript source, sans étape de build.
   transpilePackages: [
     '@repo/config',

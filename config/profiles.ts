@@ -68,6 +68,17 @@ import type { AvailableModuleId } from './features'
  * `tests/notifications.test.ts` ; la troisième ne se mesure que sur le
  * **schéma réel** d'une base où le module n'a jamais migré, c'est-à-dire ici.
  *
+ * `analytics` les a rejoints en s39, et il apporte la garantie la plus
+ * intéressante du lot parce qu'elle **traverse deux modules** : coupé, il ne
+ * déclare plus aucun script non essentiel, si bien que la bannière du module
+ * `consent` — resté activé — ne s'affiche plus, faute de quelque chose à
+ * demander. Aucune ligne ne l'écrit : elle est dérivée de `resolveConsentState`
+ * (s36). Ce que la recette balaie de lui, c'est sa route publique de remontée
+ * d'erreur client, qui doit répondre 404 ; la garantie dérivée, elle, est
+ * mesurée par `tests/analytics.test.ts`, que la recette rejoue **dans la
+ * configuration coupée** — c'est-à-dire l'autre moitié de « prouver la garde
+ * dans les deux configurations ».
+ *
  * `pnpm test:minimal-profile` joue ce profil dans une **copie** du dépôt : il
  * n'est pas la configuration livrée, et éditer cette liste ne change rien à
  * l'application tant que la recette n'est pas lancée.
@@ -91,5 +102,6 @@ export const minimalProfile = {
     'notifications',
     'jobs',
     'changelog',
+    'analytics',
   ],
 } as const satisfies ModuleProfileDeclaration

@@ -11,7 +11,9 @@
   },
   "dependencies": {
     "@repo/adapter-inngest": "workspace:*",
+    "@repo/adapter-posthog": "workspace:*",
     "@repo/adapter-resend": "workspace:*",
+    "@repo/adapter-sentry": "workspace:*",
     "@repo/adapter-stripe": "workspace:*",
     "@repo/config": "workspace:*",
     "@repo/core": "workspace:*",
@@ -19,6 +21,7 @@
     "@repo/emails": "workspace:*",
     "@repo/jobs-testing": "workspace:*",
     "@repo/mailer-testing": "workspace:*",
+    "@repo/module-analytics": "workspace:*",
     "@repo/module-auth": "workspace:*",
     "@repo/module-billing": "workspace:*",
     "@repo/module-blog": "workspace:*",

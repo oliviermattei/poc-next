@@ -10,7 +10,8 @@ import {
   type DatabaseConnection,
 } from '@repo/db'
 import { createRecordingMailer, type RecordingMailer } from '@repo/mailer-testing'
-import type { Mailer } from '@repo/ports'
+import { createPostHogAnalytics } from '@repo/adapter-posthog'
+import type { Analytics, Mailer } from '@repo/ports'
 import {
   authModule,
   authSchema,
@@ -20,7 +21,7 @@ import {
   type AuthService,
   type ConfigureAuthOptions,
 } from '@repo/module-auth'
-import { AUTH_MODELS } from '@repo/module-auth'
+import { AUTH_MODELS, SIGN_UP_EVENT } from '@repo/module-auth'
 import { getAuthTables } from 'better-auth'
 import { appLocales } from '../config/i18n'
 import { magicLink } from 'better-auth/plugins/magic-link'
@@ -101,6 +102,26 @@ const settled = async (): Promise<void> => {
   await Promise.all(backgroundTasks.splice(0))
 }
 
+/**
+ * **Le réseau de l'analytique** (s39), doublé et enregistré.
+ *
+ * Le port reçoit son propre `fetch` : la garde « aucun appel sortant » de cette
+ * suite reste donc intacte — un événement qui partirait par `globalThis.fetch`
+ * serait toujours un appel que personne n'a demandé.
+ */
+const analyticsRequests: Request[] = []
+
+const recordingAnalytics = (): Analytics =>
+  createPostHogAnalytics({
+    apiKey: 'phc_suite',
+    host: 'https://analytics.invalid',
+    fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      analyticsRequests.push(new Request(input instanceof Request ? input : String(input), init))
+
+      return Response.json({ status: 1 })
+    }) as unknown as typeof fetch,
+  })
+
 /** La configuration de la suite, écrite une fois : quatre cas la remontent. */
 const configureService = (overrides: Partial<ConfigureAuthOptions> = {}): AuthService =>
   configureAuth({
@@ -110,6 +131,7 @@ const configureService = (overrides: Partial<ConfigureAuthOptions> = {}): AuthSe
     appUrl: APP_URL,
     log: (record) => logs.push(record),
     runInBackground: (task) => backgroundTasks.push(task),
+    analytics: recordingAnalytics(),
     ...overrides,
   })
 
@@ -493,6 +515,45 @@ describe.skipIf(!databaseReachable)('parcours d’inscription et de vérificatio
     // mais n'est pas vérifiée. Ce qui le prouve est l'absence de session.
     expect(refused.status).toBe(401)
     expect(sessionCookie(refused)).toBeNull()
+  }, 30_000)
+
+  it('mesure l’inscription réussie, et la mesure se lit sur la requête capturée (critère 7)', async () => {
+    const email = anEmail()
+    analyticsRequests.length = 0
+
+    expect((await call('/sign-up/email', { body: { email, password: PASSWORD } })).status).toBe(200)
+
+    // La mesure quitte le temps de réponse, comme l'email de réinitialisation :
+    // c'est `runInBackground` qui la porte, et `settled()` qui l'attend.
+    await settled()
+
+    // **Le plancher** : sans requête capturée, il n'y a rien à asserter, et
+    // affirmer « aucune donnée sensible » sur un ensemble vide serait vert pour
+    // rien.
+    expect(analyticsRequests).toHaveLength(1)
+
+    const body = (await (analyticsRequests[0] as Request).clone().json()) as Record<string, unknown>
+
+    expect(body.event).toBe(SIGN_UP_EVENT)
+    expect(typeof body.distinct_id).toBe('string')
+    // Ni l'adresse, ni le mot de passe : l'événement porte une **référence**.
+    const raw = await (analyticsRequests[0] as Request).clone().text()
+
+    expect(raw).not.toContain(email)
+    expect(raw).not.toContain(PASSWORD)
+  }, 30_000)
+
+  it('ne mesure rien quand l’inscription est refusée', async () => {
+    analyticsRequests.length = 0
+
+    const response = await call('/sign-up/email', { body: { email: anEmail(), password: 'court' } })
+
+    await settled()
+
+    expect(response.status).toBe(400)
+    // Un refus qui mesurerait quand même compterait des inscriptions qui n'ont
+    // pas eu lieu — et l'événement suivrait un compte qui n'existe pas.
+    expect(analyticsRequests).toEqual([])
   }, 30_000)
 
   it('vérifie le compte au premier clic, et refuse le second', async () => {

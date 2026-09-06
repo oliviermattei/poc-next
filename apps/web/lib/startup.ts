@@ -1,7 +1,9 @@
 import { assertStartupEnv } from '@repo/config'
 
 import { enabledModules } from '../../../config/features'
+import { contentSecurityPolicySources } from '../../../config/security'
 import { superadminWarningFor } from './admin'
+import { assertAnalyticsIsReachable, resolveAnalyticsConfig } from './analytics-config'
 import { resolveAuthConfig } from './auth-config'
 import { billingCatalogue } from './billing-catalogue'
 import { resolveBillingConfig } from './billing-config'
@@ -157,6 +159,27 @@ export function assertStartupConfiguration(
   // le repli silencieux, qui exécuterait ici deux fois chaque échéance dès la
   // seconde instance.
   assertJobsConfiguration(env)
+
+  // **Et pour l'analytique** (s39) — seulement si le module est activé, comme
+  // le stockage, le paiement et les tâches. Aucune clé est un état valide, et
+  // c'est même l'état livré : rien n'est mesuré et aucun appel ne part. Ce qui
+  // refuse, c'est une clé configurée dont l'**origine** n'est pas déclarée à la
+  // politique de sécurité du contenu : le script se chargerait (le nonce
+  // l'autorise) et chacun de ses appels serait bloqué par le navigateur, si bien
+  // que le produit aurait l'air de mesurer sans rien mesurer. Même arbitrage que
+  // le captcha de s28, dont `config/security.ts` écrit le motif.
+  //
+  // **Atteinte depuis le démarrage, et mesurée** : la revue a trouvé que retirer
+  // cet appel laissait 2 605 cas verts — le défaut exact de s33, dont la leçon
+  // était écrite trois lignes plus bas dans `tests/env-wiring.test.ts`. Ce
+  // fichier-là porte désormais le cas, par `loadNextConfig()`, avec son plancher
+  // (aucune clé ne refuse rien).
+  if ((enabledModules as readonly string[]).includes('analytics')) {
+    assertAnalyticsIsReachable(resolveAnalyticsConfig(env), {
+      connect: contentSecurityPolicySources.connect,
+      img: contentSecurityPolicySources.img,
+    })
+  }
 }
 
 /**

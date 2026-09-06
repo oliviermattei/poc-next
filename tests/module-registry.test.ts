@@ -96,6 +96,14 @@ describe('contraintes du contrat portées par le compilateur', () => {
     // port asynchrone : une émission perdue ne se voit jamais dans la requête
     // qui l'a faite.
     ['un échec du port de jobs non traité', 'unhandled-jobs-failure.ts'],
+    // s39 : les sixième et septième ports héritent du même contrat, et leur cas
+    // est le plus glissant — tous deux **dégradent** (`docs/reliability.md` §2),
+    // donc leur échec est banal, et un échec banal est celui qu'on cesse de
+    // regarder. L'un ferait croire qu'on mesure quand rien n'est parti ; l'autre
+    // est appelé depuis un gestionnaire d'erreur, où lever ferait disparaître
+    // l'erreur d'origine.
+    ['un échec du port d’analytique non traité', 'unhandled-analytics-failure.ts'],
+    ['un échec du port de monitoring non traité', 'unhandled-monitoring-failure.ts'],
   ])('refuse %s', (_case, fixture) => {
     expect(diagnostics).toContain(fixture)
   })

@@ -6,6 +6,7 @@ import { GeistSans } from 'geist/font/sans'
 import { TriangleAlertIcon } from 'lucide-react'
 
 import { fallbackLocale, fallbackText } from '../lib/fallback-text'
+import { ClientErrorReporter } from './client-error-reporter'
 import './globals.css'
 
 /**
@@ -36,10 +37,24 @@ import './globals.css'
  * `<link>` depuis `/_next/static`, donc couverts par `style-src 'self'` — et
  * aucun style en ligne.
  */
-export default function GlobalError({ retry }: { readonly retry: () => void }) {
+export default function GlobalError({
+  error,
+  retry,
+}: {
+  readonly error?: unknown
+  readonly retry: () => void
+}) {
   return (
     <html lang={fallbackLocale} className={`${GeistSans.variable} ${GeistMono.variable}`}>
       <body>
+        {/*
+         * **La remontée du critère 1, côté navigateur** — un composant, et non
+         * un crochet posé ici : cet écran est appelé comme une fonction
+         * ordinaire par `tests/rendered-text.test.ts`, où un `useEffect`
+         * échoue. Il ne rend rien et ne lève jamais : l'écran de dernier
+         * recours ne doit pas pouvoir être celui qui casse.
+         */}
+        <ClientErrorReporter error={error} />
         <title>{fallbackText('app.error.title')}</title>
         <main className="mx-auto flex min-h-svh w-full max-w-4xl min-w-0 flex-col justify-center gap-6 px-4 py-6 md:px-8 md:py-10">
           <PageHeader title={fallbackText('app.error.title')} />

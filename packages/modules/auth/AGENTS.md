@@ -597,6 +597,30 @@ sessions à la réinitialisation, et un magic link résolvant un compte non vér
 efface les identifiants accumulés avant la preuve. Ce sont les cas examinés, pas
 un inventaire de ce que la bibliothèque garantit.
 
+## L'événement d'usage que ce module émet (s39)
+
+Une inscription **réussie** produit `auth.signed_up`, et trois choix méritent
+d'être lus avant d'y toucher :
+
+- **le nom vit ici**, dans `domain/analytics-events.ts`, et non dans le module
+  `analytics`. Ce module est du socle, `analytics` est optionnel : faire dépendre
+  le premier du second inverserait la dépendance qui fait toute la modularité.
+  Le module optionnel apporte le *fournisseur* et le *consentement*, pas le
+  vocabulaire métier des autres ;
+- **le crochet est `databaseHooks.user.create.after`**, et l'endroit n'est pas un
+  détail : c'est le seul que la bibliothèque atteint **après** que le compte est
+  écrit. Un `before`, ou un appel depuis la route, mesurerait aussi les
+  inscriptions refusées — et l'événement suivrait un compte qui n'existe pas ;
+- **le port est injecté** (`AuthDependencies.analytics`), jamais construit :
+  aucune clé configurée, ou module `analytics` coupé, le point de composition
+  rend un port inerte qui n'émet **aucun appel réseau**, et ce module ne connaît
+  pas la différence. Sans câblage, le défaut est *fail-closed* comme celui de
+  `jobs` — rien n'est mesuré et la valeur rendue le dit.
+
+L'événement ne porte que l'**identifiant** du compte : ni adresse, ni nom. La
+charge utile part chez un tiers et y est conservée (`docs/security.md` §5), et
+l'adaptateur filtre par-dessus, au dernier point avant le réseau.
+
 ## Imports autorisés
 
 - `@repo/core` pour le contrat de module, le préfixe de montage et la session ;

@@ -44,6 +44,29 @@ RUN SKIP_ENV_VALIDATION=1 pnpm build
 
 
 # ---------------------------------------------------------------------------
+# Élagage : **les cartes source ne partent jamais dans l'image** (s39, critère 1).
+#
+# `productionBrowserSourceMaps` les fait écrire dans `.next/static`, que le
+# serveur sert sous `/_next/static` : les laisser publierait le code source du
+# produit. L'élagage n'a besoin d'aucun secret — c'est pour cela qu'il est ici et
+# que l'**envoi**, lui, se fait hors de l'image : un jeton passé à un build
+# resterait dans une couche.
+#
+# **Une étape à part, et c'est ce que la revue de s39 a corrigé.** L'élagage
+# vivait dans `builder`, si bien qu'aucune étape ne portait plus les cartes du
+# bundle réellement servi : la recette documentée envoyait celles d'un `pnpm
+# build` de l'hôte, dont les empreintes de chunks ne sont pas celles de l'image.
+# `builder` les garde donc, `pruned` les retire, et l'exploitant extrait de
+# `builder` — même build, mêmes couches, mêmes empreintes.
+# `docs/deployment.md` porte la recette, et `tests/analytics.test.ts` refuse
+# qu'elle désigne une étape qui a déjà élagué.
+# ---------------------------------------------------------------------------
+FROM builder AS pruned
+
+RUN pnpm sourcemaps:prune
+
+
+# ---------------------------------------------------------------------------
 # Migrations : jouées **avant** le basculement du trafic, dans un conteneur
 # distinct qui sort en erreur si une migration échoue (critère 3).
 #
@@ -62,7 +85,7 @@ RUN SKIP_ENV_VALIDATION=1 pnpm build
 # `DATABASE_URL` (revue de s06, G3) — vérifié sur le schéma, `getEnv` acceptant
 # une source qui ne porte qu'elle.
 # ---------------------------------------------------------------------------
-FROM builder AS migrator
+FROM pruned AS migrator
 
 ENV NODE_ENV=production
 
@@ -94,11 +117,11 @@ RUN addgroup -S app && adduser -S app -G app
 
 # La sortie autonome porte déjà son `node_modules` réduit et son `server.js`.
 # Les fichiers statiques ne sont pas tracés par Next : ils se recopient à côté.
-COPY --from=builder --chown=app:app /repo/apps/web/.next/standalone ./
-COPY --from=builder --chown=app:app /repo/apps/web/.next/static ./apps/web/.next/static
+COPY --from=pruned --chown=app:app /repo/apps/web/.next/standalone ./
+COPY --from=pruned --chown=app:app /repo/apps/web/.next/static ./apps/web/.next/static
 # `public/` n'est pas tracé non plus (s53) : l'image de partage par défaut y
 # vit, et une balise `og:image` qui pointe vers un 404 ne montre aucun aperçu.
-COPY --from=builder --chown=app:app /repo/apps/web/public ./apps/web/public
+COPY --from=pruned --chown=app:app /repo/apps/web/public ./apps/web/public
 
 USER app
 

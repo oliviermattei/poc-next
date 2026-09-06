@@ -246,6 +246,31 @@ describe('validation de l’environnement au démarrage du serveur', () => {
     })
   }
 
+  /**
+   * Le module `analytics` **activé**, quelle que soit la configuration du dépôt
+   * — même forme et même raison que `withJobsEnabled` : `config/profiles.ts` le
+   * coupe, et ces cas-ci mesurent la garde, pas l'état du dépôt.
+   */
+  const withAnalyticsEnabled = (): void => {
+    vi.doMock('../config/features', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('../config/features')>()
+
+      return { ...actual, enabledModules: [...new Set([...actual.enabledModules, 'analytics'])] }
+    })
+  }
+
+  /**
+   * L'analytique lit deux variables, et la garde en refuse un état. Un cas qui
+   * n'en déclare aucune ne passerait que sur un poste dont le `.env` les
+   * complète — la même raison que `stubMailer`.
+   */
+  const stubAnalytics = (choice: 'aucune' | 'origine-non-declaree'): void => {
+    const configured = choice === 'origine-non-declaree'
+
+    vi.stubEnv('POSTHOG_KEY', configured ? 'phc_test' : '')
+    vi.stubEnv('POSTHOG_HOST', configured ? 'https://analytics.example' : '')
+  }
+
   const withBillingEnabled = (): void => {
     vi.doMock('../config/features', async (importOriginal) => {
       const actual = await importOriginal<typeof import('../config/features')>()
@@ -355,6 +380,55 @@ describe('validation de l’environnement au démarrage du serveur', () => {
 
     expect(() => config(DEV_SERVER_PHASE)).toThrowError(/INNGEST_EVENT_KEY/)
     expect(() => config(DEV_SERVER_PHASE)).toThrowError(/JOBS_LOCAL_RUNNER/)
+  })
+
+  /**
+   * **La garde de l'analytique est-elle atteinte depuis le démarrage ?**
+   * (constat 3 de la revue de s39.)
+   *
+   * Elle ne l'était pas prouvée : retirer l'appel à `assertAnalyticsIsReachable`
+   * de `lib/startup.ts` laissait **2 605 cas verts**. C'est mot pour mot le
+   * défaut mesuré en s33 quelques lignes plus haut, dont la leçon était déjà
+   * écrite ici — et que s39 n'a pas copiée.
+   *
+   * Le mode de panne est silencieux et complet : le script se charge (le nonce
+   * l'autorise, `'strict-dynamic'` faisant ignorer les sources d'hôte), puis
+   * **chacun de ses appels réseau est bloqué** par le navigateur. Le produit a
+   * l'air de mesurer et ne mesure rien.
+   */
+  it('refuse de démarrer quand l’origine de l’analytique n’est pas déclarée à la politique', async () => {
+    withAnalyticsEnabled()
+    vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
+    stubMailer('capture')
+    stubAuth('configure')
+    stubStorage('disque')
+    stubPayments('local')
+    stubJobs('local')
+    stubAnalytics('origine-non-declaree')
+
+    const config = await loadNextConfig()
+
+    expect(() => config(DEV_SERVER_PHASE)).toThrowError(/connect-src/)
+    expect(() => config(DEV_SERVER_PHASE)).toThrowError(/img-src/)
+    expect(() => config(DEV_SERVER_PHASE)).toThrowError(/analytics\.example/)
+  })
+
+  it('démarre sans aucune clé d’analytique : c’est l’état livré du boilerplate', async () => {
+    // **Le plancher.** Sans lui, une garde qui refuserait *toujours* rendrait le
+    // cas ci-dessus vert en cassant l'état livré — celui où rien n'est mesuré et
+    // où aucun appel ne part.
+    withAnalyticsEnabled()
+    vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
+    stubMailer('capture')
+    stubAuth('configure')
+    stubStorage('disque')
+    stubPayments('local')
+    stubJobs('local')
+    stubAnalytics('aucune')
+
+    const config = await loadNextConfig()
+
+    expect(() => config(DEV_SERVER_PHASE)).not.toThrow()
   })
 
   /**
@@ -1101,6 +1175,9 @@ describe('le point de composition de l’authentification', () => {
       'releaseOrganizations:',
       // s33 — le port d'émission, fail-closed sans lui.
       'jobs:',
+      // s39 — le port d'analytique, fail-closed sans lui : l'événement de
+      // démonstration ne partirait de nulle part, et rien ne le dirait.
+      'analytics:',
     ].filter((option) => !source.includes(option))
 
     expect(missing).toEqual([])

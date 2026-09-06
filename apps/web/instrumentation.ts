@@ -58,3 +58,47 @@ export async function register(): Promise<void> {
   prepareJobs()
   startLocalJobScheduler()
 }
+
+/**
+ * **La remontée du critère 1, côté serveur** (s39).
+ *
+ * Next appelle ce point pour **toute** erreur non gérée d'une requête —
+ * composant serveur, route, action —, et c'est le seul endroit du framework qui
+ * les voie toutes. L'écrire ici plutôt qu'à chaque frontière est ce qui évite
+ * une remontée qui ne couvre que les chemins auxquels quelqu'un a pensé.
+ *
+ * **La même garde de runtime que `register`, et pour la même raison** : le
+ * paquet *edge* ne connaît ni `node:fs` ni la base, et un import statique de
+ * `lib/analytics` y entrerait quoi que dise la condition. Les imports sont donc
+ * dynamiques et placés après la garde.
+ *
+ * **Elle attend, et elle n'échoue jamais.** Elle attend parce que Next attend
+ * la promesse rendue : ne pas le faire laisserait un envoi en vol au moment où
+ * une fonction sans serveur se termine, c'est-à-dire perdrait précisément les
+ * erreurs qu'on cherche. Elle n'échoue jamais parce que le port ne lève pas —
+ * son échec est une valeur —, et qu'une erreur de plus dans un gestionnaire
+ * d'erreur ne ferait qu'effacer la première.
+ */
+export async function onRequestError(
+  error: unknown,
+  request: { readonly path?: string },
+): Promise<void> {
+  if (process.env.NEXT_RUNTIME !== 'nodejs') {
+    return
+  }
+
+  const { appMonitoring } = await import('./lib/analytics')
+  const known = error instanceof Error ? error : null
+
+  await appMonitoring().capture({
+    message: known?.message ?? String(error),
+    type: known?.name ?? 'Error',
+    stack: known?.stack ?? null,
+    origin: 'server',
+    release: null,
+    // Une **référence**, jamais un corps ni un en-tête : la charge utile part
+    // chez un tiers (`docs/security.md` §5). Le port filtre par-dessus, au
+    // dernier point avant le réseau.
+    context: request.path === undefined ? {} : { path: request.path },
+  })
+}

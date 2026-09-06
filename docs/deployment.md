@@ -318,6 +318,10 @@ besoin que de `DATABASE_URL`.
 | `JOBS_LOCAL_RUNNER` | l'une des deux | `1` exécute les tâches **en mémoire du processus**, sans service. À ne poser en production que sur un déploiement **à une seule instance** : la file est perdue au redémarrage, et deux instances exécuteraient chacune la même échéance |
 | `INNGEST_BASE_URL` | non | l'origine de l'API d'événements, pour viser un serveur de développement Inngest. Jamais posée en production |
 | `PAYMENTS_RECORDED_EVENTS` | non | le dossier d'événements rejoués par `pnpm test:golden-path`. Jamais posée à la main, jamais en production |
+| `POSTHOG_KEY` | non, module `analytics` activé | la clé de projet PostHog. **Absente, l'application tourne et n'émet aucun appel d'analyse** — c'est l'état livré. Renseignée, le script est déclaré au registre de consentement et n'est chargé qu'après un accord explicite du visiteur |
+| `POSTHOG_HOST` | oui avec `POSTHOG_KEY` | l'origine du fournisseur, sans barre oblique finale (`https://eu.i.posthog.com`). Jamais devinée : la région décide où atterrissent des données personnelles. Elle doit **aussi** être déclarée dans `config/security.ts` (`connect` et `img`), sans quoi le démarrage **refuse** en nommant la directive — le navigateur bloquerait sinon les appels du script et le produit aurait l'air de mesurer sans rien mesurer |
+| `SENTRY_DSN` | non, module `analytics` activé | `https://<clé publique>@<hôte>/<projet>`. Absent, aucune erreur n'est remontée et l'application tourne ; le journal du processus reste le journal |
+| `SENTRY_RELEASE` | recommandée avec `SENTRY_DSN` | la version déployée, écrite dans chaque erreur remontée **et** sous laquelle `pnpm sourcemaps:release` envoie les cartes source. Sans elle, les traces arrivent minifiées chez le fournisseur |
 | `SUPERADMIN_EMAIL` | non, module `admin` activé | l'adresse du **premier** superadmin (s37a). Absente, le démarrage **avertit sans refuser** — une plateforme sans superadmin doit pouvoir démarrer pour qu'on puisse en désigner un — et le back-office répond 404 à tout le monde. Elle ne prend effet que tant qu'aucun superadmin n'existe : ensuite, c'est la base qui fait foi |
 | `STORAGE_S3_BUCKET` | les quatre ensemble, module `storage` activé | le seau réel (S3, R2, MinIO, Spaces) |
 | `STORAGE_S3_REGION` | idem | la région du seau |
@@ -369,6 +373,77 @@ nom du service : `postgres://<user>:<mot de passe>@postgres:5432/<base>`.
    `packages/modules/storage/AGENTS.md` portent le détail.
 
 ---
+
+## Les cartes source, envoyées et jamais servies (s39)
+
+Le critère « une trace lisible chez le fournisseur » a trois moitiés, et les
+trois échouent séparément :
+
+1. **générées** — `productionBrowserSourceMaps: true` dans
+   `apps/web/next.config.ts` ;
+2. **envoyées**, sous le **même nom de version** que les événements, et — c'est
+   la moitié que la revue de s39 a trouvée fausse — **celles du build qui est
+   réellement servi** ;
+3. **jamais servies**. Une carte est le code source, et `.next/static` est servi
+   à qui le demande sous `/_next/static`. `pnpm sourcemaps:prune` les retire de
+   ce dossier — et le `Dockerfile` l'appelle lui-même, sans aucun secret, si
+   bien qu'une image ne peut pas embarquer le code source du produit même si
+   personne n'a pensé à l'envoi. Les cartes **serveur** restent : elles ne sont
+   jamais servies, et les retirer ôterait la seule copie locale d'un diagnostic.
+
+### Le piège : l'image ne sert pas le build de votre poste
+
+`.dockerignore` exclut `.next` du contexte, et l'image **rejoue son propre
+`pnpm build`**. Les empreintes des chunks qu'elle sert ne sont donc pas celles
+d'un `pnpm build` lancé sur le poste : envoyer les cartes de l'hôte publie un
+jeu que le fournisseur ne rapprochera d'aucune trace, et l'erreur arrive
+minifiée **sans que rien ne le dise**. C'était la recette écrite ici jusqu'à la
+revue de s39.
+
+L'image porte donc deux étapes : `builder` construit et **garde** ses cartes,
+`pruned` en descend et les retire du dossier servi. C'est de `builder` qu'on
+extrait, et l'image sert `pruned` — même build, mêmes couches, mêmes empreintes.
+`tests/analytics.test.ts` refuse une recette qui désignerait une étape ayant
+déjà élagué.
+
+### La recette, pour un déploiement par image
+
+```sh
+# 1. l'image servie. C'est elle, et elle seule, qui construit le bundle.
+docker build -t killer-saas .
+
+# 2. les cartes de CE build : l'étape qui les porte encore, servie par le cache
+#    des couches de l'étape 1 — rien n'est reconstruit.
+docker build --target builder -t killer-saas-maps .
+docker create --name killer-saas-maps-tmp killer-saas-maps
+docker cp killer-saas-maps-tmp:/repo/apps/web/.next ./.sourcemaps
+docker rm killer-saas-maps-tmp
+
+# 3. l'envoi, depuis l'hôte : le jeton n'entre jamais dans un build d'image, il
+#    resterait dans une couche.
+SOURCEMAPS_NEXT_DIR=./.sourcemaps SENTRY_ORG=… SENTRY_PROJECT=… \
+  SENTRY_AUTH_TOKEN=… SENTRY_RELEASE=app@1.2.3 pnpm sourcemaps:release
+```
+
+`SENTRY_RELEASE` doit être **la même valeur** que celle de l'environnement du
+conteneur : c'est ce nom qui rapproche une trace de ses cartes.
+
+### La recette, pour un déploiement construit sur l'hôte
+
+Sans image — `pnpm build` puis `pnpm start` sur la machine qui sert —, le build
+de l'hôte **est** celui qui est servi, et la variable est inutile :
+
+```sh
+SKIP_ENV_VALIDATION=1 pnpm build
+SENTRY_ORG=… SENTRY_PROJECT=… SENTRY_AUTH_TOKEN=… SENTRY_RELEASE=app@1.2.3 \
+  pnpm sourcemaps:release
+```
+
+**Ce que rien ne vérifie ici** : qu'une trace soit effectivement *lisible* dans
+l'interface du fournisseur. Aucune commande locale ne peut le voir ; c'est une
+recette humaine, à faire une fois après le premier envoi. La revue de s39 ne l'a
+pas faite — `pnpm sourcemaps:release` n'a jamais tourné, faute de
+`SENTRY_AUTH_TOKEN` : seul `prune` a été exercé de bout en bout.
 
 ## Guide Coolify
 
