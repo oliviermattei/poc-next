@@ -955,8 +955,8 @@ Le contrat de module de s03 porte déjà `purge` **et la politique de rétention
 
 ---
 
-## Story s34b-suppression-ecrans — Supprimer son compte depuis l'application
-**As a** User **I want** supprimer mon compte ou mon organisation depuis l'application **so that** je n'aie pas à appeler une API pour exercer mon droit à l'effacement.
+## Story s34b-ecrans-rgpd — Exercer ses droits depuis l'application
+**As a** User **I want** supprimer mon compte et exporter mes données depuis l'application **so that** je n'aie pas à appeler une API pour exercer mes droits.
 
 > **Découpée de `s34` le 05/09.** `s34` a livré tout le côté serveur — confirmation vérifiée côté serveur, purge de chaque module activé, rétention, sessions révoquées, email, annulation d'abonnement, repli sans le module de tâches. **Elle n'a livré aucun écran** : le plan n'en portait pas de tâche, ce qui était une omission de plan et non un abandon. La revue l'a relevée. Cette tranche porte la partie visible, et elle seule.
 
@@ -968,14 +968,20 @@ Le contrat de module de s03 porte déjà `purge` **et la politique de rétention
 - [ ] La confirmation par saisie de l'email est présentée à l'écran ; la vérification reste **côté serveur**, l'écran ne décide de rien
 - [ ] L'écran d'organisation porte la même affordance pour un propriétaire, et rien pour un membre
 - [ ] Le refus du dernier propriétaire s'affiche avec son message, sans que l'écran ait à le deviner
-- [ ] Un parcours navigateur couvre la suppression de compte de bout en bout — c'est aujourd'hui la garantie qui manque : `s34` n'a **aucun** parcours
+- [ ] **Le même écran porte la demande d'export**, et affiche l'état d'une demande en cours plutôt que d'en permettre une seconde
+- [ ] **Les refus de l'export sont rendus lisibles** : demande déjà en cours, débit dépassé, et l'échec de mise en file qui répond 503 — aucun ne doit apparaître comme une erreur générique
+- [ ] Un parcours navigateur couvre la suppression **et** l'export de bout en bout — c'est aujourd'hui la garantie qui manque : ni `s34` ni `s35` n'ont **aucun** parcours
 - [ ] Composé exclusivement des composants du design system
 
 ### Dependencies
-s34-account-deletion
+s34-account-deletion, s35-data-export
 
 ### Agentic notes
-Le serveur est fait et éprouvé : `POST /api/modules/auth/delete-account` et `POST /organizations/delete` existent, avec leurs refus mesurés. Les commentaires de route disent déjà que la méthode `POST` est choisie « parce que la route est appelée par un `<form>` d'écran » — **ce formulaire est ce que cette story livre**.
+Le serveur est fait et éprouvé des deux côtés : `POST /api/modules/auth/delete-account`, `POST /organizations/delete` et `POST /auth/data-export` existent, avec leurs refus mesurés. Les commentaires de route disent déjà que la méthode `POST` est choisie « parce que la route est appelée par un `<form>` d'écran » — **ce formulaire est ce que cette story livre**.
+
+**Regroupée le 06/09**, sur constat : `s34` et `s35` livrent deux droits RGPD — effacement et portabilité — **sans aucun point d'entrée utilisateur**, et les deux se posent au même endroit. Même écran, même confirmation par saisie, même famille de refus à rendre lisibles. Les traiter séparément coûterait deux cycles pour une seule surface, et laisserait le second droit inatteignable plus longtemps que le premier.
+
+**Le lien d'export est envoyé par email et sa route est publique** : l'écran ne le rend jamais, il montre l'état de la demande. Ne pas afficher le jeton, ne pas le mettre dans une URL de page.
 
 ## Story s35-data-export — Exporter ses données
 **As a** User **I want** télécharger l'ensemble de mes données **so that** j'exerce mon droit à la portabilité.
