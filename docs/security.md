@@ -21,7 +21,9 @@
 ## 2. Sessions et authentification
 
 - Session opaque en cookie `HttpOnly`, jamais un jeton lisible par le JavaScript client.
-- Rotation de l'identifiant de session à l'élévation de privilège : connexion, validation du second facteur, fin d'impersonation.
+- Rotation de l'identifiant de session à l'élévation de privilège : connexion, validation du second facteur, **début et fin** d'impersonation.
+- **L'impersonation contourne le second facteur de la cible, par construction** (s37b1, ADR 064). La session empruntée est écrite directement : aucun défi n'est émis, et le compte emprunté n'est pas là pour y répondre. Ce n'est pas un chemin d'entrée mais une délégation, et les cinq chemins d'entrée restent soumis au second facteur.
+  **La conséquence est une règle d'exploitation, pas une réserve** : le rôle de superadmin vaut le second facteur de **tous** les comptes du produit. C'est donc lui qu'il faut protéger — désignation par variable d'environnement, promotion sérialisée, et un décompte qui ne compte que les porteurs capables de se connecter.
 - Révocation effective : une session révoquée est refusée **côté serveur**, pas seulement retirée d'une liste.
 - Changement de mot de passe, d'email ou de second facteur ⇒ révocation des autres sessions.
 - Verrouillage progressif sur échecs répétés, par compte **et** par adresse IP (s28).
