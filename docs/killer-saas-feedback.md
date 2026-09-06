@@ -1268,6 +1268,45 @@ La seconde est plus honnête : elle **mesure** au lieu de deviner ce qui sera lu
 
 ---
 
+## P31bis — Une ligne de câblage n'a de garde que si quelqu'un a essayé de la supprimer
+
+**Deux stories, le même geste, le même résultat.** La revue de `s33` avait mesuré que retirer `assertJobsConfiguration(env)` de `apps/web/lib/startup.ts` laissait **2 407 cas verts**. La leçon a été écrite — et bien écrite : elle vit dans `tests/env-wiring.test.ts`, en commentaire, à côté du cas qui la corrige, avec son compte.
+
+Six stories plus tard, `s39` ajoute `assertAnalyticsIsReachable(...)` **dans le même fichier**, à quelques lignes de là. Le retirer laisse **2 605 cas verts**. Trois autres points de composition de la même story sont dans le même état : le corps de `onRequestError`, le rendu de `<ClientErrorReporter/>`, et l'appel à `prepareAnalytics()` dont le commentaire voisin annonce pourtant qu'en son absence la route publique répond 500.
+
+**Ce que ça dit sur les leçons écrites en prose.** L'implémenteur de `s39` a lu ce fichier — il l'a modifié. La leçon de `s33` y était, exacte, chiffrée, à portée de regard. Elle n'a pas été appliquée, parce qu'une leçon en commentaire répond à la question « pourquoi ce cas existe-t-il ? » et jamais à « quel cas manque-t-il ? ». Le premier lecteur est celui qui touche au cas ; l'auteur d'une *nouvelle* garde ne passe jamais par là.
+
+**Règle** : une ligne de câblage ajoutée à un point de composition (`lib/startup.ts`, `instrumentation.ts`, `lib/module-services.ts`, un rendu de composant racine) n'est acquise que si un cas rougit quand on la **supprime**. Pas quand la fonction qu'elle appelle est fausse — la feuille est toujours testée, c'est le lien qui ne l'est pas. Formulation utilisable en revue : *supprime l'appel, pas son corps.*
+
+**Coût mesuré de l'inaction** : deux stories, quatre points de composition supprimables sans qu'aucun des 2 605 cas ne bouge. Chaque fois trouvé par la revue, jamais par l'implémenteur — cohérent avec [P30](#p30--la-story-qui-ferme-une-classe-de-défaut-est-celle-qui-a-le-plus-de-chances-de-la-reproduire).
+
+---
+
+## P32bis — Un plancher est toute la différence entre un régime doublé et un régime vide
+
+Le parcours doré déclare un régime `recorded` depuis `s25`. Il n'a **jamais tourné sur des formes Stripe réelles** : `tests/fixtures/stripe-events/` ne porte aucun enregistrement, le job de CI ne s'arme qu'à la première capture versionnée, et une CI verte n'y prouve donc rien de la fidélité au fournisseur. Le défaut n'est pas l'absence d'enregistrement — c'est qu'une suite **verte** décrive cet état.
+
+`s39` devait livrer le même couple de régimes. Le plan lui a interdit de reproduire cette moitié-là, et la revue a vérifié le résultat plutôt que de le croire : rendre l'adaptateur muet (`postOnce` → `{ok:true}`) produit **9 rouges**, dont ceux du plancher, parce que `capturedBody([])` et `capturedEnvelope([])` **refusent l'ensemble vide** au lieu de le parcourir sans rien trouver.
+
+**La règle générale** : toute assertion qui itère sur ce qu'elle a capturé doit refuser d'être satisfaite par zéro capture. Sans plancher, un doublure qui n'enregistre rien et un système qui n'émet rien sont indiscernables — et c'est toujours le second cas en production.
+
+C'est la troisième famille où ce plancher a servi ici : le balayage vide du profil minimal (`s26`), les modules coupés qui ne déclarent ni route ni table (`s48`), et maintenant les requêtes capturées. Le fait qu'il faille l'écrire à chaque fois est l'argument pour une **fonction partagée** plutôt qu'une vigilance.
+
+---
+
+## P33bis — « Vert dans une seule configuration » : trois fois dans le même fichier
+
+`apps/web/lib/organizations.ts` réserve les créneaux d'URL que l'application s'attribue, pour qu'aucune organisation ne puisse s'appeler comme une route. `s31` a découvert que le créneau `changelog` n'y était réservé **que tant que le module contribue une entrée de navigation** — module coupé, le dossier `apps/web/app/changelog/` existe toujours sur le disque et le créneau redevenait libre.
+
+C'est la **troisième** occurrence du même défaut dans ce même fichier : une garantie dérivée d'une source qui disparaît avec la configuration, donc verte dans la configuration testée et fausse dans l'autre. Le correctif, cette fois, dérive du **disque** — la seule source qui ne bouge pas avec `config/features.ts`.
+
+**Ce qui l'a trouvé n'est pas la revue** : c'est `pnpm test:minimal-profile`, en rougissant sur `tests/organizations.test.ts`. Une recette qui rejoue la configuration coupée attrape mécaniquement ce que la lecture ne voit pas, parce que le défaut n'existe **que** dans l'autre configuration. C'est l'argument le mieux payé de ce document en faveur des recettes symétriques : trois occurrences, et celle-ci a coûté une exécution de recette au lieu d'une ronde de revue.
+
+**Règle** : une garantie qui dépend d'un module optionnel se dérive de ce qui survit à sa coupure — le disque, le contrat des modules **non** activés, jamais le registre des activés.
+
+---
+
+
 # Observations sans proposition ferme
 
 - **La règle sur les mutations vertes porte elle-même un compte écrit à la main,
@@ -1648,6 +1687,9 @@ La seconde est plus honnête : elle **mesure** au lieu de deviner ce qui sera lu
 | 05/09 | Un critère RGPD dont aucune catégorie de la configuration livrée n'est satisfaisante — deuxième fois après s48 | critère corrigé sur mesure, et l'exigence maintenue par un module de test | P28 |
 | 06/09 | Troisième rouge de CI sur la même cause : un test atteint la configuration d'authentification sans la déclarer | correctif par story, la règle est écrite deux fois et n'a pas suffi | P29 |
 | 06/09 | Trois stories reproduisent la classe de défaut qu'elles ferment — s33, s52, s55 | trouvé par la revue les trois fois, jamais par l'implémenteur | P30 |
+| 06/09 | Quatre points de composition de s39 supprimables sans qu'aucun des 2 605 cas ne bouge, la leçon de s33 étant écrite à côté | ronde de correction : un cas par lien, pas par feuille | P31bis |
+| 06/09 | s39 livre le couple de régimes que le parcours doré a livré à moitié vide, avec un plancher qui refuse l'ensemble capturé vide | 9 rouges quand l'adaptateur devient muet | P32bis |
+| 06/09 | Troisième « vert dans une seule configuration » dans apps/web/lib/organizations.ts, trouvé par la recette et non par la lecture | garantie dérivée du disque, qui survit à la coupure | P33bis |
 
 ---
 
