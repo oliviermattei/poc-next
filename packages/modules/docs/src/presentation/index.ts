@@ -14,6 +14,11 @@
  */
 export { DocsPageView, type DocsPageViewProps } from './docs-page-view'
 export { DocsMobileSidebar, type DocsMobileSidebarProps } from './docs-mobile-sidebar'
+export {
+  DocsSearch,
+  type DocsSearchLabels,
+  type DocsSearchProps,
+} from './docs-search'
 export { DocsSidebar, type DocsSidebarProps } from './docs-sidebar'
 export { DocsToc, type DocsTocProps } from './docs-toc'
 export { docsProseComponents } from './docs-prose'

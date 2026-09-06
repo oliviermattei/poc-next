@@ -23,8 +23,17 @@ export {
   type ResolveDocsCatalogInput,
 } from './application/docs-catalog'
 export {
+  DOCS_SEARCH_INDEX_MAX_BYTES,
+  DocsSearchIndexTooLargeError,
+  docsSearchIndex,
+  searchDocsIndex,
+  type DocsSearchEntry,
+} from './application/docs-search'
+export {
   InvalidDocsPageError,
   documentHeadings,
+  documentLinks,
+  documentText,
   headingAnchor,
   parseDocsPage,
   parseDocsSection,

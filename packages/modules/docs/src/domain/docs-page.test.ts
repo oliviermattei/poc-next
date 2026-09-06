@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest'
 
 import {
   InvalidDocsPageError,
+  MAX_DOCS_LINES,
+  MAX_DOCS_LINE_LENGTH,
   documentHeadings,
+  documentLinks,
+  documentText,
   headingAnchor,
   parseDocsPage,
   parseDocsSection,
@@ -96,6 +100,52 @@ describe('le manifeste d’une section', () => {
   })
 })
 
+describe('les liens internes du corps', () => {
+  /*
+   * **La matière de la passe croisée** (s54). Ce que cette fonction rend n'est
+   * jugé nulle part ici : un fichier ne sait pas si la page qu'il cite existe.
+   * Elle relève, `application/docs-catalog` croise — c'est la découpe qui rend
+   * la passe possible sans un second balayage du disque.
+   */
+  const links = (body: string) =>
+    page('title: Installer\ndescription: x\norder: 1', body).links
+
+  it('relève les liens internes, dans l’ordre du document', () => {
+    expect(
+      links('Voir [le contrat](/docs/reference/modules) puis [les tarifs](/pricing).'),
+    ).toEqual(['/docs/reference/modules', '/pricing'])
+  })
+
+  it('ignore ce qui ne désigne pas une page de ce site', () => {
+    // Un lien sortant, une adresse électronique et une ancre de la page
+    // courante ne peuvent pas être morts au sens du critère : le premier
+    // n'appartient pas au dépôt, le troisième ne quitte pas la page.
+    expect(
+      links(
+        '[amont](https://example.test/a) [courriel](mailto:a@example.test) [ici](#prerequis)',
+      ),
+    ).toEqual([])
+  })
+
+  it('ne relève rien dans un bloc de code', () => {
+    /*
+     * Le cas le plus probable, et le plus coûteux : un extrait qui montre du
+     * Markdown ferait échouer le build sur une page qui n'a aucun lien. C'est
+     * la même raison qui fait sauter les blocs de code au relevé des titres.
+     */
+    expect(links('```md\n[mort](/docs/nulle-part/jamais)\n```\n')).toEqual([])
+  })
+
+  it('garde le lien tel qu’il est écrit, fragment compris', () => {
+    // Le refus doit citer **la cible telle qu'elle est écrite** : une cible
+    // recomposée envoie son auteur chercher une chaîne que son fichier ne
+    // contient pas.
+    expect(links('[une ancre](/docs/reference/modules#quatre-couches)')).toEqual([
+      '/docs/reference/modules#quatre-couches',
+    ])
+  })
+})
+
 describe('les titres du corps, et leurs ancres', () => {
   it('retient les niveaux 2 et 3, dans l’ordre du document', () => {
     const headings = documentHeadings('## Prérequis\n\ntexte\n\n### Node\n\n## Installer\n')
@@ -181,5 +231,94 @@ describe('les titres du corps, et leurs ancres', () => {
     expect(page('title: Installer\ndescription: x\norder: 1', '## Prérequis\n').headings).toHaveLength(
       1,
     )
+  })
+})
+
+/**
+ * **Un corps hostile coûte-t-il plus cher qu'un corps normal ?**
+ *
+ * CodeQL a signalé `js/polynomial-redos` en sévérité haute sur les deux
+ * balayages de liens de ce fichier, et la mesure confirme le motif : sur
+ * `'['.repeat(n)`, chaque `[` ouvre une tentative dont la classe `[^\]]*`
+ * parcourt le reste de la ligne. **Mesuré avant le correctif** : 20 000
+ * caractères → 0,75 s ; 50 000 → 4,7 s ; 100 000 → 19,0 s de processeur.
+ *
+ * **L'exposition, sans l'enfler ni la nier.** L'entrée n'est pas un corps HTTP
+ * anonyme comme celui de s39 : c'est un fichier de `content/`, écrit par
+ * l'auteur du dépôt et lu au build. Un inconnu ne fait donc pas pendre la
+ * production — un contributeur fait pendre **son propre build**, sans message.
+ * Mais ce dépôt est un boilerplate : ses utilisateurs écrivent leur propre
+ * `content/`, et livrer un build qui pend en silence sur un `.mdx` collé de
+ * travers est un défaut qu'on leur transmettrait. La requête du visiteur, elle,
+ * ne traverse jamais ces motifs (`application/docs-search`, classes simples).
+ *
+ * L'assertion porte sur le **temps**, parce que le défaut *est* le temps ; le
+ * budget est grossier exprès — deux ordres de grandeur sous la mesure — pour
+ * qu'une machine chargée ne le rende pas capricieux.
+ */
+describe('un corps hostile ne coûte pas plus qu’un corps normal', () => {
+  /** Large exprès : ce qui est refusé est la seconde, pas la milliseconde. */
+  const BUDGET_MS = 250
+
+  const budgeted = (name: string, run: () => unknown): void => {
+    const started = performance.now()
+    run()
+    const elapsed = performance.now() - started
+
+    expect(elapsed, `${name} : ${elapsed.toFixed(0)} ms`).toBeLessThan(BUDGET_MS)
+  }
+
+  it('rend la main sur la forme adverse au lieu de partir en temps quadratique', () => {
+    const hostile = '['.repeat(50_000)
+
+    expect(documentLinks(hostile)).toEqual([])
+    budgeted('documentLinks', () => documentLinks(hostile))
+    budgeted('documentText', () => documentText(hostile))
+    budgeted('documentHeadings', () => documentHeadings(`## ${hostile}`))
+  })
+
+  /**
+   * **La borne, qui est la moitié qui ne vieillira pas.** Les motifs d'à côté
+   * sont linéaires aujourd'hui ; celui qu'un prochain agent écrira à leur place
+   * ne le sera peut-être pas. Ce qui protège alors est que rien de démesuré
+   * n'atteigne le balayage, quelle qu'en soit l'écriture — s39 a mesuré que
+   * cette moitié-là suffit à désamorcer l'ancien motif à elle seule.
+   *
+   * Les deux plafonds sont **dérivés** des constantes, jamais recopiés : une
+   * valeur écrite ici resterait verte après qu'on l'ait desserrée là-bas.
+   */
+  it('refuse une ligne plus longue que le plafond en nommant le fichier, et garde la même en deçà', () => {
+    const body = (length: number) => `Voir [x](/docs/a/b) ${'y'.repeat(length)}`
+    const overhead = body(0).length
+
+    expect(() => page('title: T\ndescription: x\norder: 1', body(MAX_DOCS_LINE_LENGTH - overhead + 1)))
+      .toThrow(/installer\.mdx.*ligne 1.*2001/s)
+    expect(
+      page('title: T\ndescription: x\norder: 1', body(MAX_DOCS_LINE_LENGTH - overhead)).links,
+    ).toEqual(['/docs/a/b'])
+  })
+
+  it('refuse un corps qui compte plus de lignes que le plafond, et garde le même en deçà', () => {
+    const body = (lines: number) => 'x\n'.repeat(lines)
+
+    expect(() => page('title: T\ndescription: x\norder: 1', body(MAX_DOCS_LINES + 1))).toThrow(
+      InvalidDocsPageError,
+    )
+    expect(() => page('title: T\ndescription: x\norder: 1', body(MAX_DOCS_LINES - 1))).not.toThrow()
+  })
+
+  it('borne aussi les balayeuses exportées, qu’un appelant peut joindre sans passer par le refus', () => {
+    /*
+     * `documentLinks`, `documentText` et `documentHeadings` sont exportées par
+     * le baril du module : la borne ne peut pas dépendre de l'ordre dans lequel
+     * on les traverse. Une ligne trop longue est **jetée** là — elles ne
+     * connaissent pas le fichier et ne peuvent nommer personne —, là où
+     * `parseDocsPage` **refuse en nommant**.
+     */
+    const long = `[x](/docs/a/b)${' '.repeat(MAX_DOCS_LINE_LENGTH)}`
+
+    expect(documentLinks(long)).toEqual([])
+    expect(documentLinks(`${long}\n[y](/docs/c/d)`)).toEqual(['/docs/c/d'])
+    expect(documentLinks(`${'\n'.repeat(MAX_DOCS_LINES)}[z](/docs/e/f)`)).toEqual([])
   })
 })

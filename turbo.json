@@ -1,6 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalDependencies": [".env", "config/**", "generated/**"],
+  "globalDependencies": [".env", "config/**", "content/**", "generated/**"],
   "tasks": {
     "dev": {
       "cache": false,

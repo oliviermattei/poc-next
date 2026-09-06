@@ -28,6 +28,24 @@ export interface DocsPage {
   readonly order: number
   /** Les titres du corps, dans l'ordre du document. */
   readonly headings: readonly DocsHeading[]
+  /**
+   * Le corps en texte simple, balisage retiré et espaces réduits.
+   *
+   * C'est ce que l'index de recherche indexe (s54) : sans lui, « plein texte »
+   * ne serait qu'un filtre sur des titres. Dérivé **ici**, à la lecture du
+   * fichier, pour la raison qui gouverne tout ce module — une seconde passe sur
+   * le disque divergerait de la première.
+   */
+  readonly text: string
+  /**
+   * Les liens **internes** du corps, tels qu'ils sont écrits.
+   *
+   * Relevés ici, jugés ailleurs : ce fichier ne connaît qu'une page à la fois,
+   * et savoir si `/docs/reference/modules` existe demande l'ensemble du
+   * contenu. C'est `application/docs-catalog` qui croise, sur le catalogue
+   * déjà résolu — jamais par un second balayage du disque.
+   */
+  readonly links: readonly string[]
 }
 
 /** Un titre du corps, et l'ancre par laquelle le sommaire le rejoint. */
@@ -134,7 +152,28 @@ export function parseDocsPage({
     return refuse(filePath, issuesOf(parsed.error))
   }
 
-  const headings = documentHeadings(source.slice(matched[0].length))
+  const body = source.slice(matched[0].length)
+  const bodyLines = body.split('\n')
+  const overLong = bodyLines.findIndex((line) => line.length > MAX_DOCS_LINE_LENGTH)
+
+  if (overLong !== -1) {
+    return refuse(
+      filePath,
+      `la ligne ${overLong + 1} du corps compte ${bodyLines[overLong]?.length ?? 0} caractères ` +
+        `pour un plafond de ${MAX_DOCS_LINE_LENGTH}. Un balayage sans borne se paie en temps ` +
+        'quadratique sur une ligne hostile, et un build qui pend ne dit rien à personne.',
+    )
+  }
+
+  if (bodyLines.length > MAX_DOCS_LINES) {
+    return refuse(
+      filePath,
+      `le corps compte ${bodyLines.length} lignes pour un plafond de ${MAX_DOCS_LINES}. ` +
+        'Une page de documentation aussi longue se lit mal ; découpez-la en sections.',
+    )
+  }
+
+  const headings = documentHeadings(body)
   const duplicated = headings
     .map((heading) => heading.id)
     .find((id, index, ids) => ids.indexOf(id) !== index)
@@ -147,7 +186,15 @@ export function parseDocsPage({
     )
   }
 
-  return { section, slug, locale, ...parsed.data, headings }
+  return {
+    section,
+    slug,
+    locale,
+    ...parsed.data,
+    headings,
+    links: documentLinks(body),
+    text: documentText(body),
+  }
 }
 
 const issuesOf = (error: z.ZodError): string =>
@@ -214,6 +261,55 @@ export function headingAnchor(text: string): string {
   return slug === '' ? 'titre' : slug
 }
 
+/**
+ * **Ce qu'un corps a le droit de peser avant d'être balayé**, et c'est la garde
+ * qui survivra au prochain motif écrit ici.
+ *
+ * Le contenu livré tient très largement dedans : la ligne la plus longue de
+ * `content/` mesure 226 caractères et le fichier le plus haut 36 lignes,
+ * mesurés au moment d'écrire. Ce qui est refusé est donc ce qu'aucun auteur ne
+ * tape — un `.mdx` collé de travers, une minification, une charge construite.
+ *
+ * Le travail total est borné par une **multiplication**,
+ * `MAX_DOCS_LINES × (MAX_DOCS_LINE_LENGTH + 1)`, et non par une espérance.
+ *
+ * Les deux plafonds sont exportés parce que `docs-page.test.ts` en **dérive**
+ * ses cas : une valeur recopiée dans un test resterait verte après qu'on l'ait
+ * desserrée ici.
+ */
+export const MAX_DOCS_LINES = 2_000
+export const MAX_DOCS_LINE_LENGTH = 2_000
+
+/**
+ * Les lignes d'un corps, ramenées à ce qui peut raisonnablement en être lu —
+ * **avant** que quoi que ce soit ne les parcoure.
+ *
+ * Appelée par les trois balayeuses exportées, et **doublée** d'un refus nommé
+ * dans `parseDocsPage`. Ce n'est pas une redondance, et les deux ne disent pas
+ * la même chose : `parseDocsPage` connaît le fichier, donc il **refuse en le
+ * nommant** — un auteur doit savoir pourquoi son build s'arrête ; les
+ * balayeuses, elles, ne connaissent qu'un texte, donc elles **jettent** la
+ * ligne, ce qui empêche un appelant direct du baril de contourner la borne.
+ *
+ * Une ligne trop longue est remplacée par une ligne vide plutôt que retirée :
+ * une ligne retirée ferait bouger la numérotation, et une ligne tronquée
+ * continuerait d'être analysée — une troncature au milieu d'un `](` fabrique un
+ * lien qui n'a jamais été écrit.
+ */
+const boundedLines = (body: string): readonly string[] => {
+  const kept: string[] = []
+
+  for (const line of body.split('\n')) {
+    if (kept.length === MAX_DOCS_LINES) {
+      break
+    }
+
+    kept.push(line.length > MAX_DOCS_LINE_LENGTH ? '' : line)
+  }
+
+  return kept
+}
+
 const HEADING = /^(#{2,3})\s+(.+?)\s*#*\s*$/
 const FENCE = /^\s*(```|~~~)/
 
@@ -242,7 +338,7 @@ const FENCE = /^\s*(```|~~~)/
  */
 const inlineText = (markdown: string): string =>
   markdown
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(LINK_LABEL, '$1')
     .replace(/\*\*([^*]+)\*\*/g, '$1')
     .replace(/(?<![*\w])\*([^*]+)\*(?![*\w])/g, '$1')
     .replace(/`([^`]+)`/g, '$1')
@@ -278,7 +374,7 @@ export function documentHeadings(body: string): readonly DocsHeading[] {
   const headings: DocsHeading[] = []
   let fence: string | null = null
 
-  for (const line of body.split('\n')) {
+  for (const line of boundedLines(body)) {
     const fenced = FENCE.exec(line)
 
     if (fenced !== null) {
@@ -305,4 +401,138 @@ export function documentHeadings(body: string): readonly DocsHeading[] {
   }
 
   return headings
+}
+
+/**
+ * Un lien Markdown en ligne : `[libellé](cible)`.
+ *
+ * **Aucune classe n'avale le délimiteur qui ouvrirait la tentative suivante**,
+ * et c'est un correctif de sécurité, pas un goût. L'écriture précédente —
+ * `/\[[^\]]*\]\(([^)\s]+)…/g` — laissait `[^\]]` avaler les `[` : sur
+ * `'['.repeat(n)`, chaque `[` ouvrait une tentative qui parcourait le reste de
+ * la ligne, et CodeQL l'a signalée `js/polynomial-redos` en sévérité haute. La
+ * mesure : **20 000** caractères coûtaient **0,75 s**, 50 000 **4,7 s**,
+ * 100 000 **19,0 s** de processeur — le coût est quadratique, donc 400 000
+ * caractères sur une ligne tiennent un cœur plusieurs minutes.
+ *
+ * **L'exposition, dite comme elle est.** Ce n'est pas le corps HTTP anonyme de
+ * s39 : l'entrée est un fichier de `content/`, écrit par l'auteur du dépôt et
+ * lu au build. Un inconnu ne fait pas pendre la production ; un contributeur
+ * fait pendre **son propre build**, en silence. Mais ce dépôt est un
+ * boilerplate — ses utilisateurs écrivent leur propre `content/` —, et un build
+ * qui pend sans message est un défaut qu'on leur livrerait. La requête d'un
+ * visiteur, elle, ne traverse jamais ce motif : la recherche filtre dans le
+ * navigateur, sur des classes simples (`application/docs-search`).
+ *
+ * En excluant `[` du libellé **et** de la cible, deux tentatives ne peuvent plus
+ * se recouvrir : le balayage ouvert par un `[` s'arrête au `[` suivant, si bien
+ * que le coût total est linéaire en la longueur de la ligne — et la ligne est
+ * bornée. Le titre facultatif est borné par construction (`{1,20}`, `{0,200}`).
+ *
+ * **Ce que cela ne relève plus, et c'est le prix payé** : un libellé ou une
+ * cible contenant un `[` — `[a[b](/x)` est désormais lu comme le lien `[b]`, ce
+ * que rend d'ailleurs un moteur Markdown —, et un titre de plus de 200
+ * caractères ou séparé par plus de vingt espaces. Aucune de ces écritures
+ * n'apparaît dans le contenu livré ; toutes trois s'ajoutent à la liste des
+ * formes non relevées documentée sur `documentLinks`.
+ */
+const LINK = /\[[^\][]*\]\(([^)\s[]+)(?:\s{1,20}"[^"]{0,200}")?\)/g
+
+/** Le même lien, vu du texte : ce qui reste à l'écran est le libellé. */
+const LINK_LABEL = /\[([^\][]*)\]\([^)[]*\)/g
+
+/**
+ * Les liens **internes** d'un corps Markdown, dans l'ordre du document.
+ *
+ * « Interne » veut dire : une adresse de ce site, donc commençant par `/`. Un
+ * lien sortant n'appartient pas au dépôt et personne ici ne peut dire s'il
+ * répond ; une ancre seule (`#prerequis`) ne quitte pas la page ; une adresse
+ * électronique n'est pas une page. Aucun des trois ne peut être « mort » au
+ * sens du critère, et les refuser demanderait un réseau au build.
+ *
+ * **Les blocs de code sont sautés**, pour la raison exacte qui les fait sauter
+ * au relevé des titres : une page qui montre un extrait de Markdown ferait
+ * échouer le build sur un lien qu'elle n'a jamais posé.
+ *
+ * La cible est rendue **telle qu'elle est écrite**, fragment compris : c'est
+ * elle que le refus citera, et une cible recomposée enverrait son auteur
+ * chercher dans son fichier une chaîne qui ne s'y trouve pas.
+ *
+ * **Ce qui n'est pas relevé, et c'est mesuré une écriture à la fois** : un
+ * `<a href>` écrit en HTML dans le corps, une référence Markdown différée
+ * (`[libellé][clef]`), et un lien construit par un composant MDX. Les trois
+ * échappent à cette passe ; le contenu livré n'en emploie aucun.
+ */
+export function documentLinks(body: string): readonly string[] {
+  const links: string[] = []
+  let fence: string | null = null
+
+  for (const line of boundedLines(body)) {
+    const fenced = FENCE.exec(line)
+
+    if (fenced !== null) {
+      const marker = fenced[1] ?? ''
+
+      fence = fence === null ? marker : fence === marker ? null : fence
+
+      continue
+    }
+
+    if (fence !== null) {
+      continue
+    }
+
+    for (const matched of line.matchAll(LINK)) {
+      const href = matched[1] ?? ''
+
+      if (href.startsWith('/')) {
+        links.push(href)
+      }
+    }
+  }
+
+  return links
+}
+
+/** Ce qui structure une ligne sans rien dire : titre, citation, puce, numéro. */
+const LINE_MARKER = /^\s{0,3}(?:#{1,6}\s+|>\s?|[-*+]\s+|\d+[.)]\s+)/
+
+/**
+ * Le corps en **texte simple** : ce que l'index de recherche indexe.
+ *
+ * Le balisage disparaît — le libellé d'un lien reste, sa cible part, le gras et
+ * le code en ligne rendent leur contenu —, les marqueurs de ligne aussi, et les
+ * espaces sont réduits à un. Un index qui garderait le balisage ferait échouer
+ * la recherche de « frozen-lockfile » sur une page qui l'écrit entre accents
+ * graves.
+ *
+ * **Le contenu des blocs de code est gardé, les délimiteurs non**, et c'est un
+ * arbitrage : une commande est ce qu'on cherche le plus souvent dans une
+ * documentation technique. Il se paie en octets, et c'est le plafond de
+ * `application/docs-search` qui le mesure.
+ *
+ * **Ce qui n'est pas retiré, et c'est mesuré** : une table Markdown garde ses
+ * barres verticales, une image son texte alternatif, un composant MDX son
+ * appel. Aucun des trois n'empêche de trouver la page ; le corriger demanderait
+ * de compiler le MDX ici, ce que ce fichier ne fait pas (ADR 053).
+ */
+export function documentText(body: string): string {
+  const lines: string[] = []
+  let fence: string | null = null
+
+  for (const line of boundedLines(body)) {
+    const fenced = FENCE.exec(line)
+
+    if (fenced !== null) {
+      const marker = fenced[1] ?? ''
+
+      fence = fence === null ? marker : fence === marker ? null : fence
+
+      continue
+    }
+
+    lines.push(inlineText(line.replace(LINE_MARKER, '')))
+  }
+
+  return lines.join(' ').replace(/\s+/g, ' ').trim()
 }

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { DOCS_PATH, docsNavigationTree } from '@repo/module-docs'
+import { DOCS_PATH, docsNavigationTree, docsSearchIndex } from '@repo/module-docs'
 
 import { docsCatalog } from '../apps/web/lib/docs'
 import { defaultLocale } from '../config/i18n'
@@ -141,6 +141,89 @@ test.describe('la documentation', () => {
     // cadre** : c'est ce que `min-w-0` sur chaque colonne rend possible. Un
     // document qui défile est le défaut n°1 sous 400 px.
     expect(overflow).toBeLessThanOrEqual(0)
+  })
+
+  test('cherche dans la documentation, et y navigue', async ({ page }) => {
+    /*
+     * **Ce que ce parcours prouve et qu'aucun test Vitest ne peut prouver** :
+     *
+     * 1. que la palette s'ouvre — son contenu vit dans un **portail**, que
+     *    `react-dom/server` ne rend pas : ouverte ou fermée, elle n'apparaît
+     *    dans aucun balisage rendu hors navigateur (mutation posée en s54 sur
+     *    l'état initial : la suite est restée verte) ;
+     * 2. que le résultat choisi **mène** à la page.
+     *
+     * **Ce qu'il ne prouve pas, et c'est mesuré** : que l'attribut `style` en
+     * ligne de `cmdk` ne viole pas la politique de production. Ce serveur tourne
+     * en développement, où `style-src` porte `'unsafe-inline'`
+     * (`tests/security-headers.test.ts`) — mutation posée en s54, la palette
+     * rendue dans le flux de la page n'a produit **aucune** violation ici. Ce
+     * qui attrape ce défaut est `tests/docs.test.ts`, qui refuse tout attribut
+     * `style` dans le HTML de la page rendue. Le compte de violations reste
+     * pour ce qu'il attrape par ailleurs, comme sur le premier parcours.
+     *
+     * La cible est **dérivée du contenu livré** : une page ajoutée entre dans la
+     * mesure sans qu'on l'y inscrive.
+     */
+    const index = docsSearchIndex(docsCatalog, defaultLocale)
+    const target = index.find((entry) => entry.href !== first?.href)
+
+    test.skip(target === undefined, 'Une seule page livrée : rien d’autre à trouver.')
+
+    const violations: string[] = []
+
+    page.on('console', (message) => {
+      if (message.text().includes('Content Security Policy')) {
+        violations.push(message.text())
+      }
+    })
+
+    await page.goto(publicPath(first?.href ?? ''))
+
+    await page.getByRole('button', { name: /rechercher|search/i }).first().click()
+
+    const palette = page.getByRole('dialog')
+
+    await expect(palette).toBeVisible()
+
+    /*
+     * **Les deux noms accessibles de la palette, et c'est ici ou nulle part.**
+     * `cmdk` donne à sa liste l'`aria-label` par défaut « Suggestions » et
+     * associe son champ à une étiquette masquée qu'il remplit avec la propriété
+     * `label` de `Command`. Les deux chaînes ne sont dans **aucune source du
+     * dépôt** : le balayage i18n de `tests/i18n.test.ts` ne peut pas les voir,
+     * et `tests/rendered-text.test.ts` non plus, puisque la palette ne se rend
+     * jamais côté serveur. Ce parcours est le seul filet qui les observe — la
+     * seconde garde est un type : `label` est obligatoire sur `CommandList`,
+     * donc `pnpm typecheck` refuse une liste anonyme.
+     */
+    await expect(palette.getByRole('listbox')).toHaveAccessibleName(/résultats|results/i)
+    await expect(page.getByRole('combobox')).toHaveAccessibleName(
+      /rechercher dans la documentation|search the documentation/i,
+    )
+
+    // Un mot du **titre** de la cible : la recherche doit le trouver sans
+    // qu'on lui donne son adresse.
+    await page.getByRole('combobox').fill(target?.title ?? '')
+
+    const option = palette.getByRole('option', { name: new RegExp(target?.title ?? '', 'i') })
+
+    await expect(option).toBeVisible()
+    await option.click()
+
+    await expect(page).toHaveURL(urlOf(target?.href ?? ''))
+    expect(violations, violations.join(' ;; ')).toEqual([])
+  })
+
+  test('ne trouve rien, et le dit', async ({ page }) => {
+    // L'état vide de la palette : un mot qu'aucune page ne porte doit produire
+    // un message, pas une liste vide sans explication.
+    await page.goto(publicPath(first?.href ?? ''))
+    await page.getByRole('button', { name: /rechercher|search/i }).first().click()
+    await page.getByRole('combobox').fill('zzzzqqqq')
+
+    await expect(page.getByRole('dialog')).toContainText(/aucune page|no page/i)
+    await expect(page.getByRole('option')).toHaveCount(0)
   })
 
   test('répond 404 sur un chemin de documentation inconnu', async ({ page }) => {

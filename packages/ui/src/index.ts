@@ -41,6 +41,17 @@ export {
 } from './components/card'
 export { Checkbox } from './components/checkbox'
 export {
+  Command,
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+  type CommandDialogProps,
+} from './components/command'
+export {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,

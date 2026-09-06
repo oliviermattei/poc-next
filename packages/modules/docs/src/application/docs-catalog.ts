@@ -90,7 +90,70 @@ export function resolveDocsCatalog({
     }
   }
 
+  refuseDeadLinks(pages, canonical)
+
   return { pages, sections, index: { path: DOCS_PATH, defaultLocale } }
+}
+
+/**
+ * **La passe croisée** : les liens que le contenu se fait à lui-même.
+ *
+ * **Ce n'est pas le premier refus du dépôt à traverser deux fichiers** — la
+ * revue de s54 a corrigé cette affirmation, qui était fausse contre la fonction
+ * juste au-dessus. `resolveDocsCatalog` en porte déjà deux depuis s30 : une
+ * page dont la section n'a pas de `section.json` dans la langue par défaut, et
+ * une page écrite seulement dans une traduction. Les deux confrontent bien un
+ * fichier à d'autres.
+ *
+ * **Ce qui est neuf est la nature de la relation.** Ces deux refus jugent une
+ * page sur ses **propres coordonnées** — sa section, son chemin —, et le fichier
+ * qu'ils cherchent est déterminé par elles. Un lien, lui, est une **référence
+ * que l'auteur a écrite** : sa cible est arbitraire, elle ne se déduit d'aucune
+ * coordonnée du fichier fautif, et la résoudre demande le **catalogue entier**.
+ * C'est aussi pourquoi elle porte sur le catalogue déjà lu et déjà validé,
+ * jamais sur un second balayage du disque qui divergerait du premier au premier
+ * changement de règle.
+ *
+ * **Elle croise avec l'arbre canonique, dans toutes les langues.** Une page
+ * anglaise qui cite une page écrite en français seulement pointe vers une
+ * adresse qui répond — le repli sert la version par défaut. Croiser avec les
+ * seules pages de la langue de l'auteur déclarerait ce lien mort à tort.
+ *
+ * **Ce qu'elle ne juge pas, et pourquoi** :
+ *
+ * - un lien **hors** de `/docs` (`/pricing`, `/blog/…`) : il appartient à un
+ *   module que la configuration peut couper, et ce catalogue n'en sait rien.
+ *   Le refuser ferait échouer le build d'un projet dont la page existe ;
+ * - le **fragment** (`#quatre-couches`) : le critère parle d'une page
+ *   inexistante. Les ancres d'une page varient d'une langue à l'autre, et le
+ *   repli sert une page dont les titres ne sont pas ceux de la traduction —
+ *   ce serait une seconde décision, pas la même.
+ */
+const refuseDeadLinks = (
+  pages: readonly DocsPage[],
+  canonical: ReadonlySet<string>,
+): void => {
+  for (const page of pages) {
+    for (const link of page.links) {
+      const target = link.split('#')[0]?.split('?')[0] ?? ''
+
+      if (!target.startsWith(`${DOCS_PATH}/`)) {
+        // `/docs` lui-même redirige vers la première page : il est toujours
+        // valide. Tout ce qui sort de la documentation n'est pas jugeable ici.
+        continue
+      }
+
+      if (canonical.has(target.slice(DOCS_PATH.length + 1))) {
+        continue
+      }
+
+      throw new InvalidDocsPageError(
+        `Documentation refusée — ${page.section}/${page.slug}.mdx (${page.locale}) : le lien ` +
+          `« ${link} » ne mène à aucune page. L’arborescence servie est celle de la langue par ` +
+          `défaut, et elle ne porte pas « ${target} ».`,
+      )
+    }
+  }
 }
 
 /** Une page, telle que la navigation latérale et le fil d'Ariane la nomment. */

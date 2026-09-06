@@ -6,7 +6,7 @@ import { notFound } from 'next/navigation'
 import { z } from 'zod'
 
 import { publicFooterLinks } from '../../../../lib/footer'
-import { docsCatalog } from '../../../../lib/docs'
+import { docsCatalog, docsSearchIndexFor } from '../../../../lib/docs'
 import { docsBody } from '../../../../lib/docs-body'
 import { appIntl } from '../../../../lib/i18n'
 import { marketingFormsAvailable, marketingSite } from '../../../../lib/marketing'
@@ -100,6 +100,7 @@ export default async function DocsPage({
         tree={docsNavigationTree(docsCatalog, locale)}
         page={resolved.page}
         translated={resolved.translated}
+        search={docsSearchIndexFor(locale)}
         intl={{ t, path }}
       >
         {await docsBody({

@@ -106,6 +106,14 @@ ne gouverne que les attributs analysés dans le HTML.
   **ici et nulle part ailleurs**. `@radix-ui/react-avatar` est arrivé avec s18 :
   c'est lui qui porte le **repli sur les initiales** quand l'image manque ou ne
   se charge pas, et c'est ce qui évite qu'un écran porte un `if (avatar ?)` ;
+- `cmdk` — **dans `src/components/command.tsx` seulement**. Arrivé par s54 : la
+  palette de recherche de la documentation. Radix ne publie pas de primitive de
+  palette, et c'est le socle de la version amont de shadcn/ui ; la navigation au
+  clavier, `role="listbox"` et `aria-activedescendant` en viennent, plutôt que
+  d'une liste écrite à la main — ce que la règle du bas de ce fichier appelle
+  « un défaut d'accessibilité en attente ». Il pose un attribut `style` en ligne
+  sur son étiquette masquée : la palette ne se rend donc **que dans un
+  dialogue**, monté à l'ouverture, jamais dans le HTML servi ;
 - `class-variance-authority` pour les variantes, `clsx` et `tailwind-merge` pour
   la composition de classes (`cn`) ;
 - `lucide-react` pour les icônes : un seul jeu, 16 px dans l'application ;
@@ -146,17 +154,17 @@ vit dans `apps/web`.
 Ceux que s08 utilise réellement, et rien de plus — copier l'inventaire complet
 « pour plus tard » livrerait du code que personne n'a exercé :
 
-| Copiés | `Accordion`, `Alert`, `Avatar`, `Badge`, `Breadcrumb`, `Button`, `Card`, `Checkbox`, `DropdownMenu`, `Input`, `Label`, `Separator`, `Sheet`, `Textarea` |
+| Copiés | `Accordion`, `Alert`, `Avatar`, `Badge`, `Breadcrumb`, `Button`, `Card`, `Checkbox`, `Command`, `DropdownMenu`, `Input`, `Label`, `Separator`, `Sheet`, `Textarea` |
 | --- | --- |
 | Composés maison | `CookieBanner`, `EmptyState`, `LocaleSwitcher`, `MarketingSection`, `OrgSwitcher`, `PageHeader`, `Pagination`, `Sidebar` / `SidebarNav`, `ThemeProvider`, `ThemeToggle`, l'échelle de prose (`PROSE_CLASSNAME`, `proseComponents`) |
 
 Le reste de l'inventaire de `docs/design-system.md` — `Form`, `Table`,
-`DataTable`, `Tabs`, `Toaster`, `Command`, `AlertDialog`, `Tooltip`,
+`DataTable`, `Tabs`, `Toaster`, `AlertDialog`, `Tooltip`,
 `Popover`, `Skeleton`, `Progress`, `ScrollArea`,
 `RadioGroup`, `Select`, `Switch`,
 `ConfirmDialog`, et les composés des stories à venir — **n'est pas encore
-copié**. C'est la liste au 5 septembre 2026, révisée par s10, s11, s18, s36,
-s29 puis s30 ; le document fait foi, pas ce tableau — **et ce tableau avait
+copié**. C'est la liste au 6 septembre 2026, révisée par s10, s11, s18, s36,
+s29, s30 puis s54 ; le document fait foi, pas ce tableau — **et ce tableau avait
 déjà été pris en défaut deux fois**, ce qui est la raison de la phrase
 précédente :
 
@@ -180,10 +188,44 @@ de la relecture.
 
 `Breadcrumb` est arrivé avec **s30**, copié de shadcn/ui pour le fil d'Ariane de
 la documentation, sans son `BreadcrumbEllipsis` — aucun écran ne replie de fil,
-et ce package ne livre pas de code que personne n'exerce. `ScrollArea` et
-`Command` sont restés non copiés pour la même raison : le premier n'est pas
-nécessaire à une navigation de documentation, le second est la palette de
-recherche de `s54-docs-recherche`.
+et ce package ne livre pas de code que personne n'exerce. `ScrollArea` est resté
+non copié pour la même raison : il n'est pas nécessaire à une navigation de
+documentation.
+
+`Command` est arrivé avec **s54**, la palette de recherche de la documentation,
+que `docs/design-system.md` lui attribue nommément. Sans son `CommandShortcut` —
+aucun appelant n'affiche de raccourci dans une entrée. `CommandDialog` est bâti
+directement sur `@radix-ui/react-dialog` plutôt que sur un `Dialog` du baril :
+ce baril n'en porte pas, et cette story livre **un** composant, pas deux. Il ne
+se rend **jamais côté serveur** : `cmdk` pose un attribut `style` en ligne sur
+son étiquette masquée, et `style-src-attr` ne connaît pas les nonces (s45).
+
+**Quatre chaînes sont obligatoires** — `title`, `description`, `closeLabel` et
+le `label` de `CommandList`. La quatrième a été oubliée en s54 et rattrapée à la
+revue : sans elle, `cmdk` n'annonce pas une liste anonyme, il l'annonce
+« Suggestions », en anglais, dans toutes les locales. Cette chaîne n'est dans
+**aucune source du dépôt** — ni le balayage i18n ni `tests/rendered-text.test.ts`
+ne peuvent la voir —, donc la garde est un **type** : `pnpm typecheck` refuse une
+liste sans nom, et `e2e/docs.spec.ts` mesure le nom rendu dans le navigateur.
+
+**Ce que les mutations donnent, mesuré à la correction de la revue** — la
+rédaction précédente disait « et lui seul » et attribuait à une seule mutation ce
+que deux avaient produit :
+
+- `Command` **rendu dans le flux de la page** au lieu de `CommandDialog` :
+  **2 rouges**, sur 2 723 cas. `tests/docs.test.ts` refuse tout attribut `style`
+  dans le HTML de la page de documentation, et `tests/rendered-text.test.ts` voit
+  alors passer un texte que la palette **compose** (« section — description »),
+  qu'aucun catalogue ne porte tel quel. Avant le correctif ci-dessus, ce second
+  rouge portait sur « Suggestions » ;
+- le **dialogue ouvert dès le rendu serveur** (`useState(true)` sur l'écran) :
+  **0 rouge**, 2 723 verts. C'est correct et non un trou — `react-dom/server` ne
+  rend aucun portail, l'invariant n'est donc réellement pas enfreint ;
+- le **parcours navigateur** n'attrape pas le premier défaut : le serveur de
+  développement porte `'unsafe-inline'` sur `style-src`
+  (`apps/web/lib/security-headers.ts`, tenu par `tests/security-headers.test.ts`),
+  et s54 avait mesuré zéro violation de console sous la mutation du flux. Cette
+  mesure-là n'a **pas** été rejouée à la correction.
 
 `Checkbox` et `CookieBanner` sont arrivés avec **s36**, que le document attribue
 nommément au second (« Bannière de consentement (s36) »).
