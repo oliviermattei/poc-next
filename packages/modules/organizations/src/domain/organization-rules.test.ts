@@ -314,6 +314,10 @@ describe('la matrice des permissions', () => {
       // pas encore : un `admin` ne peut « ni supprimer l'organisation ni
       // modifier un owner ».
       'organization.delete',
+      // s35 — l'export des données de l'organisation. Réservé au propriétaire :
+      // l'archive porte les données de tous les membres, et le critère 5 de la
+      // story dit « réservé à un owner ».
+      'organization.export',
     ],
     // Un `admin` invite, révoque, renvoie, renomme et retire — mais il ne
     // distribue pas les rôles : les critères énumèrent ce qu'il peut faire

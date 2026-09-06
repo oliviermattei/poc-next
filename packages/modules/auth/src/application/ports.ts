@@ -1,4 +1,8 @@
-import type { ModuleScope, PurgeModulesOutcome } from '@repo/core'
+import type {
+  BuildDataExportArchiveOutcome,
+  ModuleScope,
+  PurgeModulesOutcome,
+} from '@repo/core'
 import type { Jobs, Mailer, SendEmailResult } from '@repo/ports'
 
 import type { AuthPolicy } from '../domain/auth-policy'
@@ -288,6 +292,110 @@ export interface TwoFactorRepository {
 /** Journal des événements de sécurité (§7). Reçoit un enregistrement déjà filtré. */
 export type SecurityLog = (record: SecurityEventRecord) => void
 
+/**
+ * **Les demandes d'export de données** (s35), du côté des cas d'usage.
+ *
+ * Le module ne sait pas construire une archive : elle traverse **tous** les
+ * modules activés, et seul le registre sait lesquels le sont. Le port
+ * `collectArchive` est ce qu'on lui donne — la même inversion que
+ * `readableScopes` pour `storage` ou `emailOfScope` pour `marketing`.
+ */
+export type DataExportStatus = 'pending' | 'ready' | 'failed'
+
+export interface DataExportRequestRecord {
+  readonly id: string
+  readonly scope: ModuleScope
+  readonly requestedBy: string
+  readonly status: DataExportStatus
+  readonly requestedAt: Date
+}
+
+/** Une demande telle que le magasin la rend, l'archive comprise. */
+export interface StoredDataExportRequest extends DataExportRequestRecord {
+  readonly completedAt: Date | null
+  /** L'échéance du lien, **décidée par le serveur**. `null` tant qu'il n'y en a pas. */
+  readonly expiresAt: Date | null
+  /** L'empreinte du jeton, jamais le jeton (`docs/security.md` §2). */
+  readonly tokenDigest: string | null
+  readonly archive: unknown
+  readonly failedModuleId: string | null
+}
+
+/** Ce que l'export du contrat rend d'une demande : sa trace, jamais son archive. */
+export interface DataExportTrace {
+  readonly requestedAt: string
+  readonly status: string
+  readonly expiresAt: string | null
+}
+
+export interface DataExportRepository {
+  /**
+   * Revendique une demande pour ce périmètre, ou refuse parce qu'il y en a une.
+   *
+   * La condition est tenue **dans la transaction, sous verrou** : une lecture
+   * suivie d'une écriture laisserait deux demandes en vol se voir chacune
+   * seule (`docs/reliability.md` §1).
+   */
+  claim(input: {
+    readonly id: string
+    readonly scope: ModuleScope
+    readonly requestedBy: string
+    readonly at: Date
+  }): Promise<'claimed' | 'already-pending'>
+  findById(id: string): Promise<StoredDataExportRequest | null>
+  /** Range l'archive et l'échéance. Sans effet si la demande n'est plus en cours. */
+  markReady(input: {
+    readonly id: string
+    readonly tokenDigest: string
+    readonly expiresAt: Date
+    readonly archive: unknown
+    readonly at: Date
+  }): Promise<void>
+  /**
+   * Clôt une demande en échec. Sans effet si elle n'est plus en cours.
+   *
+   * `moduleId` nomme le module qui a refusé, ou vaut `null` quand l'échec n'est
+   * celui d'aucun module — la mise en file refusée, par exemple. Dans les deux
+   * cas la demande cesse d'être en cours, donc le périmètre redevient
+   * demandable : un échec ne bloque pas la personne.
+   */
+  markFailed(input: {
+    readonly id: string
+    readonly moduleId: string | null
+    readonly at: Date
+  }): Promise<void>
+  /**
+   * Les demandes encore en cours **réclamées avant `before`**.
+   *
+   * La borne n'est pas un confort : sans elle, le balayage reprend une demande
+   * que le fournisseur est peut-être en train d'exécuter, et les deux clés
+   * d'idempotence diffèrent — l'archive est construite deux fois et deux emails
+   * partent.
+   */
+  listPending(before: Date): Promise<readonly StoredDataExportRequest[]>
+  listForScope(scope: ModuleScope): Promise<readonly DataExportTrace[]>
+  /** Efface les archives dont l'échéance est passée. Rend combien. */
+  forgetExpiredArchives(at: Date): Promise<number>
+  /** Efface les demandes du périmètre — appelée par la purge du contrat. */
+  deleteScope(scope: ModuleScope): Promise<void>
+}
+
+/**
+ * **La signature du lien**, et rien d'autre.
+ *
+ * Le `domain` ne connaît aucune primitive (`packages/modules/auth/AGENTS.md`) :
+ * le HMAC vit dans `infrastructure/`, la **forme** du jeton et la décision
+ * d'échéance vivent dans `domain/data-export.ts`.
+ */
+export interface DataExportTokenSigner {
+  /** Le jeton remis, qui porte l'identifiant de la demande et sa signature. */
+  issue(requestId: string): string
+  /** L'identifiant de la demande si la signature tient, `null` sinon. */
+  verify(token: string): string | null
+  /** L'empreinte stockée : un vol de ces lignes ne rend aucun lien utilisable. */
+  digest(token: string): string
+}
+
 export interface AuthDependencies {
   readonly users: AuthUserRepository
   readonly sessions: AuthSessionRepository
@@ -357,6 +465,49 @@ export interface AuthDependencies {
    * différence, et c'est le critère 9.
    */
   readonly jobs: Jobs
+  /**
+   * **Ce que le module ne peut pas se procurer** pour l'export (s35).
+   *
+   * Absent, les routes d'export répondent 404 : elles ne sont pas montées à
+   * moitié. Le point de composition de l'application est le seul à posséder le
+   * registre, donc le seul à pouvoir construire une archive.
+   */
+  readonly dataExport?: DataExportDependencies
 }
 
-export type { Mailer, SendEmailResult }
+/** Ce dont l'export a besoin, et que le module ne possède pas. */
+export interface DataExportDependencies {
+  readonly requests: DataExportRepository
+  readonly signer: DataExportTokenSigner
+  /** L'archive de **tous** les modules activés, construite par le registre. */
+  readonly collectArchive: (scope: ModuleScope) => Promise<BuildDataExportArchiveOutcome>
+  /**
+   * **Qui a le droit de demander l'export d'une organisation.**
+   *
+   * `auth` ne connaît ni `organizations`, ni ses rôles, et n'a pas le droit de
+   * lire ses tables : la décision lui est **donnée**, comme `readableScopes`
+   * l'est à `storage`. Trois réponses, et la distinction porte le socle §3 :
+   *
+   * - `unknown` — l'appelant n'est pas membre, ou l'organisation n'existe pas,
+   *   ou le module est coupé : **404**, l'existence de la ressource d'autrui ne
+   *   se confirme pas ;
+   * - `refused` — membre, mais la matrice de rôles le lui refuse : **403**, il
+   *   sait déjà que l'organisation existe ;
+   * - `allowed` — la demande passe.
+   *
+   * Aucun rôle ne traverse cette frontière : la matrice rôle × action s'écrit
+   * une fois, dans le module qui possède les rôles.
+   */
+  readonly authorizeOrganization: (input: {
+    readonly userId: string
+    readonly organizationId: string
+  }) => Promise<'allowed' | 'refused' | 'unknown'>
+  /**
+   * L'identifiant d'une demande. **Reçu**, parce que le hasard appartient à
+   * `infrastructure/` : la couche application ne connaît pas `node:crypto`
+   * (ADR 006).
+   */
+  readonly generateId: () => string
+}
+
+export type { Jobs, Mailer, SendEmailResult }

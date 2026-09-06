@@ -249,6 +249,32 @@ export const rateLimitPolicies = {
    */
   upload: { windowSeconds: 600, maxPerClient: 120, maxPerSubject: null },
   /**
+   * **L'export de ses données** (s35) : le traitement le plus cher du produit.
+   *
+   * Chaque passage parcourt l'export de **tous** les modules activés, écrit une
+   * copie complète des données personnelles du périmètre en base, et envoie un
+   * email — et, module `jobs` coupé, il fait tout cela **dans la requête**. Une
+   * route authentifiée qui ne déclarerait rien ne serait comptée par personne
+   * (`routeIsRateLimited` dérive du registre), et une session suffirait à
+   * boucler : la revendication ne refuse que tant qu'une demande est en cours,
+   * et une demande servie ne refuse plus la suivante.
+   *
+   * **Par appelant seulement**, et il faut dire pourquoi plutôt que de le
+   * laisser deviner : le seau par compte visé se construit à partir d'un champ
+   * du corps ou d'un cookie (`RouteRateLimit`), et le périmètre d'un export
+   * vient de la **session**, jamais du corps — l'y mettre laisserait l'appelant
+   * choisir son propre seau, c'est-à-dire aucune limite. Le garde du
+   * répartiteur ne reçoit pas la session ; lui donner accès serait une story à
+   * part. Ce seuil borne donc le coût, il n'individualise pas.
+   *
+   * Vingt par heure et par appelant : un export est un geste rare — quelques-uns
+   * par an et par personne —, et le seau est partagé par tous les visiteurs
+   * d'un même réseau, voire par tous quand aucun proxy de confiance ne
+   * renseigne l'adresse. Vingt laisse largement la place à un réseau
+   * d'entreprise tout en bornant la boucle à vingt parcours complets par heure.
+   */
+  dataExport: { windowSeconds: 3_600, maxPerClient: 20, maxPerSubject: null },
+  /**
    * Le checkout invité. Le module `billing` garde **en plus** sa propre règle,
    * plus serrée et porteuse d'une dégradation (s24).
    */

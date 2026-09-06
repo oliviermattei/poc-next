@@ -688,3 +688,154 @@ confirmation quel que soit le nombre de rejeux.
 confirmation part **après** — le précédent de `organizations.purge` (s16).
 Envoyée avant, elle accuserait réception d'une opération qui peut encore
 échouer ; l'adresse ne se relit pas après, elle n'existe plus.
+
+## L'export de ses données (s35)
+
+Le module possède la **demande** et le **lien** ; il ne possède pas l'archive.
+Celle-ci traverse tous les modules activés, et seul le registre sait lesquels le
+sont : `collectArchive` est donc **reçu** du point de composition
+(`apps/web/lib/auth.ts`), au même titre que `purgeScope` l'est depuis s34 et que
+`readableScopes` l'est à `storage`. Sans ce câblage, les deux routes répondent
+**404** — la fonctionnalité n'est pas montée à moitié, elle n'existe pas. Le
+placement complet, avec ses options rejetées : `docs/decisions/061-…`.
+
+**Un seul port de tâches pour les deux traitements du module.** L'effacement de
+compte (s34) et la construction d'archive (s35) empruntent `AuthDependencies.jobs`
+— le même. Deux ports pour deux tâches du même module seraient deux vérités sur
+« où s'exécute une tâche », et l'un des deux finirait par mentir. Il n'y a donc
+**aucun repli synchrone écrit ici** : c'est `apps/web/lib/jobs.ts` qui rend un
+port exécutant dans la requête quand le module `jobs` est coupé.
+
+Ce qui vit ici, et où :
+
+| Pièce | Fichier | Pourquoi là |
+|---|---|---|
+| forme du jeton, échéance, seuil d'âge du balayage, schéma de l'archive, identifiant de la tâche | `src/domain/data-export.ts` | aucune primitive : le `domain` ne connaît ni `node:crypto`, ni la base, ni HTTP |
+| HMAC, comparaison à temps constant, empreinte | `src/infrastructure/data-export-signer.ts` | la primitive appartient à `infrastructure/`, comme `token-factory.ts` |
+| revendication sous verrou consultatif | `src/infrastructure/drizzle-data-export-repository.ts` | c'est une transaction, pas une règle |
+| demande, construction, lien, oubli | `src/application/data-export-use-cases.ts` | le seul endroit où les six pièces se rencontrent |
+| traduction en réponse HTTP | `src/presentation/auth-routes.ts` | le tableau état par état vit dans le docblock de la route de téléchargement |
+
+Huit décisions, et chacune a une commande qui échoue si on la défait :
+
+1. **une archive partielle n'est jamais livrée.** Un module qui refuse fait
+   passer la demande à `failed` en nommant le module ; aucun lien ne part, et
+   redemander repart de zéro ;
+2. **l'archive vit dans `auth_data_export_request.archive`**, pas dans le
+   stockage d'objets (`docs/decisions/062-…`). C'est ce qui la fait disparaître
+   avec le compte — la cascade de `requested_by` — **et** avec l'organisation,
+   dont le périmètre ne porte aucune clé étrangère (ADR 018) et que seule la
+   purge du contrat emporte. C'est le second cas qui mesure : sans l'appel
+   explicite dans `purgeAccount`, l'archive complète d'une organisation
+   supprimée reste en base, et le cas du périmètre compte reste vert ;
+3. **l'échéance est écrite en base et relue à chaque téléchargement.** Le jeton
+   ne porte que l'identifiant de la demande et sa signature ; il n'y a rien à
+   réécrire dans l'URL. L'empreinte du jeton survit à l'échéance, pour répondre
+   410 (« ce lien a expiré ») plutôt que 404 ;
+4. **l'archive échue est effacée par deux déclencheurs, et il en fallait deux.**
+   Le balayage de la tâche n'existe que si le module `jobs` est activé : coupé —
+   et `config/profiles.ts` le coupe —, la tâche n'est jamais appelée sans
+   `requestId`, donc cette branche ne s'exécute pas. Mesuré par la revue :
+   archive échue, `status = ready`, copie JSON complète restée en base.
+   L'effacement est donc **aussi** accroché à `requestDataExport`, qui existe
+   dans toutes les configurations, et il porte sur **toutes** les archives
+   échues. Ce qu'il ne couvre pas : un dépôt sans ordonnanceur où plus personne
+   ne demande d'export ;
+5. **la signature est vérifiée avant toute lecture.** Mesuré : l'empreinte du
+   jeton refusait déjà un jeton forgé, mais **après** une requête en base, si
+   bien que retirer la comparaison de signature laissait la suite au vert. Le
+   cas qui mord compte donc les lectures, pas le code de retour ;
+6. **une mise en file refusée close la demande et répond 503.** Rien ne
+   construira l'archive, et **le balayage ne la reprendra pas** : il ne rend que
+   les demandes encore `pending`. Rendre 202 serait un accusé de réception pour
+   un travail que personne ne fera, et laisser la demande « en cours »
+   bloquerait le périmètre derrière elle. C'est la décision de s34 sur le même
+   port ; le refus n'étant celui d'aucun module, `failed_module_id` reste vide.
+   L'événement s'appelle donc `auth.data_export_refused` — il s'est appelé
+   `…_deferred`, ce qui promettait une reprise que le code interdit ;
+7. **aucun refus de l'export ne répond 404, et les refus de lien sont
+   indiscernables.** `e2e/modules.spec.ts` balaie toute route publique d'un
+   module activé et exige qu'elle ne réponde jamais 404 — la garantie « une
+   route déclarée est une route servie ». Elle a refusé la route de
+   téléchargement, qui rendait 404 sur un jeton absent, exactement comme elle
+   avait refusé la route de rappel du module de tâches en s33. Jeton absent,
+   illisible, mal signé ou demande inconnue rendent donc **400 `invalid_token`**,
+   code **et** corps identiques : les distinguer dirait à qui essaie s'il a
+   trouvé un identifiant réel. L'export non câblé rend **503**, comme s33 — une
+   absence du côté du serveur, pas une requête invalide. Le tableau complet, état
+   par état, vit dans le docblock de la route ; le cas qui mord vit dans
+   `pnpm test`, pas seulement dans le navigateur, et c'est la leçon de s33 ;
+8. **la demande est limitée en débit alors qu'elle est authentifiée.**
+   `routeIsRateLimited` est dérivé du registre : une route non publique n'est
+   comptée que si elle le **déclare**. Sans `rateLimit: { policy: 'dataExport' }`,
+   une session valide boucle — la revendication ne refuse que tant qu'une
+   demande est en cours, et une demande servie ne refuse plus la suivante —, et
+   chaque tour parcourt l'export de tous les modules, écrit une copie complète
+   en base et envoie un email. C'est la raison exacte qui fait déclarer `upload`
+   au module `storage` : une session n'est pas une limite. Le seuil est **par
+   appelant seulement**, parce que le seau par compte visé se construit depuis
+   le corps ou un cookie et que le périmètre d'un export vient de la session.
+
+**Ce que le balayage reprend, et ce qu'il ne reprend pas.** Il reprend une
+demande **mise en file avec succès et jamais exécutée** — événement perdu,
+processus tombé —, et seulement passé `DATA_EXPORT_SWEEP_MIN_AGE_SECONDS`. Le
+seuil d'âge n'est pas décoratif : le balayage et l'exécution du fournisseur ont
+des clés d'idempotence différentes, donc rien ne les déduplique. Mesuré sur deux
+constructions concurrentes de la même demande — **deux emails partent**, portant
+le **même** lien, et ce lien **fonctionne** (le jeton dérive de l'identifiant de
+la demande, il n'est pas tiré au hasard). Le défaut est un doublon d'email et un
+parcours d'export payé deux fois, pas un lien mort : la revue l'avait raisonné
+comme un lien mort, la mesure dit autre chose.
+
+`AuthDatabase` inclut `execute` depuis cette story : la revendication prend un
+`pg_advisory_xact_lock`, qui ne s'appelle pas autrement. Contrairement à
+`organizations`, ce module n'a pas de périmètre organisationnel à tenir : aucune
+règle de lint n'y restreint la lecture.
+
+### Ce qui a été prouvé par mutation (s35)
+
+Comptes des cas passés au rouge par `pnpm vitest run tests/data-export.test.ts`
+(33 cas verts sans mutation), mesurés le 6 septembre 2026 **après la fusion de
+s34 et après la première revue**. C'est la liste des mutations **posées**, jamais un inventaire de ce qui
+est couvert.
+
+| Mutation | Rouges |
+|---|---|
+| `exportModules` avale l'échec d'un module et rend une charge partielle | 1 |
+| un module qui déclare une catégorie n'exporte plus rien (`storage`) | 1 |
+| un module qui détient des tables cesse de déclarer ses catégories (`billing`) | 2 : le plancher ici, et `tests/billing.test.ts` |
+| `auditDataCategoryCoverage` ne constate plus rien | 3 |
+| l'exception `admin` / `grant-authorship` est retirée de la table | 1 |
+| la même exception perd sa raison écrite | 1 |
+| une exception dont le module est coupé redevient « périmée » | 1 |
+| l'archive ne porte plus la version de format documentée | 7 |
+| le verrou consultatif de la revendication est retiré | 1, sur cinq courses |
+| la purge du contrat n'emporte plus les demandes du périmètre | 1 |
+| l'oubli des archives échues à la demande est retiré | 1 |
+| `forgetExpiredArchives` n'efface plus rien | 2 |
+| le balayage perd son seuil d'âge | 1 |
+| un module excepté du plancher se met à déclarer une catégorie (`jobs`) | 2 |
+| la signature du lien n'est plus comparée | 1 |
+| la route de téléchargement cesse d'être publique | 9 |
+| la demande ne déclare plus de politique de limitation | 1 |
+| le refus d'un lien inutilisable redevient 404 | 3 |
+| l'échéance n'est plus comparée à l'horloge du serveur | 2 |
+| le schéma n'est plus vérifié avant de servir l'archive | 1 |
+| un non-membre reçoit 403 au lieu de 404 | 1 |
+| la construction ignore le port de tâches | 4 |
+| l'échec de mise en file est ignoré | 1 |
+| un `admin` obtient `organization.export` | 1 ici, 1 dans `organization-rules.test.ts` |
+
+**Trois de ces mutations sont revenues vertes avant de mordre**, et c'est ce
+qu'elles ont appris qui compte :
+
+- **la purge**, parce que la cascade de `requested_by` couvrait déjà le périmètre
+  **compte** et que le cas ne mesurait que celui-là ;
+- **la signature**, parce que l'empreinte du jeton refusait à sa place, mais
+  après une lecture en base ;
+- **le seuil d'âge du balayage**, parce que le cas figeait l'horloge : avec
+  `requestedAt = maintenant`, la comparaison stricte `requestedAt < maintenant`
+  est fausse, et retirer le seuil ne changeait rien. Le cas avance désormais
+  l'horloge d'une minute avant de balayer.
+
+Les trois cas ont été réécrits, aucune des trois gardes.

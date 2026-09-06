@@ -86,6 +86,20 @@ export type SecurityEventName =
   | 'auth.account_deletion_requested'
   | 'auth.account_deletion_refused'
   | 'auth.account_deleted'
+  // s35 : l'export de ses données. Trois noms, et ils disent trois choses
+  // différentes — l'archive est prête et le lien est parti, un module a refusé
+  // et l'archive n'existera pas, ou la mise en file a refusé et la demande est
+  // **close** (elle n'est pas différée : rien ne la reprendra, et redemander
+  // repart de zéro). `docs/security.md` §7 demande de pouvoir compter les accès
+  // aux données personnelles ; une demande d'export en est un.
+  //
+  // Le troisième s'appelait `auth.data_export_deferred` : le mot promettait une
+  // reprise que le code ne fait pas, et c'est le défaut même que cette story
+  // corrigeait ailleurs. Il porte le nom du refus, comme
+  // `auth.account_deletion_refused` de s34, sur le même port.
+  | 'auth.data_export_ready'
+  | 'auth.data_export_failed'
+  | 'auth.data_export_refused'
 
 /** L'acteur d'un événement. `email` est accepté à l'appel, jamais journalisé. */
 export interface SecurityEventActor {

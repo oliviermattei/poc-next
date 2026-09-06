@@ -28,6 +28,10 @@ import {
   oauthReturnPath,
   type AnyOAuthProviderId,
 } from '../domain/oauth'
+import {
+  DATA_EXPORT_DOWNLOAD_PATH,
+  dataExportRequestBodySchema,
+} from '../domain/data-export'
 import { safeRedirectPath } from '../domain/redirect'
 import { TWO_FACTOR_CHALLENGE_COOKIES } from '../domain/two-factor'
 import {
@@ -104,6 +108,12 @@ const PATHS = {
   passkeyAuthenticate: '/auth/passkey/verify-authentication',
   passkeyRename: '/auth/passkey/rename',
   passkeyRevoke: '/auth/passkey/revoke',
+  // s35 : la demande est **authentifiée**, le téléchargement est **public** —
+  // le lien part par email, et un email n'ouvre pas de session. C'est pourquoi
+  // il est signé, à durée limitée, et limité en débit par le répartiteur comme
+  // toute route publique (ADR 050).
+  dataExport: '/auth/data-export',
+  dataExportDownload: DATA_EXPORT_DOWNLOAD_PATH,
 } as const
 
 /** Le chemin public d'une route du module, préfixe de montage compris. */
@@ -122,6 +132,17 @@ const badRequest = (reason: string): Response =>
  * différence.
  */
 const notFound = (): Response => Response.json({ error: 'not_found' }, { status: 404 })
+
+/**
+ * **L'export n'est pas câblé** (s35) : l'endroit existe, rien n'est derrière.
+ *
+ * 503 et non 404, pour la raison que s33 a établie sur sa route de rappel : la
+ * route est déclarée par un module activé, donc montée, et un 404 enverrait
+ * chercher un défaut de routage. C'est une absence **du côté du serveur**, pas
+ * une requête invalide.
+ */
+const dataExportNotConfigured = (): Response =>
+  Response.json({ error: 'data_export_not_configured' }, { status: 503 })
 
 /** Une redirection de navigateur : c'est ce qu'un lien cliqué dans un email attend. */
 const redirect = (location: string): Response =>
@@ -1641,6 +1662,169 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
                 { error: 'verification_email_not_sent', code: sent.error.code },
                 { status: 502 },
               )
+        }),
+    },
+    /**
+     * **La demande d'export de ses données** (s35, critères 1, 5 et 7).
+     *
+     * Le périmètre est **déclaré dans le corps et validé par Zod** ; le compte,
+     * lui, vient de la session et jamais du corps — le seul moyen d'exporter
+     * les données d'un autre serait d'ouvrir sa session.
+     */
+    {
+      method: 'POST',
+      path: PATHS.dataExport,
+      protection: { level: 'authenticated' },
+      // **Une session n'est pas une limite** — la raison exacte qui fait
+      // déclarer `upload` au module `storage`, et elle pèse plus lourd ici :
+      // chaque passage parcourt l'export de tous les modules activés, écrit une
+      // copie complète des données personnelles et envoie un email. Sans cette
+      // déclaration, `routeIsRateLimited` rend `false` et le répartiteur ne
+      // compte rien.
+      rateLimit: { policy: 'dataExport' },
+      handler: async (request, context) =>
+        await refuseInvalid(async () => {
+          const auth = service()
+          const dataExport = auth.useCases.dataExport
+
+          // **Non câblé : 503, pas 404.** La route est déclarée par un module
+          // activé, donc elle existe ; ce qui manque est derrière elle. Sans
+          // session, le répartiteur a déjà refusé — la garde ici n'est que le
+          // rétrécissement de type.
+          if (dataExport === null) {
+            return dataExportNotConfigured()
+          }
+
+          if (context.session === null) {
+            return notFound()
+          }
+
+          const parsed = dataExportRequestBodySchema.safeParse(await jsonBody(request))
+
+          if (!parsed.success) {
+            return badRequest('périmètre d’export invalide')
+          }
+
+          const outcome = await dataExport.requestDataExport({
+            userId: context.session.userId,
+            scope:
+              parsed.data.scope === 'user'
+                ? { kind: 'user', userId: context.session.userId }
+                : { kind: 'organization', organizationId: parsed.data.organizationId },
+          })
+
+          switch (outcome.status) {
+            case 'accepted':
+              // 202 : l'archive n'est pas prête, le lien part par email.
+              return Response.json({ status: 'accepted' }, { status: 202 })
+            case 'already-pending':
+              // 409 : une demande est déjà en cours pour ce périmètre. Le
+              // critère 7 est un refus visible, pas une seconde archive.
+              return Response.json({ error: 'already_pending' }, { status: 409 })
+            case 'forbidden':
+              return Response.json({ error: 'forbidden' }, { status: 403 })
+            case 'unavailable':
+              // 503 : la mise en file a été refusée, donc rien ne construira
+              // l'archive. Même code et même raison que la suppression de
+              // compte (s34) sur le même port.
+              return Response.json({ error: 'unavailable' }, { status: 503 })
+            case 'not-found':
+              return notFound()
+          }
+        }),
+    },
+    /**
+     * **Le téléchargement, frontière publique et signée** (critères 3 et 4).
+     *
+     * Publique parce que le lien arrive par email : le répartiteur la limite en
+     * débit sans qu'elle ait rien à déclarer (ADR 050). La signature est
+     * vérifiée **avant toute lecture**, et l'échéance est relue en base — jamais
+     * dans l'URL.
+     *
+     * ## Ce qu'un appelant reçoit, état par état
+     *
+     * | État | Réponse | Ce qu'elle dit |
+     * |---|---|---|
+     * | module `auth` coupé | **404**, par le répartiteur | l'endroit n'existe pas : la route n'est dans aucune table de routage. `auth` est du socle, donc ce cas ne se produit pas ici — mais c'est la seule origine légitime d'un 404 |
+     * | export non câblé (`dataExport === null`) | **503** `data_export_not_configured` | l'endroit existe, rien n'est branché derrière |
+     * | **jeton absent** | **400** `invalid_token` | la requête n'est pas utilisable |
+     * | **jeton illisible** | **400** `invalid_token` | idem |
+     * | **signature fausse** | **400** `invalid_token` | idem |
+     * | **demande inconnue** | **400** `invalid_token` | idem |
+     * | lien expiré, ou archive oubliée | **410** `expired` | le lien a existé et n'existe plus |
+     * | demande pas encore prête | **409** `not_ready` | l'archive se construit |
+     * | archive hors du schéma documenté | **500** `malformed_archive` | on refuse de servir une forme inconnue |
+     * | débit dépassé | **429**, par le répartiteur | trop d'appels |
+     *
+     * **Les quatre lignes à 400 sont indiscernables**, code et corps compris :
+     * les distinguer dirait à qui essaie s'il a trouvé un identifiant de demande
+     * réel. C'est la même règle que le refus de connexion, qui ne distingue pas
+     * un compte inconnu d'un mot de passe faux (`docs/security.md` §7).
+     *
+     * **Aucune de ces lignes n'est un 404, et c'est un défaut corrigé.** La
+     * route répondait 404 sur un jeton absent ; `e2e/modules.spec.ts` — qui
+     * balaie toute route publique d'un module activé et exige qu'elle ne réponde
+     * jamais 404 — l'a refusée, exactement comme elle avait refusé la route de
+     * rappel du module de tâches en s33. Le balayage a raison : la route **est**
+     * déclarée et **est** montée, et dire « cet endroit n'existe pas » envoie
+     * chercher un défaut de routage qui n'existe pas.
+     *
+     * **La règle des 404 ne pousse pas dans l'autre sens ici** : `docs/security.md`
+     * §3 protège l'existence de la ressource **d'autrui** — une ligne qui n'est
+     * pas la vôtre —, pas celle d'un point d'entrée qu'un contrat de module
+     * open source déclare en clair. Le webhook de paiement, public lui aussi,
+     * répond 400 sur une signature fausse ; il ne se cache pas.
+     *
+     * **400 plutôt que le 503 de s33**, et la différence est réelle : là-bas
+     * l'absence était **du côté du serveur** — aucun fournisseur configuré —,
+     * ici elle est **du côté de l'appelant**, qui n'a pas présenté de lien
+     * utilisable. Le 503 reste, mais pour la ligne qui lui correspond : l'export
+     * non câblé.
+     */
+    {
+      method: 'GET',
+      path: PATHS.dataExportDownload,
+      protection: { level: 'public' },
+      handler: async (request) =>
+        await refuseInvalid(async () => {
+          const auth = service()
+          const dataExport = auth.useCases.dataExport
+
+          if (dataExport === null) {
+            return dataExportNotConfigured()
+          }
+
+          const token = new URL(request.url).searchParams.get('token') ?? ''
+          const outcome = await dataExport.downloadDataExport({ token })
+
+          switch (outcome.status) {
+            case 'served':
+              return new Response(JSON.stringify(outcome.archive, null, 2), {
+                status: 200,
+                headers: {
+                  'content-type': 'application/json; charset=utf-8',
+                  // Une archive se télécharge : elle ne s'affiche pas dans
+                  // l'onglet, et le nom ne porte aucune donnée personnelle.
+                  'content-disposition': 'attachment; filename="export.json"',
+                  // Elle ne doit atterrir dans aucun cache intermédiaire.
+                  'cache-control': 'no-store',
+                },
+              })
+            case 'expired':
+              // **410 Gone** : le lien a existé et n'existe plus. Le dire n'est
+              // pas une fuite — seul un jeton correctement signé arrive ici.
+              return Response.json({ error: 'expired' }, { status: 410 })
+            case 'not-ready':
+              return Response.json({ error: 'not_ready' }, { status: 409 })
+            case 'malformed':
+              // L'archive stockée ne correspond pas au schéma documenté : on
+              // refuse de servir plutôt que de remettre une forme inconnue.
+              return Response.json({ error: 'malformed_archive' }, { status: 500 })
+            case 'invalid':
+              // Jeton absent, illisible, mal signé, ou demande inconnue : **la
+              // même réponse pour les quatre**, code et corps compris.
+              return Response.json({ error: 'invalid_token' }, { status: 400 })
+          }
         }),
     },
   ]

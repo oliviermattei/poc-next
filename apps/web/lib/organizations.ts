@@ -3,7 +3,9 @@ import { resolveDataOwner, type ModuleScope, type ModuleSession } from '@repo/co
 import { getDatabase } from '@repo/db'
 import { CONSENT_SCREEN_SEGMENT } from '@repo/module-consent'
 import {
+  allows,
   EMPTY_ORGANIZATIONS_VIEW,
+  ORGANIZATION_ACTION,
   INVITATION_SCREEN_PATH,
   organizationRoutePath,
   organizationsModule,
@@ -120,6 +122,22 @@ export interface OrganizationsFeature {
    * retirer, sans toucher la base.
    */
   readonly releaseOrganizations: (userId: string) => Promise<readonly string[]>
+  /**
+   * **L'appelant peut-il exporter les données de cette organisation ?** (s35)
+   *
+   * Trois réponses, et aucun rôle n'en sort : la matrice rôle × action vit dans
+   * le module qui possède les rôles, et ce fichier la lit — il ne la rejoue pas
+   * (revue de s17, F4). `unknown` couvre le non-membre, l'organisation inconnue
+   * **et le module coupé** : les trois répondent 404, l'existence de la
+   * ressource d'autrui ne se confirme pas (`docs/security.md` §3).
+   *
+   * La lecture part d'un **compte** — `view(userId)` —, jamais d'un identifiant
+   * d'organisation reçu du client : c'est la forme que la porte de s15 exige.
+   */
+  readonly exportPermission: (input: {
+    readonly userId: string
+    readonly organizationId: string
+  }) => Promise<'allowed' | 'refused' | 'unknown'>
 }
 
 /**
@@ -132,6 +150,9 @@ const ABSENT_ORGANIZATIONS: OrganizationsFeature = {
   available: false,
   prepare: () => {},
   activeOrganizationId: () => Promise.resolve(null),
+  // Module coupé : aucune organisation n'existe, donc aucune n'est exportable.
+  // **Sans toucher la base**, comme le reste de cet état.
+  exportPermission: () => Promise.resolve('unknown'),
   view: () => Promise.resolve(EMPTY_ORGANIZATIONS_VIEW),
   invitation: () => Promise.resolve(null),
   countMembers: () => Promise.resolve(null),
@@ -344,6 +365,17 @@ export const organizations: OrganizationsFeature = mounted
         await organizationsService().useCases.soleOwnerships(userId),
       releaseOrganizations: async (userId) =>
         await organizationsService().useCases.releaseMemberships(userId),
+      exportPermission: async ({ userId, organizationId }) => {
+        const membership = (
+          await organizationsService().useCases.viewOrganizations(userId)
+        ).memberships.find((organization) => organization.id === organizationId)
+
+        if (membership === undefined) {
+          return 'unknown'
+        }
+
+        return allows(membership.role, ORGANIZATION_ACTION.exportData) ? 'allowed' : 'refused'
+      },
     }
   : ABSENT_ORGANIZATIONS
 

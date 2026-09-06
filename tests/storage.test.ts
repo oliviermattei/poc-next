@@ -649,7 +649,11 @@ describe.runIf(databaseReachable)('la purge et l’export du contrat de module',
     const session = await anAccount()
     const { served } = await uploadAvatar(session, PNG)
 
-    const payload = await exportModules(registry, { kind: 'user', userId: session.userId })
+    const outcome = await exportModules(registry, { kind: 'user', userId: session.userId })
+
+    expect(outcome.ok).toBe(true)
+
+    const payload = outcome.ok ? outcome.payloads : {}
     const files = (payload['storage'] as { files: readonly Record<string, unknown>[] }).files
 
     expect(files).toHaveLength(1)
