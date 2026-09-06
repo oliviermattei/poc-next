@@ -1714,3 +1714,57 @@ s49-contraste-des-alertes, s46-auth-screens-design
 **Le piège est le sens de la commande.** `pnpm test:contrast` est verte aujourd'hui parce qu'elle regarde peu. L'élargir la rendra rouge sur des défauts réels — c'est le but, et c'est pourquoi la correction des jetons et l'élargissement de la mesure doivent atterrir **ensemble**, dans cette story et pas dans deux.
 **Le focus ne se voit pas sur une capture** : la revue de `s46` l'a écrit noir sur blanc. La mesure doit porter sur le jeton, pas sur un rendu.
 `docs/decisions/056` a fixé la portée des jetons sémantiques ; si la correction la déborde, elle demande un ADR qui le supersède.
+
+---
+
+## Story s58-donnees-de-demonstration — Découvrir le produit sans le remplir soi-même
+**As a** Acheteur **I want** voir le produit avec des données plausibles **so that** je juge ce qu'il fait au lieu de contempler des listes vides.
+
+> **Ajoutée le 07/09, sur une mesure faite en montant une instance locale.** `packages/db/src/seed.ts` déclare `export const seeders: readonly Seeder[] = []`, sous le commentaire « **Vide tant qu'aucun module n'est livré** ». Cinquante-sept stories plus tard, **aucun module n'a jamais enregistré de seed**. `pnpm db:seed` est donc une commande documentée, testée pour son idempotence, et qui ne crée rien.
+>
+> Conséquence mesurée : un compte neuf voit le back-office, la facturation, les notifications et les organisations **tous vides**. Seuls le blog, la documentation et le changelog ont du contenu, parce qu'il est livré en MDX.
+
+### Complexity
+2
+
+### Acceptance criteria
+- [ ] `pnpm db:seed` crée des données plausibles pour **chaque module activé qui en déclare**, et rien pour les autres — dérivé du registre, aucun nom de module écrit
+- [ ] Le seed est **rejouable** : deux exécutions successives laissent le même état, prouvé en comptant les lignes et non en lisant le code
+- [ ] Un module coupé ne laisse **aucune ligne** derrière lui, et son seed n'est pas exécuté
+- [ ] Les données nommées sont **manifestement fictives** — aucune adresse ni raison sociale qui puisse passer pour réelle
+- [ ] Le seed **refuse de s'exécuter** sur une base qui porte déjà des comptes non issus de lui : un produit en service ne se remplit pas de démonstration par accident
+- [ ] Un **plancher** : un seed qui ne crée rien du tout fait échouer la commande, plutôt que de sortir vert
+
+### Dependencies
+s03-module-registry
+
+### Agentic notes
+**Le piège est le critère 5.** Un seed est un outil de développement ; le rendre inoffensif en production est plus important que ce qu'il crée. La garde se dérive d'un fait, pas d'une variable d'environnement — `NODE_ENV` est explicitement refusé comme critère par le socle.
+Le contrat de module a déjà quinze clés ; en ajouter une seizième rouvrirait **tous** les modules. Préférer une déclaration optionnelle, comme `NavigationEntry.surface` (ADR 066/067) l'a établi.
+
+---
+
+## Story s59-premier-deploiement — Démarrer l'image ailleurs que sur ce poste
+**As a** Propriétaire du produit **I want** une instance déployée **so that** je vérifie que ce qui marche ici marche là-bas.
+
+> **Ajoutée le 07/09.** `Dockerfile`, `docker-compose.prod.yml` et un guide de 32 Ko (`docs/deployment.md`, s27) existent. **Aucun n'a jamais tourné contre un vrai hôte** : la CI construit l'image et la démarre, personne ne l'a jamais servie. Tout ce que le dépôt affirme du mode production — nonce CSP, cartes source symbolisées, `output: 'standalone'`, migrations en conteneur séparé — est **raisonné, jamais observé**.
+>
+> C'est aussi la seule story qui puisse fermer une phrase revenue dans **onze** rapports de revue : « aucune preuve sous le build de production ».
+
+### Complexity
+3
+
+### Acceptance criteria
+- [ ] L'image est construite et **servie** sur un hôte qui n'est pas la machine de développement, avec sa base et ses migrations jouées dans leur conteneur
+- [ ] Le parcours d'inscription jusqu'au tableau de bord fonctionne **sur cette instance**, avec un email réellement reçu
+- [ ] La **CSP de production** est vérifiée sur la page servie : nonce par requête, aucun `unsafe-inline`, console muette
+- [ ] Une trace d'erreur est **lisible** chez le fournisseur — c'est ce que `s39` a livré sans jamais pouvoir le prouver
+- [ ] Ce qui a dû être configuré à la main est **écrit** dans `docs/deployment.md`, et ce qui a échoué du premier coup aussi
+- [ ] L'instance est **jetable** : la détruire et la reconstruire depuis le dépôt donne le même résultat
+
+### Dependencies
+s27-deployment, s39-monitoring-analytics
+
+### Agentic notes
+**Cette story demande des clés et un hôte — elle ne peut pas être jouée seule par un agent.** C'est son intérêt : elle transforme onze « non vérifié » en observations, et chaque écart trouvé vaut plus que la story elle-même.
+Le régime `recorded` du parcours doré n'a **aucune capture Stripe** : la première capture réelle appartient naturellement à cette story ou à sa voisine.

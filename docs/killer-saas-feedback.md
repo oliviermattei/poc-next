@@ -1329,6 +1329,24 @@ Je l'avais écrit de bonne foi, à partir d'un rapport de revue exact : `s37b2` 
 
 ---
 
+## P42bis — Ce qu'aucune story ne réclame n'existe pas, même après cinquante-sept
+
+En montant une instance locale pour que le porteur du projet puisse **regarder** le produit, deux faits sont apparus en cinq minutes, qu'aucune revue n'avait relevés en cinquante-sept stories :
+
+1. **`pnpm db:seed` ne crée rien.** `packages/db/src/seed.ts` déclare `seeders: readonly Seeder[] = []`, sous le commentaire « vide tant qu'aucun module n'est livré ». Les modules ont été livrés — seize — et **aucun n'a jamais enregistré de seed**. La commande est documentée, testée pour son idempotence, et elle est vide. Un acheteur qui ouvre le produit voit le back-office, la facturation, les notifications et les organisations **tous vides**.
+2. **Rien n'a jamais été déployé.** Le `Dockerfile`, la composition de production et un guide de 32 Ko existent depuis `s27`. La CI construit l'image et la démarre. **Personne ne l'a jamais servie.** Tout ce que le dépôt affirme du mode production — nonce CSP, cartes source symbolisées, `standalone`, migrations en conteneur séparé — est raisonné, jamais observé. La phrase « aucune preuve sous le build de production » revient dans **onze** rapports de revue.
+
+**Ce n'est pas une défaillance du pipeline : c'est sa forme.** Chaque story est jugée contre ses critères, et chaque revue balaie le diff. Ni l'un ni l'autre ne pose la question *« à quoi ressemble le produit quand on l'ouvre ? »* — parce que ce n'est le critère de personne. La modularité, la sécurité, l'idempotence, le contraste ont tous leur commande ; **l'expérience de première ouverture n'en a aucune**, et elle n'apparaît donc nulle part.
+
+**Ce qui l'a trouvée est le geste le plus banal du monde** : démarrer l'application et se connecter. Il a fallu, pour cela, dériver un environnement, migrer une base, s'inscrire par la route, lire l'email capturé sur le disque, le vérifier, puis atteindre le back-office pour déclencher la désignation du superadmin. **Sept étapes** qu'aucun document ne rassemble — et le fait que je les aie franchies en tâtonnant est lui-même le symptôme.
+
+**Deux règles.**
+
+- **Ce qu'aucune story ne réclame n'existe pas**, quel que soit le nombre de stories. Un tableau de bord vide, une commande de seed vide, une image jamais servie : trois absences que personne n'a demandées, donc que personne n'a livrées. La parade n'est pas plus de vigilance, c'est une story — `s58` et `s59` sont ouvertes.
+- **Ouvrir le produit est une recette**, au même titre que les sept autres. Tant que « je démarre et je regarde » demande sept étapes tâtonnées, personne ne le fera pendant une story, et ce qui ne se regarde jamais se dégrade sans bruit.
+
+---
+
 ## P36bis — La revue lit le code, elle ne mesure pas son coût : c'est CodeQL qui a trouvé
 
 `s39` a livré `POST /analytics/client-error`, **volontairement non authentifiée** — il faut capter les erreurs d'avant-session. Le corps est donc choisi par un appelant anonyme, et il traverse un analyseur de trace de pile écrit en expression régulière.
@@ -1833,6 +1851,7 @@ C'est la **troisième** occurrence du même défaut dans ce même fichier : une 
 | 06/09 | Deux branches indépendantes rougissent sur le même cas de parcours : un compte partagé entre parcours parallèles | 3/3 verts en isolation, vert au rejeu ; écrit comme dette du harnais | P39bis |
 | 06/09 | Le plan de s56 nommait un garde qui n'aurait pas rougi — deux faits vrais, une conclusion fausse | l'implémenteur l'a mesuré et a construit le garde au bon endroit | P40bis |
 | 06/09 | Rayon d'action de s40 mesuré sur une suite, supposé pour les autres : parcours doré rouge, `critical` en revue | traversée du parcours par le fondateur, sept recettes balayées | P41bis |
+| 07/09 | `pnpm db:seed` ne crée rien depuis 57 stories, et l'image n'a jamais été servie | trouvé en ouvrant le produit ; stories s58 et s59 ouvertes | P42bis |
 
 ---
 
