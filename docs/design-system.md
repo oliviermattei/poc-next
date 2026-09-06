@@ -218,7 +218,7 @@ Tous dans `packages/ui`. Un module compose avec cette liste ; il ne crée pas se
 | **Composés maison** | |
 | `PageHeader` | Titre, description, actions — en tête de chaque page applicative |
 | `EmptyState` | Icône, titre, explication, action principale |
-| `ConfirmDialog` | `AlertDialog` avec saisie de confirmation pour les suppressions (s34) |
+| `ConfirmDialog` | **Pas livré** — voir « Lacune : la confirmation d'une action irréversible » plus bas. Il supposait `AlertDialog`, que `packages/ui` n'expose pas non plus |
 | `ThemeToggle` | Commutateur clair / sombre (s08) |
 | `LocaleSwitcher` | Sélecteur de langue (s09) |
 | `OrgSwitcher` | Bascule d'organisation (s15) |
@@ -289,7 +289,19 @@ Un formulaire React sans `method` retombe sur le `GET` par défaut du navigateur
 Conséquence visible : un bref état grisé au premier rendu. C'est voulu, et c'est le prix de ne pas divulguer un secret par l'URL.
 
 ### Feedback
-`Toaster` pour l'asynchrone (enregistré, invitation envoyée, export prêt). `Alert` en ligne pour ce qui persiste (période d'essai qui s'achève, paiement en retard, email non vérifié). Confirmation par `ConfirmDialog` pour toute action irréversible, avec saisie du nom ou de l'email pour une suppression de compte ou d'organisation.
+`Toaster` pour l'asynchrone (enregistré, invitation envoyée, export prêt). `Alert` en ligne pour ce qui persiste (période d'essai qui s'achève, paiement en retard, email non vérifié).
+
+#### Lacune : la confirmation d'une action irréversible (s34b)
+
+**La règle écrite ici était « confirmation par `ConfirmDialog`, avec saisie du nom ou de l'email ». Le composant n'existe pas**, ni celui dont il dérive : `packages/ui/src/components/` ne contient ni `confirm-dialog.tsx`, ni `alert-dialog.tsx`, et le baril ne les exporte pas. Le suffixe `(s34)` de la ligne du tableau se lisait comme « livré par s34 » ; s34 n'a livré que le serveur, et s34b — les écrans — a constaté le manque en essayant de composer avec.
+
+**Ce qui est livré à la place**, sur les deux seuls écrans concernés (`/account`, `/organizations`) : la zone dangereuse est une `Card` bordée `border-destructive/50`, portant un `Alert` `destructive` qui décrit ce que le geste coûte, un `Label` + `Input` pour la saisie de confirmation, et un `Button variant="destructive"`. Rien d'inventé — aucun composant, aucun jeton hors du système —, et la saisie est **comparée par le serveur** : la garde ne dépend d'aucun dialogue.
+
+`packages/ui/AGENTS.md` le déclarait déjà correctement — les deux figurent dans son paragraphe « le reste de l'inventaire … n'est pas encore copié », et `tests/design-system.test.ts` confronte cette liste au baril. La contradiction était **ici seulement**.
+
+**Ce qu'il faudrait pour que la règle revienne** : copier `AlertDialog` (Radix, ADR 022) dans `packages/ui`, puis composer `ConfirmDialog` par-dessus, et **reprendre les deux écrans**. Ce n'est pas gratuit : un dialogue modal déplace le piège de l'hydratation — le déclencheur d'un dialogue Radix n'ouvre rien avant que React ait repris la main, alors qu'un formulaire en ligne, lui, reste soumettable nativement. La story qui le fera devra donc trancher ce que `docs/design-system.md`, § « Avant l'hydratation », impose au déclencheur.
+
+Jusque-là, **la confirmation d'une action irréversible se compose en ligne**, et cette section fait foi contre la ligne du tableau.
 
 ### Navigation
 La barre latérale est construite depuis les modules actifs (s08). Aucune entrée n'est écrite en dur : un module désactivé n'a pas d'entrée, sans condition dans le composant.

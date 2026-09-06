@@ -50,9 +50,13 @@ vi.mock('../apps/web/lib/auth', async () => {
   const { authRoutePath, readOAuthFailureClass, safeRedirectPath } = await import(
     '@repo/module-auth'
   )
-  const { FIXTURE_PASSKEYS, FIXTURE_SESSIONS, FIXTURE_SIGN_IN_METHODS, viewerState } = await import(
-    './fixtures/screen-viewer'
-  )
+  const {
+    FIXTURE_DATA_EXPORTS,
+    FIXTURE_PASSKEYS,
+    FIXTURE_SESSIONS,
+    FIXTURE_SIGN_IN_METHODS,
+    viewerState,
+  } = await import('./fixtures/screen-viewer')
 
   return {
     authRoutePath,
@@ -71,6 +75,11 @@ vi.mock('../apps/web/lib/auth', async () => {
     // libellés passent ainsi sous le filet, dans la configuration la plus
     // fournie. Aucun fournisseur configuré ne rendrait rien du tout.
     oauthProviders: () => ['google', 'github', 'local'],
+    // s34b — l'état des demandes d'export, tel que le serveur le rend. **Aucun
+    // jeton** : la trace ne porte que l'instant, l'état et l'échéance, et c'est
+    // exactement ce que l'écran reçoit.
+    currentDataExportRequests: () =>
+      Promise.resolve(viewerState.value.session === null ? [] : FIXTURE_DATA_EXPORTS),
   }
 })
 
@@ -1034,6 +1043,13 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           'confirmAction',
           'removeAction',
           'accept',
+          // s34b. L'état d'une demande d'export, remis à la carte « Exporter
+          // mes données » : `pending`, `ready` ou `failed`, une valeur du
+          // schéma de la base et non un mot affiché — le mot, lui, vient du
+          // catalogue par `dataExportStateKey`. Déclarée **sur cet écran** :
+          // ailleurs, une prop nommée `status` portant une chaîne fait
+          // toujours rougir.
+          'status',
         ],
         render: async () => (await import('../apps/web/app/account/page')).default(),
       },
@@ -1255,6 +1271,11 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           'setMemberRole',
           'setRoleAction',
           'fields',
+          // s34b — la route de suppression de l'organisation, remise à sa zone
+          // dangereuse. Un chemin monté, jamais du texte : le garde-fou de
+          // prose reste actif, `delete="Supprimer"` rougirait. Déclarée **sur
+          // cet écran**.
+          'delete',
         ],
         render: async () =>
           (await import('../apps/web/app/organizations/page')).default({

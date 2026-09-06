@@ -113,7 +113,9 @@ test('enregistrement, connexion sans mot de passe, renommage puis révocation', 
 
   // La session est bien celle du compte : l'écran de compte le sert.
   await page.goto('/account')
-  await expect(page.getByText(email)).toBeVisible()
+  // `exact` depuis s34b : le libellé de confirmation de suppression cite la
+  // même adresse (« Saisissez … pour confirmer »), donc deux nœuds la portent.
+  await expect(page.getByText(email, { exact: true })).toBeVisible()
 
   // --- Révocation -------------------------------------------------------
   // Le mot de passe reste : la passkey n'est pas le dernier moyen de

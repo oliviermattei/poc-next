@@ -74,5 +74,13 @@
   "error.last_owner": "Une organisation garde toujours au moins un propriétaire.",
   "error.not_a_member": "Cette personne n’est pas membre de l’organisation.",
   "error.seat_sync_unavailable": "La facturation n’a pas pu être mise à jour : rien n’a été modifié. Réessayez dans un instant.",
-  "error.seat_limit_reached": "La limite de membres de votre offre est atteinte : personne n’a été retiré, mais aucun membre de plus ne peut rejoindre l’organisation. Choisissez une offre au plafond plus élevé."
+  "error.seat_limit_reached": "La limite de membres de votre offre est atteinte : personne n’a été retiré, mais aucun membre de plus ne peut rejoindre l’organisation. Choisissez une offre au plafond plus élevé.",
+  "delete.title": "Supprimer l’organisation",
+  "delete.description": "La suppression est définitive : les données de l’organisation sont effacées, ses membres en sont retirés et son abonnement est annulé.",
+  "delete.warning": "Cette action est irréversible. Les fichiers, les invitations et les données de facturation de l’organisation partent avec elle.",
+  "delete.confirmationLabel": "Saisissez {name} pour confirmer",
+  "delete.submit": "Supprimer définitivement l’organisation",
+  "error.confirmation_mismatch": "La saisie ne correspond pas au nom de l’organisation. Rien n’a été supprimé.",
+  "error.billing_cancel_failed": "L’abonnement n’a pas pu être annulé chez le fournisseur de paiement : rien n’a été effacé. Réessayez dans un instant.",
+  "error.purge_failed": "L’effacement s’est interrompu. Réessayez : la suppression reprend là où elle s’est arrêtée."
 }

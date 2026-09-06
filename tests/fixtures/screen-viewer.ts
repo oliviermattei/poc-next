@@ -1,4 +1,5 @@
 import type {
+  DataExportTrace,
   DescribedPasskey,
   DescribedSession,
   DescribedSignInMethod,
@@ -150,6 +151,25 @@ export const FIXTURE_SESSIONS: readonly DescribedSession[] = [
     ipAddress: FIXTURE_IP,
     userAgent: FIXTURE_USER_AGENT,
     current: true,
+  },
+]
+
+/**
+ * Les demandes d'export du compte, telles que le module les rend (s34b).
+ *
+ * Une seule, **prête** : c'est l'état qui rend le plus de texte — l'instant de
+ * la demande *et* l'échéance du lien —, donc celui qui passe le plus large sous
+ * le filet des textes rendus. Les deux dates sont celles de la session, dont le
+ * format long est déjà déclaré comme une donnée.
+ *
+ * **Aucun jeton n'y figure, et il n'y en a jamais** : `DataExportTrace` porte
+ * trois champs, et le lien de téléchargement part par email.
+ */
+export const FIXTURE_DATA_EXPORTS: readonly DataExportTrace[] = [
+  {
+    requestedAt: FIXTURE_SESSION_CREATED_AT.toISOString(),
+    status: 'ready',
+    expiresAt: FIXTURE_SESSION_CREATED_AT.toISOString(),
   },
 ]
 

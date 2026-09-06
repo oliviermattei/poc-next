@@ -13,6 +13,7 @@ import { redirect } from 'next/navigation'
 
 import {
   authRoutePath,
+  currentDataExportRequests,
   currentPasskeys,
   currentSessions,
   currentSignInMethods,
@@ -25,7 +26,10 @@ import { SignOutButton } from '../sign-out-button'
 import { AccountForm } from './account-form'
 import { AvatarForm } from './avatar-form'
 import { ConnectionList, type ConnectionRow } from './connection-list'
+import { DataExportCard } from './data-export-card'
+import { DeleteAccountCard } from './delete-account-card'
 import { PasskeyCard, type PasskeyRow } from './passkey-card'
+import { dataExportStateOf } from './rgpd-outcomes'
 import { SessionList, type SessionRow } from './session-list'
 import { TwoFactorBadge, TwoFactorCard } from './two-factor-card'
 
@@ -106,6 +110,9 @@ export default async function AccountPage() {
     addedAt: dateFormat.format(passkey.createdAt),
     removable: passkey.removable,
   }))
+  // **L'état des demandes d'export, tel que le serveur le rend** — jamais leur
+  // jeton : la trace ne porte que l'instant, l'état et l'échéance (s34b).
+  const dataExport = dataExportStateOf(await currentDataExportRequests())
   const sessions: readonly SessionRow[] = (await currentSessions()).map((active) => ({
     id: active.id,
     createdAt: dateFormat.format(active.createdAt),
@@ -306,6 +313,61 @@ export default async function AccountPage() {
             sessions={sessions}
             action={authRoutePath('revokeSession')}
             signInHref={path('/sign-in')}
+          />
+        </CardContent>
+      </Card>
+
+      {/*
+        **Le droit à la portabilité** (s35), enfin joignable depuis
+        l'application. L'écran montre l'**état** de la demande ; le lien de
+        téléchargement, lui, part par email et n'apparaît jamais ici — sa route
+        est publique, et il donne accès à l'ensemble des données d'une personne.
+      */}
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('app.account.export.title')}</CardTitle>
+          <CardDescription>{t('app.account.export.description')}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <DataExportCard
+            action={authRoutePath('dataExport')}
+            pending={dataExport.pending}
+            latest={
+              dataExport.latest === null
+                ? null
+                : {
+                    status: dataExport.latest.status,
+                    // Formatées **par le serveur**, dans la locale servie : les
+                    // formater dans le composant client les rendrait dans le
+                    // fuseau du navigateur, ce que React signale comme un écart
+                    // d'hydratation.
+                    requestedAt: dateFormat.format(new Date(dataExport.latest.requestedAt)),
+                    expiresAt:
+                      dataExport.latest.expiresAt === null
+                        ? null
+                        : dateFormat.format(new Date(dataExport.latest.expiresAt)),
+                  }
+            }
+          />
+        </CardContent>
+      </Card>
+
+      {/*
+        **La zone dangereuse**, en dernier et bordée de `destructive` : elle est
+        séparée des cartes qui précèdent, et le design system réserve cette
+        sémantique à ce qui ne se rattrape pas. Aucun jeton n'est inventé ici —
+        `border-destructive/50` est celui de l'`Alert` de même variante.
+      */}
+      <Card className="border-destructive/50">
+        <CardHeader>
+          <CardTitle>{t('app.account.deletion.title')}</CardTitle>
+          <CardDescription>{t('app.account.deletion.description')}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <DeleteAccountCard
+            action={authRoutePath('deleteAccount')}
+            email={account.email}
+            destination={path('/sign-in')}
           />
         </CardContent>
       </Card>

@@ -86,6 +86,7 @@ export default async function OrganizationsPage({
         revokeInvitation: organizationRoutePath('revokeInvitation'),
         removeMember: organizationRoutePath('removeMember'),
         setMemberRole: organizationRoutePath('setMemberRole'),
+        delete: organizationRoutePath('delete'),
       }}
       viewerId={session.userId}
       refusalKey={refusalKeyOf(parameters['error'])}

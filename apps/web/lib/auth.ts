@@ -8,6 +8,7 @@ import {
   type AccountView,
   type AnyOAuthProviderId,
   type AuthService,
+  type DataExportTrace,
   type DescribedPasskey,
   type DescribedSession,
   type DescribedSignInMethod,
@@ -298,4 +299,29 @@ export async function currentSessions(): Promise<readonly DescribedSession[]> {
     userId: session.userId,
     currentSessionId: await auth.resolveSessionId(request),
   })
+}
+
+/**
+ * **Les demandes d'export de l'appelant — leur état, jamais leur lien** (s34b).
+ *
+ * La trace que le module rend porte trois champs : l'instant de la demande, son
+ * état, l'échéance du lien. **Aucun jeton n'en sort**, et c'est la propriété qui
+ * compte : le lien de téléchargement part par email et sa route est **publique**
+ * (s35), donc le faire transiter par un écran le laisserait dans l'historique du
+ * navigateur et dans les journaux d'accès.
+ *
+ * Le périmètre est celui du **compte de la session**, jamais un identifiant
+ * reçu en paramètre (`docs/security.md` §3). Export non câblé — ou personne de
+ * connecté — : aucune demande, sans toucher la base.
+ */
+export async function currentDataExportRequests(): Promise<readonly DataExportTrace[]> {
+  const auth = appAuth()
+  const session = await auth.resolveSession(await incomingRequest())
+  const dataExport = auth.useCases.dataExport
+
+  if (session === null || dataExport === null) {
+    return []
+  }
+
+  return await dataExport.listDataExportTraces({ kind: 'user', userId: session.userId })
 }

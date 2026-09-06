@@ -74,5 +74,13 @@
   "error.last_owner": "An organization always keeps at least one owner.",
   "error.not_a_member": "This person is not a member of the organization.",
   "error.seat_sync_unavailable": "Billing could not be updated, so nothing was changed. Please try again in a moment.",
-  "error.seat_limit_reached": "Your plan's member limit has been reached: nobody was removed, but no further member can join this organisation. Pick an offer with a higher limit."
+  "error.seat_limit_reached": "Your plan's member limit has been reached: nobody was removed, but no further member can join this organisation. Pick an offer with a higher limit.",
+  "delete.title": "Delete the organization",
+  "delete.description": "Deletion is permanent: the organization’s data is erased, its members are removed, and its subscription is cancelled.",
+  "delete.warning": "This action cannot be undone. The organization’s files, invitations and billing records go with it.",
+  "delete.confirmationLabel": "Type {name} to confirm",
+  "delete.submit": "Permanently delete the organization",
+  "error.confirmation_mismatch": "What you typed does not match the organization’s name. Nothing was deleted.",
+  "error.billing_cancel_failed": "The subscription could not be cancelled with the payment provider: nothing was erased. Try again in a moment.",
+  "error.purge_failed": "The erasure stopped part way. Try again: deletion resumes where it left off."
 }

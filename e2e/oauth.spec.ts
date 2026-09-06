@@ -155,7 +155,9 @@ test('le retour venu d’un autre site atterrit connecté', async ({ page, conte
   await expect(page.getByRole('button', { name: /Mon compte|Compte/ })).toBeVisible()
 
   await page.goto('/account')
-  await expect(page.getByRole('heading', { name: 'Mon compte' })).toBeVisible()
+  // `exact` depuis s34b : la zone dangereuse de l'écran porte le titre
+  // « Supprimer mon compte », qu'une correspondance partielle désigne aussi.
+  await expect(page.getByRole('heading', { name: 'Mon compte', exact: true })).toBeVisible()
   await expect(page.getByText('Connexions externes')).toBeVisible()
 })
 

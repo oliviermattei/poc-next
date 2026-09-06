@@ -64,10 +64,19 @@ module (`packages/modules/<module>/src/domain`).
   `@repo/module-notifications/presentation`) : ses composants React n'ont pas
   leur place dans le barril que lit `config/features.ts`, qu'aucun outil du
   dépôt ne compile en JSX (**ADR 024**, la règle de tout module à composants) ;
-- `zod` pour valider les entrées de route — le paramètre `[document]` des pages
-  légales et le `?offer=` de la page de tarifs (s22), à ce jour. Zod à **chaque**
-  frontière (`docs/security.md` §4), y compris un segment d'URL et un paramètre
-  de requête qui n'est qu'une préférence d'affichage ;
+- `zod` pour valider ce qui **entre** dans un écran. Zod à **chaque** frontière
+  (`docs/security.md` §4), et le mot « frontière » est plus large qu'il n'en a
+  l'air : un segment d'URL (`[document]` des pages légales), un paramètre de
+  requête qui n'est qu'une préférence d'affichage (`?offer=` des tarifs, s22),
+  le motif de refus rapporté par une redirection de route (`?error=` des
+  organisations) et **le corps d'une réponse que le navigateur va rendre**
+  (`app/account/rgpd-outcomes.ts`, s34b : la liste d'organisations d'un 409
+  s'affiche, donc elle se valide).
+  **Aucune liste ne fait foi ici, et aucun « à ce jour » n'est écrit** : rien ne
+  dérive les points d'appel de `zod`, contrairement à la liste des fichiers de
+  `lib/` juste au-dessus, que `tests/agents-md.test.ts` lit sur le disque. La
+  phrase énumérait deux cas quand il y en avait quatre ; les exemples ci-dessus
+  illustrent la règle, ils ne la mesurent pas ;
 - `next-intl` pour la résolution des chaînes — dans `i18n/request.ts`,
   `i18n/request-config.ts`, `lib/i18n.ts`, `app/api/i18n-probe/route.ts` et les
   composants qui affichent du texte. La bibliothèque est un
