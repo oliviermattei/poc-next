@@ -48,7 +48,9 @@ test('inscription, vérification, connexion, écran protégé, déconnexion', as
   expect(page.url()).toMatch(urlOf('/'))
 
   await page.goto('/account')
-  await expect(page.getByRole('heading', { name: 'Mon compte' })).toBeVisible()
+  // `exact` depuis s34b : la zone dangereuse de l'écran porte le titre
+  // « Supprimer mon compte », qu'une correspondance partielle désigne aussi.
+  await expect(page.getByRole('heading', { name: 'Mon compte', exact: true })).toBeVisible()
 
   // Le cookie de session, tel que le navigateur le stocke.
   const cookie = (await context.cookies()).find((candidate) => candidate.name.includes('session_token'))

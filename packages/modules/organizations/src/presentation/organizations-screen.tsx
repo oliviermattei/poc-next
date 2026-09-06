@@ -61,6 +61,7 @@ export interface OrganizationsScreenProps {
     readonly revokeInvitation: string
     readonly removeMember: string
     readonly setMemberRole: string
+    readonly delete: string
   }
   /** Le compte de l'appelant : c'est lui qui « quitte » au lieu de « retirer ». */
   readonly viewerId: string
@@ -477,6 +478,54 @@ export function OrganizationsScreen({
               />
               <div>
                 <Button type="submit">{intl.t(K.settingsSubmit)}</Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
+      {/*
+        **La zone dangereuse de l'organisation** (s34b, critère 3), réservée au
+        propriétaire — la matrice est celle du `domain`, l'écran ne compare
+        aucun rôle. Un membre ne la voit pas ; ce n'est pas la permission, le
+        serveur refuse de toute façon (`docs/security.md` §3), c'est ne pas
+        promettre ce qu'on refusera.
+
+        La saisie est **présentée ici et comparée là-bas** : `confirmsOrganization`
+        vit dans le `domain` du module, avec la mutation de s34. Un formulaire
+        natif suffit — la route répond 303 vers cet écran, motif compris —, donc
+        aucun composant client, et le `method="post"` reste écrit en toutes
+        lettres.
+      */}
+      {current === null || !permissions[ORGANIZATION_ACTION.delete] ? null : (
+        <Card className="border-destructive/50">
+          <CardHeader>
+            <CardTitle>{intl.t(K.deleteTitle)}</CardTitle>
+            <CardDescription>{intl.t(K.deleteDescription)}</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <Alert variant="destructive">{intl.t(K.deleteWarning)}</Alert>
+            <form
+              method="post"
+              action={actions.delete}
+              aria-label={intl.t(K.deleteTitle)}
+              className="flex flex-col gap-4"
+            >
+              {/* L'organisation supprimée est **l'organisation courante**, posée
+                  par le serveur. Le champ est caché mais il n'est pas une
+                  autorisation : la route relit l'appartenance et le rôle, et une
+                  valeur falsifiée répond 404. */}
+              <input type="hidden" name="organizationId" value={current.id} />
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="delete-organization">
+                  {intl.t(K.deleteConfirmationLabel, { name: current.name })}
+                </Label>
+                <Input id="delete-organization" name="confirmation" type="text" required />
+              </div>
+              <div>
+                <Button type="submit" variant="destructive">
+                  {intl.t(K.deleteSubmit)}
+                </Button>
               </div>
             </form>
           </CardContent>

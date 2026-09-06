@@ -54,13 +54,49 @@ export const refusalMessageKey = (refusal: OrganizationRefusal | InvitationRefus
 export const invitationStatusKey = (status: InvitationStatus): string =>
   organizationsKey(`invitations.status.${status}`)
 
-/** Les motifs de refus que l'écran sait rendre. Dérivés du `domain`, pas recopiés. */
+/**
+ * Les motifs de refus que l'écran sait rendre. Dérivés du `domain`, pas recopiés.
+ *
+ * **Les trois de s34 y sont entrés avec l'écran qui les montre** (s34b) : le
+ * serveur les rendait depuis s34, la redirection les portait en paramètre, et
+ * `app/organizations/page.tsx` — dont l'énumération Zod vient d'ici — les
+ * refusait faute d'être déclarés. Une suppression refusée revenait donc sur un
+ * écran muet.
+ */
 export const ORGANIZATION_REFUSALS = [
   'invalid_name',
   'invalid_slug',
   'slug_unavailable',
   'invalid_role',
+  'confirmation_mismatch',
+  'billing_cancel_failed',
+  'purge_failed',
 ] as const satisfies readonly OrganizationRefusal[]
+
+/**
+ * **Tout motif que le module peut refuser est rendable par un écran** — tenu
+ * par le compilateur, donc par `pnpm typecheck`.
+ *
+ * Les routes redirigent vers l'écran avec `?error=<motif>`, et
+ * `apps/web/app/organizations/page.tsx` valide ce paramètre contre les deux
+ * listes ci-dessus (Zod à chaque frontière). Un motif **absent** des listes n'y
+ * est donc pas reconnu : la redirection aboutit sur un écran **muet**, ce qui
+ * est exactement ce qui s'était produit entre `s34` et `s34b` — la suppression
+ * d'organisation rendait trois motifs qu'aucun écran ne savait afficher.
+ *
+ * `satisfies` ne tient que l'inclusion inverse (rien d'inventé) ; celle-ci tient
+ * la **couverture**. Sans elle, ajouter un motif au `domain` sans l'ajouter ici
+ * ne fait rougir aucune commande — mesuré : la mutation qui retire les trois
+ * motifs de `s34` laissait `pnpm test` entièrement vert.
+ */
+type AssertNever<T extends never> = T
+
+export type EveryRefusalIsRenderable = AssertNever<
+  Exclude<
+    OrganizationRefusal | InvitationRefusal,
+    (typeof ORGANIZATION_REFUSALS)[number] | (typeof INVITATION_REFUSALS)[number]
+  >
+>
 
 /** Les clés fixes de l'écran, qualifiées une fois pour toutes. */
 export const ORGANIZATIONS_KEYS = {
@@ -151,6 +187,16 @@ export const ORGANIZATIONS_KEYS = {
    * ne peut pas l'accueillir, et à qui parler.
    */
   acceptSeatLimit: organizationsKey('accept.seatLimit'),
+  /* ----------------------------------------------------------------------- *
+   * s34b — la suppression de l'organisation, côté écran. Le serveur est celui
+   * de s34 : il compare la saisie au nom, réservé au propriétaire, et il n'a
+   * pas bougé.
+   * ----------------------------------------------------------------------- */
+  deleteTitle: organizationsKey('delete.title'),
+  deleteDescription: organizationsKey('delete.description'),
+  deleteWarning: organizationsKey('delete.warning'),
+  deleteConfirmationLabel: organizationsKey('delete.confirmationLabel'),
+  deleteSubmit: organizationsKey('delete.submit'),
 } as const
 
 /**

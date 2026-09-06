@@ -2461,6 +2461,7 @@ describe('le sélecteur d’organisation, quand rien n’est sélectionné', () 
     revokeInvitation: '/route-revoke',
     removeMember: '/route-remove',
     setMemberRole: '/route-set-role',
+    delete: '/route-delete',
   }
   const A_MEMBERSHIP = {
     id: 'org_1',
@@ -2576,6 +2577,34 @@ describe('le sélecteur d’organisation, quand rien n’est sélectionné', () 
 
       expect(html, role).toContain(ACTIONS.invite)
       expect(html, role).toContain(ACTIONS.update)
+    }
+  })
+
+  /**
+   * **La zone dangereuse n'est offerte qu'au propriétaire** (s34b, critère 3).
+   *
+   * Elle ne suit pas la ligne d'`invite` et d'`update`, que l'`admin` a aussi :
+   * `organization.delete` est réservée au propriétaire par la matrice du
+   * `domain`, et l'écran ne compare aucun rôle — il lit `permissions`. Ce qui
+   * est mesuré ici est l'**affordance** : le serveur refuse de toute façon, en
+   * 403, et les cas de câblage plus haut le prouvent.
+   */
+  it('n’offre la suppression de l’organisation qu’à son propriétaire', async () => {
+    const asRole = async (role: OrganizationRole): Promise<string> => {
+      const membership = { ...A_MEMBERSHIP, role }
+
+      return await render({
+        ...EMPTY_ORGANIZATIONS_VIEW,
+        current: membership,
+        memberships: [membership],
+        permissions: permissionsOf(role),
+      })
+    }
+
+    expect(await asRole('owner')).toContain(ACTIONS.delete)
+
+    for (const role of ['admin', 'member'] as const) {
+      expect(await asRole(role), role).not.toContain(ACTIONS.delete)
     }
   })
 
