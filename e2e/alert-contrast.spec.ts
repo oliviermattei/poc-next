@@ -8,7 +8,7 @@ import { billing } from '../apps/web/lib/billing'
 import { marketingFormsAvailable, marketingSite } from '../apps/web/lib/marketing'
 import { flatMessagesFor } from '../apps/web/lib/messages'
 import { defaultLocale } from '../config/i18n'
-import { CONTRAST_THRESHOLD, contrastRatio } from '../scripts/contrast-rules'
+import { CONTRAST_THRESHOLDS, contrastRatio } from '../scripts/contrast-rules'
 import { publicPath } from './support/locale'
 import { painted } from './support/painted'
 
@@ -16,10 +16,14 @@ import { painted } from './support/painted'
  * **Le contraste des `Alert`, mesuré par le navigateur lui-même** (s49).
  *
  * `pnpm test:contrast` mesure les jetons **sur le papier** : elle lit la feuille
- * de style, convertit l'OKLCH avec son propre convertisseur, et **suppose** que
- * le fond effectif est la carte. Ce fichier mesure autre chose, et c'est le seul
- * endroit où il peut l'être : ce que Chromium a réellement peint — sa conversion
- * de couleur, sa composition des fonds empilés, sa cascade de thème.
+ * de style, convertit l'OKLCH avec son propre convertisseur, et compose la
+ * teinte de l'`Alert` au-dessus de la surface **déclarée** pour elle — la carte
+ * (s57 : la surface n'est plus une constante globale, elle est portée par la
+ * source, et une source teintée qui n'en déclare aucune est refusée). Ce
+ * fichier mesure autre chose, et c'est le seul endroit où il peut l'être : ce
+ * que Chromium a réellement peint — sa conversion de couleur, sa composition
+ * des fonds empilés, sa cascade de thème. C'est donc lui qui **confirme** la
+ * surface déclarée, plutôt que de la croire.
  *
  * La chaîne est donc bien celle qu'un visiteur voit : Tailwind a généré
  * l'utilitaire depuis `@theme inline`, `.dark` l'a redéfini, le navigateur a
@@ -39,8 +43,9 @@ import { painted } from './support/painted'
  * justement, chacun avec sa propre pile de fonds.
  *
  * **Ce qui ne l'est pas** : la variante `default`, les bordures `border-<sem>/50`
- * (seuil 3 : 1 des éléments non textuels), les icônes, les états de focus. Et
- * un seul navigateur — Chromium, celui de la suite.
+ * (seuil 3 : 1 des éléments non textuels), les icônes. L'anneau de focus, lui,
+ * a désormais sa propre mesure peinte — `e2e/focus-contrast.spec.ts`. Et un
+ * seul navigateur — Chromium, celui de la suite.
  */
 
 const catalogue = flatMessagesFor(defaultLocale)
@@ -117,7 +122,7 @@ const measureBothThemes = async (
       `${variant} — ${theme.label} : ${ratio.toFixed(2)} : 1, texte ${colours.textHex} sur ${
         colours.backgroundHex
       }`,
-    ).toBeGreaterThanOrEqual(CONTRAST_THRESHOLD)
+    ).toBeGreaterThanOrEqual(CONTRAST_THRESHOLDS.texte)
   }
 }
 

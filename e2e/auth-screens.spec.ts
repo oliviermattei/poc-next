@@ -7,7 +7,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { localeRouting } from '../apps/web/lib/locale-routing'
 import { flatMessagesFor } from '../apps/web/lib/messages'
 import { defaultLocale } from '../config/i18n'
-import { CONTRAST_THRESHOLD, contrastRatio } from '../scripts/contrast-rules'
+import { CONTRAST_THRESHOLDS, contrastRatio } from '../scripts/contrast-rules'
 import { painted } from './support/painted'
 
 /**
@@ -33,19 +33,22 @@ import { painted } from './support/painted'
  *
  * ## Ce que `pnpm test:contrast` ne dit pas, et que ce fichier dit
  *
- * La commande ne mesure **que** l'`Alert` : ses paires sont dérivées de
- * `packages/ui/src/components/alert.tsx`, et elle *suppose* que le fond est la
- * carte. Elle ne dit rien d'un champ, d'un bouton, d'un libellé ni d'un lien.
- * Une commande verte ne couvrait donc **aucun** des textes que s46 livre :
- * c'est ce trou-ci que le second cas ferme, dans le seul endroit où il peut
- * l'être — un navigateur, qui compose réellement les fonds.
+ * La commande mesure des **jetons** : depuis s57 elle balaie tous les
+ * composants de `packages/ui/src/components` et dérive les paires que chacun
+ * peint au repos, l'anneau de focus compris. Elle ne dit toujours rien du fond
+ * **réel** sous un élément d'écran, ni d'un texte qui hérite de sa surface —
+ * `text-muted-foreground` sans fond dans la même chaîne, c'est-à-dire la
+ * plupart des textes de ces cinq écrans —, et sa propre sortie le dit. C'est ce
+ * trou-ci que le second cas ferme, dans le seul endroit où il peut l'être — un
+ * navigateur, qui compose réellement les fonds.
  *
  * ## Ce qui reste non mesuré, et qu'il ne faut pas croire couvert
  *
- * Les **états** : focus (`focus-visible:ring-ring`), survol, bouton éteint
- * avant hydratation. Les **éléments non textuels** : bordures de champ et de
- * carte, anneau de focus, séparateurs — leur seuil est 3 : 1, et rien ici ne
- * les mesure. Et **un seul navigateur**, Chromium, celui de la suite.
+ * Les **états** : survol, bouton éteint avant hydratation. Les **éléments non
+ * textuels** : bordures de champ et de carte, séparateurs — leur seuil est
+ * 3 : 1, et rien ici ne les mesure. Le focus, lui, a sa mesure peinte depuis
+ * s57 : `e2e/focus-contrast.spec.ts`, sur ce même écran de connexion. Et **un
+ * seul navigateur**, Chromium, celui de la suite.
  */
 
 /** 380 px : la largeur du critère de s46, plus étroite que les 400 px de s08. */
@@ -295,7 +298,7 @@ test('le texte de l’écran de connexion tient le seuil AA, tel que le navigate
       expect(
         ratio,
         `${label} : ${ratio.toFixed(2)} : 1, texte ${colours.textHex} sur ${colours.backgroundHex}`,
-      ).toBeGreaterThanOrEqual(CONTRAST_THRESHOLD)
+      ).toBeGreaterThanOrEqual(CONTRAST_THRESHOLDS.texte)
     }
   }
 })

@@ -39,7 +39,13 @@
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
   --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  /*
+   * `0.556` mesurait **4,34 : 1** sur `--muted` — le repli d'un `Avatar` est du
+   * texte posé dessus —, donc sous le seuil du texte normal alors qu'il tenait
+   * 4,73 : 1 sur la page. Un cran plus sombre le porte à 4,64 : 1 sur `--muted`
+   * et 5,06 : 1 sur `--background` (s57).
+   */
+  --muted-foreground: oklch(0.54 0 0);
 
   /* Primaire — LE token que chaque projet remplace */
   --primary: oklch(0.205 0 0);
@@ -50,14 +56,26 @@
   --accent-foreground: oklch(0.205 0 0);
 
   /* Sémantiques — états métier, jamais décoratives */
+  /**
+   * **Le texte d'un remplissage sémantique est sombre dès que le remplissage
+   * est clair** (s57).
+   *
+   * `--warning-foreground` était seul à l'être ; `success` et `info` gardaient
+   * du blanc et mesuraient **3,25 : 1** et **3,49 : 1** sur leur propre fond,
+   * sous les 4,5 : 1 du texte normal — un `Badge` illisible que rien ne disait,
+   * parce que `pnpm test:contrast` ne regardait que l'`Alert`. Les trois sont
+   * maintenant alignés sur la même valeur (5,29 et 4,92 : 1), comme ils le sont
+   * déjà tous les trois dans `.dark`. `--destructive` reste blanc : il est plus
+   * sombre, et il mesure 4,56 : 1.
+   */
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.985 0 0);
   --success: oklch(0.62 0.17 149);
-  --success-foreground: oklch(0.985 0 0);
+  --success-foreground: oklch(0.205 0 0);
   --warning: oklch(0.79 0.16 86);
   --warning-foreground: oklch(0.205 0 0);
   --info: oklch(0.62 0.16 250);
-  --info-foreground: oklch(0.985 0 0);
+  --info-foreground: oklch(0.205 0 0);
 
   /**
    * **Texte sur teinte** — une famille distincte du remplissage (s49, ADR 056).
@@ -83,7 +101,26 @@
   /* Bordures et focus */
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  /**
+   * **L'anneau de focus, et il est mesuré comme un indicateur non textuel**
+   * (s57, seuil 3 : 1 — WCAG SC 1.4.11).
+   *
+   * `0.708` donnait **2,59 : 1** sur la page comme sur une carte : le focus
+   * clavier de sept composants était sous le seuil, et c'est tout le parcours
+   * au clavier du produit. `0.556` le porte à 4,73 : 1 sur `--background`,
+   * `--card` et `--popover`, et 4,34 : 1 sur `--muted`.
+   *
+   * **Une seule valeur, sans surcharge dans `.dark`.** Elle y tenait déjà
+   * `0.556` — mesuré 4,18 : 1 sur le fond sombre, 3,79 sur la carte, 3,19 sur
+   * `--muted` —, donc la redéclarer serait une copie muette : deux valeurs
+   * identiques qu'un futur ajustement du mode clair ferait diverger sans que
+   * personne ne l'ait voulu. `pnpm test:contrast` mesure l'anneau dans les
+   * deux modes, donc une divergence qui coûterait le seuil rougit.
+   *
+   * Seule la **couleur** change : ni l'épaisseur (`ring-2`), ni le décalage,
+   * ni la forme, qui seraient une décision de design et non de contraste.
+   */
+  --ring: oklch(0.556 0 0);
 
   --radius: 0.5rem;
 }
@@ -105,8 +142,16 @@
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
 
+  /*
+   * **Du texte sombre, comme ses trois sœurs de ce bloc** (s57). Le blanc
+   * mesurait **2,77 : 1** sur `--destructive` en sombre — un `Button` et un
+   * `Badge` destructifs illisibles —, contre 6,84 : 1 ici. Assombrir le
+   * remplissage aurait changé la couleur de tout ce qui est destructif ;
+   * retourner le texte est le geste minimal, et c'est déjà celui de `success`,
+   * `warning` et `info` dans ce même bloc.
+   */
   --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.985 0 0);
+  --destructive-foreground: oklch(0.145 0 0);
   --success: oklch(0.70 0.15 149);
   --success-foreground: oklch(0.145 0 0);
   --warning: oklch(0.83 0.14 86);
@@ -129,7 +174,7 @@
 
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  /* `--ring` n'est pas redéclaré ici : `:root` porte la valeur des deux modes. */
 }
 
 /**

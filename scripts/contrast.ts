@@ -1,16 +1,15 @@
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-
 import {
-  CONTRAST_THRESHOLD,
+  CONTRAST_THRESHOLDS,
   ContrastRuleError,
-  contrastPairs,
+  contrastNotes,
   contrastReport,
+  measureContrast,
 } from './contrast-rules'
+import { COMPONENTS_DIRECTORY, STYLESHEET_PATH, deliveredContrastInput } from './contrast-sources'
 
 /**
- * **`pnpm test:contrast`** (s49) — le contraste de l'`Alert`, mesuré sur les
- * jetons livrés.
+ * **`pnpm test:contrast`** — le contraste des jetons livrés, mesuré sur les
+ * fichiers livrés (s49, élargie par s57).
  *
  * ## Pourquoi une commande, et pas seulement un correctif
  *
@@ -21,37 +20,40 @@ import {
  * de jeton casserait en silence — « une règle qu'aucune commande ne vérifie est
  * de la documentation, pas une règle » (`AGENTS.md`).
  *
- * ## Ce qu'elle vérifie, et ce qu'elle ne vérifie pas
+ * ## Ce qu'elle vérifie
  *
- * Elle vérifie : chaque variante de `packages/ui/src/components/alert.tsx`, dans
- * les deux thèmes, texte sur teinte composée au-dessus de la carte, contre le
- * seuil WCAG AA du **texte normal** (4,5 : 1 — l'`Alert` rend du `text-sm`, le
- * seuil « grand texte » à 3 : 1 ne s'y applique pas).
+ * Chaque chaîne de classes des composants de `packages/ui/src/components` qui
+ * peint **au repos** un fond et un texte, dans les deux thèmes, plus l'anneau
+ * de focus contre les surfaces sur lesquelles il tombe. Deux espèces, donc deux
+ * seuils : **4,5 : 1** pour du texte, **3 : 1** pour un indicateur non textuel
+ * (s57 — un seuil unique serait faux dans un sens ou dans l'autre).
  *
- * Elle ne vérifie pas : les bordures `border-<sem>/50` (éléments non textuels,
- * seuil 3 : 1), les badges, les icônes, les états de focus, ni aucun autre
- * composant. Et elle ne remplace pas un rendu : le fond effectif est **supposé**
- * être la carte, c'est le navigateur qui le confirme.
+ * ## Ce qu'elle ne vérifie pas
  *
- * Tout est **dérivé** — les variantes du composant, les valeurs de la feuille de
- * style. Une table recopiée resterait verte après un changement de jeton, ce qui
- * est exactement le faux vert que cette commande existe pour empêcher. Les
- * règles vivent dans `scripts/contrast-rules.ts` et `tests/contrast.test.ts` les
+ * **La liste est imprimée par la commande elle-même**, et elle est en partie
+ * dérivée de ce que le balayage a rencontré : la recopier ici la ferait vieillir
+ * à côté du code, et une commande verte suggérerait une couverture qu'elle n'a
+ * pas — le reproche que le dépôt s'est déjà fait deux fois.
+ *
+ * Tout est **dérivé** — les fichiers, leurs classes, les valeurs de la feuille
+ * de style, les surfaces. Une table recopiée resterait verte après un changement
+ * de jeton, ce qui est exactement le faux vert que cette commande existe pour
+ * empêcher. Les règles vivent dans `scripts/contrast-rules.ts`, la lecture du
+ * disque dans `scripts/contrast-sources.ts`, et `tests/contrast.test.ts` les
  * éprouve sur des paires connues, extérieures à ce dépôt.
  */
 
-const read = (path: string): string =>
-  readFileSync(fileURLToPath(new URL(`../${path}`, import.meta.url)), 'utf8')
-
-const ALERT = 'packages/ui/src/components/alert.tsx'
-const STYLESHEET = 'packages/ui/src/styles.css'
+const label = (ratio: number): string => ratio.toFixed(2).replace('.', ',')
 
 const main = (): void => {
-  const pairs = contrastPairs({ alert: read(ALERT), stylesheet: read(STYLESHEET) })
-  const report = contrastReport(pairs)
+  const measurement = measureContrast(deliveredContrastInput())
+  const report = contrastReport(measurement.pairs)
 
-  console.log(`Contraste de l’Alert — ${ALERT} × ${STYLESHEET}`)
-  console.log(`Seuil : ${CONTRAST_THRESHOLD.toFixed(2).replace('.', ',')} : 1 (WCAG AA, texte normal)`)
+  console.log(`Contraste des jetons — ${COMPONENTS_DIRECTORY}/*.tsx × ${STYLESHEET_PATH}`)
+  console.log(
+    `Seuils : ${label(CONTRAST_THRESHOLDS.texte)} : 1 pour du texte (WCAG AA, texte normal), ` +
+      `${label(CONTRAST_THRESHOLDS.indicateur)} : 1 pour un indicateur non textuel (SC 1.4.11).`,
+  )
   console.log('')
 
   for (const line of report.lines) {
@@ -60,17 +62,32 @@ const main = (): void => {
 
   console.log('')
 
+  // **Ce que la commande ne mesure pas, avant son verdict et quel qu'il soit.**
+  // Le critère 4 de s57 : écrit dans un document seul, personne ne le lit au
+  // moment où la ligne verte s'affiche.
+  for (const note of contrastNotes(measurement)) {
+    console.log(note)
+  }
+
+  console.log('')
+
   if (report.failures.length > 0) {
     console.error(
-      `${report.failures.length} paire(s) sous le seuil : ` +
-        `${report.failures.map((pair) => `${pair.variant} (${pair.mode})`).join(', ')}.`,
+      `${report.failures.length} paire(s) sous leur seuil : ` +
+        `${report.failures
+          .map(
+            (pair) =>
+              `${pair.source}/${pair.variant} (${pair.mode}, ${label(pair.ratio)} : 1 contre ` +
+              `${label(pair.threshold)} : 1)`,
+          )
+          .join(', ')}.`,
     )
     process.exitCode = 1
 
     return
   }
 
-  console.log(`${report.lines.length} paires mesurées, toutes au-dessus du seuil.`)
+  console.log(`${report.lines.length} paires mesurées, toutes au-dessus de leur seuil.`)
 }
 
 try {
