@@ -7,6 +7,10 @@ import {
   CONTACT_PATH,
   FORM_NOSCRIPT_KEY,
   NEWSLETTER_FORM_KEYS,
+  PUBLIC_FORM_IDS,
+  TRAP_FIELD,
+  WAITLIST_FORM_KEYS,
+  WAITLIST_PATH,
   marketingRoutePath,
 } from '@repo/module-marketing'
 import { expect, test } from '@playwright/test'
@@ -146,6 +150,80 @@ test.describe('les formulaires publics, site activé', () => {
     expect(await capturedSince(since, email)).toHaveLength(1)
   })
 
+  test('inscrit une adresse à la liste d’attente, et n’envoie qu’une confirmation', async ({
+    page,
+  }) => {
+    /**
+     * Les critères 1, 2 et 3 de s42, dans un vrai navigateur : la page capture
+     * l'adresse, confirme, envoie **un** email — et une seconde soumission de
+     * la même adresse rend la même confirmation sans second envoi.
+     *
+     * L'email est lu **sur le disque**, écrit par le mailer de l'application :
+     * c'est le port, l'adapter de capture et le rendu React Email qui sont
+     * mesurés, pas une doublure.
+     */
+    const email = anAddress('waitlist')
+    const since = Date.now()
+
+    await page.setExtraHTTPHeaders(aClient())
+    await page.goto(publicPath(WAITLIST_PATH))
+
+    const submit = page.getByRole('button', { name: text(WAITLIST_FORM_KEYS.submit) })
+
+    // Désactivé jusqu'à l'hydratation : `toBeEnabled` prouve aussi que
+    // l'affordance existe.
+    await expect(submit).toBeEnabled()
+    await page.getByLabel(text(WAITLIST_FORM_KEYS.email)).fill(email)
+    await submit.click()
+
+    await expect(page.getByRole('status')).toHaveText(text(WAITLIST_FORM_KEYS.success))
+
+    expect(await waitForCaptured(since, email)).toHaveLength(1)
+
+    // Rejouée à l'identique : **même** confirmation, aucun second email.
+    await page.goto(publicPath(WAITLIST_PATH))
+    await page.getByLabel(text(WAITLIST_FORM_KEYS.email)).fill(email)
+    await page.getByRole('button', { name: text(WAITLIST_FORM_KEYS.submit) }).click()
+    await expect(page.getByRole('status')).toHaveText(text(WAITLIST_FORM_KEYS.success))
+
+    await page.waitForTimeout(1_500)
+
+    expect(await capturedSince(since, email)).toHaveLength(1)
+  })
+
+  test('garde la page d’accueil telle qu’elle est : la liste d’attente est ailleurs', async ({
+    page,
+  }) => {
+    // Critère 6, seconde moitié. La story retire explicitement de son périmètre
+    // le remplacement de l'accueil : celui-ci sert toujours le site marketing,
+    // et le formulaire de liste d'attente ne s'y trouve pas.
+    await page.goto(publicPath('/'))
+
+    await expect(page).toHaveURL(new RegExp(`${publicPath('/')}$`))
+
+    /**
+     * **Les témoins positifs de l'absence mesurée juste en dessous.**
+     *
+     * Sans eux, une racine qui n'aurait rien rendu du tout — page blanche,
+     * erreur de rendu, redirection avalée — satisferait `toHaveCount(0)` et le
+     * cas serait vert sur une application cassée. Le `h1` dit que l'accueil a
+     * rendu ; le bouton de la newsletter, quand la configuration déclare cette
+     * section, dit qu'un formulaire **est** servi ici. Ce qui est mesuré est
+     * donc « des formulaires oui, celui-là non », pas « rien ».
+     */
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+
+    if (hasNewsletterSection) {
+      await expect(
+        page.getByRole('button', { name: text(NEWSLETTER_FORM_KEYS.submit) }),
+      ).toBeEnabled()
+    }
+
+    await expect(
+      page.getByRole('button', { name: text(WAITLIST_FORM_KEYS.submit) }),
+    ).toHaveCount(0)
+  })
+
   test('envoie un message de contact à l’adresse configurée', async ({ page }) => {
     const email = anAddress('contact')
     const since = Date.now()
@@ -197,19 +275,46 @@ test.describe('les formulaires publics, site activé', () => {
     // Le piège à robots, mesuré **par son absence d'effet** — c'est la seule
     // façon de le mesurer, puisque la réponse est délibérément celle d'une
     // soumission acceptée.
-    const email = anAddress('robot')
+    //
+    // **Les trois formulaires y passent**, dérivés du domaine et jamais nommés.
+    // Le piège est déclaré une fois et rendu génériquement : la liste d'attente
+    // l'obtient sans une ligne à elle, et c'est précisément pour cela qu'il faut
+    // le voir tenir des trois côtés — un désarmement d'un seul côté n'aurait
+    // rien fait rougir. Le corps porte de quoi satisfaire les trois formulaires :
+    // piège désarmé, chacun enverrait réellement son email.
+    const client = aClient()
     const since = Date.now()
+    const submitted = PUBLIC_FORM_IDS.map((form) => ({
+      form,
+      email: anAddress(`robot-${form}`),
+    }))
 
-    const response = await request.post(marketingRoutePath('newsletter'), {
-      headers: aClient(),
-      data: { email, website: 'https://spam.test', locale: defaultLocale },
-    })
+    // Un balayage vide passerait pour une bonne raison qui n'en est pas une.
+    expect(submitted.length).toBeGreaterThanOrEqual(3)
 
-    expect(response.status()).toBe(200)
+    for (const { form, email } of submitted) {
+      const response = await request.post(marketingRoutePath(form), {
+        headers: client,
+        data: {
+          email,
+          name: 'Robot de passage',
+          message: 'Bonjour, je suis un robot.',
+          [TRAP_FIELD]: 'https://spam.test',
+          locale: defaultLocale,
+        },
+      })
+
+      expect(response.status(), form).toBe(200)
+    }
 
     await new Promise((resolve) => setTimeout(resolve, 1_000))
 
-    expect(await capturedSince(since, email)).toEqual([])
+    // `soft` : un piège désarmé d'un seul côté doit **nommer ce côté-là**. Une
+    // assertion dure s'arrêterait au premier formulaire et laisserait croire
+    // que les deux autres tiennent.
+    for (const { form, email } of submitted) {
+      expect.soft(await capturedSince(since, email), form).toEqual([])
+    }
   })
 })
 
@@ -244,14 +349,22 @@ test.describe('le formulaire de contact sans JavaScript', () => {
 test.describe('les formulaires publics, site coupé', () => {
   test.skip(publicSite, 'Le module marketing est activé : les pages publiques sont servies.')
 
-  test('ne sert pas l’écran de contact', async ({ page }) => {
-    const response = await page.goto(publicPath(CONTACT_PATH))
+  test('ne sert ni l’écran de contact, ni celui de la liste d’attente', async ({ page }) => {
+    for (const path of [CONTACT_PATH, WAITLIST_PATH]) {
+      const response = await page.goto(publicPath(path))
 
-    expect(response?.status()).toBe(404)
+      expect(response?.status(), path).toBe(404)
+    }
   })
 
   test('ne monte aucune route de formulaire', async ({ request }) => {
-    for (const path of [marketingRoutePath('contact'), marketingRoutePath('newsletter')]) {
+    // Les chemins sont **dérivés** du domaine : une quatrième route entrerait
+    // ici sans qu'on y pense, là où trois littéraux recopiés l'auraient laissée
+    // dehors en restant verts.
+    expect(PUBLIC_FORM_IDS.length).toBeGreaterThanOrEqual(3)
+
+    for (const form of PUBLIC_FORM_IDS) {
+      const path = marketingRoutePath(form)
       const response = await request.post(path, { data: {} })
 
       expect(response.status(), path).toBe(404)

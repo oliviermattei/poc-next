@@ -1156,7 +1156,13 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // qui rendent le site** : ailleurs, une prop de ce nom portant une
         // chaîne fait toujours rougir, et la garde de prose reste active ici
         // aussi (`contactRecipient="Écrivez-nous"` rougirait).
-        technicalProps: ['contactRecipient', 'newsletterSource', 'type', 'labelKey'],
+        technicalProps: [
+          'contactRecipient',
+          'newsletterSource',
+          'waitlistSource',
+          'type',
+          'labelKey',
+        ],
         render: async () => (await import('../apps/web/app/page')).default(),
       },
       {
@@ -1175,7 +1181,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         file: 'legal/[document]/page.tsx',
         viewer: ANONYMOUS,
       refuses: legalServed ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
-        technicalProps: ['contactRecipient', 'newsletterSource'],
+        technicalProps: ['contactRecipient', 'newsletterSource', 'waitlistSource'],
         render: async () =>
           (await import('../apps/web/app/legal/[document]/page')).default({
             params: Promise.resolve({ document: 'privacy' }),
@@ -1192,8 +1198,32 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // La route montée du formulaire et les types de champ : des valeurs
         // techniques que l'écran écrit, jamais du texte. La garde de prose
         // reste active — `type="Adresse email"` rougirait toujours.
-        technicalProps: ['contactRecipient', 'newsletterSource', 'type', 'labelKey'],
+        technicalProps: [
+          'contactRecipient',
+          'newsletterSource',
+          'waitlistSource',
+          'type',
+          'labelKey',
+        ],
         render: async () => (await import('../apps/web/app/contact/page')).default(),
+      },
+      {
+        // s42. Le quatrième écran public : il refuse quand le module est coupé,
+        // exactement comme l'écran de contact, et par la même donnée. Il vit
+        // **à côté** de l'accueil, jamais à sa place — le critère 6 de la story
+        // exige que la page d'accueil reste inchangée.
+        id: 'liste d’attente',
+        file: 'waitlist/page.tsx',
+        viewer: ANONYMOUS,
+        refuses: publicSite ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        technicalProps: [
+          'contactRecipient',
+          'newsletterSource',
+          'waitlistSource',
+          'type',
+          'labelKey',
+        ],
+        render: async () => (await import('../apps/web/app/waitlist/page')).default(),
       },
       {
         // s36 — l'écran de préférences de cookies, **public** : un visiteur
@@ -1782,7 +1812,13 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         file: 'blog/page.tsx',
         viewer: ANONYMOUS,
         refuses: blogMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
-        technicalProps: ['contactRecipient', 'newsletterSource', 'activeTag', 'slug'],
+        technicalProps: [
+          'contactRecipient',
+          'newsletterSource',
+          'waitlistSource',
+          'activeTag',
+          'slug',
+        ],
         screenData: blogListData,
         render: async () =>
           (await import('../apps/web/app/blog/page')).default({ searchParams: noParams }),
@@ -1795,7 +1831,13 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         file: 'blog/page.tsx',
         viewer: ANONYMOUS,
         refuses: blogMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
-        technicalProps: ['contactRecipient', 'newsletterSource', 'activeTag', 'slug'],
+        technicalProps: [
+          'contactRecipient',
+          'newsletterSource',
+          'waitlistSource',
+          'activeTag',
+          'slug',
+        ],
         screenData: blogListData,
         render: async () =>
           (await import('../apps/web/app/blog/page')).default({
@@ -1810,7 +1852,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         file: 'blog/[slug]/page.tsx',
         viewer: ANONYMOUS,
         refuses: blogMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
-        technicalProps: ['contactRecipient', 'newsletterSource', 'slug'],
+        technicalProps: ['contactRecipient', 'newsletterSource', 'waitlistSource', 'slug'],
         screenData: blogArticleData,
         render: async () =>
           (await import('../apps/web/app/blog/[slug]/page')).default({
@@ -1825,7 +1867,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         file: 'changelog/page.tsx',
         viewer: ANONYMOUS,
         refuses: changelogMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
-        technicalProps: ['contactRecipient', 'newsletterSource', 'slug'],
+        technicalProps: ['contactRecipient', 'newsletterSource', 'waitlistSource', 'slug'],
         screenData: changelogData,
         render: async () => (await import('../apps/web/app/changelog/page')).default(),
       },
@@ -1852,7 +1894,14 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         file: 'docs/[section]/[page]/page.tsx',
         viewer: ANONYMOUS,
         refuses: docsMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
-        technicalProps: ['contactRecipient', 'newsletterSource', 'section', 'slug', 'page'],
+        technicalProps: [
+          'contactRecipient',
+          'newsletterSource',
+          'waitlistSource',
+          'section',
+          'slug',
+          'page',
+        ],
         screenData: docsData,
         render: async () =>
           (await import('../apps/web/app/docs/[section]/[page]/page')).default({

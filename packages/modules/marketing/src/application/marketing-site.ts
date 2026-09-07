@@ -54,6 +54,16 @@ export const legalPath = (slug: string): string => `/legal/${slug}`
 export const CONTACT_PATH = '/contact'
 
 /**
+ * Le chemin de l'écran de liste d'attente (s42).
+ *
+ * Écrit **une fois**, pour la même raison que celui du contact : l'écran, le
+ * plan de site et la politique des robots le lisent ici. Ce n'est **pas** `/` —
+ * la story retire explicitement de son périmètre le remplacement de la page
+ * d'accueil, et son critère 6 exige que celle-ci reste inchangée.
+ */
+export const WAITLIST_PATH = '/waitlist'
+
+/**
  * Valide la configuration reçue et en dérive le site.
  *
  * `publicPaths` est **dérivé**, jamais recopié : c'est lui que consomment le
@@ -69,6 +79,7 @@ export function resolveMarketingSite(configuration: unknown): MarketingSite {
     publicPaths: [
       '/',
       CONTACT_PATH,
+      WAITLIST_PATH,
       ...parsed.legalDocuments.map((document) => legalPath(document.slug)),
     ],
     forms: parsed.forms,

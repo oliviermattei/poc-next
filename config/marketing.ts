@@ -71,10 +71,12 @@ export const marketingConfiguration = {
    * démarrage : malformée, l'application refuse de servir le site en la
    * nommant.
    *
-   * `newsletterSource` alimente la colonne `source` de la table d'inscriptions
-   * publiques. Cette table est **partagée** avec la liste d'attente de s42, qui
-   * déclarera sa propre source : c'est cette colonne qui les distingue, et
-   * c'est pour cela qu'il n'y a qu'un modèle d'inscription.
+   * `newsletterSource` et `waitlistSource` alimentent la colonne `source` de la
+   * table d'inscriptions publiques. Cette table est **partagée** par la lettre
+   * d'information (s11) et la liste d'attente (s42) : c'est cette colonne qui
+   * les distingue, et c'est pour cela qu'il n'y a qu'un modèle d'inscription.
+   * Les deux valeurs doivent différer — identiques, elles fusionneraient les
+   * deux listes, et la validation refuse le démarrage en le disant.
    *
    * `rateLimit` porte **deux seuils qui ne font pas la même chose**, dans une
    * fenêtre partagée entre toutes les instances (`docs/security.md` §7) :
@@ -100,6 +102,7 @@ export const marketingConfiguration = {
   forms: {
     contactRecipient: 'bonjour@exemple.test',
     newsletterSource: 'newsletter',
+    waitlistSource: 'waitlist',
     rateLimit: { windowSeconds: 600, maxPerClient: 5, maxPerForm: 200 },
   },
 } as const satisfies MarketingConfigurationInput

@@ -4,7 +4,7 @@ import type { PublicFormOutcome, PublicFormsUseCases } from '../application/publ
 import { clientIdentifierOf } from '../domain/rate-limit'
 
 /**
- * Les deux routes des formulaires publics, **énumérées une par une**.
+ * Les trois routes des formulaires publics, **énumérées une par une**.
  *
  * C'est le registre qui possède les routes (ADR 007 et 017) : chaque point
  * d'entrée est déclaré, avec son chemin exact, sa méthode et son niveau de
@@ -20,6 +20,9 @@ import { clientIdentifierOf } from '../domain/rate-limit'
 const PATHS = {
   contact: '/marketing/contact',
   newsletter: '/marketing/newsletter',
+  // s42. Une **seconde source du même formulaire d'inscription**, pas un second
+  // modèle : la table et son unicité sont celles de s11, la source les sépare.
+  waitlist: '/marketing/waitlist',
 } as const
 
 /** Le chemin public d'une route du module, préfixe de montage compris. */
@@ -134,6 +137,25 @@ export function createPublicFormRoutes(
       handler: async (request) =>
         await handle(request, async (useCases, submission) =>
           await useCases.subscribeToNewsletter(submission),
+        ),
+    },
+    {
+      method: 'POST',
+      path: PATHS.waitlist,
+      protection: { level: 'public' },
+      /**
+       * **Déclarée, jamais héritée** (s42, critère 5).
+       *
+       * `routeIsRateLimited` rendrait déjà `true` sans cette ligne — toute
+       * route publique est limitée. Mais une route qui n'annonce rien hérite de
+       * `default`, soit 120 passages par minute là où `publicForm` en autorise
+       * 60 par **dix** minutes : elle serait limitée, et vingt fois trop
+       * largement pour un formulaire qui écrit une ligne et envoie un email.
+       */
+      rateLimit: { policy: 'publicForm' },
+      handler: async (request) =>
+        await handle(request, async (useCases, submission) =>
+          await useCases.joinWaitlist(submission),
         ),
     },
   ]

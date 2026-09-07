@@ -5,6 +5,7 @@ import {
   FORM_NOSCRIPT_KEY,
   NEWSLETTER_FORM_KEYS,
   TRAP_FIELD,
+  WAITLIST_FORM_KEYS,
   marketingRoutePath,
 } from '@repo/module-marketing'
 import { Alert, Button, Card, CardContent, Input, Label, Textarea } from '@repo/ui'
@@ -257,6 +258,43 @@ export function NewsletterForm({ locale }: PublicFormBlockProps) {
             success: NEWSLETTER_FORM_KEYS.success,
             throttled: NEWSLETTER_FORM_KEYS.throttled,
             failed: NEWSLETTER_FORM_KEYS.failed,
+          }}
+        />
+      </CardContent>
+    </Card>
+  )
+}
+
+/**
+ * La liste d'attente (s42) : un champ, un bouton, sur une ligne au-delà de `sm`.
+ *
+ * **`messageKeys` ne porte pas `invalid`**, et c'est délibéré : la route répond
+ * la même chose à une adresse nouvelle, déjà inscrite ou malformée
+ * (`docs/security.md` §7), donc elle ne rend jamais 400 ici. Le brancher
+ * préparerait l'affichage d'un cas que le serveur ne produit pas — la lettre
+ * d'information s'en prive pour la même raison depuis s11.
+ */
+export function WaitlistForm({ locale }: PublicFormBlockProps) {
+  return (
+    <Card className="min-w-0 max-w-2xl">
+      <CardContent>
+        <PublicForm
+          action={marketingRoutePath('waitlist')}
+          locale={locale}
+          inline
+          fields={[
+            {
+              name: 'email',
+              labelKey: WAITLIST_FORM_KEYS.email,
+              autoComplete: 'email',
+              type: 'email',
+            },
+          ]}
+          messageKeys={{
+            submit: WAITLIST_FORM_KEYS.submit,
+            success: WAITLIST_FORM_KEYS.success,
+            throttled: WAITLIST_FORM_KEYS.throttled,
+            failed: WAITLIST_FORM_KEYS.failed,
           }}
         />
       </CardContent>

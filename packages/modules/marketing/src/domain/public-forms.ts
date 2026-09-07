@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 /**
- * Les deux formulaires ouverts à tout venant, et **ce qu'ils acceptent**.
+ * Les formulaires ouverts à tout venant, et **ce qu'ils acceptent**.
  *
  * `domain` : aucune base, aucun mailer, aucun framework — seulement `zod`, que
  * `tooling/eslint/boundaries.ts` admet explicitement ici. Ce fichier est la
@@ -22,13 +22,28 @@ import { z } from 'zod'
  *    maladroit — sinon la réponse lui apprend quel champ corriger.
  */
 
-/** Les deux formes, écrites une fois : elles nomment un seau et une source. */
+/**
+ * Les formes, écrites une fois : chacune nomme **un seau de débit**.
+ *
+ * Ce sont des identifiants de formulaire, pas des sources d'inscription : la
+ * source, elle, vient de `config/marketing.ts` (`newsletterSource`,
+ * `waitlistSource`). Ce qui se joue ici est le cloisonnement des seaux —
+ * marteler l'un ne doit pas fermer les autres.
+ */
 export const CONTACT_FORM = 'contact' as const
 export const NEWSLETTER_FORM = 'newsletter' as const
+export const WAITLIST_FORM = 'waitlist' as const
 
-export type PublicFormId = typeof CONTACT_FORM | typeof NEWSLETTER_FORM
+export type PublicFormId =
+  | typeof CONTACT_FORM
+  | typeof NEWSLETTER_FORM
+  | typeof WAITLIST_FORM
 
-export const PUBLIC_FORM_IDS: readonly PublicFormId[] = [CONTACT_FORM, NEWSLETTER_FORM]
+export const PUBLIC_FORM_IDS: readonly PublicFormId[] = [
+  CONTACT_FORM,
+  NEWSLETTER_FORM,
+  WAITLIST_FORM,
+]
 
 /**
  * Le champ piège, et son nom.
@@ -100,7 +115,15 @@ export interface ContactSubmission {
   readonly message: string
 }
 
-export interface NewsletterSubmission {
+/**
+ * Ce qu'une **inscription publique** porte : une adresse, et rien d'autre.
+ *
+ * Partagée par la lettre d'information et la liste d'attente : les deux
+ * remplissent la même table, et ce qui les sépare — la source — vient de la
+ * configuration, jamais du corps de la requête. Un formulaire qui laisserait
+ * l'appelant choisir sa source le laisserait écrire dans la liste d'à côté.
+ */
+export interface SubscriptionSubmission {
   readonly email: string
 }
 
@@ -142,7 +165,7 @@ const contactSchema = z.object({
   message: multiLine(MAX_MESSAGE_LENGTH),
 })
 
-const newsletterSchema = z.object({ email: emailField })
+const subscriptionSchema = z.object({ email: emailField })
 
 /** Le corps, s'il est bien un objet. Un tableau n'en est pas un. */
 const asRecord = (input: unknown): Record<string, unknown> | null =>
@@ -198,7 +221,18 @@ export function parseContactSubmission(input: unknown): PublicFormParse<ContactS
     : parsed
 }
 
-export function parseNewsletterSubmission(input: unknown): PublicFormParse<NewsletterSubmission> {
+/**
+ * La frontière des deux formulaires d'inscription — **une seule, et c'est le
+ * point**.
+ *
+ * La lettre d'information et la liste d'attente acceptent exactement la même
+ * chose et refusent exactement pareil : deux fonctions jumelles auraient
+ * divergé à la première correction, et la seconde liste aurait hérité d'un
+ * piège moins bien armé sans que rien ne rougisse.
+ */
+export function parseSubscriptionSubmission(
+  input: unknown,
+): PublicFormParse<SubscriptionSubmission> {
   const body = asRecord(input)
 
   if (body === null) {
@@ -209,7 +243,7 @@ export function parseNewsletterSubmission(input: unknown): PublicFormParse<Newsl
     return { ok: false, refusal: { kind: 'automated' } }
   }
 
-  const parsed = parseWith(newsletterSchema, { email: trimmed(body.email) })
+  const parsed = parseWith(subscriptionSchema, { email: trimmed(body.email) })
 
   return parsed.ok ? { ok: true, value: { email: normaliseEmail(parsed.value.email) } } : parsed
 }
