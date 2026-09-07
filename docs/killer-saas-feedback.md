@@ -1347,6 +1347,22 @@ En montant une instance locale pour que le porteur du projet puisse **regarder**
 
 ---
 
+## P43bis — Quatre documents ne valent pas un test, et une phrase se mesure comme un nombre
+
+`s58` a livré une transaction unique autour des seeds, avec une raison juste : « un refus n'écrit rien » n'était vrai que **parce que** le module d'authentification se trouve en tête du graphe. Quatre endroits l'ont écrit — le règlement racine, celui du paquet, le commentaire de la fonction, le message de commit — chacun affirmant que la garantie tenait **quel que soit l'ordre**.
+
+**La retirer laissait 2 934 cas verts.** Le seul cas qui aurait pu mordre passait par l'accident même que la transaction devait supprimer. Quatre documents affirmaient un invariant que rien ne vérifiait, et l'accumulation d'affirmations concordantes ressemble à une preuve — c'est précisément ce qui la rend dangereuse.
+
+**Le second constat de la même story est le symétrique**, sur une phrase plutôt que sur un mécanisme. Le plancher comptait les lignes de **tout le schéma**, et son commentaire annonçait qu'« un module qui oublie son seed le saura ». Faux : les lignes d'un autre seed le satisfaisaient. Le mécanisme livré était correct et sa mutation le prouvait ; **la phrase écrite à côté portait plus loin que le code**.
+
+**La règle** : une phrase qui décrit la portée d'une garde est une **affirmation mesurable**, au même titre qu'un chiffre. « Quel que soit l'ordre », « le prochain qui oublie », « aucun nom de module écrit nulle part » — chacune se teste, ou se rétrécit à ce que la commande fait vraiment. Le réflexe utile en revue n'est pas *« la garde est-elle juste ? »* mais **« que promet la phrase à côté, et qui le vérifie ? »**.
+
+**Corollaire, mesuré trois fois cette semaine** : la story qui ferme une classe la reproduit **à l'intérieur d'elle-même**, et c'est en prose qu'elle la reproduit le plus souvent. `s57` avait laissé une mesure fausse à côté du correctif qui l'avait rendue fausse ; `s58` a écrit deux portées plus larges que leur code. Le correctif est le même dans les deux cas : mesurer la phrase, pas seulement le mécanisme.
+
+**Et un fait de terrain qui vaut mieux qu'un argument** : la garde de non-écrasement de `s58` a refusé de semer sur la base de démonstration du porteur du projet, en nommant **508 comptes** qu'elle n'avait pas créés — vestiges de mois de parcours de test. Personne ne l'avait mise en scène. Une garde dérivée d'un fait de la base se prouve toute seule, le jour où elle sert.
+
+---
+
 ## P36bis — La revue lit le code, elle ne mesure pas son coût : c'est CodeQL qui a trouvé
 
 `s39` a livré `POST /analytics/client-error`, **volontairement non authentifiée** — il faut capter les erreurs d'avant-session. Le corps est donc choisi par un appelant anonyme, et il traverse un analyseur de trace de pile écrit en expression régulière.
@@ -1852,6 +1868,7 @@ C'est la **troisième** occurrence du même défaut dans ce même fichier : une 
 | 06/09 | Le plan de s56 nommait un garde qui n'aurait pas rougi — deux faits vrais, une conclusion fausse | l'implémenteur l'a mesuré et a construit le garde au bon endroit | P40bis |
 | 06/09 | Rayon d'action de s40 mesuré sur une suite, supposé pour les autres : parcours doré rouge, `critical` en revue | traversée du parcours par le fondateur, sept recettes balayées | P41bis |
 | 07/09 | `pnpm db:seed` ne crée rien depuis 57 stories, et l'image n'a jamais été servie | trouvé en ouvrant le produit ; stories s58 et s59 ouvertes | P42bis |
+| 07/09 | Quatre documents affirmaient un invariant que rien ne testait : le retirer laissait 2 934 cas verts | test écrit ; et une phrase de portée rétrécie à ce que le code fait | P43bis |
 
 ---
 
