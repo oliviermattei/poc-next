@@ -1363,6 +1363,26 @@ En montant une instance locale pour que le porteur du projet puisse **regarder**
 
 ---
 
+## P44bis — Une affirmation qui dépasse ce qui la tient : le défaut le plus fréquent du dépôt
+
+`s37c` a été bloquée en revue, corrigée, revue une seconde fois, corrigée encore. Ce qui reste après deux rondes n'est pas du code : ce sont **cinq affirmations qui portaient plus loin que ce qui les tenait**.
+
+- un commentaire de documentation qui, après un déplacement, ne pointait plus sur la fonction qu'il décrivait ;
+- une phrase disant qu'une garantie est « mesurée ailleurs » là où elle est **structurelle** — vraie par construction, mais qu'aucune exécution ne rend ;
+- un test cherchant un champ caché dans **toute la page** alors que son nom promet le formulaire : un champ déplacé hors du formulaire l'aurait laissé vert ;
+- une liste de caractères **recopiée** dans le test, à côté d'un commentaire écrivant leur nombre ;
+- et, trouvée par l'implémenteur dans son propre balayage, une ligne d'ouverture annonçant « la **seule** surface de sécurité de la story » dans un fichier dont la story en portait trois.
+
+**Aucune n'est un défaut de comportement. Toutes sont des défauts de confiance.** Le prochain agent lit « mesuré », « seul », « le formulaire », s'arrête de chercher, et hérite d'une couverture qu'il croit avoir.
+
+**C'est la classe la plus fréquente de tout ce journal**, et cette entrée existe pour le dire d'un coup. On la retrouve en P20 (le tableau contre la prose), P26 (la section « non vérifié »), P28 (compter les satisfaisants), P38bis (le commentaire qui promet une story), P40bis (le plan qui nomme un garde), P43bis (quatre documents pour un invariant non testé). Six entrées, une seule maladie : **le dépôt écrit mieux qu'il ne mesure**.
+
+**La règle, formulée pour être applicable en revue** : à chaque phrase qui décrit une garantie, poser *« quelle commande échoue si cette phrase devient fausse ? »*. Trois réponses acceptables — une commande nommée, « rien, et c'est écrit », ou la suppression de la phrase. Une seule inacceptable : le silence.
+
+**Et une nuance que `s37c` a apportée, contre l'intuition.** Dériver une liste depuis le code de production n'est pas toujours plus fort que la recopier : dériver perd la direction du **retrait** — une liste raccourcie donne un balayage raccourci, toujours vert. La bonne forme est **dérivation plus plancher** : les valeurs que personne n'a le droit de retirer restent écrites, et le reste se dérive. Une dérivation nue aurait été une régression déguisée en amélioration.
+
+---
+
 ## P36bis — La revue lit le code, elle ne mesure pas son coût : c'est CodeQL qui a trouvé
 
 `s39` a livré `POST /analytics/client-error`, **volontairement non authentifiée** — il faut capter les erreurs d'avant-session. Le corps est donc choisi par un appelant anonyme, et il traverse un analyseur de trace de pile écrit en expression régulière.
@@ -1869,6 +1889,7 @@ C'est la **troisième** occurrence du même défaut dans ce même fichier : une 
 | 06/09 | Rayon d'action de s40 mesuré sur une suite, supposé pour les autres : parcours doré rouge, `critical` en revue | traversée du parcours par le fondateur, sept recettes balayées | P41bis |
 | 07/09 | `pnpm db:seed` ne crée rien depuis 57 stories, et l'image n'a jamais été servie | trouvé en ouvrant le produit ; stories s58 et s59 ouvertes | P42bis |
 | 07/09 | Quatre documents affirmaient un invariant que rien ne testait : le retirer laissait 2 934 cas verts | test écrit ; et une phrase de portée rétrécie à ce que le code fait | P43bis |
+| 07/09 | Cinq affirmations plus larges que ce qui les tient, dans une seule story, après deux rondes | classe la plus fréquente du journal, nommée d'un coup ; et dérivation ≠ toujours plus fort que recopie | P44bis |
 
 ---
 
