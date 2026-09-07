@@ -271,6 +271,12 @@ const APPLICATION_SEGMENTS = [
   // le masquerait.
   'two-factor',
   'verify-email',
+  // L'écran de liste d'attente (s42) : une page publique servie par
+  // l'application, donc un identifiant qu'aucune organisation ne peut prendre —
+  // sinon elle masquerait la page. Son fichier existe sur le disque quel que
+  // soit l'état du module marketing, et c'est du disque que
+  // `tests/organizations.test.ts` dérive.
+  'waitlist',
 ] as const
 
 const firstSegmentOf = (href: string): string => href.split('/').filter(Boolean)[0] ?? ''

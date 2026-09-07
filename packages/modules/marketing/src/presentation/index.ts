@@ -21,4 +21,5 @@ export {
   type MarketingFooterProps,
 } from './marketing-footer'
 export { MarketingHome, type MarketingHomeProps } from './marketing-home'
+export { WaitlistView, type WaitlistViewProps } from './waitlist-view'
 export type { MarketingIntl } from './marketing-intl'

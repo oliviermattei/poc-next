@@ -8,7 +8,7 @@ import {
   TRAP_FIELD,
   normaliseEmail,
   parseContactSubmission,
-  parseNewsletterSubmission,
+  parseSubscriptionSubmission,
 } from '../domain/public-forms'
 import {
   UNKNOWN_CLIENT,
@@ -130,7 +130,7 @@ describe('le piège à robots', () => {
   })
 
   it('garde le même piège sur la newsletter', () => {
-    const parsed = parseNewsletterSubmission({
+    const parsed = parseSubscriptionSubmission({
       email: 'visiteur@example.test',
       [TRAP_FIELD]: 'x',
     })
@@ -141,14 +141,14 @@ describe('le piège à robots', () => {
 
 describe('la soumission newsletter', () => {
   it('n’exige que l’adresse, et la rend normalisée', () => {
-    const parsed = parseNewsletterSubmission({ email: '  Visiteur@Example.TEST ' })
+    const parsed = parseSubscriptionSubmission({ email: '  Visiteur@Example.TEST ' })
 
     expect(parsed.ok).toBe(true)
     expect(parsed.ok && parsed.value.email).toBe('visiteur@example.test')
   })
 
   it('refuse une adresse malformée — la route en fera ce qu’elle voudra', () => {
-    expect(parseNewsletterSubmission({ email: 'pas-une-adresse' }).ok).toBe(false)
+    expect(parseSubscriptionSubmission({ email: 'pas-une-adresse' }).ok).toBe(false)
   })
 })
 
@@ -218,6 +218,9 @@ describe('le seau de limitation de débit', () => {
 const FORMS = {
   contactRecipient: 'editeur@exemple.test',
   newsletterSource: 'newsletter',
+  // **Délibérément pas « waitlist »** : c'est ce qui fait la différence entre
+  // lire la configuration et écrire le littéral dans le module (s42).
+  waitlistSource: 'liste-attente',
   rateLimit: { windowSeconds: 600, maxPerClient: 3, maxPerForm: 50 },
 }
 
@@ -616,6 +619,120 @@ describe('l’inscription à la newsletter', () => {
 
     expect(outcome).toEqual({ status: 'accepted' })
     expect(bench.rows).toHaveLength(1)
+  })
+})
+
+/**
+ * **La liste d'attente : la même table, une autre source** (s42).
+ *
+ * Ce qui est éprouvé ici n'est pas une seconde règle d'inscription — il n'y en
+ * a qu'une — mais les trois points où la seconde source se voit : la valeur
+ * écrite, le template de confirmation, et le fait que les deux listes ne se
+ * confondent pas.
+ */
+describe('l’inscription à la liste d’attente', () => {
+  const join = async (bench: ReturnType<typeof aBench>, email: string, client = '1.2.3.4') =>
+    await bench.useCases.joinWaitlist({ body: { email }, client, locale: 'fr' })
+
+  it('écrit la source **de la configuration**, et confirme par son propre email', async () => {
+    const bench = aBench()
+
+    const outcome = await join(bench, 'futur@example.test')
+    await bench.settle()
+
+    expect(outcome).toEqual({ status: 'accepted' })
+    expect(bench.rows).toHaveLength(1)
+    expect(bench.rows[0]).toMatchObject({
+      email: 'futur@example.test',
+      // La valeur vient du bloc `forms`, pas du module : un littéral écrit dans
+      // le cas d'usage ferait rougir cette ligne.
+      source: FORMS.waitlistSource,
+      locale: 'fr',
+    })
+    expect(bench.sent).toHaveLength(1)
+    expect(bench.sent[0]?.to).toBe('futur@example.test')
+    expect(bench.sent[0]?.template).toBe(MARKETING_EMAIL_TEMPLATES.waitlistConfirmation)
+  })
+
+  it('rejouée à l’identique, elle ne crée ni seconde ligne ni second email', async () => {
+    // Critère 2 : « un email déjà inscrit affiche la même confirmation sans
+    // créer de doublon ». L'unicité est portée par `(source, email)` — ici par
+    // la doublure, en base par l'index (`tests/marketing.test.ts`).
+    const bench = aBench()
+
+    await join(bench, 'futur@example.test')
+    await join(bench, 'FUTUR@Example.TEST')
+    await bench.settle()
+
+    expect(bench.rows).toHaveLength(1)
+    expect(bench.sent).toHaveLength(1)
+  })
+
+  it('répond la même chose à une adresse nouvelle, déjà inscrite ou malformée', async () => {
+    // `docs/security.md` §7 : distinguer les cas dirait qui est déjà sur la
+    // liste. C'est la même règle que la newsletter, et c'est pour cela qu'il
+    // n'existe pas de message « adresse invalide » à afficher.
+    const bench = aBench()
+
+    const first = await join(bench, 'connu@example.test')
+    const again = await join(bench, 'connu@example.test')
+    const malformed = await join(bench, 'pas-une-adresse')
+
+    expect(again).toEqual(first)
+    expect(malformed).toEqual(first)
+  })
+
+  it('n’écrit rien et n’envoie rien pour une adresse malformée ou un piège armé', async () => {
+    const bench = aBench()
+
+    await join(bench, 'pas-une-adresse')
+    await bench.useCases.joinWaitlist({
+      body: { email: 'robot@example.test', [TRAP_FIELD]: 'x' },
+      client: '5.6.7.8',
+      locale: 'fr',
+    })
+    await bench.settle()
+
+    expect(bench.rows).toEqual([])
+    expect(bench.sent).toEqual([])
+  })
+
+  it('ne se confond pas avec la lettre d’information : deux listes, deux lignes', async () => {
+    // La même adresse peut être sur les deux listes : c'est la **paire**
+    // `(source, email)` qui est unique. Sans la source, la seconde inscription
+    // serait avalée comme un doublon et le visiteur ne serait jamais prévenu.
+    const bench = aBench()
+
+    await bench.useCases.subscribeToNewsletter({
+      body: { email: 'deux-listes@example.test' },
+      client: '1.2.3.4',
+      locale: 'fr',
+    })
+    await join(bench, 'deux-listes@example.test')
+    await bench.settle()
+
+    expect(bench.rows.map((row) => row.source)).toEqual([
+      FORMS.newsletterSource,
+      FORMS.waitlistSource,
+    ])
+    expect(bench.sent.map((mail) => mail.template)).toEqual([
+      MARKETING_EMAIL_TEMPLATES.newsletterConfirmation,
+      MARKETING_EMAIL_TEMPLATES.waitlistConfirmation,
+    ])
+  })
+
+  it('a son propre seau : marteler l’une ne ferme pas l’autre', async () => {
+    const bench = aBench()
+
+    for (let index = 0; index < FORMS.rateLimit.maxPerClient + 1; index += 1) {
+      await bench.useCases.subscribeToNewsletter({
+        body: { email: `lecteur-${index}@example.test` },
+        client: '1.2.3.4',
+        locale: 'fr',
+      })
+    }
+
+    expect(await join(bench, 'futur@example.test')).toEqual({ status: 'accepted' })
   })
 })
 

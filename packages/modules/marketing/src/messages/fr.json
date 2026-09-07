@@ -65,5 +65,12 @@
   "newsletter.error.throttled": "Trop de tentatives depuis cette connexion. Réessayez dans quelques minutes.",
   "newsletter.error.failed": "L’inscription n’a pas abouti. Réessayez dans un instant.",
   "section.newsletter.title": "Suivre les versions",
-  "section.newsletter.description": "Une lettre courte quand une version sort. Pas de suivi publicitaire, pas de revente d’adresse."
+  "section.newsletter.description": "Une lettre courte quand une version sort. Pas de suivi publicitaire, pas de revente d’adresse.",
+  "waitlist.title": "Rejoindre la liste d’attente",
+  "waitlist.description": "Le produit n’est pas encore ouvert. Laissez votre adresse : vous serez prévenu le jour du lancement, et pas une fois de plus.",
+  "waitlist.field.email": "Adresse email",
+  "waitlist.action.submit": "Me prévenir au lancement",
+  "waitlist.success": "Merci. Si cette adresse est valide, elle est sur la liste d’attente.",
+  "waitlist.error.throttled": "Trop de tentatives depuis cette connexion. Réessayez dans quelques minutes.",
+  "waitlist.error.failed": "L’inscription n’a pas abouti. Réessayez dans un instant."
 }

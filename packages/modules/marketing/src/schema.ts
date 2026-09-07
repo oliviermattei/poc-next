@@ -25,9 +25,11 @@ import { index, integer, pgTable, text, timestamp, uniqueIndex } from 'drizzle-o
 /**
  * Les inscriptions publiques — **un seul modèle**, distingué par sa source.
  *
- * La story le dit explicitement : cette table est réutilisée par s42 pour la
- * liste d'attente, et un second modèle concurrent est interdit. `source` vient
- * de `config/marketing.ts` ; le module ne l'écrit nulle part.
+ * Deux listes y vivent depuis s42 — la lettre d'information et la liste
+ * d'attente —, séparées par la seule colonne `source`, et un second modèle
+ * concurrent reste interdit : la catégorie de données, la rétention, la purge et
+ * l'export portent sur cette table et sur elle seule. `source` vient de
+ * `config/marketing.ts` ; le module ne l'écrit nulle part.
  *
  * L'unicité porte sur **le couple `(source, email)`** et elle est **en base** :
  * `docs/reliability.md` §1 refuse une vérification préalable, qui laisse une
@@ -43,7 +45,7 @@ export const publicSubscription = pgTable(
   {
     id: text('id').primaryKey(),
     email: text('email').notNull(),
-    /** `newsletter` aujourd'hui, `waitlist` en s42. La colonne qui les sépare. */
+    /** `newsletter` ou `waitlist` : la colonne qui sépare les deux listes. */
     source: text('source').notNull(),
     /** La langue de la requête d'inscription : celle de l'email de confirmation. */
     locale: text('locale').notNull(),

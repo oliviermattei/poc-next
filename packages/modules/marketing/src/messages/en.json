@@ -65,5 +65,12 @@
   "newsletter.error.throttled": "Too many attempts from this connection. Try again in a few minutes.",
   "newsletter.error.failed": "The subscription did not go through. Try again shortly.",
   "section.newsletter.title": "Follow the releases",
-  "section.newsletter.description": "A short letter when a version ships. No advertising trackers, no address resale."
+  "section.newsletter.description": "A short letter when a version ships. No advertising trackers, no address resale.",
+  "waitlist.title": "Join the waitlist",
+  "waitlist.description": "The product is not open yet. Leave your address and we will let you know on launch day — and not once more.",
+  "waitlist.field.email": "Email address",
+  "waitlist.action.submit": "Notify me at launch",
+  "waitlist.success": "Thank you. If this address is valid, it is on the waitlist.",
+  "waitlist.error.throttled": "Too many attempts from this connection. Try again in a few minutes.",
+  "waitlist.error.failed": "The sign-up did not go through. Try again shortly."
 }

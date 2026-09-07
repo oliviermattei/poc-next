@@ -466,8 +466,10 @@ Deux fichiers, sur le modèle exact de l'i18n :
   et le seul qui regarde s'il est activé. Il rend un `MarketingSite` dont la
   **forme est la même dans les deux états** : trois listes, vides quand le
   module est coupé ;
-- `app/page.tsx`, `app/legal/[document]/page.tsx` et `app/contact/page.tsx`
-  **lisent** ce site sans jamais nommer de module. Depuis s53,
+- `app/page.tsx`, `app/legal/[document]/page.tsx`, `app/contact/page.tsx` et
+  `app/waitlist/page.tsx` **lisent** ce site sans jamais nommer de module. Les
+  deux écrans de formulaire se décident sur la même **donnée**,
+  `marketingFormsAvailable` : site public coupé, ils répondent 404. Depuis s53,
   `app/sitemap.ts` et `app/robots.ts` ne le lisent plus du tout : ils lisent le
   **registre** (voir « La syndication » plus bas). La racine a
   quatre branches depuis s40 — redirection vers le parcours d'intégration pour
@@ -501,10 +503,11 @@ servies et `emailOfScope` — la seule fonction qui relie une inscription publiq
 ou un message de contact à un compte, parce que le module ne connaît pas `auth`
 et n'a pas le droit de lire ses tables.
 
-`/contact` est déclaré dans `publicPaths` : il entre donc dans le `sitemap.xml`
-et obtient son `Allow: /<langue>/contact$` **ancré** dans le `robots.txt`, sans
-qu'aucune liste ne soit recopiée — le module contribue désormais ces chemins par
-la quinzième clé du contrat, comme n'importe quel module de contenu (ADR 054). Son segment est aussi **réservé** dans
+`/contact` et `/waitlist` sont déclarés dans `publicPaths` : ils entrent donc
+dans le `sitemap.xml` et obtiennent leur `Allow: /<langue>/<chemin>$` **ancré**
+dans le `robots.txt`, sans qu'aucune liste ne soit recopiée — le module
+contribue ces chemins par la quinzième clé du contrat, comme n'importe quel
+module de contenu (ADR 054). Leurs segments sont aussi **réservés** dans
 `lib/organizations.ts` — `tests/organizations.test.ts` dérive du disque les
 segments de premier niveau et exige que chacun soit refusé à une organisation.
 

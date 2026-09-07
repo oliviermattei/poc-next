@@ -3,9 +3,12 @@ import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
+  MODULE_ROUTE_PREFIX,
   buildRegistry,
+  dispatchModuleRequest,
   resolveEnabledModules,
   robotsAllows,
+  routeIsRateLimited,
   type RobotsPolicy,
 } from '@repo/core'
 import {
@@ -20,6 +23,9 @@ import { configureAuth, resetAuthService } from '@repo/module-auth'
 import {
   CONTACT_PATH,
   EMPTY_MARKETING_SITE,
+  PUBLIC_FORM_IDS,
+  WAITLIST_FORM_KEYS,
+  WAITLIST_PATH,
   legalPath,
   marketingMessageKeys,
   marketingModule,
@@ -28,11 +34,17 @@ import {
   type MarketingSite,
 } from '@repo/module-marketing'
 import {
+  MARKETING_EMAIL_TEMPLATES,
   configureMarketing,
   createDrizzlePublicSubscriptions,
   marketingRoutePath,
   resetMarketingService,
 } from '@repo/module-marketing'
+import {
+  createRouteRateLimitGuard,
+  parseRateLimitPolicies,
+} from '@repo/module-rate-limit'
+import { qualifyEmailTemplateId } from '@repo/emails'
 import {
   ContactView,
   LegalDocumentView,
@@ -51,6 +63,7 @@ import { flatMessagesFor } from '../apps/web/lib/messages'
 import { availableModules } from '../config/features'
 import { appLocales } from '../config/i18n'
 import { marketingConfiguration } from '../config/marketing'
+import { rateLimitPolicies } from '../config/security'
 import { databaseUrl, isDatabaseReachable } from './fixtures/database'
 import type { RateLimiter } from '@repo/ports'
 
@@ -426,11 +439,33 @@ describe('le point de composition du site public', () => {
   })
 })
 
-/** Les chemins montés des deux formulaires, dérivés du module et jamais recopiés. */
-const MARKETING_FORM_PATHS = [
-  marketingRoutePath('contact'),
-  marketingRoutePath('newsletter'),
-] as const
+/**
+ * Les chemins montés des formulaires publics, **dérivés du contrat** et jamais
+ * recopiés : une route ajoutée au module entre dans les mesures qui suivent
+ * sans que personne y pense — c'est ainsi que celle de s42 y est entrée.
+ */
+const MARKETING_FORM_PATHS = marketingModule.routes.map(
+  (route) => `${MODULE_ROUTE_PREFIX}${route.path}`,
+)
+
+/**
+ * Les formulaires d'**inscription** et leur source, dérivés eux aussi.
+ *
+ * Le critère de sélection est la configuration, pas un nom : un formulaire est
+ * une liste s'il a une source déclarée (`<formulaire>Source` dans
+ * `config/marketing.ts`). Le formulaire de contact n'en a pas — il envoie un
+ * message, il n'inscrit personne —, et une troisième liste entrerait dans les
+ * balayages qui suivent sans qu'on l'écrive nulle part.
+ */
+const SUBSCRIPTION_FORMS: readonly {
+  id: (typeof PUBLIC_FORM_IDS)[number]
+  path: string
+  source: string
+}[] = PUBLIC_FORM_IDS.flatMap((id) => {
+  const source = (marketingConfiguration.forms as Record<string, unknown>)[`${id}Source`]
+
+  return typeof source === 'string' ? [{ id, path: marketingRoutePath(id), source }] : []
+})
 
 describe('le module marketing coupé', () => {
   /**
@@ -493,8 +528,12 @@ describe('le module marketing coupé', () => {
 
   it('déclare pourtant bien ces routes, publiques', () => {
     // La garde d'inertie du cas ci-dessus : un module qui ne déclarerait aucune
-    // route rendrait « aucune route servie » vrai sans rien prouver.
-    expect(marketingModule.routes.map((route) => route.method)).toEqual(['POST', 'POST'])
+    // route rendrait « aucune route servie » vrai sans rien prouver. Le
+    // plancher est ce qui a été **mesuré** — contact, newsletter et liste
+    // d'attente —, pas ce qui existe : une quatrième route entrerait dans le
+    // balayage sans le faire rougir, une disparition le ferait.
+    expect(marketingModule.routes.length).toBeGreaterThanOrEqual(3)
+    expect([...new Set(marketingModule.routes.map((route) => route.method))]).toEqual(['POST'])
 
     for (const route of marketingModule.routes) {
       expect(route.protection, route.path).toEqual({ level: 'public' })
@@ -531,6 +570,141 @@ describe('le module marketing coupé', () => {
     // serait vrai sans rien prouver.
     expect(marketingModule.publicUrls(context).length).toBeGreaterThan(0)
     expect(withoutMarketing.publicUrls(context)).toEqual([])
+  })
+})
+
+/**
+ * **La politique de débit des formulaires publics, déclarée et jamais héritée**
+ * (s42, critère 5).
+ *
+ * `routeIsRateLimited` rend `true` pour toute route publique, déclarée ou non :
+ * une route qui n'annonce rien est donc limitée — et **mal**. Elle hérite de
+ * `default`, que `config/security.ts` fixe à 120 passages par minute, là où
+ * `publicForm` en autorise 60 par dix minutes, soit vingt fois moins. Le
+ * critère « soumis aux limites de débit du socle » se lit donc sur la politique
+ * **obtenue**, pas sur le fait d'être limité.
+ *
+ * Rien n'est recopié : les routes viennent du contrat, la résolution de
+ * politique est celle du garde (`route.rateLimit?.policy ?? 'default'`), et les
+ * seuils viennent de `config/security.ts`.
+ */
+describe('la limitation de débit des formulaires publics', () => {
+  /** La résolution du garde, écrite une fois ici comme elle l'est là-bas. */
+  const policyNameOf = (route: { rateLimit?: { policy: string } }): string =>
+    route.rateLimit?.policy ?? 'default'
+
+  it('donne à chaque formulaire la politique « publicForm », jamais celle par défaut', () => {
+    // Garde d'inertie : si les deux politiques se valaient, ne rien déclarer
+    // reviendrait au même et ce cas ne mesurerait rien.
+    const perMinute = (policy: { windowSeconds: number; maxPerClient: number }): number =>
+      (policy.maxPerClient / policy.windowSeconds) * 60
+
+    expect(perMinute(rateLimitPolicies.default)).toBeGreaterThan(
+      perMinute(rateLimitPolicies.publicForm),
+    )
+
+    expect(marketingModule.routes.length).toBeGreaterThanOrEqual(3)
+
+    for (const route of marketingModule.routes) {
+      expect(routeIsRateLimited(route), route.path).toBe(true)
+      expect(policyNameOf(route), `${route.path} obtient la politique`).toBe('publicForm')
+    }
+  })
+
+  /**
+   * Le registre livré, avec un gestionnaire **compté** à la place de chaque
+   * vrai.
+   *
+   * Ce qui porte le défaut cherché est la **déclaration** — chemin, protection,
+   * politique —, et elle n'est pas touchée. Les gestionnaires, eux, exigeraient
+   * une base et un mailer que ce bloc n'ouvre pas ; les remplacer permet en
+   * outre de mesurer ce qui compte autant que le refus : qu'il ne les atteint
+   * jamais.
+   */
+  const countingRegistry = (): {
+    registry: ReturnType<typeof buildRegistry>
+    handled: () => number
+  } => {
+    const real = buildRegistry({
+      available: [...availableModules],
+      enabled: ['auth', 'marketing'],
+      locales: [...appLocales],
+    })
+
+    let handled = 0
+
+    return {
+      registry: {
+        ...real,
+        routes: real.routes.map((route) => ({
+          ...route,
+          handler: () => {
+            handled += 1
+
+            return Response.json({ ok: true })
+          },
+        })),
+      },
+      handled: () => handled,
+    }
+  }
+
+  it('refuse effectivement au-delà du seuil, sur chacune de ses routes', async () => {
+    /**
+     * **La politique obtenue, exercée et non ré-implémentée** (réserve de la
+     * revue de s42).
+     *
+     * Le cas ci-dessus lit la déclaration et refait le `?? 'default'` du garde
+     * dans son assertion : il mord sur le contrat, mais aucune requête ne
+     * traversait le vrai garde pour voir le 429 arriver. Celui-ci le fait,
+     * avec `createRouteRateLimitGuard`, les politiques de `config/security.ts`
+     * et un compteur qui applique la vraie règle de fenêtre.
+     *
+     * Rien n'est écrit ici : ni un chemin — ils viennent du contrat —, ni un
+     * seuil — il vient de la politique **que la route obtient**. Les deux
+     * listes sont donc mesurées, et une quatrième route le serait aussi.
+     */
+    const policies = parseRateLimitPolicies(rateLimitPolicies)
+    const now = (): Date => new Date('2026-09-07T10:00:10.000Z')
+
+    expect(marketingModule.routes.length).toBeGreaterThanOrEqual(3)
+
+    for (const route of marketingModule.routes) {
+      const { registry, handled } = countingRegistry()
+      const rateLimit = createRouteRateLimitGuard({
+        limiter: createMemoryRateLimiter(),
+        policies,
+        now,
+        log: () => {},
+      })
+      const max = policies[policyNameOf(route)]?.maxPerClient ?? 0
+      const statuses: number[] = []
+
+      // Un seuil nul ferait de « refusé au-delà » une phrase vide.
+      expect(max, route.path).toBeGreaterThan(0)
+
+      for (let attempt = 0; attempt <= max; attempt += 1) {
+        const response = await dispatchModuleRequest(
+          registry,
+          new Request(`https://app.test${MODULE_ROUTE_PREFIX}${route.path}`, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'x-forwarded-for': '203.0.113.21',
+            },
+            body: JSON.stringify({ email: `seuil-${attempt}@example.test` }),
+          }),
+          { rateLimit },
+        )
+
+        statuses.push(response.status)
+      }
+
+      expect(statuses.filter((status) => status === 429), route.path).toHaveLength(1)
+      expect(statuses.at(-1), route.path).toBe(429)
+      // Un refus qui atteindrait quand même le gestionnaire n'en serait pas un.
+      expect(handled(), route.path).toBe(max)
+    }
   })
 })
 
@@ -590,6 +764,37 @@ describe('le module marketing activé', () => {
 
     expect([...straight].sort((left, right) => left - right)).toEqual(straight)
     expect([...backwards].sort((left, right) => right - left)).toEqual(backwards)
+  })
+
+  it('garde la page d’accueil telle qu’elle est : la liste d’attente est ailleurs', async () => {
+    /**
+     * **Critère 6 de s42, seconde moitié.** La story retire explicitement de
+     * son périmètre le remplacement de la page d'accueil : la liste d'attente
+     * est une page de plus, à son propre chemin.
+     *
+     * Trois façons de la casser, trois mesures : monter l'écran à la racine,
+     * glisser son formulaire dans l'accueil, ou retirer une section de la page.
+     */
+    expect(WAITLIST_PATH).not.toBe('/')
+    expect(shippedSite.publicPaths).toContain(WAITLIST_PATH)
+
+    const outcome = await renderRoot(shippedSite, ANONYMOUS)
+
+    expect(outcome.digest).toBeNull()
+
+    // La route du formulaire de liste d'attente n'est postée par aucun élément
+    // de l'accueil : c'est ce qui distingue « une page de plus » de « l'accueil
+    // remplacé ».
+    expect(outcome.html).not.toContain(marketingRoutePath('waitlist'))
+    expect(outcome.html).not.toContain(markerFor(WAITLIST_FORM_KEYS.submit))
+
+    // Et l'accueil rend toujours toutes ses sections, dans l'ordre de la
+    // configuration : en retirer une serait l'autre façon de le changer.
+    expect(
+      shippedSite.sections.filter((section) =>
+        outcome.html.includes(markerFor(`marketing.section.${section.id}.title`)),
+      ),
+    ).toHaveLength(shippedSite.sections.length)
   })
 
   it('sert le tableau de bord à un visiteur connecté, jamais la page publique', async () => {
@@ -1301,10 +1506,12 @@ describe.skipIf(!databaseReachable)('les tables du site public, sur une base ré
     expect(Number(rows.rows[0]?.count ?? 0)).toBe(1)
 
     // La même adresse sur une **autre** source reste permise : c'est cette
-    // colonne qui laisse s42 réutiliser la table.
+    // colonne qui laisse la liste d'attente réutiliser la table (s42). La
+    // seconde source vient de la configuration, jamais d'un littéral recopié.
     await connection.db.execute(
       sql`insert into public_subscription (id, email, source, locale)
-          values ('sub-3', 'doublon@example.test', 'waitlist', 'fr')`,
+          values ('sub-3', 'doublon@example.test',
+                  ${marketingConfiguration.forms.waitlistSource}, 'fr')`,
     )
 
     await connection.db.execute(sql`delete from public_subscription`)
@@ -1428,27 +1635,39 @@ describe.skipIf(!databaseReachable)('les tables du site public, sur une base ré
       // C'est la mesure du §7 : un formulaire qui répondrait différemment
       // dirait qui est déjà inscrit. La comparaison porte sur le statut, le
       // corps et le type de contenu — trois façons de laisser fuiter le cas.
-      const bodies = [
-        { email: 'route-nouvelle@example.test' },
-        { email: 'route-nouvelle@example.test' },
-        { email: 'pas-une-adresse' },
-      ]
+      //
+      // **Les deux listes y passent.** Rien ne peut les faire diverger
+      // aujourd'hui — un `respond` unique, un cas d'usage par liste —, mais
+      // c'est un fait du code, pas une garantie : le balayage est dérivé de la
+      // configuration, il ne coûte rien et il survit à la divergence.
+      expect(SUBSCRIPTION_FORMS.length).toBeGreaterThanOrEqual(2)
+      // Garde d'inertie : un filtre qui ne filtre rien rendrait « chaque liste »
+      // égal à « chaque formulaire », et la sélection ne dirait plus rien.
+      expect(SUBSCRIPTION_FORMS.length).toBeLessThan(PUBLIC_FORM_IDS.length)
 
-      const responses = await Promise.all(
-        bodies.map(async (body) => {
-          const response = await post(marketingRoutePath('newsletter'), body)
+      for (const form of SUBSCRIPTION_FORMS) {
+        const bodies = [
+          { email: `route-${form.id}@example.test` },
+          { email: `route-${form.id}@example.test` },
+          { email: 'pas-une-adresse' },
+        ]
 
-          return {
-            status: response.status,
-            type: response.headers.get('content-type'),
-            body: await response.text(),
-          }
-        }),
-      )
+        const responses = await Promise.all(
+          bodies.map(async (body) => {
+            const response = await post(form.path, body)
 
-      expect(responses[1]).toEqual(responses[0])
-      expect(responses[2]).toEqual(responses[0])
-      expect(responses[0]?.status).toBe(200)
+            return {
+              status: response.status,
+              type: response.headers.get('content-type'),
+              body: await response.text(),
+            }
+          }),
+        )
+
+        expect(responses[1], form.path).toEqual(responses[0])
+        expect(responses[2], form.path).toEqual(responses[0])
+        expect(responses[0]?.status, form.path).toBe(200)
+      }
     })
 
     it('nomme le champ fautif du contact, et refuse de servir un chemin voisin', async () => {
@@ -1496,6 +1715,55 @@ describe.skipIf(!databaseReachable)('les tables du site public, sur une base ré
       expect(Number(rows.rows[0]?.count ?? 0)).toBe(maxPerClient)
     })
 
+    it('n’inscrit qu’une fois sur la liste d’attente, et confirme pareil', async () => {
+      /**
+       * Critères 1, 2 et 4 de s42, mesurés **en comptant les lignes**.
+       *
+       * L'unicité n'est pas une lecture préalable : c'est l'index sur
+       * `(source, email)`. Ce cas poste deux fois la même adresse et compte —
+       * une implémentation qui lirait avant d'écrire passerait ici et
+       * échouerait sous concurrence, ce que le cas des inscriptions
+       * simultanées mesure par ailleurs.
+       */
+      resetRateLimit()
+
+      const path = marketingRoutePath('waitlist')
+      const first = await post(path, { email: 'Futur@Example.TEST' })
+      const again = await post(path, { email: 'futur@example.test' })
+
+      expect(first.status).toBe(200)
+      expect(again.status).toBe(first.status)
+      expect(await again.text()).toBe(await first.text())
+
+      const rows = await connection.db.execute<{ source: string; count: number }>(
+        sql`select source, count(*)::int as count from public_subscription
+            where email = 'futur@example.test' group by source`,
+      )
+
+      // Une seule ligne, et elle porte **la source de la configuration** :
+      // c'est elle que la vue générique du back-office filtrera (critère 4).
+      expect(rows.rows).toEqual([
+        { source: marketingConfiguration.forms.waitlistSource, count: 1 },
+      ])
+
+      // Et la même adresse reste inscriptible à l'autre liste : c'est la paire
+      // qui est unique, pas l'adresse. Sans cela, un abonné à la lettre
+      // d'information ne pourrait jamais rejoindre la liste d'attente.
+      await post(marketingRoutePath('newsletter'), { email: 'futur@example.test' })
+
+      const both = await connection.db.execute<{ source: string }>(
+        sql`select source from public_subscription
+            where email = 'futur@example.test' order by source`,
+      )
+
+      expect(both.rows.map((row) => row.source).sort()).toEqual(
+        [
+          marketingConfiguration.forms.newsletterSource,
+          marketingConfiguration.forms.waitlistSource,
+        ].sort(),
+      )
+    })
+
     it('exporte puis efface une inscription **par le contrat du module**', async () => {
       // Ce sont `marketingModule.export` et `marketingModule.purge` qui sont
       // appelés, pas les cas d'usage : c'est ce chemin-là que le registre
@@ -1503,13 +1771,33 @@ describe.skipIf(!databaseReachable)('les tables du site public, sur une base ré
       // d'usage ne bougent.
       resetRateLimit()
       await post(marketingRoutePath('newsletter'), { email: 'contrat@example.test' })
+      // Et la liste d'attente (s42) : **la même table, donc les mêmes quatre
+      // garanties** — catégorie déclarée, rétention, purge et export. C'est le
+      // meilleur argument pour l'emprunt, et il se mesure ici plutôt que de
+      // s'affirmer : un modèle neuf aurait rouvert les quatre.
+      await post(marketingRoutePath('waitlist'), { email: 'contrat@example.test' })
 
       const scope = { kind: 'user', userId: 'u-contrat' } as const
+      const exported = (await marketingModule.export(scope)) as {
+        subscriptions: { source: string }[]
+        messages: unknown[]
+      }
 
-      expect(await marketingModule.export(scope)).toEqual({
+      expect(exported.subscriptions.map((row) => row.source).sort()).toEqual(
+        [
+          marketingConfiguration.forms.newsletterSource,
+          marketingConfiguration.forms.waitlistSource,
+        ].sort(),
+      )
+      expect(exported).toEqual({
         subscriptions: [
           {
-            source: marketingConfiguration.forms.newsletterSource,
+            source: expect.any(String),
+            locale: appLocales[0],
+            createdAt: expect.any(Date),
+          },
+          {
+            source: expect.any(String),
             locale: appLocales[0],
             createdAt: expect.any(Date),
           },
@@ -1536,6 +1824,41 @@ describe.skipIf(!databaseReachable)('les tables du site public, sur une base ré
  * `{quelque-chose}` dans son sujet fait rougir `pnpm test`.
  */
 describe('les emails du site public', () => {
+  it('déclare chaque template que ses cas d’usage nomment, dans chaque locale', () => {
+    /**
+     * **Le nom écrit dans le cas d'usage et le template déclaré, confrontés.**
+     *
+     * `mailer.send({ template })` prend une chaîne : un nom qui ne correspond à
+     * aucun template déclaré ne fait pas rougir le compilateur, il fait échouer
+     * l'envoi à l'exécution — c'est-à-dire l'email de confirmation d'un
+     * visiteur, silencieusement. La confrontation est **dérivée des deux
+     * côtés** : `MARKETING_EMAIL_TEMPLATES` d'une part, `marketingModule.emails`
+     * de l'autre.
+     */
+    const declared = new Set(
+      marketingModule.emails.map((template) =>
+        qualifyEmailTemplateId(marketingModule.id, template.id),
+      ),
+    )
+    const named = Object.values(MARKETING_EMAIL_TEMPLATES)
+
+    // Garde d'inertie : un module qui ne nommerait aucun template rendrait la
+    // boucle vraie sans rien mesurer.
+    expect(named.length).toBeGreaterThanOrEqual(3)
+
+    for (const template of named) {
+      expect([...declared], template).toContain(template)
+    }
+
+    // Et chacun est livré dans **chaque** langue du projet : un template
+    // amputé d'une locale part dans une autre langue, ou pas du tout.
+    for (const template of marketingModule.emails) {
+      for (const locale of appLocales) {
+        expect(template.locales[locale], `${template.id} / ${locale}`).toBeDefined()
+      }
+    }
+  })
+
   it('ne laisse aucun marqueur dans un sujet, dans aucune locale', () => {
     const subjects = marketingModule.emails.flatMap((template) =>
       Object.entries(template.locales).map(([locale, content]) => ({
@@ -1563,22 +1886,31 @@ describe('les emails du site public', () => {
  * composition est donc remplacé ici pour poser l'état « site public sans
  * formulaires », quel que soit ce que `config/features.ts` dit par ailleurs.
  */
-describe('l’écran de contact, site public sans formulaires', () => {
+describe('les écrans de formulaire, site public sans formulaires', () => {
   afterAll(() => {
     vi.doUnmock('../apps/web/lib/marketing')
     vi.resetModules()
   })
 
-  it('refuse de se rendre, dans les deux configurations du dépôt', async () => {
+  it.each([
+    ['contact', '../apps/web/app/contact/page'],
+    // s42, critère 6 : la page de liste d'attente disparaît avec le module,
+    // exactement comme celle du contact et par la même donnée — `forms`, pas
+    // un identifiant de module lu dans un écran.
+    ['liste d’attente', '../apps/web/app/waitlist/page'],
+  ])('refuse de rendre l’écran « %s », dans les deux configurations du dépôt', async (
+    _screen,
+    module,
+  ) => {
     vi.resetModules()
     vi.doMock('../apps/web/lib/marketing', () => ({
       marketingSite: EMPTY_MARKETING_SITE,
       marketingFormsAvailable: false,
     }))
 
-    const { default: ContactPage } = await import('../apps/web/app/contact/page')
+    const { default: Screen } = (await import(module)) as { default: () => Promise<unknown> }
 
-    await expect(ContactPage()).rejects.toMatchObject({
+    await expect(Screen()).rejects.toMatchObject({
       digest: expect.stringContaining('NEXT_HTTP_ERROR_FALLBACK;404'),
     })
   })

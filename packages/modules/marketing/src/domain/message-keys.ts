@@ -127,6 +127,10 @@ export const FORM_NOSCRIPT_KEY = marketingKey('form.noscript')
 export const CONTACT_TITLE_KEY = marketingKey('contact.title')
 export const CONTACT_DESCRIPTION_KEY = marketingKey('contact.description')
 
+/** L'en-tête de l'écran de liste d'attente (s42), fixe comme celui du contact. */
+export const WAITLIST_TITLE_KEY = marketingKey('waitlist.title')
+export const WAITLIST_DESCRIPTION_KEY = marketingKey('waitlist.description')
+
 export const CONTACT_FORM_KEYS = {
   name: marketingKey('contact.field.name'),
   email: marketingKey('contact.field.email'),
@@ -146,6 +150,26 @@ export const NEWSLETTER_FORM_KEYS = {
   failed: marketingKey('newsletter.error.failed'),
 } as const
 
+/**
+ * La liste d'attente (s42) — **les mêmes clés que la lettre d'information, et
+ * pas une de plus**.
+ *
+ * Il n'y a pas de `invalid` ici, et c'est **délibéré** : la route répond la
+ * même chose à une adresse nouvelle, déjà inscrite ou malformée
+ * (`docs/security.md` §7). Livrer ce texte préparerait l'affichage d'un cas que
+ * le serveur ne produit jamais, et le premier écran qui le brancherait
+ * rouvrirait l'énumération. L'omission est copiée sur celle de s11, et
+ * `application/marketing-site.test.ts` compare les deux jeux plutôt qu'une
+ * liste écrite à la main.
+ */
+export const WAITLIST_FORM_KEYS = {
+  email: marketingKey('waitlist.field.email'),
+  submit: marketingKey('waitlist.action.submit'),
+  success: marketingKey('waitlist.success'),
+  throttled: marketingKey('waitlist.error.throttled'),
+  failed: marketingKey('waitlist.error.failed'),
+} as const
+
 /** Les clés que toute page publique demande, quelle que soit la configuration. */
 const FIXED_KEYS: readonly string[] = [
   HOME_TITLE_KEY,
@@ -154,9 +178,12 @@ const FIXED_KEYS: readonly string[] = [
   NAVIGATION_HOME_KEY,
   CONTACT_TITLE_KEY,
   CONTACT_DESCRIPTION_KEY,
+  WAITLIST_TITLE_KEY,
+  WAITLIST_DESCRIPTION_KEY,
   FORM_NOSCRIPT_KEY,
   ...Object.values(CONTACT_FORM_KEYS),
   ...Object.values(NEWSLETTER_FORM_KEYS),
+  ...Object.values(WAITLIST_FORM_KEYS),
 ]
 
 /**

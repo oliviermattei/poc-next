@@ -116,14 +116,20 @@ const rateLimitSchema = z.object({
  * qu'un `to` d'email ne doit jamais porter — un retour à la ligne, donc une
  * injection d'en-tête (`docs/security.md` §4).
  *
- * `newsletterSource` alimente la colonne `source` de `public_subscription` : la
- * table est **partagée** avec la liste d'attente de s42, qui déclarera la
- * sienne. Deux modèles concurrents d'inscription sont exactement ce que la
- * story interdit.
+ * `newsletterSource` et `waitlistSource` alimentent la colonne `source` de
+ * `public_subscription` : la table est **partagée** par les deux listes (s11
+ * l'a écrit, s42 s'en sert), et c'est cette colonne — et l'index unique sur
+ * `(source, email)` — qui les sépare. Deux modèles concurrents d'inscription
+ * sont exactement ce que la story interdit.
+ *
+ * Les deux sources sont des **configurations**, jamais des littéraux du
+ * module : un projet qui appelle sa liste d'attente autrement change une ligne
+ * ici, pas un package.
  */
 const formsSchema = z.object({
   contactRecipient: z.string().max(254).pipe(z.email()),
   newsletterSource: identifier,
+  waitlistSource: identifier,
   rateLimit: rateLimitSchema,
 })
 
@@ -240,6 +246,25 @@ const assertCoherent = (configuration: MarketingConfiguration): void => {
           `${quote(section.kind)} n’affiche pas.`,
       )
     }
+  }
+
+  /**
+   * **Deux listes, deux sources** (s42).
+   *
+   * L'unicité de `public_subscription` porte sur `(source, email)`. Deux
+   * sources identiques fusionneraient donc les deux listes : une inscription à
+   * la liste d'attente d'une adresse déjà inscrite à la lettre d'information
+   * serait lue comme un doublon — aucune ligne, aucun email de confirmation —
+   * et rien ne le dirait. Le refus porte sur la valeur, pas sur le nom du
+   * champ : c'est la colonne qui sépare, et elle ne sépare plus.
+   */
+  if (configuration.forms.newsletterSource === configuration.forms.waitlistSource) {
+    refuse(
+      `les deux formulaires publics déclarent la même source ${quote(
+        configuration.forms.newsletterSource,
+      )}. C’est cette colonne qui sépare les inscriptions dans une table unique : ` +
+        'partagée, une inscription à l’une passerait pour un doublon de l’autre.',
+    )
   }
 
   const seenSlugs = new Set<string>()

@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
 import { MarketingConfigurationError } from '../domain/marketing-config'
-import { marketingMessageKeys } from '../domain/message-keys'
+import {
+  CONTACT_FORM_KEYS,
+  NEWSLETTER_FORM_KEYS,
+  WAITLIST_DESCRIPTION_KEY,
+  WAITLIST_FORM_KEYS,
+  WAITLIST_TITLE_KEY,
+  marketingMessageKeys,
+} from '../domain/message-keys'
 import {
   EMPTY_MARKETING_SITE,
   legalDocumentOf,
@@ -27,9 +34,17 @@ const validConfiguration = () => ({
   forms: {
     contactRecipient: 'bonjour@exemple.test',
     newsletterSource: 'newsletter',
+    waitlistSource: 'waitlist',
     rateLimit: { windowSeconds: 600, maxPerClient: 5, maxPerForm: 200 },
   },
 })
+
+/** La même, privée de la source de liste d'attente : le refus porte sur l'absence. */
+const withoutWaitlistSource = (): Record<string, unknown> => {
+  const { waitlistSource: _omitted, ...rest } = validConfiguration().forms
+
+  return rest
+}
 
 describe('la configuration du site public', () => {
   it('conserve l’ordre déclaré des sections — c’est lui qui décide de la page', () => {
@@ -146,7 +161,13 @@ describe('la configuration du site public', () => {
     // `/contact` est une page publique du module depuis s11 : elle entre donc
     // dans le plan de site et dans la politique des robots par le même chemin
     // que les documents légaux, sans qu'aucune liste ne soit recopiée.
-    expect(site.publicPaths).toEqual(['/', '/contact', '/legal/privacy', '/legal/terms'])
+    expect(site.publicPaths).toEqual([
+      '/',
+      '/contact',
+      '/waitlist',
+      '/legal/privacy',
+      '/legal/terms',
+    ])
   })
 
   it('rend l’adresse de contact **de la configuration**, jamais une constante', () => {
@@ -181,6 +202,22 @@ describe('la configuration du site public', () => {
       'une source d’inscription qui n’est pas un identifiant',
       { forms: { ...validConfiguration().forms, newsletterSource: 'Newsletter 2026' } },
       /newsletterSource/,
+    ],
+    [
+      'une source de liste d’attente qui n’est pas un identifiant',
+      { forms: { ...validConfiguration().forms, waitlistSource: 'Liste 2026' } },
+      /waitlistSource/,
+    ],
+    ['aucune source de liste d’attente', { forms: { ...withoutWaitlistSource() } }, /waitlistSource/],
+    [
+      // s42 : c'est **cette colonne** qui sépare les deux listes
+      // (`public_subscription`, index unique sur `(source, email)`). Deux
+      // sources identiques les fusionneraient : une inscription à la liste
+      // d'attente d'une adresse déjà à la newsletter serait vue comme un
+      // doublon, donc sans email de confirmation, sans que rien ne le dise.
+      'deux formulaires qui déclarent la même source',
+      { forms: { ...validConfiguration().forms, waitlistSource: 'newsletter' } },
+      /newsletter/,
     ],
     [
       'une fenêtre de limitation nulle',
@@ -269,5 +306,49 @@ describe('les clés de traduction qu’une configuration exige', () => {
 
   it('n’en demande aucune quand il n’y a pas de site', () => {
     expect(marketingMessageKeys(EMPTY_MARKETING_SITE)).toEqual([])
+  })
+
+  it('demande les textes de la liste d’attente dès qu’il y a un site', () => {
+    // Les deux écrans de formulaire existent dès que le module est activé : ni
+    // l'un ni l'autre n'est demandé par une section de `config/marketing.ts`.
+    const keys = marketingMessageKeys(resolveMarketingSite(validConfiguration()))
+
+    for (const key of [
+      WAITLIST_TITLE_KEY,
+      WAITLIST_DESCRIPTION_KEY,
+      ...Object.values(WAITLIST_FORM_KEYS),
+    ]) {
+      expect(keys, key).toContain(key)
+    }
+  })
+})
+
+/**
+ * **Le message qu'il ne faut pas livrer** (s42, et s11 avant elle).
+ *
+ * La lettre d'information se prive délibérément d'un texte « adresse
+ * invalide » : sa route répond la **même** chose à une adresse nouvelle, déjà
+ * inscrite ou malformée (`docs/security.md` §7). La liste d'attente répond
+ * exactement pareil, donc elle doit se priver du même texte — le livrer
+ * préparerait l'affichage d'un cas que le serveur ne produit jamais, et le
+ * premier écran qui le brancherait rouvrirait l'énumération.
+ *
+ * La comparaison est **dérivée des deux jeux de clés**, jamais d'une liste
+ * écrite ici : ajouter `invalid` d'un côté seulement fait rougir ce cas, et
+ * l'ajouter des deux côtés ferait rougir celui du contact, qui est le seul
+ * formulaire à nommer un champ fautif.
+ */
+describe('les deux formulaires d’inscription publient les mêmes textes', () => {
+  it('n’offre pas à la liste d’attente un message que le serveur ne rend jamais', () => {
+    const shape = (keys: Record<string, string>): readonly string[] =>
+      Object.keys(keys).sort()
+
+    expect(shape(WAITLIST_FORM_KEYS)).toEqual(shape(NEWSLETTER_FORM_KEYS))
+
+    // Garde d'inertie : deux jeux vides seraient égaux sans rien prouver, et
+    // le contact — lui — nomme bien un champ fautif.
+    expect(shape(WAITLIST_FORM_KEYS).length).toBeGreaterThanOrEqual(5)
+    expect(shape(WAITLIST_FORM_KEYS)).not.toContain('invalid')
+    expect(shape(CONTACT_FORM_KEYS)).toContain('invalid')
   })
 })

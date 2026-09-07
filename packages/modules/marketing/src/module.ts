@@ -3,6 +3,7 @@ import { defineModule, type NavigationEntry } from '@repo/core'
 import { MARKETING_MODULE_ID } from './domain/marketing-config'
 import { contactMessageEmail } from './emails/contact-message'
 import { newsletterConfirmationEmail } from './emails/newsletter-confirmation'
+import { waitlistConfirmationEmail } from './emails/waitlist-confirmation'
 import { marketingPublicUrls } from './infrastructure/marketing-content'
 import { requireMarketingService } from './infrastructure/marketing-runtime'
 import enMessages from './messages/en.json' with { type: 'json' }
@@ -73,7 +74,7 @@ export const marketingModule = defineModule({
    */
   publicUrls: marketingPublicUrls,
   messages: { fr: frMessages, en: enMessages },
-  emails: [contactMessageEmail, newsletterConfirmationEmail],
+  emails: [contactMessageEmail, newsletterConfirmationEmail, waitlistConfirmationEmail],
   webhooks: [],
   jobs: [],
   /**

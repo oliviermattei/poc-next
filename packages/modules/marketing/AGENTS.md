@@ -1,7 +1,8 @@
 # packages/modules/marketing — règles locales
 
 Le site public : **l'accueil sectionné, les mentions légales, et depuis s11 les
-deux formulaires ouverts à tout venant**. Premier module du dépôt à livrer des
+formulaires ouverts à tout venant** — contact, lettre d'information, et depuis
+s42 la liste d'attente. Premier module du dépôt à livrer des
 écrans destinés à un visiteur sans compte, premier module optionnel dont la
 coupure se voit à la racine du site, et premier à recevoir des données de
 quelqu'un qui n'a pas de compte.
@@ -12,15 +13,15 @@ quelqu'un qui n'a pas de compte.
 |---|---|---|
 | L'ordre et la nature des sections | `config/marketing.ts` | c'est ce que le propriétaire édite ; retirer une section est une ligne de moins |
 | **L'adresse qui reçoit les messages de contact** | `config/marketing.ts`, bloc `forms` | piège nommé par s11 : une constante serait la même dans tous les projets générés |
-| **La source d'inscription et les seuils de débit** | idem | la source distingue newsletter et liste d'attente ; les seuils sont ceux que `docs/security.md` §7 veut « configurables » |
+| **Les deux sources d'inscription et les seuils de débit** | idem | `newsletterSource` et `waitlistSource` distinguent les deux listes dans une table unique — la validation **refuse** qu'elles soient égales ; les seuils sont ceux que `docs/security.md` §7 veut « configurables » |
 | La **prose** | `src/messages/{fr,en}.json` | tout texte affiché vient d'un catalogue (s09), y compris celui des pages légales et des formulaires |
 | La validation de cette configuration | `src/domain/marketing-config.ts` | une configuration est une frontière (`docs/security.md` §4) |
 | La validation d'une **soumission** | `src/domain/public-forms.ts` | un corps de requête est une frontière, au même titre |
 | Les clés qu'une configuration exige | `src/domain/message-keys.ts` | ces clés sont **composées**, donc invisibles au balayage statique de `tests/i18n.test.ts` |
 | Le plan de site et la politique des robots | `packages/core/src/syndication.ts` | **montées dans le socle en s53** (ADR 054) : `app/robots.ts` et `app/sitemap.ts` ne doivent connaître aucun module par son nom, et ces fonctions n'ont jamais rien eu de marketing |
 | Ce que ce module **donne à indexer** | `src/infrastructure/marketing-content.ts` | la quinzième clé du contrat : ses chemins publics, fournis par le point de composition qui valide `config/marketing.ts` |
-| Les **règles** des deux formulaires | `src/application/public-forms.ts` | ce que la route rend, ce qui est écrit, ce qui est envoyé |
-| Les **pages** | `apps/web/app/page.tsx`, `apps/web/app/legal/[document]/page.tsx`, `apps/web/app/contact/page.tsx` | un `ModuleRoute` est monté sous `/api/modules/…` (ADR 017), ce n'est pas un écran |
+| Les **règles** des formulaires | `src/application/public-forms.ts` | ce que la route rend, ce qui est écrit, ce qui est envoyé |
+| Les **pages** | `apps/web/app/page.tsx`, `apps/web/app/legal/[document]/page.tsx`, `apps/web/app/contact/page.tsx`, `apps/web/app/waitlist/page.tsx` | un `ModuleRoute` est monté sous `/api/modules/…` (ADR 017), ce n'est pas un écran |
 | Le **formulaire** interactif | `apps/web/app/public-form.tsx` | il appelle `fetch`, ce qu'un module n'a pas le droit de faire — voir plus bas |
 | Le choix « module monté ou non » | `apps/web/lib/marketing.ts` | point de composition unique, sur le modèle de `lib/locale-routing.ts` |
 | Le **câblage** du service (base, mailer, adresse d'un compte) | `apps/web/lib/module-services.ts` | il importe `lib/auth`, donc `next/headers` : le mettre dans `lib/marketing.ts` casse le chargement des parcours, qui importent ce fichier hors de Next (mesuré) |
@@ -41,13 +42,13 @@ composants** ; l'ADR 024 la pose et dit ce qui a été rejeté.
 `presentation/public-form-routes.ts` est du `.ts` : il sort par le barril
 principal, comme `organization-routes.ts` du module voisin.
 
-## Les deux formulaires publics (s11)
+## Les formulaires publics (s11, élargis par s42)
 
-**Trois tables, deux routes, deux emails.**
+**Trois tables, trois routes, trois emails.**
 
 | Table | Ce qu'elle porte |
 |---|---|
-| `public_subscription` | une adresse, sa **source**, sa langue. Unicité **en base** sur `(source, email)` : c'est elle, et pas une vérification préalable, qui rend une seconde soumission sans effet (`docs/reliability.md` §1). La table est **partagée** avec la liste d'attente de s42, qui déclarera sa propre source — un second modèle d'inscription est interdit par la story |
+| `public_subscription` | une adresse, sa **source**, sa langue. Unicité **en base** sur `(source, email)` : c'est elle, et pas une vérification préalable, qui rend une seconde soumission sans effet (`docs/reliability.md` §1). La table est **partagée** par la lettre d'information (s11) et la liste d'attente (s42), que la colonne `source` sépare — un second modèle d'inscription est interdit par les deux stories. La même adresse peut donc être sur les deux listes : c'est la **paire** qui est unique |
 | `contact_message` | le message reçu, **écrit avant d'être envoyé**. `delivered_at` vide = reçu, pas parti : c'est la trace qui permet de rattraper ce que le fournisseur n'a pas pris. Catégorie déclarée au contrat, donc exportée et effacée |
 | `public_form_throttle` | **abandonnée depuis s28, jamais supprimée.** Elle portait le compteur de débit ; ce module compte désormais à travers le port partagé (`@repo/ports`, ADR 050) et **n'écrit plus une ligne ici**. La table reste déclarée parce que `docs/reliability.md` impose de cesser d'écrire avant de supprimer, et que la version encore en ligne l'écrit pendant une bascule. Sa suppression est une story ultérieure — `tests/rate-limiting.test.ts` refuse à la fois qu'on la réécrive et qu'on la supprime ici |
 
@@ -55,14 +56,30 @@ principal, comme `organization-routes.ts` du module voisin.
 |---|---|
 | `POST /api/modules/marketing/contact` | 200 accepté, **400 avec le champ nommé**, 429 au-delà du seuil **de l'appelant**, 502 si l'email n'est pas parti — le message reste alors en base |
 | `POST /api/modules/marketing/newsletter` | **200, toujours** — adresse nouvelle, déjà inscrite ou malformée : même statut, même corps |
+| `POST /api/modules/marketing/waitlist` | **200, toujours**, pour la même raison. Même cas d'usage que la précédente : seuls changent le seau de débit, la source de configuration et le template de confirmation |
+
+Les deux routes d'inscription **déclarent** `rateLimit: { policy: 'publicForm' }`.
+Sans cette ligne elles seraient limitées quand même — `routeIsRateLimited` rend
+`true` pour toute route publique — mais par `default`, soit 120 passages par
+minute là où `publicForm` en autorise 60 par **dix** minutes. Le critère « soumis
+aux limites de débit du socle » se lit donc sur la politique **obtenue**, jamais
+sur le seul fait d'être limité ; `tests/marketing.test.ts` la dérive route par
+route.
 
 Cette asymétrie est la règle la plus importante du module et elle se défend :
-le contact n'a rien à énumérer, son destinataire est fixe et connu. La
-newsletter, elle, dirait qui est déjà dans la liste en distinguant ses cas
+le contact n'a rien à énumérer, son destinataire est fixe et connu. Une
+**inscription**, elle, dirait qui est déjà dans la liste en distinguant ses cas
 (`docs/security.md` §7) — exactement comme un écran de connexion qui distingue
 « compte inconnu » de « mot de passe invalide ». C'est pour la même raison que
 l'email de confirmation part **hors du temps de réponse** : une inscription
 nouvelle en envoie un, un doublon non, et la latence trahirait le cas.
+
+**Conséquence à ne pas défaire : il n'existe pas de clé de message « adresse
+invalide » pour ces deux formulaires.** L'omission est délibérée des deux côtés
+(s11 puis s42) — livrer ce texte préparerait l'affichage d'un cas que le serveur
+ne produit jamais, et le premier écran qui le brancherait rouvrirait
+l'énumération. `application/marketing-site.test.ts` compare les deux jeux de
+clés plutôt qu'une liste écrite à la main.
 
 **Le piège à robots est silencieux.** Champ rempli ⇒ la réponse d'une
 soumission acceptée, et **rien** n'est écrit ni envoyé. Répondre 400 en nommant
@@ -146,9 +163,9 @@ mesure sache ce qui a déjà été mesuré, et sur quoi.
 
 ## Le pied de page accepte des liens qu'il ne connaît pas (s36)
 
-`MarketingFooter` porte un `extraLinks`, que les trois vues du module
-(`MarketingHome`, `ContactView`, `LegalDocumentView`) reçoivent en `footerLinks`
-et transmettent. Les liens arrivent **déjà traduits** et portent un chemin
+`MarketingFooter` porte un `extraLinks`, que les quatre vues du module
+(`MarketingHome`, `ContactView`, `WaitlistView`, `LegalDocumentView`) reçoivent
+en `footerLinks` et transmettent. Les liens arrivent **déjà traduits** et portent un chemin
 interne, comme ceux du module.
 
 La raison est le finding F57 de la revue des stories : le socle a des pages que
@@ -164,9 +181,14 @@ paramètres de compte de l'application.
 
 ## Ce qui n'est pas livré, et pourquoi
 
-- **le lien de désinscription** dans l'email de confirmation : aucune route
-  livrée ne le servirait, et un lien mort dans un email est pire qu'un lien
-  absent. Le texte dit quoi faire à la place ;
+- **le lien de désinscription** dans les emails de confirmation — celui de la
+  lettre d'information comme celui de la liste d'attente : aucune route livrée
+  ne le servirait, et un lien mort dans un email est pire qu'un lien absent. Le
+  texte dit quoi faire à la place ;
+- **un lien vers la liste d'attente** dans la navigation ou le pied de page
+  (s42) : la story ne l'écrit dans aucun critère, et l'accueil doit rester
+  inchangé. La page est servie, indexée et annoncée par le plan de site ; un
+  projet qui veut y mener y met un lien ;
 - **un captcha** : `docs/security.md` §7 le veut « activable », et
   `config/security.ts` porte depuis s28 les seuils et le drapeau de captcha —
   coupé, et sans fournisseur branché.
@@ -203,8 +225,8 @@ sortant d'un module passe par une porte bornée (`docs/reliability.md` §3). C'e
 pour cela que le formulaire interactif de s11 vit dans `apps/web`, comme
 `auth-form.tsx` depuis s07 : il appelle **notre propre route** depuis un
 navigateur, un cas que la règle ne visait pas, et élargir une garde de sécurité
-pour un cas particulier est le geste que ce dépôt refuse. `MarketingHome` et
-`ContactView` reçoivent donc le formulaire en `ReactNode` : le module décide
+pour un cas particulier est le geste que ce dépôt refuse. `MarketingHome`,
+`ContactView` et `WaitlistView` reçoivent donc le formulaire en `ReactNode` : le module décide
 **où** il s'affiche, l'application le fournit.
 
 ## Ne doit jamais contenir
@@ -243,6 +265,24 @@ pour un cas particulier est le geste que ce dépôt refuse. `MarketingHome` et
   l'air vrais, est plus dangereux que de ne rien livrer. `tests/marketing.test.ts`
   dérive l'ensemble surveillé de la configuration : sections légales et éléments
   d'une section de nature `testimonials`.
+
+## Ce que s42 n'a **pas** fait, et pourquoi
+
+- **pas de module `waitlist`.** Il aurait requis `marketing` pour lui emprunter
+  sa table — une dépendance déclarée pour trois fichiers, et un second endroit
+  d'où l'on écrit dans une table qu'un autre module possède, ce que l'ADR 018 et
+  la borne d'import d'`admin` refusent par ailleurs. La liste d'attente est une
+  **seconde source du même formulaire d'inscription**, et c'est ainsi que s11
+  l'avait prévue. Conséquence assumée : son critère « module non activé » se lit
+  sur `marketing` ;
+- **pas de second modèle d'inscription** : la table, son unicité, sa catégorie
+  de données, sa rétention, sa purge et son export existaient déjà. Un modèle
+  neuf aurait rouvert les quatre garanties ;
+- **pas de remplacement de la page d'accueil**, retiré explicitement du
+  périmètre par la story elle-même — `tests/marketing.test.ts` mesure que la
+  racine ne poste pas vers la route de la liste d'attente ;
+- **pas d'écran de back-office** : la vue générique des inscriptions appartient
+  à `s37c`. Le critère 4 se lit ici sur la **source portée par les lignes**.
 
 ## Tests
 

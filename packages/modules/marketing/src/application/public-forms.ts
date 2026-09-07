@@ -4,8 +4,9 @@ import type { ModuleExportPayload, ModuleScope } from '@repo/core'
 import {
   CONTACT_FORM,
   NEWSLETTER_FORM,
+  WAITLIST_FORM,
   parseContactSubmission,
-  parseNewsletterSubmission,
+  parseSubscriptionSubmission,
   type PublicFormId,
   type PublicFormParse,
 } from '../domain/public-forms'
@@ -18,10 +19,10 @@ import {
 import type { PublicFormsDependencies } from './ports'
 
 /**
- * Les deux cas d'usage des formulaires publics, et **les deux règles de réponse
- * qui les séparent**.
+ * Les cas d'usage des formulaires publics, et **les deux règles de réponse qui
+ * les séparent**.
  *
- * | | contact | newsletter |
+ * | | contact | inscription (newsletter, liste d'attente) |
  * |---|---|---|
  * | champ invalide | **400, champ nommé** (critère 1) | réponse d'acceptation |
  * | déjà connu | sans objet | réponse d'acceptation, aucun effet (critère 2) |
@@ -42,6 +43,7 @@ import type { PublicFormsDependencies } from './ports'
 export const MARKETING_EMAIL_TEMPLATES = {
   contactMessage: `${MARKETING_MODULE_ID}.contact-message`,
   newsletterConfirmation: `${MARKETING_MODULE_ID}.newsletter-confirmation`,
+  waitlistConfirmation: `${MARKETING_MODULE_ID}.waitlist-confirmation`,
 } as const
 
 /**
@@ -70,6 +72,15 @@ export interface PublicFormSubmission {
 export interface PublicFormsUseCases {
   submitContact(submission: PublicFormSubmission): Promise<PublicFormOutcome>
   subscribeToNewsletter(submission: PublicFormSubmission): Promise<PublicFormOutcome>
+  /**
+   * La liste d'attente (s42) : **le même cas d'usage, une autre source**.
+   *
+   * Elle ne mérite pas une règle à elle — elle écrit dans la même table, avec
+   * la même unicité et le même silence sur les cas. Ce qui la distingue tient
+   * en trois valeurs : son seau de débit, sa source de configuration et son
+   * email de confirmation.
+   */
+  joinWaitlist(submission: PublicFormSubmission): Promise<PublicFormOutcome>
   /**
    * Les deux catégories déclarées au contrat, ensemble : inscriptions **et**
    * messages de contact. Le nom dit « visitor data » et non « subscriptions »
@@ -135,6 +146,57 @@ export function createPublicFormsUseCases(
     }
 
     return exceedsRateLimit(formHits, buckets.form.max) ? 'degraded' : 'allowed'
+  }
+
+  /**
+   * **Une seule inscription publique, deux listes** (s11 puis s42).
+   *
+   * La lettre d'information et la liste d'attente partagent la table, son
+   * unicité `(source, email)`, son silence sur les cas et son envoi hors du
+   * temps de réponse. Ce qui les sépare tient dans les trois valeurs reçues
+   * ici : le seau de débit, la source de configuration et le template de
+   * confirmation. Deux copies de ce corps auraient divergé, et la seconde liste
+   * aurait hérité d'un des trois écarts sans que rien ne le dise.
+   */
+  const subscribe = async (
+    { body, client, locale }: PublicFormSubmission,
+    list: { readonly form: PublicFormId; readonly source: string; readonly template: string },
+  ): Promise<PublicFormOutcome> => {
+    const verdict = await rateLimitVerdict(list.form, client)
+
+    if (verdict === 'refused') {
+      return { status: 'rate-limited' }
+    }
+
+    const parsed = parseSubscriptionSubmission(body)
+
+    if (!parsed.ok) {
+      // Adresse malformée **et** soumission piégée rendent la réponse d'une
+      // inscription réussie : distinguer les cas rouvrirait l'énumération.
+      return ACCEPTED
+    }
+
+    const created = await subscriptions.subscribe({
+      id: generateId(),
+      email: parsed.value.email,
+      source: list.source,
+      locale: dependencies.emailLocaleFor(locale),
+    })
+
+    // Saturé, le formulaire n'envoie plus la confirmation : l'inscription est
+    // enregistrée, et c'est elle qui porte le service rendu au visiteur.
+    if (created !== null && verdict !== 'degraded') {
+      dependencies.runInBackground(
+        mailer.send({
+          to: created.email,
+          template: list.template,
+          locale: created.locale,
+          data: { email: created.email },
+        }),
+      )
+    }
+
+    return ACCEPTED
   }
 
   /** L'adresse d'un périmètre, ou `null`. Une organisation n'en a jamais. */
@@ -206,45 +268,23 @@ export function createPublicFormsUseCases(
       return ACCEPTED
     },
 
-    subscribeToNewsletter: async ({ body, client, locale }) => {
-      const verdict = await rateLimitVerdict(NEWSLETTER_FORM, client)
-
-      if (verdict === 'refused') {
-        return { status: 'rate-limited' }
-      }
-
-      const parsed = parseNewsletterSubmission(body)
-
-      if (!parsed.ok) {
-        // Adresse malformée **et** soumission piégée rendent la réponse d'une
-        // inscription réussie : distinguer les cas rouvrirait l'énumération.
-        return ACCEPTED
-      }
-
-      const emailLocale = dependencies.emailLocaleFor(locale)
-
-      const created = await subscriptions.subscribe({
-        id: generateId(),
-        email: parsed.value.email,
+    subscribeToNewsletter: async (submission) =>
+      await subscribe(submission, {
+        form: NEWSLETTER_FORM,
         source: forms.newsletterSource,
-        locale: emailLocale,
-      })
+        template: MARKETING_EMAIL_TEMPLATES.newsletterConfirmation,
+      }),
 
-      // Saturé, le formulaire n'envoie plus la confirmation : l'inscription est
-      // enregistrée, et c'est elle qui porte le service rendu au visiteur.
-      if (created !== null && verdict !== 'degraded') {
-        dependencies.runInBackground(
-          mailer.send({
-            to: created.email,
-            template: MARKETING_EMAIL_TEMPLATES.newsletterConfirmation,
-            locale: created.locale,
-            data: { email: created.email },
-          }),
-        )
-      }
-
-      return ACCEPTED
-    },
+    joinWaitlist: async (submission) =>
+      await subscribe(submission, {
+        form: WAITLIST_FORM,
+        // **Jamais un littéral.** La source vient de `config/marketing.ts`, au
+        // même titre que celle de la lettre d'information : c'est elle qui
+        // sépare les deux listes dans une table unique, et un projet peut la
+        // nommer autrement.
+        source: forms.waitlistSource,
+        template: MARKETING_EMAIL_TEMPLATES.waitlistConfirmation,
+      }),
 
     purgeVisitorData: async (scope) => {
       const email = await emailOf(scope)
