@@ -135,6 +135,65 @@ export function parseBackOfficeSubscriptionsQuery(
 }
 
 /**
+ * Ce qu'une liste de retours lit de son adresse (s43) — la liste commune,
+ * **plus** ses deux filtres.
+ *
+ * Un type à part, pour la raison de `BackOfficeSubscriptionsQuery` : les autres
+ * listes n'ont ni catégorie ni statut, et leur en donner laisserait deux
+ * paramètres sans lecteur sur quatre écrans sur cinq.
+ */
+export interface BackOfficeFeedbackQuery extends BackOfficeQuery {
+  /** La catégorie demandée, taillée, ou `null` — « toutes les catégories ». */
+  readonly category: string | null
+  /** Le statut demandé, taillé, ou `null` — « tous les statuts ». */
+  readonly status: string | null
+}
+
+/**
+ * La valeur de filtre la plus longue acceptée. Au-delà, ce n'en est plus une :
+ * rien n'est transmis plus bas.
+ */
+const MAX_FILTER_LENGTH = 64
+
+const filterValue = firstValue.transform((value) => {
+  const trimmed = (value ?? '').trim()
+
+  return trimmed === '' || trimmed.length > MAX_FILTER_LENGTH ? null : trimmed
+})
+
+const feedbackQuerySchema = z.object({
+  q: searchSchema,
+  page: pageSchema,
+  category: filterValue,
+  status: filterValue,
+})
+
+/**
+ * Lit les paramètres de la liste de retours — et **ne lève pas** davantage que
+ * `parseBackOfficeQuery`.
+ *
+ * Ce module s'arrête à la **forme** : une valeur, taillée, bornée en longueur,
+ * ou `null`. **Il ne connaît pas le vocabulaire des retours** — celui-ci
+ * appartient au module qui les possède, et le back-office ne nomme aucun module
+ * (ADR 067). Une valeur inconnue rend donc une liste vide, ce qui est la
+ * réponse juste, plutôt qu'un refus qui exigerait une liste écrite ici.
+ */
+export function parseBackOfficeFeedbackQuery(input: unknown): BackOfficeFeedbackQuery {
+  const parsed = feedbackQuerySchema.safeParse(input ?? {})
+
+  if (!parsed.success) {
+    return { category: null, status: null, search: null, page: 1 }
+  }
+
+  return {
+    category: parsed.data.category,
+    status: parsed.data.status,
+    search: parsed.data.q,
+    page: parsed.data.page,
+  }
+}
+
+/**
  * **Le nom du fichier d'export des inscriptions** (s37c), et ce qu'il ne porte
  * pas.
  *

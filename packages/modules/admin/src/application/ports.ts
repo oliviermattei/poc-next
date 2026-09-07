@@ -40,6 +40,20 @@ export interface PlatformRoleRepository {
    */
   superadminsAmong(userIds: readonly string[]): Promise<readonly string[]>
   /**
+   * **Tous les comptes qui administrent la plateforme** (s43).
+   *
+   * Elle ne rend que des **identifiants** : ce module ne connaît pas la forme
+   * d'un compte, et une adresse rendue ici serait une donnée personnelle sortie
+   * d'une lecture qui n'en avait pas besoin.
+   *
+   * Elle n'est atteignable par **aucune route** : son seul appelant est le point
+   * de composition de l'application, qui a besoin de savoir à qui adresser la
+   * notification d'un nouveau retour (critère 3 de s43). Elle ne décide donc
+   * d'aucune autorisation — `authorizeBackOffice` reste la garde unique — et la
+   * lui faire décider serait un second chemin d'autorisation.
+   */
+  listSuperadmins(): Promise<readonly string[]>
+  /**
    * **Les rôles de plateforme que ce compte porte** (s56), tels que la table
    * les porte.
    *
@@ -547,6 +561,98 @@ export interface AdminSubscriptionsPort {
 }
 
 /**
+ * **Un retour, tel que le back-office l'affiche** (s43).
+ *
+ * Ce type *est* la liste de ce qui sort — un champ ajouté ici est un champ
+ * qu'un écran rendra.
+ *
+ * `authorName` est **résolu à la lecture** par le point de composition, jamais
+ * stocké : c'est la discipline que la revue de s32 a imposée (R1). Une adresse
+ * ou un nom écrit dans la ligne survivrait à l'effacement du compte, pendant
+ * que le module qui la porte promet `retention: 'erase'`. `null` est un compte
+ * que le socle ne connaît plus.
+ *
+ * `originPath` est une donnée **fournie par le client**, réduite à un chemin
+ * interne par le module qui l'écrit. L'écran ne la rend **jamais dans un
+ * `href`** : une valeur écrite avant cette règle, ou par un autre chemin que la
+ * route, s'exécuterait au clic d'un superadmin.
+ */
+export interface AdminFeedback {
+  readonly id: string
+  readonly authorId: string
+  /** Le nom affichable de l'auteur, résolu à la lecture. `null` : compte effacé. */
+  readonly authorName: string | null
+  readonly category: string
+  readonly message: string
+  readonly originPath: string | null
+  readonly status: string
+  readonly createdAt: Date
+}
+
+/**
+ * **Ce que le back-office sait des retours** (s43).
+ *
+ * Le module `admin` ne déclare pas `feedback` dans ses `requires` — c'est
+ * l'inverse : c'est `feedback` qui requiert le back-office, parce que celui-ci
+ * est le seul lecteur d'un retour. Il ne peut donc ni l'importer, ni lire sa
+ * table, et il reçoit ce port du point de composition de l'application — la
+ * forme exacte de `AdminSubscriptionsPort` (s37c) et de `AdminRevenuePort`
+ * (s38).
+ *
+ * **Aucune méthode ne dit si le module existe** : coupé, ce qui disparaît est
+ * l'**entrée de navigation**, déclarée par le module qui la porte (ADR 067), et
+ * l'écran répond 404 — pas une condition écrite ici.
+ *
+ * `ok: false` est une lecture **en échec**, jamais « aucun retour » : une liste
+ * vide affichée sur une panne ferait croire à une base sans retours.
+ */
+export interface AdminFeedbackPort {
+  /**
+   * **Ce port ne fait que lire, et c'est une décision.**
+   *
+   * Marquer un retour comme traité est une **écriture** dans la table d'un
+   * autre module, et cette route-là vit chez lui : `POST /feedback/handle`,
+   * derrière la **même** garde — `authorizeBackOffice`, injectée, jamais
+   * recopiée. La poser ici l'aurait laissée exister quand le module qui porte
+   * les retours est coupé, ce que le critère 6 refuse.
+   */
+  /**
+   * Une page de retours, **filtrée au plus bas**.
+   *
+   * `category`, `status` et `search` descendent jusqu'à la requête : tamiser une
+   * page déjà lue rendrait un décompte et une pagination qui ne correspondent
+   * pas à ce qui est affiché — la leçon que s37c a payée.
+   *
+   * **Les deux vocabulaires du filtre voyagent avec la page**, et ce n'est pas
+   * un rangement : ce sont les constantes du module qui possède les retours, et
+   * ce module-ci ne peut pas les importer. Les faire voyager avec la lecture
+   * évite un second appel et garde le port **entièrement différé** — le point de
+   * composition n'a alors aucun import statique du module qui les déclare.
+   *
+   * Ils sont **donnés, non dérivés des lignes** — c'est la différence avec les
+   * sources d'inscription de s37c, qui sont ouvertes : une catégorie que
+   * personne n'a encore employée doit apparaître dans le filtre, sans quoi
+   * l'écran cache un choix possible.
+   */
+  listFeedback(input: {
+    readonly category: string | null
+    readonly status: string | null
+    readonly search: string | null
+    readonly limit: number
+    readonly offset: number
+  }): Promise<
+    | {
+        readonly ok: true
+        readonly feedback: readonly AdminFeedback[]
+        readonly total: number
+        readonly categories: readonly string[]
+        readonly statuses: readonly string[]
+      }
+    | { readonly ok: false }
+  >
+}
+
+/**
  * **Ce qu'une liste d'administration montre d'un compte** (s37b2).
  *
  * Le socle le remplit ; ce module ne fait que l'afficher. **Aucun jeton, aucun
@@ -615,6 +721,8 @@ export interface AdminDependencies {
    * site public est coupé.
    */
   readonly subscriptions: AdminSubscriptionsPort
+  /** Ce que le back-office sait des retours (s43). Vide quand le module est coupé. */
+  readonly feedback: AdminFeedbackPort
   /**
    * L'adresse du **premier** superadmin, telle que la configuration la nomme.
    *

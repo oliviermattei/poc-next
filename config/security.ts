@@ -275,6 +275,28 @@ export const rateLimitPolicies = {
    */
   dataExport: { windowSeconds: 3_600, maxPerClient: 20, maxPerSubject: null },
   /**
+   * **Le retour depuis l'application** (s43).
+   *
+   * La route est **authentifiée**, donc elle n'est limitée que parce qu'elle le
+   * déclare : `routeIsRateLimited` ne couvre par dérivation que les routes
+   * publiques. Sans cette politique-ci, un compte suffirait à écrire du texte
+   * libre en boucle dans la base **et** à faire partir un email de notification
+   * à chaque superadmin, par passage.
+   *
+   * **Par appelant seulement**, et pour la raison de `dataExport` : le seau par
+   * compte visé se construit à partir d'un champ du corps ou d'un cookie
+   * (`RouteRateLimit`), et le périmètre d'un retour vient de la **session**.
+   * L'y mettre laisserait l'appelant choisir son propre seau, c'est-à-dire
+   * aucune limite.
+   *
+   * Trente par heure et par appelant : envoyer un retour est un geste rare, et
+   * le seau est partagé par tous les visiteurs d'un même réseau — voire par
+   * tous quand aucun proxy de confiance ne renseigne l'adresse. Trente laisse
+   * la place à une équipe qui remonte une série de bogues dans la même heure
+   * tout en bornant la boucle.
+   */
+  feedback: { windowSeconds: 3_600, maxPerClient: 30, maxPerSubject: null },
+  /**
    * Le checkout invité. Le module `billing` garde **en plus** sa propre règle,
    * plus serrée et porteuse d'une dégradation (s24).
    */

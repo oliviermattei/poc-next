@@ -32,6 +32,7 @@ import {
   type AdminSecurityEvent,
   type AdminService,
   type AdminSubscription,
+  type AdminFeedbackPort,
   type AdminSubscriptionsPort,
   type AdminSubscriptionsView,
 } from '@repo/module-admin'
@@ -441,6 +442,13 @@ const subscriptions: AdminSubscriptionsPort = {
       : { ok: false },
 }
 
+/**
+ * Le port des retours (s43) : **vide**, comme les autres ports que ces cas ne
+ * mesurent pas. Une lecture en échec est la réponse juste d'un back-office dont
+ * le module des retours ne répond pas.
+ */
+const feedback: AdminFeedbackPort = { listFeedback: async () => ({ ok: false }) }
+
 /** Reconfigure le module avec l'adresse désignée du moment. */
 const configure = (email: string | null): void => {
   service = configureAdmin({
@@ -449,6 +457,7 @@ const configure = (email: string | null): void => {
     organizations,
     revenue,
     subscriptions,
+    feedback,
     designatedEmail: email,
     securityLog: (event) => securityEvents.push(event),
   })
@@ -1296,6 +1305,7 @@ describe.runIf(databaseReachable)('les listes du back-office', () => {
       organizations,
       revenue,
       subscriptions,
+      feedback,
       designatedEmail: email,
       securityLog: (event) => securityEvents.push(event),
     })
@@ -1311,6 +1321,57 @@ describe.runIf(databaseReachable)('les listes du back-office', () => {
     // Et le refus **n’atteint pas la couche de données** : une liste de comptes
     // lue puis jetée serait une lecture qu'un non-superadmin a provoquée.
     expect(reads).toBe(0)
+  })
+
+  it('répond 404 à un compte qui n’administre pas sur les retours, sans lire un seul retour', async () => {
+    // Le superadmin est fabriqué **avant** la reconfiguration : `aSuperadmin`
+    // reconstruit le service, et le faire après remplacerait le port compté.
+    const superadmin = await aSuperadmin()
+    const intruder = await anAccount()
+
+    let reads = 0
+
+    const guarded = configureAdmin({
+      db: connection.db,
+      accounts,
+      organizations,
+      revenue,
+      subscriptions,
+      // s43 — un port qui **répond**, pour que le refus ne puisse pas venir de
+      // lui : la doublure ne valide rien à la place du serveur.
+      feedback: {
+        listFeedback: async () => {
+          reads += 1
+
+          return { ok: true as const, feedback: [], total: 0, categories: [], statuses: [] }
+        },
+      },
+      designatedEmail: superadmin.email,
+      securityLog: (event) => securityEvents.push(event),
+    })
+
+    const refused = await guarded.useCases.viewFeedback({
+      request: request(),
+      viewerId: intruder.session.userId,
+      query: { category: null, status: null, search: null, page: 1 },
+    })
+
+    // 404, jamais 403 : un 403 confirmerait que le back-office existe.
+    expect(refused).toEqual({ ok: false, error: 'not_found' })
+    // Et le refus **n’atteint pas la couche de données** : une page de retours
+    // lue puis jetée serait une lecture qu'un non-superadmin a provoquée.
+    expect(reads).toBe(0)
+
+    // Le **témoin de l'autre côté** : la garde laisse passer qui administre,
+    // sinon ce cas resterait vert sur une lecture qui refuse tout le monde.
+    expect(
+      await guarded.useCases.viewFeedback({
+        request: request(),
+        viewerId: superadmin.userId,
+        query: { category: null, status: null, search: null, page: 1 },
+      }),
+    ).toMatchObject({ ok: true })
+    expect(reads).toBe(1)
   })
 
   it('refuse la liste quand la lecture des comptes échoue, au lieu de la dire vide', async () => {

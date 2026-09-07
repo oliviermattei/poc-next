@@ -1,0 +1,16 @@
+{
+  "category.bug": "Report a bug",
+  "category.idea": "Suggest an idea",
+  "category.label": "Pick what your feedback is about to send it",
+  "category.other": "Something else",
+  "description": "Tell us what is broken or missing. Your message goes straight to the team.",
+  "invalid.category": "That kind of feedback was not recognised. Pick one of the three buttons.",
+  "invalid.message": "Your message is empty or too long. Keep it under 2000 characters.",
+  "message.hint": "2000 characters at most.",
+  "message.label": "Your message",
+  "navigation.adminFeedback": "Feedback",
+  "navigation.feedback": "Send feedback",
+  "success": "Thanks, your feedback is on its way. The team will read it.",
+  "title": "Send feedback",
+  "unavailable": "Your feedback could not be saved. Please try again in a moment."
+}

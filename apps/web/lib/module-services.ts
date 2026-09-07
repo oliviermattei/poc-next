@@ -6,6 +6,7 @@ import { appAuth } from './auth'
 import { billing } from './billing'
 import { prepareAnalytics } from './analytics'
 import { consent } from './consent'
+import { feedback } from './feedback'
 import { localeRouting } from './locale-routing'
 import { prepareModuleContent } from './module-content'
 import { prepareJobs } from './jobs'
@@ -119,6 +120,11 @@ export function prepareModuleServices(): void {
   // ce qu'aucune requête ne procure ») dispatche désormais un corps valide et
   // exige 204.
   prepareAnalytics()
+  // s43 — sans cette ligne, `POST /api/modules/feedback/submit` répond **500**
+  // en disant que le module n'est pas configuré : le répartiteur monte la route,
+  // il ne construit ni la connexion, ni l'annonce aux superadmins. Module coupé,
+  // l'appel ne fait rien — la route n'existe alors pas.
+  feedback.prepare()
   // s40 — sans cette ligne, les deux routes d'écriture du parcours répondent
   // **500** en disant que le module n'est pas configuré : le répartiteur monte
   // les routes, il ne construit rien. Module coupé, l'appel ne fait rien — les

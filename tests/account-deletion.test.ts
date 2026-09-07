@@ -355,6 +355,12 @@ beforeAll(async () => {
         Promise.resolve({ ok: true as const, subscriptions: [], total: 0 }),
       listSources: () => Promise.resolve({ ok: true as const, sources: [] }),
     },
+    // s43 : les retours ne sont pas davantage ce que cette suite traverse. La
+    // lecture refuse **fermé** — leur purge appartient au module `feedback`,
+    // par le contrat, et c'est elle que cette suite mesure.
+    feedback: {
+      listFeedback: () => Promise.resolve({ ok: false as const }),
+    },
     // Aucune désignation automatique : cette suite promeut explicitement, et
     // une désignation par adresse rendrait le cas dépendant de l'ordre.
     designatedEmail: null,

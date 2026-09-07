@@ -249,6 +249,14 @@ export function createDrizzlePlatformRoleRepository(
         : superadminIds.length
     },
 
+    listSuperadmins: async () =>
+      (
+        await db
+          .select({ userId: adminPlatformRole.userId })
+          .from(adminPlatformRole)
+          .where(eq(adminPlatformRole.role, SUPERADMIN_ROLE))
+      ).map((row) => row.userId),
+
     superadminsAmong: async (userIds) => {
       // La liste vide ne part pas en base : `inArray(col, [])` n'est traité
       // pareil par aucun dialecte, et il n'y a de toute façon rien à lire.

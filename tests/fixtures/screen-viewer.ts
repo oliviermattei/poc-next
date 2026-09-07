@@ -625,6 +625,49 @@ export const FIXTURE_ADMIN_SUBSCRIPTIONS = {
   ],
 } as const
 
+/**
+ * **Les retours que voit l'écran de s43 pendant ce rendu.**
+ *
+ * Deux lignes, et ce n'est pas de la générosité : elles portent les **deux**
+ * statuts du critère 5 — reçu et traité —, dont l'un rend un bouton d'action et
+ * l'autre un badge. Une seule laisserait la moitié de la colonne hors du filet.
+ *
+ * `originPath` est `null` sur la seconde : c'est l'état normal d'une valeur que
+ * `parseOriginPath` a refusée, et l'écran y met son propre libellé.
+ */
+export const FIXTURE_ADMIN_FEEDBACK = {
+  page: 1,
+  pageCount: 1,
+  total: 2,
+  search: null,
+  category: null,
+  categories: ['bug', 'idea', 'other'],
+  status: null,
+  statuses: ['open', 'handled'],
+  feedback: [
+    {
+      id: 'fbk_1',
+      authorId: 'usr_1',
+      authorName: 'Ada Lovelace',
+      category: 'bug',
+      message: 'Le bouton d’envoi ne répond pas.',
+      originPath: '/account?tab=security',
+      status: 'open',
+      createdAt: new Date('2026-02-03T10:00:00.000Z'),
+    },
+    {
+      id: 'fbk_2',
+      authorId: 'usr_2',
+      authorName: null,
+      category: 'idea',
+      message: 'Un raccourci clavier pour la recherche.',
+      originPath: null,
+      status: 'handled',
+      createdAt: new Date('2026-02-02T10:00:00.000Z'),
+    },
+  ],
+} as const
+
 export const FIXTURE_ADMIN_ORGANIZATION_DETAIL = {
   organization: FIXTURE_ADMIN_ORGANIZATION,
   members: [{ userId: 'usr_1', email: FIXTURE_EMAIL, role: 'owner' }],

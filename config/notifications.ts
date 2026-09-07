@@ -42,13 +42,15 @@ import { defineNotificationType } from '@repo/emails'
  * **Ce que ce fichier ne fait pas : émettre.** Les six templates d'email
  * existants restent des appels directs légitimes, la story le dit nommément.
  *
- * **Deux types ont un producteur** : `organization.member-joined`, émis par le
- * module `organizations` quand une invitation est acceptée (revue s32, F5), et
+ * **Trois types ont un producteur** : `organization.member-joined`, émis par le
+ * module `organizations` quand une invitation est acceptée (revue s32, F5),
  * `billing.trial-ending`, émis par la **tâche planifiée** de relance d'essai
- * (s33). Les deux modules reçoivent l'émission au point de composition et ne
- * connaissent pas ce fichier. `account.security-alert` n'en a aucun. Les
- * stories qui possèdent un événement (s37, s43) appellent l'émission avec le
- * type qui leur correspond.
+ * (s33), et `feedback.received`, émis quand un retour est écrit (s43) — celui-ci
+ * est le seul dont les destinataires ne sont pas dérivés de l'événement mais
+ * **relus** : les superadmins de la plateforme, que le point de composition
+ * demande au module `admin`. Les trois modules reçoivent l'émission au point de
+ * composition et ne connaissent pas ce fichier. `account.security-alert` n'en a
+ * aucun.
  */
 export const appNotificationTypes = [
   defineNotificationType({
@@ -149,6 +151,56 @@ export const appNotificationTypes = [
           body:
             'Your {offer} trial ends on {date}.\n\n' +
             'To continue without interruption, add a payment method from the billing page.',
+        },
+      },
+    },
+  }),
+  defineNotificationType({
+    id: 'feedback.received',
+    channels: ['in_app', 'email'],
+    /**
+     * **L'email est actif par défaut**, et c'est ce que le critère 3 de s43
+     * exige : « une notification est envoyée aux superadmins à chaque nouveau
+     * retour, **via le centre de notifications s'il est activé, par email
+     * sinon** ». Le repli remplace le canal in-app disparu ; il ne rallume rien
+     * qu'une ligne éteindrait. Déclarer `email: false` ici ferait donc du
+     * profil sans centre de notifications un produit où plus personne n'apprend
+     * qu'un retour est arrivé — sans erreur, donc sans signal.
+     *
+     * Ce n'est pas du bruit : ses destinataires sont les superadmins, ils sont
+     * peu nombreux, et un retour est un geste rare — la route qui l'écrit
+     * déclare `rateLimit: { policy: 'feedback' }` pour cette raison précise.
+     */
+    defaults: { in_app: true, email: true },
+    /**
+     * **Aucune référence de compte, et surtout aucun texte de retour.**
+     *
+     * La charge est relue longtemps après, sur l'écran de quelqu'un d'autre, et
+     * `purge({kind:'user'})` n'efface que ce qui est **adressé** au compte : un
+     * message d'utilisateur recopié ici survivrait à l'effacement de son auteur
+     * pendant que le contrat du module `feedback` promet `retention: 'erase'`.
+     * La ligne ne porte donc que la **catégorie** — une valeur d'un vocabulaire
+     * fermé, qui n'appartient à personne —, et le message se lit dans le
+     * back-office, à sa source.
+     */
+    actors: [],
+    email: {
+      id: 'feedback.received',
+      locales: {
+        fr: {
+          subject: 'Nouveau retour ({category})',
+          body:
+            'Un nouveau retour de catégorie {category} vient d’être envoyé depuis ' +
+            'l’application.\n\n' +
+            'Il est consultable dans le back-office, avec son auteur et la page d’où il a ' +
+            'été envoyé.',
+        },
+        en: {
+          subject: 'New feedback ({category})',
+          body:
+            'A new piece of {category} feedback has just been sent from the application.\n\n' +
+            'You can read it in the back office, along with its author and the page it was ' +
+            'sent from.',
         },
       },
     },

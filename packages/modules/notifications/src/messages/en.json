@@ -29,5 +29,7 @@
   "type.organization.member-joined.label": "New member",
   "type.organization.member-joined.body": "{member} joined {organization}.",
   "type.billing.trial-ending.label": "Trial ending soon",
-  "type.billing.trial-ending.body": "Your {offer} trial ends on {date}."
+  "type.billing.trial-ending.body": "Your {offer} trial ends on {date}.",
+  "type.feedback.received.label": "New feedback",
+  "type.feedback.received.body": "A new piece of {category} feedback has just been sent."
 }

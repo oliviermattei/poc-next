@@ -3,6 +3,7 @@ import { getDatabase } from '@repo/db'
 import {
   adminModule,
   adminRoutePath,
+  parseBackOfficeFeedbackQuery,
   parseBackOfficeQuery,
   parseBackOfficeSubscriptionsQuery,
   provideAdmin,
@@ -10,12 +11,14 @@ import {
   type AdminAccountsView,
   type AdminAccountsPort,
   type AdminAccountView,
+  type AdminFeedbackView,
   type AdminOrganizationsPort,
   type AdminOrganizationsView,
   type AdminRevenue,
   type AdminRevenuePort,
   type AdminRevenueView,
   type AdminOrganizationView,
+  type AdminFeedbackPort,
   type AdminSubscriptionsPort,
   type AdminSubscriptionsView,
   type BackOfficeView,
@@ -455,6 +458,113 @@ const subscriptions: AdminSubscriptionsPort = adminSubscriptionsPort(
   async () => (await import('./marketing')).marketingSubscriptions,
 )
 
+/**
+ * **Ce que le back-office sait des retours** (s43).
+ *
+ * Le module `admin` ne déclare pas `feedback` dans ses `requires` — c'est
+ * l'inverse : `feedback` requiert le back-office, parce que celui-ci est son
+ * seul lecteur. Il ne peut donc ni l'importer, ni lire sa table, et ce fichier
+ * tient les deux bouts comme il le fait pour les organisations, le revenu et
+ * les inscriptions.
+ *
+ * **Aucune condition sur un module ici.** Retours coupés, le lecteur rend un
+ * refus sans ouvrir de connexion ; ce qui disparaît alors est l'**entrée de
+ * navigation**, déclarée par le module qui la porte (ADR 067), et l'écran
+ * répond 404.
+ *
+ * **Le nom de l'auteur est résolu ici**, en une seule lecture pour la page
+ * entière : le module qui possède les retours ne connaît pas la forme d'un
+ * compte, et une adresse ou un nom stocké dans la ligne survivrait à
+ * l'effacement de son porteur (revue s32, R1). Un identifiant absent de la
+ * réponse est un compte effacé, et l'écran y met son propre libellé.
+ *
+ * L'import est **différé**, pour la raison des autres ports : les points de
+ * composition importent celui de l'authentification, et un import statique en
+ * sens inverse fermerait le cycle.
+ */
+export const adminFeedbackPort = (
+  read: () => Promise<{
+    readonly categories: readonly string[]
+    readonly statuses: readonly string[]
+    readonly list: (input: {
+      readonly category: string | null
+      readonly status: string | null
+      readonly search: string | null
+      readonly limit: number
+      readonly offset: number
+    }) => Promise<
+      | {
+          readonly ok: true
+          readonly feedback: readonly {
+            readonly id: string
+            readonly authorId: string
+            readonly category: string
+            readonly message: string
+            readonly originPath: string | null
+            readonly status: string
+            readonly createdAt: Date
+          }[]
+          readonly total: number
+        }
+      | { readonly ok: false }
+    >
+  }>,
+  namesOf: (userIds: readonly string[]) => Promise<ReadonlyMap<string, string>>,
+): AdminFeedbackPort => ({
+  listFeedback: async (input) => {
+    // **Un port ne lève pas** : une base injoignable devient un refus, que le
+    // module rend en `unavailable` et l'écran en alerte — jamais une liste
+    // vide, qui se lirait comme « aucun retour ».
+    const source = await readOr(read)
+
+    if (!source.ok) {
+      return { ok: false }
+    }
+
+    const listed = await readOr(async () => await source.value.list(input))
+
+    if (!listed.ok || !listed.value.ok) {
+      return { ok: false }
+    }
+
+    const page = listed.value
+    // **Une lecture pour N identifiants**, dédoublonnés et bornés par la page :
+    // vingt lectures ligne à ligne seraient vingt allers-retours.
+    const names = await readOr(
+      async () => await namesOf([...new Set(page.feedback.map((entry) => entry.authorId))]),
+    )
+
+    return {
+      ok: true,
+      total: page.total,
+      categories: source.value.categories,
+      statuses: source.value.statuses,
+      feedback: page.feedback.map((entry) => ({
+        ...entry,
+        // Une lecture de noms en échec ne fait pas échouer la liste : le retour
+        // reste lisible, et l'écran met son libellé de compte inconnu. Perdre
+        // la page entière pour un libellé serait pire.
+        authorName: names.ok ? (names.value.get(entry.authorId) ?? null) : null,
+      })),
+    }
+  },
+})
+
+/**
+ * **L'import est différé**, comme celui des trois autres ports, et ici il
+ * l'est aussi pour une raison de règle : `tests/admin.test.ts` refuse que ce
+ * fichier connaisse un second module au-delà du back-office. Il ne connaît que
+ * `lib/feedback.ts`, qui est un point de composition, pas un module.
+ */
+const feedback: AdminFeedbackPort = adminFeedbackPort(
+  async () => {
+    const { feedback: feature } = await import('./feedback')
+
+    return { categories: feature.categories, statuses: feature.statuses, list: feature.list }
+  },
+  async (userIds) => await (await import('./notifications')).displayNamesOf(userIds),
+)
+
 const organizations: AdminOrganizationsPort = adminOrganizationsPort(
   async () => (await import('./organizations')).organizations.backOffice,
   async (organizationId) =>
@@ -485,6 +595,7 @@ const provide = (): void => {
     organizations,
     revenue,
     subscriptions,
+    feedback,
     designatedEmail: designatedEmailOf(getEnv()),
   }))
 }
@@ -552,6 +663,47 @@ export interface AdminFeature {
     readonly viewerId: string
     readonly parameters: unknown
   }) => Promise<BackOfficeView<AdminSubscriptionsView>>
+  /**
+   * **Les retours envoyés depuis l'application** (s43) : une liste, avec ses
+   * deux filtres et sa recherche. Les paramètres d'adresse entrent **bruts**,
+   * comme ceux des autres listes — c'est le module qui les lit, avec Zod.
+   */
+  readonly feedback: (input: {
+    readonly viewerId: string
+    readonly parameters: unknown
+  }) => Promise<BackOfficeView<AdminFeedbackView>>
+  /**
+   * **La garde du back-office, telle qu'un autre module la reçoit** (s43).
+   *
+   * C'est la **même** fonction que celle des routes et des écrans — écrite une
+   * seule fois dans `admin` : elle refuse une session empruntée avant de juger
+   * le rôle, relit le rôle en base, et journalise le refus. Elle est exposée ici
+   * pour que la route « marquer comme traité » puisse vivre dans le module qui
+   * possède les retours, comme le critère 6 l'exige, **sans en écrire une
+   * seconde copie**.
+   *
+   * **Fermée module coupé** : sans back-office, personne n'administre.
+   */
+  readonly authorizeBackOffice: (input: {
+    readonly request: Request
+    readonly userId: string
+  }) => Promise<boolean>
+  /**
+   * **À qui s'adresse une notification de plateforme** (s43) — des identifiants,
+   * et rien d'autre.
+   *
+   * Ce n'est pas une lecture du back-office et elle ne porte aucune garde : elle
+   * n'est atteignable par aucune route, son seul appelant est un autre point de
+   * composition (`lib/feedback.ts`), et l'adresse comme la langue sont relues du
+   * socle par lui. `authorizeBackOffice` reste la garde **unique** des écrans et
+   * des routes ; en faire décider celle-ci serait un second chemin
+   * d'autorisation.
+   *
+   * **Vide module coupé**, sans toucher la base : sans back-office il n'y a
+   * aucun superadmin, donc personne à prévenir — et le module qui appelle
+   * déclare `admin` dans ses requis pour cette raison.
+   */
+  readonly superadminIds: () => Promise<readonly string[]>
 }
 
 /** Le refus, écrit une fois : module coupé, aucune lecture n'ouvre de connexion. */
@@ -605,6 +757,15 @@ export const admin: AdminFeature = mounted
           viewerId,
           query: parseBackOfficeSubscriptionsQuery(parameters),
         }),
+      feedback: async ({ viewerId, parameters }) =>
+        await backOfficeService().useCases.viewFeedback({
+          request: await incomingRequest(),
+          viewerId,
+          query: parseBackOfficeFeedbackQuery(parameters),
+        }),
+      authorizeBackOffice: async (input) =>
+        await backOfficeService().useCases.authorizeBackOffice(input),
+      superadminIds: async () => await backOfficeService().useCases.listSuperadmins(),
     }
   : {
       available: false,
@@ -618,6 +779,14 @@ export const admin: AdminFeature = mounted
       platformRolesOf: () => Promise.resolve([]),
       revenue: () => Promise.resolve(ABSENT),
       subscriptions: () => Promise.resolve(ABSENT),
+      feedback: () => Promise.resolve(ABSENT),
+      // **Fermée par défaut** : sans back-office, personne n'administre. Un
+      // `true` ici ouvrirait la route d'écriture d'un autre module à tout compte
+      // connecté, dans la configuration où plus rien ne peut le refuser.
+      authorizeBackOffice: () => Promise.resolve(false),
+      // Aucun superadmin sans back-office : le sens fermé, et il vient de la
+      // **valeur**, pas d'une condition écrite plus haut.
+      superadminIds: () => Promise.resolve([]),
     }
 
 /**

@@ -15,6 +15,7 @@ import * as changelog from './changelog'
 import * as consent from './consent'
 import * as demoEnabled from './demo-enabled'
 import * as docs from './docs'
+import * as feedback from './feedback'
 import * as i18n from './i18n'
 import * as jobs from './jobs'
 import * as marketing from './marketing'
@@ -35,6 +36,7 @@ export const enabledModuleSchemas = [
   { id: 'consent', schema: consent },
   { id: 'demo-enabled', schema: demoEnabled },
   { id: 'docs', schema: docs },
+  { id: 'feedback', schema: feedback },
   { id: 'i18n', schema: i18n },
   { id: 'jobs', schema: jobs },
   { id: 'marketing', schema: marketing },

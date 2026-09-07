@@ -31,12 +31,13 @@ import {
   TableRow,
   initialsOf,
 } from '@repo/ui'
-import { MailIcon, UsersIcon } from 'lucide-react'
+import { MailIcon, MessageSquareIcon, UsersIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import type {
   AdminAccountsView,
   AdminAccountView,
+  AdminFeedbackView,
   AdminOrganizationsView,
   AdminOrganizationView,
   AdminRevenueView,
@@ -156,6 +157,24 @@ const K = {
   sourceFilterLabel: 'admin.subscriptions.sourceFilter',
   allSources: 'admin.subscriptions.allSources',
   exportSubscriptions: 'admin.subscriptions.export',
+  feedbackTitle: 'admin.feedback.title',
+  feedbackDescription: 'admin.feedback.description',
+  feedbackCaption: 'admin.feedback.caption',
+  feedbackEmptyTitle: 'admin.feedback.empty.title',
+  feedbackEmptyDescription: 'admin.feedback.empty.description',
+  columnFeedback: 'admin.feedback.column.message',
+  columnAuthor: 'admin.feedback.column.author',
+  columnCategory: 'admin.feedback.column.category',
+  columnOrigin: 'admin.feedback.column.origin',
+  columnReceivedAt: 'admin.feedback.column.receivedAt',
+  categoryFilterLabel: 'admin.feedback.categoryFilter',
+  statusFilterLabel: 'admin.feedback.statusFilter',
+  allCategories: 'admin.feedback.allCategories',
+  allStatuses: 'admin.feedback.allStatuses',
+  markHandled: 'admin.feedback.markHandled',
+  markHandledFor: 'admin.feedback.markHandledFor',
+  originNone: 'admin.feedback.originNone',
+  authorDeleted: 'admin.feedback.authorDeleted',
   none: 'admin.none',
 } as const
 
@@ -174,6 +193,32 @@ const periodKey = (period: string): string => `admin.revenue.period.${period}`
 
 /** Le rôle d'un membre, traduit par une clé — la même discipline. */
 const roleKey = (role: string): string => `admin.role.${role}`
+
+/**
+ * La catégorie et le statut d'un retour, traduits par une clé — la même
+ * discipline que l'état d'abonnement et la période.
+ *
+ * Le vocabulaire appartient au module qui possède les retours ; ce module n'en
+ * connaît que la valeur, et `intl.t` **lève** sur une clé absente.
+ * `tests/feedback.test.ts` exige donc un libellé par valeur déclarée, dans
+ * chaque locale : une catégorie ajoutée là-bas force une décision ici plutôt que
+ * de rendre un écran en 500.
+ *
+ * C'est la différence avec la **source** d'une inscription, rendue telle quelle :
+ * celle-ci est un vocabulaire ouvert, lu en base, qu'aucune liste ne borne.
+ */
+const feedbackCategoryKey = (category: string): string => `admin.feedback.category.${category}`
+
+const feedbackStatusKey = (status: string): string => `admin.feedback.status.${status}`
+
+/**
+ * Le statut qui retire le bouton d'action — écrit une fois, **hors du JSX**.
+ *
+ * Un littéral d'un seul mot entre accolades dans des enfants est lu comme du
+ * texte affiché par `tests/i18n.test.ts`, et il a raison de le lire ainsi : la
+ * comparaison vit donc dans une constante nommée.
+ */
+const HANDLED_STATUS = 'handled'
 
 /** Ce dont chaque liste a besoin pour construire ses adresses. */
 export interface BackOfficeListLinks {
@@ -1176,29 +1221,58 @@ export function ImpersonationBanner({ labels, stopAction }: ImpersonationBannerP
  * sélecteur de période (s38) et du sélecteur de langue, et elle évite d'inventer
  * un composant que `docs/design-system.md` ne livre pas.
  *
- * `sources` vient du port : ce composant ne connaît aucun nom de source, et
- * celle que `s42` ajoutera apparaîtra sans qu'une ligne change ici. La recherche
- * en cours est **conservée** dans chaque lien — sinon changer de source
- * effacerait la recherche sous les pieds de qui l'a posée.
+ * `values` vient du port : ce composant ne connaît aucun vocabulaire, et une
+ * valeur ajoutée là-bas apparaît sans qu'une ligne change ici. La recherche en
+ * cours **et les autres filtres** sont conservés dans chaque lien — sinon
+ * changer de valeur effacerait la sélection sous les pieds de qui l'a posée,
+ * exactement le défaut que la revue de s37c a relevé sur la pagination.
+ *
+ * **Généralisé par s43**, qui apporte la première liste à **deux** filtres : il
+ * s'appelait `SourceFilter` et écrivait `source` en dur. Un second filtre
+ * l'aurait dupliqué, puis les deux copies auraient divergé.
  */
-function SourceFilter({
-  sources,
+function ListFilter({
+  name,
+  values,
   current,
+  labelOf,
   search,
+  filters = NO_FILTERS,
+  navigationLabel,
+  allLabel,
   screenPath,
   intl,
 }: {
-  readonly sources: readonly string[]
+  /** Le nom du paramètre d'adresse que ce filtre écrit. */
+  readonly name: string
+  readonly values: readonly string[]
   readonly current: string | null
+  /** Le libellé d'une valeur. Identité pour un vocabulaire ouvert, traduit sinon. */
+  readonly labelOf: (value: string) => string
   readonly search: string | null
+  /**
+   * **Les autres filtres de la même liste**, reportés dans chaque lien.
+   *
+   * C'est l'enregistrement de `SearchForm` et de `ListPagination`, et pour la
+   * même raison : changer de catégorie ne doit pas effacer le statut choisi
+   * sous les pieds de qui l'a posé. Ce composant est partagé — il n'a pas à
+   * connaître le vocabulaire d'une liste, ni combien de filtres elle porte.
+   */
+  readonly filters?: ListFilters
+  readonly navigationLabel: string
+  readonly allLabel: string
   readonly screenPath: string
   readonly intl: AdminIntl
 }) {
-  const hrefFor = (source: string | null): string => {
+  const hrefFor = (value: string | null): string => {
     const parameters = new URLSearchParams()
 
-    if (source !== null) {
-      parameters.set('source', source)
+    for (const [other, otherValue] of Object.entries(filters)) {
+      parameters.set(other, otherValue)
+    }
+
+    if (value !== null) {
+      parameters.set(name, value)
     }
 
     if (search !== null) {
@@ -1211,12 +1285,12 @@ function SourceFilter({
   }
 
   const options: readonly { readonly key: string; readonly value: string | null; readonly label: string }[] = [
-    { key: 'all', value: null, label: intl.t(K.allSources) },
-    ...sources.map((source) => ({ key: source, value: source, label: source })),
+    { key: 'all', value: null, label: allLabel },
+    ...values.map((value) => ({ key: value, value, label: labelOf(value) })),
   ]
 
   return (
-    <nav aria-label={intl.t(K.sourceFilterLabel)} className="flex flex-wrap gap-2">
+    <nav aria-label={navigationLabel} className="flex flex-wrap gap-2">
       {options.map((option) => {
         const selected = option.value === current
 
@@ -1338,10 +1412,17 @@ export function AdminSubscriptionsScreen({
         />
       }
     >
-      <SourceFilter
-        sources={view.sources}
+      <ListFilter
+        name="source"
+        values={view.sources}
         current={view.source}
+        /* Une source est un vocabulaire **ouvert**, lu en base : elle se rend
+           telle quelle, il n'y a pas de libellé à traduire pour une valeur que
+           `config/marketing.ts` peut ajouter demain. */
+        labelOf={(source) => source}
         search={view.search}
+        navigationLabel={intl.t(K.sourceFilterLabel)}
+        allLabel={intl.t(K.allSources)}
         screenPath={screenPath}
         intl={intl}
       />
@@ -1390,6 +1471,209 @@ export function AdminSubscriptionsScreen({
                 <TableCell>{intl.date(subscription.createdAt)}</TableCell>
               </TableRow>
             ))}
+          </TableBody>
+        </Table>
+      )}
+
+      <ListPagination
+        page={view.page}
+        pageCount={view.pageCount}
+        search={view.search}
+        filters={selection}
+        listPath={screenPath}
+        intl={intl}
+      />
+    </BackOfficeShell>
+  )
+}
+
+export interface AdminFeedbackScreenProps {
+  readonly view: AdminFeedbackView
+  readonly intl: AdminIntl
+  readonly navigation: readonly BackOfficeNavigationItem[]
+  /**
+   * Le chemin de cet écran, **injecté** : il est déclaré par le module qui
+   * possède les retours (`feedback`), pas par celui-ci — le back-office ne
+   * nomme aucun module (ADR 067).
+   */
+  readonly screenPath: string
+  /**
+   * L'adresse de la route qui marque un retour comme traité, **résolue par
+   * l'application** : l'écran ne sait pas comment les chemins de ce module
+   * s'écrivent, et cette route-là vit chez lui — elle disparaît avec lui.
+   */
+  readonly handleAction: string
+}
+
+/**
+ * `/admin/feedback` — **les retours envoyés depuis l'application** (s43,
+ * critères 4 et 5).
+ *
+ * Deux filtres, et ils **portent la sélection** l'un de l'autre, comme la
+ * recherche et la pagination : c'est la leçon que s37c a payée — un filtre perdu
+ * en paginant sert une liste plausible et fausse, pas une panne. Une seule
+ * source de vérité, `selection`, alimente les quatre gestes.
+ *
+ * **Le chemin d'origine est rendu en texte, jamais dans un `href`**, et c'est la
+ * surface de sécurité de cette story : la valeur vient d'un champ caché du
+ * formulaire, donc de l'appelant. Le module qui l'écrit la réduit à un chemin
+ * interne, mais une ligne écrite avant cette règle — ou par un autre chemin que
+ * la route — porterait `javascript:…`, qui s'exécuterait au clic d'un
+ * superadmin. Le texte n'exécute rien, et React l'échappe.
+ *
+ * Comme les quatre autres écrans du back-office : aucune décision
+ * d'autorisation ici — quand ce composant est rendu, la garde du module a déjà
+ * répondu.
+ */
+export function AdminFeedbackScreen({
+  view,
+  intl,
+  navigation,
+  screenPath,
+  handleAction,
+}: AdminFeedbackScreenProps) {
+  /**
+   * **La sélection affichée, telle que les autres gestes doivent l'emporter.**
+   *
+   * Une seule source de vérité pour la pagination, la recherche et **chacun des
+   * deux filtres** : le défaut relevé en revue de s37c tenait à ce que chaque
+   * geste décidait pour lui-même, et deux d'entre eux avaient oublié.
+   */
+  const selection: ListFilters = {
+    ...(view.category === null ? {} : { category: view.category }),
+    ...(view.status === null ? {} : { status: view.status }),
+  }
+
+  /** Ce qu'un filtre doit reporter : la sélection, moins la sienne. */
+  const others = (name: string): ListFilters =>
+    Object.fromEntries(Object.entries(selection).filter(([key]) => key !== name))
+
+  return (
+    <BackOfficeShell
+      navigation={navigation}
+      navigationLabel={intl.t(K.breadcrumbRoot)}
+      header={
+        <PageHeader
+          title={intl.t(K.feedbackTitle)}
+          description={intl.t(K.feedbackDescription)}
+        />
+      }
+    >
+      <ListFilter
+        name="category"
+        values={view.categories}
+        current={view.category}
+        labelOf={(category) => intl.t(feedbackCategoryKey(category))}
+        search={view.search}
+        filters={others('category')}
+        navigationLabel={intl.t(K.categoryFilterLabel)}
+        allLabel={intl.t(K.allCategories)}
+        screenPath={screenPath}
+        intl={intl}
+      />
+
+      <ListFilter
+        name="status"
+        values={view.statuses}
+        current={view.status}
+        labelOf={(status) => intl.t(feedbackStatusKey(status))}
+        search={view.search}
+        filters={others('status')}
+        navigationLabel={intl.t(K.statusFilterLabel)}
+        allLabel={intl.t(K.allStatuses)}
+        screenPath={screenPath}
+        intl={intl}
+      />
+
+      <SearchForm
+        action={intl.path(screenPath)}
+        search={view.search}
+        filters={selection}
+        intl={intl}
+      />
+
+      {view.feedback.length === 0 ? (
+        <EmptyState
+          icon={<MessageSquareIcon aria-hidden />}
+          title={intl.t(K.feedbackEmptyTitle)}
+          description={intl.t(K.feedbackEmptyDescription)}
+          action={
+            <Button asChild variant="secondary">
+              <a href={intl.path(screenPath)}>{intl.t(K.emptyAction)}</a>
+            </Button>
+          }
+        />
+      ) : (
+        <Table>
+          <TableCaption>
+            {intl.t(K.feedbackCaption, { total: String(view.total) })}
+          </TableCaption>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{intl.t(K.columnFeedback)}</TableHead>
+              <TableHead>{intl.t(K.columnAuthor)}</TableHead>
+              <TableHead>{intl.t(K.columnCategory)}</TableHead>
+              <TableHead>{intl.t(K.columnOrigin)}</TableHead>
+              <TableHead>{intl.t(K.columnReceivedAt)}</TableHead>
+              <TableHead>{intl.t(K.columnStatus)}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {view.feedback.map((entry) => {
+              // La comparaison vit **hors du JSX** : un littéral d'un seul mot
+              // entre accolades dans des enfants est lu comme du texte affiché
+              // par `tests/i18n.test.ts`, et il a raison de le lire ainsi.
+              const handled = entry.status === HANDLED_STATUS
+
+              return (
+              <TableRow key={entry.id}>
+                <TableCell className="min-w-0 max-w-md whitespace-pre-wrap break-words">
+                  {entry.message}
+                </TableCell>
+                <TableCell className="min-w-0 truncate">
+                  {entry.authorName ?? intl.t(K.authorDeleted)}
+                </TableCell>
+                <TableCell>
+                  <Badge variant="secondary">
+                    {intl.t(feedbackCategoryKey(entry.category))}
+                  </Badge>
+                </TableCell>
+                {/*
+                  **Du texte, jamais un lien.** La valeur vient de l'appelant :
+                  un `href` la rendrait exécutable au clic d'un superadmin.
+                */}
+                <TableCell className="min-w-0 max-w-xs truncate font-mono text-xs">
+                  {entry.originPath ?? intl.t(K.originNone)}
+                </TableCell>
+                <TableCell>{intl.date(entry.createdAt)}</TableCell>
+                <TableCell>
+                  {handled ? (
+                    <Badge variant="secondary">
+                      {intl.t(feedbackStatusKey(entry.status))}
+                    </Badge>
+                  ) : (
+                    <form method="post" action={handleAction}>
+                      <input type="hidden" name="id" value={entry.id} />
+                      {/*
+                        Le nom accessible porte la catégorie : vingt boutons
+                        « Marquer comme traité » sont indiscernables au clavier
+                        comme pour une aide technique.
+                      */}
+                      <Button
+                        type="submit"
+                        variant="secondary"
+                        aria-label={intl.t(K.markHandledFor, {
+                          category: intl.t(feedbackCategoryKey(entry.category)),
+                        })}
+                      >
+                        {intl.t(K.markHandled)}
+                      </Button>
+                    </form>
+                  )}
+                </TableCell>
+              </TableRow>
+              )
+            })}
           </TableBody>
         </Table>
       )}

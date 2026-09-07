@@ -30,6 +30,7 @@
     "@repo/module-demo-disabled": "workspace:*",
     "@repo/module-demo-enabled": "workspace:*",
     "@repo/module-docs": "workspace:*",
+    "@repo/module-feedback": "workspace:*",
     "@repo/module-i18n": "workspace:*",
     "@repo/module-jobs": "workspace:*",
     "@repo/module-marketing": "workspace:*",

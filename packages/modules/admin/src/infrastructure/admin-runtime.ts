@@ -2,6 +2,7 @@ import { AdminNotConfiguredError, type AdminService } from '../application/admin
 import { createAdminUseCases } from '../application/admin-use-cases'
 import type {
   AdminAccountsPort,
+  AdminFeedbackPort,
   AdminOrganizationsPort,
   AdminRevenuePort,
   AdminSubscriptionsPort,
@@ -56,6 +57,14 @@ export interface ConfigureAdminOptions {
    */
   readonly subscriptions: AdminSubscriptionsPort
   /**
+   * **Ce que le back-office sait des retours** (s43), fourni pour la même
+   * raison, et le sens de la dépendance est ici inversé : c'est `feedback` qui
+   * requiert `admin`, parce que le back-office est le seul lecteur d'un retour.
+   * Module coupé, ce port rend des listes vides et des vocabulaires vides —
+   * aucune condition d'écran ne nomme un module.
+   */
+  readonly feedback: AdminFeedbackPort
+  /**
    * L'adresse du **premier** superadmin, ou `null`.
    *
    * Le module ne lit aucune variable d'environnement (`docs/security.md` §5) :
@@ -78,6 +87,7 @@ const build = (options: ConfigureAdminOptions): AdminService => ({
     organizations: options.organizations,
     revenue: options.revenue,
     subscriptions: options.subscriptions,
+    feedback: options.feedback,
     designatedEmail: options.designatedEmail,
     securityLog: options.securityLog ?? consoleSecurityLog,
     now: options.now ?? (() => new Date()),

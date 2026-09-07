@@ -106,6 +106,7 @@ vi.mock('../apps/web/lib/admin', async (importOriginal) => {
   const {
     FIXTURE_ADMIN_ACCOUNT,
     FIXTURE_ADMIN_ACCOUNTS,
+    FIXTURE_ADMIN_FEEDBACK,
     FIXTURE_ADMIN_ORGANIZATION_DETAIL,
     FIXTURE_ADMIN_ORGANIZATIONS,
     FIXTURE_ADMIN_REVENUE,
@@ -133,6 +134,7 @@ vi.mock('../apps/web/lib/admin', async (importOriginal) => {
             revenue: () => Promise.resolve({ ok: true, view: FIXTURE_ADMIN_REVENUE }),
             subscriptions: () =>
               Promise.resolve({ ok: true, view: FIXTURE_ADMIN_SUBSCRIPTIONS }),
+            feedback: () => Promise.resolve({ ok: true, view: FIXTURE_ADMIN_FEEDBACK }),
           }
         : {}),
     },
@@ -685,6 +687,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       ANONYMOUS,
       FIXTURE_ADMIN_ACCOUNT,
       FIXTURE_ADMIN_ACCOUNTS,
+      FIXTURE_ADMIN_FEEDBACK,
       FIXTURE_ADMIN_ORGANIZATION_DETAIL,
       FIXTURE_ADMIN_ORGANIZATIONS,
       FIXTURE_ADMIN_REVENUE,
@@ -835,6 +838,13 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
     const notificationsMounted = notifications.available
     const { onboarding } = await import('../apps/web/lib/onboarding')
     const onboardingMounted = onboarding.available
+    /**
+     * **Ce que les deux écrans de s43 font dans cette configuration**, dérivé de
+     * l'état du module qui possède la table : retours coupés, ni le formulaire
+     * ni l'écran du back-office n'existent.
+     */
+    const { feedback } = await import('../apps/web/lib/feedback')
+    const feedbackMounted = feedback.available
     /**
      * **Ce que l'écran réservé fait dans cette configuration, dérivé de la
      * déclaration** et non concédé : il répond 404 quand `config/gating.ts` ne
@@ -1662,6 +1672,62 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         ],
         render: async () =>
           (await import('../apps/web/app/admin/subscriptions/page')).default({
+            searchParams: noParams,
+          }),
+      },
+      {
+        /**
+         * s43 — **le formulaire de retour**. Il refuse quand le module qui
+         * possède les retours est coupé, et le refus est **dérivé** : le
+         * fichier passe donc dans les deux configurations.
+         *
+         * L'adresse de la page d'origine arrive par l'en-tête `Referer`, que ce
+         * rendu ne pose pas : `originPath` vaut donc `null`, ce qui est aussi
+         * l'état d'une valeur refusée. Le formulaire n'en affiche rien — c'est
+         * un champ caché.
+         */
+        id: 'retour — formulaire',
+        file: 'feedback/page.tsx',
+        viewer: SIGNED_IN,
+        refuses: feedbackMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        // `action` est une **adresse**, injectée par la page ; `originPath` et
+        // `outcome` sont des données de requête, jamais du texte.
+        technicalProps: ['action', 'originPath', 'outcome'],
+        render: async () =>
+          (await import('../apps/web/app/feedback/page')).default({
+            searchParams: noParams,
+          }),
+      },
+      {
+        /**
+         * s43 — **les retours du back-office**. **Deux** refus possibles, tous
+         * deux dérivés : le module `feedback` coupé, l'écran n'existe pas ; le
+         * module `admin` coupé, la lecture refuse.
+         */
+        id: 'back-office — retours',
+        file: 'admin/feedback/page.tsx',
+        viewer: SIGNED_IN,
+        refuses: feedbackMounted && adminMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        // `screenPath` et `handleAction` sont des **adresses**, injectées par la
+        // page : elles n'ont rien à voir avec un catalogue.
+        technicalProps: ['screenPath', 'handleAction'],
+        // Les messages, les auteurs, les chemins d'origine et le total : des
+        // **données**, dérivées de la fixture plutôt que recopiées.
+        screenData: [
+          ...FIXTURE_ADMIN_FEEDBACK.feedback.flatMap((entry) => [
+            entry.message,
+            ...(entry.authorName === null ? [] : [entry.authorName]),
+            ...(entry.originPath === null ? [] : [entry.originPath]),
+          ]),
+          String(FIXTURE_ADMIN_FEEDBACK.total),
+          ...FIXTURE_ADMIN_FEEDBACK.feedback.map((entry) =>
+            new Intl.DateTimeFormat(defaultLocale, { dateStyle: 'medium' }).format(
+              entry.createdAt,
+            ),
+          ),
+        ],
+        render: async () =>
+          (await import('../apps/web/app/admin/feedback/page')).default({
             searchParams: noParams,
           }),
       },

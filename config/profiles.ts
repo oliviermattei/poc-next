@@ -108,6 +108,11 @@ export const minimalProfile = {
     'blog',
     'docs',
     'admin',
+    // `feedback` requiert `admin` : le couper sans lui ferait refuser la
+    // configuration (s03), et c'est exactement ce que la validation doit faire.
+    // C'est aussi ce qui met le critère 6 de s43 sous cette recette — aucune
+    // route, aucune entrée de navigation, aucune table — sans qu'elle le nomme.
+    'feedback',
     'notifications',
     'jobs',
     'changelog',

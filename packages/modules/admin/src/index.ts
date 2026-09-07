@@ -31,6 +31,8 @@ export type {
   AdminAccountDetail,
   AdminAccountSession,
   AdminAccountsPort,
+  AdminFeedback,
+  AdminFeedbackPort,
   AdminMembership,
   AdminOrganization,
   AdminOrganizationMember,
@@ -51,6 +53,7 @@ export type {
   AdminAccountRow,
   AdminAccountsView,
   AdminAccountView,
+  AdminFeedbackView,
   AdminOrganizationsView,
   AdminOrganizationView,
   AdminRevenueView,
@@ -63,8 +66,10 @@ export type {
 export {
   BACK_OFFICE_PAGE_SIZE,
   parseBackOfficePeriod,
+  parseBackOfficeFeedbackQuery,
   parseBackOfficeQuery,
   parseBackOfficeSubscriptionsQuery,
+  type BackOfficeFeedbackQuery,
   type BackOfficeQuery,
   type BackOfficeSubscriptionsQuery,
 } from './domain/back-office'

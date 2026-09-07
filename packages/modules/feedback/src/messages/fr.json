@@ -1,0 +1,16 @@
+{
+  "category.bug": "Signaler un bogue",
+  "category.idea": "Proposer une idée",
+  "category.label": "Choisissez la nature de votre retour pour l’envoyer",
+  "category.other": "Autre",
+  "description": "Dites-nous ce qui ne va pas ou ce qui vous manque. Votre message part directement à l’équipe.",
+  "invalid.category": "La nature du retour n’a pas été reconnue. Choisissez l’un des trois boutons.",
+  "invalid.message": "Votre message est vide ou trop long. Écrivez-le en 2000 caractères au plus.",
+  "message.hint": "2000 caractères au plus.",
+  "message.label": "Votre message",
+  "navigation.adminFeedback": "Retours",
+  "navigation.feedback": "Envoyer un retour",
+  "success": "Merci, votre retour est parti. L’équipe le lira.",
+  "title": "Envoyer un retour",
+  "unavailable": "Votre retour n’a pas pu être enregistré. Réessayez dans un instant."
+}

@@ -39,7 +39,7 @@ module (`packages/modules/<module>/src/domain`).
 - les modules du projet, **uniquement** parce que `config/features.ts` les
   référence : `@repo/module-admin`, `@repo/module-auth`, `@repo/module-billing`,
   `@repo/module-analytics`, `@repo/module-blog`, `@repo/module-changelog`,
-  `@repo/module-consent`, `@repo/module-docs`, `@repo/module-i18n`, `@repo/module-marketing`,
+  `@repo/module-consent`, `@repo/module-docs`, `@repo/module-feedback`, `@repo/module-i18n`, `@repo/module-marketing`,
   `@repo/module-notifications`, `@repo/module-jobs`,
   `@repo/module-onboarding`,
   `@repo/module-organizations`, `@repo/module-storage`,
@@ -54,7 +54,8 @@ module (`packages/modules/<module>/src/domain`).
   `lib/notifications.ts`, celui des notifications, `lib/jobs.ts`, celui des
   tâches de fond, `lib/analytics.ts`, celui de l'observabilité — les deux
   ports de s39 et l'état du module `analytics` (voir plus bas) —, et
-  `lib/onboarding.ts`, celui du parcours d'intégration (s40).
+  `lib/onboarding.ts`, celui du parcours d'intégration (s40), et
+  `lib/feedback.ts`, celui des retours (s43).
   `lib/report-client-error.ts` ne monte rien : il **poste** vers la route de ce
   module depuis le navigateur, et n'en cite le nom que dans sa prose — il est
   chargé par un composant client, où importer un barril de module ferait entrer
@@ -82,7 +83,7 @@ module (`packages/modules/<module>/src/domain`).
   `@repo/module-consent/presentation`, `@repo/module-blog/presentation`,
   `@repo/module-docs/presentation`,
   `@repo/module-notifications/presentation`, `@repo/module-admin/presentation`,
-  `@repo/module-onboarding/presentation`) :
+  `@repo/module-onboarding/presentation`, `@repo/module-feedback/presentation`) :
   ses composants React n'ont pas
   leur place dans le barril que lit `config/features.ts`, qu'aucun outil du
   dépôt ne compile en JSX (**ADR 024**, la règle de tout module à composants) ;

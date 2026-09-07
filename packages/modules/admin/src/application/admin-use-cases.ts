@@ -4,6 +4,7 @@ import {
   pageWindowOf,
   parseBackOfficePeriod,
   subscriptionsExportFileName,
+  type BackOfficeFeedbackQuery,
   type BackOfficeQuery,
   type BackOfficeSubscriptionsQuery,
 } from '../domain/back-office'
@@ -14,6 +15,7 @@ import type {
   AdminAccount,
   AdminAccountSession,
   AdminDependencies,
+  AdminFeedback,
   AdminMembership,
   AdminOrganization,
   AdminOrganizationMember,
@@ -94,6 +96,25 @@ export interface AdminRevenueView {
  * Les messages de contact n'y sont pas : la décision, et sa raison, sont
  * écrites au port (`AdminSubscription`).
  */
+/**
+ * **Ce que l'écran des retours affiche** (s43).
+ *
+ * Les deux vocabulaires y sont, à côté de la sélection : un filtre construit
+ * sur les seules valeurs présentes cacherait une catégorie que personne n'a
+ * encore employée.
+ */
+export interface AdminFeedbackView {
+  readonly feedback: readonly AdminFeedback[]
+  readonly category: string | null
+  readonly categories: readonly string[]
+  readonly status: string | null
+  readonly statuses: readonly string[]
+  readonly total: number
+  readonly page: number
+  readonly pageCount: number
+  readonly search: string | null
+}
+
 export interface AdminSubscriptionsView extends BackOfficePage {
   readonly subscriptions: readonly AdminSubscription[]
   /** La source demandée, ou `null` — « toutes les sources ». */
@@ -226,6 +247,16 @@ export interface AdminUseCases {
     readonly request: Request
     readonly userId: string
   }): Promise<boolean>
+  /**
+   * **Les comptes qui administrent la plateforme** (s43), par identifiant.
+   *
+   * Ce n'est pas une lecture du back-office : elle ne passe par aucune garde,
+   * parce qu'elle n'est atteignable par **aucune route**. Son seul appelant est
+   * le point de composition de l'application, qui a besoin de savoir à qui
+   * adresser la notification d'un nouveau retour. Elle ne rend que des
+   * identifiants — l'adresse et la langue sont relues du socle par l'appelant.
+   */
+  listSuperadmins(): Promise<readonly string[]>
   /** La page de comptes du back-office : recherche, pagination, quatre états. */
   viewAccounts(input: {
     readonly request: Request
@@ -299,6 +330,19 @@ export interface AdminUseCases {
     readonly query: BackOfficeSubscriptionsQuery
   }): Promise<BackOfficeView<AdminSubscriptionsExport>>
   /**
+   * **Les retours envoyés depuis l'application** (s43, critère 4).
+   *
+   * Comme les autres lectures du back-office : la garde d'abord, et son refus
+   * est un `not_found` que l'écran rend en 404. Les deux filtres descendent
+   * **au port**, jamais appliqués après lecture : le décompte et la pagination
+   * doivent porter sur ce qui est affiché — c'est ce que s37c a payé.
+   */
+  viewFeedback(input: {
+    readonly request: Request
+    readonly viewerId: string
+    readonly query: BackOfficeFeedbackQuery
+  }): Promise<BackOfficeView<AdminFeedbackView>>
+  /**
    * **Révoque une session du compte visé** (critère 3).
    *
    * `revoked: false` ne distingue pas « pas à ce compte » de « n'existe pas » :
@@ -326,6 +370,7 @@ export interface AdminUseCases {
 
 export function createAdminUseCases(dependencies: AdminDependencies): AdminUseCases {
   const {
+    feedback,
     roles,
     accounts,
     organizations,
@@ -580,6 +625,8 @@ export function createAdminUseCases(dependencies: AdminDependencies): AdminUseCa
 
     authorizeBackOffice: async ({ request, userId }) => await authorize({ request, userId }),
 
+    listSuperadmins: async () => await roles.listSuperadmins(),
+
     viewAccounts: async ({ request, viewerId, query }) => {
       if (!(await authorize({ request, userId: viewerId }))) {
         return NOT_FOUND
@@ -718,6 +765,43 @@ export function createAdminUseCases(dependencies: AdminDependencies): AdminUseCa
           subscriptions: read.subscriptions,
           source: query.source,
           sources: sources.sources,
+          total: read.total,
+          page: query.page,
+          pageCount: pageCountOf({ total: read.total, pageSize: BACK_OFFICE_PAGE_SIZE }),
+          search: query.search,
+        },
+      }
+    },
+
+    viewFeedback: async ({ request, viewerId, query }) => {
+      if (!(await authorize({ request, userId: viewerId }))) {
+        return NOT_FOUND
+      }
+
+      const window = pageWindowOf({ page: query.page, pageSize: BACK_OFFICE_PAGE_SIZE })
+      const read = await feedback.listFeedback({
+        category: query.category,
+        status: query.status,
+        search: query.search,
+        ...window,
+      })
+
+      // Une lecture en échec **refuse** : « aucun retour » est une réponse, pas
+      // une panne, et les confondre ferait croire à une base sans retours.
+      if (!read.ok) {
+        return UNAVAILABLE
+      }
+
+      return {
+        ok: true,
+        view: {
+          feedback: read.feedback,
+          category: query.category,
+          // Les vocabulaires viennent du **port**, donc du module qui possède
+          // les retours : ce module n'écrit aucune catégorie ni aucun statut.
+          categories: read.categories,
+          status: query.status,
+          statuses: read.statuses,
           total: read.total,
           page: query.page,
           pageCount: pageCountOf({ total: read.total, pageSize: BACK_OFFICE_PAGE_SIZE }),

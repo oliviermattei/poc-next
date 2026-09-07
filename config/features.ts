@@ -7,6 +7,7 @@ import { blogModule } from '@repo/module-blog'
 import { changelogModule } from '@repo/module-changelog'
 import { consentModule } from '@repo/module-consent'
 import { docsModule } from '@repo/module-docs'
+import { feedbackModule } from '@repo/module-feedback'
 import { demoDisabledModule } from '@repo/module-demo-disabled'
 import { demoEnabledModule } from '@repo/module-demo-enabled'
 import { i18nModule } from '@repo/module-i18n'
@@ -48,6 +49,7 @@ export const availableModules = [
   changelogModule,
   consentModule,
   docsModule,
+  feedbackModule,
   i18nModule,
   jobsModule,
   marketingModule,
@@ -101,6 +103,7 @@ export const enabledModules = [
   'changelog',
   'consent',
   'docs',
+  'feedback',
   'i18n',
   'jobs',
   'marketing',
