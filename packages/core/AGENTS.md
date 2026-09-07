@@ -4,7 +4,13 @@ Le **contrat de module** (ADR 007) et le registre qui le lit. C'est le point le
 plus structurant du dépôt : chaque module applicatif s'y conforme, et un champ
 ajouté après coup oblige à rouvrir tous les modules déjà écrits. Le contrat est
 donc complet dès le premier module, quitte à ce que des déclarations soient
-vides.
+vides — **avec une exception, et une seule** : `seeds` (s58, ADR 069), les
+données de démonstration d'un module, est **facultative**. Le critère qui l'a
+rendue telle est dans l'ADR : une clé est obligatoire quand l'omettre laisse un
+défaut sans propriétaire (une donnée non purgée, une route non protégée, un
+contenu non indexé) ; elle peut être facultative quand l'omettre ne laisse que
+du silence. `NavigationEntry.surface` (ADR 066/067) est facultative pour la même
+raison, à l'intérieur d'une clé obligatoire.
 
 Les garanties qui vivent ici ne sont pas de même nature. Les deux premières sont
 tenues par le compilateur, les suivantes à la construction du registre :
@@ -18,6 +24,7 @@ tenues par le compilateur, les suivantes à la construction du registre :
 | Template d'email incomplet, clé de navigation sans traduction, collision de route entre deux modules | `assertDeclarationsAreComplete`, à la construction du registre | `pnpm test`, et le démarrage de l'application |
 | Un point de composition qui ne déclare pas les locales de l'application | le **compilateur** (`buildRegistry` exige `locales`), et un refus à l'exécution pour l'appelant qui ignore les types | `pnpm typecheck`, `pnpm test` |
 | Un module qui ne déclare pas ce qu'il publie (`publicUrls`, s53) | le **compilateur** (la clé est obligatoire comme les quatorze autres) | `pnpm typecheck`, et `tests/module-registry.test.ts` qui compile réellement le refus |
+| Un module qui déclare `seeds` et ne sème rien | **pas ici** : la clé est facultative, donc rien ne se compile. Le refus vit dans `runSeeders` (`@repo/db`), qui nomme le seed sans effet sur une base vide | `pnpm test` (`tests/seed.test.ts`), `pnpm db:seed` sur une base neuve |
 
 `locales` est **obligatoire** dans `buildRegistry`, et ce n'est pas du confort :
 c'est contre les locales de l'**application** — jamais celles du module — qu'un

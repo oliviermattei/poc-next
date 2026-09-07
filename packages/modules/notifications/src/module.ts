@@ -1,6 +1,7 @@
 import { defineModule } from '@repo/core'
 
 import { NOTIFICATIONS_MODULE_ID } from './domain/notification'
+import { notificationsDemonstrationSeed } from './infrastructure/demonstration-seed'
 import { requireNotificationsService } from './infrastructure/notifications-runtime'
 import enMessages from './messages/en.json' with { type: 'json' }
 import frMessages from './messages/fr.json' with { type: 'json' }
@@ -64,6 +65,12 @@ export const notificationsModule = defineModule({
    * la même chose sous un autre nom.
    */
   jobs: [],
+  /**
+   * **Le centre de notifications, non vide** (s58) : des notifications de
+   * compte — `organization_id` à `null` —, donc visibles dans toutes les
+   * configurations, y compris celle où le module `organizations` est coupé.
+   */
+  seeds: [notificationsDemonstrationSeed],
   // Une notification et une préférence sont des données personnelles : la
   // première porte ce qui est arrivé à quelqu'un, la seconde ce qu'il a choisi.
   // Les deux sont **effacées**, jamais anonymisées — une notification anonyme

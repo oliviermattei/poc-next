@@ -528,6 +528,39 @@ describe('construction du registre', () => {
     expect(registry.jobs.map((entry) => entry.job.id)).toEqual(['rappel'])
   })
 
+  /**
+   * **Les données de départ des modules activés** (s58), et rien d'autre.
+   *
+   * La clé est **facultative** au contrat : les modules qui n'en déclarent pas
+   * n'ont pas bougé, comme pour `NavigationEntry.surface` (ADR 066/067). Le
+   * critère « un module coupé ne laisse aucune ligne » se tient donc ici, par la
+   * valeur — aucun nom de module n'est écrit nulle part.
+   */
+  it('n’agrège que les données de départ des modules activés', () => {
+    const seed = { id: 'demonstration', run: () => Promise.resolve() }
+
+    const registry = buildRegistry({
+      available: [moduleFixture('a', { seeds: [seed] }), moduleFixture('b', { seeds: [seed] })],
+      enabled: ['a'],
+      locales: ['fr'],
+    })
+
+    expect(registry.seeds.map((entry) => entry.moduleId)).toEqual(['a'])
+    expect(registry.seeds.map((entry) => entry.seed.id)).toEqual(['demonstration'])
+  })
+
+  it('n’apporte aucune donnée de départ pour un module qui n’en déclare pas', () => {
+    // La clé absente n'est pas une erreur : c'est l'état des modules écrits
+    // avant s58, et c'est ce qui leur évite d'être rouverts.
+    const registry = buildRegistry({
+      available: [moduleFixture('a')],
+      enabled: ['a'],
+      locales: ['fr'],
+    })
+
+    expect(registry.seeds).toEqual([])
+  })
+
   it('préfixe les clés de traduction par leur module', () => {
     const registry = buildRegistry({
       available: [...availableModules],

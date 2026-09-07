@@ -9,6 +9,7 @@ import {
   createOrganizationRoutes,
   organizationsNavigation,
 } from './presentation/organization-routes'
+import { organizationsDemonstrationSeed } from './infrastructure/demonstration-seed'
 import { organizationsSchema } from './schema'
 
 /**
@@ -50,6 +51,13 @@ export const organizationsModule = defineModule({
   emails: [invitationEmail],
   webhooks: [],
   jobs: [],
+  /**
+   * **L'organisation de démonstration** (s58), écrite pour les périmètres que
+   * le lanceur de seeds transmet — ce module ne va chercher aucun identifiant
+   * de compte, la borne d'`eslint.config.ts` le lui interdit et c'est elle qui
+   * rend l'absence d'énumération de comptes structurelle.
+   */
+  seeds: [organizationsDemonstrationSeed],
   // Une organisation et une appartenance sont des données personnelles : la
   // seconde nomme un compte, la première est le contexte de son travail. Les
   // deux sont **effacées**, jamais anonymisées — une organisation anonyme

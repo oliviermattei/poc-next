@@ -1,15 +1,21 @@
 ---
 title: Le contrat de module
-description: Les quinze clés qu'un module déclare, et pourquoi aucune n'est facultative.
+description: Les quinze clés obligatoires d'un module, la seizième qui ne l'est pas, et pourquoi.
 order: 1
 ---
 
-## Quinze clés, obligatoires dès le premier module
+## Quinze clés obligatoires dès le premier module, et une facultative
 
 Un module déclare `id`, `requires`, `schema`, `migrations`, `routes`,
 `navigation`, `publicUrls`, `messages`, `emails`, `webhooks`, `jobs`,
 `dataCategories`, `retention`, `purge` et `export`. Quitte à les laisser vides :
 en ajouter une plus tard obligerait à rouvrir tous les modules déjà écrits.
+
+Une seule clé est **facultative** : `seeds`, les données de démonstration du
+module (ADR 069). Un module qui n'en déclare pas n'est pas incomplet — il est
+silencieux, et le registre n'agrège que ce qui est déclaré. C'est la seule
+exception, et elle est motivée : rendue obligatoire, elle aurait rouvert tous
+les modules déjà écrits pour y poser un tableau vide.
 
 ## Quatre couches
 
