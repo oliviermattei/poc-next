@@ -1893,6 +1893,29 @@ C'est la **troisième** occurrence du même défaut dans ce même fichier : une 
 
 ---
 
+# État du projet à la mise en pause — 07/09
+
+**Arrêté à la demande du porteur du projet**, `dev` propre au commit `6dda2e3`.
+
+**60 stories expédiées sur 65 déclarées.** Les cinq restantes, et pourquoi :
+
+| Story | État |
+|---|---|
+| `s37`, `s37b` | **parents de découpe**, conservés pour l'historique — leurs tranches sont livrées, ils ne s'implémentent pas |
+| `s43-feedback-widget` | branche locale, 34 fichiers non commités, arrêtée aux mutations |
+| `s44-public-roadmap` | branche locale, à peine commencée |
+| `s59-premier-deploiement` | **ne peut pas être jouée par un agent** : elle demande des clés fournisseur et un hôte |
+
+Les deux branches inachevées n'existent que localement : elles se suppriment sans trace, ou reprennent où elles sont — leurs plans et leurs recherches sont sur `dev`.
+
+**Ce que la pause laisse ouvert, et qui n'appartient à aucune story** : deux migrations de dépendances qui ne sont pas des montées de version (TypeScript 6→7, dont le lint sort en code 2 sur les deux branches de la matrice ; Node 22→26, dont l'image perd `corepack`). Chacune mérite sa story.
+
+**Ce qui reste vrai et non prouvé, après soixante stories** : aucun tiers n'a jamais été réellement appelé — stockage, paiements, tâches, emails, analyse d'usage, suivi d'erreurs, tous en doublure ou en mode local. Le régime enregistré du parcours doré n'a **aucune capture** de son fournisseur. Et rien n'a jamais été servi ailleurs que sur ce poste : tout ce que le dépôt affirme du mode production est **raisonné, jamais observé** — la phrase « aucune preuve sous le build de production » revient dans onze rapports de revue. C'est `s59`, et c'est la seule story dont l'absence rend les autres moins sûres.
+
+**Une leçon de conduite, pour la reprise.** J'ai ouvert quatre stories en cours de route (`s56` à `s59`), chacune sur un défaut réel et mesuré. Ouvrir une story pour un défaut trouvé est le bon réflexe ; **ne pas dire que la ligne d'arrivée recule ne l'est pas**. Le porteur du projet me l'a fait remarquer, et il avait raison : annoncer « le socle est fini » puis enchaîner six stories de plus, sans marquer chaque ajout comme un ajout, transforme une bonne pratique en impression de dérive. À la reprise : nommer l'ajout, dire ce qu'il coûte, et laisser la décision à qui la porte.
+
+---
+
 # Comment régénérer ce rapport
 
 1. **Le patch des skills et commandes** : `git diff 463c831..HEAD -- .claude/`
