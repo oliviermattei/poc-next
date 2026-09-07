@@ -389,6 +389,84 @@ export interface ModuleJob {
 }
 
 /**
+ * **La base telle que le contrat la voit : opaque** (s58).
+ *
+ * `@repo/core` ne dépend pas de l'ORM — c'est ce qui lui permet d'être chargé
+ * par `pnpm ks list` comme par `config/features.ts`. Le paramètre est donc
+ * `never`, et ce n'est pas de la coquetterie de typage : c'est la seule forme
+ * qui rende **assignable** une fonction de seed qui annonce la connexion
+ * réduite de son module (`Pick<PgDatabase, 'insert' | …>`). Un `unknown` ferait
+ * l'inverse — la contravariance des paramètres refuserait chaque module.
+ *
+ * Le prix est connu et il est payé **une fois**, au seul endroit qui possède la
+ * vraie connexion : `packages/db/src/seed.ts` restitue le type au moment
+ * d'appeler. Un module, lui, écrit `run: async ({ database }: MonContexte) =>`
+ * et retrouve ses tables typées.
+ */
+export type ModuleSeedDatabase = never
+
+/**
+ * Ce que le lanceur de seeds donne à un seed de module (s58).
+ *
+ * `demonstration` n'est pas une commodité : c'est ce qui rend un jeu de données
+ * **lié** possible sans qu'un module en connaisse un autre. Mesuré sur ce
+ * dépôt, un seed d'organisations ne peut pas importer `@repo/module-auth` pour
+ * y lire l'identifiant d'un compte de démonstration — `eslint.config.ts` le
+ * refuse hors de `schema.ts` et de la porte de lecture —, `notifications`
+ * écrit dans son `AGENTS.md` qu'il ne connaît pas `auth`, et `billing` déclare
+ * `requires: []`. Les périmètres sont donc **reçus**, exactement comme
+ * `purge` et `export` reçoivent le leur : chaque module écrit ses propres
+ * lignes pour les mêmes périmètres, et aucun n'a besoin de savoir qui écrit les
+ * autres.
+ *
+ * Ce sont des `ModuleScope`, c'est-à-dire des **références**, jamais des
+ * données : le nom, l'adresse et le mot de passe d'un compte de démonstration
+ * appartiennent au module qui possède les comptes.
+ *
+ * Le paramètre de type est ce qui rend la connexion **utilisable** dans un
+ * module : il écrit `run: async ({ database }: ModuleSeedContext<MaBase>)` et
+ * retrouve ses tables typées, tandis que le contrat, lui, garde `never`. Une
+ * intersection ne conviendrait pas — `never & MaBase` reste `never`.
+ */
+export interface ModuleSeedContext<TDatabase = ModuleSeedDatabase> {
+  readonly database: TDatabase
+  readonly demonstration: readonly ModuleScope[]
+}
+
+/**
+ * **Les données de départ d'un module** (s58, ADR 069), et la seule clé
+ * facultative du contrat avec `NavigationEntry.surface`.
+ *
+ * Facultative, et c'est une décision consignée : le commentaire de `publicUrls`
+ * dit ce qu'une seizième clé obligatoire coûterait — rouvrir tous les modules
+ * déjà écrits pour y poser la même valeur vide. `surface` a établi la forme
+ * (ADR 066/067) : le registre dérive la clé pour ceux qui la déclarent, et les
+ * autres ne bougent pas.
+ *
+ * **Le critère de l'ADR 069, à opposer à la clé suivante** : une clé est
+ * obligatoire quand l'omettre laisse un défaut sans propriétaire — une donnée
+ * non purgée, une route sans protection, un contenu non indexé — et le tableau
+ * vide y est alors une décision. Elle peut être facultative quand l'omettre ne
+ * laisse que du **silence** : un module sans données de démonstration n'est pas
+ * incomplet, aucune garantie du dépôt n'en dépend, et le manque se voit à
+ * l'écran.
+ *
+ * Un seed est **rejouable par construction** : identifiants déterministes et
+ * écritures tolérantes au conflit. Ce n'était qu'un commentaire jusqu'à s58 ;
+ * c'est désormais mesuré — deux exécutions, un comptage de lignes avant et
+ * après (`tests/seed.test.ts`).
+ *
+ * **Déclarer la clé engage à écrire** : `runSeeders` refuse, en le nommant, un
+ * seed déclaré qui ne laisse aucune ligne sur une base vide. C'est ce qui
+ * amortit l'optionalité — l'oubli reste possible avant la déclaration, jamais
+ * après.
+ */
+export interface ModuleSeed {
+  readonly id: string
+  readonly run: (context: ModuleSeedContext) => Promise<void>
+}
+
+/**
  * Ce que le répartiteur donne à une tâche qu'il exécute (s33).
  *
  * **Un paramètre, pas une clé de contrat en plus** : la déclaration ne change
@@ -495,6 +573,11 @@ export interface ModuleDefinition<
   /** Tâches planifiées du module. Celles d'un module non activé ne sont pas dans le registre. */
   readonly jobs: readonly ModuleJob[]
   /**
+   * Données de départ du module (s58). **Facultative** : un module qui n'en
+   * déclare pas n'a rien à écrire ici, et n'a pas eu à être rouvert.
+   */
+  readonly seeds?: readonly ModuleSeed[]
+  /**
    * Catégories de données personnelles détenues par le module.
    *
    * C'est la liste qui rend `retention` vérifiable : sans elle, « une catégorie
@@ -556,6 +639,7 @@ export function defineModule<
   readonly emails: readonly EmailTemplate<NoInfer<TLocale>>[]
   readonly webhooks: readonly WebhookHandler[]
   readonly jobs: readonly ModuleJob[]
+  readonly seeds?: readonly ModuleSeed[]
   readonly dataCategories: readonly TCategory[]
   readonly retention: Readonly<Record<NoInfer<TCategory>, RetentionAction>>
   readonly purge: (scope: ModuleScope) => Promise<void>

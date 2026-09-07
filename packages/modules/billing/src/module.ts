@@ -2,6 +2,7 @@ import { defineModule, type ModuleJob } from '@repo/core'
 
 import { BILLING_MODULE_ID } from './domain/message-keys'
 import { requireBillingService } from './infrastructure/billing-runtime'
+import { billingDemonstrationSeed } from './infrastructure/demonstration-seed'
 import enMessages from './messages/en.json' with { type: 'json' }
 import frMessages from './messages/fr.json' with { type: 'json' }
 import { billingNavigation, createBillingRoutes } from './presentation/billing-routes'
@@ -80,6 +81,12 @@ export const billingModule = defineModule({
   emails: [],
   webhooks: [],
   jobs: [trialEndingReminder],
+  /**
+   * **Un abonnement de démonstration par périmètre reçu** (s58) : ce module ne
+   * connaît ni les comptes ni les organisations — `requires: []` —, donc il ne
+   * choisit pas la configuration dans laquelle il sème.
+   */
+  seeds: [billingDemonstrationSeed],
   // Le rattachement d'un périmètre à un client du fournisseur, et l'abonnement
   // qui en découle. Ce sont des données personnelles : elles désignent une
   // personne ou son organisation chez un tiers. **Effacées**, jamais

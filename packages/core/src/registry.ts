@@ -6,6 +6,7 @@ import type {
   ModuleJob,
   ModuleRoute,
   ModuleScope,
+  ModuleSeed,
   ModuleSession,
   NavigationEntry,
   PublicUrl,
@@ -55,6 +56,12 @@ export interface RegistryJob {
   readonly job: ModuleJob
 }
 
+/** Une donnée de départ contribuée par un module, avec le module qui la donne. */
+export interface RegistrySeed {
+  readonly moduleId: string
+  readonly seed: ModuleSeed
+}
+
 export interface ModuleRegistry {
   /** Les modules activés, dans l'ordre du graphe : un requis avant son requérant. */
   readonly modules: readonly AnyModuleDefinition[]
@@ -78,6 +85,15 @@ export interface ModuleRegistry {
   readonly webhooks: readonly RegistryWebhookHandler[]
   /** Tâches planifiées à ordonnancer. Vide tant qu'aucun module activé n'en déclare. */
   readonly jobs: readonly RegistryJob[]
+  /**
+   * Données de départ à semer (s58). **Dérivées**, comme tout le reste : un
+   * module coupé n'est pas dans le registre, donc son seed n'existe pas — il
+   * n'y a nulle part un « si le module est activé ».
+   *
+   * La clé du contrat étant facultative, un module qui n'en déclare pas
+   * contribue zéro entrée sans qu'aucun module ait eu à être rouvert.
+   */
+  readonly seeds: readonly RegistrySeed[]
 }
 
 /** Clé de traduction qualifiée : deux modules peuvent nommer leur clé pareil. */
@@ -167,6 +183,9 @@ export function buildRegistry(configuration: {
       module.webhooks.map((handler) => ({ moduleId: module.id, handler })),
     ),
     jobs: modules.flatMap((module) => module.jobs.map((job) => ({ moduleId: module.id, job }))),
+    seeds: modules.flatMap((module) =>
+      (module.seeds ?? []).map((seed) => ({ moduleId: module.id, seed })),
+    ),
   }
 }
 

@@ -5,9 +5,7 @@ import {
   composeSchema,
   isConcurrentCreationError,
   runMigrations,
-  runSeeders,
   type DatabaseConnection,
-  type Seeder,
 } from '@repo/db'
 import { sql } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, expectTypeOf, it } from 'vitest'
@@ -240,24 +238,15 @@ describe.skipIf(!databaseReachable)('migrations et seed sur une base réelle', (
     expect(journalEntries).toBe(1)
   })
 
-  it('rejoue le seed sans dupliquer les données', async () => {
-    await migrateOnce()
-
-    const fixtureSeeder: Seeder = {
-      id: 'fixture',
-      run: async (db) => {
-        await db
-          .insert(fixtureItem)
-          .values({ id: 'fixture-1', label: 'Fixture' })
-          .onConflictDoNothing()
-      },
-    }
-
-    await runSeeders({ db: connection.db, seeders: [fixtureSeeder] })
-    await runSeeders({ db: connection.db, seeders: [fixtureSeeder] })
-
-    const rows = await countRows(sql`select count(*)::int as count from fixture_item`)
-
-    expect(rows).toBe(1)
-  })
+  /**
+   * **Le rejeu du seed ne se mesure plus ici** (s58).
+   *
+   * Ce fichier portait un cas « rejoue le seed sans dupliquer les données » qui
+   * s'injectait le seeder qu'il mesurait : il prouvait qu'un `onConflictDoNothing`
+   * écrit dans le test lui-même ne duplique pas, jamais que les seeds **livrés**
+   * sont rejouables — c'est la moitié de la raison d'être de s58, et
+   * `tests/seed.test.ts` le mesure désormais sur les seeds du registre, dans une
+   * base créée pour l'exécution. Le garder aurait été un second filet nommé
+   * comme le premier et aveugle au même défaut.
+   */
 })

@@ -22,6 +22,11 @@ export {
 } from './schema'
 export { configureAuth, requireAuthService, resetAuthService } from './infrastructure/auth-runtime'
 export {
+  authDemonstrationSeed,
+  DEMONSTRATION_PASSWORD,
+  type AuthSeedDatabase,
+} from './infrastructure/demonstration-seed'
+export {
   AUTH_MODELS,
   createBetterAuthService,
   type ConfigureAuthOptions,

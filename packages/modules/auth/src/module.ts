@@ -13,6 +13,7 @@ import { magicLinkEmail } from './emails/magic-link'
 import { passwordResetEmail } from './emails/password-reset'
 import { verificationEmail } from './emails/verification'
 import { requireAuthService } from './infrastructure/auth-runtime'
+import { authDemonstrationSeed } from './infrastructure/demonstration-seed'
 import enMessages from './messages/en.json' with { type: 'json' }
 import frMessages from './messages/fr.json' with { type: 'json' }
 import { authNavigation, createAuthRoutes } from './presentation/auth-routes'
@@ -126,6 +127,16 @@ export const authModule = defineModule({
   // même repli — un export est une obligation légale du socle, il ne disparaît
   // pas avec un module optionnel.
   jobs: [createAccountPurgeJob(requireAuthService), dataExportJob],
+  /**
+   * **Les comptes de démonstration** (s58), et la garde qui les rend
+   * inoffensifs : le seed refuse dès qu'un compte qu'il n'a pas créé existe.
+   *
+   * La clé est **facultative** au contrat, donc les modules qui ne sèment rien
+   * n'ont pas été rouverts. Elle est déclarée ici parce que ce module possède
+   * les comptes : c'est le seul endroit où « la base est déjà en service »
+   * puisse se lire comme un fait plutôt que comme une variable.
+   */
+  seeds: [authDemonstrationSeed],
   dataCategories: ['account', 'session', 'data-export'],
   // Un compte est **effacé**, jamais anonymisé : un compte anonyme resterait
   // un moyen de connexion.

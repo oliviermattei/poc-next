@@ -1,15 +1,21 @@
 ---
 title: The module contract
-description: The fifteen keys a module declares, and why none of them is optional.
+description: The fifteen mandatory keys of a module, the sixteenth that is not, and why.
 order: 1
 ---
 
-## Fifteen keys, mandatory from the first module
+## Fifteen keys mandatory from the first module, and one optional
 
 A module declares `id`, `requires`, `schema`, `migrations`, `routes`,
 `navigation`, `publicUrls`, `messages`, `emails`, `webhooks`, `jobs`,
 `dataCategories`, `retention`, `purge` and `export` — empty if need be: adding
 one later means reopening every module already written.
+
+Exactly one key is **optional**: `seeds`, the module's demonstration data
+(ADR 069). A module that declares none is not incomplete — it is silent, and the
+registry aggregates only what is declared. It is the single exception, and a
+motivated one: made mandatory, it would have reopened every module already
+written just to add an empty array.
 
 ## Four layers
 

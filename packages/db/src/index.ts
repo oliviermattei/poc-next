@@ -46,4 +46,15 @@ export {
   type PlanModuleMigrationsOptions,
   type RunMigrationsOptions,
 } from './migrate'
-export { runSeeders, seeders, type RunSeedersOptions, type Seeder } from './seed'
+export {
+  countSeededRows,
+  planModuleSeeders,
+  runSeeders,
+  DEMONSTRATION_SCOPES,
+  type ModuleSeedEntry,
+  type RunSeedersOptions,
+  type SeedDatabase,
+  type SeededRowCount,
+  type SeedOutcome,
+  type Seeder,
+} from './seed'

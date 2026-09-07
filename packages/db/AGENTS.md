@@ -85,6 +85,64 @@ défaut.
 | Deux barils vides n'entrent pas en collision | idem |
 | Une table exportée par défaut est refusée, pas avalée | `tests/migrations.test.ts` |
 
+## Seeds : dérivés du registre, et deux planchers (s58)
+
+`pnpm db:seed` (`src/scripts/seed.ts`) est un **point de composition**, comme
+`migrate.ts` : il lit `config/features.ts`, construit le registre et exécute
+`planModuleSeeders(registry.seeds)`. Il n'y a aucun `if (module activé)` — un
+module coupé n'est pas dans le registre, donc son seed n'existe pas, donc il ne
+laisse aucune ligne. Mesuré : sous le profil minimal, la commande n'exécute que
+`auth.comptes` et l'imprime, et `pnpm test:minimal-profile` la joue dans une
+copie où des modules sont coupés. **Ce qu'aucune commande ne tient** : qu'aucun
+nom de module ne soit *écrit* ici. Un `if` sur l'identifiant d'un module coupé
+ne ferait rougir personne — c'est une règle de revue, pas une porte, et il faut
+la lire comme telle.
+
+Ce que `runSeeders` refuse, et pourquoi c'est là que ça vit :
+
+| Refus | Raison |
+|---|---|
+| **Aucun seed déclaré** | une commande de seed qui n'a rien à semer n'a pas réussi, elle n'a pas eu lieu |
+| **Un seed déclaré qui n'écrit aucune ligne** sur une base vide, nommé | déclarer `seeds` engage à semer. La première version de s58 comptait les lignes de **tout** le schéma : celles d'un autre seed suffisaient, si bien qu'un module qui déclare la clé et n'écrit rien sortait vert — le défaut même que la story ferme |
+
+**Ce que le second refus ne tient pas** : il ne s'arme que sur une **première**
+exécution, base vide. Au-delà, un seed muet est indiscernable d'un seed rejoué —
+même absence de delta —, et refuser le rejeu ferait rougir la commande sur son
+usage normal. Un seed muet introduit après coup est donc attrapé à la prochaine
+base neuve : `pnpm test:golden-path`, `pnpm test:minimal-profile`,
+`tests/seed.test.ts`.
+
+Le comptage est **dérivé d'`information_schema`**, jamais d'une liste de tables,
+et le schéma `drizzle` en est exclu : ses journaux de migration porteraient des
+lignes sur une base migrée mais non semée, et le plancher les prendrait pour des
+données. Le **nombre** de tables n'est écrit nulle part à côté du code : il est
+daté dans `docs/research/s58-donnees-de-demonstration.md`, et la commande
+l'imprime. Ce qu'aucun plancher ne peut être : « la base a gagné des lignes » à
+chaque exécution — un seed rejoué n'en ajoute aucune, par construction.
+
+**La garde de non-écrasement n'est pas ici.** « La base est déjà en service »
+est un fait sur les **comptes**, et ce package ne connaît aucune table de
+module : la garde vit dans le seed du module `auth`, qui refuse dès qu'un compte
+qu'il n'a pas créé existe. Ce package fournit ce qui la rend inconditionnelle :
+tous les seeds tournent dans **une seule transaction**, donc un refus n'écrit
+rien, quel que soit l'ordre du graphe — et ce n'est plus une phrase : un cas de
+`tests/seed.test.ts` fait écrire un seed **avant** que la garde refuse, puis
+compte les lignes. Retirer la transaction le fait rougir.
+
+**Un identifiant de seed qualifié est unique**, et `planModuleSeeders` refuse le
+doublon comme `assertJobSchedulesAreValid` refuse deux tâches homonymes : sans
+cela, « le seed *x* n'a rien laissé » désignerait deux fonctions. **Un seed qui
+échoue est nommé** : le contrat voit la base comme `never`, donc un module peut
+annoncer une forme de connexion que le lanceur ne fournit pas et échouer à
+l'exécution — aucun type ne peut le tenir sans faire dépendre `@repo/core` de
+l'ORM, et ce qui est tenu, c'est que l'échec dise **lequel**.
+
+Les **périmètres de démonstration** (`DEMONSTRATION_SCOPES`) vivent ici, au
+point de composition, et pas dans un module : c'est ce qui permet à un jeu de
+données lié d'exister sans qu'un module en connaisse un autre. Ce sont des
+références (`ModuleScope`), jamais des données — un nom, une adresse ou un mot
+de passe appartiennent au module qui possède la table.
+
 ## Imports autorisés
 
 - `drizzle-orm` et `pg` — le pilote ne sort pas de ce package ;
