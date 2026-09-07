@@ -2,6 +2,7 @@ import { MODULE_ROUTE_PREFIX, navigationSurfaceOf } from '@repo/core'
 import { adminRoutePath, SUPERADMIN_ROLE } from '@repo/module-admin'
 import { expect, test, type Page } from '@playwright/test'
 
+import { marketingSubscriptions } from '../apps/web/lib/marketing'
 import { moduleRegistry } from '../apps/web/lib/module-registry'
 import { E2E_SUPERADMIN_EMAIL } from '../playwright.config'
 import { PASSWORD, aSignedInAccount, linkSentTo, signIn, signUp } from './support/account'
@@ -211,6 +212,186 @@ test('le back-office sert les revenus au compte désigné, en disant ce qu’ils
   expect(refused?.status()).not.toBe(403)
 
   await other.close()
+})
+
+/**
+ * **Les inscriptions publiques et leur export, sur le vrai chemin HTTP** (s37c).
+ *
+ * **Ce qu'il porte en propre**, et ce qui est déjà tenu ailleurs — la nuance
+ * compte, un cas de navigateur coûte cher :
+ *
+ * - le **404 d'un compte connecté qui n'administre pas**, sur l'écran comme sur
+ *   la route de téléchargement. La *décision* est déjà mesurée, sur le
+ *   répartiteur, par `tests/admin.test.ts` (« répond 404 au téléchargement d'un
+ *   compte qui n'administre pas ») ; ce qui est propre à ce cas, c'est le
+ *   **statut réellement servi** au bout du vrai chemin HTTP, avec un cookie de
+ *   session réel. Le balayage de `e2e/modules.spec.ts` couvre bien ce `GET`,
+ *   mais **pour l'appel anonyme** : l'appelant qui a une session et pas le rôle
+ *   est une autre décision ;
+ * - l'entrée de navigation **dérivée du registre** *et cliquable* : rien
+ *   d'autre ne la clique — les cas de `tests/rendered-text.test.ts` rendent
+ *   l'écran, ils n'y naviguent pas ;
+ * - le filtre par source dérivé des lignes **réellement présentes en base**,
+ *   là où `tests/admin.test.ts` les fait venir d'un port doublé ;
+ * - **le fichier tel qu'un navigateur le reçoit** : ses en-têtes de remise et
+ *   son contenu assaini. `tests/admin.test.ts` mesure la réponse du
+ *   répartiteur ; ici, ce sont les octets servis.
+ *
+ * **Il ne s'exécute que là où les inscriptions existent.** Sa préparation écrit
+ * dans `public_subscription`, une table du module du site public : coupé, la
+ * table n'a jamais migré et la préparation échouerait sur une configuration
+ * parfaitement valide — c'est la branche `socle` de la matrice de CI. La
+ * condition est **dérivée** de la même donnée que l'écran lit (`lib/marketing.ts`),
+ * jamais d'un identifiant recopié ; c'est la forme de `e2e/storage.spec.ts` et
+ * de `e2e/marketing.spec.ts`.
+ *
+ * **Ce que la coupure garantit, et par quoi.** Plus de **route** : c'est mesuré,
+ * par le balayage du registre de `e2e/modules.spec.ts` et par `pnpm test:socle`.
+ * Plus d'**entrée** : c'est *structurel*, pas mesuré — `backOfficeNavigation`
+ * n'agrège que les modules du registre, qui n'agrège que les modules activés,
+ * si bien qu'un module coupé ne peut pas déclarer d'entrée. Aucune exécution ne
+ * rend la navigation du back-office avec le site public coupé, et le balayage
+ * d'entrées de `pnpm test:minimal-profile` porte sur la surface principale, où
+ * une entrée `surface: 'admin'` n'apparaît de toute façon jamais.
+ */
+const SUBSCRIPTIONS_SCREEN = '/admin/subscriptions'
+
+/** Une adresse hostile : un tableur l'exécuterait à l'ouverture du fichier. */
+const HOSTILE_EMAIL = '=HYPERLINK("http://pirate.test")@example.test'
+
+const givenSubscriptions = async (): Promise<void> => {
+  await onDatabase(async (connection) => {
+    const { sql } = await import('drizzle-orm')
+
+    await connection.db.execute(
+      sql`delete from public_subscription where id like ${'s37c-e2e-%'}`,
+    )
+
+    for (const [id, email, source] of [
+      ['s37c-e2e-1', 'ada.s37c@example.test', 'newsletter'],
+      ['s37c-e2e-2', HOSTILE_EMAIL, 'newsletter'],
+      ['s37c-e2e-3', 'grace.s37c@example.test', 's37c-autre-source'],
+    ] as const) {
+      await connection.db.execute(
+        sql`insert into public_subscription (id, email, source, locale)
+            values (${id}, ${email}, ${source}, 'fr')
+            on conflict (source, email) do nothing`,
+      )
+    }
+  })
+}
+
+test('le back-office liste les inscriptions et en sert un CSV assaini', async ({
+  page,
+  browser,
+}) => {
+  test.skip(
+    !marketingSubscriptions.available,
+    'Le module du site public est coupé dans cette configuration : la table des ' +
+      'inscriptions n’existe pas, il n’y a rien à lister ni à exporter.',
+  )
+
+  await givenSubscriptions()
+  await aSignedInSuperadmin(page)
+
+  // L'entrée est **dérivée du registre** : elle est déclarée par le module du
+  // site public, et c'est par elle qu'on arrive sur l'écran.
+  await page.goto(publicPath('/admin/users'))
+  await page.getByRole('link', { name: 'Inscriptions', exact: true }).click()
+
+  await expect(page.getByRole('heading', { name: 'Inscriptions', level: 1 })).toBeVisible()
+  await expect(page.getByRole('table')).toContainText('ada.s37c@example.test')
+
+  // **Le filtre est dérivé des sources réellement présentes** : celle qui vient
+  // d'être écrite est offerte sans qu'aucun fichier ne la nomme.
+  const otherSource = page.getByRole('link', { name: 's37c-autre-source', exact: true })
+
+  await expect(otherSource).toBeVisible()
+  await otherSource.click()
+
+  await expect(page).toHaveURL(/[?&]source=s37c-autre-source/)
+  await expect(page.getByRole('table')).toContainText('grace.s37c@example.test')
+  await expect(page.getByRole('table')).not.toContainText('ada.s37c@example.test')
+
+  // **Le fichier, tel que le navigateur le reçoit.** La requête part du
+  // contexte de la page, donc avec le cookie du superadmin.
+  const file = await page.request.get(adminRoutePath('exportSubscriptions'))
+
+  expect(file.status()).toBe(200)
+  expect(file.headers()['content-type']).toContain('text/csv')
+  expect(file.headers()['content-disposition']).toBe(
+    'attachment; filename="inscriptions.csv"',
+  )
+  expect(file.headers()['cache-control']).toBe('no-store')
+
+  const body = await file.text()
+
+  // **L'injection de formule, mesurée sur le fichier livré** : l'adresse
+  // hostile y est, et aucune cellule ne s'ouvre sur `=`.
+  expect(body).toContain('ada.s37c@example.test')
+  expect(body).toContain('\'=HYPERLINK(')
+  expect(body).not.toContain('"=HYPERLINK(')
+
+  // **Un autre compte, dans un autre contexte** : il n'administre pas, et il ne
+  // distingue ni l'écran ni le téléchargement d'une URL inventée.
+  const other = await browser.newContext()
+  const stranger = await other.newPage()
+
+  await aSignedInAccount(stranger, 's37c-intrus')
+
+  const refusedScreen = await stranger.goto(publicPath(SUBSCRIPTIONS_SCREEN))
+
+  expect(refusedScreen?.status()).toBe(404)
+  expect(refusedScreen?.status()).not.toBe(403)
+
+  const refusedFile = await stranger.request.get(adminRoutePath('exportSubscriptions'))
+
+  expect(refusedFile.status()).toBe(404)
+  expect(await refusedFile.json()).toEqual({ error: 'not_found' })
+
+  await other.close()
+})
+
+/**
+ * **L'autre moitié de la garde de l'écran** — la configuration où le module du
+ * site public est coupé (critère 7 de la story).
+ *
+ * Le cas ci-dessus saute alors, et un saut sans contrepartie serait exactement
+ * le défaut que la revue a relevé : une garde qui ne mord que dans une
+ * configuration. Ici, la seule qui la fasse mordre.
+ *
+ * **Ce qu'il ajoute, mesuré et pas supposé.** Le refus lui-même est déjà tenu
+ * dans cette configuration par `tests/rendered-text.test.ts` (« back-office —
+ * inscriptions »), dont l'attente est dérivée de l'état des deux modules :
+ * neutraliser la moitié « site public » de la garde y rougit 1 cas sous
+ * `pnpm test:socle`. Ce cas-ci n'est donc pas ce qui rend la garde opposable,
+ * et il ne le prétend pas.
+ *
+ * Ce qu'il porte en propre, c'est ce qu'un appel direct à la fonction de page
+ * ne peut pas voir — la distinction mesurée en s29 : **le statut réellement
+ * servi**, et le fait que le refus soit décidé *avant* la session. La requête
+ * est donc **anonyme**, et c'est le sujet : un refus déplacé après la
+ * résolution de session redirigerait ce visiteur vers la connexion, ce qui lui
+ * apprendrait que l'écran existe — et `pnpm test:minimal-profile` lirait cette
+ * redirection comme un 200, puisqu'il les suit.
+ *
+ * Ce que ni l'un ni l'autre ne dit : `pnpm test:minimal-profile` ne balaie que
+ * les entrées de navigation des **modules coupés**, et « Inscriptions » est
+ * déclarée par le site public — activé dans ce profil-là. Cette adresse n'entre
+ * donc dans aucun balayage d'entrée ; elle est vérifiée ici, nommément.
+ */
+test('l’écran des inscriptions disparaît avec le module qui les porte', async ({ page }) => {
+  test.skip(
+    marketingSubscriptions.available,
+    'Le module du site public est activé dans cette configuration : c’est le cas ci-dessus.',
+  )
+
+  const refused = await page.goto(publicPath(SUBSCRIPTIONS_SCREEN))
+
+  expect(refused?.status()).toBe(404)
+  // 404, et pas une redirection vers la connexion : l'écran n'existe pas, il
+  // n'est pas réservé.
+  expect(refused?.status()).not.toBe(403)
 })
 
 test('le bandeau d’impersonation survit à une navigation complète', async ({ page, browser }) => {

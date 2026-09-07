@@ -93,7 +93,8 @@ une autre story. Il porte en revanche une **période sélectionnable** (critère
 et elle ne borne que la moitié **constatée** : un achat unique a une date
 d'encaissement, le récurrent est l'état d'aujourd'hui — l'écran le dit à côté du
 chiffre plutôt que de laisser croire au lecteur que sa période s'y applique.
-Restent dehors : les inscriptions publiques et l'export (`s37c`), et la
+`s37c` a livré les **inscriptions publiques** et le premier **export de
+fichier** du back-office. Restent dehors : la
 **confirmation d'une action irréversible** — `ConfirmDialog` et `AlertDialog` ne
 sont pas livrés par le design system (lacune relevée par `s34b`, toujours
 ouverte). La révocation est donc un `Button` `destructive` dont le libellé nomme
@@ -142,6 +143,45 @@ la surface `admin` (ADR 066).
 | **Les ports adossés aux autres modules refusent au lieu de lever** (s38) | `adminRevenuePort` et `adminOrganizationsPort` enveloppent leur lecture ; une base injoignable devient `{ ok: false }`, jamais un revenu à zéro qui se lirait comme une réponse | `tests/admin.test.ts` (« les ports du back-office adossés aux autres modules, quand la lecture échoue »), dont la liste des lectures est **énumérée par le compilateur** (`Record<keyof …>`) ; mesuré : avaler la panne du revenu rougit 1 cas, laisser passer celle des organisations 1 cas |
 | **Aucune adresse du back-office n'atteint la navigation du produit** (s38) | l'appartenance est une propriété de l'entrée (ADR 067) ; le cas compare la surface `admin` à la surface par défaut, la racine étant **dérivée** de `ADMIN_USERS_SCREEN_PATH` | `tests/admin.test.ts` (« ne laisse aucune adresse du back-office atteindre la navigation du produit ») ; mesuré : retirer `surface: 'admin'` de l'entrée déclarée par `billing` rougit 2 cas. Le cas voisin ne voyait que les entrées du module `admin` — celle qui a manqué en s38 est déclarée par **un autre module** |
 | **La coquille n'ouvre aucune lecture pour afficher le bandeau d'emprunt** | l'emprunteur arrive avec la session, dans la résolution que `currentViewer()` a déjà payée (`AuthService.resolveActiveSession`) | `tests/marketing.test.ts` (« n'émet aucune requête propre pour un compte connecté ») pour le coût, et `tests/admin.test.ts` (« rend l'emprunteur avec la session ») pour la lecture elle-même — la colonne `impersonated_by` appartient à ce dépôt, pas à la bibliothèque, et ce second cas est ce qui rend sa traversée opposable |
+
+### Les inscriptions publiques et leur export (s37c)
+
+**Le back-office lit les inscriptions par un quatrième port**,
+`AdminSubscriptionsPort`. Ce module ne déclare pas `marketing` dans ses
+`requires` : il ne peut ni l'importer, ni lire `public_subscription`. La lecture
+par source, elle, vit dans le module qui **possède** la table — c'est
+`PublicSubscriptionRepository.listBySource` qui a été élargi, jamais une requête
+écrite ici. Site public coupé, ce port rend des listes vides ; ce qui disparaît
+alors est l'**entrée de navigation**, déclarée par `marketing` lui-même sur la
+surface `admin` (ADR 066/067).
+
+**L'écran couvre les inscriptions, pas les messages de contact — et c'est une
+décision, pas un oubli.** `public_subscription` et `contact_message` sont deux
+tables voisines et distinctes ; la story parle d'« inscriptions publiques ». Un
+message de contact porte un **nom** et un **texte libre** que personne n'a
+demandé à voir ici, et il n'a pas de **source**, qui est le filtre de cet écran :
+les mêler mettrait deux questions sous un seul filtre. La raison longue vit là
+où quelqu'un la cherchera — `packages/modules/marketing/src/schema.ts`, sur la
+table elle-même —, et la description de l'écran le dit à celui qui les y cherche.
+Ce que cela laisse ouvert : une ligne de `contact_message` dont `delivered_at`
+est vide n'a **aucun lecteur d'écran**.
+
+**Une limite écrite plutôt que résolue** : rien ne borne aujourd'hui le nombre
+d'inscriptions, et l'export les matérialise **toutes** en mémoire
+(`limit: null`). Cela tiendra jusqu'à ce que cela ne tienne plus. La borne —
+pagination d'export, écriture en flux, travail de fond — appartient à la story
+qui rencontrera le problème ; aucun critère de `s37c` ne la demande, et aucun
+seuil ne se devine. **Aucune commande ne tient cette phrase** : c'est un constat,
+pas un invariant.
+
+| Invariant | Comment il est tenu | Ce qui échoue si on le casse |
+|---|---|---|
+| **Une cellule CSV ne devient jamais une formule** | `domain/csv.ts` préfixe d'une apostrophe toute cellule commençant par `=`, `+`, `-`, `@`, une tabulation ou un retour chariot (`FORMULA_STARTERS`) — **les amorces balayées**, pas la liste de ce qu'un tableur exécute ; le test **dérive** cette liste de la production plutôt que de la recopier, et n'en écrit pas le nombre. Citer ne suffit pas : `"=1+1"` est lu comme le texte `=1+1`, que le tableur évalue | `domain/csv.test.ts`, mesuré **sur la chaîne rendue** ; mesuré : retirer l'assainissement rougit 1 cas, ne pas doubler le guillemet interne en rougit 2 |
+| **Le fichier suit la sélection affichée** | source et recherche descendent de l'écran au lien d'export, puis à la requête ; le **nom** du fichier porte la source | `tests/admin.test.ts` (« sert un fichier CSV assaini, nommé d'après la sélection affichée », « donne à l'export la sélection affichée, et pas la page ») ; mesuré : retirer `content-disposition` rougit 1 cas |
+| **Le nom du fichier ne recopie jamais la recherche** | elle est un texte libre venu de l'adresse, et ce nom part dans un en-tête. Sa **présence** est marquée, son contenu jamais ; la source est dérivée en `[a-z0-9-]`, bornée | `domain/back-office.test.ts` (« le nom du fichier d'export des inscriptions ») |
+| **Un export tronqué ne se sert pas** | la lecture d'export ne porte **aucune** limite (`limit: null`), et une lecture en échec rend 503 sans en-tête de remise | `tests/admin.test.ts` (« exporte tout ce que le filtre retient », « refuse entièrement plutôt que de servir un fichier tronqué ») |
+| **Le filtre par source est dérivé des lignes** | `listSources()` lit ce que la base porte ; aucun nom de source n'est écrit dans ce module. `s42` en ajoutera une sans toucher cet écran | `tests/admin.test.ts` (« rend les sources que le port a trouvées », « dérive un filtre des sources rendues ») ; mesuré : écrire la liste en dur dans l'écran rougit 1 cas |
+| **La route d'export répond 404 à qui n'administre pas** | la **même** garde que tout le reste — `asSuperadmin` sur la route *et* `authorize` dans le cas d'usage. Les deux : neutraliser l'une seule ne change rien, ce qui est la propriété recherchée | `tests/admin.test.ts` (« répond 404 au téléchargement d'un compte qui n'administre pas ») ; mesuré : neutraliser `authorize` — le site du défaut — rougit 27 cas de ce fichier, dont celui-ci |
 
 **Ce que le module coupé emporte avec lui, depuis `s37b1`** : plus aucune
 impersonation ne s'ouvre, et une impersonation **en cours ne peut plus être
@@ -247,8 +287,9 @@ comptes —, jamais une lecture directe des tables du socle.
 
 ## Tests
 
-- les règles pures : `src/domain/admin-rules.test.ts`, à côté du code qu'elles
-  couvrent — la règle du décompte lui-même (« quels comptes ne peuvent pas
+- les règles pures : `src/domain/admin-rules.test.ts`,
+  `src/domain/back-office.test.ts` et `src/domain/csv.test.ts`, à côté du code
+  qu'elles couvrent — la règle du décompte lui-même (« quels comptes ne peuvent pas
   ouvrir de session ») vit dans le socle, avec l'état qu'elle lit :
   `packages/modules/auth/src/domain/ban.ts` ;
 - ce qui traverse la base, le répartiteur et le module `auth` :

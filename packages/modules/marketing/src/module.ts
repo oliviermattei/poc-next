@@ -8,7 +8,10 @@ import { marketingPublicUrls } from './infrastructure/marketing-content'
 import { requireMarketingService } from './infrastructure/marketing-runtime'
 import enMessages from './messages/en.json' with { type: 'json' }
 import frMessages from './messages/fr.json' with { type: 'json' }
-import { createPublicFormRoutes } from './presentation/public-form-routes'
+import {
+  ADMIN_SUBSCRIPTIONS_SCREEN_PATH,
+  createPublicFormRoutes,
+} from './presentation/public-form-routes'
 import { marketingSchema } from './schema'
 
 /**
@@ -31,6 +34,28 @@ const marketingNavigation: readonly NavigationEntry[] = [
     labelKey: 'navigation.home',
     order: 0,
     protection: { level: 'public' },
+  },
+  {
+    /**
+     * **L'entrée du back-office** (s37c), déclarée **ici** et pas là-bas.
+     *
+     * C'est ce qui la fait disparaître avec ce module sans qu'aucun fichier du
+     * back-office ne nomme `marketing` : le registre n'agrège que les modules
+     * activés, et la navigation de la surface `admin` en est dérivée (ADR
+     * 066/067). Écrite en dur dans un écran d'administration, elle aurait nommé
+     * ce module dans `apps/web` — puis le suivant au même endroit, ce que s31 a
+     * corrigé pour le pied de page.
+     *
+     * `surface: 'admin'` : elle n'apparaît **pas** dans la barre latérale du
+     * produit. Un lien visible de tout compte connecté divulguerait l'existence
+     * du back-office (`docs/security.md` §7).
+     */
+    id: 'admin-subscriptions',
+    href: ADMIN_SUBSCRIPTIONS_SCREEN_PATH,
+    labelKey: 'navigation.adminSubscriptions',
+    order: 30,
+    protection: { level: 'authenticated' },
+    surface: 'admin',
   },
 ]
 

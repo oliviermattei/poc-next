@@ -30,6 +30,17 @@ export const marketingRoutePath = (path: keyof typeof PATHS): string =>
   `${MODULE_ROUTE_PREFIX}${PATHS[path]}`
 
 /**
+ * **L'écran d'administration des inscriptions publiques** (s37c).
+ *
+ * Le chemin vit ici, avec le module qui **possède** la table : c'est ce qui
+ * permet à `apps/web` de ne le connaître que par le registre, et à l'entrée de
+ * navigation de disparaître avec ce module sans qu'aucun fichier du back-office
+ * ne le nomme. Même forme que `ADMIN_ORGANIZATIONS_SCREEN_PATH` (s37b2) et que
+ * `ADMIN_REVENUE_SCREEN_PATH` (s38).
+ */
+export const ADMIN_SUBSCRIPTIONS_SCREEN_PATH = '/admin/subscriptions'
+
+/**
  * Le corps d'une requête, qu'elle vienne d'un `fetch` ou d'un `<form>`.
  *
  * Les deux formulaires postent en JSON, mais un navigateur sans JavaScript

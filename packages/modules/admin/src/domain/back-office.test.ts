@@ -6,6 +6,8 @@ import {
   pageCountOf,
   pageWindowOf,
   parseBackOfficeQuery,
+  parseBackOfficeSubscriptionsQuery,
+  subscriptionsExportFileName,
 } from './back-office'
 
 /**
@@ -69,5 +71,92 @@ describe('la fenêtre de lecture et le nombre de pages', () => {
     expect(pageCountOf({ total: 0, pageSize: 20 })).toBe(1)
     expect(pageCountOf({ total: 20, pageSize: 20 })).toBe(1)
     expect(pageCountOf({ total: 21, pageSize: 20 })).toBe(2)
+  })
+})
+
+/**
+ * **Ce qu'une liste d'inscriptions publiques lit en plus** (s37c) : une source.
+ *
+ * Elle ne lève pas davantage que la recherche : ce qui n'est pas lisible est
+ * remplacé par son défaut — « toutes les sources » — et jamais transmis à la
+ * base. Un écran de back-office qui tomberait en 500 sur `?source=<n'importe
+ * quoi>` apprendrait à son visiteur qu'il existe.
+ *
+ * **Aucune liste de sources n'est écrite ici** : le domaine s'arrête à la
+ * forme. Quelles sources existent est une question à la base, pas au code —
+ * `s42` en ajoutera une, et cet écran n'a pas à le savoir.
+ */
+describe('la source qu’une liste d’inscriptions lit de son adresse', () => {
+  it('reprend ce que la liste commune lit, et n’exige aucune source', () => {
+    expect(parseBackOfficeSubscriptionsQuery({})).toEqual({
+      source: null,
+      search: null,
+      page: 1,
+    })
+    expect(parseBackOfficeSubscriptionsQuery({ q: '  ada@  ', page: '3' })).toEqual({
+      source: null,
+      search: 'ada@',
+      page: 3,
+    })
+  })
+
+  it('taille la source, et une source vide n’en est pas une', () => {
+    expect(parseBackOfficeSubscriptionsQuery({ source: '  newsletter  ' }).source).toBe(
+      'newsletter',
+    )
+    expect(parseBackOfficeSubscriptionsQuery({ source: '   ' }).source).toBeNull()
+  })
+
+  it('refuse une source démesurée plutôt que de la passer à la base', () => {
+    expect(parseBackOfficeSubscriptionsQuery({ source: 'a'.repeat(300) }).source).toBeNull()
+  })
+
+  it('ne lit qu’une valeur quand le paramètre est répété', () => {
+    expect(
+      parseBackOfficeSubscriptionsQuery({ source: ['newsletter', 'waitlist'] }).source,
+    ).toBe('newsletter')
+  })
+})
+
+/**
+ * **Le nom du fichier exporté** (s37c), et ce qu'il ne porte pas.
+ *
+ * Il **dit la sélection** : un export qui suit le filtre affiché doit se
+ * reconnaître une fois sur le disque, à côté de trois autres. Mais il ne porte
+ * que la **source** : la recherche est un texte libre reçu de l'adresse, et le
+ * nom de fichier part dans un en-tête `content-disposition`. Y coller une
+ * valeur arbitraire est une surface d'injection d'en-tête ; la présence d'une
+ * recherche est donc marquée, jamais son contenu.
+ */
+describe('le nom du fichier d’export des inscriptions', () => {
+  it('nomme la sélection sans jamais recopier la recherche', () => {
+    expect(subscriptionsExportFileName({ source: null, search: null })).toBe(
+      'inscriptions.csv',
+    )
+    expect(subscriptionsExportFileName({ source: 'newsletter', search: null })).toBe(
+      'inscriptions-newsletter.csv',
+    )
+    // La recherche est **signalée**, jamais recopiée.
+    const searched = subscriptionsExportFileName({ source: null, search: 'ada@example.test' })
+
+    expect(searched).not.toContain('ada')
+    expect(searched).not.toBe('inscriptions.csv')
+  })
+
+  it('ne laisse aucun caractère d’en-tête entrer dans le nom', () => {
+    // Une source vient de la base, mais elle a été écrite par la configuration
+    // d'un autre dépôt : le nom se dérive d'elle, il ne la recopie pas.
+    for (const source of [
+      'news"letter',
+      'news\r\nSet-Cookie: a=b',
+      '../../etc/passwd',
+      'a'.repeat(200),
+      '???',
+    ]) {
+      const name = subscriptionsExportFileName({ source, search: null })
+
+      expect(name, source).toMatch(/^[a-z0-9-]+\.csv$/)
+      expect(name.length, source).toBeLessThanOrEqual(64)
+    }
   })
 })

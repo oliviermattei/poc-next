@@ -347,6 +347,14 @@ beforeAll(async () => {
           },
         }),
     },
+    // s37c : les inscriptions publiques ne sont pas davantage ce que cette
+    // suite traverse. Les deux lectures rendent des listes vides — la purge
+    // d'une adresse appartient au module `marketing`, pas au back-office.
+    subscriptions: {
+      listSubscriptions: () =>
+        Promise.resolve({ ok: true as const, subscriptions: [], total: 0 }),
+      listSources: () => Promise.resolve({ ok: true as const, sources: [] }),
+    },
     // Aucune désignation automatique : cette suite promeut explicitement, et
     // une désignation par adresse rendrait le cas dépendant de l'ordre.
     designatedEmail: null,

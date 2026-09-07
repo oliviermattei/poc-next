@@ -464,6 +464,89 @@ export interface AdminRevenuePort {
 }
 
 /**
+ * **Une inscription publique, telle que le back-office la montre** (s37c).
+ *
+ * Le module `marketing` la remplit ; celui-ci ne fait que l'afficher et
+ * l'exporter. Ce type *est* la liste de ce qui sort — un champ ajouté ici est
+ * un champ qu'un écran rendra et qu'un fichier CSV portera.
+ *
+ * **Les messages de contact n'y sont pas, et c'est une décision** (tâche 6 du
+ * plan) : `contact_message` est une table voisine et distincte, elle porte un
+ * nom et un texte libre que personne n'a demandé à voir ici, et la story parle
+ * d'« inscriptions ». Le point d'entrée d'un message de contact est l'email
+ * envoyé à l'éditeur ; sa purge et son export appartiennent au visiteur (s34,
+ * s35). Un écran qui mêlerait les deux mélangerait deux questions — « qui est
+ * inscrit à quoi » et « qui nous a écrit » — sous un seul filtre de source, que
+ * les messages n'ont pas.
+ */
+export interface AdminSubscription {
+  readonly id: string
+  readonly email: string
+  /** `newsletter`, `waitlist`… — la colonne qui sépare les sources. */
+  readonly source: string
+  readonly locale: string
+  readonly createdAt: Date
+}
+
+/**
+ * **Ce que le back-office sait des inscriptions publiques** (s37c).
+ *
+ * Le module `admin` ne déclare pas `marketing` dans ses `requires` : il ne peut
+ * ni l'importer, ni lire `public_subscription`. Il reçoit ce port du point de
+ * composition de l'application, qui sait, lui, si ce module est monté — la
+ * forme exacte de `AdminOrganizationsPort` (s37b2) et de `AdminRevenuePort`
+ * (s38).
+ *
+ * **Aucune méthode ne dit si le site public existe** : module coupé, ce qui
+ * disparaît est l'**entrée de navigation**, déclarée par le module qui la porte
+ * (ADR 067), et l'écran répond 404 — pas une condition écrite ici.
+ *
+ * `ok: false` est une lecture **en échec**, jamais « aucune inscription » : une
+ * liste vide affichée sur une panne ferait croire à une base sans abonnés.
+ */
+export interface AdminSubscriptionsPort {
+  /**
+   * Une page d'inscriptions, **filtrée au plus bas**.
+   *
+   * `source` et `search` descendent jusqu'à la requête : tamiser une page déjà
+   * lue rendrait un décompte et une pagination qui ne correspondent pas à ce
+   * qui est affiché.
+   *
+   * **`limit: null` lit tout ce qui correspond au filtre**, et c'est ce dont
+   * l'export a besoin — un fichier tronqué à vingt lignes serait pire qu'aucun
+   * fichier. Rien ne borne aujourd'hui le nombre d'inscriptions : cet export
+   * matérialise donc l'ensemble en mémoire, et il tiendra jusqu'à ce qu'il ne
+   * tienne plus. La borne — pagination d'export, écriture en flux, ou travail
+   * de fond — appartient à la story qui rencontrera le problème ; aucun critère
+   * de s37c ne la demande, et l'inventer ici serait deviner le seuil.
+   */
+  listSubscriptions(input: {
+    readonly source: string | null
+    readonly search: string | null
+    readonly limit: number | null
+    readonly offset: number
+  }): Promise<
+    | {
+        readonly ok: true
+        readonly subscriptions: readonly AdminSubscription[]
+        readonly total: number
+      }
+    | { readonly ok: false }
+  >
+  /**
+   * **Les sources réellement présentes**, dérivées des lignes.
+   *
+   * Jamais une liste écrite : `config/marketing.ts` nomme la source des
+   * inscriptions du site, et `s42` en ajoutera une autre. Un filtre construit
+   * sur une liste recopiée ignorerait la seconde le jour où elle arrivera, sans
+   * que rien ne rougisse.
+   */
+  listSources(): Promise<
+    { readonly ok: true; readonly sources: readonly string[] } | { readonly ok: false }
+  >
+}
+
+/**
  * **Ce qu'une liste d'administration montre d'un compte** (s37b2).
  *
  * Le socle le remplit ; ce module ne fait que l'afficher. **Aucun jeton, aucun
@@ -527,6 +610,11 @@ export interface AdminDependencies {
   readonly organizations: AdminOrganizationsPort
   /** Ce que le back-office sait du revenu (s38). Vide quand la facturation est coupée. */
   readonly revenue: AdminRevenuePort
+  /**
+   * Ce que le back-office sait des inscriptions publiques (s37c). Vide quand le
+   * site public est coupé.
+   */
+  readonly subscriptions: AdminSubscriptionsPort
   /**
    * L'adresse du **premier** superadmin, telle que la configuration la nomme.
    *

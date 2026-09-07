@@ -1,9 +1,11 @@
 import {
+  createDrizzlePublicSubscriptions,
   EMPTY_MARKETING_SITE,
   marketingModule,
   provideMarketingContent,
   resolveMarketingSite,
   type MarketingSite,
+  type PublicSubscriptionRecord,
 } from '@repo/module-marketing'
 
 import { marketingConfiguration } from '../../../config/marketing'
@@ -60,6 +62,60 @@ export const marketingSite: MarketingSite = moduleRegistry.moduleIds.includes(ma
  * parcours avant qu'aucun test ne s'exécute.
  */
 export const marketingFormsAvailable = marketingSite.forms !== null
+
+/**
+ * **Ce que le back-office lit des inscriptions publiques** (s37c).
+ *
+ * Le lecteur, pas le port : `lib/admin.ts` l'enveloppe dans
+ * `AdminSubscriptionsPort`, qui ne lève pas. C'est la forme de
+ * `organizations.backOffice`, à une différence près — la connexion est importée
+ * **dans** la fonction, pas en tête de fichier. Ce n'est pas un ornement : le
+ * harnais de parcours importe ce fichier **hors de Next** (`e2e/support/locale.ts`),
+ * et c'est exactement pour cela que `lib/auth` n'y est pas importé ; faire
+ * entrer `@repo/db` dans le graphe statique ferait payer le même prix à tous
+ * les parcours, pour une lecture que seul le back-office demande.
+ *
+ * Module coupé, `available` est faux et les deux lectures rendent du vide
+ * **sans ouvrir de connexion** : c'est une **donnée**, pas une condition écrite
+ * dans un écran. L'écran, lui, répond 404 sur cette donnée, comme
+ * `/admin/organizations` le fait sur la sienne.
+ */
+export interface MarketingSubscriptionsReader {
+  /** Le module est-il monté ? Une donnée, lue par l'écran du back-office. */
+  readonly available: boolean
+  readonly list: (input: {
+    readonly source: string | null
+    readonly search: string | null
+    readonly limit: number | null
+    readonly offset: number
+  }) => Promise<{
+    readonly subscriptions: readonly PublicSubscriptionRecord[]
+    readonly total: number
+  }>
+  readonly sources: () => Promise<readonly string[]>
+}
+
+const subscriptionsRepository = async () => {
+  const { getDatabase } = await import('@repo/db')
+
+  return createDrizzlePublicSubscriptions(getDatabase().db)
+}
+
+export const marketingSubscriptions: MarketingSubscriptionsReader = moduleRegistry.moduleIds.includes(
+  marketingModule.id,
+)
+  ? {
+      available: true,
+      list: async (input) => await (await subscriptionsRepository()).listBySource(input),
+      sources: async () => await (await subscriptionsRepository()).listSources(),
+    }
+  : {
+      available: false,
+      // Aucune connexion ouverte : un dépôt qui coupe le site public ne paie pas
+      // une requête pour apprendre qu'il n'a pas d'inscrits.
+      list: () => Promise.resolve({ subscriptions: [], total: 0 }),
+      sources: () => Promise.resolve([]),
+    }
 
 /**
  * Donne au module ses chemins publics, pour la quinzième clé du contrat (s53).

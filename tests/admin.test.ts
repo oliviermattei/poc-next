@@ -31,6 +31,9 @@ import {
   type AdminRevenuePort,
   type AdminSecurityEvent,
   type AdminService,
+  type AdminSubscription,
+  type AdminSubscriptionsPort,
+  type AdminSubscriptionsView,
 } from '@repo/module-admin'
 import {
   authModule,
@@ -45,9 +48,10 @@ import {
   billingModule,
 } from '@repo/module-billing'
 import { demoEnabledModule } from '@repo/module-demo-enabled'
+import { ADMIN_SUBSCRIPTIONS_SCREEN_PATH, marketingModule } from '@repo/module-marketing'
 import { ORGANIZATION_ROLES, organizationsModule } from '@repo/module-organizations'
 import { BAN_REASON_MAX_LENGTH } from '@repo/module-auth'
-import { AdminRevenueScreen } from '@repo/module-admin/presentation'
+import { AdminRevenueScreen, AdminSubscriptionsScreen } from '@repo/module-admin/presentation'
 import { sql } from 'drizzle-orm'
 import { getTableConfig } from 'drizzle-orm/pg-core'
 import { createElement } from 'react'
@@ -360,6 +364,83 @@ const revenue: AdminRevenuePort = {
   },
 }
 
+/**
+ * **Les inscriptions publiques, vues du back-office** (s37c), doublées au même
+ * niveau que les organisations et le revenu : le **port**, jamais le module
+ * `marketing`, que `admin` ne requiert pas et ne peut donc pas importer.
+ *
+ * Ce que ce fichier mesure d'elles est la garde, le filtre et la mise en forme.
+ * La lecture elle-même — la recherche paramétrée, l'ordre total, le décompte —
+ * se prouve là où elle vit, contre une vraie base : `tests/marketing.test.ts`.
+ */
+let subscriptionsReadable = true
+
+/** Ce que le port a reçu, dans l'ordre : de quoi voir ce que la garde n'a pas lu. */
+let subscriptionReads: {
+  readonly source: string | null
+  readonly search: string | null
+  readonly limit: number | null
+  readonly offset: number
+}[] = []
+
+/**
+ * Trois inscriptions, deux sources, et **une adresse hostile** : celle qui
+ * commence par `=` est ce qu'un tableur exécute à l'ouverture. Elle vient d'un
+ * inconnu, comme toutes les autres.
+ */
+const SUBSCRIPTIONS: readonly AdminSubscription[] = [
+  {
+    id: 'sub_1',
+    email: 'ada@example.test',
+    source: 'newsletter',
+    locale: 'fr',
+    createdAt: new Date('2026-02-03T10:00:00.000Z'),
+  },
+  {
+    id: 'sub_2',
+    email: 'grace@example.test',
+    source: 'waitlist',
+    locale: 'en',
+    createdAt: new Date('2026-02-02T10:00:00.000Z'),
+  },
+  {
+    id: 'sub_3',
+    email: '=HYPERLINK("http://pirate.test")@example.test',
+    source: 'newsletter',
+    locale: 'fr',
+    createdAt: new Date('2026-02-01T10:00:00.000Z'),
+  },
+]
+
+const subscriptions: AdminSubscriptionsPort = {
+  listSubscriptions: async (input) => {
+    subscriptionReads.push(input)
+
+    if (!subscriptionsReadable) {
+      return { ok: false }
+    }
+
+    const matching = SUBSCRIPTIONS.filter(
+      (subscription) =>
+        (input.source === null || subscription.source === input.source) &&
+        (input.search === null || subscription.email.includes(input.search)),
+    )
+
+    return {
+      ok: true,
+      subscriptions:
+        input.limit === null
+          ? matching
+          : matching.slice(input.offset, input.offset + input.limit),
+      total: matching.length,
+    }
+  },
+  listSources: async () =>
+    subscriptionsReadable
+      ? { ok: true, sources: ['newsletter', 'waitlist'] }
+      : { ok: false },
+}
+
 /** Reconfigure le module avec l'adresse désignée du moment. */
 const configure = (email: string | null): void => {
   service = configureAdmin({
@@ -367,6 +448,7 @@ const configure = (email: string | null): void => {
     accounts,
     organizations,
     revenue,
+    subscriptions,
     designatedEmail: email,
     securityLog: (event) => securityEvents.push(event),
   })
@@ -386,6 +468,27 @@ interface CallOptions {
    */
   readonly cookie?: string
 }
+
+/**
+ * Une requête vers **n'importe quelle route déclarée** du module, dérivée de sa
+ * méthode.
+ *
+ * Écrite depuis s37c : les balayages fabriquaient un corps JSON pour chaque
+ * route, et la première route `GET` du module (le téléchargement des
+ * inscriptions) les faisait échouer sur `Request with GET/HEAD method cannot
+ * have body` — un échec qui ne dit rien de la garde qu'ils mesurent.
+ */
+const requestFor = (
+  route: { readonly method: string; readonly path: string },
+  body: unknown,
+): Request =>
+  route.method === 'GET' || route.method === 'HEAD'
+    ? new Request(`${APP_URL}${MODULE_ROUTE_PREFIX}${route.path}`, { method: route.method })
+    : new Request(`${APP_URL}${MODULE_ROUTE_PREFIX}${route.path}`, {
+        method: route.method,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
 
 /** Une requête d'administration, telle que l'application la sert. */
 const call = async (
@@ -550,6 +653,8 @@ beforeEach(async () => {
   revenueReadable = true
   revenueReads = 0
   revenuePeriods = []
+  subscriptionsReadable = true
+  subscriptionReads = []
   mailer.reset()
   configure(null)
 })
@@ -976,11 +1081,7 @@ describe.runIf(databaseReachable)('le back-office réservé', () => {
     for (const route of declaredRoutes) {
       const response = await dispatchAllowingRateLimit(
         registry,
-        new Request(`${APP_URL}${MODULE_ROUTE_PREFIX}${route.path}`, {
-          method: route.method,
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ userId: session.userId }),
-        }),
+        requestFor(route, { userId: session.userId }),
         { resolveSession: () => Promise.resolve(intruder.session) },
       )
 
@@ -1194,6 +1295,7 @@ describe.runIf(databaseReachable)('les listes du back-office', () => {
       accounts: spying,
       organizations,
       revenue,
+      subscriptions,
       designatedEmail: email,
       securityLog: (event) => securityEvents.push(event),
     })
@@ -1423,6 +1525,242 @@ describe.runIf(databaseReachable)('les listes du back-office', () => {
         organizationId: 'org_s37b2',
       }),
     ).toEqual({ ok: false, error: 'not_found' })
+  })
+})
+
+/**
+ * **Les inscriptions publiques du back-office** (s37c).
+ *
+ * Ce que ces cas décident : la lecture passe par un **port** — le module
+ * `admin` ne requiert pas `marketing`, ne l'importe pas et ne lit aucune de ses
+ * tables —, la garde est celle des autres listes (404, jamais 403), et le
+ * filtre par source **descend jusqu'au port** plutôt que de tamiser une page
+ * déjà lue : filtrer après coup rendrait un décompte et une pagination faux.
+ */
+describe.runIf(databaseReachable)('les inscriptions publiques du back-office', () => {
+  const aSuperadmin = async (): Promise<{ userId: string; email: string }> => {
+    const { session, email } = await anAccount()
+
+    configure(email)
+    expect(
+      (await call('grantSuperadmin', { session, body: { userId: session.userId } })).status,
+    ).toBe(200)
+
+    return { userId: session.userId, email }
+  }
+
+  const request = (): Request => new Request(APP_URL)
+
+  it('sert une page d’inscriptions, et transmet la fenêtre au port', async () => {
+    const superadmin = await aSuperadmin()
+
+    const listed = await service.useCases.viewSubscriptions({
+      request: request(),
+      viewerId: superadmin.userId,
+      query: { source: null, search: null, page: 1 },
+    })
+
+    expect(listed.ok).toBe(true)
+
+    if (!listed.ok) {
+      return
+    }
+
+    expect(listed.view.subscriptions.map((subscription) => subscription.email)).toEqual(
+      SUBSCRIPTIONS.map((subscription) => subscription.email),
+    )
+    expect(listed.view.total).toBe(SUBSCRIPTIONS.length)
+    expect(listed.view.page).toBe(1)
+    // La fenêtre est celle de la page demandée, et elle **descend** au port :
+    // une page taillée après lecture ferait lire la table entière.
+    expect(subscriptionReads).toEqual([
+      { source: null, search: null, limit: BACK_OFFICE_PAGE_SIZE, offset: 0 },
+    ])
+  })
+
+  it('filtre par source **au port**, et le décompte suit le filtre', async () => {
+    const superadmin = await aSuperadmin()
+
+    const listed = await service.useCases.viewSubscriptions({
+      request: request(),
+      viewerId: superadmin.userId,
+      query: { source: 'waitlist', search: null, page: 1 },
+    })
+
+    expect(listed.ok && listed.view.subscriptions.map((row) => row.source)).toEqual(['waitlist'])
+    // Le décompte est celui du filtre, pas celui de la table : sinon la
+    // pagination annoncerait des pages qui n'existent pas.
+    expect(listed.ok && listed.view.total).toBe(1)
+    expect(listed.ok && listed.view.source).toBe('waitlist')
+    expect(subscriptionReads.at(-1)?.source).toBe('waitlist')
+  })
+
+  it('cherche une adresse, et la recherche descend au port avec la source', async () => {
+    const superadmin = await aSuperadmin()
+
+    const listed = await service.useCases.viewSubscriptions({
+      request: request(),
+      viewerId: superadmin.userId,
+      query: { source: 'newsletter', search: 'ada@', page: 1 },
+    })
+
+    expect(listed.ok && listed.view.subscriptions.map((row) => row.email)).toEqual([
+      'ada@example.test',
+    ])
+    expect(subscriptionReads.at(-1)).toEqual({
+      source: 'newsletter',
+      search: 'ada@',
+      limit: BACK_OFFICE_PAGE_SIZE,
+      offset: 0,
+    })
+  })
+
+  it('refuse la liste quand la lecture échoue, au lieu de la dire vide', async () => {
+    const superadmin = await aSuperadmin()
+
+    subscriptionsReadable = false
+
+    expect(
+      await service.useCases.viewSubscriptions({
+        request: request(),
+        viewerId: superadmin.userId,
+        query: { source: null, search: null, page: 1 },
+      }),
+    ).toEqual({ ok: false, error: 'unavailable' })
+  })
+
+  /**
+   * **Les sources viennent de la base, pas d'une liste écrite** (tâche 3).
+   *
+   * `s42` ajoutera `waitlist` aux lignes sans toucher à cet écran ; une liste
+   * recopiée quelque part l'ignorerait, et rien ne rougirait. La doublure du
+   * port en rend deux — dont une que `config/marketing.ts` ne nomme pas.
+   */
+  it('rend les sources que le port a trouvées, jamais une liste écrite', async () => {
+    const superadmin = await aSuperadmin()
+
+    const listed = await service.useCases.viewSubscriptions({
+      request: request(),
+      viewerId: superadmin.userId,
+      query: { source: null, search: null, page: 1 },
+    })
+
+    expect(listed.ok && listed.view.sources).toEqual(['newsletter', 'waitlist'])
+  })
+
+  /**
+   * **Le téléchargement, sur le vrai chemin HTTP** (tâche 5).
+   *
+   * Trois choses s'y décident, et aucune ne se voit sur un cas d'usage : les
+   * en-têtes de remise (`content-disposition`, `cache-control`), le **refus
+   * entier** plutôt qu'un fichier tronqué quand la lecture échoue, et le 404
+   * d'un compte qui n'administre pas — jamais 403, qui confirmerait que le
+   * back-office existe.
+   */
+  const download = async (options: {
+    readonly session: ModuleSession | null
+    readonly search?: string
+  }): Promise<Response> =>
+    await dispatchAllowingRateLimit(
+      registry,
+      new Request(
+        `${APP_URL}${adminRoutePath('exportSubscriptions')}${options.search ?? ''}`,
+        { method: 'GET' },
+      ),
+      { resolveSession: () => Promise.resolve(options.session) },
+    )
+
+  it('sert un fichier CSV assaini, nommé d’après la sélection affichée', async () => {
+    const superadmin = await aSuperadmin()
+
+    const response = await download({
+      session: { userId: superadmin.userId, roles: [] },
+      search: '?source=newsletter',
+    })
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('text/csv')
+    // Une archive se télécharge : elle ne s'affiche pas dans l'onglet.
+    expect(response.headers.get('content-disposition')).toBe(
+      'attachment; filename="inscriptions-newsletter.csv"',
+    )
+    // Elle ne doit atterrir dans aucun cache intermédiaire.
+    expect(response.headers.get('cache-control')).toBe('no-store')
+
+    const file = await response.text()
+
+    // **L'export suit la sélection** : la source demandée, et elle seule.
+    expect(file).toContain('ada@example.test')
+    expect(file).not.toContain('grace@example.test')
+
+    // **L'injection de formule, mesurée sur le fichier produit** : l'adresse
+    // hostile y est, neutralisée, et aucune cellule ne s'ouvre sur `=`.
+    expect(file).toContain('"\'=HYPERLINK(')
+    expect(file).not.toContain('"=HYPERLINK(')
+  })
+
+  it('exporte tout ce que le filtre retient, jamais la seule page affichée', async () => {
+    const superadmin = await aSuperadmin()
+
+    await download({ session: { userId: superadmin.userId, roles: [] } })
+
+    // Un fichier tronqué à la page serait pire qu'aucun fichier : la lecture de
+    // l'export ne porte **aucune** limite.
+    expect(subscriptionReads.at(-1)).toEqual({
+      source: null,
+      search: null,
+      limit: null,
+      offset: 0,
+    })
+  })
+
+  it('refuse entièrement plutôt que de servir un fichier tronqué', async () => {
+    const superadmin = await aSuperadmin()
+
+    subscriptionsReadable = false
+
+    const response = await download({ session: { userId: superadmin.userId, roles: [] } })
+
+    expect(response.status).toBe(503)
+    // Aucun fichier : ni en-tête de remise, ni corps qui ressemble à un export.
+    expect(response.headers.get('content-disposition')).toBeNull()
+    expect(await response.text()).not.toContain('adresse')
+  })
+
+  it('répond 404 au téléchargement d’un compte qui n’administre pas', async () => {
+    const { email } = await anAccount()
+    const intruder = await anAccount()
+
+    configure(email)
+
+    const response = await download({ session: intruder.session })
+
+    expect(response.status).toBe(404)
+    // 404, et pas 403 : le second confirmerait que le back-office existe.
+    expect(response.status).not.toBe(403)
+    await expect(response.json()).resolves.toEqual({ error: 'not_found' })
+    // Et le refus n'atteint pas la couche de données.
+    expect(subscriptionReads).toEqual([])
+  })
+
+  it('répond 404 à un compte qui n’administre pas, sans lire une seule inscription', async () => {
+    const { email } = await anAccount()
+    const intruder = await anAccount()
+
+    configure(email)
+
+    // **Un seul témoin de refus par porte** : la matrice des acteurs est
+    // éprouvée une fois, à la garde ; ceci prouve que cette porte-là l'appelle.
+    expect(
+      await service.useCases.viewSubscriptions({
+        request: request(),
+        viewerId: intruder.session.userId,
+        query: { source: null, search: null, page: 1 },
+      }),
+    ).toEqual({ ok: false, error: 'not_found' })
+    // Et le refus **n’atteint pas la couche de données** : des adresses lues
+    // puis jetées seraient une lecture qu'un non-superadmin a provoquée.
+    expect(subscriptionReads).toEqual([])
   })
 })
 
@@ -2558,11 +2896,7 @@ describe.runIf(databaseReachable)('le module coupé', () => {
     for (const route of adminModule.routes) {
       const response = await dispatchAllowingRateLimit(
         withoutAdmin,
-        new Request(`${APP_URL}${MODULE_ROUTE_PREFIX}${route.path}`, {
-          method: route.method,
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ userId: session.userId }),
-        }),
+        requestFor(route, { userId: session.userId }),
         { resolveSession: () => Promise.resolve(session) },
       )
 
@@ -2615,7 +2949,13 @@ describe('l’entrée du back-office se dérive du registre', () => {
   const adminSurface = (enabled: readonly string[]): readonly string[] =>
     visibleNavigation(
       buildRegistry({
-        available: [authModule, adminModule, organizationsModule, billingModule],
+        available: [
+          authModule,
+          adminModule,
+          organizationsModule,
+          billingModule,
+          marketingModule,
+        ],
         enabled: [...enabled],
         locales: [...appLocales],
       }),
@@ -2640,6 +2980,40 @@ describe('l’entrée du back-office se dérive du registre', () => {
     // Et l'entrée de l'autre module contributeur reste : la surface n'a pas
     // disparu, c'est bien une entrée qui est partie.
     expect(withoutBilling.some((id) => id.startsWith(`${organizationsModule.id}:`))).toBe(true)
+  })
+
+  /**
+   * **s37c — l'écran des inscriptions disparaît avec le site public**, et rien
+   * du back-office ne nomme ce module : l'entrée est déclarée par `marketing`
+   * lui-même (ADR 067), le registre n'agrège que les modules activés.
+   *
+   * Le contrôle positif est la première assertion : sans elle, l'absence serait
+   * vraie parce que la surface entière est vide.
+   */
+  it('retire l’entrée des inscriptions avec le module qui la déclare, et garde les autres', () => {
+    const withMarketing = adminSurface(['auth', 'admin', 'organizations', 'marketing'])
+    const withoutMarketing = adminSurface(['auth', 'admin', 'organizations'])
+
+    expect(withMarketing.some((id) => id.startsWith(`${marketingModule.id}:`))).toBe(true)
+    expect(withoutMarketing.some((id) => id.startsWith(`${marketingModule.id}:`))).toBe(false)
+    // Et l'entrée de l'autre module contributeur reste : la surface n'a pas
+    // disparu, c'est bien une entrée qui est partie.
+    expect(withoutMarketing.some((id) => id.startsWith(`${organizationsModule.id}:`))).toBe(true)
+  })
+
+  /**
+   * **Aucun fichier du back-office ne nomme le site public** (tâche 7).
+   *
+   * La dérivation n'a de valeur que si rien ne nomme le module par ailleurs :
+   * une entrée dérivée du registre à côté d'un import direct serait un deuxième
+   * chemin, et le second est celui qui survit à la coupure.
+   */
+  it('ne dépend pas du module qui possède les inscriptions', () => {
+    const manifest: { readonly dependencies?: Record<string, string> } = JSON.parse(
+      readFileSync(join(REPO_ROOT, 'packages/modules/admin/package.json'), 'utf8'),
+    )
+
+    expect(Object.keys(manifest.dependencies ?? {})).not.toContain('@repo/module-marketing')
   })
 
   it('rend l’entrée d’un module activé, et la retire avec lui', () => {
@@ -3321,6 +3695,169 @@ describe('l’écran de revenus', () => {
  * qui dirait « revenu mensuel » sans dire d'où viennent les euros ferait passer
  * une déclaration locale pour une lecture comptable.
  */
+/**
+ * **L'écran des inscriptions publiques** (s37c), rendu.
+ *
+ * Ce qui s'y décide et qui peut régresser en silence : la bascule entre une
+ * liste et un **état vide** — « aucune inscription » n'est pas une table sans
+ * ligne —, le filtre par source dérivé de ce que la base porte, et le lien
+ * d'export, qui doit porter la **sélection affichée** : un export qui ignore le
+ * filtre à l'écran surprend celui qui l'a posé.
+ *
+ * Le reste — colonnes, libellés, mise en page — est de la présentation : il se
+ * vérifie au navigateur, pas par une assertion sur du balisage.
+ */
+describe('l’écran des inscriptions publiques', () => {
+  const SUBSCRIPTION_ROWS: readonly AdminSubscription[] = [
+    {
+      id: 'sub_1',
+      email: 'ada@example.test',
+      source: 'newsletter',
+      locale: 'fr',
+      createdAt: new Date('2026-02-03T10:00:00.000Z'),
+    },
+  ]
+
+  /** Deux sources, dont une que `config/marketing.ts` ne nomme pas. */
+  const SOURCES = ['newsletter', 'waitlist'] as const
+
+  const EXPORT_ACTION = adminRoutePath('exportSubscriptions')
+
+  const render = (view: Partial<AdminSubscriptionsView> = {}): string =>
+    renderToStaticMarkup(
+      createElement(AdminSubscriptionsScreen, {
+        view: {
+          subscriptions: SUBSCRIPTION_ROWS,
+          source: null,
+          sources: [...SOURCES],
+          total: SUBSCRIPTION_ROWS.length,
+          page: 1,
+          pageCount: 1,
+          search: null,
+          ...view,
+        },
+        navigation: [],
+        screenPath: ADMIN_SUBSCRIPTIONS_SCREEN_PATH,
+        exportAction: EXPORT_ACTION,
+        intl: {
+          t: (key: string, values?: Readonly<Record<string, string>>) =>
+            values === undefined
+              ? key
+              : `${key}(${Object.entries(values)
+                  .map(([name, value]) => `${name}=${value}`)
+                  .join(',')})`,
+          path: (pathname: string) => pathname,
+          date: () => '3 février 2026',
+          money: (amount: number, currency: string) => `${amount}:${currency}`,
+        },
+      }),
+    )
+
+  /**
+   * **L'export suit la sélection affichée** (décision 2 du plan).
+   *
+   * Un export qui ignore le filtre à l'écran surprend celui qui l'a posé : le
+   * lien porte donc la source et la recherche en cours, et rien d'autre — pas
+   * la page, qui ne borne pas le fichier.
+   */
+  it('donne à l’export la sélection affichée, et pas la page', () => {
+    const markup = render({ source: 'waitlist', search: 'ada@', page: 2, pageCount: 3 })
+
+    // L'adresse **entière** du lien : la sélection y est, et la page — que la
+    // pagination met bien dans ses propres liens — n'y est pas. Le fichier
+    // n'est pas borné par la pagination.
+    expect(markup).toContain(`href="${EXPORT_ACTION}?source=waitlist&amp;q=ada%40" download`)
+  })
+
+  /**
+   * **La source choisie ne tombe pas de l'URL au geste suivant** (revue de
+   * s37c, constat 2).
+   *
+   * C'est l'invariant que la pagination énonce déjà pour la recherche — « sans
+   * le paramètre dans le lien, passer à la page 2 rendrait la page 2 de *tous*
+   * les comptes » —, et que le filtre par source énonce dans l'autre sens. Les
+   * deux directions qui manquaient sont ici : **source → pagination**, où les
+   * liens ne portaient que la page, et **source → recherche**, où le `GET` du
+   * formulaire remplace toute la chaîne de requête.
+   *
+   * Le défaut se voyait à l'écran plutôt qu'en panne : le nombre de pages est
+   * calculé sur le total **filtré**, si bien que la page 2 non filtrée est une
+   * liste plausible et fausse.
+   */
+  it('emporte la source choisie en paginant et en cherchant', () => {
+    const markup = render({ source: 'waitlist', page: 1, pageCount: 3 })
+
+    const paginationLinks = [...markup.matchAll(/href="([^"]*page=\d+[^"]*)"/g)].map(
+      (match) => match[1] ?? '',
+    )
+
+    // L'anti-vacuité : sans lien de pagination rendu, la boucle serait verte en
+    // ne mesurant rien. Trois pages, donc au moins un suivant et deux numéros.
+    expect(paginationLinks.length).toBeGreaterThan(1)
+
+    for (const href of paginationLinks) {
+      expect(href, href).toContain('source=waitlist')
+    }
+
+    // La recherche est un `GET` : le navigateur **remplace** la chaîne de
+    // requête par les champs du formulaire. Sans un champ qui reporte la
+    // source, chercher ramènerait à la liste non filtrée.
+    //
+    // Le champ est cherché **dans le formulaire**, jamais dans la page : un
+    // champ caché posé *hors* du `<form>` ne partirait pas avec la requête, et
+    // un balayage de la page entière resterait vert pendant que le report
+    // aurait cessé de fonctionner (revue de s37c, constat 3).
+    const forms = [...markup.matchAll(/<form[^>]*method="get"[^>]*>([\s\S]*?)<\/form>/g)]
+
+    // L'anti-vacuité : sans le formulaire de recherche rendu, la recherche
+    // ci-dessous ne mesurerait rien.
+    expect(forms).toHaveLength(1)
+
+    const searchForm = forms[0]?.[1] ?? ''
+    const hiddenFields = [...searchForm.matchAll(/<input[^>]*type="hidden"[^>]*>/g)].map(
+      (match) => match[0],
+    )
+
+    expect(
+      hiddenFields.some(
+        (field) => field.includes('name="source"') && field.includes('value="waitlist"'),
+      ),
+      searchForm,
+    ).toBe(true)
+  })
+
+  it('dérive un filtre des sources rendues, et marque celle qui est retenue', () => {
+    const markup = render({ source: 'waitlist' })
+
+    // L'anti-vacuité : deux sources, sinon la boucle ci-dessous ne mesurerait
+    // rien d'une dérivation.
+    expect(SOURCES.length).toBeGreaterThan(1)
+
+    for (const source of SOURCES) {
+      expect(markup, source).toContain(`source=${source}`)
+    }
+
+    // La sélection retenue est **marquée** : la couleur seule ne dit rien à un
+    // lecteur d'écran, et sans marque le filtre ne dirait pas où l'on est.
+    expect(markup).toContain('aria-current="page"')
+    // Et « toutes les sources » reste offert : un filtre sans retour est un
+    // cul-de-sac.
+    expect(markup).toContain('admin.subscriptions.allSources')
+  })
+
+  it('rend un état vide plutôt qu’une table sans ligne', () => {
+    const filled = render()
+
+    expect(filled).toContain('ada@example.test')
+    expect(filled).not.toContain('admin.subscriptions.empty.title')
+
+    const empty = render({ subscriptions: [], total: 0 })
+
+    expect(empty).toContain('admin.subscriptions.empty.title')
+    expect(empty).not.toContain('ada@example.test')
+  })
+})
+
 describe('ce que les catalogues disent du statut des deux chiffres', () => {
   const catalogues = Object.entries(adminModule.messages) as readonly (readonly [
     string,

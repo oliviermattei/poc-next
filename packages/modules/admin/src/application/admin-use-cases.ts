@@ -3,8 +3,11 @@ import {
   pageCountOf,
   pageWindowOf,
   parseBackOfficePeriod,
+  subscriptionsExportFileName,
   type BackOfficeQuery,
+  type BackOfficeSubscriptionsQuery,
 } from '../domain/back-office'
+import { toCsv } from '../domain/csv'
 import { designatesFirstSuperadmin } from '../domain/platform-role'
 import type {
   AccountBanOutcome,
@@ -15,6 +18,7 @@ import type {
   AdminOrganization,
   AdminOrganizationMember,
   AdminRevenue,
+  AdminSubscription,
   BanAccountOutcome,
   GrantOutcome,
   RevokeOutcome,
@@ -78,6 +82,41 @@ export interface AdminOrganizationView {
  */
 export interface AdminRevenueView {
   readonly revenue: AdminRevenue
+}
+
+/**
+ * **Ce que l'écran des inscriptions publiques reçoit** (s37c).
+ *
+ * Une page, plus les deux choses que le filtre demande : la **source retenue**
+ * — celle qui a servi à lire, donc celle que l'écran marque — et les **sources
+ * réellement présentes**, dérivées des lignes plutôt que d'une liste écrite.
+ *
+ * Les messages de contact n'y sont pas : la décision, et sa raison, sont
+ * écrites au port (`AdminSubscription`).
+ */
+export interface AdminSubscriptionsView extends BackOfficePage {
+  readonly subscriptions: readonly AdminSubscription[]
+  /** La source demandée, ou `null` — « toutes les sources ». */
+  readonly source: string | null
+  /**
+   * **Les sources que la base porte**, dans l'ordre où le port les rend.
+   *
+   * Dérivées des lignes, jamais écrites : `config/marketing.ts` nomme celle du
+   * site, `s42` en ajoutera une autre, et un filtre construit sur une constante
+   * l'ignorerait sans que rien ne rougisse.
+   */
+  readonly sources: readonly string[]
+}
+
+/**
+ * **Le fichier d'export des inscriptions** (s37c) : son nom et son contenu.
+ *
+ * Le type d'en-tête et les en-têtes de remise appartiennent à la route ; ce
+ * qu'un cas d'usage produit est un nom et des octets.
+ */
+export interface AdminSubscriptionsExport {
+  readonly filename: string
+  readonly content: string
 }
 
 /**
@@ -230,6 +269,36 @@ export interface AdminUseCases {
     readonly organizationId: string
   }): Promise<BackOfficeView<AdminOrganizationView>>
   /**
+   * **Les inscriptions publiques** (s37c) : la question que l'index
+   * `public_subscription_source_idx` attend depuis s11 — « qui est inscrit à
+   * quoi ».
+   *
+   * Comme les autres lectures du back-office : la garde d'abord, et son refus
+   * est un `not_found` que l'écran rend en 404. Le filtre par source descend
+   * **au port**, jamais appliqué après lecture : le décompte et la pagination
+   * doivent porter sur ce qui est affiché.
+   */
+  viewSubscriptions(input: {
+    readonly request: Request
+    readonly viewerId: string
+    readonly query: BackOfficeSubscriptionsQuery
+  }): Promise<BackOfficeView<AdminSubscriptionsView>>
+  /**
+   * **L'export des inscriptions, dans la sélection affichée** (s37c).
+   *
+   * Il suit la source et la recherche de l'écran : un export qui ignorerait le
+   * filtre à l'écran surprendrait celui qui l'a posé, et le nom du fichier le
+   * dit. Il ne suit **pas** la pagination : un fichier tronqué à vingt lignes
+   * serait pire qu'aucun fichier, et une lecture en échec **refuse
+   * entièrement** plutôt que de rendre ce qu'elle a pu lire — la discipline de
+   * l'export de s35.
+   */
+  exportSubscriptions(input: {
+    readonly request: Request
+    readonly viewerId: string
+    readonly query: BackOfficeSubscriptionsQuery
+  }): Promise<BackOfficeView<AdminSubscriptionsExport>>
+  /**
    * **Révoque une session du compte visé** (critère 3).
    *
    * `revoked: false` ne distingue pas « pas à ce compte » de « n'existe pas » :
@@ -256,8 +325,16 @@ export interface AdminUseCases {
 }
 
 export function createAdminUseCases(dependencies: AdminDependencies): AdminUseCases {
-  const { roles, accounts, organizations, revenue, designatedEmail, securityLog, now } =
-    dependencies
+  const {
+    roles,
+    accounts,
+    organizations,
+    revenue,
+    subscriptions,
+    designatedEmail,
+    securityLog,
+    now,
+  } = dependencies
 
   /**
    * **Une fin d'emprunt se journalise là où le début l'a été**, avec les deux
@@ -608,6 +685,88 @@ export function createAdminUseCases(dependencies: AdminDependencies): AdminUseCa
       // qui ne vend rien encore —, une panne n'en est pas une, et confondre les
       // deux ferait afficher « aucun revenu » à un projet qui encaisse.
       return read.ok ? { ok: true, view: { revenue: read.revenue } } : UNAVAILABLE
+    },
+
+    viewSubscriptions: async ({ request, viewerId, query }) => {
+      if (!(await authorize({ request, userId: viewerId }))) {
+        return NOT_FOUND
+      }
+
+      const window = pageWindowOf({ page: query.page, pageSize: BACK_OFFICE_PAGE_SIZE })
+      // Les deux lectures partent ensemble : la seconde ne dépend pas de la
+      // première, et les enchaîner ajouterait un aller-retour à chaque page.
+      const [read, sources] = await Promise.all([
+        subscriptions.listSubscriptions({
+          source: query.source,
+          search: query.search,
+          ...window,
+        }),
+        subscriptions.listSources(),
+      ])
+
+      // Une lecture en échec **refuse** : « aucune inscription » est une
+      // réponse, pas une panne, et les confondre ferait croire à une liste vide
+      // là où la base n'a pas répondu. Le filtre compte autant que la liste :
+      // un écran sans source affichée ferait croire qu'il n'en existe qu'une.
+      if (!read.ok || !sources.ok) {
+        return UNAVAILABLE
+      }
+
+      return {
+        ok: true,
+        view: {
+          subscriptions: read.subscriptions,
+          source: query.source,
+          sources: sources.sources,
+          total: read.total,
+          page: query.page,
+          pageCount: pageCountOf({ total: read.total, pageSize: BACK_OFFICE_PAGE_SIZE }),
+          search: query.search,
+        },
+      }
+    },
+
+    exportSubscriptions: async ({ request, viewerId, query }) => {
+      if (!(await authorize({ request, userId: viewerId }))) {
+        return NOT_FOUND
+      }
+
+      // **Aucune limite** : l'export porte tout ce que le filtre retient. Rien
+      // ne borne aujourd'hui le nombre d'inscriptions, donc l'ensemble est
+      // matérialisé en mémoire — cela tiendra jusqu'à ce que cela ne tienne
+      // plus, et la borne appartient à la story qui verra le problème (la
+      // raison longue est au port, `AdminSubscriptionsPort`).
+      const read = await subscriptions.listSubscriptions({
+        source: query.source,
+        search: query.search,
+        limit: null,
+        offset: 0,
+      })
+
+      // **Refus entier**, jamais un fichier partiel : un export incomplet servi
+      // comme un export complet est un mensonge qu'on emporte sur son disque.
+      if (!read.ok) {
+        return UNAVAILABLE
+      }
+
+      return {
+        ok: true,
+        view: {
+          filename: subscriptionsExportFileName(query),
+          content: toCsv([
+            ['adresse', 'source', 'langue', 'inscrite_le'],
+            ...read.subscriptions.map((subscription) => [
+              subscription.email,
+              subscription.source,
+              subscription.locale,
+              // ISO 8601, pas la locale de l'écran : un fichier n'a pas de
+              // langue, et une date localisée s'y relit mal d'un poste à
+              // l'autre.
+              subscription.createdAt.toISOString(),
+            ]),
+          ]),
+        },
+      }
     },
 
     viewOrganization: async ({ request, viewerId, organizationId }) => {

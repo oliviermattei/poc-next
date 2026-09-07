@@ -4,6 +4,7 @@ import type {
   AdminAccountsPort,
   AdminOrganizationsPort,
   AdminRevenuePort,
+  AdminSubscriptionsPort,
 } from '../application/ports'
 import type { AdminSecurityLog } from '../domain/security-event'
 import { consoleSecurityLog } from './console-security-log'
@@ -47,6 +48,14 @@ export interface ConfigureAdminOptions {
    */
   readonly revenue: AdminRevenuePort
   /**
+   * **Ce que le back-office sait des inscriptions publiques** (s37c), fourni
+   * pour la même raison : le module ne déclare pas `marketing` dans ses
+   * `requires`, ne l'importe pas et ne lit pas `public_subscription`. Site
+   * public coupé, ce port rend des listes vides — aucune condition d'écran ne
+   * nomme un module.
+   */
+  readonly subscriptions: AdminSubscriptionsPort
+  /**
    * L'adresse du **premier** superadmin, ou `null`.
    *
    * Le module ne lit aucune variable d'environnement (`docs/security.md` §5) :
@@ -68,6 +77,7 @@ const build = (options: ConfigureAdminOptions): AdminService => ({
     accounts: options.accounts,
     organizations: options.organizations,
     revenue: options.revenue,
+    subscriptions: options.subscriptions,
     designatedEmail: options.designatedEmail,
     securityLog: options.securityLog ?? consoleSecurityLog,
     now: options.now ?? (() => new Date()),

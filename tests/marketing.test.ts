@@ -1545,6 +1545,93 @@ describe.skipIf(!databaseReachable)('les tables du site public, sur une base ré
     })
 
     /**
+     * **La lecture par source** (s37c) — celle que l'index
+     * `public_subscription_source_idx` attend depuis s11, et qui n'existait
+     * pas : les ports du module savaient lire **une** adresse, jamais une
+     * source.
+     *
+     * Ce cas est ici et pas dans `tests/admin.test.ts` parce que c'est ici que
+     * la requête vit : la recherche paramétrée, l'échappement des jokers de
+     * `like`, l'ordre total et le décompte qui porte sur la **même** condition
+     * que la page ne se prouvent que contre un vrai PostgreSQL.
+     */
+    it('lit les inscriptions d’une source, avec sa recherche et sa fenêtre', async () => {
+      await runModuleMigrations({ db: connection.db, plan: planFor([marketingModule.id]) })
+
+      const repository = createDrizzlePublicSubscriptions(connection.db)
+
+      await connection.db.execute(sql`delete from public_subscription`)
+
+      for (const [id, email, source, createdAt] of [
+        ['s37c-1', 'ada@example.test', 'newsletter', '2026-02-01T10:00:00Z'],
+        ['s37c-2', 'grace@example.test', 'newsletter', '2026-02-02T10:00:00Z'],
+        ['s37c-3', 'ada@example.test', 'waitlist', '2026-02-03T10:00:00Z'],
+        ['s37c-4', 'joker%@example.test', 'newsletter', '2026-02-04T10:00:00Z'],
+      ] as const) {
+        await connection.db.execute(
+          sql`insert into public_subscription (id, email, source, locale, created_at)
+              values (${id}, ${email}, ${source}, 'fr', ${createdAt})`,
+        )
+      }
+
+      // **Les sources sont dérivées des lignes**, jamais d'une liste écrite :
+      // `s42` ajoutera `waitlist` sans que cet écran ait à le savoir.
+      expect([...(await repository.listSources())].sort()).toEqual(['newsletter', 'waitlist'])
+
+      // La source filtre, et le décompte porte sur le **même** filtre que la
+      // page — sinon la pagination annoncerait des pages qui n'existent pas.
+      const newsletter = await repository.listBySource({
+        source: 'newsletter',
+        search: null,
+        limit: 2,
+        offset: 0,
+      })
+
+      expect(newsletter.total).toBe(3)
+      expect(newsletter.subscriptions).toHaveLength(2)
+      // L'ordre est **total** et décroissant : la plus récente d'abord, et
+      // `created_at` seul laisserait deux lignes de la même milliseconde
+      // changer de place entre deux pages.
+      expect(newsletter.subscriptions.map((row) => row.id)).toEqual(['s37c-4', 's37c-2'])
+
+      // La recherche est **liée**, et ses jokers sont échappés : `%` seul
+      // rendrait la table entière derrière un décompte faux.
+      const wildcard = await repository.listBySource({
+        source: null,
+        search: '%',
+        limit: 20,
+        offset: 0,
+      })
+
+      expect(wildcard.total).toBe(1)
+      expect(wildcard.subscriptions.map((row) => row.id)).toEqual(['s37c-4'])
+
+      // Une recherche d'adresse traverse les sources quand aucune n'est
+      // demandée.
+      const searched = await repository.listBySource({
+        source: null,
+        search: 'ada@',
+        limit: 20,
+        offset: 0,
+      })
+
+      expect(searched.total).toBe(2)
+
+      // **`limit: null` lit tout ce que le filtre retient** : c'est ce dont
+      // l'export a besoin, un fichier tronqué étant pire qu'aucun fichier.
+      const everything = await repository.listBySource({
+        source: 'newsletter',
+        search: null,
+        limit: null,
+        offset: 0,
+      })
+
+      expect(everything.subscriptions).toHaveLength(3)
+
+      await connection.db.execute(sql`delete from public_subscription`)
+    })
+
+    /**
      * **Les deux cas du compteur de ce module ont été retirés en s28.**
      *
      * Ils mesuraient `createDrizzleSubmissionThrottle` sur `public_form_throttle` :

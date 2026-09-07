@@ -79,6 +79,42 @@ export interface PublicSubscriptionRepository {
   /** Les inscriptions d'une adresse, toutes sources confondues. */
   listByEmail(email: string): Promise<readonly PublicSubscriptionRecord[]>
 
+  /**
+   * **Qui est inscrit à quoi** (s37c) — la question que
+   * `public_subscription_source_idx` attend depuis s11, et que ce port ne
+   * savait pas poser : il lisait **une** adresse, pour l'export et la purge
+   * d'un visiteur, jamais une source.
+   *
+   * `source` et `search` filtrent **dans la requête**, jamais après : un
+   * décompte qui ne porte pas sur la même condition que la page annoncerait des
+   * pages qui n'existent pas.
+   *
+   * **`limit: null` rend tout ce que le filtre retient.** C'est ce dont
+   * l'export du back-office a besoin — un fichier tronqué serait pire qu'aucun
+   * fichier. Rien ne borne aujourd'hui le nombre d'inscriptions : l'ensemble
+   * est donc matérialisé en mémoire, et cela tiendra jusqu'à ce que cela ne
+   * tienne plus. La borne appartient à la story qui rencontrera le problème,
+   * pas à celle-ci, qui n'a aucun seuil à deviner.
+   */
+  listBySource(input: {
+    readonly source: string | null
+    readonly search: string | null
+    readonly limit: number | null
+    readonly offset: number
+  }): Promise<{
+    readonly subscriptions: readonly PublicSubscriptionRecord[]
+    readonly total: number
+  }>
+
+  /**
+   * **Les sources réellement présentes**, dérivées des lignes.
+   *
+   * Jamais une liste écrite : `config/marketing.ts` nomme la source du site,
+   * `s42` en ajoutera une autre, et un filtre construit sur une constante
+   * l'ignorerait sans que rien ne rougisse.
+   */
+  listSources(): Promise<readonly string[]>
+
   /** Efface les inscriptions d'une adresse. Rend le nombre de lignes effacées. */
   deleteByEmail(email: string): Promise<number>
 }

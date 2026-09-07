@@ -72,5 +72,6 @@
   "waitlist.action.submit": "Me prévenir au lancement",
   "waitlist.success": "Merci. Si cette adresse est valide, elle est sur la liste d’attente.",
   "waitlist.error.throttled": "Trop de tentatives depuis cette connexion. Réessayez dans quelques minutes.",
-  "waitlist.error.failed": "L’inscription n’a pas abouti. Réessayez dans un instant."
+  "waitlist.error.failed": "L’inscription n’a pas abouti. Réessayez dans un instant.",
+  "navigation.adminSubscriptions": "Inscriptions"
 }

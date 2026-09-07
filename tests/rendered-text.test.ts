@@ -109,6 +109,7 @@ vi.mock('../apps/web/lib/admin', async (importOriginal) => {
     FIXTURE_ADMIN_ORGANIZATION_DETAIL,
     FIXTURE_ADMIN_ORGANIZATIONS,
     FIXTURE_ADMIN_REVENUE,
+    FIXTURE_ADMIN_SUBSCRIPTIONS,
     viewerState,
   } = await import('./fixtures/screen-viewer')
 
@@ -130,6 +131,8 @@ vi.mock('../apps/web/lib/admin', async (importOriginal) => {
             organization: () =>
               Promise.resolve({ ok: true, view: FIXTURE_ADMIN_ORGANIZATION_DETAIL }),
             revenue: () => Promise.resolve({ ok: true, view: FIXTURE_ADMIN_REVENUE }),
+            subscriptions: () =>
+              Promise.resolve({ ok: true, view: FIXTURE_ADMIN_SUBSCRIPTIONS }),
           }
         : {}),
     },
@@ -685,6 +688,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       FIXTURE_ADMIN_ORGANIZATION_DETAIL,
       FIXTURE_ADMIN_ORGANIZATIONS,
       FIXTURE_ADMIN_REVENUE,
+      FIXTURE_ADMIN_SUBSCRIPTIONS,
       FIXTURE_EMAIL,
       FIXTURE_EXPIRED_INVITED_EMAIL,
       FIXTURE_INITIALS,
@@ -818,6 +822,13 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
      * organisations refusent en plus quand leur propre module l'est.
      */
     const adminMounted = admin.available
+    /**
+     * **Ce que l'écran des inscriptions fait dans cette configuration** (s37c),
+     * dérivé de l'état du module qui possède la table : site public coupé, la
+     * page n'existe pas.
+     */
+    const { marketingSubscriptions } = await import('../apps/web/lib/marketing')
+    const marketingMounted = marketingSubscriptions.available
     const { billing } = await import('../apps/web/lib/billing')
     const billingMounted = billing.available
     const { notifications } = await import('../apps/web/lib/notifications')
@@ -1615,6 +1626,43 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           // courante sans que rien ne soit écrit en dur dans la page.
           (await import('../apps/web/app/admin/revenue/page')).default({
             searchParams: Promise.resolve({ period: '12m' }),
+          }),
+      },
+      {
+        /**
+         * s37c — les inscriptions publiques du back-office. **Deux** refus
+         * possibles, tous deux dérivés : le module `marketing` coupé, l'écran
+         * n'existe pas ; le module `admin` coupé, la lecture refuse.
+         */
+        id: 'back-office — inscriptions',
+        file: 'admin/subscriptions/page.tsx',
+        viewer: SIGNED_IN,
+        refuses: marketingMounted && adminMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        // `screenPath` et `exportAction` sont des **adresses**, injectées par
+        // la page : elles n'ont rien à voir avec un catalogue.
+        technicalProps: ['screenPath', 'exportAction'],
+        // Les adresses, les sources et les langues : des **données**, dérivées
+        // de la fixture plutôt que recopiées. Une source est un identifiant,
+        // affiché tel quel — c'est le point du filtre dérivé.
+        screenData: [
+          ...FIXTURE_ADMIN_SUBSCRIPTIONS.subscriptions.flatMap((subscription) => [
+            subscription.email,
+            subscription.source,
+            subscription.locale,
+          ]),
+          ...FIXTURE_ADMIN_SUBSCRIPTIONS.sources,
+          String(FIXTURE_ADMIN_SUBSCRIPTIONS.total),
+          // Les dates d'inscription, dans le style **moyen** du back-office :
+          // des données, dérivées de la fixture plutôt que recopiées.
+          ...FIXTURE_ADMIN_SUBSCRIPTIONS.subscriptions.map((subscription) =>
+            new Intl.DateTimeFormat(defaultLocale, { dateStyle: 'medium' }).format(
+              subscription.createdAt,
+            ),
+          ),
+        ],
+        render: async () =>
+          (await import('../apps/web/app/admin/subscriptions/page')).default({
+            searchParams: noParams,
           }),
       },
       {
