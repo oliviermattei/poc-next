@@ -592,6 +592,39 @@ export const FIXTURE_ADMIN_REVENUE = {
   },
 } as const
 
+/**
+ * **Les inscriptions publiques du back-office** (s37c).
+ *
+ * Deux sources et deux lignes : le filtre par source ne rend rien à balayer
+ * s'il n'y a qu'une source, et « toutes les sources » ne se distingue d'une
+ * source retenue que si une autre existe. La langue et la date passent avec
+ * elles, ce sont des **données**.
+ */
+export const FIXTURE_ADMIN_SUBSCRIPTIONS = {
+  page: 1,
+  pageCount: 1,
+  total: 2,
+  search: null,
+  source: null,
+  sources: ['newsletter', 'waitlist'],
+  subscriptions: [
+    {
+      id: 'sub_1',
+      email: FIXTURE_EMAIL,
+      source: 'newsletter',
+      locale: 'fr',
+      createdAt: new Date('2026-02-03T10:00:00.000Z'),
+    },
+    {
+      id: 'sub_2',
+      email: 'grace@example.test',
+      source: 'waitlist',
+      locale: 'en',
+      createdAt: new Date('2026-02-02T10:00:00.000Z'),
+    },
+  ],
+} as const
+
 export const FIXTURE_ADMIN_ORGANIZATION_DETAIL = {
   organization: FIXTURE_ADMIN_ORGANIZATION,
   members: [{ userId: 'usr_1', email: FIXTURE_EMAIL, role: 'owner' }],

@@ -31,7 +31,7 @@ import {
   TableRow,
   initialsOf,
 } from '@repo/ui'
-import { UsersIcon } from 'lucide-react'
+import { MailIcon, UsersIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import type {
@@ -40,6 +40,7 @@ import type {
   AdminOrganizationsView,
   AdminOrganizationView,
   AdminRevenueView,
+  AdminSubscriptionsView,
 } from '../application/admin-use-cases'
 import type { AdminIntl } from './admin-intl'
 
@@ -143,6 +144,18 @@ const K = {
   revenueEmptyTitle: 'admin.revenue.empty.title',
   revenueEmptyDescription: 'admin.revenue.empty.description',
   columnRole: 'admin.organization.column.role',
+  subscriptionsTitle: 'admin.subscriptions.title',
+  subscriptionsDescription: 'admin.subscriptions.description',
+  subscriptionsCaption: 'admin.subscriptions.caption',
+  subscriptionsEmptyTitle: 'admin.subscriptions.empty.title',
+  subscriptionsEmptyDescription: 'admin.subscriptions.empty.description',
+  columnEmail: 'admin.subscriptions.column.email',
+  columnSource: 'admin.subscriptions.column.source',
+  columnLocale: 'admin.subscriptions.column.locale',
+  columnSubscribedAt: 'admin.subscriptions.column.subscribedAt',
+  sourceFilterLabel: 'admin.subscriptions.sourceFilter',
+  allSources: 'admin.subscriptions.allSources',
+  exportSubscriptions: 'admin.subscriptions.export',
   none: 'admin.none',
 } as const
 
@@ -171,24 +184,51 @@ export interface BackOfficeListLinks {
 }
 
 /**
+ * **Ce qu'une liste doit emporter d'un geste à l'autre**, en plus de sa
+ * recherche et de sa page.
+ *
+ * Une liste peut porter d'autres critères que sa recherche — le filtre par
+ * source des inscriptions (s37c) est le premier. Chacun d'eux **borne le
+ * nombre de pages** : le perdre en paginant ou en cherchant sert une liste
+ * plausible et fausse, pas une panne. Les deux gestes le reportent donc, l'un
+ * dans son lien, l'autre dans un champ caché — un `GET` de formulaire
+ * **remplace** la chaîne de requête.
+ *
+ * Un enregistrement, et non un paramètre nommé : ce composant est partagé par
+ * les listes du back-office, et il n'a pas à connaître le vocabulaire de
+ * l'une d'elles.
+ */
+type ListFilters = Readonly<Record<string, string>>
+
+const NO_FILTERS: ListFilters = {}
+
+/**
  * Le formulaire de recherche : **`method="get"`, écrit en toutes lettres**.
  *
  * `pnpm lint` le refuse autrement, et sans lui un `<form>` non hydraté retombe
  * sur le `GET` du navigateur en mettant ses champs dans l'URL — ce qui est ici
  * exactement ce qu'on veut, mais qui ne doit jamais être un accident
  * (`docs/security.md` §5).
+ *
+ * La page, elle, n'est **pas** reportée : chercher autre chose remet à la
+ * première page, sans quoi on atterrirait sur une page qui n'existe plus.
  */
 function SearchForm({
   action,
   search,
+  filters = NO_FILTERS,
   intl,
 }: {
   readonly action: string
   readonly search: string | null
+  readonly filters?: ListFilters
   readonly intl: AdminIntl
 }) {
   return (
     <form method="get" action={action} className="flex flex-wrap items-end gap-2">
+      {Object.entries(filters).map(([name, value]) => (
+        <input key={name} type="hidden" name={name} value={value} />
+      ))}
       <div className="min-w-0 flex-1 space-y-1.5">
         <Label htmlFor="admin-search">{intl.t(K.searchLabel)}</Label>
         <Input id="admin-search" name="q" type="search" defaultValue={search ?? ''} />
@@ -201,22 +241,25 @@ function SearchForm({
 }
 
 /**
- * La pagination d'une liste, **avec sa recherche conservée**.
+ * La pagination d'une liste, **avec sa recherche et ses filtres conservés**.
  *
  * Sans le paramètre de recherche dans le lien, passer à la page 2 rendrait la
  * page 2 de *tous* les comptes : la liste changerait sous les pieds de qui
- * cherche.
+ * cherche. Un filtre déclaré (`filters`) suit la même règle, et pour la même
+ * raison : le nombre de pages a été calculé sur le total qu'il restreint.
  */
 function ListPagination({
   page,
   pageCount,
   search,
+  filters = NO_FILTERS,
   listPath,
   intl,
 }: {
   readonly page: number
   readonly pageCount: number
   readonly search: string | null
+  readonly filters?: ListFilters
   readonly listPath: string
   readonly intl: AdminIntl
 }) {
@@ -230,6 +273,10 @@ function ListPagination({
       pageCount={pageCount}
       hrefFor={(target) => {
         const parameters = new URLSearchParams()
+
+        for (const [name, value] of Object.entries(filters)) {
+          parameters.set(name, value)
+        }
 
         if (search !== null) {
           parameters.set('q', search)
@@ -1117,5 +1164,244 @@ export function ImpersonationBanner({ labels, stopAction }: ImpersonationBannerP
         )}
       </AlertDescription>
     </Alert>
+  )
+}
+
+
+/**
+ * **Le filtre par source, dérivé de ce que la base porte** (s37c).
+ *
+ * Des **liens**, pas un menu : une sélection *est* une adresse — elle se copie,
+ * se met en signet et fonctionne avant l'hydratation. C'est la forme du
+ * sélecteur de période (s38) et du sélecteur de langue, et elle évite d'inventer
+ * un composant que `docs/design-system.md` ne livre pas.
+ *
+ * `sources` vient du port : ce composant ne connaît aucun nom de source, et
+ * celle que `s42` ajoutera apparaîtra sans qu'une ligne change ici. La recherche
+ * en cours est **conservée** dans chaque lien — sinon changer de source
+ * effacerait la recherche sous les pieds de qui l'a posée.
+ */
+function SourceFilter({
+  sources,
+  current,
+  search,
+  screenPath,
+  intl,
+}: {
+  readonly sources: readonly string[]
+  readonly current: string | null
+  readonly search: string | null
+  readonly screenPath: string
+  readonly intl: AdminIntl
+}) {
+  const hrefFor = (source: string | null): string => {
+    const parameters = new URLSearchParams()
+
+    if (source !== null) {
+      parameters.set('source', source)
+    }
+
+    if (search !== null) {
+      parameters.set('q', search)
+    }
+
+    const query = parameters.toString()
+
+    return query === '' ? intl.path(screenPath) : `${intl.path(screenPath)}?${query}`
+  }
+
+  const options: readonly { readonly key: string; readonly value: string | null; readonly label: string }[] = [
+    { key: 'all', value: null, label: intl.t(K.allSources) },
+    ...sources.map((source) => ({ key: source, value: source, label: source })),
+  ]
+
+  return (
+    <nav aria-label={intl.t(K.sourceFilterLabel)} className="flex flex-wrap gap-2">
+      {options.map((option) => {
+        const selected = option.value === current
+
+        /*
+         * **Les mêmes variantes que le sélecteur de période** (s38), et pas
+         * `ghost` au repos : `ghost` n'a ni bordure ni fond tant qu'on ne le
+         * survole pas, si bien que les sources non retenues se rendaient en
+         * texte nu — une rangée de mots, pas un jeu de filtres (revue de s37c,
+         * constat 6). Deux sélecteurs voisins du même back-office ne peuvent
+         * pas se lire différemment.
+         */
+        return (
+          <Button key={option.key} asChild variant={selected ? 'default' : 'outline'}>
+            <a href={hrefFor(option.value)} aria-current={selected ? 'page' : undefined}>
+              {option.label}
+            </a>
+          </Button>
+        )
+      })}
+    </nav>
+  )
+}
+
+export interface AdminSubscriptionsScreenProps {
+  readonly view: AdminSubscriptionsView
+  readonly intl: AdminIntl
+  readonly navigation: readonly BackOfficeNavigationItem[]
+  /**
+   * Le chemin de cet écran, **injecté** : il est déclaré par le module qui
+   * possède les inscriptions (`marketing`), pas par celui-ci — le back-office
+   * ne nomme aucun module (ADR 067).
+   */
+  readonly screenPath: string
+  /**
+   * L'adresse de la route de téléchargement, **résolue par l'application** :
+   * l'écran ne sait pas comment les chemins de ce module s'écrivent.
+   */
+  readonly exportAction: string
+}
+
+/**
+ * `/admin/subscriptions` — **les inscriptions publiques** (s37c).
+ *
+ * L'écran **consulte** : aucune suppression, aucune modification. La purge
+ * d'une adresse existe déjà et appartient au visiteur (s34), pas à
+ * l'administrateur.
+ *
+ * **Les messages de contact n'y sont pas**, et la description le dit à celui
+ * qui les y cherche : `contact_message` est une table voisine et distincte,
+ * elle porte un nom et un texte libre, elle n'a pas de source, et son point
+ * d'entrée est l'email envoyé à l'éditeur. Mêler les deux mettrait deux
+ * questions sous un seul filtre.
+ *
+ * Comme les trois autres écrans du back-office : aucune décision
+ * d'autorisation ici — quand ce composant est rendu, la garde du module a déjà
+ * répondu.
+ */
+export function AdminSubscriptionsScreen({
+  view,
+  intl,
+  navigation,
+  screenPath,
+  exportAction,
+}: AdminSubscriptionsScreenProps) {
+  /**
+   * **La source choisie, telle que les autres gestes doivent l'emporter.**
+   *
+   * Une seule source de vérité pour la pagination et pour la recherche : le
+   * défaut relevé en revue tenait à ce que chacune décidait pour elle-même, et
+   * deux d'entre elles avaient oublié.
+   */
+  const selection: ListFilters = view.source === null ? NO_FILTERS : { source: view.source }
+
+  /**
+   * **Le lien d'export porte la sélection affichée**, et rien de plus : un
+   * export qui ignore le filtre à l'écran surprend celui qui l'a posé.
+   *
+   * La **page** n'y entre pas : le fichier n'est pas borné par la pagination —
+   * un export tronqué à vingt lignes serait pire qu'aucun export.
+   */
+  const exportHref = (): string => {
+    const parameters = new URLSearchParams()
+
+    if (view.source !== null) {
+      parameters.set('source', view.source)
+    }
+
+    if (view.search !== null) {
+      parameters.set('q', view.search)
+    }
+
+    const query = parameters.toString()
+
+    return query === '' ? exportAction : `${exportAction}?${query}`
+  }
+
+  return (
+    <BackOfficeShell
+      navigation={navigation}
+      navigationLabel={intl.t(K.breadcrumbRoot)}
+      header={
+        <PageHeader
+          title={intl.t(K.subscriptionsTitle)}
+          description={intl.t(K.subscriptionsDescription)}
+          actions={
+            <Button asChild variant="secondary">
+              {/*
+                Un **lien**, pas un formulaire : le téléchargement ne change
+                aucun état serveur, et une adresse se copie et se met en signet.
+                `download` demande au navigateur d'enregistrer plutôt que de
+                naviguer ; l'en-tête de la route le dit aussi, l'attribut ne fait
+                que l'annoncer avant le premier octet.
+              */}
+              <a href={exportHref()} download>
+                {intl.t(K.exportSubscriptions)}
+              </a>
+            </Button>
+          }
+        />
+      }
+    >
+      <SourceFilter
+        sources={view.sources}
+        current={view.source}
+        search={view.search}
+        screenPath={screenPath}
+        intl={intl}
+      />
+
+      <SearchForm
+        action={intl.path(screenPath)}
+        search={view.search}
+        filters={selection}
+        intl={intl}
+      />
+
+      {view.subscriptions.length === 0 ? (
+        <EmptyState
+          icon={<MailIcon aria-hidden />}
+          title={intl.t(K.subscriptionsEmptyTitle)}
+          description={intl.t(K.subscriptionsEmptyDescription)}
+          action={
+            <Button asChild variant="secondary">
+              <a href={intl.path(screenPath)}>{intl.t(K.emptyAction)}</a>
+            </Button>
+          }
+        />
+      ) : (
+        <Table>
+          <TableCaption>
+            {intl.t(K.subscriptionsCaption, { total: String(view.total) })}
+          </TableCaption>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{intl.t(K.columnEmail)}</TableHead>
+              <TableHead>{intl.t(K.columnSource)}</TableHead>
+              <TableHead>{intl.t(K.columnLocale)}</TableHead>
+              <TableHead>{intl.t(K.columnSubscribedAt)}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {view.subscriptions.map((subscription) => (
+              <TableRow key={subscription.id}>
+                <TableCell className="min-w-0 truncate font-medium">
+                  {subscription.email}
+                </TableCell>
+                <TableCell>
+                  <Badge variant="secondary">{subscription.source}</Badge>
+                </TableCell>
+                <TableCell>{subscription.locale}</TableCell>
+                <TableCell>{intl.date(subscription.createdAt)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+
+      <ListPagination
+        page={view.page}
+        pageCount={view.pageCount}
+        search={view.search}
+        filters={selection}
+        listPath={screenPath}
+        intl={intl}
+      />
+    </BackOfficeShell>
   )
 }

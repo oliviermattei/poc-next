@@ -118,6 +118,21 @@ export const publicFormThrottle = pgTable(
  * Le lecteur est le contrat lui-même : la catégorie `contact-message` est
  * déclarée, donc l'export la rend et la purge l'efface. Une donnée personnelle
  * sans ces deux-là n'aurait pas dû être écrite.
+ *
+ * **Le back-office de `s37c` ne liste pas cette table, et c'est une décision.**
+ * L'écran `/admin/subscriptions` couvre les **inscriptions**, pas les messages
+ * de contact. Trois raisons, et la première suffit : la story parle
+ * d'« inscriptions publiques », et les deux tables sont voisines mais
+ * distinctes. Ensuite, un message porte un **nom** et un **texte libre** que
+ * personne n'a demandé à voir dans une liste d'administration, alors qu'une
+ * inscription n'est qu'une adresse et sa source. Enfin, le filtre de cet
+ * écran est la **source** — colonne que `contact_message` n'a pas : les mêler
+ * mettrait deux questions différentes sous un seul filtre.
+ *
+ * Ce que cela laisse ouvert, dit plutôt que sous-entendu : le point d'entrée
+ * d'un message reste l'email envoyé à l'éditeur, et une ligne dont
+ * `delivered_at` est vide n'a **aucun lecteur d'écran** — elle se rattrape en
+ * base. Un écran qui la montrerait est une autre story.
  */
 export const contactMessage = pgTable(
   'contact_message',

@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, sql, type SQL } from 'drizzle-orm'
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core'
 
 import type {
@@ -23,6 +23,28 @@ export type MarketingDatabase = Pick<
   PgDatabase<PgQueryResultHKT>,
   'select' | 'insert' | 'update' | 'delete'
 >
+
+/**
+ * **Les colonnes d'une inscription, écrites une fois** : deux listes recopiées
+ * divergeraient, et la seconde serait celle qui oublie une colonne.
+ */
+const subscriptionColumns = {
+  id: publicSubscription.id,
+  email: publicSubscription.email,
+  source: publicSubscription.source,
+  locale: publicSubscription.locale,
+  createdAt: publicSubscription.createdAt,
+} as const
+
+/**
+ * Échappe les jokers d'un motif `LIKE`.
+ *
+ * `_` et `%` sont des jokers **et** des caractères légaux d'une adresse ; non
+ * échappés, `%` seul rendrait la table entière derrière un décompte faux. Même
+ * fonction, même raison que dans `auth` (s34, s37b2).
+ */
+const escapeLikePattern = (value: string): string =>
+  value.replaceAll(/[\\%_]/g, (match) => `\\${match}`)
 
 export function createDrizzlePublicSubscriptions(
   db: MarketingDatabase,
@@ -50,15 +72,68 @@ export function createDrizzlePublicSubscriptions(
 
     listByEmail: async (email) =>
       await db
-        .select({
-          id: publicSubscription.id,
-          email: publicSubscription.email,
-          source: publicSubscription.source,
-          locale: publicSubscription.locale,
-          createdAt: publicSubscription.createdAt,
-        })
+        .select(subscriptionColumns)
         .from(publicSubscription)
         .where(eq(publicSubscription.email, email)),
+
+    /**
+     * **Qui est inscrit à quoi** (s37c).
+     *
+     * Deux lectures et pas une jointure : le décompte porte sur la **même**
+     * condition que la page, sans quoi la pagination compterait autre chose que
+     * ce qu'elle affiche. C'est la forme que `auth` emploie pour la liste des
+     * comptes (s37b2), et pour la même raison.
+     *
+     * La recherche est une **valeur liée**, jamais interpolée, et ses jokers
+     * sont échappés avant d'entrer dans `ilike`.
+     */
+    listBySource: async ({ source, search, limit, offset }) => {
+      const conditions: SQL[] = []
+
+      if (source !== null) {
+        conditions.push(eq(publicSubscription.source, source))
+      }
+
+      if (search !== null) {
+        conditions.push(ilike(publicSubscription.email, `%${escapeLikePattern(search)}%`))
+      }
+
+      const condition = conditions.length === 0 ? undefined : and(...conditions)
+
+      const page = db
+        .select(subscriptionColumns)
+        .from(publicSubscription)
+        .where(condition)
+        // Un ordre **total** : `created_at` seul laisse deux inscriptions de la
+        // même milliseconde changer de place d'une page à l'autre, et une ligne
+        // se retrouve alors sur deux pages ou sur aucune.
+        .orderBy(desc(publicSubscription.createdAt), asc(publicSubscription.id))
+
+      // `limit: null` — l'export lit tout ce que le filtre retient. La borne
+      // manquante est écrite au port : rien ne la fixe aujourd'hui.
+      const rows = limit === null ? await page : await page.limit(limit).offset(offset)
+
+      const [counted] = await db
+        .select({ total: sql<number>`count(*)::int` })
+        .from(publicSubscription)
+        .where(condition)
+
+      return { subscriptions: rows, total: Number(counted?.total ?? 0) }
+    },
+
+    listSources: async () => {
+      // `groupBy` plutôt que `selectDistinct` : la connexion injectée est
+      // volontairement réduite à quatre opérations (`MarketingDatabase`), et
+      // l'élargir pour une seule lecture donnerait au module une surface de
+      // base qu'il n'a pas besoin d'avoir.
+      const rows = await db
+        .select({ source: publicSubscription.source })
+        .from(publicSubscription)
+        .groupBy(publicSubscription.source)
+        .orderBy(asc(publicSubscription.source))
+
+      return rows.map((row) => row.source)
+    },
 
     deleteByEmail: async (email) => {
       const rows = await db

@@ -94,6 +94,7 @@ export {
 } from './infrastructure/drizzle-public-forms'
 export { createSharedSubmissionThrottle } from './infrastructure/shared-submission-throttle'
 export {
+  ADMIN_SUBSCRIPTIONS_SCREEN_PATH,
   createPublicFormRoutes,
   marketingRoutePath,
 } from './presentation/public-form-routes'

@@ -7,7 +7,8 @@ import {
 
 import type { AdminService } from '../application/admin-service'
 import { parseAccountTarget } from '../domain/platform-role'
-import { parseSessionTarget } from '../domain/back-office'
+import { parseBackOfficeSubscriptionsQuery, parseSessionTarget } from '../domain/back-office'
+import { CSV_CONTENT_TYPE } from '../domain/csv'
 
 /**
  * Les routes du module, **énumérées une par une**, avec leur niveau de
@@ -61,6 +62,7 @@ const PATHS = {
   stopImpersonation: '/admin/impersonation/stop',
   revokeAccountSession: '/admin/accounts/session/revoke',
   sendPasswordReset: '/admin/accounts/password-reset',
+  exportSubscriptions: '/admin/subscriptions/export',
 } as const
 
 /** Le chemin public d'une route du module, préfixe de montage compris. */
@@ -417,6 +419,57 @@ export function createAdminRoutes(service: () => AdminService): readonly ModuleR
           return isFormSubmission(request)
             ? seeOther(request, `${ADMIN_USERS_SCREEN_PATH}/${target.userId}`)
             : Response.json({ revoked: true })
+        }),
+    },
+    {
+      /**
+       * **Le téléchargement des inscriptions publiques** (s37c).
+       *
+       * La **seule route de lecture** du module, et la seule qui matérialise un
+       * fichier. Sa forme de remise est celle de l'export de s35 — le seul
+       * autre endroit du dépôt qui rende un fichier : `content-disposition:
+       * attachment`, pour qu'elle se télécharge au lieu de s'afficher dans
+       * l'onglet, et `cache-control: no-store`, pour qu'aucun cache
+       * intermédiaire ne garde des adresses.
+       *
+       * `GET`, et c'est correct : elle ne change aucun état serveur. Elle est
+       * `authenticated` comme les autres, et la garde de superadmin refuse en
+       * **404** — un 403 confirmerait que le back-office existe.
+       *
+       * **Le refus est entier** : une lecture en échec rend 503, jamais un
+       * fichier tronqué servi comme un fichier complet. C'est la discipline de
+       * s35, et c'est ce qui distingue un export d'un extrait.
+       *
+       * La sélection vient de l'**adresse**, lue par Zod dans le `domain` : la
+       * même fonction que l'écran, donc le fichier porte exactement ce que la
+       * page affichait.
+       */
+      method: 'GET',
+      path: PATHS.exportSubscriptions,
+      protection: { level: 'authenticated' },
+      handler: async (request, context) =>
+        await asSuperadmin(request, context, async (viewerId) => {
+          const parameters = Object.fromEntries(new URL(request.url).searchParams.entries())
+          const exported = await service().useCases.exportSubscriptions({
+            request,
+            viewerId,
+            query: parseBackOfficeSubscriptionsQuery(parameters),
+          })
+
+          if (!exported.ok) {
+            return exported.error === 'not_found'
+              ? notFound()
+              : Response.json({ error: 'unavailable' }, { status: 503 })
+          }
+
+          return new Response(exported.view.content, {
+            status: 200,
+            headers: {
+              'content-type': CSV_CONTENT_TYPE,
+              'content-disposition': `attachment; filename="${exported.view.filename}"`,
+              'cache-control': 'no-store',
+            },
+          })
         }),
     },
     {

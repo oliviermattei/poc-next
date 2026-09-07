@@ -34,6 +34,19 @@ export interface BackOfficeQuery {
 }
 
 /**
+ * Ce qu'une liste d'inscriptions publiques lit de son adresse (s37c) —
+ * la liste commune, **plus** la source demandée.
+ *
+ * Elle est un type à part et non un champ facultatif de `BackOfficeQuery` : les
+ * listes de comptes et d'organisations n'ont pas de source, et leur en donner
+ * une laisserait un paramètre sans lecteur sur deux écrans sur trois.
+ */
+export interface BackOfficeSubscriptionsQuery extends BackOfficeQuery {
+  /** La source demandée, taillée, ou `null` — « toutes les sources ». */
+  readonly source: string | null
+}
+
+/**
  * Le premier passage d'un paramètre d'URL : Next rend `string | string[] |
  * undefined`, et une valeur répétée (`?q=a&q=b`) doit devenir **une** valeur.
  * Passer le tableau à une requête paramétrée serait une valeur d'un type que
@@ -81,6 +94,83 @@ export function parseBackOfficeQuery(input: unknown): BackOfficeQuery {
   }
 
   return { search: parsed.data.q, page: parsed.data.page }
+}
+
+/**
+ * L'identifiant de source le plus long accepté d'une adresse (s37c). Au-delà,
+ * ce n'est plus une source : rien n'est transmis plus bas.
+ */
+const MAX_SOURCE_LENGTH = 64
+
+const subscriptionsQuerySchema = z.object({
+  q: searchSchema,
+  page: pageSchema,
+  source: firstValue.transform((value) => {
+    const trimmed = (value ?? '').trim()
+
+    return trimmed === '' || trimmed.length > MAX_SOURCE_LENGTH ? null : trimmed
+  }),
+})
+
+/**
+ * Lit les paramètres de la liste d'inscriptions publiques — et **ne lève pas**
+ * davantage que `parseBackOfficeQuery`.
+ *
+ * Ce module s'arrête à la **forme** : une valeur, taillée, bornée en longueur,
+ * ou `null`. **Il ne sait pas quelles sources existent** — la réponse est dans
+ * la base, pas dans le code, et `s42` en ajoutera une. Une source inconnue rend
+ * donc une liste vide, ce qui est la réponse juste, plutôt qu'un refus qui
+ * exigerait une liste écrite quelque part.
+ */
+export function parseBackOfficeSubscriptionsQuery(
+  input: unknown,
+): BackOfficeSubscriptionsQuery {
+  const parsed = subscriptionsQuerySchema.safeParse(input ?? {})
+
+  if (!parsed.success) {
+    return { source: null, search: null, page: 1 }
+  }
+
+  return { source: parsed.data.source, search: parsed.data.q, page: parsed.data.page }
+}
+
+/**
+ * **Le nom du fichier d'export des inscriptions** (s37c), et ce qu'il ne porte
+ * pas.
+ *
+ * Il **dit la sélection** — un export qui suit le filtre affiché doit se
+ * reconnaître une fois sur le disque, à côté de trois autres. Il ne porte
+ * cependant que la **source** : la recherche est un texte libre reçu de
+ * l'adresse, et ce nom part dans un en-tête `content-disposition`. Y recopier
+ * une valeur arbitraire serait une surface d'injection d'en-tête ; la présence
+ * d'une recherche est donc **marquée**, jamais son contenu.
+ *
+ * La source elle-même est **dérivée, jamais recopiée** : minuscules, seuls
+ * `[a-z0-9-]` survivent, longueur bornée. Elle vient de la base, mais elle a
+ * été écrite par la configuration d'un autre dépôt — la faire confiance sur ce
+ * chemin serait un pari sans raison.
+ */
+export function subscriptionsExportFileName(selection: {
+  readonly source: string | null
+  readonly search: string | null
+}): string {
+  const slug = (selection.source ?? '')
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9]+/g, '-')
+    .replaceAll(/^-+|-+$/g, '')
+    .slice(0, 40)
+
+  const parts = ['inscriptions']
+
+  if (slug !== '') {
+    parts.push(slug)
+  }
+
+  if (selection.search !== null) {
+    parts.push('recherche')
+  }
+
+  return `${parts.join('-')}.csv`
 }
 
 /**

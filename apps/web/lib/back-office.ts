@@ -104,3 +104,15 @@ export const backOfficeActions = {
   revokeSession: adminRoutePath('revokeAccountSession'),
   sendPasswordReset: adminRoutePath('sendPasswordReset'),
 }
+
+/**
+ * **Le téléchargement des inscriptions publiques** (s37c), résolu ici pour la
+ * raison des deux gestes ci-dessus : une adresse de route ne se recopie pas
+ * dans un écran.
+ *
+ * Séparé de `backOfficeActions`, et ce n'est pas un rangement : l'écran de
+ * détail d'un compte reçoit cet objet **entier**, si bien qu'une troisième
+ * adresse posée dedans lui arriverait en propriété inutile —
+ * `tests/rendered-text.test.ts` l'a mesuré au premier essai.
+ */
+export const backOfficeExportSubscriptions = adminRoutePath('exportSubscriptions')

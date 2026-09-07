@@ -292,6 +292,11 @@ const aBench = (overrides: Partial<PublicFormsDependencies> = {}) => {
         return Promise.resolve(record)
       },
       listByEmail: (email) => Promise.resolve(rows.filter((row) => row.email === email)),
+      // s37c : la lecture par source appartient au back-office, qui n'est pas
+      // ce que ce fichier traverse. Elle se prouve contre une vraie base, dans
+      // `tests/marketing.test.ts`.
+      listBySource: () => Promise.resolve({ subscriptions: [], total: 0 }),
+      listSources: () => Promise.resolve([]),
       deleteByEmail: (email) => {
         const removed = rows.filter((row) => row.email === email).length
 

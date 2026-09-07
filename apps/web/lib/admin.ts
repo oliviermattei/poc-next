@@ -4,6 +4,7 @@ import {
   adminModule,
   adminRoutePath,
   parseBackOfficeQuery,
+  parseBackOfficeSubscriptionsQuery,
   provideAdmin,
   requireAdminService,
   type AdminAccountsView,
@@ -15,6 +16,8 @@ import {
   type AdminRevenuePort,
   type AdminRevenueView,
   type AdminOrganizationView,
+  type AdminSubscriptionsPort,
+  type AdminSubscriptionsView,
   type BackOfficeView,
 } from '@repo/module-admin'
 import type { AuthService, AuthUseCases } from '@repo/module-auth'
@@ -396,6 +399,62 @@ const revenue: AdminRevenuePort = adminRevenuePort(
   async (period) => await (await import('./billing')).billing.revenue(period),
 )
 
+/**
+ * **Ce que le back-office sait des inscriptions publiques** (s37c).
+ *
+ * Le module `admin` ne déclare pas `marketing` dans ses `requires` : il ne peut
+ * ni l'importer, ni lire `public_subscription`. Ce fichier tient les deux
+ * bouts, comme il le fait pour les organisations et le revenu — et il ne décide
+ * rien de la lecture : la requête vit dans le module qui **possède** la table.
+ *
+ * **Aucune condition sur un module ici.** Site public coupé, le lecteur rend du
+ * vide sans ouvrir de connexion ; ce qui disparaît alors est l'**entrée de
+ * navigation**, déclarée par le module qui la porte (ADR 067), et l'écran
+ * répond 404.
+ *
+ * L'import est **différé**, pour la raison des deux autres ports : les points
+ * de composition importent celui de l'authentification, et un import statique
+ * en sens inverse fermerait le cycle.
+ */
+export const adminSubscriptionsPort = (
+  read: () => Promise<{
+    readonly list: (input: {
+      readonly source: string | null
+      readonly search: string | null
+      readonly limit: number | null
+      readonly offset: number
+    }) => Promise<{
+      readonly subscriptions: readonly {
+        readonly id: string
+        readonly email: string
+        readonly source: string
+        readonly locale: string
+        readonly createdAt: Date
+      }[]
+      readonly total: number
+    }>
+    readonly sources: () => Promise<readonly string[]>
+  }>,
+): AdminSubscriptionsPort => ({
+  listSubscriptions: async (input) => {
+    // **Un port ne lève pas** : une base injoignable devient un refus, que le
+    // module rend en `unavailable` et l'écran en alerte — jamais une liste
+    // vide, qui se lirait comme « aucun inscrit ».
+    const listed = await readOr(async () => await (await read()).list(input))
+
+    return listed.ok ? { ok: true, ...listed.value } : { ok: false }
+  },
+  listSources: async () => {
+    const sources = await readOr(async () => await (await read()).sources())
+
+    return sources.ok ? { ok: true, sources: sources.value } : { ok: false }
+  },
+})
+
+const subscriptions: AdminSubscriptionsPort = adminSubscriptionsPort(
+  async () => (await import('./marketing')).marketingSubscriptions,
+)
+
 const organizations: AdminOrganizationsPort = adminOrganizationsPort(
   async () => (await import('./organizations')).organizations.backOffice,
   async (organizationId) =>
@@ -425,6 +484,7 @@ const provide = (): void => {
     accounts,
     organizations,
     revenue,
+    subscriptions,
     designatedEmail: designatedEmailOf(getEnv()),
   }))
 }
@@ -483,6 +543,15 @@ export interface AdminFeature {
     readonly viewerId: string
     readonly parameters: unknown
   }) => Promise<BackOfficeView<AdminRevenueView>>
+  /**
+   * **Les inscriptions publiques** (s37c) : une liste, avec sa source et sa
+   * recherche. Les paramètres d'adresse entrent **bruts**, comme ceux des
+   * autres listes — c'est le module qui les lit, avec Zod.
+   */
+  readonly subscriptions: (input: {
+    readonly viewerId: string
+    readonly parameters: unknown
+  }) => Promise<BackOfficeView<AdminSubscriptionsView>>
 }
 
 /** Le refus, écrit une fois : module coupé, aucune lecture n'ouvre de connexion. */
@@ -530,6 +599,12 @@ export const admin: AdminFeature = mounted
           viewerId,
           parameters,
         }),
+      subscriptions: async ({ viewerId, parameters }) =>
+        await backOfficeService().useCases.viewSubscriptions({
+          request: await incomingRequest(),
+          viewerId,
+          query: parseBackOfficeSubscriptionsQuery(parameters),
+        }),
     }
   : {
       available: false,
@@ -542,6 +617,7 @@ export const admin: AdminFeature = mounted
       // vient de la **valeur**, pas d'une condition écrite plus haut.
       platformRolesOf: () => Promise.resolve([]),
       revenue: () => Promise.resolve(ABSENT),
+      subscriptions: () => Promise.resolve(ABSENT),
     }
 
 /**

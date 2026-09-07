@@ -41,6 +41,8 @@ export type {
   AdminRevenuePeriod,
   AdminRevenuePort,
   AdminRevenueState,
+  AdminSubscription,
+  AdminSubscriptionsPort,
   BanAccountOutcome,
   GrantOutcome,
   RevokeOutcome,
@@ -52,6 +54,8 @@ export type {
   AdminOrganizationsView,
   AdminOrganizationView,
   AdminRevenueView,
+  AdminSubscriptionsExport,
+  AdminSubscriptionsView,
   AdminUseCases,
   BackOfficePage,
   BackOfficeView,
@@ -60,7 +64,9 @@ export {
   BACK_OFFICE_PAGE_SIZE,
   parseBackOfficePeriod,
   parseBackOfficeQuery,
+  parseBackOfficeSubscriptionsQuery,
   type BackOfficeQuery,
+  type BackOfficeSubscriptionsQuery,
 } from './domain/back-office'
 export type { AdminSecurityEvent, AdminSecurityLog } from './domain/security-event'
 export { SUPERADMIN_ROLE } from './domain/platform-role'
