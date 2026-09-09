@@ -57,15 +57,24 @@ const ENTRY_FILES = ['page.tsx', 'route.ts']
  * ce fichier ferme, et elle reviendrait sans que rien ne le dise. Le dépôt n'en
  * porte aucune à ce jour, sur les 21 dossiers d'entrée balayés.
  */
-export const urlSegment = (name: string): string => {
+export const urlSegment = (name: string): string | null => {
   if (/^\[.+\]$/.test(name)) {
     return PLACEHOLDER
+  }
+
+  // **Un groupe de routes ne porte aucun segment** : `(app)` et `(admin)`
+  // existent pour donner deux châssis distincts au produit et au back-office,
+  // et Next les efface de l'URL. Rendre `null` plutôt que le nom, sans quoi le
+  // préambule réchaufferait `/(admin)/admin/users`, que le routeur n'atteint
+  // pas — et l'écran resterait à compiler pendant l'assertion.
+  if (/^\(.+\)$/.test(name)) {
+    return null
   }
 
   if (/^[(@]/.test(name)) {
     throw new Error(
       `Le préambule des parcours ne sait pas traduire le segment « ${name} » en URL : ` +
-        'groupe de routes, route parallèle ou interception. Traduisez-le ici, ' +
+        'route parallèle ou interception. Traduisez-le ici, ' +
         'sans quoi cette entrée ne serait jamais compilée avant les assertions.',
     )
   }
@@ -84,8 +93,13 @@ const collect = async (directory: string, segments: readonly string[]): Promise<
   for (const entry of entries) {
     if (!entry.isDirectory()) continue
 
+    const segment = urlSegment(entry.name)
+
     found.push(
-      ...(await collect(`${directory}/${entry.name}`, [...segments, urlSegment(entry.name)])),
+      ...(await collect(
+        `${directory}/${entry.name}`,
+        segment === null ? segments : [...segments, segment],
+      )),
     )
   }
 

@@ -2399,11 +2399,23 @@ describe('les identifiants réservés suivent les écrans réellement servis', (
    * trois fois. Les segments dynamiques (`[document]`) sont exclus : ils ne
    * sont pas un chemin réservable.
    */
-  const servedSegments = (): readonly string[] =>
-    readdirSync(SCREEN_ROOT, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && !entry.name.startsWith('['))
-      .map((entry) => entry.name)
-      .sort()
+  const servedSegments = (): readonly string[] => {
+    // **Un groupe de routes n'est pas un segment** : `(app)` et `(admin)`
+    // donnent deux châssis distincts au produit et au back-office, et Next les
+    // efface de l'URL. On descend donc dedans plutôt que de les réserver — les
+    // réserver interdirait le nom « (app) » à une organisation, ce qu'aucune
+    // adresse ne sert, et laisserait `billing` libre, ce que l'application sert.
+    const segmentsIn = (directory: string): readonly string[] =>
+      readdirSync(directory, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && !entry.name.startsWith('['))
+        .flatMap((entry) =>
+          /^\(.+\)$/.test(entry.name)
+            ? segmentsIn(join(directory, entry.name))
+            : [entry.name],
+        )
+
+    return [...segmentsIn(SCREEN_ROOT)].sort()
+  }
 
   it('trouve des écrans, faute de quoi ce cas ne vérifierait rien', () => {
     expect(servedSegments().length).toBeGreaterThan(3)

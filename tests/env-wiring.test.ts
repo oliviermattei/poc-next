@@ -1033,10 +1033,18 @@ describe('le préambule qui compile l’application avant les parcours', () => {
     ).toBe(true)
   })
 
+  it('efface un groupe de routes, que Next efface aussi de l’URL', async () => {
+    const { urlSegment } = await import('../e2e/support/warm-up')
+
+    // `null` et non le nom : `(app)` et `(admin)` portent deux châssis, pas
+    // deux chemins. Rendre le nom réchaufferait `/(admin)/admin/users`, que le
+    // routeur n'atteint pas — l'écran resterait à compiler pendant l'assertion.
+    expect(urlSegment('(marketing)')).toBeNull()
+  })
+
   it('refuse un segment qu’il ne sait pas traduire, plutôt que de l’ignorer', async () => {
     const { urlSegment } = await import('../e2e/support/warm-up')
 
-    expect(() => urlSegment('(marketing)')).toThrow(/préambule/)
     expect(() => urlSegment('@panneau')).toThrow(/préambule/)
   })
 })

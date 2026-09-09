@@ -979,8 +979,19 @@ describe('les entrées de navigation du module de démonstration', () => {
       if (!href.startsWith(MODULE_ROUTE_PREFIX)) {
         // Un écran de l'application : le fichier de page de Next, à l'endroit
         // que le chemin désigne. Le renommer ou le supprimer fait rougir ici.
+        // **Le chemin cherché traverse les groupes de routes.** `(app)` et
+        // `(admin)` portent chacun un châssis et n'apparaissent pas dans
+        // l'URL : chercher le fichier à la lettre du `href` ne le trouverait
+        // plus, et ce cas rougirait pour un écran qui existe.
+        const screenRoot = join(REPO_ROOT, 'apps/web/app')
+        const groups = readdirSync(screenRoot, { withFileTypes: true })
+          .filter((entry) => entry.isDirectory() && /^\(.+\)$/.test(entry.name))
+          .map((entry) => entry.name)
+
         expect(
-          existsSync(join(REPO_ROOT, 'apps/web/app', href.replace(/^\//, ''), 'page.tsx')),
+          ['', ...groups].some((group) =>
+            existsSync(join(screenRoot, group, href.replace(/^\//, ''), 'page.tsx')),
+          ),
           `aucun écran ne sert ${href}`,
         ).toBe(true)
 
