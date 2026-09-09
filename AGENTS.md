@@ -256,3 +256,24 @@ This codebase is mostly edited by agents (ADR 013). An agent that cannot find th
 - No regression on existing code
 - Review passed (no open critical issue)
 - Deployed to production
+
+## Agent skills
+
+Per-repo configuration for the mattpocock engineering skills. It tells them where
+issues, labels and domain docs live — it does **not** create a second pipeline:
+the Absolute rule above still holds, and a GitHub issue never replaces a story,
+a plan or a review.
+
+### Issue tracker
+
+GitHub Issues on `oliviermattei/poc-next`, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical roles, each label string equal to its name (`needs-triage`,
+`needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one root `CONTEXT.md` (created lazily) and ADRs in
+**`docs/decisions/`**, not `docs/adr/`. See `docs/agents/domain.md`.
