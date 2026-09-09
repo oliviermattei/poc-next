@@ -507,6 +507,16 @@ test('le bandeau d’impersonation survit à une navigation complète', async ({
   await page.goto(publicPath('/organizations'))
   await expect(page.getByRole('alert').filter({ hasText: 'Session empruntée' })).toBeVisible()
 
+  // **Et sur une page introuvable**, qui monte la coquille elle-même depuis le
+  // découpage en deux surfaces (s60) : c'est le seul écran dont le châssis
+  // n'est pas monté par une layout de groupe, donc le seul qui pourrait perdre
+  // le bandeau sans que rien d'autre ne bouge.
+  await page.goto(publicPath('/legal/document-inexistant-s60'))
+  await expect(page.getByRole('alert').filter({ hasText: 'Session empruntée' })).toBeVisible()
+
+  await page.goto(publicPath('/s60-adresse-inconnue'))
+  await expect(page.getByRole('alert').filter({ hasText: 'Session empruntée' })).toBeVisible()
+
   // Et la sortie rend la main : le bandeau disparaît, sur la coquille comme sur
   // la page.
   await page.getByRole('button', { name: 'Rendre la main' }).click()

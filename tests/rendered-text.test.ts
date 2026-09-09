@@ -2113,6 +2113,22 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
             unknown as Promise<ReactNode>,
       },
       {
+        /**
+         * s60 — la page introuvable **du produit** : celle que Next rend quand
+         * une page du groupe `(app)` appelle `notFound()`.
+         *
+         * Elle ne monte aucun châssis — la layout du groupe l'a déjà monté —,
+         * donc elle est rendue ici comme un écran ordinaire, dans `AppShell`.
+         * Sa jumelle racine, elle, le monte : c'est la différence que
+         * `pnpm test:socle` a mesurée en rendant deux coquilles imbriquées.
+         */
+        id: 'page introuvable du produit',
+        file: '(app)/not-found.tsx',
+        viewer: ANONYMOUS,
+        refuses: null,
+        render: async () => (await import('../apps/web/app/(app)/not-found')).default(),
+      },
+      {
         // L'écran de dernier recours, qui remplace `app/layout.tsx` : son texte
         // ne vient pas de `appIntl()` mais du catalogue de secours, et c'est
         // exactement ce que le double posé plus haut surveille.

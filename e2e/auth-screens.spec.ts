@@ -76,7 +76,17 @@ const authFamily = (): readonly string[] =>
     .map((entry) => String(entry).split(sep).join('/'))
     .filter((file) => file.endsWith('page.tsx'))
     .filter((file) => readFileSync(join(APP_DIRECTORY, file), 'utf8').includes('authRoutePath('))
-    .map((file) => `/${dirname(file)}`)
+    // **Les groupes de routes ne sont pas des segments** : `(app)` et `(admin)`
+    // portent deux châssis et Next les efface de l'URL. Sans ce retrait, la
+    // famille contiendrait `/(app)/sign-in`, que le navigateur n'atteint pas —
+    // et l'exclusion écrite plus bas ne désignerait plus aucun écran.
+    .map(
+      (file) =>
+        `/${dirname(file)
+          .split('/')
+          .filter((segment) => !/^\(.+\)$/.test(segment))
+          .join('/')}`,
+    )
     .sort()
 
 /**
