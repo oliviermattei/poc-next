@@ -28,6 +28,10 @@
 ```
 apps/
   web/                     Application Next.js — rendu, layouts, montage du répartiteur de modules
+    app/layout.tsx         Le document, les polices, le thème, le catalogue — **aucune coquille** (ADR 070)
+    app/(app)/             Le produit : sa layout monte `AppShell`
+    app/(admin)/           Le back-office : **aucune layout**, le châssis est rendu par l'écran,
+                           donc après la garde qui répond 404 à qui n'administre pas
     app/api/[[...route]]/  Route handler attrape-tout : point de montage unique de l'API
 config/                    Configuration éditée par le propriétaire du projet
   features.ts              Modules activés (typé, validé au démarrage)
@@ -59,6 +63,8 @@ Dockerfile                 Image de production, trois étapes (build, migrations
 docker-compose.prod.yml    Pile de production : base, migrations, application
 .dockerignore              Ce qui n'entre jamais dans le contexte de build, `.env` en tête
 ```
+
+Les parenthèses sont des **groupes de routes** : Next les efface de l'URL. `/admin/users` reste `/admin/users` ; le groupe ne sert qu'à donner deux châssis distincts à deux publics.
 
 Un module non activé n'est pas importé par l'application : son package existe dans le dépôt, mais ni ses routes, ni sa navigation, ni ses migrations n'entrent dans la composition.
 

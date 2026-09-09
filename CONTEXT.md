@@ -43,7 +43,9 @@ _Avoid_: App, dashboard (le mot « dashboard » est pris, voir plus bas)
 
 **Dashboard** :
 L'écran d'accueil du back-office (`/admin`), qui montre les mesures de santé
-commerciale du SaaS.
+commerciale du SaaS. Chacun de ses blocs sait dire pourquoi il n'est pas là :
+**absent** (sa source n'est pas montée dans ce projet) ou **indisponible** (la
+lecture a échoué). Voir [[ADR 071]].
 _Avoid_: Tableau de bord utilisateur, accueil
 
 ## L'argent et les gens qui arrivent

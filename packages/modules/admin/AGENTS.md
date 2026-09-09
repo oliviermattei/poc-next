@@ -294,3 +294,26 @@ comptes —, jamais une lecture directe des tables du socle.
   `packages/modules/auth/src/domain/ban.ts` ;
 - ce qui traverse la base, le répartiteur et le module `auth` :
   `tests/admin.test.ts` à la racine du dépôt.
+
+## Le back-office est une surface, pas des pages (s60, ADR 070)
+
+| Ce qui doit rester vrai | Pourquoi | Ce qui rougit |
+|---|---|---|
+| **Le back-office ne monte pas la coquille du produit** | ce sont deux publics et deux navigations ; le produit charge en plus un bandeau de consentement et des scripts tiers, qui n'ont personne à servir ici | `tests/admin.test.ts` (« n'importe la coquille du produit dans aucun de ses fichiers ») ; mesuré : un `AppShell` dans un fichier de `(admin)` rougit 1 cas — et `e2e/admin.spec.ts` mesure le **rendu**, qu'un test de fichier ne voit pas |
+| **Aucune layout de groupe sous `(admin)`** | une layout de groupe enveloppe aussi les refus de ses routes : le 404 d'un compte qui n'administre pas porterait le châssis du back-office, qui se laisserait deviner par sa page d'erreur | `tests/admin.test.ts` (« ne pose aucune layout de groupe, qui envelopperait aussi les refus ») ; mesuré : poser une layout rougit 1 cas |
+| **Le châssis est rendu par l'écran** | c'est ce qui le place **après** la garde : il n'existe qu'à l'intérieur de ce qu'elle a laissé passer | le cas ci-dessus, et le 404 mesuré par `e2e/admin.spec.ts` |
+| **Un bloc du tableau de bord dit pourquoi il est absent** | `absent` (la source n'est pas montée) et `unavailable` (la lecture a échoué) décident entre « ne rien afficher » et « alerter ». Les confondre affiche « 0 € » sur une base injoignable | `tests/admin.test.ts` (« rend les cinq blocs, chacun avec sa raison d'être ou non ») |
+| **Aucun bloc n'arrête les autres** | un tableau de bord n'a pas de raison de disparaître parce qu'un fournisseur ne répond pas | `tests/admin.test.ts` (« n'arrête pas la lecture au premier bloc en panne ») |
+| **Le SQL des séries est mesuré contre PostgreSQL** | `generate_series` et `date_trunc` sont du SQL brut : une faute de frappe passe le typecheck, le lint et tous les cas à doublure, puis rend 500 sur l'écran d'accueil | `tests/admin.test.ts`, `tests/marketing.test.ts`, `tests/billing.test.ts`, `tests/organizations.test.ts` — un cas chacun, contre la vraie base |
+
+**Ce que le tableau de bord n'affiche pas, et pourquoi** — à ne pas « corriger »
+sans changer d'abord la donnée :
+
+- **pas d'utilisateurs actifs du jour.** `auth_session.updated_at` n'est pas une
+  trace d'activité (Better Auth ne la touche qu'au rafraîchissement) et rien
+  n'enregistre la dernière requête d'un compte. L'écran compte des
+  **connexions**, et le dit.
+- **pas de courbe d'abonnements créés.** `billing_subscription` ne porte aucune
+  date de création : les abonnements sont listés par leur **dernier événement**.
+- **pas de « aujourd'hui ».** Les fenêtres sont glissantes : elles n'ont pas de
+  fuseau horaire.
