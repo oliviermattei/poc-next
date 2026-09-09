@@ -38,7 +38,23 @@ export const marketingRoutePath = (path: keyof typeof PATHS): string =>
  * ne le nomme. Même forme que `ADMIN_ORGANIZATIONS_SCREEN_PATH` (s37b2) et que
  * `ADMIN_REVENUE_SCREEN_PATH` (s38).
  */
-export const ADMIN_SUBSCRIPTIONS_SCREEN_PATH = '/admin/subscriptions'
+export const ADMIN_SIGNUPS_SCREEN_PATH = '/admin/signups'
+
+/**
+ * **L'ancienne adresse de cet écran**, servie par une redirection permanente.
+ *
+ * Elle disait « subscriptions » pour des **inscriptions** — des adresses email
+ * capturées par les formulaires publics, sans compte et sans paiement —, alors
+ * que le dépôt appelle « abonnement » un contrat récurrent payant
+ * (`billing_subscription`). Deux choses sous un même mot, dans le back-office
+ * où l'on regarde justement combien d'argent entre : c'est le genre de
+ * collision qui se paie en décision fausse, pas en gêne.
+ *
+ * La redirection existe parce qu'une adresse d'écran se met en signet. Elle
+ * peut disparaître le jour où plus personne ne la suit — ce que seule une
+ * mesure, jamais une intuition, pourra dire.
+ */
+export const ADMIN_SUBSCRIPTIONS_LEGACY_SCREEN_PATH = '/admin/subscriptions'
 
 /**
  * Le corps d'une requête, qu'elle vienne d'un `fetch` ou d'un `<form>`.

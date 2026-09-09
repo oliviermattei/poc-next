@@ -48,7 +48,7 @@ import {
   billingModule,
 } from '@repo/module-billing'
 import { demoEnabledModule } from '@repo/module-demo-enabled'
-import { ADMIN_SUBSCRIPTIONS_SCREEN_PATH, marketingModule } from '@repo/module-marketing'
+import { ADMIN_SIGNUPS_SCREEN_PATH, marketingModule } from '@repo/module-marketing'
 import { ORGANIZATION_ROLES, organizationsModule } from '@repo/module-organizations'
 import { BAN_REASON_MAX_LENGTH } from '@repo/module-auth'
 import { AdminRevenueScreen, AdminSubscriptionsScreen } from '@repo/module-admin/presentation'
@@ -3751,7 +3751,7 @@ describe('l’écran des inscriptions publiques', () => {
           backHref: '/',
           backLabel: 'Retour',
         },
-        screenPath: ADMIN_SUBSCRIPTIONS_SCREEN_PATH,
+        screenPath: ADMIN_SIGNUPS_SCREEN_PATH,
         exportAction: EXPORT_ACTION,
         intl: {
           t: (key: string, values?: Readonly<Record<string, string>>) =>

@@ -1666,7 +1666,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
          * n'existe pas ; le module `admin` coupé, la lecture refuse.
          */
         id: 'back-office — inscriptions',
-        file: '(admin)/admin/subscriptions/page.tsx',
+        file: '(admin)/admin/signups/page.tsx',
         ownChrome: true,
         viewer: SIGNED_IN,
         refuses: marketingMounted && adminMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
@@ -1693,7 +1693,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           ),
         ],
         render: async () =>
-          (await import('../apps/web/app/(admin)/admin/subscriptions/page')).default({
+          (await import('../apps/web/app/(admin)/admin/signups/page')).default({
             searchParams: noParams,
           }),
       },
@@ -1999,6 +1999,26 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         viewer: ANONYMOUS,
       refuses: null,
         render: async () => (await import('../apps/web/app/not-found')).default(),
+      },
+      {
+        /**
+         * **L'ancienne adresse des inscriptions**, qui ne rend rien : elle
+         * redirige. Elle entre ici parce que la garde de couverture exige un
+         * cas par fichier de page — un écran ajouté sans être rendu sortirait
+         * du filet —, et son refus attendu *est* la redirection : `redirect()`
+         * lève, comme `notFound()` plus haut.
+         */
+        id: 'back-office — inscriptions, ancienne adresse',
+        file: '(admin)/admin/subscriptions/page.tsx',
+        ownChrome: true,
+        viewer: SIGNED_IN,
+        refuses: 'NEXT_REDIRECT',
+        render: async () =>
+          // La redirection ne rend rien : elle lève. Le type de rendu attend
+          // un nœud, la promesse en rend un vide — d'où la conversion, qui
+          // n'est jamais atteinte puisque `refuses` dit qu'elle lève.
+          (await import('../apps/web/app/(admin)/admin/subscriptions/page')).default() as
+            unknown as Promise<ReactNode>,
       },
       {
         // L'écran de dernier recours, qui remplace `app/layout.tsx` : son texte

@@ -289,7 +289,7 @@ test('le back-office sert les revenus au compte désigné, en disant ce qu’ils
  * d'entrées de `pnpm test:minimal-profile` porte sur la surface principale, où
  * une entrée `surface: 'admin'` n'apparaît de toute façon jamais.
  */
-const SUBSCRIPTIONS_SCREEN = '/admin/subscriptions'
+const SIGNUPS_SCREEN = '/admin/signups'
 
 /** Une adresse hostile : un tableur l'exécuterait à l'ouverture du fichier. */
 const HOSTILE_EMAIL = '=HYPERLINK("http://pirate.test")@example.test'
@@ -337,6 +337,15 @@ test('le back-office liste les inscriptions et en sert un CSV assaini', async ({
   await expect(page.getByRole('heading', { name: 'Inscriptions', level: 1 })).toBeVisible()
   await expect(page.getByRole('table')).toContainText('ada.s37c@example.test')
 
+  // **L'ancienne adresse mène ici** (s60). Elle disait « subscriptions » pour
+  // des inscriptions, quand ce dépôt réserve « abonnement » à un contrat
+  // payant ; le mot est corrigé, et le signet de qui l'avait pris continue de
+  // fonctionner.
+  await page.goto(publicPath('/admin/subscriptions'))
+
+  await expect(page).toHaveURL(new RegExp(`${SIGNUPS_SCREEN}$`))
+  await expect(page.getByRole('heading', { name: 'Inscriptions', level: 1 })).toBeVisible()
+
   // **Le filtre est dérivé des sources réellement présentes** : celle qui vient
   // d'être écrite est offerte sans qu'aucun fichier ne la nomme.
   const otherSource = page.getByRole('link', { name: 's37c-autre-source', exact: true })
@@ -374,7 +383,7 @@ test('le back-office liste les inscriptions et en sert un CSV assaini', async ({
 
   await aSignedInAccount(stranger, 's37c-intrus')
 
-  const refusedScreen = await stranger.goto(publicPath(SUBSCRIPTIONS_SCREEN))
+  const refusedScreen = await stranger.goto(publicPath(SIGNUPS_SCREEN))
 
   expect(refusedScreen?.status()).toBe(404)
   expect(refusedScreen?.status()).not.toBe(403)
@@ -421,7 +430,7 @@ test('l’écran des inscriptions disparaît avec le module qui les porte', asyn
     'Le module du site public est activé dans cette configuration : c’est le cas ci-dessus.',
   )
 
-  const refused = await page.goto(publicPath(SUBSCRIPTIONS_SCREEN))
+  const refused = await page.goto(publicPath(SIGNUPS_SCREEN))
 
   expect(refused?.status()).toBe(404)
   // 404, et pas une redirection vers la connexion : l'écran n'existe pas, il

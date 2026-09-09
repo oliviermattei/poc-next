@@ -50,8 +50,16 @@ _Avoid_: Tableau de bord utilisateur, accueil
 
 **Inscription** :
 Une adresse email capturée sur le site public — newsletter, liste d'attente.
-Aucun compte, aucun paiement.
+Aucun compte, aucun paiement. Servie sous `/admin/signups` ; `/admin/subscriptions`
+est l'ancienne adresse, qui redirige.
 _Avoid_: Subscription, abonné, lead
+
+> Résidu connu, à ne pas prendre pour la langue du domaine : dans le code du
+> module `admin`, les types et le port qui portent les inscriptions s'appellent
+> encore `AdminSubscription*` / `listSubscriptions`. L'adresse et l'entrée de
+> navigation ont été corrigées ; ces noms-là attendent la story qui touchera
+> leur couche, parce qu'ils voisinent avec les abonnements payants du revenu et
+> qu'un renommage à l'aveugle y confondrait les deux.
 
 **Abonnement** :
 Un contrat récurrent payant entre une organisation et le SaaS.

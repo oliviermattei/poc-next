@@ -9,7 +9,7 @@ import { requireMarketingService } from './infrastructure/marketing-runtime'
 import enMessages from './messages/en.json' with { type: 'json' }
 import frMessages from './messages/fr.json' with { type: 'json' }
 import {
-  ADMIN_SUBSCRIPTIONS_SCREEN_PATH,
+  ADMIN_SIGNUPS_SCREEN_PATH,
   createPublicFormRoutes,
 } from './presentation/public-form-routes'
 import { marketingSchema } from './schema'
@@ -50,9 +50,9 @@ const marketingNavigation: readonly NavigationEntry[] = [
      * produit. Un lien visible de tout compte connecté divulguerait l'existence
      * du back-office (`docs/security.md` §7).
      */
-    id: 'admin-subscriptions',
-    href: ADMIN_SUBSCRIPTIONS_SCREEN_PATH,
-    labelKey: 'navigation.adminSubscriptions',
+    id: 'admin-signups',
+    href: ADMIN_SIGNUPS_SCREEN_PATH,
+    labelKey: 'navigation.adminSignups',
     order: 30,
     protection: { level: 'authenticated' },
     surface: 'admin',
