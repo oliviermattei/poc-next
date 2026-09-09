@@ -82,7 +82,9 @@ export function BarChart({
           aria-label={description}
           viewBox={`0 0 ${width} ${HEIGHT}`}
           preserveAspectRatio="none"
-          className="h-32 w-full"
+          // La ligne de base est **dessinée** : sans elle, des barres flottent
+          // dans du vide et l'œil n'a rien pour juger d'où elles partent.
+          className="h-32 w-full border-b border-border"
         >
           {points.map((point, index) => {
             // La barre part **toujours** de la ligne de base : une hauteur

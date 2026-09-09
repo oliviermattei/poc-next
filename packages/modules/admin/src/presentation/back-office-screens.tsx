@@ -1537,16 +1537,25 @@ function MetricCard({
   title,
   value,
   hint,
+  sentence = false,
 }: {
   readonly title: string
   readonly value: string
   readonly hint?: string
+  /**
+   * La valeur est une **phrase**, pas un nombre — « aucun abonnement en cours ».
+   * Elle garde la taille du texte : un gros chiffre est une quantité, et
+   * composer une phrase dans le corps d'un chiffre la fait lire comme telle.
+   */
+  readonly sentence?: boolean
 }) {
   return (
     <Card className="min-w-0">
       <CardHeader>
         <CardDescription>{title}</CardDescription>
-        <CardTitle className="text-2xl tabular-nums">{value}</CardTitle>
+        <CardTitle className={sentence ? 'text-base font-normal' : 'text-2xl tabular-nums'}>
+          {value}
+        </CardTitle>
       </CardHeader>
       {hint === undefined ? null : (
         <CardContent>
@@ -1678,6 +1687,7 @@ export function AdminDashboardScreen({ view, intl, chrome }: AdminDashboardScree
                     .map((line) => intl.money(line.amount, line.currency))
                     .join(' · ')
             }
+            sentence={view.revenue.value.recurring.length === 0}
             {...(view.revenue.value.recurringUnvalued === 0
               ? {}
               : {
