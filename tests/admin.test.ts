@@ -15,6 +15,7 @@ import {
   runModuleMigrations,
   type DatabaseConnection,
 } from '@repo/db'
+import { createDrizzleAuthMetrics } from '@repo/module-auth'
 import { createRecordingMailer } from '@repo/mailer-testing'
 import {
   ADMIN_USERS_SCREEN_PATH,
@@ -23,9 +24,13 @@ import {
   adminRoutePath,
   BACK_OFFICE_PAGE_SIZE,
   configureAdmin,
+  dashboardWindow,
+  DASHBOARD_RECENT_HOURS,
+  DASHBOARD_SERIES_DAYS,
   resetAdminService,
   SUPERADMIN_ROLE,
   type AdminAccountsPort,
+  type AdminMetricsPort,
   type AdminOrganizationsPort,
   type AdminRevenue,
   type AdminRevenuePort,
@@ -441,6 +446,19 @@ const subscriptions: AdminSubscriptionsPort = {
       : { ok: false },
 }
 
+/**
+ * **Le tableau de bord n'est pas ce que ces cas traversent** (s60) : ses cinq
+ * blocs sont déclarés absents, ce qui est la réponse d'un projet où aucune de
+ * leurs sources n'est montée. Les cas qui le mesurent posent leur propre port.
+ */
+const absentMetrics: AdminMetricsPort = {
+  readAccounts: () => Promise.resolve({ ok: false, error: 'absent' }),
+  readOrganizations: () => Promise.resolve({ ok: false, error: 'absent' }),
+  readSignups: () => Promise.resolve({ ok: false, error: 'absent' }),
+  readSales: () => Promise.resolve({ ok: false, error: 'absent' }),
+  readRevenue: () => Promise.resolve({ ok: false, error: 'absent' }),
+}
+
 /** Reconfigure le module avec l'adresse désignée du moment. */
 const configure = (email: string | null): void => {
   service = configureAdmin({
@@ -449,6 +467,7 @@ const configure = (email: string | null): void => {
     organizations,
     revenue,
     subscriptions,
+    metrics: absentMetrics,
     designatedEmail: email,
     securityLog: (event) => securityEvents.push(event),
   })
@@ -1296,6 +1315,7 @@ describe.runIf(databaseReachable)('les listes du back-office', () => {
       organizations,
       revenue,
       subscriptions,
+      metrics: absentMetrics,
       designatedEmail: email,
       securityLog: (event) => securityEvents.push(event),
     })
@@ -3534,6 +3554,7 @@ describe('l’écran de revenus', () => {
                   .join(',')})`,
           path: (pathname: string) => pathname,
           date: () => '1 janvier 2026',
+          number: (value: number) => String(value),
           money: (amount: number, currency: string) => `${amount}:${currency}`,
         },
       }),
@@ -3762,6 +3783,7 @@ describe('l’écran des inscriptions publiques', () => {
                   .join(',')})`,
           path: (pathname: string) => pathname,
           date: () => '3 février 2026',
+          number: (value: number) => String(value),
           money: (amount: number, currency: string) => `${amount}:${currency}`,
         },
       }),
@@ -3964,5 +3986,187 @@ describe('le back-office ne monte pas la coquille du produit', () => {
     const layouts = adminSources().filter((file) => /\/layout\.tsx$/.test(file))
 
     expect(layouts.map((file) => relative(REPO_ROOT, file))).toEqual([])
+  })
+})
+
+/* ------------------------------------------------------------------------- *
+ * Le tableau de bord (s60).
+ * ------------------------------------------------------------------------- */
+
+describe.runIf(databaseReachable)('le tableau de bord du back-office', () => {
+  const request = (): Request => new Request(APP_URL)
+
+  /** Un superadmin réel, comme dans les autres suites de ce fichier. */
+  const aSuperadmin = async (): Promise<{ userId: string }> => {
+    const { session, email } = await anAccount()
+
+    configure(email)
+    expect(
+      (await call('grantSuperadmin', { session, body: { userId: session.userId } })).status,
+    ).toBe(200)
+
+    return { userId: session.userId }
+  }
+
+  /** Un port de mesures qui rend ce qu'on lui dit, bloc par bloc. */
+  const metricsPortOf = (blocks: Partial<Record<keyof AdminMetricsPort, unknown>>): AdminMetricsPort =>
+    ({
+      readAccounts: () =>
+        Promise.resolve(
+          blocks.readAccounts ?? {
+            ok: true,
+            value: { total: 3, createdRecently: 1, createdPerDay: [], signIns: 2 },
+          },
+        ),
+      readOrganizations: () =>
+        Promise.resolve(blocks.readOrganizations ?? { ok: false, error: 'absent' }),
+      readSignups: () => Promise.resolve(blocks.readSignups ?? { ok: false, error: 'absent' }),
+      readSales: () => Promise.resolve(blocks.readSales ?? { ok: false, error: 'absent' }),
+      readRevenue: () => Promise.resolve(blocks.readRevenue ?? { ok: false, error: 'absent' }),
+    }) as unknown as AdminMetricsPort
+
+  const serviceWith = (metrics: AdminMetricsPort): AdminService =>
+    configureAdmin({
+      db: connection.db,
+      accounts,
+      organizations,
+      revenue,
+      subscriptions,
+      metrics,
+      designatedEmail: null,
+      securityLog: (event) => securityEvents.push(event),
+    })
+
+  it('refuse en 404 à un compte qui n’administre pas, comme les autres écrans', async () => {
+    const intruder = await anAccount()
+    const guarded = serviceWith(metricsPortOf({}))
+
+    const refused = await guarded.useCases.viewDashboard({
+      request: request(),
+      viewerId: intruder.session.userId,
+    })
+
+    expect(refused).toEqual({ ok: false, error: 'not_found' })
+  })
+
+  it('rend les cinq blocs, chacun avec sa raison d’être ou non', async () => {
+    const superadmin = await aSuperadmin()
+    const dashboard = await serviceWith(
+      metricsPortOf({
+        readOrganizations: { ok: true, value: { total: 4, createdRecently: 1 } },
+        readSignups: { ok: false, error: 'unavailable' },
+      }),
+    ).useCases.viewDashboard({ request: request(), viewerId: superadmin.userId })
+
+    expect(dashboard.ok).toBe(true)
+
+    if (!dashboard.ok) {
+      return
+    }
+
+    // Le bloc lu, le bloc **absent** — sa source n'est pas montée — et le bloc
+    // **en panne** ne se confondent jamais : l'écran n'affiche rien du second et
+    // une alerte du troisième, là où un `null` unique aurait fait afficher zéro.
+    expect(dashboard.view.organizations).toEqual({
+      ok: true,
+      value: { total: 4, createdRecently: 1 },
+    })
+    expect(dashboard.view.signups).toEqual({ ok: false, error: 'unavailable' })
+    expect(dashboard.view.sales).toEqual({ ok: false, error: 'absent' })
+  })
+
+  it('n’arrête pas la lecture au premier bloc en panne', async () => {
+    const superadmin = await aSuperadmin()
+    const dashboard = await serviceWith(
+      metricsPortOf({
+        readAccounts: { ok: false, error: 'unavailable' },
+        readOrganizations: { ok: true, value: { total: 7, createdRecently: 0 } },
+      }),
+    ).useCases.viewDashboard({ request: request(), viewerId: superadmin.userId })
+
+    // Un tableau de bord n'a pas de raison de disparaître parce qu'une de ses
+    // cinq lectures a échoué. Sans le `Promise.all`, la première en échec
+    // priverait des quatre autres.
+    expect(dashboard.ok && dashboard.view.accounts).toEqual({ ok: false, error: 'unavailable' })
+    expect(dashboard.ok && dashboard.view.organizations).toEqual({
+      ok: true,
+      value: { total: 7, createdRecently: 0 },
+    })
+  })
+
+  it('dérive ses deux fenêtres de l’horloge, glissantes et sans fuseau', async () => {
+    const superadmin = await aSuperadmin()
+    const seen: { since: Date; from: Date }[] = []
+    const spying: AdminMetricsPort = {
+      readAccounts: (window) => {
+        seen.push({ since: window.since, from: window.from })
+
+        return Promise.resolve({ ok: false, error: 'unavailable' })
+      },
+      readOrganizations: () => Promise.resolve({ ok: false, error: 'absent' }),
+      readSignups: () => Promise.resolve({ ok: false, error: 'absent' }),
+      readSales: () => Promise.resolve({ ok: false, error: 'absent' }),
+      readRevenue: () => Promise.resolve({ ok: false, error: 'absent' }),
+    }
+
+    const before = Date.now()
+
+    await serviceWith(spying).useCases.viewDashboard({
+      request: request(),
+      viewerId: superadmin.userId,
+    })
+
+    const window = seen[0]
+
+    expect(window).toBeDefined()
+
+    if (window === undefined) {
+      return
+    }
+
+    // Glissantes : elles se terminent à l'instant de la lecture, donc elles
+    // n'ont pas de minuit — et pas de fuseau qui déciderait duquel il s'agit.
+    expect(before - window.since.getTime()).toBeCloseTo(DASHBOARD_RECENT_HOURS * 3_600_000, -3)
+    expect(before - window.from.getTime()).toBeCloseTo(
+      DASHBOARD_SERIES_DAYS * 24 * 3_600_000,
+      -3,
+    )
+  })
+})
+
+/**
+ * **Les mesures des comptes, contre la vraie base** (s60).
+ *
+ * Le port et l'écran se mesurent avec des doublures ; la **requête**, elle, ne
+ * se mesure que contre PostgreSQL. `generate_series` et `date_trunc` sont du
+ * SQL brut : une faute de frappe y passe le typecheck, le lint et tous les cas
+ * à doublure, puis rend 500 sur l'écran d'accueil du back-office.
+ */
+describe.runIf(databaseReachable)('les mesures de comptes lues sur la base', () => {
+  it('compte les comptes, leurs connexions, et rend un point par jour de la fenêtre', async () => {
+    const { session } = await anAccount()
+    const now = new Date()
+    const window = dashboardWindow(now)
+    const metrics = await createDrizzleAuthMetrics(connection.db).read(window)
+
+    expect(metrics.accountsTotal).toBeGreaterThan(0)
+    expect(metrics.accountsSince).toBeGreaterThan(0)
+    // L'inscription qui précède a ouvert une session : elle est dans la fenêtre.
+    expect(metrics.signInsSince).toBeGreaterThan(0)
+    expect(session.userId).toBeTruthy()
+
+    // **Un point par jour, jours vides compris.** Sans `generate_series`, une
+    // fenêtre de trente jours dont trois portent une inscription rendrait trois
+    // barres collées — une courbe fausse, pas une courbe creuse.
+    expect(metrics.accountsPerDay).toHaveLength(DASHBOARD_SERIES_DAYS + 1)
+    expect(metrics.accountsPerDay.every((point) => /^\d{4}-\d{2}-\d{2}$/.test(point.day))).toBe(
+      true,
+    )
+    expect(metrics.accountsPerDay.at(-1)?.value).toBeGreaterThan(0)
+
+    // La série est ordonnée, et sa dernière valeur est aujourd'hui.
+    expect([...metrics.accountsPerDay].map((point) => point.day).sort()).toEqual(
+      metrics.accountsPerDay.map((point) => point.day),
+    )
   })
 })

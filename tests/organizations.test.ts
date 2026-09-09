@@ -27,6 +27,7 @@ import {
   INVITATION_QUOTA_WINDOW_SECONDS,
   ORGANIZATION_ACTIONS,
   ORGANIZATIONS_KEYS,
+  countOrganizations,
   organizationMember,
   organizationsMessageKeys,
   assignableRolesFor,
@@ -520,6 +521,41 @@ describe.runIf(databaseReachable)('la création d’une organisation', () => {
 
     expect(refused.headers.get('location')).toBe(`${APP_URL}/organizations?error=invalid_name`)
     expect(await countRows('organization', 'slug', slug)).toBe(0)
+  })
+})
+
+/**
+ * **Le décompte de plateforme, contre la vraie base** (s60).
+ *
+ * Il vit dans la porte de lecture du module — `pnpm lint` refuse `select` et
+ * `from` partout ailleurs —, et c'est la seule lecture de ce fichier qui n'ait
+ * pas de propriétaire : elle sert celui qui exploite le SaaS, pas un membre.
+ * Elle ne rend **aucune ligne**, donc rien d'un locataire ne peut fuir par elle.
+ */
+describe.runIf(databaseReachable)('le décompte des organisations de la plateforme', () => {
+  it('compte le total et les créations de la fenêtre', async () => {
+    const founder = await anAccount()
+
+    await call('create', { session: founder, body: { name: 'Studio Mesure', slug: aSlug() } })
+
+    const now = Date.now()
+    const counted = await countOrganizations(
+      { since: new Date(now - 24 * 60 * 60 * 1000) },
+      connection.db,
+    )
+
+    expect(counted.total).toBeGreaterThan(0)
+    expect(counted.createdSince).toBeGreaterThan(0)
+
+    // Une fenêtre qui commence dans le futur ne compte rien : le prédicat porte
+    // bien sur la date de création, et non sur le total déguisé.
+    const ahead = await countOrganizations(
+      { since: new Date(now + 60 * 60 * 1000) },
+      connection.db,
+    )
+
+    expect(ahead.createdSince).toBe(0)
+    expect(ahead.total).toBe(counted.total)
   })
 })
 

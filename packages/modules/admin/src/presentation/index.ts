@@ -11,6 +11,7 @@
  * Seule l'application importe ce point d'entrée.
  */
 export {
+  AdminDashboardScreen,
   AdminOrganizationScreen,
   AdminOrganizationsScreen,
   AdminRevenueScreen,
@@ -19,6 +20,7 @@ export {
   AdminUsersScreen,
   BackOfficeError,
   ImpersonationBanner,
+  type AdminDashboardScreenProps,
   type AdminOrganizationScreenProps,
   type AdminOrganizationsScreenProps,
   type AdminRevenueScreenProps,

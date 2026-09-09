@@ -51,4 +51,14 @@ export interface AdminIntl {
    * sans jamais les additionner.
    */
   readonly money: (amount: number, currency: string) => string
+  /**
+   * Formate un **compte** dans la langue servie (s60).
+   *
+   * Fournie par l'application, comme `date` et `money`, et pour la même raison :
+   * `Intl.NumberFormat` sans locale explicite suit l'environnement du serveur.
+   * Un tableau de bord affiche surtout des nombres ; les rendre avec le
+   * séparateur de milliers d'une autre langue est la façon la plus discrète de
+   * faire lire 1 000 pour 1.
+   */
+  readonly number: (value: number) => string
 }

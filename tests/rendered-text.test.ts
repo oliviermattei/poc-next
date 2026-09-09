@@ -106,6 +106,7 @@ vi.mock('../apps/web/lib/admin', async (importOriginal) => {
   const {
     FIXTURE_ADMIN_ACCOUNT,
     FIXTURE_ADMIN_ACCOUNTS,
+    FIXTURE_ADMIN_DASHBOARD,
     FIXTURE_ADMIN_ORGANIZATION_DETAIL,
     FIXTURE_ADMIN_ORGANIZATIONS,
     FIXTURE_ADMIN_REVENUE,
@@ -131,6 +132,7 @@ vi.mock('../apps/web/lib/admin', async (importOriginal) => {
             organization: () =>
               Promise.resolve({ ok: true, view: FIXTURE_ADMIN_ORGANIZATION_DETAIL }),
             revenue: () => Promise.resolve({ ok: true, view: FIXTURE_ADMIN_REVENUE }),
+            dashboard: () => Promise.resolve({ ok: true, view: FIXTURE_ADMIN_DASHBOARD }),
             subscriptions: () =>
               Promise.resolve({ ok: true, view: FIXTURE_ADMIN_SUBSCRIPTIONS }),
           }
@@ -703,6 +705,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       ANONYMOUS,
       FIXTURE_ADMIN_ACCOUNT,
       FIXTURE_ADMIN_ACCOUNTS,
+      FIXTURE_ADMIN_DASHBOARD,
       FIXTURE_ADMIN_ORGANIZATION_DETAIL,
       FIXTURE_ADMIN_ORGANIZATIONS,
       FIXTURE_ADMIN_REVENUE,
@@ -1509,6 +1512,95 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           (await import('../apps/web/app/(app)/notifications/page')).default({
             searchParams: noParams,
           }),
+      },
+      {
+        /**
+         * s60 — le tableau de bord, écran d'accueil du back-office.
+         *
+         * Le refus attendu est **dérivé** de l'état du module, comme les cinq
+         * autres écrans d'administration.
+         *
+         * Les **données** de cet écran sont presque toutes des nombres, et
+         * c'est ce qui le rend intéressant pour ce filet : un nombre affiché
+         * sans libellé traduit passerait ailleurs pour de la décoration.
+         */
+        id: 'back-office — tableau de bord',
+        file: '(admin)/admin/page.tsx',
+        ownChrome: true,
+        viewer: SIGNED_IN,
+        refuses: adminMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        screenData: [
+          // Les compteurs et les séries, dérivés de la fixture : une valeur de
+          // plus entre ici sans que personne y pense.
+          ...[
+            FIXTURE_ADMIN_DASHBOARD.accounts.value.total,
+            FIXTURE_ADMIN_DASHBOARD.accounts.value.createdRecently,
+            FIXTURE_ADMIN_DASHBOARD.accounts.value.signIns,
+            FIXTURE_ADMIN_DASHBOARD.organizations.value.total,
+            FIXTURE_ADMIN_DASHBOARD.organizations.value.createdRecently,
+            FIXTURE_ADMIN_DASHBOARD.signups.value.recently,
+            FIXTURE_ADMIN_DASHBOARD.sales.value.purchasesRecently,
+            FIXTURE_ADMIN_DASHBOARD.revenue.value.recurringUnvalued,
+            ...FIXTURE_ADMIN_DASHBOARD.accounts.value.createdPerDay.map((point) => point.value),
+            ...FIXTURE_ADMIN_DASHBOARD.signups.value.perDay.map((point) => point.value),
+            ...FIXTURE_ADMIN_DASHBOARD.sales.value.perDay.map((point) => point.value),
+            ...FIXTURE_ADMIN_DASHBOARD.sales.value.recentSubscriptions.map(
+              (subscription) => subscription.quantity,
+            ),
+          ].map(String),
+          // Les jours des séries et les dates des mouvements, dans le style
+          // **moyen** du back-office.
+          ...[
+            ...FIXTURE_ADMIN_DASHBOARD.accounts.value.createdPerDay,
+            ...FIXTURE_ADMIN_DASHBOARD.signups.value.perDay,
+            ...FIXTURE_ADMIN_DASHBOARD.sales.value.perDay,
+          ].map((point) =>
+            new Intl.DateTimeFormat(defaultLocale, { dateStyle: 'medium' }).format(
+              new Date(`${point.day}T00:00:00Z`),
+            ),
+          ),
+          ...[
+            ...FIXTURE_ADMIN_DASHBOARD.sales.value.recentPurchases.map((purchase) => purchase.at),
+            ...FIXTURE_ADMIN_DASHBOARD.sales.value.recentSubscriptions.map(
+              (subscription) => subscription.at,
+            ),
+          ].map((at) =>
+            new Intl.DateTimeFormat(defaultLocale, { dateStyle: 'medium' }).format(at),
+          ),
+          // Les identifiants d'offre et l'état d'un abonnement : le vocabulaire
+          // de la facturation, que ce module affiche tel qu'elle le nomme.
+          ...FIXTURE_ADMIN_DASHBOARD.sales.value.recentPurchases.map(
+            (purchase) => purchase.offerId,
+          ),
+          ...FIXTURE_ADMIN_DASHBOARD.sales.value.recentSubscriptions.flatMap((subscription) => [
+            subscription.offerId,
+            subscription.status,
+          ]),
+          // Les montants du revenu récurrent, joints par le séparateur de
+          // l'écran, et le montant d'un achat.
+          // Le revenu récurrent est rendu **en un seul nœud** : une devise par
+          // ligne, jointes par le séparateur de l'écran. Les additionner serait
+          // faux, les afficher séparément demanderait une carte par devise.
+          FIXTURE_ADMIN_DASHBOARD.revenue.value.recurring
+            .map((line) =>
+              new Intl.NumberFormat(defaultLocale, {
+                style: 'currency',
+                currency: line.currency.toUpperCase(),
+              }).format(line.amount / 100),
+            )
+            .join(' · '),
+          ...FIXTURE_ADMIN_DASHBOARD.sales.value.recentPurchases.flatMap((purchase) =>
+            purchase.amount === null || purchase.currency === null
+              ? []
+              : [
+                  new Intl.NumberFormat(defaultLocale, {
+                    style: 'currency',
+                    currency: purchase.currency.toUpperCase(),
+                  }).format(purchase.amount / 100),
+                ],
+          ),
+        ],
+        render: async () => (await import('../apps/web/app/(admin)/admin/page')).default(),
       },
       {
         /**

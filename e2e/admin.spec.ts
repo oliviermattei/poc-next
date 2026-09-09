@@ -174,6 +174,19 @@ test('le back-office sert la liste des comptes au compte désigné, et 404 aux a
    * ici ne coûte rien.
    * ----------------------------------------------------------------------- */
 
+  // **Le tableau de bord** (s60) : l'écran d'accueil du back-office, servi sur
+  // `/admin` — une adresse qui répondait 404 avant cette story.
+  await page.goto(publicPath('/admin'))
+
+  await expect(page.getByRole('heading', { name: 'Tableau de bord', level: 1 })).toBeVisible()
+  // Les blocs du socle sont toujours là : les comptes existent dans toutes les
+  // configurations. Le compte désigné vient de s'inscrire et de se connecter.
+  await expect(page.getByText('Comptes', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText(/Connexions/).first()).toBeVisible()
+  // Le graphe est du SVG servi, et ses valeurs sont lisibles sans script.
+  await expect(page.locator('[data-slot="bar-chart"] svg').first()).toBeVisible()
+  await expect(page.getByText('Voir les valeurs').first()).toBeVisible()
+
   await page.goto(publicPath('/admin/users'))
 
   // Sa navigation à lui, dérivée de la surface « admin » du registre.

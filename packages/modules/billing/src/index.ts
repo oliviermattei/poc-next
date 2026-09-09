@@ -184,3 +184,12 @@ export {
   utcDayOf,
   TRIAL_REMINDER_LEAD_DAYS,
 } from './domain/trial-reminder'
+export {
+  createDrizzleBillingMetrics,
+  type BillingMetrics,
+  type BillingMetricsDatabase,
+  type BillingMetricsPoint,
+  type BillingMetricsReader,
+  type BillingRecentPurchase,
+  type BillingRecentSubscription,
+} from './infrastructure/drizzle-billing-metrics'

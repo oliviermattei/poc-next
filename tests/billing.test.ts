@@ -52,6 +52,7 @@ import {
   offerDescriptionKey,
   offerNameKey,
   parseBillingCatalogue,
+  createDrizzleBillingMetrics,
   purchaseReadOrder,
   requireBillingService,
   resetBillingService,
@@ -6751,5 +6752,81 @@ describe.runIf(databaseReachable)('le revenu de la plateforme', () => {
     expect(
       (await revenueOf('trimestre')).periods.filter((period) => period.current).map((p) => p.id),
     ).toEqual(all.periods.filter((period) => period.current).map((period) => period.id))
+  })
+})
+
+/**
+ * **Les mesures du tableau de bord, contre la vraie base** (s60).
+ *
+ * Deux choses que seul PostgreSQL peut dire : que le SQL brut de la série —
+ * `generate_series`, `date_trunc`, la jointure sur les achats encaissés —
+ * s'exécute, et que ce qu'il compte est bien ce qui a été **encaissé**.
+ *
+ * Et une chose que ce dépôt ne sait pas faire, mesurée ici plutôt
+ * qu'affirmée : `billing_subscription` ne porte **aucune date de création**,
+ * si bien qu'un abonnement ne peut être daté que par le dernier événement du
+ * fournisseur. L'écran l'écrit ainsi ; ce cas le tient.
+ */
+describe.runIf(databaseReachable)('les mesures du tableau de bord', () => {
+  it('compte les achats encaissés par jour, et date les abonnements par leur dernier événement', async () => {
+    const now = new Date()
+    const yesterday = new Date(now.getTime() - 12 * 60 * 60 * 1000)
+
+    await connection.db.execute(sql`
+      insert into billing_customer (id, scope_kind, scope_id, provider_customer_id)
+      values ('bc_s60', 'organization', 'org_s60', 'cus_s60'),
+             ('bc_s60_b', 'organization', 'org_s60_b', 'cus_s60_b')
+    `)
+    await connection.db.execute(sql`
+      insert into billing_purchase (
+        id, billing_customer_id, offer_id, price_id, provider_session_id,
+        provider_payment_id, status, amount, currency, purchased_at
+      ) values
+        ('pur_s60_paid', 'bc_s60', 'lifetime', 'price_lifetime', 'cs_s60_1',
+         'pi_s60_1', 'paid', 49000, 'eur', ${yesterday}),
+        -- Un second client : une contrainte tient un achat par offre et par
+        -- client, et l'achat en attente doit exister pour prouver qu'il n'est
+        -- **pas** compté.
+        ('pur_s60_pending', 'bc_s60_b', 'lifetime', 'price_lifetime', 'cs_s60_2',
+         null, 'pending', null, null, null)
+    `)
+    await connection.db.execute(sql`
+      insert into billing_subscription (
+        provider_subscription_id, billing_customer_id, offer_id, price_id, status,
+        quantity, current_period_end, cancel_at_period_end, trial_end, last_event_at, last_event_id
+      ) values (
+        'sub_s60', 'bc_s60', 'pro-monthly', 'price_pro_monthly', 'active',
+        3, ${new Date(now.getTime() + 86_400_000)}, false, null, ${yesterday}, 'evt_s60'
+      )
+    `)
+
+    const metrics = await createDrizzleBillingMetrics(connection.db).read({
+      since: new Date(now.getTime() - 24 * 60 * 60 * 1000),
+      from: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
+      limit: 5,
+    })
+
+    // **Encaissé**, et rien d'autre : l'achat en attente ne compte pas, et il
+    // n'a ni montant ni date à porter.
+    expect(metrics.purchasesSince).toBe(1)
+    expect(metrics.recentPurchases.map((purchase) => purchase.id)).toEqual(['pur_s60_paid'])
+    expect(metrics.recentPurchases[0]?.amount).toBe(49_000)
+
+    // Un point par jour, jours vides compris, et le montant du jour encaissé.
+    expect(metrics.purchasesPerDay).toHaveLength(31)
+    expect(metrics.purchasesPerDay.at(-1)?.value).toBe(1)
+    expect(metrics.purchasesPerDay.at(-1)?.amount).toBe(49_000)
+
+    // L'abonnement est daté par **l'événement du fournisseur** : c'est la seule
+    // date que la table porte.
+    expect(metrics.recentSubscriptions.map((subscription) => subscription.id)).toEqual([
+      'sub_s60',
+    ])
+    expect(metrics.recentSubscriptions[0]?.lastEventAt.getTime()).toBe(yesterday.getTime())
+    expect(metrics.recentSubscriptions[0]?.quantity).toBe(3)
+
+    await connection.db.execute(
+      sql`delete from billing_customer where id in ('bc_s60', 'bc_s60_b')`,
+    )
   })
 })

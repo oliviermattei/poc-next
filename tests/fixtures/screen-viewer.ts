@@ -651,3 +651,72 @@ export const FIXTURE_ONBOARDING_COURSE = courseOf(
   ],
   { clearedSteps: ['profile'], completedAt: null },
 )
+
+/**
+ * **Le tableau de bord** (s60) — les cinq blocs, tous lus.
+ *
+ * Chacun est `ok` : c'est la configuration qui rend le **plus** de texte, donc
+ * celle qui met le plus de choses sous le filet de `rendered-text`. Les deux
+ * autres états — `absent` et `unavailable` — n'affichent rien de neuf : le
+ * premier n'affiche rien du tout, le second réemploie l'alerte déjà mesurée par
+ * les quatre écrans de liste.
+ *
+ * Les jours des séries sont **dérivés** d'une date fixe : recopier trente
+ * chaînes rendrait la fixture illisible sans rien mesurer de plus.
+ */
+const FIXTURE_DASHBOARD_DAY = new Date('2026-09-01T00:00:00Z')
+
+const fixtureSeries = (values: readonly number[]) =>
+  values.map((value, index) => ({
+    day: new Date(FIXTURE_DASHBOARD_DAY.getTime() + index * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10),
+    value,
+  }))
+
+export const FIXTURE_ADMIN_DASHBOARD = {
+  accounts: {
+    ok: true as const,
+    value: {
+      total: 128,
+      createdRecently: 4,
+      createdPerDay: fixtureSeries([0, 2, 1, 0, 3]),
+      signIns: 17,
+    },
+  },
+  organizations: { ok: true as const, value: { total: 12, createdRecently: 1 } },
+  signups: { ok: true as const, value: { recently: 6, perDay: fixtureSeries([1, 0, 4, 2, 0]) } },
+  sales: {
+    ok: true as const,
+    value: {
+      purchasesRecently: 2,
+      perDay: fixtureSeries([0, 1, 0, 2, 1]).map((point) => ({
+        ...point,
+        amount: point.value * 4900,
+      })),
+      recentPurchases: [
+        {
+          id: 'pur_1',
+          offerId: 'lifetime',
+          amount: 49_000,
+          currency: 'eur',
+          at: new Date('2026-09-05T10:00:00Z'),
+        },
+      ],
+      recentSubscriptions: [
+        {
+          id: 'sub_1',
+          offerId: 'pro',
+          status: 'active',
+          quantity: 3,
+          at: new Date('2026-09-06T10:00:00Z'),
+        },
+      ],
+    },
+  },
+  revenue: { ok: true as const, value: FIXTURE_ADMIN_REVENUE.revenue },
+  window: {
+    since: new Date('2026-09-06T00:00:00Z'),
+    from: new Date('2026-08-11T00:00:00Z'),
+  },
+} as const

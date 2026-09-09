@@ -1,5 +1,10 @@
 import { type Env, getEnv } from '@repo/config'
 import { getDatabase } from '@repo/db'
+import { billingModule } from '@repo/module-billing'
+import { createDrizzleAuthMetrics, type AuthMetricsReader } from '@repo/module-auth'
+import { createDrizzleSignupMetrics, marketingModule } from '@repo/module-marketing'
+import { countOrganizations, organizationsModule } from '@repo/module-organizations'
+import { createDrizzleBillingMetrics } from '@repo/module-billing'
 import {
   adminModule,
   adminRoutePath,
@@ -8,12 +13,20 @@ import {
   provideAdmin,
   requireAdminService,
   type AdminAccountsView,
+  type AdminDashboardView,
   type AdminAccountsPort,
   type AdminAccountView,
   type AdminOrganizationsPort,
   type AdminOrganizationsView,
   type AdminRevenue,
+  type AdminMetricsBlock,
+  type AdminMetricsPort,
+  type AdminMetricsWindow,
+  type AdminOrganizationMetrics,
   type AdminRevenuePort,
+  type AdminSalesMetrics,
+  type AdminSignupMetrics,
+  DASHBOARD_MOVEMENTS,
   type AdminRevenueView,
   type AdminOrganizationView,
   type AdminSubscriptionsPort,
@@ -463,6 +476,137 @@ const organizations: AdminOrganizationsPort = adminOrganizationsPort(
     ).billing.subscriptionOf({ kind: 'organization', organizationId }),
 )
 
+
+/* ------------------------------------------------------------------------- *
+ * Les mesures du tableau de bord (s60) — le cinquième port.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * **C'est ici, et nulle part ailleurs, qu'un bloc du tableau de bord est
+ * déclaré absent.**
+ *
+ * Le module d'administration ne sait pas qu'un module s'appelle `billing` ou
+ * `organizations` : il reçoit un bloc `{ ok: false, error: 'absent' }` et
+ * n'affiche rien. Le registre décide, comme il décide déjà de tout le reste —
+ * couper un module retire son bloc sans qu'aucun écran ne change.
+ *
+ * **`absent` et `unavailable` ne se confondent jamais** : le premier est une
+ * configuration, le second une panne. Un tableau de bord qui afficherait « 0 € »
+ * sur une base injoignable mentirait à celui qui décide, et c'est le chiffre
+ * qu'on croit le plus sur parole.
+ */
+const ABSENT_BLOCK = { ok: false, error: 'absent' } as const
+const UNAVAILABLE_BLOCK = { ok: false, error: 'unavailable' } as const
+
+/**
+ * Lit un bloc, ou dit pourquoi il n'y en a pas.
+ *
+ * `mounted` est **une donnée** — l'appartenance au registre —, jamais un `if`
+ * écrit sur un identifiant de module ailleurs que dans ce fichier, dont c'est
+ * précisément le rôle.
+ */
+const block = async <TValue>(
+  mounted: boolean,
+  read: () => Promise<TValue>,
+): Promise<AdminMetricsBlock<TValue>> => {
+  if (!mounted) {
+    return ABSENT_BLOCK
+  }
+
+  const value = await readOr(read)
+
+  return value.ok ? { ok: true, value: value.value } : UNAVAILABLE_BLOCK
+}
+
+export const adminMetricsPort = (sources: {
+  readonly accounts: () => Promise<AuthMetricsReader>
+  readonly organizations: { readonly mounted: boolean; readonly read: (since: Date) => Promise<AdminOrganizationMetrics> }
+  readonly signups: { readonly mounted: boolean; readonly read: (window: AdminMetricsWindow) => Promise<AdminSignupMetrics> }
+  readonly sales: { readonly mounted: boolean; readonly read: (window: AdminMetricsWindow) => Promise<AdminSalesMetrics> }
+  readonly revenue: { readonly mounted: boolean; readonly read: () => Promise<AdminRevenue> }
+}): AdminMetricsPort => ({
+  readAccounts: async (window) =>
+    await block(true, async () => {
+      const metrics = await (await sources.accounts()).read(window)
+
+      return {
+        total: metrics.accountsTotal,
+        createdRecently: metrics.accountsSince,
+        createdPerDay: metrics.accountsPerDay,
+        signIns: metrics.signInsSince,
+      }
+    }),
+  readOrganizations: async (window) =>
+    await block(
+      sources.organizations.mounted,
+      async () => await sources.organizations.read(window.since),
+    ),
+  readSignups: async (window) =>
+    await block(sources.signups.mounted, async () => await sources.signups.read(window)),
+  readSales: async (window) =>
+    await block(sources.sales.mounted, async () => await sources.sales.read(window)),
+  readRevenue: async () =>
+    await block(sources.revenue.mounted, async () => await sources.revenue.read()),
+})
+
+const metrics: AdminMetricsPort = adminMetricsPort({
+  // Le socle : les comptes existent dans toutes les configurations, et leur
+  // bloc n'est donc jamais absent — seulement lisible ou en panne.
+  accounts: async () => createDrizzleAuthMetrics(getDatabase().db),
+  organizations: {
+    mounted: moduleRegistry.moduleIds.includes(organizationsModule.id),
+    read: async (since) => {
+      const counts = await countOrganizations({ since }, getDatabase().db)
+
+      return { total: counts.total, createdRecently: counts.createdSince }
+    },
+  },
+  signups: {
+    mounted: moduleRegistry.moduleIds.includes(marketingModule.id),
+    read: async (window) => {
+      const read = await createDrizzleSignupMetrics(getDatabase().db).read(window)
+
+      return { recently: read.since, perDay: read.perDay }
+    },
+  },
+  sales: {
+    mounted: moduleRegistry.moduleIds.includes(billingModule.id),
+    read: async (window) => {
+      const read = await createDrizzleBillingMetrics(getDatabase().db).read({
+        ...window,
+        limit: DASHBOARD_MOVEMENTS,
+      })
+
+      return {
+        purchasesRecently: read.purchasesSince,
+        perDay: read.purchasesPerDay,
+        recentPurchases: read.recentPurchases.map((purchase) => ({
+          id: purchase.id,
+          offerId: purchase.offerId,
+          amount: purchase.amount,
+          currency: purchase.currency,
+          at: purchase.purchasedAt,
+        })),
+        recentSubscriptions: read.recentSubscriptions.map((subscription) => ({
+          id: subscription.id,
+          offerId: subscription.offerId,
+          status: subscription.status,
+          quantity: subscription.quantity,
+          at: subscription.lastEventAt,
+        })),
+      }
+    },
+  },
+  revenue: {
+    mounted: moduleRegistry.moduleIds.includes(billingModule.id),
+    // La **même** lecture que l'écran des revenus : le MRR est un instantané,
+    // déjà agrégé par le module qui possède les montants. En recalculer un
+    // second ici en ferait deux, et le premier à diverger serait celui qu'on
+    // regarde tous les jours.
+    read: async () => await (await import('./billing')).billing.revenue(null),
+  },
+})
+
 /**
  * L'adresse du premier superadmin, **normalisée par le schéma d'environnement**.
  *
@@ -485,6 +629,7 @@ const provide = (): void => {
     organizations,
     revenue,
     subscriptions,
+    metrics,
     designatedEmail: designatedEmailOf(getEnv()),
   }))
 }
@@ -552,6 +697,10 @@ export interface AdminFeature {
     readonly viewerId: string
     readonly parameters: unknown
   }) => Promise<BackOfficeView<AdminSubscriptionsView>>
+  /** Le tableau de bord (s60) : cinq blocs indépendants, une seule garde. */
+  readonly dashboard: (input: {
+    readonly viewerId: string
+  }) => Promise<BackOfficeView<AdminDashboardView>>
 }
 
 /** Le refus, écrit une fois : module coupé, aucune lecture n'ouvre de connexion. */
@@ -605,6 +754,11 @@ export const admin: AdminFeature = mounted
           viewerId,
           query: parseBackOfficeSubscriptionsQuery(parameters),
         }),
+      dashboard: async ({ viewerId }) =>
+        await backOfficeService().useCases.viewDashboard({
+          request: await incomingRequest(),
+          viewerId,
+        }),
     }
   : {
       available: false,
@@ -618,6 +772,7 @@ export const admin: AdminFeature = mounted
       platformRolesOf: () => Promise.resolve([]),
       revenue: () => Promise.resolve(ABSENT),
       subscriptions: () => Promise.resolve(ABSENT),
+      dashboard: () => Promise.resolve(ABSENT),
     }
 
 /**

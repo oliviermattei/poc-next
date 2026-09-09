@@ -1,5 +1,6 @@
 import {
   BACK_OFFICE_PAGE_SIZE,
+  dashboardWindow,
   pageCountOf,
   pageWindowOf,
   parseBackOfficePeriod,
@@ -13,11 +14,17 @@ import type {
   AccountBanOutcome,
   AdminAccount,
   AdminAccountSession,
+  AdminAccountMetrics,
   AdminDependencies,
   AdminMembership,
+  AdminMetricsBlock,
+  AdminMetricsWindow,
+  AdminOrganizationMetrics,
   AdminOrganization,
   AdminOrganizationMember,
   AdminRevenue,
+  AdminSalesMetrics,
+  AdminSignupMetrics,
   AdminSubscription,
   BanAccountOutcome,
   GrantOutcome,
@@ -82,6 +89,28 @@ export interface AdminOrganizationView {
  */
 export interface AdminRevenueView {
   readonly revenue: AdminRevenue
+}
+
+/**
+ * **Ce que le tableau de bord reçoit** (s60) — cinq blocs, chacun sachant dire
+ * pourquoi il n'est pas là.
+ *
+ * Un bloc `absent` ne s'affiche pas : sa source n'est pas montée dans ce projet.
+ * Un bloc `unavailable` s'affiche **en alerte** : la lecture a échoué, et un
+ * zéro se lirait comme une réponse. C'est la même discipline que les quatre
+ * écrans de liste, appliquée bloc par bloc — un tableau de bord tombe rarement
+ * en entier.
+ *
+ * La fenêtre voyage avec la vue : l'écran écrit « 24 h » et « 30 jours » à
+ * partir d'elle, jamais à partir d'un nombre recopié dans un libellé.
+ */
+export interface AdminDashboardView {
+  readonly accounts: AdminMetricsBlock<AdminAccountMetrics>
+  readonly organizations: AdminMetricsBlock<AdminOrganizationMetrics>
+  readonly signups: AdminMetricsBlock<AdminSignupMetrics>
+  readonly sales: AdminMetricsBlock<AdminSalesMetrics>
+  readonly revenue: AdminMetricsBlock<AdminRevenue>
+  readonly window: AdminMetricsWindow
 }
 
 /**
@@ -263,6 +292,22 @@ export interface AdminUseCases {
     readonly viewerId: string
     readonly parameters: unknown
   }): Promise<BackOfficeView<AdminRevenueView>>
+  /**
+   * **Le tableau de bord** (s60) : la première chose que voit celui qui
+   * exploite le SaaS.
+   *
+   * Comme les autres lectures du back-office, la garde d'abord, et son refus est
+   * un `not_found` que l'écran rend en 404.
+   *
+   * **Les cinq blocs sont lus ensemble et aucun ne fait tomber les autres** :
+   * un tableau de bord n'a pas de raison de disparaître parce que le
+   * fournisseur de paiement ne répond pas. Ce qui tombe s'affiche en alerte, à
+   * sa place, et le reste s'affiche.
+   */
+  viewDashboard(input: {
+    readonly request: Request
+    readonly viewerId: string
+  }): Promise<BackOfficeView<AdminDashboardView>>
   viewOrganization(input: {
     readonly request: Request
     readonly viewerId: string
@@ -331,6 +376,7 @@ export function createAdminUseCases(dependencies: AdminDependencies): AdminUseCa
     organizations,
     revenue,
     subscriptions,
+    metrics,
     designatedEmail,
     securityLog,
     now,
@@ -685,6 +731,27 @@ export function createAdminUseCases(dependencies: AdminDependencies): AdminUseCa
       // qui ne vend rien encore —, une panne n'en est pas une, et confondre les
       // deux ferait afficher « aucun revenu » à un projet qui encaisse.
       return read.ok ? { ok: true, view: { revenue: read.revenue } } : UNAVAILABLE
+    },
+
+    viewDashboard: async ({ request, viewerId }) => {
+      if (!(await authorize({ request, userId: viewerId }))) {
+        return NOT_FOUND
+      }
+
+      const window = dashboardWindow(now())
+
+      // **Ensemble, et sans court-circuit** : les cinq lectures sont
+      // indépendantes, les enchaîner ajouterait quatre allers-retours à l'écran
+      // le plus regardé, et la première en échec priverait des quatre autres.
+      const [accounts, organizations, signups, sales, revenue] = await Promise.all([
+        metrics.readAccounts(window),
+        metrics.readOrganizations(window),
+        metrics.readSignups(window),
+        metrics.readSales(window),
+        metrics.readRevenue(),
+      ])
+
+      return { ok: true, view: { accounts, organizations, signups, sales, revenue, window } }
     },
 
     viewSubscriptions: async ({ request, viewerId, query }) => {

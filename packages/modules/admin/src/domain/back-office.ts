@@ -247,3 +247,33 @@ export function parseSessionTarget(body: unknown): SessionTarget | null {
 
   return parsed.success ? parsed.data : null
 }
+
+/* ------------------------------------------------------------------------- *
+ * Les fenêtres du tableau de bord (s60).
+ * ------------------------------------------------------------------------- */
+
+/** La fenêtre courte : ce qui vient de se passer. */
+export const DASHBOARD_RECENT_HOURS = 24
+/** La fenêtre longue : celle des séries journalières. */
+export const DASHBOARD_SERIES_DAYS = 30
+/** Le nombre de lignes des deux listes de mouvements. */
+export const DASHBOARD_MOVEMENTS = 5
+
+/**
+ * **Deux fenêtres glissantes, dérivées de l'instant de lecture.**
+ *
+ * Glissantes, et non calendaires : « les 24 dernières heures » n'a pas de fuseau
+ * horaire, « aujourd'hui » en a un. Un tableau de bord dont les chiffres
+ * changent de sens à minuit — et pas au même minuit selon le serveur — ne se
+ * compare pas d'un jour à l'autre, et la première décision prise sur un tel
+ * chiffre est fausse sans que rien ne l'ait signalé.
+ *
+ * L'instant est **passé**, jamais lu ici : c'est l'horloge injectée du module,
+ * la même que celle des emprunts de session.
+ */
+export const dashboardWindow = (
+  now: Date,
+): { readonly since: Date; readonly from: Date } => ({
+  since: new Date(now.getTime() - DASHBOARD_RECENT_HOURS * 60 * 60 * 1000),
+  from: new Date(now.getTime() - DASHBOARD_SERIES_DAYS * 24 * 60 * 60 * 1000),
+})

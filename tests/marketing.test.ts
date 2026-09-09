@@ -37,6 +37,7 @@ import {
   MARKETING_EMAIL_TEMPLATES,
   configureMarketing,
   createDrizzlePublicSubscriptions,
+  createDrizzleSignupMetrics,
   marketingRoutePath,
   resetMarketingService,
 } from '@repo/module-marketing'
@@ -1519,6 +1520,36 @@ describe.skipIf(!databaseReachable)('les tables du site public, sur une base ré
           values ('sub-3', 'doublon@example.test',
                   ${marketingConfiguration.forms.waitlistSource}, 'fr')`,
     )
+
+    await connection.db.execute(sql`delete from public_subscription`)
+  })
+
+  /**
+   * **Les mesures d'inscriptions, contre la vraie base** (s60).
+   *
+   * Le SQL de la série est brut — `generate_series`, `date_trunc` — et une
+   * faute de frappe y passerait le typecheck, le lint et tous les cas à
+   * doublure, pour rendre 500 sur l'écran d'accueil du back-office.
+   */
+  it('compte les inscriptions de la fenêtre et rend un point par jour', async () => {
+    await runModuleMigrations({ db: connection.db, plan: planFor([marketingModule.id]) })
+
+    await connection.db.execute(
+      sql`insert into public_subscription (id, email, source, locale)
+          values ('s60-metrics-1', 'mesure@example.test', 'newsletter', 'fr')`,
+    )
+
+    const now = new Date()
+    const metrics = await createDrizzleSignupMetrics(connection.db).read({
+      since: new Date(now.getTime() - 24 * 60 * 60 * 1000),
+      from: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
+    })
+
+    expect(metrics.since).toBe(1)
+    // Un point par jour, jours vides compris : sans cela, un mois à trois
+    // inscriptions rendrait trois barres collées — une courbe fausse.
+    expect(metrics.perDay).toHaveLength(31)
+    expect(metrics.perDay.at(-1)?.value).toBe(1)
 
     await connection.db.execute(sql`delete from public_subscription`)
   })

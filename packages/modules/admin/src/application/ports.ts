@@ -611,6 +611,12 @@ export interface AdminDependencies {
   /** Ce que le back-office sait du revenu (s38). Vide quand la facturation est coupée. */
   readonly revenue: AdminRevenuePort
   /**
+   * Ce que le back-office sait mesurer dans le temps (s60), pour le tableau de
+   * bord. **Obligatoire**, comme les quatre autres ports : un projet qui
+   * n'aurait rien à mesurer le dit en rendant `absent`, il ne l'omet pas.
+   */
+  readonly metrics: AdminMetricsPort
+  /**
    * Ce que le back-office sait des inscriptions publiques (s37c). Vide quand le
    * site public est coupé.
    */
@@ -624,4 +630,132 @@ export interface AdminDependencies {
   readonly designatedEmail: string | null
   readonly securityLog: AdminSecurityLog
   readonly now: () => Date
+}
+
+/* ------------------------------------------------------------------------- *
+ * Le tableau de bord (s60) — le cinquième port.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * **Un bloc de mesures, ou la raison de son absence.**
+ *
+ * Trois états, et ils ne disent pas la même chose :
+ *
+ * | état | ce que l'écran fait | ce que ça veut dire |
+ * |---|---|---|
+ * | `ok` | il affiche | la mesure a été lue |
+ * | `absent` | il n'affiche **rien** | la source n'est pas montée dans ce projet |
+ * | `unavailable` | il affiche une **alerte** | la lecture a échoué |
+ *
+ * `absent` et `unavailable` séparés, et c'est tout l'intérêt du type : un
+ * tableau de bord qui afficherait « 0 € » sur une base injoignable mentirait à
+ * celui qui décide, et un bloc « organisations : 0 » sur un projet solo
+ * afficherait un vide qui n'existe pas. Aucune méthode ne dit *quel* module est
+ * coupé : c'est le point de composition qui décide de l'absence, comme il le
+ * fait déjà pour les quatre autres ports.
+ */
+export type AdminMetricsBlock<TValue> =
+  | { readonly ok: true; readonly value: TValue }
+  | { readonly ok: false; readonly error: 'absent' | 'unavailable' }
+
+/** Un point d'une série journalière. Le jour est une date ISO, calculée en UTC. */
+export interface AdminMetricsPoint {
+  readonly day: string
+  readonly value: number
+}
+
+export interface AdminAccountMetrics {
+  readonly total: number
+  /** Les comptes créés dans la fenêtre courte. */
+  readonly createdRecently: number
+  readonly createdPerDay: readonly AdminMetricsPoint[]
+  /**
+   * Les **connexions** de la fenêtre courte — des sessions ouvertes.
+   *
+   * Ce n'est pas un nombre d'utilisateurs actifs, et l'écran le dit ainsi : un
+   * compte déjà connecté qui travaille toute la journée n'ouvre aucune session,
+   * et rien dans ce dépôt n'enregistre la dernière requête d'un compte.
+   */
+  readonly signIns: number
+}
+
+export interface AdminOrganizationMetrics {
+  readonly total: number
+  readonly createdRecently: number
+}
+
+export interface AdminSignupMetrics {
+  readonly recently: number
+  readonly perDay: readonly AdminMetricsPoint[]
+}
+
+/** Un achat encaissé, tel que le tableau de bord le montre. */
+export interface AdminSaleRecord {
+  readonly id: string
+  readonly offerId: string
+  readonly amount: number | null
+  readonly currency: string | null
+  readonly at: Date
+}
+
+/** Un mouvement d'abonnement — **le dernier événement**, jamais une création. */
+export interface AdminSubscriptionMovement {
+  readonly id: string
+  readonly offerId: string | null
+  readonly status: string
+  readonly quantity: number
+  readonly at: Date
+}
+
+export interface AdminSalesMetrics {
+  readonly purchasesRecently: number
+  /** Le nombre d'achats encaissés par jour, et leur montant en unités mineures. */
+  readonly perDay: readonly (AdminMetricsPoint & { readonly amount: number })[]
+  readonly recentPurchases: readonly AdminSaleRecord[]
+  readonly recentSubscriptions: readonly AdminSubscriptionMovement[]
+}
+
+/**
+ * **Ce que le back-office sait mesurer dans le temps** (s60) — un cinquième
+ * port, et pour la raison des quatre premiers.
+ *
+ * Le module `admin` ne déclare ni `auth`, ni `organizations`, ni `billing`, ni
+ * `marketing` dans ses `requires` : il ne peut ni les importer, ni joindre leurs
+ * tables (ADR 018). Chaque bloc arrive du point de composition, qui sait, lui,
+ * ce qui est monté.
+ *
+ * **La fenêtre est fournie par l'appelant, pas décidée ici** : le module ne lit
+ * pas l'horloge. C'est ce qui rend chaque cas de test reproductible sans figer
+ * le temps globalement.
+ */
+export interface AdminMetricsPort {
+  readAccounts(window: AdminMetricsWindow): Promise<AdminMetricsBlock<AdminAccountMetrics>>
+  /**
+   * Le revenu **instantané** — le même que celui de l'écran des revenus (s38),
+   * repassé par ce port pour une seule raison : celui-là ne sait pas dire
+   * « absent ». Facturation coupée, il rend un revenu **vide**, ce qui est la
+   * bonne réponse pour un écran qui répond déjà 404, et la mauvaise pour un
+   * tableau de bord qui afficherait « 0 € » là où il n'y a pas de facturation.
+   */
+  readRevenue(): Promise<AdminMetricsBlock<AdminRevenue>>
+  readOrganizations(
+    window: AdminMetricsWindow,
+  ): Promise<AdminMetricsBlock<AdminOrganizationMetrics>>
+  readSignups(window: AdminMetricsWindow): Promise<AdminMetricsBlock<AdminSignupMetrics>>
+  readSales(window: AdminMetricsWindow): Promise<AdminMetricsBlock<AdminSalesMetrics>>
+}
+
+/**
+ * **Deux fenêtres glissantes**, et aucune notion de « aujourd'hui ».
+ *
+ * Une fenêtre glissante se termine à l'instant de la lecture : elle n'a pas de
+ * fuseau horaire, donc pas de jour qui change de sens selon le serveur qui la
+ * calcule. « Aujourd'hui » aurait demandé un fuseau, donc une configuration,
+ * donc une valeur par défaut qui aurait menti à la moitié des projets.
+ */
+export interface AdminMetricsWindow {
+  /** Le début de la fenêtre courte — 24 heures dans le tableau de bord. */
+  readonly since: Date
+  /** Le début de la fenêtre longue — 30 jours, celle des séries. */
+  readonly from: Date
 }

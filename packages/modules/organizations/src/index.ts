@@ -37,6 +37,10 @@ export {
 } from './infrastructure/organizations-runtime'
 export type { OrganizationsDatabase } from './infrastructure/drizzle-organization-repositories'
 export {
+  countOrganizations,
+  type PlatformOrganizationCounts,
+} from './infrastructure/scoped-reads'
+export {
   EMPTY_ORGANIZATIONS_VIEW,
   type InvitationPreview,
   type OrganizationInvitationView,

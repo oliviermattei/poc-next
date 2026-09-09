@@ -303,6 +303,46 @@ export async function countMembersOf(
   return row?.members ?? 0
 }
 
+/**
+ * **Le décompte de la plateforme** (s60), pour le tableau de bord du
+ * back-office : combien d'organisations existent, combien sont nées dans la
+ * fenêtre.
+ *
+ * **La seule lecture de ce fichier qui n'ait pas de propriétaire**, et c'est ce
+ * qui doit être dit plutôt que sous-entendu : elle ne sert pas un membre, elle
+ * sert celui qui exploite le SaaS, et un décompte de plateforme n'a par nature
+ * aucune appartenance à vérifier. Elle ne rend **aucune ligne** — deux entiers,
+ * jamais un nom d'organisation —, si bien qu'elle ne peut rien divulguer d'un
+ * locataire à un autre, même appelée par erreur.
+ *
+ * Elle est ici pour la raison qui fait exister cette porte : `pnpm lint` refuse
+ * `select` et `from` partout ailleurs dans le module, et la surface à relire
+ * pour savoir *ce que ce module lit* doit tenir dans un seul fichier. La garde
+ * qui décide **qui** peut la lire est celle du back-office, pas celle-ci.
+ */
+export interface PlatformOrganizationCounts {
+  readonly total: number
+  readonly createdSince: number
+}
+
+export async function countOrganizations(
+  input: { readonly since: Date },
+  reader: ReadableDatabase,
+): Promise<PlatformOrganizationCounts> {
+  const [total, recent] = await Promise.all([
+    reader.select({ value: count() }).from(organization),
+    reader
+      .select({ value: count() })
+      .from(organization)
+      .where(gte(organization.createdAt, input.since)),
+  ])
+
+  return {
+    total: total[0]?.value ?? 0,
+    createdSince: recent[0]?.value ?? 0,
+  }
+}
+
 export function createScopedReads(db: ReadableDatabase): ScopedReads {
   /** La jointure de base : une appartenance et l'organisation qu'elle désigne. */
   const membershipQuery = () =>

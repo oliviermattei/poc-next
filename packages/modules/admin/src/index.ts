@@ -39,7 +39,17 @@ export type {
   AdminRecurringRevenue,
   AdminRevenue,
   AdminRevenuePeriod,
+  AdminAccountMetrics,
+  AdminMetricsBlock,
+  AdminMetricsPoint,
+  AdminMetricsPort,
+  AdminMetricsWindow,
+  AdminOrganizationMetrics,
   AdminRevenuePort,
+  AdminSaleRecord,
+  AdminSalesMetrics,
+  AdminSignupMetrics,
+  AdminSubscriptionMovement,
   AdminRevenueState,
   AdminSubscription,
   AdminSubscriptionsPort,
@@ -49,6 +59,7 @@ export type {
 } from './application/ports'
 export type {
   AdminAccountRow,
+  AdminDashboardView,
   AdminAccountsView,
   AdminAccountView,
   AdminOrganizationsView,
@@ -62,6 +73,10 @@ export type {
 } from './application/admin-use-cases'
 export {
   BACK_OFFICE_PAGE_SIZE,
+  DASHBOARD_MOVEMENTS,
+  DASHBOARD_RECENT_HOURS,
+  DASHBOARD_SERIES_DAYS,
+  dashboardWindow,
   parseBackOfficePeriod,
   parseBackOfficeQuery,
   parseBackOfficeSubscriptionsQuery,
@@ -70,4 +85,8 @@ export {
 } from './domain/back-office'
 export type { AdminSecurityEvent, AdminSecurityLog } from './domain/security-event'
 export { SUPERADMIN_ROLE } from './domain/platform-role'
-export { ADMIN_USERS_SCREEN_PATH, adminRoutePath } from './presentation/admin-routes'
+export {
+  ADMIN_DASHBOARD_SCREEN_PATH,
+  ADMIN_USERS_SCREEN_PATH,
+  adminRoutePath,
+} from './presentation/admin-routes'

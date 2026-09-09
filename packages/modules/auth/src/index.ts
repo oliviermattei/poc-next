@@ -20,6 +20,13 @@ export {
   authUser,
   authVerification,
 } from './schema'
+export {
+  createDrizzleAuthMetrics,
+  type AuthMetrics,
+  type AuthMetricsDatabase,
+  type AuthMetricsPoint,
+  type AuthMetricsReader,
+} from './infrastructure/drizzle-auth-metrics'
 export { configureAuth, requireAuthService, resetAuthService } from './infrastructure/auth-runtime'
 export {
   authDemonstrationSeed,

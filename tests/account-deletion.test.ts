@@ -323,6 +323,16 @@ beforeAll(async () => {
 
   adminService = configureAdmin({
     db: connection.db,
+    // s60 : le tableau de bord n'est pas ce que cette suite traverse. Les cinq
+    // blocs sont absents, comme sur un projet qui n'a monté aucune de leurs
+    // sources.
+    metrics: {
+      readAccounts: () => Promise.resolve({ ok: false, error: 'absent' }),
+      readOrganizations: () => Promise.resolve({ ok: false, error: 'absent' }),
+      readSignups: () => Promise.resolve({ ok: false, error: 'absent' }),
+      readSales: () => Promise.resolve({ ok: false, error: 'absent' }),
+      readRevenue: () => Promise.resolve({ ok: false, error: 'absent' }),
+    },
     // s37b2 : le back-office des organisations n'est pas ce que cette suite
     // traverse. Les trois lectures rendent des listes vides.
     organizations: {

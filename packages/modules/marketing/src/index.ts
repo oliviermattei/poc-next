@@ -129,3 +129,10 @@ export {
   resetMarketingContent,
   MarketingContentNotProvidedError,
 } from './infrastructure/marketing-content'
+export {
+  createDrizzleSignupMetrics,
+  type SignupMetrics,
+  type SignupMetricsDatabase,
+  type SignupMetricsPoint,
+  type SignupMetricsReader,
+} from './infrastructure/drizzle-signup-metrics'

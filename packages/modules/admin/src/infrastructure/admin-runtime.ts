@@ -2,6 +2,7 @@ import { AdminNotConfiguredError, type AdminService } from '../application/admin
 import { createAdminUseCases } from '../application/admin-use-cases'
 import type {
   AdminAccountsPort,
+  AdminMetricsPort,
   AdminOrganizationsPort,
   AdminRevenuePort,
   AdminSubscriptionsPort,
@@ -56,6 +57,14 @@ export interface ConfigureAdminOptions {
    */
   readonly subscriptions: AdminSubscriptionsPort
   /**
+   * **Ce que le back-office sait mesurer dans le temps** (s60), fourni pour la
+   * raison des trois précédents : le module ne connaît ni les comptes, ni les
+   * organisations, ni la facturation, ni le site public. C'est ce port qui dit
+   * qu'un bloc du tableau de bord est **absent** — parce que sa source n'est pas
+   * montée — plutôt que vide, ce qu'aucun des quatre autres ne sait exprimer.
+   */
+  readonly metrics: AdminMetricsPort
+  /**
    * L'adresse du **premier** superadmin, ou `null`.
    *
    * Le module ne lit aucune variable d'environnement (`docs/security.md` §5) :
@@ -78,6 +87,7 @@ const build = (options: ConfigureAdminOptions): AdminService => ({
     organizations: options.organizations,
     revenue: options.revenue,
     subscriptions: options.subscriptions,
+    metrics: options.metrics,
     designatedEmail: options.designatedEmail,
     securityLog: options.securityLog ?? consoleSecurityLog,
     now: options.now ?? (() => new Date()),

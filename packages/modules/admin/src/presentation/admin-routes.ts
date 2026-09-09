@@ -510,6 +510,14 @@ export function createAdminRoutes(service: () => AdminService): readonly ModuleR
 }
 
 /** Le chemin de l'écran des comptes. Écrit une fois : deux copies divergeraient. */
+/**
+ * **La racine du back-office** — le tableau de bord (s60).
+ *
+ * Elle n'existait pas : `/admin` répondait 404, et l'écran des comptes servait
+ * d'accueil par accident.
+ */
+export const ADMIN_DASHBOARD_SCREEN_PATH = '/admin'
+
 export const ADMIN_USERS_SCREEN_PATH = '/admin/users'
 
 /**
@@ -528,6 +536,19 @@ export const ADMIN_USERS_SCREEN_PATH = '/admin/users'
  * module qui veut un lien ici le **déclare**, et il disparaît avec lui.
  */
 export const adminNavigation: readonly NavigationEntry[] = [
+  {
+    /**
+     * **Le tableau de bord** (s60), première entrée et écran d'accueil du
+     * back-office. `order` le place avant les listes : c'est ce qu'on regarde
+     * en arrivant, pas une page de plus.
+     */
+    id: 'dashboard',
+    href: ADMIN_DASHBOARD_SCREEN_PATH,
+    labelKey: 'navigation.dashboard',
+    order: 5,
+    protection: { level: 'authenticated' },
+    surface: 'admin',
+  },
   {
     id: 'users',
     href: ADMIN_USERS_SCREEN_PATH,

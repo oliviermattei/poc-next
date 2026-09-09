@@ -44,6 +44,7 @@ export const backOfficeIntl = (intl: AppIntl): AdminIntl => ({
    * qu'un module, celui du back-office (`tests/admin.test.ts` le vérifie), et
    * emprunter la fonction à `billing` en ferait un second.
    */
+  number: (value) => new Intl.NumberFormat(intl.locale).format(value),
   money: (amount, currency) =>
     new Intl.NumberFormat(intl.locale, {
       style: 'currency',

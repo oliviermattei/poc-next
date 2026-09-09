@@ -5,6 +5,7 @@ import {
   Avatar,
   AvatarFallback,
   Badge,
+  BarChart,
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbLink,
@@ -35,10 +36,16 @@ import {
   initialsOf,
 } from '@repo/ui'
 import { MailIcon, UsersIcon } from 'lucide-react'
+import type { BarChartPoint } from '@repo/ui'
 import type { ReactNode } from 'react'
 
+import {
+  DASHBOARD_RECENT_HOURS,
+  DASHBOARD_SERIES_DAYS,
+} from '../domain/back-office'
 import type {
   AdminAccountsView,
+  AdminDashboardView,
   AdminAccountView,
   AdminOrganizationsView,
   AdminOrganizationView,
@@ -1472,6 +1479,333 @@ export function AdminSubscriptionsScreen({
         listPath={screenPath}
         intl={intl}
       />
+    </BackOfficeShell>
+  )
+}
+
+/* ------------------------------------------------------------------------- *
+ * Le tableau de bord (s60) — la première chose que voit celui qui exploite.
+ * ------------------------------------------------------------------------- */
+
+/** Les clés du tableau de bord, écrites une fois comme celles des autres écrans. */
+const D = {
+  title: 'admin.dashboard.title',
+  description: 'admin.dashboard.description',
+  signIns: 'admin.dashboard.signIns.title',
+  signInsHelp: 'admin.dashboard.signIns.help',
+  accounts: 'admin.dashboard.accounts.title',
+  accountsNew: 'admin.dashboard.accounts.new',
+  organizations: 'admin.dashboard.organizations.title',
+  organizationsNew: 'admin.dashboard.organizations.new',
+  signups: 'admin.dashboard.signups.title',
+  purchases: 'admin.dashboard.purchases.title',
+  mrr: 'admin.dashboard.mrr.title',
+  mrrNone: 'admin.dashboard.mrr.none',
+  mrrUnvalued: 'admin.dashboard.mrr.unvalued',
+  chartAccounts: 'admin.dashboard.chart.accounts',
+  chartSignups: 'admin.dashboard.chart.signups',
+  chartPurchases: 'admin.dashboard.chart.purchases',
+  chartValues: 'admin.dashboard.chart.values',
+  chartDay: 'admin.dashboard.chart.day',
+  chartCount: 'admin.dashboard.chart.count',
+  chartEmpty: 'admin.dashboard.chart.empty',
+  recentPurchases: 'admin.dashboard.recentPurchases.title',
+  recentPurchasesDescription: 'admin.dashboard.recentPurchases.description',
+  recentPurchasesEmpty: 'admin.dashboard.recentPurchases.empty',
+  recentSubscriptions: 'admin.dashboard.recentSubscriptions.title',
+  recentSubscriptionsDescription: 'admin.dashboard.recentSubscriptions.description',
+  recentSubscriptionsEmpty: 'admin.dashboard.recentSubscriptions.empty',
+  columnOffer: 'admin.dashboard.column.offer',
+  columnAmount: 'admin.dashboard.column.amount',
+  columnDate: 'admin.dashboard.column.date',
+  columnStatus: 'admin.dashboard.column.status',
+  columnQuantity: 'admin.dashboard.column.quantity',
+  noOffer: 'admin.dashboard.noOffer',
+  unknownAmount: 'admin.dashboard.unknownAmount',
+  windowRecent: 'admin.dashboard.window.recent',
+  windowSeries: 'admin.dashboard.window.series',
+} as const
+
+/**
+ * **Une mesure et son contexte** — un nombre seul ne veut rien dire.
+ *
+ * Le nombre est rendu par le formateur de l'application : le module ne connaît
+ * pas la locale servie, et un séparateur de milliers étranger est la façon la
+ * plus discrète de faire lire 1 000 pour 1.
+ */
+function MetricCard({
+  title,
+  value,
+  hint,
+}: {
+  readonly title: string
+  readonly value: string
+  readonly hint?: string
+}) {
+  return (
+    <Card className="min-w-0">
+      <CardHeader>
+        <CardDescription>{title}</CardDescription>
+        <CardTitle className="text-2xl tabular-nums">{value}</CardTitle>
+      </CardHeader>
+      {hint === undefined ? null : (
+        <CardContent>
+          <p className="text-sm text-muted-foreground">{hint}</p>
+        </CardContent>
+      )}
+    </Card>
+  )
+}
+
+/**
+ * **Ce qu'un bloc en panne affiche** : une alerte, jamais un zéro.
+ *
+ * Un tableau de bord qui affiche « 0 € » sur une lecture en échec ment à celui
+ * qui décide, et c'est le chiffre qu'on croit le plus sur parole. Un bloc
+ * **absent** — sa source n'est pas montée dans ce projet — n'affiche rien du
+ * tout : ce n'est pas une panne, c'est une configuration.
+ */
+function MetricFailure({ intl, title }: { readonly intl: AdminIntl; readonly title: string }) {
+  return (
+    <Alert variant="destructive" role="alert" className="min-w-0">
+      <AlertTitle>{title}</AlertTitle>
+      <AlertDescription>{intl.t(K.errorDescription)}</AlertDescription>
+    </Alert>
+  )
+}
+
+/** Les points d'une série, mis dans la forme que le graphe attend. */
+const chartPoints = (
+  points: readonly { readonly day: string; readonly value: number }[],
+  intl: AdminIntl,
+): readonly BarChartPoint[] =>
+  points.map((point) => ({
+    id: point.day,
+    // La date est **reconstruite en UTC** : `new Date('2026-09-10')` est déjà
+    // minuit UTC, et la remettre dans la locale sans fuseau explicite la
+    // décalerait d'un jour à l'ouest de Greenwich.
+    label: intl.date(new Date(`${point.day}T00:00:00Z`)),
+    value: point.value,
+    formatted: intl.number(point.value),
+  }))
+
+export interface AdminDashboardScreenProps {
+  readonly view: AdminDashboardView
+  readonly intl: AdminIntl
+  readonly chrome: BackOfficeChrome
+}
+
+/**
+ * **Le tableau de bord du back-office** (s60).
+ *
+ * Cinq blocs, lus ensemble et **indépendants** : ce qui tombe s'affiche en
+ * alerte à sa place, ce qui n'existe pas dans ce projet ne s'affiche pas, et le
+ * reste s'affiche. Aucun `if` ne nomme un module — chaque bloc porte lui-même
+ * la raison de son absence.
+ *
+ * **Les fenêtres sont écrites à partir des constantes du domaine**, jamais
+ * recopiées dans une phrase : le jour où la fenêtre courte passe à 48 heures,
+ * les libellés suivent au lieu de mentir.
+ */
+export function AdminDashboardScreen({ view, intl, chrome }: AdminDashboardScreenProps) {
+  const recentWindow = intl.t(D.windowRecent, { hours: String(DASHBOARD_RECENT_HOURS) })
+  const seriesWindow = intl.t(D.windowSeries, { days: String(DASHBOARD_SERIES_DAYS) })
+
+  return (
+    <BackOfficeShell
+      chrome={chrome}
+      header={<PageHeader title={intl.t(D.title)} description={intl.t(D.description)} />}
+    >
+      <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {view.accounts.ok ? (
+          <>
+            <MetricCard
+              title={`${intl.t(D.signIns)} — ${recentWindow}`}
+              value={intl.number(view.accounts.value.signIns)}
+              hint={intl.t(D.signInsHelp)}
+            />
+            <MetricCard
+              title={intl.t(D.accounts)}
+              value={intl.number(view.accounts.value.total)}
+              hint={intl.t(D.accountsNew, {
+                count: intl.number(view.accounts.value.createdRecently),
+                window: recentWindow,
+              })}
+            />
+          </>
+        ) : view.accounts.error === 'unavailable' ? (
+          <MetricFailure intl={intl} title={intl.t(D.accounts)} />
+        ) : null}
+
+        {view.organizations.ok ? (
+          <MetricCard
+            title={intl.t(D.organizations)}
+            value={intl.number(view.organizations.value.total)}
+            hint={intl.t(D.organizationsNew, {
+              count: intl.number(view.organizations.value.createdRecently),
+              window: recentWindow,
+            })}
+          />
+        ) : view.organizations.error === 'unavailable' ? (
+          <MetricFailure intl={intl} title={intl.t(D.organizations)} />
+        ) : null}
+
+        {view.signups.ok ? (
+          <MetricCard
+            title={`${intl.t(D.signups)} — ${recentWindow}`}
+            value={intl.number(view.signups.value.recently)}
+          />
+        ) : view.signups.error === 'unavailable' ? (
+          <MetricFailure intl={intl} title={intl.t(D.signups)} />
+        ) : null}
+
+        {view.sales.ok ? (
+          <MetricCard
+            title={`${intl.t(D.purchases)} — ${recentWindow}`}
+            value={intl.number(view.sales.value.purchasesRecently)}
+          />
+        ) : view.sales.error === 'unavailable' ? (
+          <MetricFailure intl={intl} title={intl.t(D.purchases)} />
+        ) : null}
+
+        {view.revenue.ok ? (
+          <MetricCard
+            title={intl.t(D.mrr)}
+            value={
+              view.revenue.value.recurring.length === 0
+                ? intl.t(D.mrrNone)
+                : view.revenue.value.recurring
+                    .map((line) => intl.money(line.amount, line.currency))
+                    .join(' · ')
+            }
+            {...(view.revenue.value.recurringUnvalued === 0
+              ? {}
+              : {
+                  hint: intl.t(D.mrrUnvalued, {
+                    count: intl.number(view.revenue.value.recurringUnvalued),
+                  }),
+                })}
+          />
+        ) : view.revenue.error === 'unavailable' ? (
+          <MetricFailure intl={intl} title={intl.t(D.mrr)} />
+        ) : null}
+      </div>
+
+      <div className="grid min-w-0 gap-6 xl:grid-cols-2">
+        {!view.accounts.ok ? null : (
+          <BarChart
+            title={`${intl.t(D.chartAccounts)} — ${seriesWindow}`}
+            description={`${intl.t(D.chartAccounts)} — ${seriesWindow}`}
+            points={chartPoints(view.accounts.value.createdPerDay, intl)}
+            tableLabel={intl.t(D.chartValues)}
+            columns={{ label: intl.t(D.chartDay), value: intl.t(D.chartCount) }}
+            emptyLabel={intl.t(D.chartEmpty)}
+          />
+        )}
+
+        {!view.signups.ok ? null : (
+          <BarChart
+            title={`${intl.t(D.chartSignups)} — ${seriesWindow}`}
+            description={`${intl.t(D.chartSignups)} — ${seriesWindow}`}
+            points={chartPoints(view.signups.value.perDay, intl)}
+            tableLabel={intl.t(D.chartValues)}
+            columns={{ label: intl.t(D.chartDay), value: intl.t(D.chartCount) }}
+            emptyLabel={intl.t(D.chartEmpty)}
+          />
+        )}
+
+        {!view.sales.ok ? null : (
+          <BarChart
+            title={`${intl.t(D.chartPurchases)} — ${seriesWindow}`}
+            description={`${intl.t(D.chartPurchases)} — ${seriesWindow}`}
+            points={chartPoints(view.sales.value.perDay, intl)}
+            tableLabel={intl.t(D.chartValues)}
+            columns={{ label: intl.t(D.chartDay), value: intl.t(D.chartCount) }}
+            emptyLabel={intl.t(D.chartEmpty)}
+          />
+        )}
+      </div>
+
+      {!view.sales.ok ? null : (
+        <div className="grid min-w-0 gap-6 xl:grid-cols-2">
+          <Card className="min-w-0">
+            <CardHeader>
+              <CardTitle>{intl.t(D.recentPurchases)}</CardTitle>
+              <CardDescription>{intl.t(D.recentPurchasesDescription)}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {view.sales.value.recentPurchases.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  {intl.t(D.recentPurchasesEmpty)}
+                </p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>{intl.t(D.columnOffer)}</TableHead>
+                      <TableHead>{intl.t(D.columnAmount)}</TableHead>
+                      <TableHead>{intl.t(D.columnDate)}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {view.sales.value.recentPurchases.map((purchase) => (
+                      <TableRow key={purchase.id}>
+                        <TableCell>{purchase.offerId}</TableCell>
+                        <TableCell className="tabular-nums">
+                          {purchase.amount === null || purchase.currency === null
+                            ? intl.t(D.unknownAmount)
+                            : intl.money(purchase.amount, purchase.currency)}
+                        </TableCell>
+                        <TableCell>{intl.date(purchase.at)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="min-w-0">
+            <CardHeader>
+              <CardTitle>{intl.t(D.recentSubscriptions)}</CardTitle>
+              {/* **Ce que c'est réellement** : le dernier événement du
+                  fournisseur, pas une création. `billing_subscription` ne porte
+                  aucune date de création, et l'écran ne fait pas semblant. */}
+              <CardDescription>{intl.t(D.recentSubscriptionsDescription)}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {view.sales.value.recentSubscriptions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  {intl.t(D.recentSubscriptionsEmpty)}
+                </p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>{intl.t(D.columnOffer)}</TableHead>
+                      <TableHead>{intl.t(D.columnStatus)}</TableHead>
+                      <TableHead>{intl.t(D.columnQuantity)}</TableHead>
+                      <TableHead>{intl.t(D.columnDate)}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {view.sales.value.recentSubscriptions.map((subscription) => (
+                      <TableRow key={subscription.id}>
+                        <TableCell>{subscription.offerId ?? intl.t(D.noOffer)}</TableCell>
+                        <TableCell>{subscription.status}</TableCell>
+                        <TableCell className="tabular-nums">
+                          {intl.number(subscription.quantity)}
+                        </TableCell>
+                        <TableCell>{intl.date(subscription.at)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </BackOfficeShell>
   )
 }
