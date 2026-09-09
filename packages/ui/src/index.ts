@@ -82,6 +82,11 @@ export {
 } from './components/table'
 export { Textarea } from './components/textarea'
 
+export {
+  BarChart,
+  type BarChartPoint,
+  type BarChartProps,
+} from './composed/bar-chart'
 export { CookieBanner, type CookieBannerProps } from './composed/cookie-banner'
 export { EmptyState, type EmptyStateProps } from './composed/empty-state'
 export { InlineStyleNonce } from './composed/inline-style-nonce'

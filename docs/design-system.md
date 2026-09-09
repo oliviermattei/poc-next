@@ -246,6 +246,7 @@ Tous dans `packages/ui`. Un module compose avec cette liste ; il ne crée pas se
 | **Composés maison** | |
 | `PageHeader` | Titre, description, actions — en tête de chaque page applicative |
 | `EmptyState` | Icône, titre, explication, action principale |
+| `BarChart` | Évolution d'une mesure dans le temps — SVG **rendu par le serveur**, une seule série, tableau des valeurs sous le graphe. Aucune bibliothèque, aucun script. |
 | `ConfirmDialog` | **Pas livré** — voir « Lacune : la confirmation d'une action irréversible » plus bas. Il supposait `AlertDialog`, que `packages/ui` n'expose pas non plus |
 | `ThemeToggle` | Commutateur clair / sombre (s08) |
 | `LocaleSwitcher` | Sélecteur de langue (s09) |
@@ -315,6 +316,30 @@ Trois principes ont guidé les corrections, et aucune n'invente de jeton :
 **La surface n'est plus supposée.** `SURFACE_TOKEN`, une constante globale valant `--card`, n'existe plus : une paire teintée porte la surface sur laquelle elle est **réellement** peinte, et une source teintée qui n'en déclare aucune est **refusée** — le jour où un second composant teinté arrive, la décision est forcée au lieu d'hériter du `--card` d'hier. **Le refus ne porte que là où une paire existe** : il n'y a de surface à connaître que si la même chaîne peint aussi du texte au repos. Un voile (`bg-foreground/50` dans `Sheet` et `Command`) n'a pas de texte à lui — lui déclarer une surface serait une cérémonie qui ne mesurerait rien —, et il est donc **compté et nommé** dans la sortie de la commande, avec les textes qui héritent de leur surface et les couleurs d'état (constat m4 de la revue de s57 : la règle écrite était plus large que le code). Les surfaces contre lesquelles l'anneau est mesuré sont dérivées des fonds **opaques peints hors d'une variante** : un `bg-primary` de `Button` est un remplissage, pas une surface, et l'anneau — un `box-shadow` posé hors de l'élément — n'y tombe jamais.
 
 **Et ce que le papier ne peut pas dire**, `e2e/focus-contrast.spec.ts` le mesure : la couleur que Chromium a réellement peinte dans le `box-shadow`, contre la pile de fonds réellement composée sous l'élément focalisé, sur chaque arrêt de tabulation de l'écran de connexion, dans les deux thèmes.
+
+### Les graphes (s60)
+
+Le back-office montre des mesures dans le temps, et le dépôt n'avait aucun
+composant pour les dessiner. La décision, prise plutôt que remplie en douce :
+
+- **le graphe est du SVG calculé par le serveur.** Le back-office n'hydrate
+  rien ; une bibliothèque de graphes en ferait le premier composant client de la
+  surface, pour plusieurs dizaines de kilo-octets de script que seul
+  l'exploitant téléchargerait ;
+- **aucun survol, donc un tableau obligatoire.** Un graphe HTML est normalement
+  interactif, et un graphe dont on ne peut lire aucune valeur n'est qu'un
+  dessin. `BarChart` rend donc les valeurs dans un `<table>`, ouvert par un
+  `<details>` — qui fonctionne sans script, se lit au clavier, et *est* ce que
+  lit un lecteur d'écran ;
+- **une seule série, donc aucune légende.** Le titre nomme ce qui est compté. La
+  couleur ne porte aucune identité — elle dit « ceci est une donnée » — et le
+  texte garde les jetons de texte, jamais la couleur de la série ;
+- **la barre part de la ligne de base.** Une hauteur mesurée depuis le haut
+  mentirait sur le zéro.
+
+Ce qui reste hors du système, et qu'il faudra décider le jour où on en aura
+besoin : plusieurs séries (donc une palette catégorielle et sa validation), les
+échelles de temps irrégulières, et toute forme demandant une infobulle.
 
 ## UI patterns
 
