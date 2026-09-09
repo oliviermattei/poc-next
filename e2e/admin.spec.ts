@@ -155,6 +155,41 @@ test('le back-office sert la liste des comptes au compte désigné, et 404 aux a
   }
 
   await other.close()
+
+  /* ----------------------------------------------------------------------- *
+   * **Le back-office est une autre surface** (s60) — mesuré sur ce qui est
+   * peint, pas sur ce qui est écrit.
+   *
+   * `tests/admin.test.ts` mesure les **fichiers** : aucun du groupe `(admin)`
+   * n'importe la coquille du produit. Ce bloc-ci mesure le **rendu**, parce
+   * qu'un import n'est pas la seule façon de ramener la navigation du produit —
+   * une layout de racine, un composant partagé, un `children` mal placé la
+   * ramèneraient sans qu'aucun fichier d'administration ne change.
+   *
+   * **Il vit dans ce parcours plutôt que dans le sien**, et c'est une contrainte
+   * mesurée : chaque parcours de ce fichier inscrit le compte désigné, et un
+   * septième dépassait le seau de débit des inscriptions — « Trop de tentatives,
+   * réessayez dans 13 minutes », sur une porte qui fait exactement son travail.
+   * Une session de superadmin déjà ouverte est ce qu'il fallait ; la prendre
+   * ici ne coûte rien.
+   * ----------------------------------------------------------------------- */
+
+  await page.goto(publicPath('/admin/users'))
+
+  // Sa navigation à lui, dérivée de la surface « admin » du registre.
+  await expect(page.getByRole('navigation', { name: 'Administration' }).first()).toBeVisible()
+  // Ce qui dit, sans lire, qu'on n'est plus dans le produit.
+  await expect(page.getByText('Admin', { exact: true }).first()).toBeVisible()
+  // Et la sortie, qui est une adresse et non un historique.
+  await expect(page.getByRole('link', { name: /Retour à l’application/ })).toBeVisible()
+
+  // **Rien du produit** : ni sa navigation, ni son bandeau de consentement.
+  await expect(page.getByRole('navigation', { name: 'Modules' })).toHaveCount(0)
+  await expect(page.locator('[data-slot="cookie-banner"]')).toHaveCount(0)
+
+  // Le retour ramène au produit, châssis du produit compris.
+  await page.getByRole('link', { name: /Retour à l’application/ }).click()
+  await expect(page.getByRole('navigation', { name: 'Modules' }).first()).toBeVisible()
 })
 
 /**

@@ -200,5 +200,8 @@
   "app.twoFactor.error.used": "That code has already been used. Wait for the next one your app shows.",
   "app.twoFactor.error.throttled": "Too many attempts. Your code is not the problem: try again in a few minutes.",
   "app.twoFactor.error.throttledIn": "Too many attempts. Your code is not the problem: try again in {minutes, plural, one {# minute} other {# minutes}}.",
-  "app.twoFactor.links.signIn": "Back to sign-in"
+  "app.twoFactor.links.signIn": "Back to sign-in",
+  "app.backOffice.badge": "Admin",
+  "app.backOffice.navigation": "Administration",
+  "app.backOffice.back": "← Back to the app"
 }

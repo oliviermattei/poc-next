@@ -1,7 +1,9 @@
 import { visibleNavigation, type ModuleSession } from '@repo/core'
+import type { ReactNode } from 'react'
 import { adminRoutePath } from '@repo/module-admin'
 import type {
   AdminIntl,
+  BackOfficeChrome,
   BackOfficeListLinks,
   BackOfficeNavigationItem,
 } from '@repo/module-admin/presentation'
@@ -116,3 +118,33 @@ export const backOfficeActions = {
  * `tests/rendered-text.test.ts` l'a mesuré au premier essai.
  */
 export const backOfficeExportSubscriptions = adminRoutePath('exportSubscriptions')
+
+/**
+ * **La coquille du back-office, assemblée par l'application** (s60).
+ *
+ * Le module décide de la forme — barre latérale, en-tête, place des gestes —,
+ * l'application fournit ce qu'elle seule possède : le nom du produit, le
+ * catalogue, la navigation dérivée du registre, et les gestes qui sont des
+ * composants d'`apps/web` (thème, langue, compte).
+ *
+ * `actions` est un emplacement, pas une liste : le module ne saura jamais
+ * combien de gestes l'application y met, ni lesquels. C'est ce qui lui permet
+ * de n'en connaître aucun.
+ */
+export const backOfficeChrome = (
+  session: ModuleSession | null,
+  intl: AppIntl,
+  currentPath: string,
+  actions?: ReactNode,
+): BackOfficeChrome => ({
+  appName: intl.t('app.name'),
+  badge: intl.t('app.backOffice.badge'),
+  navigation: backOfficeNavigation(session, intl, currentPath),
+  navigationLabel: intl.t('app.backOffice.navigation'),
+  // La racine du produit, et non l'écran précédent : un retour qui dépendrait
+  // de l'historique demanderait un état, donc un composant client, sur une
+  // surface qui n'en a aucun.
+  backHref: intl.path('/'),
+  backLabel: intl.t('app.backOffice.back'),
+  ...(actions === undefined ? {} : { actions }),
+})

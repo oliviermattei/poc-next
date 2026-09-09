@@ -22,6 +22,9 @@ import {
   Label,
   PageHeader,
   Pagination,
+  Sidebar,
+  SidebarBrand,
+  SidebarNav,
   Table,
   TableBody,
   TableCaption,
@@ -352,23 +355,96 @@ function BackOfficeNavigation({
   )
 }
 
-/** L'enveloppe commune : navigation dérivée, en-tête, contenu. */
+/**
+ * **Le châssis du back-office** — ce que le produit ne lui prête pas.
+ *
+ * C'est la raison d'être du groupe de routes `(admin)` : la racine de
+ * l'application ne monte plus de coquille, le produit monte la sienne sous
+ * `(app)`, et le back-office monte celle-ci. Rien de la navigation du produit
+ * n'y entre, et rien d'ici n'entre dans le produit.
+ *
+ * **Il est rendu par l'écran, pas par une layout, et c'est une décision.** Une
+ * layout de groupe enveloppe aussi les erreurs de ses routes : un compte qui
+ * n'administre pas reçoit 404 sur `/admin/users` (`docs/security.md` §3) et
+ * verrait cette coquille autour de son refus — le back-office se laisserait
+ * deviner par sa propre page d'erreur. Rendu ici, il n'existe qu'à l'intérieur
+ * d'un écran que la garde a laissé passer.
+ *
+ * **Ce qu'il ne porte pas**, et chaque absence est une décision : pas de
+ * bandeau de consentement ni de script tiers — cette surface n'est pas
+ * publique, aucun visiteur ne l'atteint —, pas de compteur de notifications —
+ * elles appartiennent au produit —, pas de bandeau d'emprunt de session — la
+ * garde refuse une session empruntée avant d'arriver ici (s37b1), le bandeau
+ * n'aurait personne à avertir.
+ *
+ * Les gestes que l'application possède — thème, langue, compte — arrivent par
+ * `actions` : le module décide de la **place**, jamais du contenu.
+ */
+export interface BackOfficeChrome {
+  /** Le nom du produit, tel que l'application le sert. */
+  readonly appName: string
+  /** Ce qui distingue cette surface du produit, en toutes lettres. */
+  readonly badge: string
+  readonly navigation: readonly BackOfficeNavigationItem[]
+  readonly navigationLabel: string
+  /** Le retour vers le produit : une adresse, jamais un historique. */
+  readonly backHref: string
+  readonly backLabel: string
+  /** Les gestes de l'application — thème, langue, compte. */
+  readonly actions?: ReactNode
+}
+
 function BackOfficeShell({
-  navigation,
-  navigationLabel,
+  chrome,
   header,
   children,
 }: {
-  readonly navigation: readonly BackOfficeNavigationItem[]
-  readonly navigationLabel: string
+  readonly chrome: BackOfficeChrome
   readonly header: ReactNode
   readonly children: ReactNode
 }) {
+  const current = chrome.navigation.find((item) => item.current)?.href
+
   return (
-    <div className="flex min-w-0 flex-col gap-6">
-      <BackOfficeNavigation items={navigation} label={navigationLabel} />
-      {header}
-      {children}
+    <div className="flex min-h-svh w-full">
+      <Sidebar className="bg-muted">
+        <SidebarBrand>
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate">{chrome.appName}</span>
+            <Badge variant="secondary">{chrome.badge}</Badge>
+          </span>
+        </SidebarBrand>
+        <SidebarNav
+          items={chrome.navigation.map((item) => ({
+            id: item.key,
+            href: item.href,
+            label: item.label,
+          }))}
+          label={chrome.navigationLabel}
+          {...(current === undefined ? {} : { currentPath: current })}
+        />
+        <div className="mt-auto">
+          <Button asChild variant="ghost" className="w-full justify-start">
+            <a href={chrome.backHref}>{chrome.backLabel}</a>
+          </Button>
+        </div>
+      </Sidebar>
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2 md:px-6">
+          {/* La barre latérale disparaît sous `md` : sans ces pastilles, le
+              back-office n'aurait plus aucune navigation sur téléphone. */}
+          <div className="min-w-0 md:hidden">
+            <BackOfficeNavigation items={chrome.navigation} label={chrome.navigationLabel} />
+          </div>
+          <div className="ml-auto flex items-center gap-1">{chrome.actions}</div>
+        </header>
+
+        <main className="flex min-w-0 flex-1 flex-col gap-6 p-4 md:p-6">
+          {header}
+          {children}
+        </main>
+      </div>
     </div>
   )
 }
@@ -396,15 +472,14 @@ export interface AdminUsersScreenProps {
   readonly view: AdminAccountsView
   readonly intl: AdminIntl
   readonly links: BackOfficeListLinks
-  readonly navigation: readonly BackOfficeNavigationItem[]
+  readonly chrome: BackOfficeChrome
 }
 
 /** `/admin/users` — la liste des comptes : recherche, pagination, quatre états. */
-export function AdminUsersScreen({ view, intl, links, navigation }: AdminUsersScreenProps) {
+export function AdminUsersScreen({ view, intl, links, chrome }: AdminUsersScreenProps) {
   return (
     <BackOfficeShell
-      navigation={navigation}
-      navigationLabel={intl.t(K.breadcrumbRoot)}
+      chrome={chrome}
       header={
         <PageHeader title={intl.t(K.usersTitle)} description={intl.t(K.usersDescription)} />
       }
@@ -479,7 +554,7 @@ export interface AdminUserScreenProps {
   readonly view: AdminAccountView
   readonly intl: AdminIntl
   readonly links: BackOfficeListLinks
-  readonly navigation: readonly BackOfficeNavigationItem[]
+  readonly chrome: BackOfficeChrome
   /** URL des routes du module, résolues par l'application. */
   readonly actions: {
     readonly revokeSession: string
@@ -492,13 +567,12 @@ export function AdminUserScreen({
   view,
   intl,
   links,
-  navigation,
+  chrome,
   actions,
 }: AdminUserScreenProps) {
   return (
     <BackOfficeShell
-      navigation={navigation}
-      navigationLabel={intl.t(K.breadcrumbRoot)}
+      chrome={chrome}
       header={
         <>
           <Breadcrumb label={intl.t(K.breadcrumbLabel)}>
@@ -627,7 +701,7 @@ export interface AdminOrganizationsScreenProps {
   readonly view: AdminOrganizationsView
   readonly intl: AdminIntl
   readonly links: BackOfficeListLinks
-  readonly navigation: readonly BackOfficeNavigationItem[]
+  readonly chrome: BackOfficeChrome
 }
 
 /** `/admin/organizations` — même structure que la liste des comptes. */
@@ -635,12 +709,11 @@ export function AdminOrganizationsScreen({
   view,
   intl,
   links,
-  navigation,
+  chrome,
 }: AdminOrganizationsScreenProps) {
   return (
     <BackOfficeShell
-      navigation={navigation}
-      navigationLabel={intl.t(K.breadcrumbRoot)}
+      chrome={chrome}
       header={
         <PageHeader
           title={intl.t(K.organizationsTitle)}
@@ -732,7 +805,7 @@ export interface AdminOrganizationScreenProps {
    * deux redirections des routes du module.
    */
   readonly accountPath: (userId: string) => string
-  readonly navigation: readonly BackOfficeNavigationItem[]
+  readonly chrome: BackOfficeChrome
 }
 
 /** `/admin/organizations/<id>` — membres et rôles, offre et état d'abonnement. */
@@ -741,12 +814,11 @@ export function AdminOrganizationScreen({
   intl,
   links,
   accountPath,
-  navigation,
+  chrome,
 }: AdminOrganizationScreenProps) {
   return (
     <BackOfficeShell
-      navigation={navigation}
-      navigationLabel={intl.t(K.breadcrumbRoot)}
+      chrome={chrome}
       header={
         <>
           <Breadcrumb label={intl.t(K.breadcrumbLabel)}>
@@ -831,7 +903,7 @@ export function AdminOrganizationScreen({
 export interface AdminRevenueScreenProps {
   readonly view: AdminRevenueView
   readonly intl: AdminIntl
-  readonly navigation: readonly BackOfficeNavigationItem[]
+  readonly chrome: BackOfficeChrome
   /**
    * Le chemin **interne** de cet écran, injecté comme `links.listPath` l'est
    * aux listes, et pour la même raison : il est déclaré par le module qui porte
@@ -945,7 +1017,7 @@ function CurrencyTable({
 export function AdminRevenueScreen({
   view,
   intl,
-  navigation,
+  chrome,
   screenPath,
 }: AdminRevenueScreenProps) {
   const subscriptions = view.revenue.states.reduce(
@@ -955,8 +1027,7 @@ export function AdminRevenueScreen({
 
   return (
     <BackOfficeShell
-      navigation={navigation}
-      navigationLabel={intl.t(K.breadcrumbRoot)}
+      chrome={chrome}
       header={
         <>
           <PageHeader title={intl.t(K.revenueTitle)} description={intl.t(K.revenueDescription)} />
@@ -1243,7 +1314,7 @@ function SourceFilter({
 export interface AdminSubscriptionsScreenProps {
   readonly view: AdminSubscriptionsView
   readonly intl: AdminIntl
-  readonly navigation: readonly BackOfficeNavigationItem[]
+  readonly chrome: BackOfficeChrome
   /**
    * Le chemin de cet écran, **injecté** : il est déclaré par le module qui
    * possède les inscriptions (`marketing`), pas par celui-ci — le back-office
@@ -1277,7 +1348,7 @@ export interface AdminSubscriptionsScreenProps {
 export function AdminSubscriptionsScreen({
   view,
   intl,
-  navigation,
+  chrome,
   screenPath,
   exportAction,
 }: AdminSubscriptionsScreenProps) {
@@ -1315,8 +1386,7 @@ export function AdminSubscriptionsScreen({
 
   return (
     <BackOfficeShell
-      navigation={navigation}
-      navigationLabel={intl.t(K.breadcrumbRoot)}
+      chrome={chrome}
       header={
         <PageHeader
           title={intl.t(K.subscriptionsTitle)}

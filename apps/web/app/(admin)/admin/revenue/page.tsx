@@ -4,8 +4,9 @@ import { notFound, redirect } from 'next/navigation'
 
 import { admin } from '../../../../lib/admin'
 import { currentViewer } from '../../../../lib/auth'
-import { backOfficeIntl, backOfficeNavigation } from '../../../../lib/back-office'
+import { backOfficeIntl, backOfficeChrome } from '../../../../lib/back-office'
 import { billing } from '../../../../lib/billing'
+import { BackOfficeActions } from '../../back-office-actions'
 import { appIntl } from '../../../../lib/i18n'
 
 /**
@@ -38,7 +39,7 @@ export default async function AdminRevenuePage({
     notFound()
   }
 
-  const { session } = await currentViewer()
+  const { session, account } = await currentViewer()
   const intl = await appIntl()
 
   if (session === null) {
@@ -54,7 +55,7 @@ export default async function AdminRevenuePage({
     notFound()
   }
 
-  const navigation = backOfficeNavigation(session, intl, ADMIN_REVENUE_SCREEN_PATH)
+  const chrome = backOfficeChrome(session, intl, ADMIN_REVENUE_SCREEN_PATH, <BackOfficeActions intl={intl} account={account === null ? null : { email: account.email, name: account.name }} />)
   const backOffice = backOfficeIntl(intl)
 
   if (!view.ok) {
@@ -65,7 +66,7 @@ export default async function AdminRevenuePage({
     <AdminRevenueScreen
       view={view.view}
       intl={backOffice}
-      navigation={navigation}
+      chrome={chrome}
       screenPath={ADMIN_REVENUE_SCREEN_PATH}
     />
   )

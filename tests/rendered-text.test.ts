@@ -322,6 +322,19 @@ vi.mock('../apps/web/lib/consent', async (importOriginal) => {
   }
 })
 
+/**
+ * **Le nonce de la requête**, hors requête.
+ *
+ * Depuis que la racine ne monte plus de coquille (s60), la page introuvable
+ * monte la sienne et lit donc le nonce — `headers()` de Next lève hors du
+ * périmètre d'une requête. Le double rend `null`, ce qu'un rendu sans requête
+ * *est* : aucun script non essentiel n'est autorisé, et c'est bien le
+ * comportement de la politique.
+ */
+vi.mock('../apps/web/lib/nonce', () => ({
+  currentNonce: () => Promise.resolve(null),
+}))
+
 vi.mock('../apps/web/lib/i18n', async () => {
   const { createTranslator } = await import('next-intl')
   const { localeRouting } = await import('../apps/web/lib/locale-routing')
@@ -461,6 +474,11 @@ const TECHNICAL_PROPS = new Set([
   // d'un écran. Le garde-fou de prose reste actif — `avatarUrl="Photo de
   // profil"` rougirait.
   'avatarUrl',
+  // s60 — le retour vers le produit, porté par la coquille du back-office :
+  // c'est une adresse, et elle est sur les six écrans d'administration, jamais
+  // sur un écran en particulier. Même raison qu'`accountHref`. Le garde-fou de
+  // prose reste actif — `backHref="Retour à l'application"` rougirait.
+  'backHref',
   'callbackURL',
   'className',
   'currentPath',
@@ -1142,6 +1160,14 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
        * serveur envoie.
        */
       readonly ownDocument?: boolean
+      /**
+       * **L'écran monte sa propre coquille**, comme les six du back-office et
+       * la page introuvable : la racine de l'application n'en monte plus, et
+       * chaque groupe de routes monte la sienne (s60). Le repasser dans
+       * `AppShell` rendrait la navigation du produit autour d'une surface qui
+       * la refuse — c'est-à-dire exactement le défaut que le découpage ferme.
+       */
+      readonly ownChrome?: boolean
       /** Les props techniques que **cet** écran écrit, et qu'aucun autre n'hérite. */
       readonly technicalProps?: readonly string[]
       /**
@@ -1494,6 +1520,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
          */
         id: 'back-office — comptes',
         file: '(admin)/admin/users/page.tsx',
+        ownChrome: true,
         viewer: SIGNED_IN,
         refuses: adminMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         // Les numéros de page rendus par la pagination du design system : des
@@ -1514,6 +1541,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       {
         id: 'back-office — un compte',
         file: '(admin)/admin/users/[id]/page.tsx',
+        ownChrome: true,
         viewer: SIGNED_IN,
         refuses: adminMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         // Les deux routes du module, remises au détail : des chemins montés,
@@ -1537,6 +1565,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
          */
         id: 'back-office — organisations',
         file: '(admin)/admin/organizations/page.tsx',
+        ownChrome: true,
         viewer: SIGNED_IN,
         refuses:
           organizationsMounted && adminMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
@@ -1563,6 +1592,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       {
         id: 'back-office — une organisation',
         file: '(admin)/admin/organizations/[id]/page.tsx',
+        ownChrome: true,
         viewer: SIGNED_IN,
         refuses:
           organizationsMounted && adminMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
@@ -1591,6 +1621,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
          */
         id: 'back-office — revenus',
         file: '(admin)/admin/revenue/page.tsx',
+        ownChrome: true,
         viewer: SIGNED_IN,
         refuses: billingMounted && adminMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         // `screenPath` est une **adresse**, injectée par la page comme
@@ -1636,6 +1667,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
          */
         id: 'back-office — inscriptions',
         file: '(admin)/admin/subscriptions/page.tsx',
+        ownChrome: true,
         viewer: SIGNED_IN,
         refuses: marketingMounted && adminMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         // `screenPath` et `exportAction` sont des **adresses**, injectées par
@@ -1962,6 +1994,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // `style` et un `<style>` sans nonce, donc deux violations de la
         // politique livrée, sur une page qu'un visiteur atteint.
         id: 'page introuvable',
+        ownChrome: true,
         file: 'not-found.tsx',
         viewer: ANONYMOUS,
       refuses: null,
@@ -2030,7 +2063,10 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       rendered += 1
       floors += screen.floor ?? MARKERS_PER_SCREEN
 
-      const tree = screen.ownDocument === true ? content : await AppShell({ children: content })
+      const tree =
+        screen.ownDocument === true || screen.ownChrome === true
+          ? content
+          : await AppShell({ children: content })
       const html = renderToStaticMarkup(
         createElement(NextIntlClientProvider, {
           locale: defaultLocale,

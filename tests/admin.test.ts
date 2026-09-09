@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
@@ -3513,7 +3513,14 @@ describe('l’écran de revenus', () => {
     renderToStaticMarkup(
       createElement(AdminRevenueScreen, {
         view: { revenue },
-        navigation: [],
+        chrome: {
+          appName: 'Application',
+          badge: 'Admin',
+          navigation: [],
+          navigationLabel: 'Administration',
+          backHref: '/',
+          backLabel: 'Retour',
+        },
         screenPath: '/admin/revenue',
         intl: {
           // Les **valeurs** sont rendues avec leur clé : sans elles, un cas ne
@@ -3736,7 +3743,14 @@ describe('l’écran des inscriptions publiques', () => {
           search: null,
           ...view,
         },
-        navigation: [],
+        chrome: {
+          appName: 'Application',
+          badge: 'Admin',
+          navigation: [],
+          navigationLabel: 'Administration',
+          backHref: '/',
+          backLabel: 'Retour',
+        },
         screenPath: ADMIN_SUBSCRIPTIONS_SCREEN_PATH,
         exportAction: EXPORT_ACTION,
         intl: {
@@ -3873,5 +3887,82 @@ describe('ce que les catalogues disent du statut des deux chiffres', () => {
       expect(catalogue['revenue.recurring.note'], locale).toContain('config/billing.ts')
       expect(catalogue['revenue.oneTime.note'], locale).not.toContain('config/billing.ts')
     }
+  })
+})
+
+/* ------------------------------------------------------------------------- *
+ * Le back-office est **une autre surface**, pas une page du produit (s60).
+ * ------------------------------------------------------------------------- */
+
+describe('le back-office ne monte pas la coquille du produit', () => {
+  const APP_DIRECTORY = join(REPO_ROOT, 'apps/web/app')
+
+  const sourcesUnder = (directory: string): readonly string[] => {
+    const found: string[] = []
+
+    const walk = (current: string): void => {
+      for (const name of readdirSync(current)) {
+        const path = join(current, name)
+
+        if (statSync(path).isDirectory()) {
+          walk(path)
+        } else if (/\.tsx?$/.test(path)) {
+          found.push(path)
+        }
+      }
+    }
+
+    walk(directory)
+
+    return found
+  }
+
+  const adminSources = (): readonly string[] => sourcesUnder(join(APP_DIRECTORY, '(admin)'))
+
+  it('balaie réellement le groupe, faute de quoi les cas suivants seraient verts sur du vide', () => {
+    expect(adminSources().length).toBeGreaterThan(5)
+  })
+
+  /**
+   * **La mesure du fichier**, doublée par celle du rendu.
+   *
+   * `e2e/admin.spec.ts` mesure ce qui est *peint* sur `/admin/users` — c'est la
+   * mesure qui compte, et c'est aussi la plus lente et la plus muette sur la
+   * cause. Celle-ci nomme le fichier fautif à la seconde près : une coquille
+   * revenue par un import est visible ici avant de l'être à l'écran.
+   */
+  it('n’importe la coquille du produit dans aucun de ses fichiers', () => {
+    const offenders = adminSources().filter((file) => /\bAppShell\b/.test(readFileSync(file, 'utf8')))
+
+    expect(offenders.map((file) => relative(REPO_ROOT, file))).toEqual([])
+  })
+
+  /**
+   * **La racine ne monte plus rien**, et c'est ce qui rend les deux châssis
+   * possibles : une layout enfant ne sait pas défaire ce que sa racine a monté.
+   * Le jour où quelqu'un remet `AppShell` ici, le back-office le porte à
+   * nouveau — sans qu'aucun fichier du groupe `(admin)` n'ait changé.
+   */
+  it('laisse la racine sans coquille, et la donne au seul groupe du produit', () => {
+    const root = readFileSync(join(APP_DIRECTORY, 'layout.tsx'), 'utf8')
+    const product = readFileSync(join(APP_DIRECTORY, '(app)/layout.tsx'), 'utf8')
+
+    expect(root).not.toMatch(/\bAppShell\b/)
+    expect(product).toMatch(/<AppShell/)
+  })
+
+  /**
+   * **Aucune layout dans `(admin)`**, et c'est une décision de sécurité.
+   *
+   * Une layout de groupe enveloppe aussi les erreurs de ses routes : un compte
+   * qui n'administre pas reçoit 404 sur `/admin/users` (`docs/security.md` §3),
+   * et verrait la coquille du back-office autour de son refus — la surface se
+   * laisserait deviner par sa page d'erreur. La coquille est donc rendue par
+   * l'écran, à l'intérieur de ce que la garde a laissé passer.
+   */
+  it('ne pose aucune layout de groupe, qui envelopperait aussi les refus', () => {
+    const layouts = adminSources().filter((file) => /\/layout\.tsx$/.test(file))
+
+    expect(layouts.map((file) => relative(REPO_ROOT, file))).toEqual([])
   })
 })

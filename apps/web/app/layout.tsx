@@ -2,15 +2,13 @@ import { InlineStyleNonce, ThemeProvider } from '@repo/ui'
 import { GeistMono } from 'geist/font/mono'
 import { GeistSans } from 'geist/font/sans'
 import type { Metadata, Viewport } from 'next'
-import { headers } from 'next/headers'
 import { NextIntlClientProvider } from 'next-intl'
 import { getMessages, getTranslations } from 'next-intl/server'
 import type { ReactNode } from 'react'
 
 import { currentLocale } from '../lib/current-locale'
-import { NONCE_HEADER } from '../lib/security-headers'
+import { currentNonce } from '../lib/nonce'
 import { metadataBaseUrl } from '../lib/site-url'
-import { AppShell } from './app-shell'
 import './globals.css'
 
 export const viewport: Viewport = {
@@ -65,12 +63,11 @@ export async function generateMetadata(): Promise<Metadata> {
  * l'arbre.
  */
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  const [locale, messages, headerBag] = await Promise.all([
+  const [locale, messages, nonce] = await Promise.all([
     currentLocale(),
     getMessages(),
-    headers(),
+    currentNonce(),
   ])
-  const nonce = headerBag.get(NONCE_HEADER)
 
   return (
     <html
@@ -89,11 +86,12 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               script anti-clignotement **et** sur le `<style>` qui coupe les
               transitions, à condition qu'on le lui donne. */}
           <ThemeProvider nonce={nonce ?? undefined}>
-            {/* Le nonce descend jusqu'au shell : c'est lui qui rend les scripts
-                non essentiels de s36, et `script-src` porte `'strict-dynamic'` —
-                un `<script src>` sans nonce est refusé, même depuis notre
-                propre origine. */}
-            <AppShell nonce={nonce}>{children}</AppShell>
+            {/* **Aucune coquille ici.** La racine sert deux surfaces qui n'ont
+                pas le même châssis — le produit sous `(app)`, le back-office
+                sous `(admin)` —, et une layout enfant ne sait pas défaire ce que
+                sa racine a monté. Chaque groupe monte donc le sien, et le nonce
+                descend à celui qui en a besoin. */}
+            {children}
           </ThemeProvider>
         </NextIntlClientProvider>
       </body>

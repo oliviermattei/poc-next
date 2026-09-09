@@ -6,7 +6,8 @@ import { z } from 'zod'
 
 import { admin } from '../../../../../lib/admin'
 import { currentViewer } from '../../../../../lib/auth'
-import { backOfficeIntl, backOfficeLinks, backOfficeNavigation } from '../../../../../lib/back-office'
+import { backOfficeIntl, backOfficeLinks, backOfficeChrome } from '../../../../../lib/back-office'
+import { BackOfficeActions } from '../../../back-office-actions'
 import { appIntl } from '../../../../../lib/i18n'
 import { organizations } from '../../../../../lib/organizations'
 
@@ -23,7 +24,7 @@ export default async function AdminOrganizationPage({
     notFound()
   }
 
-  const { session } = await currentViewer()
+  const { session, account } = await currentViewer()
   const intl = await appIntl()
 
   if (session === null) {
@@ -47,7 +48,7 @@ export default async function AdminOrganizationPage({
     notFound()
   }
 
-  const navigation = backOfficeNavigation(session, intl, ADMIN_ORGANIZATIONS_SCREEN_PATH)
+  const chrome = backOfficeChrome(session, intl, ADMIN_ORGANIZATIONS_SCREEN_PATH, <BackOfficeActions intl={intl} account={account === null ? null : { email: account.email, name: account.name }} />)
   const backOffice = backOfficeIntl(intl)
 
   if (!view.ok) {
@@ -58,7 +59,7 @@ export default async function AdminOrganizationPage({
     <AdminOrganizationScreen
       view={view.view}
       intl={backOffice}
-      navigation={navigation}
+      chrome={chrome}
       links={backOfficeLinks(ADMIN_ORGANIZATIONS_SCREEN_PATH)}
       // Le détail d'un membre : **la même dérivation**, sur le chemin de
       // l'autre liste. Écrit une fois, ici comme dans les redirections des

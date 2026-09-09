@@ -200,5 +200,8 @@
   "app.twoFactor.error.used": "Ce code a déjà servi. Attendez celui que votre application affichera ensuite.",
   "app.twoFactor.error.throttled": "Trop de tentatives. Votre code n’est pas en cause : réessayez dans quelques minutes.",
   "app.twoFactor.error.throttledIn": "Trop de tentatives. Votre code n’est pas en cause : réessayez dans {minutes, plural, one {# minute} other {# minutes}}.",
-  "app.twoFactor.links.signIn": "Revenir à la connexion"
+  "app.twoFactor.links.signIn": "Revenir à la connexion",
+  "app.backOffice.badge": "Admin",
+  "app.backOffice.navigation": "Administration",
+  "app.backOffice.back": "← Retour à l’application"
 }

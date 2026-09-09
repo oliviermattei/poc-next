@@ -9,8 +9,9 @@ import {
   backOfficeActions,
   backOfficeIntl,
   backOfficeLinks,
-  backOfficeNavigation,
+  backOfficeChrome,
 } from '../../../../../lib/back-office'
+import { BackOfficeActions } from '../../../back-office-actions'
 import { appIntl } from '../../../../../lib/i18n'
 
 /**
@@ -35,7 +36,7 @@ export default async function AdminUserPage({
     notFound()
   }
 
-  const { session } = await currentViewer()
+  const { session, account } = await currentViewer()
   const intl = await appIntl()
 
   if (session === null) {
@@ -54,7 +55,7 @@ export default async function AdminUserPage({
     notFound()
   }
 
-  const navigation = backOfficeNavigation(session, intl, ADMIN_USERS_SCREEN_PATH)
+  const chrome = backOfficeChrome(session, intl, ADMIN_USERS_SCREEN_PATH, <BackOfficeActions intl={intl} account={account === null ? null : { email: account.email, name: account.name }} />)
   const backOffice = backOfficeIntl(intl)
 
   if (!view.ok) {
@@ -65,7 +66,7 @@ export default async function AdminUserPage({
     <AdminUserScreen
       view={view.view}
       intl={backOffice}
-      navigation={navigation}
+      chrome={chrome}
       links={backOfficeLinks(ADMIN_USERS_SCREEN_PATH)}
       actions={backOfficeActions}
     />

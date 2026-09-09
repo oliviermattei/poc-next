@@ -2,6 +2,8 @@ import { Button, EmptyState, PageHeader } from '@repo/ui'
 import { SearchXIcon } from 'lucide-react'
 
 import { appIntl } from '../lib/i18n'
+import { currentNonce } from '../lib/nonce'
+import { AppShell } from './app-shell'
 
 /**
  * L'écran servi sur une URL qui ne mène à aucune route.
@@ -21,14 +23,28 @@ import { appIntl } from '../lib/i18n'
  * la signature d'`EmptyState`, pas dans la bonne volonté de l'appelant — « un
  * état vide sans action est un écran cassé ».
  *
- * Cet écran est **rendu dans le shell** : il hérite donc de la navigation, du
- * thème et du sélecteur de langue, comme tous les autres.
+ * Cet écran **monte le châssis du produit lui-même**, et c'est le prix du
+ * découpage en deux surfaces : la racine ne monte plus de coquille, et une URL
+ * qui ne mène à aucune route n'appartient à aucun groupe — ni `(app)`, ni
+ * `(admin)`. Sans ce montage, la page introuvable serait servie nue.
+ *
+ * **C'est aussi ce que voit qui n'administre pas.** Un compte ordinaire qui
+ * demande `/admin/users` reçoit 404 (`docs/security.md` §3), donc cet écran-ci :
+ * exactement ce qu'il verrait sur une adresse inventée, châssis du produit
+ * compris. Le back-office ne se laisse pas deviner par sa page d'erreur.
  */
 export default async function NotFound() {
-  const { t, path } = await appIntl()
+  const [{ t, path }, nonce] = await Promise.all([appIntl(), currentNonce()])
 
-  return (
-    <>
+  // **La coquille est appelée, pas rendue en balise**, et c'est délibéré :
+  // `AppShell` est un composant asynchrone, et une balise `<AppShell>` posée
+  // ici suspendrait à l'intérieur de l'arbre rendu. Appelée et attendue, elle
+  // rend un arbre déjà résolu — ce que Next sert, et ce qu'un rendu synchrone
+  // sait mesurer.
+  return await AppShell({
+    nonce,
+    children: (
+      <>
       <PageHeader title={t('app.notFound.title')} />
       <EmptyState
         icon={<SearchXIcon />}
@@ -39,7 +55,8 @@ export default async function NotFound() {
             <a href={path('/')}>{t('app.notFound.empty.action')}</a>
           </Button>
         }
-      />
-    </>
-  )
+        />
+      </>
+    ),
+  })
 }

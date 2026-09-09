@@ -25,6 +25,7 @@ export {
   type AdminSubscriptionsScreenProps,
   type AdminUserScreenProps,
   type AdminUsersScreenProps,
+  type BackOfficeChrome,
   type BackOfficeListLinks,
   type BackOfficeNavigationItem,
   type ImpersonationBannerProps,
