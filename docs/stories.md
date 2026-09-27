@@ -1768,3 +1768,89 @@ s27-deployment, s39-monitoring-analytics
 ### Agentic notes
 **Cette story demande des clés et un hôte — elle ne peut pas être jouée seule par un agent.** C'est son intérêt : elle transforme onze « non vérifié » en observations, et chaque écart trouvé vaut plus que la story elle-même.
 Le régime `recorded` du parcours doré n'a **aucune capture Stripe** : la première capture réelle appartient naturellement à cette story ou à sa voisine.
+
+---
+
+## Story s60-console-superadmin — Entrer dans la console superadmin par une porte reconnaissable
+**As a** Superadmin **I want** une console nommée comme telle, avec un tableau de bord d'accueil et un lien d'entrée depuis l'application **so that** je rejoigne le pilotage de la plateforme sans taper une URL de mémoire, et sans la confondre avec l'administration de mon organisation.
+
+> **Ajoutée le 27/09, sur une mesure faite en naviguant l'instance locale.** Connecté en superadmin, **aucun lien** ne mène au back-office : ses quatre entrées portent `surface: 'admin'` et ne sont rendues que par `apps/web/lib/back-office.ts:67`, c'est-à-dire **à l'intérieur** des écrans `/admin/*`. Il n'existe pas non plus de page `/admin` : on entre par `/admin/users`, qu'il faut connaître. Enfin le mot « admin » désigne deux choses dans le produit — la plateforme (ce module) et l'organisation d'un client (`/organizations`, ses membres, sa facturation) —, et c'est le nom de la première qui prête à confusion.
+
+### Complexity
+3
+
+### Acceptance criteria
+- [ ] La valeur de surface de navigation `admin` n'existe plus : les entrées de la console déclarent `surface: 'superadmin'`, et `pnpm typecheck` refuse l'ancienne valeur
+- [ ] Les écrans de la console sont servis sous `/superadmin/*` (comptes, organisations, revenu, inscriptions, et leurs pages de détail) ; les anciens chemins `/admin/*` répondent **404**, sans redirection — une redirection confirmerait l'existence de la surface
+- [ ] `/superadmin` est un **tableau de bord** : nombre de comptes, nombre d'organisations, revenu récurrent estimé, nombre d'inscriptions publiques, chacun lié à son écran ; une tuile dont le module est coupé n'est pas rendue (même règle que l'entrée de navigation du module)
+- [ ] La console porte un shell reconnaissable : titre « Console superadmin » et un badge qui la distinguent de l'application, composés des composants et jetons existants du design system
+- [ ] Un lien « Console superadmin » apparaît dans le menu de compte de l'application **pour un superadmin seulement**, décidé côté serveur ; une session empruntée ne le voit pas
+- [ ] Un compte qui n'est pas superadmin, ou une session empruntée, reçoit **404** sur `/superadmin` et sur chaque écran de la console, et ne voit le lien nulle part (ni HTML rendu, ni plan de site)
+- [ ] Module `admin` coupé : `/superadmin` répond 404, le lien n'est pas rendu, et `pnpm test:minimal-profile` reste vert
+
+### Dependencies
+s37b2-back-office-lecture, s37c-inscriptions-publiques, s38-admin-revenue
+
+### Agentic notes
+Les chemins d'écrans ne vivent pas tous dans `admin` : `ADMIN_USERS_SCREEN_PATH` (`packages/modules/admin/src/presentation/admin-routes.ts:513`), `ADMIN_ORGANIZATIONS_SCREEN_PATH` (module `organizations`), `ADMIN_REVENUE_SCREEN_PATH` (module `billing`), `ADMIN_SUBSCRIPTIONS_SCREEN_PATH` (module `marketing`) — quatre modules, plus `apps/web/app/admin/` et `e2e/admin.spec.ts`. Les **routes d'API** `/api/modules/admin/…` ne sont pas des écrans : elles gardent leur préfixe de montage, qui est l'id du module.
+`NavigationSurface` est dans `packages/core/src/module.ts:251` (`'app' | 'footer' | 'admin'`). Renommer une valeur de ce type touche les ADR 066/067 : un **nouvel ADR** porte le nom, il ne réécrit pas les anciens.
+Le tableau de bord réutilise les lectures de `apps/web/lib/admin.ts` (vues comptes, organisations, revenu, inscriptions) : **aucune table nouvelle**. Si une lecture ne rend pas de total, la research le mesure et le plan l'ajoute au port existant.
+Le lien d'entrée dépend du rôle de plateforme, pas de `ModuleSession.roles` : la garde de référence est `asSuperadmin`, qui refuse l'emprunt **avant** de juger le rôle. `apps/web/app/account-menu.tsx` est l'endroit naturel ; il reste un composant de l'application, donc la décision arrive en donnée depuis `lib/admin.ts`, jamais par un import de module.
+
+---
+
+## Story s61-site-et-application — Séparer le site public de l'application
+**As a** Visiteur **I want** que l'adresse du produit ouvre son site public, et que la connexion m'emmène dans l'application **so that** le site présente le produit et l'application sert à s'en servir, sans que l'un porte la navigation de l'autre.
+
+> **Ajoutée le 27/09.** Aujourd'hui une seule barre latérale mélange onze liens : ceux du site (accueil, blog, docs, tarifs, connexion) et ceux de l'application (compte, organisations, facturation, notifications…). Et `/` change de nature selon la session (`apps/web/app/page.tsx` : accueil marketing pour un anonyme, tableau de bord pour un connecté) — l'adresse du produit ne montre jamais son site à quelqu'un qui a un compte.
+>
+> **Cette story amende deux critères déjà livrés** : s08 (« une fois connecté, l'utilisateur atteint un tableau de bord » — il l'atteint désormais sur `/app`, pas sur `/`) et s40 (le parcours d'intégration se termine sur `/app`). L'ADR de la story le dit.
+
+### Complexity
+3
+
+### Acceptance criteria
+- [ ] Une nouvelle valeur de surface `site` existe : accueil, blog, docs et tarifs la déclarent, et sont rendus dans un **en-tête** du site, pas dans une barre latérale
+- [ ] `/` sert le site public **connecté ou non** ; l'en-tête affiche « Se connecter » à un anonyme et « Ouvrir l'application » à un connecté
+- [ ] `/app` est le tableau de bord de l'application ; un anonyme qui l'ouvre est renvoyé vers la connexion
+- [ ] Après connexion, l'utilisateur atterrit sur `/app` ; si son parcours d'intégration est en cours, sur ce parcours, qui se termine sur `/app`
+- [ ] La barre latérale de l'application ne rend **que** la surface `app` : aucun lien du site n'y figure
+- [ ] Site public coupé (module `marketing` désactivé) : `/` renvoie vers la connexion, comme aujourd'hui, et l'en-tête n'existe pas
+- [ ] La destination après connexion est une **constante du code**, jamais un paramètre d'URL (redirection ouverte)
+
+### Dependencies
+s08-app-shell, s10-marketing-landing, s40-onboarding
+
+### Agentic notes
+`apps/web/app/page.tsx` porte aujourd'hui quatre sorties ; deux partent sur `/app`. Le tableau de bord qu'il rend pour un connecté **déménage**, il n'est pas réécrit.
+L'atterrissage après connexion est écrit dans `apps/web/app/auth-form.tsx:181` (`redirectTo`) et dans la page de sign-in ; le parcours doré (`pnpm test:golden-path`) dérive l'atterrissage au lieu de l'écrire en dur — le garder dérivé.
+`NavigationSurface` (`packages/core/src/module.ts:251`) gagne `site` : c'est la **quatrième** surface ; ADR 067 a tranché que la surface reste une propriété de l'entrée, donc pas de nouvelle clé de contrat. Le pied de page (`footer`) ne bouge pas.
+L'en-tête du site se compose des composants existants de `packages/ui` ; un besoin non couvert est un **écart du design system** à signaler, pas à combler (règle Design).
+Préfixe de langue : les chemins sont servis sous `/fr/…` et `/en/…` ; `/app` suit la même règle que les autres écrans.
+
+---
+
+## Story s62-application-sous-app — Servir l'application sous `/app`
+**As a** Propriétaire du produit **I want** que tous les écrans de l'application vivent sous `/app` **so that** le site et l'application soient séparés par leur adresse, et qu'un sous-domaine `app.` soit possible plus tard sans toucher au code.
+
+> **Choix tranché le 27/09 : un préfixe `/app`, pas un sous-domaine.** Même origine, donc un seul cookie de session, une CSP `default-src 'self'` inchangée, un seul déploiement, et rien à configurer côté DNS ni en local. Un sous-domaine reste accessible plus tard par une réécriture d'hôte en amont (`app.domain.com/*` → `domain.com/app/*`), qui ne change aucun chemin du code. L'ADR de la story porte les options rejetées.
+
+### Complexity
+4
+
+### Acceptance criteria
+- [ ] Les écrans authentifiés de l'application (compte, organisations, facturation, notifications, parcours d'intégration, et ceux que les modules déclarent `authenticated` ou `entitlement`) sont servis sous `/app/…`
+- [ ] Chaque ancien chemin répond **308** vers son équivalent sous `/app`, en conservant la requête ; la liste des redirections est **dérivée** des chemins déclarés, pas recopiée
+- [ ] Les liens écrits dans les emails (vérification, réinitialisation, invitation, notifications), les retours d'authentification (OAuth, deux facteurs) et les retours de paiement (checkout, portail) pointent le nouveau chemin
+- [ ] Les écrans publics restent à leur place : site, blog, docs, tarifs, pages légales, connexion, inscription, mot de passe oublié, liste d'attente
+- [ ] La console superadmin (`/superadmin`) n'est **pas** déplacée sous `/app`, et n'a aucune redirection
+- [ ] Les recettes existantes restent vertes sous les nouveaux chemins : `pnpm test:e2e`, `pnpm test:golden-path`, `pnpm test:minimal-profile`
+
+### Dependencies
+s61-site-et-application, s60-console-superadmin
+
+### Agentic notes
+**Risque (complexité 4)** : c'est un déplacement transverse. Les chemins d'écrans sont des constantes dispersées dans les modules (`*_SCREEN_PATH`, `href` de navigation) et dans `apps/web/app/*` ; les emails construisent leurs liens à partir d'`APP_URL` plus un chemin ; les retours Stripe et OAuth portent des URL de retour. Un lien oublié ne casse aucun test unitaire — il casse un parcours, d'où le critère 6.
+Les **routes d'API** (`/api/…`) ne bougent pas : ce ne sont pas des écrans, et les webhooks enregistrés chez les fournisseurs les visent.
+Les redirections 308 vivent au plus près du routage (`apps/web/proxy.ts` ou `next.config.ts`) ; elles ne doivent jamais servir de redirection ouverte (cible = constante dérivée, jamais un paramètre).
+Les cinq fichiers de route Next hors répartiteur (règle de rate limiting, `docs/security.md`) ne bougent pas : le test qui en compte cinq doit rester vert.
