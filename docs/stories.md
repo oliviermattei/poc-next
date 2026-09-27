@@ -1819,7 +1819,7 @@ Le lien d'entrée dépend du rôle de plateforme, pas de `ModuleSession.roles` :
 - [ ] La destination après connexion est une **constante du code**, jamais un paramètre d'URL (redirection ouverte)
 
 ### Dependencies
-s08-app-shell, s10-marketing-landing, s40-onboarding
+s08-app-shell, s10-marketing-site, s40-onboarding
 
 ### Agentic notes
 `apps/web/app/page.tsx` porte aujourd'hui quatre sorties ; deux partent sur `/app`. Le tableau de bord qu'il rend pour un connecté **déménage**, il n'est pas réécrit.
