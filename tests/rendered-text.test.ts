@@ -1157,7 +1157,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
     }[] = [
       {
         id: 'accueil anonyme',
-        file: 'page.tsx',
+        file: '(site)/page.tsx',
         viewer: ANONYMOUS,
       refuses: publicSite ? null : 'NEXT_REDIRECT',
         // s11. Le site public porte désormais la configuration de ses
@@ -1174,14 +1174,14 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           'type',
           'labelKey',
         ],
-        render: async () => (await import('../apps/web/app/page')).default(),
+        render: async () => (await import('../apps/web/app/(site)/page')).default(),
       },
       {
         id: 'accueil connecté',
-        file: 'page.tsx',
+        file: '(site)/page.tsx',
         viewer: SIGNED_IN,
         refuses: null,
-        render: async () => (await import('../apps/web/app/page')).default(),
+        render: async () => (await import('../apps/web/app/(site)/page')).default(),
       },
       {
         // L'accueil marketing est servi par le même fichier que le tableau de
@@ -1189,12 +1189,12 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // « accueil anonyme » ci-dessus. Ce qui suit est la seconde page
         // publique de s10.
         id: 'mentions légales',
-        file: 'legal/[document]/page.tsx',
+        file: '(site)/legal/[document]/page.tsx',
         viewer: ANONYMOUS,
       refuses: legalServed ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         technicalProps: ['contactRecipient', 'newsletterSource', 'waitlistSource'],
         render: async () =>
-          (await import('../apps/web/app/legal/[document]/page')).default({
+          (await import('../apps/web/app/(site)/legal/[document]/page')).default({
             params: Promise.resolve({ document: 'privacy' }),
           }),
       },
@@ -1203,7 +1203,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // exactement comme une page légale dont le slug n'est pas déclaré. Le
         // refus attendu est **dérivé** de l'état du module, jamais concédé.
         id: 'contact',
-        file: 'contact/page.tsx',
+        file: '(site)/contact/page.tsx',
         viewer: ANONYMOUS,
         refuses: publicSite ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         // La route montée du formulaire et les types de champ : des valeurs
@@ -1216,7 +1216,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           'type',
           'labelKey',
         ],
-        render: async () => (await import('../apps/web/app/contact/page')).default(),
+        render: async () => (await import('../apps/web/app/(site)/contact/page')).default(),
       },
       {
         // s42. Le quatrième écran public : il refuse quand le module est coupé,
@@ -1224,7 +1224,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // **à côté** de l'accueil, jamais à sa place — le critère 6 de la story
         // exige que la page d'accueil reste inchangée.
         id: 'liste d’attente',
-        file: 'waitlist/page.tsx',
+        file: '(site)/waitlist/page.tsx',
         viewer: ANONYMOUS,
         refuses: publicSite ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         technicalProps: [
@@ -1234,7 +1234,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           'type',
           'labelKey',
         ],
-        render: async () => (await import('../apps/web/app/waitlist/page')).default(),
+        render: async () => (await import('../apps/web/app/(site)/waitlist/page')).default(),
       },
       {
         // s36 — l'écran de préférences de cookies, **public** : un visiteur
@@ -1242,14 +1242,14 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // refuse quand le module n'est pas monté, comme `/organizations`, et le
         // refus attendu est **dérivé** de l'état du module.
         id: 'cookies',
-        file: 'cookies/page.tsx',
+        file: '(site)/cookies/page.tsx',
         viewer: ANONYMOUS,
         refuses: consentMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
-        render: async () => (await import('../apps/web/app/cookies/page')).default(),
+        render: async () => (await import('../apps/web/app/(site)/cookies/page')).default(),
       },
       {
         id: 'compte',
-        file: 'account/page.tsx',
+        file: '(app)/account/page.tsx',
         viewer: SIGNED_IN,
         refuses: null,
         // s13. Les quatre URL des routes de second facteur, remises à la carte.
@@ -1284,14 +1284,14 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           // toujours rougir.
           'status',
         ],
-        render: async () => (await import('../apps/web/app/account/page')).default(),
+        render: async () => (await import('../apps/web/app/(app)/account/page')).default(),
       },
       {
         // s19. Trois rendus du même fichier : les états que l'écran distingue
         // portent chacun des textes qu'aucun autre ne rend — l'alerte de tête,
         // « accès jusqu'au … », l'essai, l'offre retirée du catalogue.
         id: 'facturation, sans abonnement',
-        file: 'billing/page.tsx',
+        file: '(app)/billing/page.tsx',
         viewer: SIGNED_IN,
         refuses: billingMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         // Les clés de libellé remises aux boutons, l'identifiant d'offre
@@ -1304,35 +1304,35 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         render: async () => {
           billingState.value = FIXTURE_BILLING_NONE
 
-          return (await import('../apps/web/app/billing/page')).default({
+          return (await import('../apps/web/app/(app)/billing/page')).default({
             searchParams: Promise.resolve({ checkout: 'success' }),
           })
         },
       },
       {
         id: 'facturation, paiement échoué',
-        file: 'billing/page.tsx',
+        file: '(app)/billing/page.tsx',
         viewer: SIGNED_IN,
         refuses: billingMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         technicalProps: ['labelKey', 'offerId', 'state', 'checkoutOutcome'],
         render: async () => {
           billingState.value = FIXTURE_BILLING_PAST_DUE
 
-          return (await import('../apps/web/app/billing/page')).default({
+          return (await import('../apps/web/app/(app)/billing/page')).default({
             searchParams: Promise.resolve({ checkout: 'cancelled' }),
           })
         },
       },
       {
         id: 'facturation, abonnement résilié',
-        file: 'billing/page.tsx',
+        file: '(app)/billing/page.tsx',
         viewer: SIGNED_IN,
         refuses: billingMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         technicalProps: ['labelKey', 'offerId', 'state', 'checkoutOutcome'],
         render: async () => {
           billingState.value = FIXTURE_BILLING_ENDING
 
-          return (await import('../apps/web/app/billing/page')).default({
+          return (await import('../apps/web/app/(app)/billing/page')).default({
             searchParams: noParams,
           })
         },
@@ -1343,14 +1343,14 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // « déjà acheté » — quatre textes qu'aucun des trois autres ne rend —
         // et il est le seul où le bouton du portail doit être absent.
         id: 'facturation, achat unique',
-        file: 'billing/page.tsx',
+        file: '(app)/billing/page.tsx',
         viewer: SIGNED_IN,
         refuses: billingMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         technicalProps: ['labelKey', 'offerId', 'state', 'checkoutOutcome'],
         render: async () => {
           billingState.value = FIXTURE_BILLING_PURCHASED
 
-          return (await import('../apps/web/app/billing/page')).default({
+          return (await import('../apps/web/app/(app)/billing/page')).default({
             searchParams: noParams,
           })
         },
@@ -1362,13 +1362,13 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // n'est pas un écran de facturation, c'est un écran de produit —, et le
         // droit est piloté par la fixture, non par l'état du dépôt.
         id: 'fonctionnalité réservée, sans le droit',
-        file: 'premium/page.tsx',
+        file: '(app)/premium/page.tsx',
         viewer: SIGNED_IN,
         refuses: premiumGated ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         render: async () => {
           entitlementState.value = false
 
-          return (await import('../apps/web/app/premium/page')).default()
+          return (await import('../apps/web/app/(app)/premium/page')).default()
         },
       },
       {
@@ -1376,13 +1376,13 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // textes qu'aucun autre écran ne rend — le titre, le badge et la
         // description de l'accès accordé.
         id: 'fonctionnalité réservée, avec le droit',
-        file: 'premium/page.tsx',
+        file: '(app)/premium/page.tsx',
         viewer: SIGNED_IN,
         refuses: premiumGated ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         render: async () => {
           entitlementState.value = true
 
-          return (await import('../apps/web/app/premium/page')).default()
+          return (await import('../apps/web/app/(app)/premium/page')).default()
         },
       },
       {
@@ -1392,7 +1392,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // module n'est pas monté, et le refus attendu est **dérivé** de l'état
         // du module.
         id: 'tarifs, visiteur anonyme',
-        file: 'pricing/page.tsx',
+        file: '(site)/pricing/page.tsx',
         viewer: ANONYMOUS,
         refuses: billingMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         // Le mode et la périodicité d'une offre, l'offre mise en avant et
@@ -1413,7 +1413,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // Les prix du catalogue livré, affichés **ici** et nulle part ailleurs.
         screenData: cataloguePrices,
         render: async () =>
-          (await import('../apps/web/app/pricing/page')).default({
+          (await import('../apps/web/app/(site)/pricing/page')).default({
             // Une offre **inconnue** : la page l'ignore, et c'est la forme la
             // plus fournie qui reste — aucune carte n'est mise en évidence,
             // donc aucun texte ne disparaît du balayage.
@@ -1425,7 +1425,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // de l'application prend la place du lien, et il porte deux textes que
         // l'autre branche ne rend pas — son libellé et son propre `<noscript>`.
         id: 'tarifs, visiteur connecté',
-        file: 'pricing/page.tsx',
+        file: '(site)/pricing/page.tsx',
         viewer: SIGNED_IN,
         refuses: billingMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         technicalProps: [
@@ -1440,14 +1440,14 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // Les prix du catalogue livré, affichés **ici** et nulle part ailleurs.
         screenData: cataloguePrices,
         render: async () =>
-          (await import('../apps/web/app/pricing/page')).default({ searchParams: noParams }),
+          (await import('../apps/web/app/(site)/pricing/page')).default({ searchParams: noParams }),
       },
       {
         // s40. L'écran du parcours d'intégration. Il refuse quand le module
         // n'est pas monté — le refus attendu est **dérivé** de l'état du
         // module, jamais concédé.
         id: 'intégration',
-        file: 'onboarding/page.tsx',
+        file: '(app)/onboarding/page.tsx',
         viewer: SIGNED_IN,
         refuses: onboardingMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         // Les deux URL des routes du module et l'identifiant de l'étape que
@@ -1456,14 +1456,14 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // nommée `skip` portant une chaîne fait toujours rougir, et le
         // garde-fou de prose reste actif ici aussi.
         technicalProps: ['continue', 'skip', 'fields', 'state'],
-        render: async () => (await import('../apps/web/app/onboarding/page')).default(),
+        render: async () => (await import('../apps/web/app/(app)/onboarding/page')).default(),
       },
       {
         // s32. L'écran du centre de notifications. Il refuse quand le module
         // n'est pas monté — le refus attendu est **dérivé** de l'état du
         // module, jamais concédé.
         id: 'notifications',
-        file: 'notifications/page.tsx',
+        file: '(app)/notifications/page.tsx',
         viewer: SIGNED_IN,
         refuses: notificationsMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         // Les trois URL des routes du module, le périmètre d'une notification
@@ -1480,9 +1480,38 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           String(index + 1),
         ),
         render: async () =>
-          (await import('../apps/web/app/notifications/page')).default({
+          (await import('../apps/web/app/(app)/notifications/page')).default({
             searchParams: noParams,
           }),
+      },
+      {
+        /**
+         * s60 — le tableau de bord de la console : une tuile par écran de la
+         * console, dérivée des entrées visibles. Ses refus sont ceux des
+         * écrans : module `admin` coupé, 404.
+         */
+        id: 'console — tableau de bord',
+        file: '(console)/console/page.tsx',
+        viewer: SIGNED_IN,
+        refuses: adminMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        // La tuile passe au composant qui la rend : son identifiant de rendu
+        // (`key`), la lecture qui la chiffre (`read`) et la forme du chiffre
+        // (`kind`) — des identifiants, jamais affichés. Le garde-fou de prose
+        // reste actif sur les autres props.
+        technicalProps: ['key', 'read', 'kind'],
+        // Les chiffres des tuiles : des **données**, dérivées de la fixture —
+        // les totaux des listes et le récurrent, une ligne par devise.
+        screenData: [
+          ...[
+            FIXTURE_ADMIN_ACCOUNTS.total,
+            FIXTURE_ADMIN_ORGANIZATIONS.total,
+            FIXTURE_ADMIN_SUBSCRIPTIONS.total,
+          ].map((total) => new Intl.NumberFormat(defaultLocale).format(total)),
+          ...FIXTURE_ADMIN_REVENUE.revenue.recurring.map((row) =>
+            formattedMoney(row.amount, row.currency),
+          ),
+        ],
+        render: async () => (await import('../apps/web/app/(console)/console/page')).default(),
       },
       {
         /**
@@ -1493,7 +1522,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
          * ici, dans aucune configuration.
          */
         id: 'back-office — comptes',
-        file: 'admin/users/page.tsx',
+        file: '(console)/console/users/page.tsx',
         viewer: SIGNED_IN,
         refuses: adminMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         // Les numéros de page rendus par la pagination du design system : des
@@ -1507,13 +1536,13 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           ...FIXTURE_ADMIN_ACCOUNTS.accounts.map((account) => initialsOf(account.name)),
         ],
         render: async () =>
-          (await import('../apps/web/app/admin/users/page')).default({
+          (await import('../apps/web/app/(console)/console/users/page')).default({
             searchParams: noParams,
           }),
       },
       {
         id: 'back-office — un compte',
-        file: 'admin/users/[id]/page.tsx',
+        file: '(console)/console/users/[id]/page.tsx',
         viewer: SIGNED_IN,
         refuses: adminMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         // Les deux routes du module, remises au détail : des chemins montés,
@@ -1525,7 +1554,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           FIXTURE_ADMIN_ACCOUNT.memberships[0].name,
         ],
         render: async () =>
-          (await import('../apps/web/app/admin/users/[id]/page')).default({
+          (await import('../apps/web/app/(console)/console/users/[id]/page')).default({
             params: Promise.resolve({ id: FIXTURE_ADMIN_ACCOUNT.account.userId }),
           }),
       },
@@ -1536,7 +1565,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
          * n'existe pas ; le module `admin` coupé, la lecture refuse.
          */
         id: 'back-office — organisations',
-        file: 'admin/organizations/page.tsx',
+        file: '(console)/console/organizations/page.tsx',
         viewer: SIGNED_IN,
         refuses:
           organizationsMounted && adminMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
@@ -1556,13 +1585,13 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           ),
         ],
         render: async () =>
-          (await import('../apps/web/app/admin/organizations/page')).default({
+          (await import('../apps/web/app/(console)/console/organizations/page')).default({
             searchParams: noParams,
           }),
       },
       {
         id: 'back-office — une organisation',
-        file: 'admin/organizations/[id]/page.tsx',
+        file: '(console)/console/organizations/[id]/page.tsx',
         viewer: SIGNED_IN,
         refuses:
           organizationsMounted && adminMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
@@ -1577,7 +1606,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           FIXTURE_ADMIN_ORGANIZATION_DETAIL.members[0].email,
         ],
         render: async () =>
-          (await import('../apps/web/app/admin/organizations/[id]/page')).default({
+          (await import('../apps/web/app/(console)/console/organizations/[id]/page')).default({
             params: Promise.resolve({
               id: FIXTURE_ADMIN_ORGANIZATION_DETAIL.organization.organizationId,
             }),
@@ -1590,7 +1619,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
          * module `admin` coupé, la lecture refuse.
          */
         id: 'back-office — revenus',
-        file: 'admin/revenue/page.tsx',
+        file: '(console)/console/revenue/page.tsx',
         viewer: SIGNED_IN,
         refuses: billingMounted && adminMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         // `screenPath` est une **adresse**, injectée par la page comme
@@ -1624,7 +1653,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           // La période **arrive par l'adresse** (s38, critère 4) : le rendu la
           // pose comme Next la poserait, et l'écran doit la marquer comme
           // courante sans que rien ne soit écrit en dur dans la page.
-          (await import('../apps/web/app/admin/revenue/page')).default({
+          (await import('../apps/web/app/(console)/console/revenue/page')).default({
             searchParams: Promise.resolve({ period: '12m' }),
           }),
       },
@@ -1635,7 +1664,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
          * n'existe pas ; le module `admin` coupé, la lecture refuse.
          */
         id: 'back-office — inscriptions',
-        file: 'admin/subscriptions/page.tsx',
+        file: '(console)/console/subscriptions/page.tsx',
         viewer: SIGNED_IN,
         refuses: marketingMounted && adminMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         // `screenPath` et `exportAction` sont des **adresses**, injectées par
@@ -1661,7 +1690,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           ),
         ],
         render: async () =>
-          (await import('../apps/web/app/admin/subscriptions/page')).default({
+          (await import('../apps/web/app/(console)/console/subscriptions/page')).default({
             searchParams: noParams,
           }),
       },
@@ -1671,7 +1700,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // de l'état du module, jamais concédé : le fichier passe donc dans les
         // deux configurations, et une redirection inattendue rougirait.
         id: 'organisations',
-        file: 'organizations/page.tsx',
+        file: '(app)/organizations/page.tsx',
         viewer: SIGNED_IN,
       refuses: organizationsMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         // Les trois URL des routes du module, remises à son écran. Ce sont des
@@ -1708,7 +1737,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           'delete',
         ],
         render: async () =>
-          (await import('../apps/web/app/organizations/page')).default({
+          (await import('../apps/web/app/(app)/organizations/page')).default({
             searchParams: Promise.resolve({ error: 'slug_unavailable' }),
           }),
       },
@@ -1716,12 +1745,12 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // s16 — l'écran d'atterrissage d'un lien d'invitation, pour un visiteur
         // **connecté** : c'est la branche qui rend le bouton d'acceptation.
         id: 'invitation, visiteur connecté',
-        file: 'invitations/accept/page.tsx',
+        file: '(auth)/invitations/accept/page.tsx',
         viewer: SIGNED_IN,
         refuses: organizationsMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         technicalProps: ['acceptAction', 'signUpHref', 'homeHref', 'status'],
         render: async () =>
-          (await import('../apps/web/app/invitations/accept/page')).default({
+          (await import('../apps/web/app/(auth)/invitations/accept/page')).default({
             searchParams: Promise.resolve({ token: 'jeton', error: 'invitation_expired' }),
           }),
       },
@@ -1730,18 +1759,18 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // connexion et l'inscription (critère 2). Sans elle, ses deux libellés
         // sortiraient du filet.
         id: 'invitation, visiteur anonyme',
-        file: 'invitations/accept/page.tsx',
+        file: '(auth)/invitations/accept/page.tsx',
         viewer: ANONYMOUS,
         refuses: organizationsMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         technicalProps: ['acceptAction', 'signUpHref', 'homeHref', 'status'],
         render: async () =>
-          (await import('../apps/web/app/invitations/accept/page')).default({
+          (await import('../apps/web/app/(auth)/invitations/accept/page')).default({
             searchParams: Promise.resolve({ token: 'jeton' }),
           }),
       },
       {
         id: 'connexion',
-        file: 'sign-in/page.tsx',
+        file: '(auth)/sign-in/page.tsx',
         viewer: ANONYMOUS,
         refuses: null,
         // s13. La destination vers l'écran de vérification : un chemin monté,
@@ -1754,13 +1783,13 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           'twoFactorDestination',
         ],
         render: async () =>
-          (await import('../apps/web/app/sign-in/page')).default({
+          (await import('../apps/web/app/(auth)/sign-in/page')).default({
             searchParams: Promise.resolve({ verified: '1', email_changed: '1', reset: '1' }),
           }),
       },
       {
         id: 'connexion après un refus de fournisseur',
-        file: 'sign-in/page.tsx',
+        file: '(auth)/sign-in/page.tsx',
         viewer: ANONYMOUS,
         refuses: null,
         technicalProps: [
@@ -1771,7 +1800,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           'twoFactorDestination',
         ],
         render: async () =>
-          (await import('../apps/web/app/sign-in/page')).default({
+          (await import('../apps/web/app/(auth)/sign-in/page')).default({
             searchParams: Promise.resolve({ oauth: 'denied' }),
           }),
       },
@@ -1780,75 +1809,75 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // bibliothèque a détruit la session et posé un cookie de défi. Il n'a
         // donc pas de raison de refuser, quelle que soit la configuration.
         id: 'vérification en deux étapes',
-        file: 'two-factor/page.tsx',
+        file: '(auth)/two-factor/page.tsx',
         viewer: ANONYMOUS,
         refuses: null,
         render: async () =>
-          (await import('../apps/web/app/two-factor/page')).default({
+          (await import('../apps/web/app/(auth)/two-factor/page')).default({
             searchParams: Promise.resolve({ next: '/account' }),
           }),
       },
       {
         id: 'retour de fournisseur',
-        file: 'oauth/return/page.tsx',
+        file: '(auth)/oauth/return/page.tsx',
         viewer: ANONYMOUS,
         refuses: null,
         render: async () =>
-          (await import('../apps/web/app/oauth/return/page')).default({
+          (await import('../apps/web/app/(auth)/oauth/return/page')).default({
             searchParams: Promise.resolve({ next: '/account' }),
           }),
       },
       {
         id: 'inscription',
-        file: 'sign-up/page.tsx',
+        file: '(auth)/sign-up/page.tsx',
         viewer: ANONYMOUS,
         refuses: null,
-        render: async () => (await import('../apps/web/app/sign-up/page')).default(),
+        render: async () => (await import('../apps/web/app/(auth)/sign-up/page')).default(),
       },
       {
         id: 'mot de passe oublié',
-        file: 'forgot-password/page.tsx',
+        file: '(auth)/forgot-password/page.tsx',
         viewer: ANONYMOUS,
         refuses: null,
-        render: async () => (await import('../apps/web/app/forgot-password/page')).default(),
+        render: async () => (await import('../apps/web/app/(auth)/forgot-password/page')).default(),
       },
       {
         id: 'réinitialisation avec jeton',
-        file: 'reset-password/page.tsx',
+        file: '(auth)/reset-password/page.tsx',
         viewer: ANONYMOUS,
         refuses: null,
         render: async () =>
-          (await import('../apps/web/app/reset-password/page')).default({
+          (await import('../apps/web/app/(auth)/reset-password/page')).default({
             searchParams: Promise.resolve({ token: 'jeton' }),
           }),
       },
       {
         id: 'réinitialisation sans jeton',
-        file: 'reset-password/page.tsx',
+        file: '(auth)/reset-password/page.tsx',
         viewer: ANONYMOUS,
         refuses: null,
         render: async () =>
-          (await import('../apps/web/app/reset-password/page')).default({
+          (await import('../apps/web/app/(auth)/reset-password/page')).default({
             searchParams: noParams,
           }),
       },
       {
         id: 'vérification en attente',
-        file: 'verify-email/page.tsx',
+        file: '(auth)/verify-email/page.tsx',
         viewer: ANONYMOUS,
         refuses: null,
         render: async () =>
-          (await import('../apps/web/app/verify-email/page')).default({
+          (await import('../apps/web/app/(auth)/verify-email/page')).default({
             searchParams: noParams,
           }),
       },
       {
         id: 'vérification expirée',
-        file: 'verify-email/page.tsx',
+        file: '(auth)/verify-email/page.tsx',
         viewer: ANONYMOUS,
         refuses: null,
         render: async () =>
-          (await import('../apps/web/app/verify-email/page')).default({
+          (await import('../apps/web/app/(auth)/verify-email/page')).default({
             searchParams: Promise.resolve({ error: 'expired' }),
           }),
       },
@@ -1857,7 +1886,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // n'est pas monté, comme une page légale dont le slug n'est pas
         // déclaré, et le refus attendu est **dérivé** de l'état du module.
         id: 'blog, la liste',
-        file: 'blog/page.tsx',
+        file: '(site)/blog/page.tsx',
         viewer: ANONYMOUS,
         refuses: blogMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         technicalProps: [
@@ -1869,14 +1898,14 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         ],
         screenData: blogListData,
         render: async () =>
-          (await import('../apps/web/app/blog/page')).default({ searchParams: noParams }),
+          (await import('../apps/web/app/(site)/blog/page')).default({ searchParams: noParams }),
       },
       {
         // Le second rendu du même fichier : un tag qu'aucun article ne porte.
         // C'est le seul chemin vers le second état vide — « aucun article dans
         // ce tag » —, et ses trois textes sortiraient du filet sans lui.
         id: 'blog, un tag sans article',
-        file: 'blog/page.tsx',
+        file: '(site)/blog/page.tsx',
         viewer: ANONYMOUS,
         refuses: blogMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         technicalProps: [
@@ -1888,7 +1917,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         ],
         screenData: blogListData,
         render: async () =>
-          (await import('../apps/web/app/blog/page')).default({
+          (await import('../apps/web/app/(site)/blog/page')).default({
             searchParams: Promise.resolve({ tag: 'inconnu' }),
           }),
       },
@@ -1897,13 +1926,13 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // texte de cet écran qui ne vienne ni d'un catalogue ni d'une donnée
         // d'en-tête, et il est dérivé du fichier livré.
         id: 'blog, un article',
-        file: 'blog/[slug]/page.tsx',
+        file: '(site)/blog/[slug]/page.tsx',
         viewer: ANONYMOUS,
         refuses: blogMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         technicalProps: ['contactRecipient', 'newsletterSource', 'waitlistSource', 'slug'],
         screenData: blogArticleData,
         render: async () =>
-          (await import('../apps/web/app/blog/[slug]/page')).default({
+          (await import('../apps/web/app/(site)/blog/[slug]/page')).default({
             params: Promise.resolve({ slug: BLOG_SLUG }),
           }),
       },
@@ -1912,12 +1941,12 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // n'est pas monté, et le refus attendu est **dérivé** de l'état du
         // module, comme pour le blog et la documentation.
         id: 'nouveautés, la page',
-        file: 'changelog/page.tsx',
+        file: '(site)/changelog/page.tsx',
         viewer: ANONYMOUS,
         refuses: changelogMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         technicalProps: ['contactRecipient', 'newsletterSource', 'waitlistSource', 'slug'],
         screenData: changelogData,
-        render: async () => (await import('../apps/web/app/changelog/page')).default(),
+        render: async () => (await import('../apps/web/app/(site)/changelog/page')).default(),
       },
       {
         // L'entrée de la documentation : elle **redirige** vers la première
@@ -1925,21 +1954,21 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // dépend du contenu et pas de la configuration — sans page, il rendrait
         // son état vide.
         id: 'documentation, l’entrée',
-        file: 'docs/page.tsx',
+        file: '(site)/docs/page.tsx',
         viewer: ANONYMOUS,
         refuses: docsMounted
           ? docsTree.some((section) => section.pages.length > 0)
             ? 'NEXT_REDIRECT'
             : null
           : 'NEXT_HTTP_ERROR_FALLBACK;404',
-        render: async () => (await import('../apps/web/app/docs/page')).default(),
+        render: async () => (await import('../apps/web/app/(site)/docs/page')).default(),
       },
       {
         // Une page de documentation, dans la langue par défaut : l'arbre, le fil
         // d'Ariane, le sommaire, le corps. Aucune mention de repli ici — la
         // page suivante est celle qui la porte.
         id: 'documentation, une page',
-        file: 'docs/[section]/[page]/page.tsx',
+        file: '(site)/docs/[section]/[page]/page.tsx',
         viewer: ANONYMOUS,
         refuses: docsMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         technicalProps: [
@@ -1952,7 +1981,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         ],
         screenData: docsData,
         render: async () =>
-          (await import('../apps/web/app/docs/[section]/[page]/page')).default({
+          (await import('../apps/web/app/(site)/docs/[section]/[page]/page')).default({
             params: Promise.resolve({ section: DOCS_PAGE.section, page: DOCS_PAGE.slug }),
           }),
       },
@@ -1965,7 +1994,9 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         file: 'not-found.tsx',
         viewer: ANONYMOUS,
       refuses: null,
-        render: async () => (await import('../apps/web/app/not-found')).default(),
+        // s60 : `not-found.tsx` rend le shell lui-même (ADR 071) ; son
+        // contenu est rendu ici dans le shell, comme les autres écrans.
+        render: async () => (await import('../apps/web/app/not-found-screen')).NotFoundScreen(),
       },
       {
         // L'écran de dernier recours, qui remplace `app/layout.tsx` : son texte

@@ -106,7 +106,7 @@ tout le produit et pas pour le blog.
 
 Aucun squelette de chargement non plus, ni la clé qui l'aurait légendé. Ce
 n'est pas un oubli : un squelette suppose une frontière `Suspense`, donc un
-`loading.tsx` dans `apps/web`, et un `loading.tsx` sur `app/blog/` fait répondre
+`loading.tsx` dans `apps/web`, et un `loading.tsx` sur `app/(site)/blog/` fait répondre
 **200** à un slug inconnu au lieu de 404 — la coquille part avant que la page
 n'ait décidé. Mesuré par `e2e/blog.spec.ts:132`, et détaillé dans
 `apps/web/AGENTS.md`. Le refus prime sur le confort ; le manque est signalé au

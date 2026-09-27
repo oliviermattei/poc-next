@@ -30,7 +30,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { authRefusalOf } from '../apps/web/app/auth-form'
 import { retryAfterMinutes } from '../apps/web/app/refusal-message'
-import { twoFactorRefusalOf } from '../apps/web/app/two-factor/two-factor-form'
+import { twoFactorRefusalOf } from '../apps/web/app/(auth)/two-factor/two-factor-form'
 import { availableModules, enabledModules, requiredModules } from '../config/features'
 import { appLocales } from '../config/i18n'
 import {

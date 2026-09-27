@@ -311,62 +311,19 @@ export function BackOfficeError({ intl }: { readonly intl: AdminIntl }) {
 }
 
 /**
- * La navigation du back-office, **dérivée du registre** (ADR 066).
- *
- * L'appelant lui passe `visibleNavigation(registry, session, 'admin')`, déjà
- * traduit : ce composant ne sait pas qu'un module s'appelle `organizations`, et
- * l'entrée disparaît avec lui sans qu'aucune condition ne soit écrite ici.
+ * L'enveloppe commune : en-tête, contenu. La navigation n'y est plus depuis
+ * s60 : elle est dans la barre latérale du shell de la console, rendue par
+ * l'application.
  */
-export interface BackOfficeNavigationItem {
-  readonly key: string
-  readonly href: string
-  readonly label: string
-  readonly current: boolean
-}
-
-function BackOfficeNavigation({
-  items,
-  label,
-}: {
-  readonly items: readonly BackOfficeNavigationItem[]
-  readonly label: string
-}) {
-  if (items.length === 0) {
-    return null
-  }
-
-  return (
-    <nav aria-label={label} className="flex flex-wrap gap-2">
-      {items.map((item) => (
-        <Button
-          key={item.key}
-          asChild
-          variant={item.current ? 'secondary' : 'ghost'}
-        >
-          <a href={item.href} aria-current={item.current ? 'page' : undefined}>
-            {item.label}
-          </a>
-        </Button>
-      ))}
-    </nav>
-  )
-}
-
-/** L'enveloppe commune : navigation dérivée, en-tête, contenu. */
 function BackOfficeShell({
-  navigation,
-  navigationLabel,
   header,
   children,
 }: {
-  readonly navigation: readonly BackOfficeNavigationItem[]
-  readonly navigationLabel: string
   readonly header: ReactNode
   readonly children: ReactNode
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-6">
-      <BackOfficeNavigation items={navigation} label={navigationLabel} />
       {header}
       {children}
     </div>
@@ -396,15 +353,12 @@ export interface AdminUsersScreenProps {
   readonly view: AdminAccountsView
   readonly intl: AdminIntl
   readonly links: BackOfficeListLinks
-  readonly navigation: readonly BackOfficeNavigationItem[]
 }
 
-/** `/admin/users` — la liste des comptes : recherche, pagination, quatre états. */
-export function AdminUsersScreen({ view, intl, links, navigation }: AdminUsersScreenProps) {
+/** `/console/users` — la liste des comptes : recherche, pagination, quatre états. */
+export function AdminUsersScreen({ view, intl, links }: AdminUsersScreenProps) {
   return (
     <BackOfficeShell
-      navigation={navigation}
-      navigationLabel={intl.t(K.breadcrumbRoot)}
       header={
         <PageHeader title={intl.t(K.usersTitle)} description={intl.t(K.usersDescription)} />
       }
@@ -479,7 +433,6 @@ export interface AdminUserScreenProps {
   readonly view: AdminAccountView
   readonly intl: AdminIntl
   readonly links: BackOfficeListLinks
-  readonly navigation: readonly BackOfficeNavigationItem[]
   /** URL des routes du module, résolues par l'application. */
   readonly actions: {
     readonly revokeSession: string
@@ -487,18 +440,15 @@ export interface AdminUserScreenProps {
   }
 }
 
-/** `/admin/users/<id>` — le détail : organisations, droits, sessions actives. */
+/** `/console/users/<id>` — le détail : organisations, droits, sessions actives. */
 export function AdminUserScreen({
   view,
   intl,
   links,
-  navigation,
   actions,
 }: AdminUserScreenProps) {
   return (
     <BackOfficeShell
-      navigation={navigation}
-      navigationLabel={intl.t(K.breadcrumbRoot)}
       header={
         <>
           <Breadcrumb label={intl.t(K.breadcrumbLabel)}>
@@ -627,20 +577,16 @@ export interface AdminOrganizationsScreenProps {
   readonly view: AdminOrganizationsView
   readonly intl: AdminIntl
   readonly links: BackOfficeListLinks
-  readonly navigation: readonly BackOfficeNavigationItem[]
 }
 
-/** `/admin/organizations` — même structure que la liste des comptes. */
+/** `/console/organizations` — même structure que la liste des comptes. */
 export function AdminOrganizationsScreen({
   view,
   intl,
   links,
-  navigation,
 }: AdminOrganizationsScreenProps) {
   return (
     <BackOfficeShell
-      navigation={navigation}
-      navigationLabel={intl.t(K.breadcrumbRoot)}
       header={
         <PageHeader
           title={intl.t(K.organizationsTitle)}
@@ -732,21 +678,17 @@ export interface AdminOrganizationScreenProps {
    * deux redirections des routes du module.
    */
   readonly accountPath: (userId: string) => string
-  readonly navigation: readonly BackOfficeNavigationItem[]
 }
 
-/** `/admin/organizations/<id>` — membres et rôles, offre et état d'abonnement. */
+/** `/console/organizations/<id>` — membres et rôles, offre et état d'abonnement. */
 export function AdminOrganizationScreen({
   view,
   intl,
   links,
   accountPath,
-  navigation,
 }: AdminOrganizationScreenProps) {
   return (
     <BackOfficeShell
-      navigation={navigation}
-      navigationLabel={intl.t(K.breadcrumbRoot)}
       header={
         <>
           <Breadcrumb label={intl.t(K.breadcrumbLabel)}>
@@ -831,7 +773,6 @@ export function AdminOrganizationScreen({
 export interface AdminRevenueScreenProps {
   readonly view: AdminRevenueView
   readonly intl: AdminIntl
-  readonly navigation: readonly BackOfficeNavigationItem[]
   /**
    * Le chemin **interne** de cet écran, injecté comme `links.listPath` l'est
    * aux listes, et pour la même raison : il est déclaré par le module qui porte
@@ -930,7 +871,7 @@ function CurrencyTable({
 }
 
 /**
- * `/admin/revenue` — **les deux moitiés du revenu, et ce que chacune vaut**
+ * `/console/revenue` — **les deux moitiés du revenu, et ce que chacune vaut**
  * (s38).
  *
  * L'écran dit lui-même le statut de ses chiffres, et ce n'est pas de la
@@ -945,7 +886,6 @@ function CurrencyTable({
 export function AdminRevenueScreen({
   view,
   intl,
-  navigation,
   screenPath,
 }: AdminRevenueScreenProps) {
   const subscriptions = view.revenue.states.reduce(
@@ -955,8 +895,6 @@ export function AdminRevenueScreen({
 
   return (
     <BackOfficeShell
-      navigation={navigation}
-      navigationLabel={intl.t(K.breadcrumbRoot)}
       header={
         <>
           <PageHeader title={intl.t(K.revenueTitle)} description={intl.t(K.revenueDescription)} />
@@ -1243,7 +1181,6 @@ function SourceFilter({
 export interface AdminSubscriptionsScreenProps {
   readonly view: AdminSubscriptionsView
   readonly intl: AdminIntl
-  readonly navigation: readonly BackOfficeNavigationItem[]
   /**
    * Le chemin de cet écran, **injecté** : il est déclaré par le module qui
    * possède les inscriptions (`marketing`), pas par celui-ci — le back-office
@@ -1258,7 +1195,7 @@ export interface AdminSubscriptionsScreenProps {
 }
 
 /**
- * `/admin/subscriptions` — **les inscriptions publiques** (s37c).
+ * `/console/subscriptions` — **les inscriptions publiques** (s37c).
  *
  * L'écran **consulte** : aucune suppression, aucune modification. La purge
  * d'une adresse existe déjà et appartient au visiteur (s34), pas à
@@ -1277,7 +1214,6 @@ export interface AdminSubscriptionsScreenProps {
 export function AdminSubscriptionsScreen({
   view,
   intl,
-  navigation,
   screenPath,
   exportAction,
 }: AdminSubscriptionsScreenProps) {
@@ -1315,8 +1251,6 @@ export function AdminSubscriptionsScreen({
 
   return (
     <BackOfficeShell
-      navigation={navigation}
-      navigationLabel={intl.t(K.breadcrumbRoot)}
       header={
         <PageHeader
           title={intl.t(K.subscriptionsTitle)}

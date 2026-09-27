@@ -26,7 +26,6 @@ export {
   type AdminUserScreenProps,
   type AdminUsersScreenProps,
   type BackOfficeListLinks,
-  type BackOfficeNavigationItem,
   type ImpersonationBannerProps,
 } from './back-office-screens'
 export type { AdminIntl } from './admin-intl'

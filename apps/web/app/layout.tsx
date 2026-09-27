@@ -10,7 +10,6 @@ import type { ReactNode } from 'react'
 import { currentLocale } from '../lib/current-locale'
 import { NONCE_HEADER } from '../lib/security-headers'
 import { metadataBaseUrl } from '../lib/site-url'
-import { AppShell } from './app-shell'
 import './globals.css'
 
 export const viewport: Viewport = {
@@ -39,7 +38,8 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /**
- * La racine de l'application : polices, langue, thème, shell.
+ * La racine de l'application : polices, langue, thème. Le shell est rendu par
+ * le layout de chaque dossier de zone (s60, ADR 071).
  *
  * **`lang` vient de la requête**, plus d'une constante `"fr"`. C'est ce que
  * lisent les lecteurs d'écran, les traducteurs automatiques et la césure des
@@ -89,11 +89,13 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               script anti-clignotement **et** sur le `<style>` qui coupe les
               transitions, à condition qu'on le lui donne. */}
           <ThemeProvider nonce={nonce ?? undefined}>
-            {/* Le nonce descend jusqu'au shell : c'est lui qui rend les scripts
-                non essentiels de s36, et `script-src` porte `'strict-dynamic'` —
-                un `<script src>` sans nonce est refusé, même depuis notre
-                propre origine. */}
-            <AppShell nonce={nonce}>{children}</AppShell>
+            {/* **Le shell n'est plus rendu ici** (s60, ADR 071) : un layout
+                imbriqué ne peut pas retirer celui de son parent, et la console
+                a le sien. Chaque dossier de zone — `(site)`, `(auth)`, `(app)`,
+                `(console)` — rend son shell dans son propre `layout.tsx`, et
+                `not-found.tsx`, rendu par la frontière racine au-dessus d'eux,
+                rend le sien lui-même. */}
+            {children}
           </ThemeProvider>
         </NextIntlClientProvider>
       </body>

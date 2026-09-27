@@ -41,12 +41,12 @@ const marketingNavigation: readonly NavigationEntry[] = [
      *
      * C'est ce qui la fait disparaître avec ce module sans qu'aucun fichier du
      * back-office ne nomme `marketing` : le registre n'agrège que les modules
-     * activés, et la navigation de la surface `admin` en est dérivée (ADR
+     * activés, et la navigation de la surface `console` en est dérivée (ADR
      * 066/067). Écrite en dur dans un écran d'administration, elle aurait nommé
      * ce module dans `apps/web` — puis le suivant au même endroit, ce que s31 a
      * corrigé pour le pied de page.
      *
-     * `surface: 'admin'` : elle n'apparaît **pas** dans la barre latérale du
+     * `surface: 'console'` : elle n'apparaît **pas** dans la barre latérale du
      * produit. Un lien visible de tout compte connecté divulguerait l'existence
      * du back-office (`docs/security.md` §7).
      */
@@ -55,7 +55,7 @@ const marketingNavigation: readonly NavigationEntry[] = [
     labelKey: 'navigation.adminSubscriptions',
     order: 30,
     protection: { level: 'authenticated' },
-    surface: 'admin',
+    surface: 'console',
   },
 ]
 

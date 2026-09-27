@@ -509,13 +509,19 @@ export function createAdminRoutes(service: () => AdminService): readonly ModuleR
   ]
 }
 
+/**
+ * **La racine de la console** (s60, ADR 070) : son tableau de bord. Écrite une
+ * fois, et les écrans du module vivent dessous.
+ */
+export const CONSOLE_SCREEN_PATH = '/console'
+
 /** Le chemin de l'écran des comptes. Écrit une fois : deux copies divergeraient. */
-export const ADMIN_USERS_SCREEN_PATH = '/admin/users'
+export const ADMIN_USERS_SCREEN_PATH = `${CONSOLE_SCREEN_PATH}/users`
 
 /**
  * **L'entrée de navigation du back-office** (s37b2), et sa surface.
  *
- * `surface: 'admin'` : elle n'apparaît **pas** dans la barre latérale du
+ * `surface: 'console'` : elle n'apparaît **pas** dans la barre latérale du
  * produit. Un lien « Administration » visible de tous divulguerait l'existence
  * du back-office à chaque compte connecté. C'est la **surface** qui l'en tient
  * à l'écart, et elle seule : depuis s56, `ModuleSession.roles` porte bien le
@@ -529,11 +535,21 @@ export const ADMIN_USERS_SCREEN_PATH = '/admin/users'
  */
 export const adminNavigation: readonly NavigationEntry[] = [
   {
+    // Le tableau de bord (s60) : la **première** entrée de la console, avant
+    // celles que les autres modules y déclarent (leur ordre part de 20).
+    id: 'dashboard',
+    href: CONSOLE_SCREEN_PATH,
+    labelKey: 'navigation.dashboard',
+    order: 0,
+    protection: { level: 'authenticated' },
+    surface: 'console',
+  },
+  {
     id: 'users',
     href: ADMIN_USERS_SCREEN_PATH,
     labelKey: 'navigation.users',
     order: 10,
     protection: { level: 'authenticated' },
-    surface: 'admin',
+    surface: 'console',
   },
 ]

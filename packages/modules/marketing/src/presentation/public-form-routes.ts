@@ -38,7 +38,7 @@ export const marketingRoutePath = (path: keyof typeof PATHS): string =>
  * ne le nomme. Même forme que `ADMIN_ORGANIZATIONS_SCREEN_PATH` (s37b2) et que
  * `ADMIN_REVENUE_SCREEN_PATH` (s38).
  */
-export const ADMIN_SUBSCRIPTIONS_SCREEN_PATH = '/admin/subscriptions'
+export const ADMIN_SUBSCRIPTIONS_SCREEN_PATH = '/console/subscriptions'
 
 /**
  * Le corps d'une requête, qu'elle vienne d'un `fetch` ou d'un `<form>`.

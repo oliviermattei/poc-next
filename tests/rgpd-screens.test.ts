@@ -13,7 +13,7 @@ import {
   type DataExportRefusal,
   type DataExportRequestView,
   type DeletionRefusalOutcome,
-} from '../apps/web/app/account/rgpd-outcomes'
+} from '../apps/web/app/(app)/account/rgpd-outcomes'
 
 /**
  * Le routeur, absent d'un rendu de nœud : la carte d'export en demande un pour
@@ -80,7 +80,7 @@ describe('la suppression de compte, telle que l’écran la rend', () => {
   }
 
   it('rend la liste d’organisations **que le serveur envoie**, sans la deviner', async () => {
-    const { DeletionRefusal } = await import('../apps/web/app/account/delete-account-card')
+    const { DeletionRefusal } = await import('../apps/web/app/(app)/account/delete-account-card')
     const outcome = refusalOf(409, {
       error: 'conflict',
       reason: 'sole_owner',
@@ -188,7 +188,7 @@ describe('l’état d’une demande d’export, dérivé du serveur', () => {
    * refus — et le drapeau vient du serveur, pas du navigateur.
    */
   it('retire l’action tant que le serveur dit qu’une demande est en cours', async () => {
-    const { DataExportCard } = await import('../apps/web/app/account/data-export-card')
+    const { DataExportCard } = await import('../apps/web/app/(app)/account/data-export-card')
     const action = '/api/modules/auth/data-export'
     const card = async (pending: boolean): Promise<string> =>
       await renderWithMessages(

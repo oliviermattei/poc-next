@@ -50,22 +50,28 @@ const ENTRY_FILES = ['page.tsx', 'route.ts']
  * Le nom d'un dossier de l'`app` router, traduit en segment d'URL demandable.
  *
  * Un segment dynamique devient une valeur quelconque — ce qui compte est que la
- * route soit atteinte, pas ce qu'elle répond. Les formes que cette traduction
- * ne sait pas rendre (groupe de routes, route parallèle, interception) **font
- * échouer le préambule** au lieu de produire une URL que le routeur n'atteindra
- * pas : une entrée silencieusement non réchauffée est exactement le défaut que
- * ce fichier ferme, et elle reviendrait sans que rien ne le dise. Le dépôt n'en
- * porte aucune à ce jour, sur les 21 dossiers d'entrée balayés.
+ * route soit atteinte, pas ce qu'elle répond. Un **dossier de routes** `(…)`
+ * — les quatre zones de l'ADR 071 (s60) — devient « aucun segment » : Next ne
+ * le met pas dans l'URL. Les formes que cette traduction ne sait pas rendre
+ * (route parallèle, interception) **font échouer le préambule** au lieu de
+ * produire une URL que le routeur n'atteindra pas : une entrée silencieusement
+ * non réchauffée est exactement le défaut que ce fichier ferme, et elle
+ * reviendrait sans que rien ne le dise. Le dépôt n'en porte aucune à ce jour —
+ * `tests/zones.test.ts` le mesure.
  */
 export const urlSegment = (name: string): string => {
   if (/^\[.+\]$/.test(name)) {
     return PLACEHOLDER
   }
 
+  if (/^\([^()]+\)$/.test(name)) {
+    return ''
+  }
+
   if (/^[(@]/.test(name)) {
     throw new Error(
       `Le préambule des parcours ne sait pas traduire le segment « ${name} » en URL : ` +
-        'groupe de routes, route parallèle ou interception. Traduisez-le ici, ' +
+        'route parallèle ou interception. Traduisez-le ici, ' +
         'sans quoi cette entrée ne serait jamais compilée avant les assertions.',
     )
   }
@@ -78,7 +84,8 @@ const collect = async (directory: string, segments: readonly string[]): Promise<
   const found: string[] = []
 
   if (entries.some((entry) => entry.isFile() && ENTRY_FILES.includes(entry.name))) {
-    found.push(`/${segments.join('/')}`)
+    // Un dossier de routes a laissé un segment vide : il n'entre pas dans l'URL.
+    found.push(`/${segments.filter((segment) => segment !== '').join('/')}`)
   }
 
   for (const entry of entries) {

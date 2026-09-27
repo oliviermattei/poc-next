@@ -1033,12 +1033,10 @@ describe('le préambule qui compile l’application avant les parcours', () => {
     ).toBe(true)
   })
 
-  it('refuse un segment qu’il ne sait pas traduire, plutôt que de l’ignorer', async () => {
-    const { urlSegment } = await import('../e2e/support/warm-up')
-
-    expect(() => urlSegment('(marketing)')).toThrow(/préambule/)
-    expect(() => urlSegment('@panneau')).toThrow(/préambule/)
-  })
+  // La traduction des segments — un dossier de routes `(…)` devient « aucun
+  // segment », une route parallèle `@…` fait échouer le préambule — est
+  // éprouvée par `tests/zones.test.ts` depuis s60 (ADR 071), à côté de la
+  // partition des pages qu'elle rend possible.
 })
 
 /* ------------------------------------------------------------------------- *

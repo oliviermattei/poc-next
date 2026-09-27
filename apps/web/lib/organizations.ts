@@ -201,13 +201,15 @@ const APPLICATION_SEGMENTS = [
   // `tests/organizations.test.ts` dérive les segments du disque, pas du
   // registre.
   'billing',
-  // Les quatre écrans du back-office (s37b2) : leurs fichiers existent sur le
-  // disque **même quand le module `admin` est coupé**, et c'est du disque que
-  // `tests/organizations.test.ts` dérive. Quatrième occurrence du même défaut,
-  // trouvée par la même commande — `pnpm test` était vert, la surface de
-  // navigation du back-office n'étant lue par personne dans cette
-  // configuration, et `pnpm test:minimal-profile` a rougi.
-  'admin',
+  // Les écrans de la console (s37b2, sous `/console` depuis s60) : leurs
+  // fichiers existent sur le disque **même quand le module `admin` est
+  // coupé**, et c'est du disque que `tests/organizations.test.ts` dérive.
+  // Quatrième occurrence du même défaut, trouvée par la même commande —
+  // `pnpm test` était vert, la surface de navigation du back-office n'étant lue
+  // par personne dans cette configuration, et `pnpm test:minimal-profile` a
+  // rougi. `admin` n'est plus réservé : plus aucun écran n'est servi sous ce
+  // segment (ADR 070).
+  'console',
   // Les deux écrans du blog (s29) : ils sont aussi dérivés de la navigation du
   // registre, mais leurs fichiers existent sur le disque **même quand le
   // module `blog` est coupé** — et c'est du disque que

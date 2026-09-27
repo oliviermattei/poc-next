@@ -175,7 +175,7 @@ const articlePageDigest = (catalog: BlogCatalog, slug: string, locale = defaultL
           params: Promise.resolve({ slug }),
         }),
       ),
-    '../apps/web/app/blog/[slug]/page',
+    '../apps/web/app/(site)/blog/[slug]/page',
   )
 
 /** La liste **rendue**, pour lire ce que le visiteur obtient de ses paramètres. */
@@ -194,7 +194,7 @@ const listPageMarkup = (
           }) => Promise<ReactElement>
         )({ searchParams: Promise.resolve(searchParams) }),
       ),
-    '../apps/web/app/blog/page',
+    '../apps/web/app/(site)/blog/page',
   )
 
 const listPageDigest = (catalog: BlogCatalog) =>
@@ -207,7 +207,7 @@ const listPageDigest = (catalog: BlogCatalog) =>
           searchParams: Promise.resolve({}),
         }),
       ),
-    '../apps/web/app/blog/page',
+    '../apps/web/app/(site)/blog/page',
   )
 
 const articleMetadata = (catalog: BlogCatalog, slug: string, locale = defaultLocale) =>
@@ -218,7 +218,7 @@ const articleMetadata = (catalog: BlogCatalog, slug: string, locale = defaultLoc
       (page.generateMetadata as (props: { params: Promise<unknown> }) => Promise<Metadata>)({
         params: Promise.resolve({ slug }),
       }),
-    '../apps/web/app/blog/[slug]/page',
+    '../apps/web/app/(site)/blog/[slug]/page',
   )
 
 describe('les écrans du blog refusent quand le module n’est pas monté', () => {
@@ -351,7 +351,7 @@ describe('la liste annonce son flux', () => {
         MOUNTED,
         locale,
         (page) => (page.generateMetadata as () => Promise<Metadata>)(),
-        '../apps/web/app/blog/page',
+        '../apps/web/app/(site)/blog/page',
       )) as Metadata & { alternates?: { types?: Record<string, unknown> } }
 
     expect((await metadataIn(defaultLocale)).alternates?.types).toEqual({
@@ -426,7 +426,7 @@ describe('le blog n’injecte jamais de balisage brut', () => {
   /** Le module, plus les fichiers de l'application qui rendent son contenu. */
   const SOURCES = [
     ...sourcesUnder('packages/modules/blog/src'),
-    ...sourcesUnder('apps/web/app/blog'),
+    ...sourcesUnder('apps/web/app/(site)/blog'),
     join(REPO_ROOT, 'apps/web/lib/blog.ts'),
     join(REPO_ROOT, 'apps/web/lib/blog-body.tsx'),
   ]

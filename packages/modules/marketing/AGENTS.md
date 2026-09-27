@@ -21,7 +21,7 @@ quelqu'un qui n'a pas de compte.
 | Le plan de site et la politique des robots | `packages/core/src/syndication.ts` | **montées dans le socle en s53** (ADR 054) : `app/robots.ts` et `app/sitemap.ts` ne doivent connaître aucun module par son nom, et ces fonctions n'ont jamais rien eu de marketing |
 | Ce que ce module **donne à indexer** | `src/infrastructure/marketing-content.ts` | la quinzième clé du contrat : ses chemins publics, fournis par le point de composition qui valide `config/marketing.ts` |
 | Les **règles** des formulaires | `src/application/public-forms.ts` | ce que la route rend, ce qui est écrit, ce qui est envoyé |
-| Les **pages** | `apps/web/app/page.tsx`, `apps/web/app/legal/[document]/page.tsx`, `apps/web/app/contact/page.tsx`, `apps/web/app/waitlist/page.tsx` | un `ModuleRoute` est monté sous `/api/modules/…` (ADR 017), ce n'est pas un écran |
+| Les **pages** | `apps/web/app/(site)/page.tsx`, `apps/web/app/(site)/legal/[document]/page.tsx`, `apps/web/app/(site)/contact/page.tsx`, `apps/web/app/(site)/waitlist/page.tsx` | un `ModuleRoute` est monté sous `/api/modules/…` (ADR 017), ce n'est pas un écran |
 | Le **formulaire** interactif | `apps/web/app/public-form.tsx` | il appelle `fetch`, ce qu'un module n'a pas le droit de faire — voir plus bas |
 | Le choix « module monté ou non » | `apps/web/lib/marketing.ts` | point de composition unique, sur le modèle de `lib/locale-routing.ts` |
 | Le **câblage** du service (base, mailer, adresse d'un compte) | `apps/web/lib/module-services.ts` | il importe `lib/auth`, donc `next/headers` : le mettre dans `lib/marketing.ts` casse le chargement des parcours, qui importent ce fichier hors de Next (mesuré) |

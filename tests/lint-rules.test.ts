@@ -659,7 +659,7 @@ describe('un package ne dépend pas d’une application', () => {
    */
   it('juge un composant de package, en `.tsx`', async () => {
     const ruleIds = await ruleIdsFor(
-      "import { HomePage } from '../../../apps/web/app/page'\n" +
+      "import { HomePage } from '../../../apps/web/app/(site)/page'\n" +
         'export const Probe = () => <p>{String(HomePage)}</p>',
       'packages/ui/src/probe.tsx',
     )

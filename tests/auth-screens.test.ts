@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
 import { AuthForm, type AuthFormProps } from '../apps/web/app/auth-form'
-import { TwoFactorForm, type TwoFactorFormProps } from '../apps/web/app/two-factor/two-factor-form'
+import { TwoFactorForm, type TwoFactorFormProps } from '../apps/web/app/(auth)/two-factor/two-factor-form'
 import frMessages from '../apps/web/messages/fr.json' with { type: 'json' }
 import { defaultLocale } from '../config/i18n'
 

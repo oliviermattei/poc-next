@@ -979,8 +979,18 @@ describe('les entrées de navigation du module de démonstration', () => {
       if (!href.startsWith(MODULE_ROUTE_PREFIX)) {
         // Un écran de l'application : le fichier de page de Next, à l'endroit
         // que le chemin désigne. Le renommer ou le supprimer fait rougir ici.
+        // Le chemin est cherché à la racine **ou** sous un dossier de routes
+        // `(…)`, que Next ne met pas dans l'URL (s60, ADR 071).
+        const appRoot = join(REPO_ROOT, 'apps/web/app')
+        const roots = [
+          appRoot,
+          ...readdirSync(appRoot)
+            .filter((name) => name.startsWith('('))
+            .map((name) => join(appRoot, name)),
+        ]
+
         expect(
-          existsSync(join(REPO_ROOT, 'apps/web/app', href.replace(/^\//, ''), 'page.tsx')),
+          roots.some((root) => existsSync(join(root, href.replace(/^\//, ''), 'page.tsx'))),
           `aucun écran ne sert ${href}`,
         ).toBe(true)
 

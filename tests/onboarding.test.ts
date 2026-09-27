@@ -491,7 +491,7 @@ const onboardingScreenRefusal = async (options: {
   }))
 
   try {
-    await (await import('../apps/web/app/onboarding/page')).default()
+    await (await import('../apps/web/app/(app)/onboarding/page')).default()
 
     return null
   } catch (error) {
@@ -587,7 +587,7 @@ const renderRoot = async (): Promise<{
   })
 
   try {
-    const HomePage = (await import('../apps/web/app/page')).default
+    const HomePage = (await import('../apps/web/app/(site)/page')).default
 
     return { html: renderToStaticMarkup(await HomePage()), digest: null }
   } catch (error) {

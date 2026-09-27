@@ -57,7 +57,7 @@ export const PRICING_SCREEN_PATH = '/pricing'
  * fait disparaître l'écran **avec la facturation** sans qu'aucun fichier du
  * back-office ne nomme ce module.
  */
-export const ADMIN_REVENUE_SCREEN_PATH = '/admin/revenue'
+export const ADMIN_REVENUE_SCREEN_PATH = '/console/revenue'
 
 /**
  * Ce que le navigateur a le droit d'envoyer pour ouvrir un checkout : **un
@@ -313,11 +313,11 @@ export const billingNavigation: readonly NavigationEntry[] = [
      *
      * C'est ce qui la fait disparaître avec ce module sans qu'aucun fichier du
      * back-office ne nomme `billing` : le registre n'agrège que les modules
-     * activés, et la navigation de la surface `admin` en est dérivée (ADR 067).
+     * activés, et la navigation de la surface `console` en est dérivée (ADR 067).
      * La même forme que l'entrée « organisations » de s37b2.
      *
      * `authenticated` comme les autres entrées de cette surface : le rôle de
-     * plateforme ne vit pas dans `ModuleSession.roles`, et la surface `admin`
+     * plateforme ne vit pas dans `ModuleSession.roles`, et la surface `console`
      * n'est lue que par un écran que sa garde a déjà autorisé.
      */
     id: 'admin-revenue',
@@ -325,6 +325,6 @@ export const billingNavigation: readonly NavigationEntry[] = [
     labelKey: 'navigation.adminRevenue',
     order: 30,
     protection: { level: 'authenticated' },
-    surface: 'admin',
+    surface: 'console',
   },
 ]

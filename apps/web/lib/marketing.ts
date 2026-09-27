@@ -78,7 +78,7 @@ export const marketingFormsAvailable = marketingSite.forms !== null
  * Module coupé, `available` est faux et les deux lectures rendent du vide
  * **sans ouvrir de connexion** : c'est une **donnée**, pas une condition écrite
  * dans un écran. L'écran, lui, répond 404 sur cette donnée, comme
- * `/admin/organizations` le fait sur la sienne.
+ * `/console/organizations` le fait sur la sienne.
  */
 export interface MarketingSubscriptionsReader {
   /** Le module est-il monté ? Une donnée, lue par l'écran du back-office. */

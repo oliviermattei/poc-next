@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>s60 — Console (maquette de référence)</title>
+<!-- RÉFÉRENCE, PAS DU CODE : l'implémentation compose les vrais composants de packages/ui.
+     Seuls les jetons de docs/design-system.md sont utilisés, recopiés ci-dessous. -->
+<style>
+  :root {
+    --background: oklch(1 0 0); --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0); --card-foreground: oklch(0.145 0 0);
+    --muted: oklch(0.97 0 0); --muted-foreground: oklch(0.54 0 0);
+    --primary: oklch(0.205 0 0); --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.97 0 0); --secondary-foreground: oklch(0.205 0 0);
+    --accent: oklch(0.97 0 0); --accent-foreground: oklch(0.205 0 0);
+    --destructive: oklch(0.577 0.245 27.325); --destructive-subtle-foreground: oklch(0.510 0.245 27.325);
+    --border: oklch(0.922 0 0); --ring: oklch(0.556 0 0);
+    --radius: 0.5rem;
+  }
+  .dark {
+    --background: oklch(0.145 0 0); --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0); --card-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.269 0 0); --muted-foreground: oklch(0.708 0 0);
+    --primary: oklch(0.985 0 0); --primary-foreground: oklch(0.205 0 0);
+    --secondary: oklch(0.269 0 0); --secondary-foreground: oklch(0.985 0 0);
+    --accent: oklch(0.269 0 0); --accent-foreground: oklch(0.985 0 0);
+    --destructive: oklch(0.704 0.191 22.216); --destructive-subtle-foreground: oklch(0.704 0.191 22.216);
+    --border: oklch(1 0 0 / 10%);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 400 0.875rem/1.5 system-ui, sans-serif; background: var(--background); color: var(--foreground); }
+  a { color: inherit; }
+  .note { max-width: 72rem; margin: 1.5rem auto; padding: 0 1rem; color: var(--muted-foreground); font-size: 0.75rem; }
+  .note h2 { font-size: 1.25rem; font-weight: 600; color: var(--foreground); margin: 2rem 0 0.5rem; }
+  .frame { max-width: 72rem; margin: 0 auto 2rem; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .shell { display: flex; min-height: 34rem; }
+  /* Sidebar : w-60, bg-card, border-r, p-4, gap-4 */
+  .sidebar { width: 15rem; flex-shrink: 0; background: var(--card); border-right: 1px solid var(--border); padding: 1rem; display: flex; flex-direction: column; gap: 1rem; }
+  .brand { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; }
+  /* Badge default */
+  .badge { display: inline-flex; align-items: center; border-radius: calc(var(--radius) - 2px); padding: 0.125rem 0.5rem; font-size: 0.75rem; font-weight: 500; border: 1px solid transparent; background: var(--primary); color: var(--primary-foreground); }
+  .nav { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; }
+  .nav a { display: flex; align-items: center; gap: 0.5rem; height: 2.5rem; padding: 0 0.75rem; border-radius: calc(var(--radius) - 2px); text-decoration: none; color: var(--muted-foreground); }
+  .nav a[aria-current="page"] { background: var(--accent); color: var(--accent-foreground); font-weight: 500; }
+  .ico { width: 1rem; height: 1rem; border: 1.5px solid currentColor; border-radius: 3px; flex-shrink: 0; opacity: 0.8; }
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  /* header h-14 border-b */
+  .top { height: 3.5rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 0.5rem; padding: 0 1.5rem; }
+  .top .right { margin-left: auto; display: flex; gap: 0.25rem; }
+  .btn-ghost { height: 2.5rem; min-width: 2.5rem; padding: 0 0.75rem; border-radius: calc(var(--radius) - 2px); border: 0; background: transparent; color: inherit; display: inline-flex; align-items: center; gap: 0.5rem; font: inherit; font-weight: 500; }
+  .btn-ghost:hover { background: var(--accent); }
+  .content { padding: 1.5rem; display: flex; flex-direction: column; gap: 1.5rem; }
+  h1 { font-size: 1.875rem; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
+  .desc { color: var(--muted-foreground); margin: 0.25rem 0 0; }
+  .grid { display: grid; gap: 1rem; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  /* Card : bordure + fond, pas d'ombre */
+  .card { background: var(--card); color: var(--card-foreground); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; }
+  .card-h { padding: 1.25rem 1.25rem 0; }
+  .card-t { font-size: 1rem; font-weight: 600; margin: 0; display: flex; align-items: center; gap: 0.5rem; }
+  .card-d { color: var(--muted-foreground); font-size: 0.75rem; margin: 0.25rem 0 0; }
+  .card-c { padding: 1rem 1.25rem; flex: 1; }
+  .num { font-size: 1.875rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .money { font-size: 1.25rem; font-weight: 600; font-variant-numeric: tabular-nums; margin: 0; }
+  .small { font-size: 0.75rem; color: var(--muted-foreground); margin: 0.5rem 0 0; }
+  .card-f { padding: 0 0.5rem 0.5rem; }
+  .alert { border: 1px solid var(--border); border-radius: var(--radius); padding: 0.75rem; color: var(--destructive-subtle-foreground); font-size: 0.875rem; }
+  .alert a { display: inline-block; margin-top: 0.25rem; }
+  .banner { border-top: 1px solid var(--border); background: var(--card); padding: 0.75rem 1.5rem; font-size: 0.75rem; color: var(--muted-foreground); }
+  .mobile { max-width: 24rem; }
+  .mobile .shell { min-height: 0; }
+  .mobile .grid { grid-template-columns: 1fr; }
+  .mobile .top { padding: 0 0.75rem; }
+  .mobile .content { padding: 1rem 0.75rem; }
+  .toggle { position: fixed; top: 0.75rem; right: 0.75rem; }
+</style>
+</head>
+<body>
+<button class="btn-ghost toggle" onclick="document.documentElement.classList.toggle('dark')" style="border:1px solid var(--border)">Clair / sombre</button>
+
+<div class="note">
+  <strong>s60-console — maquette de référence.</strong> Basse fidélité. Tous les libellés passent par les messages du module <code>admin</code> ; ceux-ci sont indicatifs. Les icônes sont des carrés à la place des icônes Lucide 16 px.
+  <h2>1. Tableau de bord — bureau, les quatre modules activés</h2>
+</div>
+
+<div class="frame">
+  <div class="shell">
+    <aside class="sidebar" aria-label="Console">
+      <div class="brand">killer-saas <span class="badge">Console</span></div>
+      <nav aria-label="Navigation de la console">
+        <ul class="nav">
+          <li><a href="#" aria-current="page"><span class="ico"></span>Tableau de bord</a></li>
+          <li><a href="#"><span class="ico"></span>Comptes</a></li>
+          <li><a href="#"><span class="ico"></span>Organisations</a></li>
+          <li><a href="#"><span class="ico"></span>Revenu</a></li>
+          <li><a href="#"><span class="ico"></span>Inscriptions</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <div class="main">
+      <header class="top">
+        <strong>Console</strong>
+        <div class="right">
+          <button class="btn-ghost" aria-label="Langue">FR ▾</button>
+          <button class="btn-ghost" aria-label="Thème">◐</button>
+          <button class="btn-ghost" aria-label="Compte">AD ▾</button>
+        </div>
+      </header>
+      <main class="content">
+        <div>
+          <h1>Tableau de bord</h1>
+          <p class="desc">Vue d'ensemble de la plateforme</p>
+        </div>
+        <div class="grid">
+          <section class="card">
+            <div class="card-h"><h3 class="card-t"><span class="ico"></span>Comptes</h3><p class="card-d">Comptes créés sur la plateforme</p></div>
+            <div class="card-c"><span class="num">1 284</span></div>
+            <div class="card-f"><a class="btn-ghost" href="#">Voir les comptes →</a></div>
+          </section>
+          <section class="card">
+            <div class="card-h"><h3 class="card-t"><span class="ico"></span>Organisations</h3><p class="card-d">Organisations actives</p></div>
+            <div class="card-c"><span class="num">312</span></div>
+            <div class="card-f"><a class="btn-ghost" href="#">Voir les organisations →</a></div>
+          </section>
+          <section class="card">
+            <div class="card-h"><h3 class="card-t"><span class="ico"></span>Revenu récurrent estimé</h3><p class="card-d">Par devise, jamais additionné</p></div>
+            <div class="card-c">
+              <p class="money">12 480,00 €</p>
+              <p class="money">3 120,00 $US</p>
+              <p class="small">dont 2 abonnements sans prix au catalogue</p>
+            </div>
+            <div class="card-f"><a class="btn-ghost" href="#">Voir le revenu →</a></div>
+          </section>
+          <section class="card">
+            <div class="card-h"><h3 class="card-t"><span class="ico"></span>Inscriptions</h3><p class="card-d">Newsletter et liste d'attente</p></div>
+            <div class="card-c"><span class="num">0</span></div>
+            <div class="card-f"><a class="btn-ghost" href="#">Voir les inscriptions →</a></div>
+          </section>
+        </div>
+      </main>
+      <div class="banner">[ CookieBanner — rendue par le shell de la console, comme par tout gabarit ]</div>
+    </div>
+  </div>
+</div>
+
+<div class="note"><h2>2. États — module <code>billing</code> coupé, et une lecture en échec</h2>
+  La tuile Revenu et l'entrée « Revenu » disparaissent ensemble ; la grille passe à trois. Une lecture en échec ne masque pas les autres tuiles.</div>
+
+<div class="frame">
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">killer-saas <span class="badge">Console</span></div>
+      <ul class="nav">
+        <li><a href="#" aria-current="page"><span class="ico"></span>Tableau de bord</a></li>
+        <li><a href="#"><span class="ico"></span>Comptes</a></li>
+        <li><a href="#"><span class="ico"></span>Organisations</a></li>
+        <li><a href="#"><span class="ico"></span>Inscriptions</a></li>
+      </ul>
+    </aside>
+    <div class="main">
+      <header class="top"><strong>Console</strong><div class="right"><button class="btn-ghost">◐</button><button class="btn-ghost">AD ▾</button></div></header>
+      <main class="content">
+        <div><h1>Tableau de bord</h1><p class="desc">Vue d'ensemble de la plateforme</p></div>
+        <div class="grid three">
+          <section class="card">
+            <div class="card-h"><h3 class="card-t"><span class="ico"></span>Comptes</h3></div>
+            <div class="card-c"><span class="num">1 284</span></div>
+            <div class="card-f"><a class="btn-ghost" href="#">Voir les comptes →</a></div>
+          </section>
+          <section class="card">
+            <div class="card-h"><h3 class="card-t"><span class="ico"></span>Organisations</h3></div>
+            <div class="card-c">
+              <div class="alert" role="alert">Lecture impossible pour le moment.<br><a href="#">Réessayer</a></div>
+            </div>
+            <div class="card-f"><a class="btn-ghost" href="#">Voir les organisations →</a></div>
+          </section>
+          <section class="card">
+            <div class="card-h"><h3 class="card-t"><span class="ico"></span>Inscriptions</h3></div>
+            <div class="card-c"><span class="num">42</span></div>
+            <div class="card-f"><a class="btn-ghost" href="#">Voir les inscriptions →</a></div>
+          </section>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+
+<div class="note"><h2>3. Mobile (&lt; md) — la barre latérale devient un Sheet</h2>
+  Aucun débordement horizontal sous 400 px ; tuiles en une colonne.</div>
+
+<div class="frame mobile">
+  <div class="shell">
+    <div class="main">
+      <header class="top"><button class="btn-ghost" aria-label="Ouvrir la navigation">☰</button><strong>Console</strong> <span class="badge">Console</span><div class="right"><button class="btn-ghost">◐</button></div></header>
+      <main class="content">
+        <div><h1>Tableau de bord</h1></div>
+        <div class="grid">
+          <section class="card"><div class="card-h"><h3 class="card-t">Comptes</h3></div><div class="card-c"><span class="num">1 284</span></div><div class="card-f"><a class="btn-ghost" href="#">Voir →</a></div></section>
+          <section class="card"><div class="card-h"><h3 class="card-t">Revenu récurrent estimé</h3></div><div class="card-c"><p class="money">12 480,00 €</p></div><div class="card-f"><a class="btn-ghost" href="#">Voir →</a></div></section>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+
+<div class="note"><h2>4. Accès refusé</h2>
+  Anonyme, compte non superadmin, session empruntée, ou module <code>admin</code> coupé : la page 404 standard (<code>not-found.tsx</code>), <strong>sans aucun élément du shell de console</strong>. Rien n'est dessiné ici : c'est l'écran 404 existant.</div>
+</body>
+</html>

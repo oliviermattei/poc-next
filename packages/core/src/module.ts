@@ -228,7 +228,12 @@ export interface NavigationEntry {
  * et c'est exactement ce que le module `consent` refusait en déclarant
  * `navigation: []`.
  *
- * **`admin` est arrivée avec s37b2 (ADR 067)**, et pour la raison exacte qui a
+ * **Elle s'appelle `console` depuis s60 (ADR 070)** : `admin` désignait aussi
+ * l'administration d'une organisation cliente, et la zone du superadmin devait
+ * s'en distinguer. Seule la valeur a changé, pas la règle qui suit ; l'ancienne
+ * est refusée par `pnpm typecheck` (`protection.test.ts`).
+ *
+ * **Elle est arrivée avec s37b2 (ADR 067)**, sous le nom `admin`, et pour la raison exacte qui a
  * fait naître `footer` en s31 : le back-office liste les comptes *et* les
  * organisations, et la seconde entrée doit disparaître avec le module qui la
  * porte. Écrite en dur dans un écran, elle aurait nommé `organizations` dans
@@ -248,7 +253,7 @@ export interface NavigationEntry {
  * `protection` reste néanmoins déclarée, comme partout — elle n'a pas de défaut
  * sûr.
  */
-export type NavigationSurface = 'app' | 'footer' | 'admin'
+export type NavigationSurface = 'app' | 'footer' | 'console'
 
 /**
  * **Ce qu'un module donne à indexer** (s53, ADR 054).

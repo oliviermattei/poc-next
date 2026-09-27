@@ -20,7 +20,7 @@ lire. Ce que `admin` possède est l'**écran** et la **garde**.
 **Ce qu'il possède de la page de tarifs, exactement** : l'écran
 (`presentation/pricing-table.tsx`), les deux règles qui le nourrissent
 (`domain/pricing.ts`), ses clés de catalogue et l'entrée de navigation qui y
-mène. Le **fichier de page** (`apps/web/app/pricing/page.tsx`) reste à
+mène. Le **fichier de page** (`apps/web/app/(site)/pricing/page.tsx`) reste à
 l'application, comme `/billing` : c'est elle qui lit `billing.available`, qui
 résout la session, qui formate le prix dans la langue servie et qui fournit les
 déclencheurs. La ligne d'avant disait que ce module ne possédait « pas la page
@@ -748,7 +748,7 @@ ajoutés par le second passage :
 | retirer `where scope_kind = 'guest'` de la promotion (`infrastructure/`) | 1 | `pnpm vitest run tests/billing.test.ts` (159 verts) |
 | retirer `isGuestScopeKind` avant de produire la promotion (`application/`) | 2 | idem (158 verts) |
 | passer le compteur de débit en mémoire de processus | 6 | idem (154 verts) |
-| la page de retour ouvre une session pour le payeur (`apps/web/app/pricing/page.tsx`) | 1 | idem (159 verts) |
+| la page de retour ouvre une session pour le payeur (`apps/web/app/(site)/pricing/page.tsx`) | 1 | idem (159 verts) |
 | envoyer un lien de définition de mot de passe à un compte existant (`apps/web/lib/guest-account.ts`) | 1 | idem (159 verts) |
 | la résolution de compte ne retrouve plus avant de créer (`accountFor`) | 2 | idem (158 verts) |
 | un `scope_id` invité tiré d'un compteur et d'un horodatage | 1 | idem (159 verts) |

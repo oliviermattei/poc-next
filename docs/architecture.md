@@ -234,7 +234,7 @@ s'exécute dans la requête appelante sans reprise, et le démarrage le journali
 
 Le design system global est capturé dans `docs/design-system.md` par `/ks-design-system`, à partir de `packages/ui`. Les écrans de chaque story dérivent de ce système ; inventer un composant ou un token hors système est interdit, un besoin non couvert se signale comme « design system gap ».
 
-Écrans structurants, par ordre d'apparition : écrans d'authentification (s07), shell de tableau de bord avec navigation issue des modules actifs (s08), paramètres de compte (s08) et d'organisation (s15), page d'accueil sectionnée (s10), page de tarifs dérivée de `config/billing.ts` (s22), back-office superadmin (s37).
+Écrans structurants, par ordre d'apparition : écrans d'authentification (s07), shell de tableau de bord avec navigation issue des modules actifs (s08), paramètres de compte (s08) et d'organisation (s15), page d'accueil sectionnée (s10), page de tarifs dérivée de `config/billing.ts` (s22), back-office superadmin (s37), devenu en s60 la **console** : servie sous `/console` avec un tableau de bord, dans son propre shell, sa surface de navigation renommée `console` (ADR 070) — les écrans étant rangés par zone dans quatre dossiers de routes, `(site)`, `(auth)`, `(app)` et `(console)`, sans changement d'URL (ADR 071).
 
 ## Socles transverses
 
