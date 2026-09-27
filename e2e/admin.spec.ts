@@ -195,6 +195,21 @@ test('le back-office sert la liste des comptes au compte désigné, et 404 aux a
   // Toutes les lectures ont abouti : aucune tuile en erreur.
   await expect(page.getByRole('main').getByRole('alert')).toHaveCount(0)
 
+  // **Une 404 levée par une page de la console, un seul shell** (s66, ADR
+  // 072) : le superadmin sur un identifiant inconnu voit la 404 dans le shell
+  // de la console — le badge le dit —, jamais doublée de l'`AppShell`. Mesuré
+  // ici et pas dans `e2e/not-found-zones.spec.ts` : cette série est la seule à
+  // inscrire le compte désigné. Le compte se fait **après** l'écran 404 affiché,
+  // la seconde barre latérale arrivant par le flux RSC.
+  const unknownUser = await page.goto(publicPath(`${ADMIN_USERS_SCREEN_PATH}/aucun-compte-s66`))
+
+  expect(unknownUser?.status()).toBe(404)
+  await expect(page.getByRole('heading', { name: 'Page introuvable', level: 1 })).toBeVisible()
+  await page.waitForLoadState('networkidle')
+  expect(await page.locator('[data-slot="sidebar"]').count()).toBe(1)
+  expect(await page.getByRole('heading', { level: 1 }).count()).toBe(1)
+  await expect(page.getByText('Console', { exact: true }).first()).toBeVisible()
+
   // **Un autre compte, dans un autre contexte** : il n'administre pas, et il ne
   // distingue pas le back-office d'une URL inventée.
   const other = await browser.newContext()

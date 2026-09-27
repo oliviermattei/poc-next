@@ -252,17 +252,21 @@ console a le sien : les pages sont donc rangées, une seule fois, dans quatre
 Les trois premiers rendent l'`AppShell` à l'identique en s60 ; leur gabarit
 propre est le travail de s61. `tests/zones.test.ts` dérive les `page.tsx` du
 disque et exige que chacune soit sous **exactement un** de ces dossiers, et
-qu'aucun autre groupe n'existe. `api/`, `layout.tsx`, `not-found.tsx`,
+qu'aucun autre groupe n'existe. `api/`, `layout.tsx`, le `not-found.tsx` racine,
 `global-error.tsx`, `robots.ts`, `sitemap.ts` et les composants partagés
 restent à la racine.
 
-**`not-found.tsx` rend l'`AppShell` lui-même.** Il est rendu par la frontière
-racine, **au-dessus** des layouts de zone : sans cela toute URL inconnue
-perdrait la navigation et la bannière de consentement. La contrepartie est
-voulue — un `notFound()` levé dans la console ne rend **rien** de son shell, et
-`e2e/admin.spec.ts` le mesure. Son contenu vit dans `not-found-screen.tsx`, pour
-que `tests/rendered-text.test.ts` le rende dans le shell comme les autres
-écrans.
+**Deux sortes de frontières 404** (ADR 072, qui corrige l'ADR 071).
+`app/not-found.tsx` rend l'`AppShell` lui-même : il sert l'URL sans route et le
+refus d'un **layout** de zone, que seul le layout racine entoure — sans shell,
+toute URL inconnue perdrait la navigation et la bannière de consentement. Le
+refus de la garde de la console ne rend donc **rien** de son shell, et
+`e2e/admin.spec.ts` le mesure. Chaque dossier de zone a en plus son
+`not-found.tsx`, **sans shell** : un `notFound()` levé par une **page** est
+rendu sous le layout de sa zone, qui fournit déjà le sien — la frontière racine
+y doublait le shell. `e2e/not-found-zones.spec.ts` compte les barres latérales.
+Le contenu commun vit dans `not-found-screen.tsx`, pour que
+`tests/rendered-text.test.ts` le rende dans le shell comme les autres écrans.
 
 **Le nonce est relu par chaque layout de zone** (et par `not-found.tsx`), comme
 le layout racine le lit : chaque shell rend les scripts non essentiels de s36,
