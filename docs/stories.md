@@ -2,6 +2,7 @@
 
 > Une story = une tranche livrable, écrite pour être exécutée par un agent.
 > Id : `s<numéro>-<slug>` — repris dans chaque fichier du pipeline et dans le nom de branche.
+> Extension : une story découpée après coup garde son numéro et prend un suffixe (`s34b`, `s37a`, `s37b1`…). Un id livré n'est jamais renuméroté : il nomme une branche.
 
 **Personas.** `Dev` = le développeur qui démarre un projet depuis le boilerplate (l'utilisateur principal du PRD). `User` = l'utilisateur final du SaaS généré. `Admin` = le superadmin du SaaS généré. `Visiteur` = visiteur non authentifié du site marketing.
 
@@ -905,7 +906,7 @@ Contrainte PRD : adapter avec **Inngest comme seule implémentation**. trigger.d
 
 ## Story s34-account-deletion — Supprimer son compte ou son organisation
 
-> **Périmètre restreint au serveur le 05/09.** Les écrans sont dans `s34b-suppression-ecrans`. Le critère 1 décrit une saisie de confirmation : elle est **vérifiée côté serveur et mesurée ici**, mais l'écran qui la présente est livré par la tranche suivante.
+> **Périmètre restreint au serveur le 05/09.** Les écrans sont dans `s34b-ecrans-rgpd`. Le critère 1 décrit une saisie de confirmation : elle est **vérifiée côté serveur et mesurée ici**, mais l'écran qui la présente est livré par la tranche suivante.
 **As a** User **I want** supprimer définitivement mon compte ou mon organisation **so that** je puisse exercer mon droit à l'effacement.
 
 ### Complexity
@@ -948,7 +949,6 @@ configuration livrée. Le critère demande maintenant explicitement que le
 mécanisme soit éprouvé quand même, faute de quoi la story livrerait un
 balayage vide sur une exigence RGPD.
 
-### Agentic notes
 **Socle non désactivable** : droit à l'effacement. Un droit optionnel n'est pas un droit.
 Parité partielle MakerKit (`NEXT_PUBLIC_ENABLE_PERSONAL_ACCOUNT_DELETION`, `..._TEAM_ACCOUNTS_DELETION`, désactivés par défaut).
 Le contrat de module de s03 porte déjà `purge` **et la politique de rétention** : cette story les orchestre, elle ne les crée pas. Introduire ici la déclaration de rétention aurait obligé à rouvrir chaque module écrit depuis s03 — l'erreur que s03 évite justement pour `purge` et `export`. Si un module livré entre s03 et ici ne l'a pas implémentée, c'est un manquement à corriger dans ce module.
@@ -1036,31 +1036,6 @@ Piège : le consentement conditionne le **chargement** du script, pas seulement 
 
 ---
 
-## Story s55-harnais-sans-env — Rejouer la suite dans la forme de la CI
-**As a** Dev **I want** rejouer la suite sans le `.env` du poste **so that** un test qui dépend de mon environnement rougisse chez moi et non en intégration continue.
-
-> **Ajoutée le 06/09**, sur la proposition P29 du retour d'expérience — la mieux étayée du document, parce que son coût d'inaction est mesuré : **trois rouges de CI en trois stories consécutives** (`s32`, `s34` évitée de justesse, `s35`), toujours la même cause.
-
-### Complexity
-1
-
-### Acceptance criteria
-- [ ] Une commande rejoue la suite **sans le fichier `.env` du dépôt**, avec les seules variables que le job de CI fournit — désarmer les variables du shell ne suffit pas, `loadRootEnv()` les relit sur le disque
-- [ ] La commande échoue si un fichier de test lit une variable qu'il n'a pas déclarée, et **nomme le fichier et la variable**
-- [ ] Elle est jouée par la CI, ou son absence de la CI est écrite avec sa raison
-- [ ] Un test qui déclare l'intégralité de ce qu'il lit passe dans les deux régimes ; la commande ne demande pas de désarmer ce que le harnais fournit légitimement
-- [ ] Le plancher : la commande refuse un balayage qui ne trouverait aucun fichier de test
-
-### Dependencies
-s02-quality-harness
-
-### Agentic notes
-**La règle est déjà écrite deux fois et a été enfreinte trois fois.** `AGENTS.md` la porte depuis `s18`/`s19` (P9), P25bis l'a reprécisée après `s32`, et un précédent exécutable existe dans `tests/admin.test.ts`. Ce qui manque n'est pas une quatrième écriture : c'est la commande. *Une règle qu'aucune commande ne vérifie est de la documentation.*
-
-**Deux formes ont été identifiées, et la seconde est retenue** : un garde dérivé sur la fermeture transitive des imports devinerait ce qui sera lu ; une exécution réelle sans `.env` le **mesure**. Coût : une exécution de suite de plus.
-
-**Piège** : la CI ne fournit pas *rien*, elle fournit un ensemble précis (`DATABASE_URL` et les drapeaux de mode local). La commande doit reproduire **cet** ensemble, pas l'absence totale — sinon elle rougit sur des fichiers corrects et finira désarmée, ce que P8 documente.
-
 ## Story s37-admin-users — Administrer les utilisateurs et les organisations
 
 > **DÉCOUPÉE le 05/09** en `s37a-superadmin-et-bannissement`, `s37b-back-office` et `s37c-inscriptions-publiques`, sur verdict de complexité **5** de sa recherche (notée 3 ici avant que quiconque ait ouvert un fichier). Cette entrée reste pour l'historique et ses dépendances ; **ne pas l'implémenter telle quelle**.
@@ -1121,7 +1096,7 @@ Le point dur est le critère 4 : le bannissement est une action d'administration
 > **DÉCOUPÉE le 06/09** en `s37b1-decompte-et-impersonation` et `s37b2-back-office-lecture`, sur verdict de complexité **4** de sa recherche. Entrée conservée pour l'historique ; **ne pas l'implémenter telle quelle**.
 **As a** Admin **I want** parcourir les comptes et me connecter à leur place **so that** je puisse assister mes clients.
 
-> Tranche 2 de 3 de `s37-admin-users`. Aucune autre story n'en dépend.
+> Tranche 2 de 3 de `s37-admin-users`. Aucune autre story n'en dépendait à sa livraison ; s60 l'amende (chemins `/console`).
 
 ### Complexity
 3
@@ -1186,7 +1161,7 @@ s37a-superadmin-et-bannissement
 ## Story s37b2-back-office-lecture — Consulter les comptes et les organisations
 **As a** Admin **I want** parcourir les comptes et les organisations **so that** je voie ce que j'administre.
 
-> Tranche 2 de 2 de `s37b`. Aucune story n'en dépend, et elle ne close seule que si `s37b1` a livré les gardes.
+> Tranche 2 de 2 de `s37b`. Aucune story n'en dépendait à sa livraison (s60 l'amende depuis), et elle ne close seule que si `s37b1` a livré les gardes.
 
 ### Complexity
 3
@@ -1240,7 +1215,7 @@ L'export CSV doit être assaini : une cellule commençant par `=`, `+`, `-` ou `
 - [ ] Module de facturation non activé : la page n'existe pas et son entrée disparaît du back-office
 
 ### Dependencies
-s37-admin-users, s20-one-time-purchase
+s37b2-back-office-lecture, s20-one-time-purchase
 
 ### Agentic notes
 Parité ShipSaaS (« suivi du revenu en temps réel ») et MakerKit.
@@ -1345,7 +1320,7 @@ Piège : refuser toute opération sur un dépôt aux modifications non commitée
 - [ ] **Module non activé** : aucune route de liste d'attente et la page d'accueil reste inchangée
 
 ### Dependencies
-s37-admin-users, s28-rate-limiting, s11-public-forms
+s37a-superadmin-et-bannissement, s28-rate-limiting, s11-public-forms
 
 ### Agentic notes
 Exclusivité MakerKit (vendu comme plugin). Module d'upsell : jamais avant que le socle tourne.
@@ -1372,7 +1347,7 @@ Modules requis déclarés : back-office et formulaires publics.
 - [ ] **Module non activé** : le widget disparaît et aucune route de retour n'existe
 
 ### Dependencies
-s32-notifications-inapp, s37-admin-users
+s32-notifications-inapp, s37a-superadmin-et-bannissement
 
 ### Agentic notes
 Exclusivité MakerKit (plugin feedback). Module d'upsell.
@@ -1398,7 +1373,7 @@ Module requis déclaré : back-office. Le centre de notifications n'est pas requ
 - [ ] **Module non activé** : la page n'existe pas et le lien disparaît du pied de page
 
 ### Dependencies
-s37-admin-users, s28-rate-limiting, s10-marketing-site
+s37a-superadmin-et-bannissement, s28-rate-limiting, s10-marketing-site
 
 ### Agentic notes
 Exclusivité MakerKit (plugin roadmap). Dernier module du parcours : bonus assumé.
@@ -1661,6 +1636,33 @@ Sortie de s30 le 05/09, avant d'écrire son plan : les deux critères partagent 
 
 ---
 
+## Story s55-harnais-sans-env — Rejouer la suite dans la forme de la CI
+**As a** Dev **I want** rejouer la suite sans le `.env` du poste **so that** un test qui dépend de mon environnement rougisse chez moi et non en intégration continue.
+
+> **Ajoutée le 06/09**, sur la proposition P29 du retour d'expérience — la mieux étayée du document, parce que son coût d'inaction est mesuré : **trois rouges de CI en trois stories consécutives** (`s32`, `s34` évitée de justesse, `s35`), toujours la même cause.
+
+### Complexity
+1
+
+### Acceptance criteria
+- [ ] Une commande rejoue la suite **sans le fichier `.env` du dépôt**, avec les seules variables que le job de CI fournit — désarmer les variables du shell ne suffit pas, `loadRootEnv()` les relit sur le disque
+- [ ] La commande échoue si un fichier de test lit une variable qu'il n'a pas déclarée, et **nomme le fichier et la variable**
+- [ ] Elle est jouée par la CI, ou son absence de la CI est écrite avec sa raison
+- [ ] Un test qui déclare l'intégralité de ce qu'il lit passe dans les deux régimes ; la commande ne demande pas de désarmer ce que le harnais fournit légitimement
+- [ ] Le plancher : la commande refuse un balayage qui ne trouverait aucun fichier de test
+
+### Dependencies
+s02-quality-harness
+
+### Agentic notes
+**La règle est déjà écrite deux fois et a été enfreinte trois fois.** `AGENTS.md` la porte depuis `s18`/`s19` (P9), P25bis l'a reprécisée après `s32`, et un précédent exécutable existe dans `tests/admin.test.ts`. Ce qui manque n'est pas une quatrième écriture : c'est la commande. *Une règle qu'aucune commande ne vérifie est de la documentation.*
+
+**Deux formes ont été identifiées, et la seconde est retenue** : un garde dérivé sur la fermeture transitive des imports devinerait ce qui sera lu ; une exécution réelle sans `.env` le **mesure**. Coût : une exécution de suite de plus.
+
+**Piège** : la CI ne fournit pas *rien*, elle fournit un ensemble précis (`DATABASE_URL` et les drapeaux de mode local). La commande doit reproduire **cet** ensemble, pas l'absence totale — sinon elle rougit sur des fichiers corrects et finira désarmée, ce que P8 documente.
+
+---
+
 ## Story s56-roles-de-session — Servir une route réservée à un rôle
 **As a** Dev **I want** que le niveau de protection `role` soit satisfaisable **so that** une route ou une entrée réservée à un rôle serve réellement celui qui le porte.
 
@@ -1755,102 +1757,176 @@ Le contrat de module a déjà quinze clés ; en ajouter une seizième rouvrirait
 3
 
 ### Acceptance criteria
-- [ ] L'image est construite et **servie** sur un hôte qui n'est pas la machine de développement, avec sa base et ses migrations jouées dans leur conteneur
-- [ ] Le parcours d'inscription jusqu'au tableau de bord fonctionne **sur cette instance**, avec un email réellement reçu
-- [ ] La **CSP de production** est vérifiée sur la page servie : nonce par requête, aucun `unsafe-inline`, console muette
-- [ ] Une trace d'erreur est **lisible** chez le fournisseur — c'est ce que `s39` a livré sans jamais pouvoir le prouver
-- [ ] Ce qui a dû être configuré à la main est **écrit** dans `docs/deployment.md`, et ce qui a échoué du premier coup aussi
-- [ ] L'instance est **jetable** : la détruire et la reconstruire depuis le dépôt donne le même résultat
+- [ ] **Recette manuelle** : L'image est construite et **servie** sur un hôte qui n'est pas la machine de développement, avec sa base et ses migrations jouées dans leur conteneur
+- [ ] **Recette manuelle** : Le parcours d'inscription jusqu'au tableau de bord fonctionne **sur cette instance**, avec un email réellement reçu
+- [ ] **Recette manuelle** : La **CSP de production** est vérifiée sur la page servie : nonce par requête, aucun `unsafe-inline`, console muette
+- [ ] **Recette manuelle** : Une trace d'erreur est **lisible** chez le fournisseur — c'est ce que `s39` a livré sans jamais pouvoir le prouver
+- [ ] **Recette manuelle** : Ce qui a dû être configuré à la main est **écrit** dans `docs/deployment.md`, et ce qui a échoué du premier coup aussi
+- [ ] **Recette manuelle** : L'instance est **jetable** : la détruire et la reconstruire depuis le dépôt donne le même résultat
 
 ### Dependencies
 s27-deployment, s39-monitoring-analytics
 
 ### Agentic notes
+**Tous les critères sont en recette manuelle** (règle « Critères non automatisables ») : leur trace — hôte, date, version, observation — est consignée dans la revue de la story.
 **Cette story demande des clés et un hôte — elle ne peut pas être jouée seule par un agent.** C'est son intérêt : elle transforme onze « non vérifié » en observations, et chaque écart trouvé vaut plus que la story elle-même.
 Le régime `recorded` du parcours doré n'a **aucune capture Stripe** : la première capture réelle appartient naturellement à cette story ou à sa voisine.
 
 ---
 
-## Story s60-console-superadmin — Entrer dans la console superadmin par une porte reconnaissable
-**As a** Superadmin **I want** une console nommée comme telle, avec un tableau de bord d'accueil et un lien d'entrée depuis l'application **so that** je rejoigne le pilotage de la plateforme sans taper une URL de mémoire, et sans la confondre avec l'administration de mon organisation.
+## Story s60-console — Piloter la plateforme depuis une console reconnaissable
+**As a** Admin **I want** une console nommée comme telle, qui s'ouvre sur un tableau de bord **so that** je pilote la plateforme sans taper une URL de mémoire, et sans la confondre avec l'administration de mon organisation.
 
-> **Ajoutée le 27/09, sur une mesure faite en naviguant l'instance locale.** Connecté en superadmin, **aucun lien** ne mène au back-office : ses quatre entrées portent `surface: 'admin'` et ne sont rendues que par `apps/web/lib/back-office.ts:67`, c'est-à-dire **à l'intérieur** des écrans `/admin/*`. Il n'existe pas non plus de page `/admin` : on entre par `/admin/users`, qu'il faut connaître. Enfin le mot « admin » désigne deux choses dans le produit — la plateforme (ce module) et l'organisation d'un client (`/organizations`, ses membres, sa facturation) —, et c'est le nom de la première qui prête à confusion.
+> **Ajoutée le 27/09, sur une mesure faite en naviguant l'instance locale.** Il n'existe pas de page `/admin` : on entre par `/admin/users`, qu'il faut connaître. Les quatre entrées du back-office portent `surface: 'admin'` et ne sont rendues qu'**à l'intérieur** des écrans `/admin/*` (`apps/web/lib/back-office.ts:67`). Enfin, le mot « admin » désigne deux choses dans le produit : la plateforme (ce module) et l'organisation d'un client (ses membres, sa facturation).
+>
+> **Décision du porteur (27/09) : aucun lien visible depuis l'application.** On entre dans la console par son adresse, `/console`, ou `console.<domaine>` une fois s64 livrée. Parité : MakerKit sert un « Super Admin panel » avec tableau de bord à métriques ; Supastarter redirige `/admin` vers la liste des comptes.
+>
+> **Cette story amende s37b2, s37c et s38** : leurs critères sur les chemins `/admin/...` valent désormais pour `/console/...`, la surface `admin` devient `console`, et `AGENTS.md` (racine, `apps/web`, module `admin`) suit. Les notes de s37b et s37b2 le disent.
 
 ### Complexity
 3
 
 ### Acceptance criteria
-- [ ] La valeur de surface de navigation `admin` n'existe plus : les entrées de la console déclarent `surface: 'superadmin'`, et `pnpm typecheck` refuse l'ancienne valeur
-- [ ] Les écrans de la console sont servis sous `/superadmin/*` (comptes, organisations, revenu, inscriptions, et leurs pages de détail) ; les anciens chemins `/admin/*` répondent **404**, sans redirection — une redirection confirmerait l'existence de la surface
-- [ ] `/superadmin` est un **tableau de bord** : nombre de comptes, nombre d'organisations, revenu récurrent estimé, nombre d'inscriptions publiques, chacun lié à son écran ; une tuile dont le module est coupé n'est pas rendue (même règle que l'entrée de navigation du module)
-- [ ] La console porte un shell reconnaissable : titre « Console superadmin » et un badge qui la distinguent de l'application, composés des composants et jetons existants du design system
-- [ ] Un lien « Console superadmin » apparaît dans le menu de compte de l'application **pour un superadmin seulement**, décidé côté serveur ; une session empruntée ne le voit pas
-- [ ] Un compte qui n'est pas superadmin, ou une session empruntée, reçoit **404** sur `/superadmin` et sur chaque écran de la console, et ne voit le lien nulle part (ni HTML rendu, ni plan de site)
-- [ ] Module `admin` coupé : `/superadmin` répond 404, le lien n'est pas rendu, et `pnpm test:minimal-profile` reste vert
+- [ ] La valeur de surface de navigation `admin` n'existe plus : les entrées de la console déclarent `surface: 'console'`, et `pnpm typecheck` refuse l'ancienne valeur
+- [ ] Les écrans de la console sont servis sous `/console/*` (comptes, organisations, revenu, inscriptions, et leurs pages de détail) ; les anciens chemins `/admin/*` répondent **404**, sans redirection, car une redirection confirmerait l'existence de la surface
+- [ ] `/console` est un **tableau de bord** : nombre de comptes, nombre d'organisations, revenu récurrent estimé, nombre d'inscriptions publiques, chacun lié à son écran. Une tuile dont le module est coupé n'est pas rendue (même règle que l'entrée de navigation du module)
+- [ ] La console porte un shell reconnaissable : titre « Console » et un badge qui la distinguent de l'application, composés des composants et jetons existants du design system
+- [ ] **Aucun lien** vers la console n'est rendu dans l'application, le site, le plan de site ou `robots.txt`, quel que soit le compte connecté
+- [ ] Un compte qui n'est pas superadmin, ou une session empruntée, reçoit **404** sur `/console` et sur chaque écran de la console
+- [ ] Module `admin` coupé : `/console` répond 404, et `pnpm test:minimal-profile` reste vert
 
 ### Dependencies
 s37b2-back-office-lecture, s37c-inscriptions-publiques, s38-admin-revenue
 
 ### Agentic notes
-Les chemins d'écrans ne vivent pas tous dans `admin` : `ADMIN_USERS_SCREEN_PATH` (`packages/modules/admin/src/presentation/admin-routes.ts:513`), `ADMIN_ORGANIZATIONS_SCREEN_PATH` (module `organizations`), `ADMIN_REVENUE_SCREEN_PATH` (module `billing`), `ADMIN_SUBSCRIPTIONS_SCREEN_PATH` (module `marketing`) — quatre modules, plus `apps/web/app/admin/` et `e2e/admin.spec.ts`. Les **routes d'API** `/api/modules/admin/…` ne sont pas des écrans : elles gardent leur préfixe de montage, qui est l'id du module.
-`NavigationSurface` est dans `packages/core/src/module.ts:251` (`'app' | 'footer' | 'admin'`). Renommer une valeur de ce type touche les ADR 066/067 : un **nouvel ADR** porte le nom, il ne réécrit pas les anciens.
-Le tableau de bord réutilise les lectures de `apps/web/lib/admin.ts` (vues comptes, organisations, revenu, inscriptions) : **aucune table nouvelle**. Si une lecture ne rend pas de total, la research le mesure et le plan l'ajoute au port existant.
-Le lien d'entrée dépend du rôle de plateforme, pas de `ModuleSession.roles` : la garde de référence est `asSuperadmin`, qui refuse l'emprunt **avant** de juger le rôle. `apps/web/app/account-menu.tsx` est l'endroit naturel ; il reste un composant de l'application, donc la décision arrive en donnée depuis `lib/admin.ts`, jamais par un import de module.
+Les chemins d'écrans ne vivent pas tous dans `admin` : `ADMIN_USERS_SCREEN_PATH` (`packages/modules/admin/src/presentation/admin-routes.ts:513`), `ADMIN_ORGANIZATIONS_SCREEN_PATH` (module `organizations`), `ADMIN_REVENUE_SCREEN_PATH` (module `billing`), `ADMIN_SUBSCRIPTIONS_SCREEN_PATH` (module `marketing`). Cela fait quatre modules, plus `apps/web/app/admin/` et `e2e/admin.spec.ts`. Les **routes d'API** `/api/modules/admin/…` ne sont pas des écrans : elles gardent leur préfixe de montage, qui est l'id du module.
+`NavigationSurface` est dans `packages/core/src/module.ts:251` (`'app' | 'footer' | 'admin'`). Renommer une valeur touche les ADR 066/067 : un **nouvel ADR** porte le nom, il ne réécrit pas les anciens.
+Le tableau de bord réutilise les lectures de `apps/web/lib/admin.ts` (comptes, organisations — qui rend déjà un `total` —, revenu, inscriptions) : **aucune table nouvelle**. Si une lecture ne rend pas de total, la research le mesure et le plan l'ajoute au port existant.
+La garde de référence reste `asSuperadmin` (`admin-routes.ts:182`), qui refuse l'emprunt **avant** de juger le rôle.
+`reservedSlugs` (`apps/web/lib/organizations.ts:194`) dérive les segments du disque : `console` y entre, `admin` en sort, et `tests/organizations.test.ts` le tient. Aucune organisation n'est adressée par URL aujourd'hui (ni segment `[slug]`, ni préfixe) : la réservation est préventive, et un identifiant existant `console` ne masque rien.
 
 ---
 
 ## Story s61-site-et-application — Séparer le site public de l'application
 **As a** Visiteur **I want** que l'adresse du produit ouvre son site public, et que la connexion m'emmène dans l'application **so that** le site présente le produit et l'application sert à s'en servir, sans que l'un porte la navigation de l'autre.
 
-> **Ajoutée le 27/09.** Aujourd'hui une seule barre latérale mélange onze liens : ceux du site (accueil, blog, docs, tarifs, connexion) et ceux de l'application (compte, organisations, facturation, notifications…). Et `/` change de nature selon la session (`apps/web/app/page.tsx` : accueil marketing pour un anonyme, tableau de bord pour un connecté) — l'adresse du produit ne montre jamais son site à quelqu'un qui a un compte.
+> **Ajoutée le 27/09.** Aujourd'hui une seule barre latérale mélange onze liens : ceux du site (accueil, blog, docs, tarifs, connexion) et ceux de l'application (compte, organisations, facturation, notifications…). Et `/` change de nature selon la session (`apps/web/app/page.tsx` : accueil marketing pour un anonyme, tableau de bord pour un connecté), si bien que l'adresse du produit ne montre jamais son site à quelqu'un qui a un compte.
 >
-> **Cette story amende deux critères déjà livrés** : s08 (« une fois connecté, l'utilisateur atteint un tableau de bord » — il l'atteint désormais sur `/app`, pas sur `/`) et s40 (le parcours d'intégration se termine sur `/app`). L'ADR de la story le dit.
+> **Partition des écrans, décidée le 27/09.** Elle est exhaustive sur les segments de `apps/web/app` à cette date ; un segment ajouté plus tard choisit sa zone.
+>
+> | Zone | Gabarit | Écrans |
+> |---|---|---|
+> | **Site** | en-tête du site + pied de page | `/`, `/blog`, `/docs`, `/pricing`, `/changelog`, `/contact`, `/legal`, `/cookies`, `/waitlist` |
+> | **Hors zone** | gabarit d'authentification, sans en-tête ni barre latérale | `/sign-in`, `/sign-up`, `/forgot-password`, `/reset-password`, `/verify-email`, `/two-factor`, `/oauth/return`, `/invitations/accept` |
+> | **Application** | barre du haut + barre latérale | `/app` et ce que s62/s63 y placent |
+> | **Console** | shell de la console | `/console/*` (s60) |
+>
+> Parité : aucune des quatre cibles ne place l'authentification sous le préfixe de l'application (Supastarter et ShipSaaS à la racine, MakerKit sous `/auth`).
+>
+> **Cette story amende trois critères déjà livrés** : s07 (le repli de `safeRedirectPath(next, '/')` devient `/app`), s08 (le tableau de bord d'un connecté est sur `/app`, plus sur `/`) et s40 (le parcours d'intégration se termine sur `/app`). L'ADR de la story le dit.
 
 ### Complexity
 3
 
 ### Acceptance criteria
-- [ ] Une nouvelle valeur de surface `site` existe : accueil, blog, docs et tarifs la déclarent, et sont rendus dans un **en-tête** du site, pas dans une barre latérale
-- [ ] `/` sert le site public **connecté ou non** ; l'en-tête affiche « Se connecter » à un anonyme et « Ouvrir l'application » à un connecté
-- [ ] `/app` est le tableau de bord de l'application ; un anonyme qui l'ouvre est renvoyé vers la connexion
-- [ ] Après connexion, l'utilisateur atterrit sur `/app` ; si son parcours d'intégration est en cours, sur ce parcours, qui se termine sur `/app`
+- [ ] Une nouvelle valeur de surface `site` existe : les entrées de navigation de l'accueil, du blog, des docs, des tarifs **et de la connexion** la déclarent, et sont rendues dans l'**en-tête** du site. Aucun lien de l'en-tête n'est écrit à la main
+- [ ] Chaque écran de la zone Site est rendu avec l'en-tête et sans barre latérale ; chaque écran Hors zone est rendu sans en-tête et sans barre latérale. Un test dérive la liste des écrans du disque et exige que chacun appartienne à exactement une zone
+- [ ] `/` sert le site public **connecté ou non** ; l'en-tête affiche « Se connecter » à un anonyme et « Ouvrir l'application » (vers `/app`) à un connecté
+- [ ] `/app` est le tableau de bord de l'application ; un anonyme qui l'ouvre est renvoyé vers la connexion, avec retour sur `/app`
+- [ ] La destination **par défaut** après connexion est `/app` : c'est une constante du code. Un `?next=` reste honoré **à travers la liste blanche** `safeRedirectPath` (retour d'invitation, de tarifs, d'URL demandée). Si le parcours d'intégration est en cours, il passe d'abord, puis se termine sur `/app`
+- [ ] Un visiteur **déjà connecté** qui ouvre `/sign-in` ou `/sign-up` est renvoyé vers `/app`
 - [ ] La barre latérale de l'application ne rend **que** la surface `app` : aucun lien du site n'y figure
-- [ ] Site public coupé (module `marketing` désactivé) : `/` renvoie vers la connexion, comme aujourd'hui, et l'en-tête n'existe pas
-- [ ] La destination après connexion est une **constante du code**, jamais un paramètre d'URL (redirection ouverte)
+- [ ] Site public coupé (module `marketing` désactivé) : `/` renvoie un anonyme vers la connexion et un connecté vers `/app`, et l'en-tête n'existe pas
 
 ### Dependencies
-s08-app-shell, s10-marketing-site, s40-onboarding
+s07-signup-signin, s08-app-shell, s10-marketing-site, s22-pricing-page, s29-blog-mdx, s30-docs-site, s40-onboarding
 
 ### Agentic notes
-`apps/web/app/page.tsx` porte aujourd'hui quatre sorties ; deux partent sur `/app`. Le tableau de bord qu'il rend pour un connecté **déménage**, il n'est pas réécrit.
-L'atterrissage après connexion est écrit dans `apps/web/app/auth-form.tsx:181` (`redirectTo`) et dans la page de sign-in ; le parcours doré (`pnpm test:golden-path`) dérive l'atterrissage au lieu de l'écrire en dur — le garder dérivé.
-`NavigationSurface` (`packages/core/src/module.ts:251`) gagne `site` : c'est la **quatrième** surface ; ADR 067 a tranché que la surface reste une propriété de l'entrée, donc pas de nouvelle clé de contrat. Le pied de page (`footer`) ne bouge pas.
-L'en-tête du site se compose des composants existants de `packages/ui` ; un besoin non couvert est un **écart du design system** à signaler, pas à combler (règle Design).
-Préfixe de langue : les chemins sont servis sous `/fr/…` et `/en/…` ; `/app` suit la même règle que les autres écrans.
+`apps/web/app/page.tsx` porte aujourd'hui quatre sorties ; deux partent sur `/app`. Le tableau de bord qu'il rend pour un connecté **déménage** sur `/app`, il n'est pas réécrit.
+L'atterrissage : `apps/web/app/sign-in/page.tsx:145` (`destination`, dérivée de `?next=` par `safeRedirectPath`), puis `auth-form.tsx:181`. Garder la liste blanche intacte : c'est ce qui empêche une redirection ouverte. Le parcours doré dérive l'atterrissage au lieu de l'écrire en dur, et doit le rester.
+`NavigationSurface` (`packages/core/src/module.ts:251`) gagne `site`. ADR 067 a tranché que la surface reste une propriété de l'entrée : pas de nouvelle clé de contrat. Le pied de page (`footer`) ne bouge pas.
+Les entrées publiques de démonstration (`demo-enabled`, dont `/api/modules/demo-enabled/items`, qui rend du JSON) restent en surface `app` : elles figurent les pages du SaaS construit.
+Aujourd'hui `app/app-shell.tsx` entoure **tous** les écrans. La séparation passe par des groupes de routes Next (`(site)`, `(auth)`, `app/`), qui ne changent aucune URL de la zone Site ni Hors zone.
+L'en-tête du site se compose des composants existants de `packages/ui` ; un besoin non couvert est un **écart du design system** à signaler, pas à combler.
 
 ---
 
-## Story s62-application-sous-app — Servir l'application sous `/app`
-**As a** Propriétaire du produit **I want** que tous les écrans de l'application vivent sous `/app` **so that** le site et l'application soient séparés par leur adresse, et qu'un sous-domaine `app.` soit possible plus tard sans toucher au code.
+## Story s62-zone-reglages — Régler son compte et son organisation dans une zone dédiée
+**As a** User **I want** retrouver profil, sécurité, organisation, membres et facturation dans une zone Réglages **so that** la barre latérale de l'application reste celle du produit, comme dans tout SaaS.
 
-> **Choix tranché le 27/09 : un préfixe `/app`, pas un sous-domaine.** Même origine, donc un seul cookie de session, une CSP `default-src 'self'` inchangée, un seul déploiement, et rien à configurer côté DNS ni en local. Un sous-domaine reste accessible plus tard par une réécriture d'hôte en amont (`app.domain.com/*` → `domain.com/app/*`), qui ne change aucun chemin du code. L'ADR de la story porte les options rejetées.
+> **Décision du porteur (27/09).** La barre latérale de `/app` est **réservée aux pages du SaaS construit**. Compte, organisation, membres, facturation et préférences quittent la navigation principale. Parité : MakerKit (`/home/settings`, `/home/[account]/billing`), Supastarter (`/settings/general`).
 
 ### Complexity
 4
 
 ### Acceptance criteria
-- [ ] Les écrans authentifiés de l'application (compte, organisations, facturation, notifications, parcours d'intégration, et ceux que les modules déclarent `authenticated` ou `entitlement`) sont servis sous `/app/…`
-- [ ] Chaque ancien chemin répond **308** vers son équivalent sous `/app`, en conservant la requête ; la liste des redirections est **dérivée** des chemins déclarés, pas recopiée
-- [ ] Les liens écrits dans les emails (vérification, réinitialisation, invitation, notifications), les retours d'authentification (OAuth, deux facteurs) et les retours de paiement (checkout, portail) pointent le nouveau chemin
-- [ ] Les écrans publics restent à leur place : site, blog, docs, tarifs, pages légales, connexion, inscription, mot de passe oublié, liste d'attente
-- [ ] La console superadmin (`/superadmin`) n'est **pas** déplacée sous `/app`, et n'a aucune redirection
-- [ ] Les recettes existantes restent vertes sous les nouveaux chemins : `pnpm test:e2e`, `pnpm test:golden-path`, `pnpm test:minimal-profile`
+- [ ] Une zone `/app/settings` a sa propre navigation, portée par une nouvelle surface `settings` : Profil, Sécurité, Organisation, Membres, Facturation, Notifications (préférences), Cookies. Chaque entrée disparaît avec son module
+- [ ] Le contenu actuel de `/account`, `/organizations`, `/billing` et des préférences de notification est servi sous `/app/settings/*`, **sans perte** : chaque carte ou action existante a sa place, ce que prouve un test qui la retrouve sous le nouveau chemin
+- [ ] La barre du haut de l'application porte le sélecteur d'organisation, une **cloche** (compteur de non-lus, lien vers le centre de notifications) et le menu de compte (Réglages, Déconnexion)
+- [ ] La barre latérale de `/app` ne contient plus aucune de ces entrées
+- [ ] Les anciens chemins (`/account`, `/organizations`, `/billing`) répondent **308** vers leur équivalent, requête conservée. La table des redirections est une donnée, et un test exige qu'aucun ancien chemin n'y manque
+- [ ] Les liens qui visent ces écrans pointent le nouveau chemin : retours de checkout et de portail Stripe, liens d'emails vers la facturation ou l'organisation
+- [ ] Module `organizations` coupé : ni Organisation ni Membres dans la zone ; module `billing` coupé : ni Facturation. `pnpm test:minimal-profile` reste vert
 
 ### Dependencies
-s61-site-et-application, s60-console-superadmin
+s61-site-et-application, s15-organizations, s16-invite-members, s18-file-storage-avatar, s19-subscribe-stripe, s32-notifications-inapp, s34b-ecrans-rgpd, s36-cookie-consent
 
 ### Agentic notes
-**Risque (complexité 4)** : c'est un déplacement transverse. Les chemins d'écrans sont des constantes dispersées dans les modules (`*_SCREEN_PATH`, `href` de navigation) et dans `apps/web/app/*` ; les emails construisent leurs liens à partir d'`APP_URL` plus un chemin ; les retours Stripe et OAuth portent des URL de retour. Un lien oublié ne casse aucun test unitaire — il casse un parcours, d'où le critère 6.
-Les **routes d'API** (`/api/…`) ne bougent pas : ce ne sont pas des écrans, et les webhooks enregistrés chez les fournisseurs les visent.
-Les redirections 308 vivent au plus près du routage (`apps/web/proxy.ts` ou `next.config.ts`) ; elles ne doivent jamais servir de redirection ouverte (cible = constante dérivée, jamais un paramètre).
-Les cinq fichiers de route Next hors répartiteur (règle de rate limiting, `docs/security.md`) ne bougent pas : le test qui en compte cinq doit rester vert.
+**Risque (complexité 4)** : c'est un déplacement d'écrans plus une nouvelle surface. Les chemins d'écrans sont des constantes dispersées dans les modules (`*_SCREEN_PATH`, `href` de navigation). Les retours Stripe portent des URL de retour construites à partir d'`APP_URL`, et un lien oublié ne casse aucun test unitaire.
+Les écrans RGPD de s34b (suppression, export) vivent aujourd'hui dans `/account` : ils suivent le Profil ou la Sécurité, jamais une page à part non listée.
+Les liens d'emails de vérification, de réinitialisation et d'invitation **ne changent pas** : ils visent des écrans Hors zone (s61).
+Les redirections vivent au plus près du routage (`apps/web/proxy.ts`) ; la cible est une constante, jamais un paramètre.
+`reservedSlugs` suit le disque : les segments redirigés restent réservés même quand leur fichier d'écran a disparu.
+
+---
+
+## Story s63-application-sous-app — Servir tout l'écran applicatif sous `/app`
+**As a** Propriétaire du produit **I want** que chaque écran authentifié vive sous `/app` **so that** le site et l'application soient séparés par leur adresse, et qu'un hôte dédié (s64) n'ait qu'un préfixe à associer.
+
+### Complexity
+3
+
+### Acceptance criteria
+- [ ] Les écrans authentifiés restants sont servis sous `/app/…` : parcours d'intégration (`/app/onboarding`), centre de notifications (`/app/notifications`), et chaque écran qu'un module déclare `authenticated`, `role` ou `entitlement` (dont `/app/premium`)
+- [ ] Chaque ancien chemin répond **308** vers son équivalent, requête conservée ; la table est dérivée des chemins déclarés et un test exige qu'aucun n'y manque
+- [ ] Un test dérive du disque les écrans hors de `/app` et exige que chacun appartienne à la zone Site ou Hors zone de s61, ou à la console : aucun écran authentifié ne reste à la racine
+- [ ] Les liens d'emails de notification et les liens internes visent le nouveau chemin
+- [ ] Les **routes d'API** (`/api/…`) ne bougent pas
+- [ ] `pnpm test:e2e`, `pnpm test:golden-path` et `pnpm test:minimal-profile` restent verts sous les nouveaux chemins
+
+### Dependencies
+s61-site-et-application, s62-zone-reglages
+
+### Agentic notes
+Les webhooks enregistrés chez les fournisseurs visent `/api/…` : c'est pourquoi l'API ne bouge pas.
+Les cinq fichiers de route Next hors répartiteur (`docs/security.md`, rate limiting) ne bougent pas : le test qui en compte cinq doit rester vert.
+Le parcours doré dérive son atterrissage (s40) : le garder dérivé.
+
+---
+
+## Story s64-hotes-dedies — Servir l'application et la console sur leur propre sous-domaine
+**As a** Propriétaire du produit **I want** servir l'application sur `app.<domaine>` et la console sur `console.<domaine>` quand je le configure **so that** chaque zone ait son adresse, et que la console ait une session distincte de l'application.
+
+> **Décision du porteur (27/09) : chemins d'abord, hôtes optionnels.** Le code sert `/app` et `/console` ; deux variables d'environnement facultatives associent chacun à un hôte. Sans elles, tout reste sur un domaine, ce qui garde le mode local et un petit déploiement simples. Parité : Supastarter sert l'application sur un autre domaine que le site (`app-demo.supastarter.dev`) ; MakerKit et ShipFast sur un chemin.
+
+### Complexity
+4
+
+### Acceptance criteria
+- [ ] `APP_HOST` et `CONSOLE_HOST` sont facultatives et validées par Zod au démarrage ; une valeur malformée arrête le démarrage **en nommant la variable**
+- [ ] Sans ces variables, le comportement est celui de s63, octet pour octet (la suite existante le prouve)
+- [ ] Avec `APP_HOST` : `app.<domaine>/x` sert `/app/x`, et `<domaine>/app/x` répond 308 vers `app.<domaine>/x`. Les écrans Hors zone (connexion, vérification…) sont servis sur l'hôte de l'application
+- [ ] Avec `CONSOLE_HOST` : `console.<domaine>/x` sert `/console/x`, `<domaine>/console/*` répond **404** (jamais une redirection qui révélerait l'hôte de la console), et un superadmin s'y connecte **séparément** : le cookie de session est propre à l'hôte, et une session de l'application n'ouvre pas la console
+- [ ] Un hôte qui n'est ni le site, ni `APP_HOST`, ni `CONSOLE_HOST` ne sert aucune zone applicative
+- [ ] Les origines de confiance de l'auth, les retours OAuth, les retours Stripe et les liens d'emails utilisent l'hôte de leur zone
+- [ ] La CSP reste `default-src 'self'` sur chaque hôte, sans source ajoutée
+- [ ] `docs/deployment.md` décrit les deux configurations (un domaine, trois hôtes) ; **recette manuelle** : un déploiement à trois hôtes est servi de bout en bout, trace consignée dans la revue
+
+### Dependencies
+s60-console, s63-application-sous-app, s27-deployment, s45-security-headers
+
+### Agentic notes
+**Risque (complexité 4, sécurité)** : cookies, origines de confiance et CSP par hôte. `trustedOrigins: [options.appUrl]` dans `packages/modules/auth/src/infrastructure/better-auth-service.ts:603` est aujourd'hui un seul hôte. Aucune option de cookie partagé entre sous-domaines n'est voulue : la séparation des sessions **est** la propriété recherchée pour la console.
+Le site ne connaît pas la session de l'application quand elle vit sur un autre hôte : « Ouvrir l'application » (s61) devient un lien vers l'hôte de l'application, qui renvoie vers sa connexion si besoin. Le critère 3 de s61 se lit alors ainsi.
+En local, `app.localhost` et `console.localhost` résolvent dans Chromium sans DNS : c'est ce que les parcours Playwright peuvent utiliser.
+L'association hôte → préfixe vit dans `apps/web/proxy.ts`, qui applique déjà le préfixe de langue. L'ordre des deux réécritures est un piège à mesurer en research.
