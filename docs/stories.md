@@ -1305,7 +1305,7 @@ Piège : refuser toute opération sur un dépôt aux modifications non commitée
 
 ## Story s42-waitlist — Recueillir des inscriptions avant le lancement
 
-> **OPTIONNELLE — reportée le 05/09.** Décision du porteur du projet : le produit est livrable sans elle. À reprendre après le socle fonctionnel.
+> **Reportée le 05/09, puis reprise et livrée** (`docs/reviews/s42-waitlist.md` : `Ship allowed: yes`).
 **As a** Visiteur **I want** m'inscrire sur une liste d'attente **so that** je sois prévenu au lancement du produit.
 
 ### Complexity
@@ -1803,7 +1803,7 @@ Les chemins d'écrans ne vivent pas tous dans `admin` : `ADMIN_USERS_SCREEN_PATH
 `NavigationSurface` est dans `packages/core/src/module.ts:251` (`'app' | 'footer' | 'admin'`). Renommer une valeur touche les ADR 066/067 : un **nouvel ADR** porte le nom, il ne réécrit pas les anciens.
 Le tableau de bord réutilise les lectures de `apps/web/lib/admin.ts` (comptes, organisations — qui rend déjà un `total` —, revenu, inscriptions) : **aucune table nouvelle**. Si une lecture ne rend pas de total, la research le mesure et le plan l'ajoute au port existant.
 La garde de référence reste `asSuperadmin` (`admin-routes.ts:182`), qui refuse l'emprunt **avant** de juger le rôle. La console n'a donc pas besoin du bandeau d'emprunt : une session empruntée n'y entre pas.
-Segments réservés aux organisations : `APPLICATION_SEGMENTS` (`apps/web/lib/organizations.ts:194`) est une liste **écrite** ; `reservedSlugs` (l. 284) y ajoute les premiers segments des `href` de navigation. `console` sera réservé par son `href`, mais `admin` doit être **retiré à la main** de `APPLICATION_SEGMENTS`. C'est `tests/organizations.test.ts` qui dérive les segments du disque et tient la règle. Aucune organisation n'est adressée par URL (le seul segment dynamique de tête est `blog/[slug]`) : la réservation est préventive.
+Segments réservés aux organisations : `APPLICATION_SEGMENTS` (`apps/web/lib/organizations.ts:194`) est une liste **écrite** ; `reservedSlugs` (l. 284) y ajoute les premiers segments des `href` de navigation. `console` doit être **écrit** dans `APPLICATION_SEGMENTS` (son `href` ne le réserve que si `admin` est activé, alors que `apps/web/app/console/` existe sur le disque dans tous les cas, comme `blog` ou `billing`), et `admin` y être **retiré**. C'est `tests/organizations.test.ts` qui dérive les segments du disque et tient la règle. Aucune organisation n'est adressée par URL (le seul segment dynamique de tête est `blog/[slug]`) : la réservation est préventive.
 
 ---
 
@@ -1812,7 +1812,7 @@ Segments réservés aux organisations : `APPLICATION_SEGMENTS` (`apps/web/lib/or
 
 > **Ajoutée le 27/09.** Aujourd'hui une seule barre latérale mélange onze liens : ceux du site (accueil, blog, docs, tarifs, connexion) et ceux de l'application (compte, organisations, facturation, notifications…). Et `/` change de nature selon la session (`apps/web/app/page.tsx` : accueil marketing pour un anonyme, tableau de bord pour un connecté), si bien que l'adresse du produit ne montre jamais son site à quelqu'un qui a un compte.
 >
-> **Partition des écrans, décidée le 27/09**, exhaustive sur les segments de `apps/web/app` une fois s60 livrée. Un segment ajouté plus tard choisit sa zone, et le test du critère 2 l'y force.
+> **Partition des écrans, décidée le 27/09**, exhaustive sur les `page.tsx` de `apps/web/app` une fois s60 livrée. Un segment ajouté plus tard choisit sa zone, et le test du critère 2 l'y force. Deux fichiers spéciaux : `not-found.tsx` est rendu avec le gabarit **Site** (dans toutes les zones : un 404 de console ne doit pas ressembler à la console) ; `global-error.tsx` rend son propre `<html>` et reste hors partition, par construction de Next.
 >
 > | Zone | Gabarit | Écrans |
 > |---|---|---|
@@ -1825,7 +1825,7 @@ Segments réservés aux organisations : `APPLICATION_SEGMENTS` (`apps/web/lib/or
 >
 > **Décision du porteur (27/09) : le bouton de l'en-tête appartient au gabarit.** « Se connecter » ou « Ouvrir l'application » n'est pas une entrée de navigation : c'est le pendant, côté site, du menu de compte de l'application. L'exception est sûre parce que l'authentification est du socle et ne peut pas être coupée ; elle est **nommée** dans `apps/web/AGENTS.md`. Le contrat de module n'est pas modifié.
 >
-> **Cette story amende trois critères déjà livrés** : s07 (le repli de `safeRedirectPath(next, '/')` devient `/app`), s08 (le tableau de bord d'un connecté est sur `/app`, plus sur `/`) et s40 (le parcours d'intégration se termine sur `/app`). L'ADR de la story le dit.
+> **Cette story amende quatre critères déjà livrés** : s07 (le repli de `safeRedirectPath(next, '/')` devient `/app`), s08 (le tableau de bord d'un connecté est sur `/app`, plus sur `/`), s10 (critère 6 : un connecté sur `/` voit le site) et s40 (le parcours d'intégration se termine sur `/app`). L'ADR de la story le dit.
 
 ### Complexity
 3
@@ -1833,24 +1833,25 @@ Segments réservés aux organisations : `APPLICATION_SEGMENTS` (`apps/web/lib/or
 ### Acceptance criteria
 - [ ] Une nouvelle valeur de surface `site` existe : les entrées de navigation de l'accueil, du blog, des docs et des tarifs la déclarent, et sont rendues dans l'**en-tête** du site. L'entrée de navigation `/sign-in` du module `auth` est retirée
 - [ ] Chaque écran est rendu avec le gabarit de sa zone (table ci-dessus). Un test dérive la liste des écrans du disque et exige que chacun appartienne à **exactement une** zone
-- [ ] L'en-tête du site existe dès qu'au moins une entrée `site` est visible, quel que soit le module qui la déclare : couper `marketing` en gardant `blog` laisse `/blog` avec son en-tête
+- [ ] L'en-tête du site est rendu sur **chaque** écran de la zone Site, quelles que soient les entrées `site` visibles : couper `marketing` en gardant `blog` laisse `/blog` avec son en-tête, et couper toutes les entrées `site` laisse l'en-tête avec son seul bouton
 - [ ] L'en-tête porte un bouton de gabarit : « Se connecter » (vers `/sign-in`) pour un anonyme, « Ouvrir l'application » (vers `/app`) pour un connecté
-- [ ] Les gabarits Site, Hors zone et Application rendent chacun la bannière et les scripts de consentement (s36, avec le nonce), et le bandeau d'emprunt de session (s37b1) quand la session est empruntée
+- [ ] Les gabarits Site, Hors zone et Application rendent chacun : la bannière et les scripts de consentement (s36, avec le nonce), le **sélecteur de langue** (s09, quand plusieurs langues sont servies), la **bascule de thème** (s08), et le bandeau d'emprunt de session (s37b1) quand la session est empruntée. `e2e/i18n.spec.ts` (sélecteur ouvert depuis `/sign-in`) reste vert
+- [ ] L'exception du bouton de gabarit est écrite dans `apps/web/AGENTS.md`, à côté de la règle « aucune entrée de navigation écrite à la main »
 - [ ] `/` sert le site public **connecté ou non**. Site public coupé (aucune section d'accueil) : `/` renvoie un anonyme vers la connexion et un connecté vers `/app`
 - [ ] `/app` est le tableau de bord de l'application ; un anonyme qui l'ouvre est renvoyé vers la connexion, avec retour sur `/app`
-- [ ] La destination **par défaut** après connexion est `/app` : c'est une constante du code. Un `?next=` reste honoré **à travers la liste blanche** `safeRedirectPath` (retour d'invitation, de tarifs, d'URL demandée). Si le parcours d'intégration est en cours, il passe d'abord, puis se termine sur `/app`
-- [ ] Un visiteur **déjà connecté** qui ouvre `/sign-in` ou `/sign-up` est renvoyé vers `/app`
+- [ ] La destination **par défaut** après une ouverture de session est `/app`, une constante du code, **pour chaque parcours** : mot de passe, magic link, OAuth (retour `/oauth/return`), passkey et deuxième facteur (`/two-factor`). Un test par parcours. Un `?next=` reste honoré à travers le filtre `safeRedirectPath`, qui n'accepte qu'un chemin de même origine (retour d'invitation, de tarifs, d'URL demandée). Si le parcours d'intégration est en cours, il passe d'abord, puis se termine sur `/app`
+- [ ] Un visiteur **déjà connecté** qui ouvre `/sign-in` ou `/sign-up` est renvoyé vers son `?next=` s'il passe le filtre, sinon vers `/app`
 - [ ] La barre latérale de l'application ne rend **que** la surface `app` : aucun lien du site n'y figure
 
 ### Dependencies
-s60-console, s07-signup-signin, s08-app-shell, s10-marketing-site, s11-public-forms, s12-oauth-signin, s13-two-factor, s16-invite-members, s22-pricing-page, s29-blog-mdx, s30-docs-site, s31-changelog, s36-cookie-consent, s37b1-decompte-et-impersonation, s40-onboarding
+s60-console, s07-signup-signin, s08-app-shell, s09-i18n, s10-marketing-site, s11-public-forms, s12-oauth-signin, s13-two-factor, s14-passkeys, s16-invite-members, s22-pricing-page, s29-blog-mdx, s30-docs-site, s31-changelog, s36-cookie-consent, s37b1-decompte-et-impersonation, s40-onboarding, s42-waitlist, s46-auth-screens-design
 
 ### Agentic notes
 `apps/web/app/page.tsx` porte aujourd'hui quatre sorties ; deux partent sur `/app`. Le tableau de bord qu'il rend pour un connecté **déménage** sur `/app`, il n'est pas réécrit.
-L'atterrissage : `apps/web/app/sign-in/page.tsx` calcule `destination` (l. 58, depuis `?next=` par `safeRedirectPath`) et la passe l. 145 ; `auth-form.tsx:181` y navigue. Garder la liste blanche intacte : c'est ce qui empêche une redirection ouverte. Le parcours doré dérive l'atterrissage au lieu de l'écrire en dur, et doit le rester.
+L'atterrissage : le repli `'/'` de `safeRedirectPath` (`packages/modules/auth/src/domain/redirect.ts:17`, qui refuse `//`, `\\` et toute URL absolue) est écrit **huit fois** : `apps/web/app/sign-in/page.tsx:58, 69, 126`, `two-factor/page.tsx:42`, `oauth/return/page.tsx:31`, et `packages/modules/auth/src/presentation/auth-routes.ts:370, 644, 897`. Une seule constante doit les remplacer ; en changer un seul laisserait le magic link, l'OAuth ou la 2FA atterrir sur le site. `auth-form.tsx:181` navigue vers la destination. Le parcours doré dérive l'atterrissage au lieu de l'écrire en dur, et doit le rester.
 `NavigationSurface` (`packages/core/src/module.ts:251`) gagne `site`. ADR 067 a tranché que la surface reste une propriété de l'entrée : pas de nouvelle clé de contrat. Le pied de page (`footer`) ne bouge pas. Une entrée `public` est visible de tous (`packages/core/src/protection.test.ts:84-92`), d'où la décision du bouton de gabarit.
 Les entrées publiques de démonstration (`demo-enabled`, dont `/api/modules/demo-enabled/items`, qui rend du JSON) restent en surface `app` : elles figurent les pages du SaaS construit.
-**Ce que porte l'`AppShell` aujourd'hui, et qu'aucun gabarit ne doit perdre** (`app/app-shell.tsx`, l. 1-2, 213, 256-257) : `ConsentBanner`, `ConsentScripts` (nonce), `ImpersonationBanner`, et la réserve `pb-64` sous la bannière. `tests/marketing.test.ts` compte les connexions ouvertes au rendu du shell : il doit suivre le nouveau gabarit du site.
+**Ce que porte l'`AppShell` aujourd'hui, et qu'aucun gabarit ne doit perdre** (`app/app-shell.tsx`) : `ConsentBanner`, `ConsentScripts` (nonce), `ImpersonationBanner` (l. 1-2, 213, 256-257), `LocaleSwitcher` (l. 141) et `ThemeToggle` (l. 147), et la réserve `pb-64` sous la bannière. Il est rendu par le layout racine (`app/layout.tsx:96`) autour de **toutes** les pages. `tests/marketing.test.ts` compte les connexions ouvertes au rendu du shell : il doit suivre le nouveau gabarit du site.
 **Piège des groupes de routes** : `e2e/support/warm-up.ts:65-68` refuse tout segment qui commence par `(` ou `@` et fait échouer tout Playwright tant qu'il n'est pas traduit ; `tests/rendered-text.test.ts` demande aussi une mise à jour de déclaration (`apps/web/AGENTS.md` le documente). Des groupes `(site)` et `(auth)` imposent ces deux mises à jour.
 L'en-tête du site se compose des composants existants de `packages/ui` ; un besoin non couvert est un **écart du design system** à signaler, pas à combler.
 
@@ -1867,11 +1868,11 @@ L'en-tête du site se compose des composants existants de `packages/ui` ; un bes
 4
 
 ### Acceptance criteria
-- [ ] Une zone `/app/settings` a sa propre navigation, portée par une nouvelle surface `settings` : Profil, Sécurité, Organisation, Membres, Facturation, Notifications (préférences), Cookies. Chaque entrée disparaît avec son module
+- [ ] Une zone `/app/settings` a sa propre navigation, portée par une nouvelle surface `settings` : Profil, Sécurité, Organisation, Membres, Facturation, Notifications (préférences), Cookies (`/app/settings/cookies`, les mêmes réglages que la carte actuelle de `/account` ; la page publique `/cookies` reste dans le site). Chaque entrée disparaît avec son module
 - [ ] Le contenu actuel de `/account`, `/organizations`, `/billing` et des préférences de notification est servi sous `/app/settings/*`, **sans perte** : chaque carte ou action existante a sa place, ce que prouve un test qui la retrouve sous le nouveau chemin
 - [ ] La barre du haut de l'application porte le sélecteur d'organisation (absent si `organizations` est coupé), une **cloche** avec le compteur de non-lus et un lien vers le centre de notifications (absente si `notifications` est coupé), et le menu de compte (Réglages, Déconnexion)
 - [ ] La barre latérale de `/app` ne contient plus aucune de ces entrées
-- [ ] Les anciens chemins (`/account`, `/organizations`, `/billing`) répondent **308** vers leur équivalent, requête conservée. Les redirections vivent dans **une seule table** (ancien chemin → nouveau), partagée avec s63 ; un test exige que chaque segment d'écran retiré du disque y figure
+- [ ] Les anciens chemins (`/account`, `/organizations`, `/billing`) répondent **308** vers leur équivalent, requête conservée. Les redirections vivent dans **une seule table** (ancien chemin → nouveau), partagée avec s63 ; un test la compare à l'**inventaire figé** des segments de la zone Application de s61 (une fixture), et exige que chacun soit soit servi, soit redirigé
 - [ ] Les liens qui visent ces écrans pointent le nouveau chemin : retours de checkout et de portail Stripe, liens d'emails vers la facturation ou l'organisation
 - [ ] Module `organizations` coupé : ni Organisation ni Membres ; module `billing` coupé : ni Facturation. `pnpm test:minimal-profile` et `pnpm test:golden-path` restent verts
 
@@ -1896,7 +1897,7 @@ Les segments redirigés restent réservés aux organisations (`APPLICATION_SEGME
 3
 
 ### Acceptance criteria
-- [ ] Les écrans restants de la zone Application sont servis sous `/app/…` : parcours d'intégration (`/app/onboarding`), centre de notifications (`/app/notifications`), `/app/premium`, et chaque écran qu'un module déclare `authenticated`, `role` ou `entitlement` **hors surface `console`**
+- [ ] Les écrans restants de la zone Application sont servis sous `/app/…` : parcours d'intégration (`/app/onboarding`), centre de notifications (`/app/notifications`), `/app/premium`, et chaque **écran** qu'un module déclare `authenticated`, `role` ou `entitlement`, **hors surface `console`** et hors `href` d'API (`demo-enabled` déclare une entrée `role` vers `/api/modules/demo-enabled/admin/report`, `demo-item-routes.ts:178-181`)
 - [ ] Les écrans de la console (`/console/*`, s60) ne bougent pas et n'ont aucune redirection
 - [ ] Chaque ancien chemin répond **308** vers son équivalent, requête conservée, via la table de s62 ; le test de s62 continue d'exiger qu'aucun segment retiré n'y manque
 - [ ] Un test dérive du disque les écrans hors de `/app` et exige que chacun appartienne à la zone Site, Hors zone ou Console de s61 : aucun écran de l'application ne reste à la racine
@@ -1918,39 +1919,46 @@ Le parcours doré dérive son atterrissage (s40) : le garder dérivé.
 ## Story s64-hote-application — Servir l'application sur son propre sous-domaine
 **As a** Propriétaire du produit **I want** servir l'application sur `app.<domaine>` quand je le configure **so that** le site et l'application aient chacun leur adresse.
 
-> **Décisions du porteur (27/09).** Chemins d'abord, hôte optionnel : le code sert `/app`, et une variable facultative l'associe à un hôte. Sans elle, tout reste sur un domaine, ce qui garde le mode local et un petit déploiement simples. **La console reste un chemin** (`/console`) servi par l'hôte de l'application, avec la même session ; un hôte console dédié est la story s65, reportée. Parité : Supastarter sert l'application sur un autre domaine que le site (`app-demo.supastarter.dev`) ; MakerKit et ShipFast sur un chemin.
+> **Décisions du porteur (27/09).**
+> - **Chemins d'abord, hôte optionnel.** Le code sert `/app`, et une variable facultative dit **sur quel hôte** cette zone est servie. Sans elle, tout reste sur un domaine, ce qui garde le mode local et un petit déploiement simples.
+> - **Aucune réécriture : `/app` reste dans l'URL** (`app.<domaine>/app/settings`). Les liens internes sont donc identiques avec ou sans `APP_HOST`, et la réécriture ne se combine jamais avec le préfixe de langue.
+> - **La console reste un chemin** (`/console`) servi par l'hôte de l'application, avec la même session. Un hôte console dédié est la story s65, reportée.
 >
-> **Choix structurants, tranchés le 27/09 :**
-> - `APP_URL` reste l'origine **du site** (plan de site, liens canoniques). `APP_HOST` doit être un **sous-domaine de l'hôte d'`APP_URL`** : c'est ce qui garde les passkeys valides (leur `rpID` reste l'hôte d'`APP_URL`, un domaine parent que WebAuthn accepte depuis un sous-domaine) et permet de poser les cookies non sensibles sur le domaine parent ;
-> - le cookie de **session** reste propre à l'hôte de l'application ;
-> - les cookies de **consentement** et de **langue** sont posés sur le domaine parent : un consentement donné sur le site vaut dans l'application (s36).
+> Parité : Supastarter sert l'application sur un autre domaine que le site (`app-demo.supastarter.dev`) ; MakerKit et ShipFast sur un chemin.
 >
-> **Cette story amende le critère 4 de s61** : avec `APP_HOST`, le site ne voit pas la session de l'application. Le bouton de l'en-tête devient « Se connecter », vers l'hôte de l'application, qui ouvre `/app` ou sa connexion.
+> **Choix structurants, tranchés le 27/09 après lecture du code :**
+> - **Une origine pour l'auth.** `resolveAuthConfig(env).appUrl` (`apps/web/lib/auth-config.ts:28`) est le seul point dont partent les URL absolues **qui ouvrent ou consomment une session** : `baseURL` et `trustedOrigins` de Better Auth (`better-auth-service.ts:599, 603`), liens d'invitation (`lib/organizations.ts:320`), retours Stripe (`lib/billing.ts:228, 285, 382`), liens du guest checkout (`lib/guest-account.ts:97`). Avec `APP_HOST`, il rend l'**origine de l'application**. Les URL du site (plan de site, `robots.txt`, images OG, blog, changelog, `lib/site-url.ts`) lisent `APP_URL` directement et restent sur l'origine du site.
+> - **`APP_URL` reste l'origine du site**, et `APP_HOST` doit être un **sous-domaine de son hôte**. C'est ce qui garde les passkeys valides : leur `rpID` reste l'hôte d'`APP_URL` (un domaine parent, que WebAuthn accepte depuis un sous-domaine), et seul `origin` devient celui de l'application. Conséquence assumée : `www.exemple.com` + `app.exemple.com` (deux frères) est refusé. Pour cette disposition, il faut faire d'`APP_URL` l'apex, ce qui change le `rpID` et invalide les passkeys existantes (`better-auth-service.ts:965`). La documentation le dit.
+> - **Le cookie de session reste propre à l'hôte de l'application.** Seuls les cookies non sensibles (consentement, langue) sont posés sur le domaine parent.
+>
+> **Cette story amende** le critère 4 de s61 (avec `APP_HOST`, le site ne voit pas la session : le bouton devient « Se connecter », vers l'hôte de l'application) et le retour des tarifs de s22/s24 (critère 8).
 
 ### Complexity
 4
 
 ### Acceptance criteria
-- [ ] `APP_HOST` est facultative et validée par Zod au démarrage ; une valeur malformée, ou qui n'est pas un sous-domaine de l'hôte d'`APP_URL`, arrête le démarrage **en nommant la variable**
-- [ ] Sans `APP_HOST`, le comportement est celui de s63, octet pour octet : la suite existante le prouve
-- [ ] Avec `APP_HOST` : `app.<domaine>/x` sert `/app/x` ; les écrans Hors zone, `/console/*`, `/api/*` et les ressources de build sont servis **tels quels** sur l'hôte de l'application, sans préfixe
-- [ ] Avec `APP_HOST`, sur l'hôte du site : `/app/x` répond 308 vers `app.<domaine>/x`, et les écrans Hors zone répondent 308 vers leur chemin sur l'hôte de l'application (les liens d'emails déjà envoyés continuent de fonctionner). `/console/*` y répond **404** : aucune redirection ne révèle la console. `/api/*` y reste servi (les webhooks enregistrés chez les fournisseurs ne changent pas)
-- [ ] Un hôte qui n'est ni celui d'`APP_URL` ni `APP_HOST` ne sert aucune zone ; `/api/health` répond quel que soit l'hôte (l'orchestrateur le sonde en `localhost`)
-- [ ] Toute URL absolue émise (liens d'emails, retours OAuth, retours Stripe, origines de confiance de l'auth) est construite depuis la **configuration**, jamais depuis l'en-tête `Host`
-- [ ] Un `?next=` peut viser l'origine du site ou celle de l'application, et **aucune autre** : la liste blanche porte des origines tirées de la configuration. Le retour vers les tarifs (s22/s24) fonctionne entre les deux hôtes
-- [ ] Une passkey enregistrée avant `APP_HOST` fonctionne après ; le consentement donné sur le site n'est pas redemandé dans l'application
-- [ ] La CSP reste `default-src 'self'` sur chaque hôte, sans source ajoutée
-- [ ] `docs/deployment.md` décrit les deux configurations, y compris les URI de rappel OAuth à mettre à jour chez les fournisseurs ; **recette manuelle** : un déploiement à deux hôtes est servi de bout en bout, trace consignée dans la revue
+- [ ] `APP_HOST` est facultative et validée par Zod au démarrage. Une valeur malformée, ou qui n'est pas un sous-domaine de l'hôte d'`APP_URL`, arrête le démarrage **en nommant la variable**
+- [ ] **Sans `APP_HOST`**, le comportement est celui de s63, octet pour octet : aucun contrôle d'hôte, aucune redirection nouvelle. La suite existante le prouve
+- [ ] **Avec `APP_HOST`, sur l'hôte de l'application** : `/app/*`, `/console/*`, les écrans Hors zone et `/api/*` sont servis ; `/` répond 308 vers `/app` ; tout autre écran (zone Site) répond 308 vers le même chemin sur l'origine du site
+- [ ] **Avec `APP_HOST`, sur l'hôte du site** : `/app/*` et les écrans Hors zone répondent 308 vers le même chemin sur l'hôte de l'application (les liens d'emails déjà envoyés continuent de fonctionner) ; `/console/*` répond **404**, sans redirection ; `/api/modules/auth/*` répond 308 vers l'hôte de l'application pour un `GET` (magic link, rappels OAuth déjà émis) et 404 pour tout autre verbe ; le reste de `/api/*` y reste servi (les webhooks enregistrés chez les fournisseurs ne changent pas)
+- [ ] Avec `APP_HOST`, **toute URL qui ouvre ou consomme une session** vise l'origine de l'application : `baseURL` de l'auth, magic link, retour OAuth, cérémonie passkey, deuxième facteur, lien d'invitation, définition du mot de passe du guest checkout, retours de checkout et de portail Stripe. **Un test par parcours** vérifie qu'après l'ouverture, la session est lisible sur l'hôte de l'application
+- [ ] Toute URL absolue est construite depuis la **configuration**, jamais depuis l'en-tête `Host` ; le routage par hôte lit l'hôte de la requête telle que Next la reçoit, et `docs/deployment.md` exige que le proxy amont le transmette
+- [ ] Le cookie de session et celui du défi de deuxième facteur ne portent **aucun attribut `Domain`**, et le navigateur ne les envoie jamais à l'hôte du site. Mesuré au navigateur, pas lu dans le code
+- [ ] Les cookies de consentement et de langue sont posés sur le domaine parent. Quand un ancien cookie propre à l'hôte coexiste avec le nouveau, **le cookie du domaine parent fait foi** et l'ancien est effacé à la première réponse : un refus de consentement n'est jamais masqué
+- [ ] Le retour des tarifs fonctionne entre les deux hôtes : choisir une offre en étant connecté, ou se connecter pour la choisir, aboutit au checkout (`pnpm test:golden-path` joué avec `APP_HOST=app.localhost`)
+- [ ] Une passkey enregistrée avant `APP_HOST` fonctionne après
+- [ ] La CSP reste `default-src 'self'` sur chaque hôte ; aucun formulaire d'un hôte ne redirige vers l'autre (la directive `form-action 'self'` s'appliquerait à la redirection)
+- [ ] `docs/deployment.md` décrit les deux configurations, les URI de rappel OAuth à mettre à jour chez les fournisseurs, et le coût d'une disposition `www` + `app` ; **recette manuelle** : un déploiement à deux hôtes est servi de bout en bout, trace consignée dans la revue
 
 ### Dependencies
-s63-application-sous-app, s60-console, s12-oauth-signin, s14-passkeys, s19-subscribe-stripe, s24-guest-checkout, s27-deployment, s36-cookie-consent, s37b1-decompte-et-impersonation, s45-security-headers
+s63-application-sous-app, s60-console, s12-oauth-signin, s13-two-factor, s14-passkeys, s16-invite-members, s19-subscribe-stripe, s22-pricing-page, s24-guest-checkout, s27-deployment, s36-cookie-consent, s37b1-decompte-et-impersonation, s45-security-headers
 
 ### Agentic notes
-**Risque (complexité 4, sécurité)** : cookies, origines de confiance, redirections et CSP par hôte. Dans `packages/modules/auth/src/infrastructure/better-auth-service.ts` : `trustedOrigins: [options.appUrl]` (l. 603) et `passkey({ rpID: hostname(appUrl), origin: appUrl })` (l. 985-988), avec l'avertissement l. 965 (« changer l'hôte d'`APP_URL` invalide toutes les passkeys »). La contrainte « `APP_HOST` sous-domaine d'`APP_URL` » existe pour ne **pas** changer le `rpID` ; `origin` devient l'origine de l'application. La research le vérifie contre la bibliothèque.
-`safeRedirectPath` ne connaît que des chemins aujourd'hui : l'élargir aux origines est une surface de redirection ouverte. La liste est une constante dérivée de la configuration, jamais un motif.
-L'emprunt de session (s37b1) se lance depuis la console, donc depuis l'hôte de l'application : son cookie reste sur le bon hôte.
-L'association hôte → préfixe vit dans `apps/web/proxy.ts`, qui applique déjà le préfixe de langue : l'ordre des deux réécritures est un piège à mesurer en research.
-En local, `app.localhost` résout dans Chromium sans DNS : c'est ce que les parcours Playwright peuvent utiliser.
+**Risque (complexité 4, sécurité)** : cookies, origines, redirections et CSP par hôte. Le point d'appui est `resolveAuthConfig` (`apps/web/lib/auth-config.ts:28`) : le faire dépendre d'`APP_HOST` déplace d'un coup tous les liens qui portent une session. Mais le `rpID` des passkeys (`better-auth-service.ts:985-988`, `rpID: hostname(appUrl)`) doit **continuer** à lire l'hôte d'`APP_URL`, pas celui de l'application. C'est le seul endroit où les deux origines se séparent dans l'auth.
+Le retour des tarifs : `guestFallbackUrl` (`apps/web/lib/billing.ts:331-349`) construit `/sign-in?next=/pricing?offer=…`. Avec `APP_HOST`, `/pricing` est servi par le site, qui ne voit pas la session : le retour doit viser un écran de l'application qui porte l'offre, puisque `safeRedirectPath` ne connaît que des chemins de même origine et doit le rester. La research mesure la forme la plus simple.
+Le cookie de langue est posé par `apps/web/proxy.ts:142`, celui du consentement par `packages/modules/consent/src/presentation/consent-routes.ts:123`. La CSP est construite dans `apps/web/lib/security-headers.ts:130` (`form-action`).
+Le cookie de session de Better Auth porte le préfixe `__Secure-`, qui n'empêche pas un sous-domaine frère d'en poser un de même nom sur le domaine parent (cookie tossing). La research mesure si `__Host-` est accessible par la configuration de la bibliothèque.
+En local, `app.localhost` résout dans Chromium sans DNS. Le comportement des cookies `Domain=localhost` et d'un `rpID` `localhost` depuis `app.localhost` dépend du navigateur : ce qui ne se mesure pas sous Playwright passe en recette manuelle, écrite dans la revue.
 Cette extension n'est écrite dans aucune ligne du PRD : la décision du porteur est à y consigner (constat F88 de la revue des stories).
 
 ---
@@ -1960,18 +1968,20 @@ Cette extension n'est écrite dans aucune ligne du PRD : la décision du porteur
 
 > **OPTIONNELLE — reportée le 27/09.** Décision du porteur du projet : la console reste un chemin de l'hôte de l'application (s64). À reprendre si une isolation réelle de la console est demandée.
 >
-> **Ce que la revue des stories (F82) a établi** : un hôte console n'isole rien s'il ne sert que les écrans. Il faut sur cet hôte un écran de connexion, l'API d'authentification, et l'API d'administration **servie là seulement**, sans quoi bannir ou emprunter reste possible avec la session de l'application.
+> **Cette story amende les critères 3 et 4 de s64** : l'API d'administration n'est plus servie que sur l'hôte console.
+>
+> **Ce que la revue des stories (F82, F102) a établi** : un hôte console n'isole rien s'il ne sert que les écrans. Il faut sur cet hôte un écran de connexion, l'API d'authentification, et l'API d'administration **servie là seulement**, sans quoi bannir ou emprunter reste possible avec la session de l'application.
 
 ### Complexity
-4
+5 — **à découper avant d'être reprise** (une instance d'auth, deux origines, deux cookies de session, un transfert de session)
 
 ### Acceptance criteria
 - [ ] `CONSOLE_HOST` est facultative, validée au démarrage, et doit être un sous-domaine de l'hôte d'`APP_URL`
 - [ ] Avec `CONSOLE_HOST` : `console.<domaine>/x` sert `/console/x` ; l'hôte sert aussi son propre écran de connexion (et la deuxième étape, `/two-factor`) et l'API d'authentification
 - [ ] Le cookie de session de la console est propre à son hôte : une session de l'application n'ouvre ni les écrans ni l'**API** d'administration (`/api/modules/admin/*` répond 404 hors de l'hôte console)
 - [ ] `/console/*` répond 404 sur tout autre hôte, sans redirection
-- [ ] L'emprunt de session lancé depuis la console ouvre la session empruntée **sur l'hôte de l'application**, et sa sortie ramène sur la console
-- [ ] Une passkey fonctionne sur l'hôte console (même `rpID`, s64)
+- [ ] L'emprunt de session lancé depuis la console ouvre la session empruntée **sur l'hôte de l'application** par un jeton de transfert à usage unique, de courte durée, qui ne fuit ni par `Referer` ni par l'historique ; sa sortie ramène sur la console
+- [ ] Une passkey fonctionne sur l'hôte console : même `rpID` (s64), **et** une origine acceptée par la cérémonie (le greffon ne prend aujourd'hui qu'une chaîne `origin`, `better-auth-service.ts:988`)
 - [ ] **Recette manuelle** : un déploiement à trois hôtes est servi de bout en bout, trace consignée dans la revue
 
 ### Dependencies
