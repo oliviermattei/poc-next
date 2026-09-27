@@ -1826,7 +1826,7 @@ describe.runIf(databaseReachable)('les deux gestes du back-office', () => {
     )
 
     expect(submitted.status).toBe(303)
-    expect(submitted.headers.get('location')).toContain(`/admin/users/${target.userId}`)
+    expect(submitted.headers.get('location')).toContain(`${ADMIN_USERS_SCREEN_PATH}/${target.userId}`)
     await expect(auth.resolveSession(requestWith(target.cookie))).resolves.toBeNull()
   })
 
@@ -2960,7 +2960,7 @@ describe('l’entrée du back-office se dérive du registre', () => {
         locales: [...appLocales],
       }),
       { userId: 'usr_1', roles: [] },
-      'admin',
+      'console',
     ).map((entry) => `${entry.moduleId}:${entry.id}`)
 
   /**
@@ -3016,6 +3016,36 @@ describe('l’entrée du back-office se dérive du registre', () => {
     expect(Object.keys(manifest.dependencies ?? {})).not.toContain('@repo/module-marketing')
   })
 
+  /**
+   * **La console s'ouvre sur son tableau de bord** (s60).
+   *
+   * La racine est dérivée du chemin que le module déclare pour son écran des
+   * comptes, jamais écrite ici. Le tableau de bord est la **première** entrée
+   * de la surface, quels que soient les modules contributeurs : c'est l'ordre
+   * que la barre latérale de la console rend.
+   */
+  it('ouvre la surface `console` sur le tableau de bord, à la racine de la console', () => {
+    const root = `/${ADMIN_USERS_SCREEN_PATH.split('/')[1] ?? ''}`
+    const entries = visibleNavigation(
+      buildRegistry({
+        available: [authModule, adminModule, organizationsModule, billingModule, marketingModule],
+        enabled: ['auth', 'admin', 'organizations', 'billing', 'marketing'],
+        locales: [...appLocales],
+      }),
+      { userId: 'usr_1', roles: [] },
+      'console',
+    )
+
+    expect(root).toBe('/console')
+    expect(entries[0]?.moduleId).toBe(adminModule.id)
+    expect(entries[0]?.href).toBe(root)
+    // Et chaque autre entrée vit sous cette racine : aucun écran de la console
+    // n'est resté sous l'ancien chemin.
+    expect(entries.every((entry) => entry.href === root || entry.href.startsWith(`${root}/`))).toBe(
+      true,
+    )
+  })
+
   it('rend l’entrée d’un module activé, et la retire avec lui', () => {
     const withOrganizations = adminSurface(['auth', 'admin', 'organizations'])
     const withoutOrganizations = adminSurface(['auth', 'admin'])
@@ -3061,7 +3091,7 @@ describe('l’entrée du back-office se dérive du registre', () => {
    * du produit** (s38).
    *
    * L'appartenance au back-office est une propriété de l'**entrée** (ADR 067) :
-   * oublier `surface: 'admin'` sur une entrée neuve ne casse rien à l'écran —
+   * oublier `surface: 'console'` sur une entrée neuve ne casse rien à l'écran —
    * elle s'affiche simplement dans le menu de **tout compte connecté**, et
    * divulgue l'existence du back-office (`docs/security.md` §7). Le cas voisin
    * ne voyait que les entrées du module `admin` ; celui qui a manqué en s38 est
@@ -3085,7 +3115,7 @@ describe('l’entrée du back-office se dérive du registre', () => {
     // L'anti-vacuité : sans entrée sous cette racine, le filtre ci-dessous
     // serait vide et ce cas passerait sur un registre qui ne déclare rien.
     expect(
-      visibleNavigation(registry, session, 'admin').filter((entry) => underRoot(entry.href))
+      visibleNavigation(registry, session, 'console').filter((entry) => underRoot(entry.href))
         .length,
     ).toBeGreaterThan(0)
 
@@ -3094,6 +3124,71 @@ describe('l’entrée du back-office se dérive du registre', () => {
         .map((entry) => entry.href)
         .filter((href) => underRoot(href)),
     ).toEqual([])
+  })
+
+  /**
+   * **Aucun lien vers la console, nulle part où un visiteur le lirait** (s60,
+   * critère 6).
+   *
+   * Le cas du dessus tient la barre latérale du produit ; celui-ci tient les
+   * trois autres portes : le **pied de page** du site public, le **plan de
+   * site** et le **`robots.txt`**. Le dernier compte double : y écrire
+   * `Disallow: /console` serait précisément la divulgation qu'on veut éviter —
+   * le fichier est public, et il nommerait la zone à qui le lit.
+   *
+   * La configuration est celle de l'application (`config/features.ts`), et la
+   * racine est dérivée, comme au-dessus.
+   */
+  it('ne publie aucune adresse de la console : ni pied de page, ni plan de site, ni robots.txt', async () => {
+    const { moduleRegistry } = await import('../apps/web/lib/module-registry')
+    const segment = ADMIN_USERS_SCREEN_PATH.split('/')[1] ?? ''
+    const namesConsole = (pathname: string): boolean =>
+      pathname.split('/').includes(segment)
+    const session = { userId: 'usr_1', roles: [] }
+
+    // L'anti-vacuité : la console existe bien dans ce registre, sans quoi les
+    // absences ci-dessous ne prouveraient rien.
+    expect(segment).not.toBe('')
+    expect(
+      visibleNavigation(moduleRegistry, session, 'console').some((entry) =>
+        namesConsole(entry.href),
+      ),
+    ).toBe(true)
+
+    for (const surface of ['app', 'footer'] as const) {
+      for (const viewer of [null, session]) {
+        expect(
+          visibleNavigation(moduleRegistry, viewer, surface)
+            .map((entry) => entry.href)
+            .filter(namesConsole),
+          `${surface} — ${viewer === null ? 'anonyme' : 'connecté'}`,
+        ).toEqual([])
+      }
+    }
+
+    vi.stubEnv('APP_URL', 'https://app.test/')
+
+    try {
+      const { default: sitemap } = await import('../apps/web/app/sitemap')
+      const { default: robots } = await import('../apps/web/app/robots')
+      const served = robots()
+      const rules = Array.isArray(served.rules) ? served.rules : [served.rules]
+      const directives = rules.flatMap((rule) => [
+        ...[rule.allow ?? []].flat(),
+        ...[rule.disallow ?? []].flat(),
+      ])
+
+      // Le témoin : le plan de site et le robots.txt portent bien des chemins.
+      expect(sitemap().length).toBeGreaterThan(0)
+      expect(directives.length).toBeGreaterThan(0)
+
+      expect(sitemap().map((entry) => new URL(entry.url).pathname).filter(namesConsole)).toEqual(
+        [],
+      )
+      expect(directives.filter(namesConsole)).toEqual([])
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 
   it('ne paraît jamais dans la barre latérale du produit', () => {
@@ -3513,8 +3608,7 @@ describe('l’écran de revenus', () => {
     renderToStaticMarkup(
       createElement(AdminRevenueScreen, {
         view: { revenue },
-        navigation: [],
-        screenPath: '/admin/revenue',
+        screenPath: '/console/revenue',
         intl: {
           // Les **valeurs** sont rendues avec leur clé : sans elles, un cas ne
           // pourrait rien dire des nombres que l'écran calcule lui-même — et le
@@ -3568,7 +3662,7 @@ describe('l’écran de revenus', () => {
 
     for (const period of REVENUE_PERIODS) {
       expect(markup, period).toContain(`admin.revenue.period.${period}`)
-      expect(markup, period).toContain(`/admin/revenue?period=${period}`)
+      expect(markup, period).toContain(`/console/revenue?period=${period}`)
     }
 
     expect(markup).toContain('admin.revenue.recurring.periodNote')
@@ -3736,7 +3830,6 @@ describe('l’écran des inscriptions publiques', () => {
           search: null,
           ...view,
         },
-        navigation: [],
         screenPath: ADMIN_SUBSCRIPTIONS_SCREEN_PATH,
         exportAction: EXPORT_ACTION,
         intl: {

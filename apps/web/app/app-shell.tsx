@@ -47,9 +47,9 @@ export async function AppShell({
 }: {
   readonly children: ReactNode
   /**
-   * Le nonce de la requête, **transmis par `app/layout.tsx`** plutôt que relu
-   * ici : c'est lui qui lit `x-nonce`, et deux lectures du même en-tête
-   * pourraient diverger. Il porte les scripts non essentiels de s36, que la
+   * Le nonce de la requête, **transmis par le layout de sa zone** (ou par
+   * `not-found.tsx`) plutôt que relu ici : c'est lui qui lit `x-nonce`, et le
+   * shell reste un composant qui ne lit pas la requête (s60, ADR 071). Il porte les scripts non essentiels de s36, que la
    * politique refuse sans nonce — `script-src` porte `'strict-dynamic'`, qui
    * fait ignorer `'self'` aux navigateurs qui le comprennent.
    */

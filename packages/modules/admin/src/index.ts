@@ -70,4 +70,8 @@ export {
 } from './domain/back-office'
 export type { AdminSecurityEvent, AdminSecurityLog } from './domain/security-event'
 export { SUPERADMIN_ROLE } from './domain/platform-role'
-export { ADMIN_USERS_SCREEN_PATH, adminRoutePath } from './presentation/admin-routes'
+export {
+  ADMIN_USERS_SCREEN_PATH,
+  CONSOLE_SCREEN_PATH,
+  adminRoutePath,
+} from './presentation/admin-routes'

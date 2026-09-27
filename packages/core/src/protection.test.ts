@@ -127,6 +127,35 @@ describe('navigation visible selon la protection déclarée', () => {
     // deviendrait publique en changeant de surface.
     expect(footerIds({ userId: 'u', roles: [] })).toEqual(['pied', 'pied-prive'])
   })
+
+  /**
+   * **La surface du back-office s'appelle `console`** (s60, ADR 070).
+   *
+   * La garantie est au compilateur, pas à l'exécution : `admin` n'est plus une
+   * valeur du type. La directive ci-dessous fait rougir `pnpm typecheck` le
+   * jour où l'ancienne valeur redevient acceptée — une directive inutilisée
+   * est une erreur de TypeScript.
+   */
+  it('refuse l’ancienne valeur `admin` et range les entrées `console` à part', () => {
+    const legacy = entry(
+      'ancienne',
+      60,
+      { level: 'authenticated' },
+      // @ts-expect-error — `admin` n'est plus une surface (ADR 070).
+      'admin',
+    )
+    const consoleRegistry = buildRegistry({
+      available: [moduleWith([entry('console', 70, { level: 'authenticated' }, 'console'), legacy])],
+      enabled: ['m'],
+      locales: ['fr'],
+    })
+    const session: ModuleSession = { userId: 'u', roles: [] }
+
+    expect(visibleNavigation(consoleRegistry, session, 'console').map(({ id }) => id)).toEqual([
+      'console',
+    ])
+    expect(visibleNavigation(consoleRegistry, session).map(({ id }) => id)).not.toContain('console')
+  })
 })
 
 /**

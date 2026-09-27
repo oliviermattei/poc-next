@@ -120,7 +120,7 @@ export const publicFormThrottle = pgTable(
  * sans ces deux-là n'aurait pas dû être écrite.
  *
  * **Le back-office de `s37c` ne liste pas cette table, et c'est une décision.**
- * L'écran `/admin/subscriptions` couvre les **inscriptions**, pas les messages
+ * L'écran `/console/subscriptions` couvre les **inscriptions**, pas les messages
  * de contact. Trois raisons, et la première suffit : la story parle
  * d'« inscriptions publiques », et les deux tables sont voisines mais
  * distinctes. Ensuite, un message porte un **nom** et un **texte libre** que

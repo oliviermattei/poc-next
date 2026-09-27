@@ -1,10 +1,7 @@
 import { visibleNavigation, type ModuleSession } from '@repo/core'
 import { adminRoutePath } from '@repo/module-admin'
-import type {
-  AdminIntl,
-  BackOfficeListLinks,
-  BackOfficeNavigationItem,
-} from '@repo/module-admin/presentation'
+import type { AdminIntl, BackOfficeListLinks } from '@repo/module-admin/presentation'
+import type { SidebarItem } from '@repo/ui'
 
 import type { AppIntl } from './i18n'
 import { moduleRegistry } from './module-registry'
@@ -13,8 +10,9 @@ import { moduleRegistry } from './module-registry'
  * **Ce que les quatre écrans du back-office partagent**, et rien de plus.
  *
  * Deux choses : la langue telle que le module la demande, et la **navigation
- * dérivée du registre**. Les deux sont ici plutôt que dans les pages parce
- * qu'elles se prouvent sans rendre quoi que ce soit — c'est la discipline de
+ * dérivée du registre** — celle-ci rendue par le shell de la console (s60).
+ * Les deux sont ici plutôt que dans les pages parce qu'elles se prouvent sans
+ * rendre quoi que ce soit — c'est la discipline de
  * `lib/navigation.ts` et de `lib/footer.ts`.
  */
 
@@ -50,32 +48,33 @@ export const backOfficeIntl = (intl: AppIntl): AdminIntl => ({
 })
 
 /**
- * **La navigation du back-office, dérivée du registre** (ADR 066, surface
- * `admin`).
+ * **La navigation de la console, dérivée du registre** (ADR 066, surface
+ * `console` — ADR 070).
  *
  * Aucun identifiant de module n'est écrit ici : le registre n'agrège que les
- * modules activés, et un module qui veut une entrée dans le back-office la
+ * modules activés, et un module qui veut une entrée dans la console la
  * **déclare** à son contrat. Couper `organizations` retire donc son entrée sans
  * qu'aucun fichier de `apps/web` ne le nomme — c'est la forme que s31 a établie
  * pour le pied de page, et `pnpm test:minimal-profile` la tient.
+ *
+ * Elle est rendue par la **barre latérale du shell de la console** (s60), dans
+ * la forme que `SidebarNav` attend — celle de la barre latérale du produit. Les
+ * écrans du module ne la reçoivent plus : elle était une rangée de pastilles
+ * au-dessus de chacun d'eux.
  */
-export function backOfficeNavigation(
+export function consoleNavigation(
   session: ModuleSession | null,
-  intl: AppIntl,
-  currentPath: string,
-): readonly BackOfficeNavigationItem[] {
-  return visibleNavigation(moduleRegistry, session, 'admin').map((entry) => ({
+  intl: Pick<AppIntl, 't' | 'path'>,
+): readonly SidebarItem[] {
+  return visibleNavigation(moduleRegistry, session, 'console').map((entry) => ({
     // Deux modules peuvent nommer leur entrée pareil : la clé de rendu porte
     // donc le module, comme la clé de traduction.
-    key: `${entry.moduleId}:${entry.id}`,
+    id: `${entry.moduleId}:${entry.id}`,
     href: intl.path(entry.href),
     // Aucun repli sur la clé : une traduction manquante lève, ici comme
     // partout. `assertDeclarationsAreComplete` refuse déjà, à la construction
     // du registre, une entrée dont la clé manque dans une locale.
     label: intl.t(entry.labelKey),
-    // Le chemin **interne** est comparé : la forme publique porte le préfixe de
-    // langue, qui n'est pas ce qui distingue deux écrans.
-    current: currentPath === entry.href || currentPath.startsWith(`${entry.href}/`),
   }))
 }
 

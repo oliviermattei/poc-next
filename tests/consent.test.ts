@@ -396,7 +396,7 @@ describe('la gestion du consentement est atteignable', () => {
     viewerState.value = SIGNED_IN
 
     const html = await renderScreen(
-      async () => (await import('../apps/web/app/account/page')).default(),
+      async () => (await import('../apps/web/app/(app)/account/page')).default(),
     )
 
     expect(html).toContain(`href="${screenPath}"`)
@@ -412,14 +412,14 @@ describe('la gestion du consentement est atteignable', () => {
       // et c'est exactement la configuration où la carte de compte ci-dessus
       // devient le seul point d'accès.
       await expect(
-        renderScreen(async () => (await import('../apps/web/app/page')).default()),
+        renderScreen(async () => (await import('../apps/web/app/(site)/page')).default()),
       ).rejects.toMatchObject({ digest: expect.stringContaining('NEXT_REDIRECT') })
 
       return
     }
 
     const html = await renderScreen(
-      async () => (await import('../apps/web/app/page')).default(),
+      async () => (await import('../apps/web/app/(site)/page')).default(),
     )
 
     expect(html).toContain(`href="${screenPath}"`)
@@ -431,7 +431,7 @@ describe('la gestion du consentement est atteignable', () => {
     viewerState.value = ANONYMOUS
 
     const html = await renderScreen(
-      async () => (await import('../apps/web/app/cookies/page')).default(),
+      async () => (await import('../apps/web/app/(site)/cookies/page')).default(),
     )
 
     expect(html).toContain('<h1')

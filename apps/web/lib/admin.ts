@@ -536,6 +536,18 @@ export interface AdminFeature {
    */
   readonly platformRolesOf: (userId: string) => Promise<readonly string[]>
   /**
+   * **Ce compte est-il superadmin ?** (s60) — la question que le layout de la
+   * console pose avant de rendre son shell.
+   *
+   * Ce n'est pas `platformRolesOf` : celle-ci **désigne** d'abord le premier
+   * superadmin (`SUPERADMIN_EMAIL`), comme la garde des lectures. Le layout
+   * est rendu en même temps que la page, pas après ; lire les rôles sans
+   * désigner répondrait 404 au compte désigné sur la toute première requête de
+   * la console, celle qui doit le nommer. Module coupé : `false`, sans
+   * connexion.
+   */
+  readonly isSuperadmin: (userId: string) => Promise<boolean>
+  /**
    * Le revenu de la plateforme (s38) : ni recherche, ni page — des indicateurs,
    * et une **période** (critère 4) qui ne borne que la moitié constatée.
    */
@@ -593,6 +605,7 @@ export const admin: AdminFeature = mounted
         }),
       platformRolesOf: async (userId) =>
         await backOfficeService().useCases.platformRolesOf(userId),
+      isSuperadmin: async (userId) => await backOfficeService().useCases.isSuperadmin(userId),
       revenue: async ({ viewerId, parameters }) =>
         await backOfficeService().useCases.viewRevenue({
           request: await incomingRequest(),
@@ -616,6 +629,7 @@ export const admin: AdminFeature = mounted
       // Aucun rôle, donc aucune route réservée à un rôle : le sens fermé, et il
       // vient de la **valeur**, pas d'une condition écrite plus haut.
       platformRolesOf: () => Promise.resolve([]),
+      isSuperadmin: () => Promise.resolve(false),
       revenue: () => Promise.resolve(ABSENT),
       subscriptions: () => Promise.resolve(ABSENT),
     }

@@ -4997,7 +4997,7 @@ describe('la page publique de tarifs', () => {
     }
 
     try {
-      const { default: PricingPage } = (await import('../apps/web/app/pricing/page')) as {
+      const { default: PricingPage } = (await import('../apps/web/app/(site)/pricing/page')) as {
         default: (props: {
           searchParams?: Promise<Record<string, string | string[] | undefined>>
         }) => Promise<ReactNode>
@@ -5268,7 +5268,7 @@ describe('la page publique de tarifs', () => {
     }))
 
     try {
-      const { default: PricingPage } = (await import('../apps/web/app/pricing/page')) as {
+      const { default: PricingPage } = (await import('../apps/web/app/(site)/pricing/page')) as {
         default: (props: {
           searchParams?: Promise<Record<string, string | string[] | undefined>>
         }) => Promise<ReactNode>
@@ -6190,7 +6190,7 @@ describe.runIf(databaseReachable)('la page de retour d’un paiement invité', (
     }))
 
     try {
-      const { default: PricingPage } = (await import('../apps/web/app/pricing/page')) as {
+      const { default: PricingPage } = (await import('../apps/web/app/(site)/pricing/page')) as {
         default: (props: {
           searchParams?: Promise<Record<string, string | string[] | undefined>>
         }) => Promise<ReactNode>

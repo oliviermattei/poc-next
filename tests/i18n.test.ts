@@ -593,7 +593,7 @@ describe('aucune chaîne visible n’est écrite en dur', () => {
     // La garde contre l'inertie : une extraction qui ne trouve aucun fichier
     // rendrait tout ce qui suit vert sur du vide.
     expect(RENDER_FILES.length).toBeGreaterThan(20)
-    expect(RENDER_FILES.some((file) => file.endsWith('app/page.tsx'))).toBe(true)
+    expect(RENDER_FILES.some((file) => file.endsWith('app/(site)/page.tsx'))).toBe(true)
     expect(RENDER_FILES.some((file) => file.endsWith('account/page.tsx'))).toBe(true)
   })
 

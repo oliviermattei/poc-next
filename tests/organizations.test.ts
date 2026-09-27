@@ -2398,12 +2398,21 @@ describe('les identifiants réservés suivent les écrans réellement servis', (
    * l'écran suivant, et c'est exactement le mode d'échec que ce dépôt a mesuré
    * trois fois. Les segments dynamiques (`[document]`) sont exclus : ils ne
    * sont pas un chemin réservable.
+   *
+   * **Un dossier de routes `(…)` n'est pas un segment** (s60, ADR 071) : Next
+   * ne le met pas dans l'URL. Ses enfants sont lus à sa place — sans quoi ce
+   * cas réserverait `(site)`, que personne ne peut taper, et perdrait `blog`.
    */
-  const servedSegments = (): readonly string[] =>
-    readdirSync(SCREEN_ROOT, { withFileTypes: true })
+  const directoriesOf = (directory: string): readonly string[] =>
+    readdirSync(directory, { withFileTypes: true })
       .filter((entry) => entry.isDirectory() && !entry.name.startsWith('['))
-      .map((entry) => entry.name)
-      .sort()
+      .flatMap((entry) =>
+        entry.name.startsWith('(')
+          ? directoriesOf(join(directory, entry.name))
+          : [entry.name],
+      )
+
+  const servedSegments = (): readonly string[] => [...directoriesOf(SCREEN_ROOT)].sort()
 
   it('trouve des écrans, faute de quoi ce cas ne vérifierait rien', () => {
     expect(servedSegments().length).toBeGreaterThan(3)

@@ -64,9 +64,13 @@ module (`packages/modules/<module>/src/domain`).
   décompte. D'autres fichiers de `lib/` importent un module **déjà monté** pour
   en composer un service — `lib/billing-catalogue.ts`, `lib/billing-permission.ts`,
   `lib/blog-body.tsx`, `lib/changelog-body.tsx`, `lib/docs-body.tsx`,
-  `lib/back-office.ts` (la langue et la **navigation du back-office**, dérivée
-  du registre — s37b2 ; il ne nomme aucun module de contenu, il importe du
+  `lib/back-office.ts` (la langue et la **navigation de la console**, dérivée
+  du registre — s37b2, s60 ; il ne nomme aucun module de contenu, il importe du
   module `admin` le chemin de ses routes et le type de ses écrans),
+  `lib/console.ts` (les **tuiles du tableau de bord de la console** — s60 ; il
+  importe les constantes de chemin des écrans de la console, que les modules
+  exportent déjà, et relie une entrée à sa lecture par son **adresse** : aucun
+  identifiant de module n'y est écrit, une tuile disparaît avec son entrée),
   `lib/footer.ts` (les liens de pied de page, dérivés du registre — s31 ; il ne
   nomme aucun module, il importe le type de lien du site public), `lib/guest-account.ts`, `lib/module-services.ts`,
   `lib/module-content.ts` et `lib/public-urls.ts` (la syndication, s53 — le
@@ -92,7 +96,7 @@ module (`packages/modules/<module>/src/domain`).
   requête qui n'est qu'une préférence d'affichage (`?offer=` des tarifs, s22),
   le motif de refus rapporté par une redirection de route (`?error=` des
   organisations) et **le corps d'une réponse que le navigateur va rendre**
-  (`app/account/rgpd-outcomes.ts`, s34b : la liste d'organisations d'un 409
+  (`app/(app)/account/rgpd-outcomes.ts`, s34b : la liste d'organisations d'un 409
   s'affiche, donc elle se valide).
   **Aucune liste ne fait foi ici, et aucun « à ce jour » n'est écrit** : rien ne
   dérive les points d'appel de `zod`, contrairement à la liste des fichiers de
@@ -109,14 +113,14 @@ module (`packages/modules/<module>/src/domain`).
 - `lucide-react` pour les icônes : un seul jeu dans tout le produit, 16 px dans
   l'application. Ce n'est pas le socle de composants — celui-là ne sort pas de
   `packages/ui` ;
-- `uqr` dans **`app/account/two-factor-qr.tsx` uniquement** : il rend la
+- `uqr` dans **`app/(app)/account/two-factor-qr.tsx` uniquement** : il rend la
   **matrice** d'un QR code, pas une image. C'est ce qui permet de composer le
   `<svg>` en JSX — donc sans `dangerouslySetInnerHTML` (`docs/security.md` §4)
   et sans style en ligne, que la politique livrée par s45 refuse. Le secret
   TOTP ne quitte pas le processus : ni URL d'image, ni service tiers, ni appel
   réseau ;
-- `@simplewebauthn/browser` dans **`app/account/passkey-card.tsx` et
-  `app/sign-in/passkey-button.tsx` uniquement** (s14) : ce sont les deux seuls
+- `@simplewebauthn/browser` dans **`app/(app)/account/passkey-card.tsx` et
+  `app/(auth)/sign-in/passkey-button.tsx` uniquement** (s14) : ce sont les deux seuls
   endroits où le navigateur doit appeler `navigator.credentials`. Le paquet
   n'apporte que trois choses, et chacune est une raison de ne pas la réécrire —
   `browserSupportsWebAuthn()` (le critère 4 de s14 : l'option est masquée quand
@@ -231,13 +235,43 @@ identifiant de module reviendrait à masquer une entrée au lieu de ne pas
 l'avoir, et le composant qui l'affiche (`app/app-navigation.tsx`) ne sait même
 pas ce qu'est un module : il reçoit des entrées.
 
-## Le shell
+## Le shell, et les quatre zones (s60, ADR 071)
 
-`app/layout.tsx` pose les polices, le thème et `app/app-shell.tsx`, qui entoure
-**tous** les écrans — authentification comprise. Le shell résout l'appelant une
-seule fois (`currentViewer`) et en tire deux choses : les entrées de navigation
-et le menu de compte. Un visiteur anonyme n'a pas de menu de compte parce qu'il
-n'est **pas rendu**, jamais parce qu'il serait masqué.
+`app/layout.tsx` pose les polices, la langue, le thème et le nonce — **plus le
+shell**. Un layout imbriqué ne peut pas retirer celui de son parent, et la
+console a le sien : les pages sont donc rangées, une seule fois, dans quatre
+**dossiers de routes**, que Next ne met pas dans l'URL :
+
+| Dossier | Zone | Son `layout.tsx` rend |
+|---|---|---|
+| `app/(site)/` | le site public (accueil, contenus, tarifs, pages légales) | l'`AppShell` |
+| `app/(auth)/` | l'authentification, avant qu'une session existe | l'`AppShell` |
+| `app/(app)/` | le produit, derrière une session | l'`AppShell` |
+| `app/(console)/` | la console du superadmin (`/console`, ADR 070) | `console-shell.tsx`, **après** sa garde |
+
+Les trois premiers rendent l'`AppShell` à l'identique en s60 ; leur gabarit
+propre est le travail de s61. `tests/zones.test.ts` dérive les `page.tsx` du
+disque et exige que chacune soit sous **exactement un** de ces dossiers, et
+qu'aucun autre groupe n'existe. `api/`, `layout.tsx`, `not-found.tsx`,
+`global-error.tsx`, `robots.ts`, `sitemap.ts` et les composants partagés
+restent à la racine.
+
+**`not-found.tsx` rend l'`AppShell` lui-même.** Il est rendu par la frontière
+racine, **au-dessus** des layouts de zone : sans cela toute URL inconnue
+perdrait la navigation et la bannière de consentement. La contrepartie est
+voulue — un `notFound()` levé dans la console ne rend **rien** de son shell, et
+`e2e/admin.spec.ts` le mesure. Son contenu vit dans `not-found-screen.tsx`, pour
+que `tests/rendered-text.test.ts` le rende dans le shell comme les autres
+écrans.
+
+**Le nonce est relu par chaque layout de zone** (et par `not-found.tsx`), comme
+le layout racine le lit : chaque shell rend les scripts non essentiels de s36,
+et `script-src` porte `'strict-dynamic'`.
+
+L'`AppShell` résout l'appelant une seule fois (`currentViewer`) et en tire deux
+choses : les entrées de navigation et le menu de compte. Un visiteur anonyme n'a
+pas de menu de compte parce qu'il n'est **pas rendu**, jamais parce qu'il serait
+masqué.
 
 Le thème est piloté par la classe `.dark` sur `<html>` (`next-themes`), et
 `suppressHydrationWarning` sur cet élément est ce qui rend l'écart attendu :
@@ -247,7 +281,7 @@ chargement ; l'étendre à l'arbre masquerait de vrais écarts.
 
 ## Les formulaires
 
-Trois composants, `app/auth-form.tsx`, `app/account/account-form.tsx` et
+Trois composants, `app/auth-form.tsx`, `app/(app)/account/account-form.tsx` et
 `app/public-form.tsx` (s11), et deux règles que tout écran hérite d'eux :
 
 - **`method="post"` sur le `<form>`, toujours.** Sans `method`, le repli du
@@ -273,7 +307,7 @@ Trois composants, `app/auth-form.tsx`, `app/account/account-form.tsx` et
 **répartiteur**, avant tout gestionnaire : aucune route n'est appelée, et le
 corps du refus est `{"error":"rate_limited"}`. Les formulaires classent donc le
 **statut** avant le corps. `app/public-form.tsx` le fait depuis s11 (classe
-`throttled`) ; `app/auth-form.tsx` et `app/two-factor/two-factor-form.tsx` l'ont
+`throttled`) ; `app/auth-form.tsx` et `app/(auth)/two-factor/two-factor-form.tsx` l'ont
 rejoint en s28, par `app/refusal-message.ts`. Deux décisions y sont écrites
 plutôt que devinées :
 
@@ -376,7 +410,7 @@ opt-in, `NODE_ENV` ne l'active jamais, il le **restreint**.
 Deux écrans en héritent, et une page technique : les boutons
 (`app/oauth-buttons.tsx`, un `<form method="post">` par fournisseur, sans
 JavaScript — ces formulaires n'envoient aucun secret), la carte « Connexions
-externes » de `/account`, et `app/oauth/return/page.tsx`, le **rebond** du
+externes » de `/account`, et `app/(auth)/oauth/return/page.tsx`, le **rebond** du
 retour. Ce dernier n'est pas décoratif : le cookie de session est
 `SameSite=Strict`, et il ne repart pas sur la fin d'une chaîne de navigation
 venue du fournisseur — sans rebond same-site, l'utilisateur atterrit déconnecté
@@ -466,8 +500,8 @@ Deux fichiers, sur le modèle exact de l'i18n :
   et le seul qui regarde s'il est activé. Il rend un `MarketingSite` dont la
   **forme est la même dans les deux états** : trois listes, vides quand le
   module est coupé ;
-- `app/page.tsx`, `app/legal/[document]/page.tsx`, `app/contact/page.tsx` et
-  `app/waitlist/page.tsx` **lisent** ce site sans jamais nommer de module. Les
+- `app/(site)/page.tsx`, `app/(site)/legal/[document]/page.tsx`, `app/(site)/contact/page.tsx` et
+  `app/(site)/waitlist/page.tsx` **lisent** ce site sans jamais nommer de module. Les
   deux écrans de formulaire se décident sur la même **donnée**,
   `marketingFormsAvailable` : site public coupé, ils répondent 404. Depuis s53,
   `app/sitemap.ts` et `app/robots.ts` ne le lisent plus du tout : ils lisent le
@@ -648,12 +682,12 @@ que la CI peut ne jamais exécuter :
   pendant que `/blog` servait 200 avec une coquille.
 
 **Ce que rien ne garde encore, et il faut le savoir avant d'y compter** :
-`e2e/support/warm-up.ts` refuse aujourd'hui un segment de groupe de routes, ce
-qui fait échouer tout Playwright dès qu'on en ajoute un — mais son message
-invite explicitement à le traduire, et une fois traduit il ne dit plus rien.
-`tests/rendered-text.test.ts` demande de même une mise à jour de déclaration,
-pas une preuve de statut. Aucun des deux n'est la garde ; la garde est la
-requête HTTP ci-dessus.
+`e2e/support/warm-up.ts` traduit un groupe de routes en « aucun segment »
+depuis s60 (ADR 071) — il ne refuse plus que les routes parallèles `@…` —, et
+`tests/rendered-text.test.ts` demande une mise à jour de déclaration, pas une
+preuve de statut. Aucun des deux n'est la garde ; la garde est la requête HTTP
+ci-dessus. Le blog vit désormais sous `app/(site)/blog/` : un `loading.tsx`
+posé sur `app/(site)/` couvrirait aussi toutes les autres pages du site.
 
 **Trois choses ne se devinent pas.**
 
@@ -907,11 +941,11 @@ Un fichier, sur le modèle exact du site public :
   une valeur dont la **forme est la même dans les deux états** : un drapeau
   `available`, une vue à deux champs, une organisation active qui vaut `null`.
   Module coupé, ses deux lectures n'ouvrent **aucune connexion** ;
-- `app/organizations/page.tsx` **lit** cette valeur sans jamais nommer de
+- `app/(app)/organizations/page.tsx` **lit** cette valeur sans jamais nommer de
   module : `available` est une **donnée**, comme `sections.length` l'est pour la
   racine. Module coupé, l'écran répond 404 — le même arbitrage que
   `legal/[document]` ;
-- `app/invitations/accept/page.tsx` (s16) fait de même : c'est l'écran
+- `app/(auth)/invitations/accept/page.tsx` (s16) fait de même : c'est l'écran
   d'atterrissage d'un lien d'invitation, servi à un visiteur **anonyme comme
   connecté** — un anonyme y voit deux chemins, connexion (avec retour vers cette
   URL, jeton compris) et inscription. **Rien n'y est accepté en `GET`** : un
@@ -1034,7 +1068,7 @@ photo du compte lui survive.
 
 Deux surfaces en héritent : le menu de compte du shell et la carte « Photo de
 profil » de `/account`. Le composant qui téléverse
-(`app/account/avatar-form.tsx`) vit ici et non dans le module, pour la raison
+(`app/(app)/account/avatar-form.tsx`) vit ici et non dans le module, pour la raison
 déjà donnée à `app/public-form.tsx` : il appelle `fetch`, et `eslint.config.ts`
 refuse un appel réseau dans un module hors de sa porte bornée.
 ## Le montage de la facturation (s19)
@@ -1146,7 +1180,7 @@ cette garde un visiteur terminait le checkout ouvert par quelqu'un d'autre
 (constat F7 de la revue). Le refus est **404** dans les trois cas — mode local
 absent, appelant anonyme, session d'un autre périmètre.
 
-**La page publique de tarifs** (s22) est servie par `app/pricing/page.tsx`. Elle
+**La page publique de tarifs** (s22) est servie par `app/(site)/pricing/page.tsx`. Elle
 suit le modèle de `/billing` — 404 sur `billing.available`, une **donnée** — mais
 **sans redirection de session** : comparer des offres ne demande aucun compte.
 Elle lit `billingCatalogue()`, jamais `billing.view()`, qui exige une session.
@@ -1293,7 +1327,7 @@ en 403. Le parcours navigateur porte `test.skip(!mounted)` : sans ce second cas,
 retirer la ligne ne faisait rougir **aucune** commande dans la configuration
 sans facturation (constat m1 de la revue).
 
-`app/premium/page.tsx` est l'écran de la fonctionnalité réservée. **Il invite,
+`app/(app)/premium/page.tsx` est l'écran de la fonctionnalité réservée. **Il invite,
 il ne masque pas** : une fonctionnalité qu'on ne voit pas ne s'achète pas, et
 masquer n'a jamais été une permission (`docs/security.md` §3). Son segment est
 **réservé** dans `lib/organizations.ts`, comme tout écran servi par
@@ -1309,7 +1343,7 @@ nombre de cas passés au rouge, sur les mutations **posées** :
 | retirer `resolveFeatures` du point de montage, `billing` **activé** | 1 | `E2E_PORT=3121 pnpm test:e2e e2e/billing.spec.ts` (9 verts) |
 | retirer `resolveFeatures` du point de montage, `billing` **coupé** | 1 | `pnpm test` (1 653 verts) |
 | l'entrée de navigation réservée pointe la route d'API au lieu de l'écran | 1 | `E2E_PORT=3121 pnpm test:e2e e2e/billing.spec.ts`, **dans les deux configurations** |
-| supprimer `app/premium/page.tsx` | 2 | `pnpm test` |
+| supprimer `app/(app)/premium/page.tsx` | 2 | `pnpm test` |
 
 Les deux premières lignes sont la **même** mutation, mesurée dans les deux
 configurations de modules : c'est ce qui manquait. Module de facturation activé,
@@ -1444,9 +1478,10 @@ celle qui laisse entrer.
 
 | Écran | Ce qui le fait répondre 404 |
 |---|---|
-| `/admin/users`, `/admin/users/<id>` | le module `admin` est coupé, ou l'appelant n'administre pas |
-| `/admin/organizations`, `…/<id>` | **en plus** : le module `organizations` est coupé — une **donnée** (`organizations.available`), comme `/organizations` |
-| `/admin/revenue` (s38) | **en plus** : le module `billing` est coupé — même forme, `billing.available` |
+| `/console` (s60, le tableau de bord) | comme `/console/users` ; une tuile disparaît avec le module de son écran, et une lecture en échec ne touche que sa tuile |
+| `/console/users`, `/console/users/<id>` | le module `admin` est coupé, ou l'appelant n'administre pas — **anonyme compris**, sans redirection vers la connexion (s60) |
+| `/console/organizations`, `…/<id>` | **en plus** : le module `organizations` est coupé — une **donnée** (`organizations.available`), comme `/organizations` |
+| `/console/revenue` (s38) | **en plus** : le module `billing` est coupé — même forme, `billing.available` |
 
 **Ce que la colonne de droite ne dit pas, et il faut le savoir** : la moitié
 `billing.available` de cette garde n'est **décidée par aucune commande**, et la
@@ -1477,8 +1512,16 @@ anonyme que l'écran existe, et le balayage de `pnpm test:minimal-profile` la li
 comme un **200** — il suit les redirections. Mesuré : la première écriture
 redirigeait d'abord, et la recette a rougi sur `/admin/users`.
 
-**La navigation du back-office est dérivée du registre**, surface `admin`
-(ADR 066), par `lib/back-office.ts`. Un module qui veut une entrée là la
+**La garde de la zone** (s60) : `app/(console)/layout.tsx` répond 404 avant
+tout rendu du shell quand le module est coupé, sans session, sur une session
+empruntée, ou pour un compte qui n'est pas superadmin (`admin.isSuperadmin`,
+qui désigne d'abord le premier superadmin — le layout est rendu en même temps
+que la page, pas après). Elle **s'ajoute** à la garde de chaque lecture ; aucun
+`loading.tsx` sous ce dossier, il ferait répondre 200 avant elle.
+
+**La navigation de la console est dérivée du registre**, surface `console`
+(ADR 066, renommée par l'ADR 070), par `lib/back-office.ts`, et rendue par la
+barre latérale du shell de la console — plus par les écrans du module. Un module qui veut une entrée là la
 **déclare** à son contrat : couper `organizations` retire son entrée sans
 qu'aucun fichier de `apps/web` ne le nomme, et son adresse répond alors 404 sur
 une vraie requête HTTP — les deux moitiés, mesurées par

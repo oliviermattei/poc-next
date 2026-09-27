@@ -296,7 +296,7 @@ const renderRoot = (site: MarketingSite, caller: ViewerFixture): Promise<ScreenO
     site,
     caller,
     async (module) => await (module.default as () => Promise<unknown>)(),
-    '../apps/web/app/page',
+    '../apps/web/app/(site)/page',
   )
 
 /** Ce qu'une page légale déclare aux moteurs, dans la langue de la requête. */
@@ -314,7 +314,7 @@ const legalMetadata = async (
   requestLocale.value = locale
 
   try {
-    const imported = (await import('../apps/web/app/legal/[document]/page')) as {
+    const imported = (await import('../apps/web/app/(site)/legal/[document]/page')) as {
       generateMetadata: (props: { params: Promise<unknown> }) => Promise<LegalMetadata>
     }
 
@@ -333,7 +333,7 @@ const renderLegal = (site: MarketingSite, document: string): Promise<ScreenOutco
       await (module.default as (props: { params: Promise<unknown> }) => Promise<unknown>)({
         params: Promise.resolve({ document }),
       }),
-    '../apps/web/app/legal/[document]/page',
+    '../apps/web/app/(site)/legal/[document]/page',
   )
 
 /* ------------------------------------------------------------------------- *
@@ -388,7 +388,11 @@ const probePaths = (site: MarketingSite): readonly string[] => {
   }
 
   const routes = pageFilesUnder(SCREEN_ROOT).flatMap((file) => {
-    const segments = file.split('/').slice(0, -1)
+    // Un dossier de routes `(…)` n'est pas dans l'URL (s60, ADR 071).
+    const segments = file
+      .split('/')
+      .slice(0, -1)
+      .filter((segment) => !segment.startsWith('('))
 
     return segments.length === 0 ? ['/'] : expand(segments)
   })
@@ -1980,11 +1984,11 @@ describe('les écrans de formulaire, site public sans formulaires', () => {
   })
 
   it.each([
-    ['contact', '../apps/web/app/contact/page'],
+    ['contact', '../apps/web/app/(site)/contact/page'],
     // s42, critère 6 : la page de liste d'attente disparaît avec le module,
     // exactement comme celle du contact et par la même donnée — `forms`, pas
     // un identifiant de module lu dans un écran.
-    ['liste d’attente', '../apps/web/app/waitlist/page'],
+    ['liste d’attente', '../apps/web/app/(site)/waitlist/page'],
   ])('refuse de rendre l’écran « %s », dans les deux configurations du dépôt', async (
     _screen,
     module,

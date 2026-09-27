@@ -76,7 +76,8 @@ const authFamily = (): readonly string[] =>
     .map((entry) => String(entry).split(sep).join('/'))
     .filter((file) => file.endsWith('page.tsx'))
     .filter((file) => readFileSync(join(APP_DIRECTORY, file), 'utf8').includes('authRoutePath('))
-    .map((file) => `/${dirname(file)}`)
+    // Un dossier de routes `(…)` n'est pas dans l'URL (s60, ADR 071).
+    .map((file) => `/${dirname(file).split('/').filter((segment) => !segment.startsWith('(')).join('/')}`)
     .sort()
 
 /**

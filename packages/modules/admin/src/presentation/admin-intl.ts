@@ -23,7 +23,7 @@ export interface AdminIntl {
   /**
    * Met un chemin **interne** dans sa forme publique.
    *
-   * Le back-office construit des liens (`/admin/users/<id>`, une page de
+   * Le back-office construit des liens (`/console/users/<id>`, une page de
    * pagination) : sans cette fonction, ils perdraient le préfixe de langue et
    * chaque clic sortirait de la locale servie. Module `i18n` coupé, c'est
    * l'identité — et cet écran ne le sait pas.

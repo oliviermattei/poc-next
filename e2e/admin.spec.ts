@@ -1,7 +1,15 @@
 import { MODULE_ROUTE_PREFIX, navigationSurfaceOf } from '@repo/core'
-import { adminRoutePath, SUPERADMIN_ROLE } from '@repo/module-admin'
-import { expect, test, type Page } from '@playwright/test'
+import {
+  ADMIN_USERS_SCREEN_PATH,
+  adminRoutePath,
+  CONSOLE_SCREEN_PATH,
+  SUPERADMIN_ROLE,
+} from '@repo/module-admin'
+import { ADMIN_REVENUE_SCREEN_PATH } from '@repo/module-billing'
+import { ADMIN_SUBSCRIPTIONS_SCREEN_PATH } from '@repo/module-marketing'
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 
+import { localeRouting } from '../apps/web/lib/locale-routing'
 import { marketingSubscriptions } from '../apps/web/lib/marketing'
 import { moduleRegistry } from '../apps/web/lib/module-registry'
 import { E2E_SUPERADMIN_EMAIL } from '../playwright.config'
@@ -116,7 +124,7 @@ test('le back-office sert la liste des comptes au compte désigné, et 404 aux a
 
   // La première requête servie déclenche la désignation : c'est elle qui nomme
   // le premier superadmin, sur une plateforme qui n'en avait aucun.
-  await page.goto(publicPath('/admin/users'))
+  await page.goto(publicPath(ADMIN_USERS_SCREEN_PATH))
 
   await expect(page.getByRole('heading', { name: 'Comptes', level: 1 })).toBeVisible()
   // La table est là, avec le compte désigné dedans — et son droit de plateforme.
@@ -125,10 +133,67 @@ test('le back-office sert la liste des comptes au compte désigné, et 404 aux a
   ).toBeVisible()
   await expect(page.getByRole('table')).toContainText('Superadministrateur')
 
+  // **Le shell de la console** (s60, critère 5) : le badge qui dit « vous
+  // n'êtes pas dans le produit », la langue, le thème, la bannière de
+  // consentement — et **aucune** entrée de la barre latérale du produit. Le
+  // badge est aussi le témoin positif du 404 sans shell mesuré plus haut.
+  await expect(page.getByText('Console', { exact: true }).first()).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Thème' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Langue' })).toHaveCount(
+    localeRouting.locales.length < 2 ? 0 : 1,
+  )
+  await expect(page.getByRole('region', { name: 'Consentement aux cookies' })).toBeVisible()
+
+  const consoleLinks = page.getByRole('navigation', { name: 'Console' }).getByRole('link')
+
+  // Le témoin : la barre latérale de la console est rendue, avec son tableau
+  // de bord — sans lui, l'absence ci-dessous serait vraie sur une page vide.
+  await expect(consoleLinks.first()).toBeVisible()
+  expect(
+    await Promise.all((await consoleLinks.all()).map((link) => link.getAttribute('href'))),
+  ).toContain(publicPath(CONSOLE_SCREEN_PATH))
+
+  const hrefs = await page
+    .locator('a[href]')
+    .evaluateAll((links) => links.map((link) => link.getAttribute('href')))
+
+  for (const entry of moduleRegistry.navigation.filter(
+    (candidate) => navigationSurfaceOf(candidate) === 'app',
+  )) {
+    expect(hrefs, `lien du produit dans la console : ${entry.href}`).not.toContain(
+      publicPath(entry.href),
+    )
+  }
+
   // La recherche est une **adresse** : elle se copie et fonctionne sans script.
   await page.getByLabel('Rechercher').fill('aucun-compte-ne-porte-ceci')
   await page.getByRole('button', { name: 'Rechercher' }).click()
   await expect(page.getByText('Aucun compte ne correspond', { exact: true })).toBeVisible()
+
+  // **Le tableau de bord** (s60, critère 4), atteint par la barre latérale :
+  // une tuile par écran de la console, chacune liée à son écran. Les écrans
+  // attendus sont **dérivés du registre** — un module coupé retire sa tuile —,
+  // jamais recopiés.
+  await page
+    .getByRole('navigation', { name: 'Console' })
+    .getByRole('link', { name: 'Tableau de bord' })
+    .click()
+  await expect(page.getByRole('heading', { name: 'Tableau de bord', level: 1 })).toBeVisible()
+
+  const screens = moduleRegistry.navigation.filter(
+    (entry) => navigationSurfaceOf(entry) === 'console' && entry.href !== CONSOLE_SCREEN_PATH,
+  )
+
+  expect(screens.length).toBeGreaterThan(0)
+
+  const tileLinks = await page
+    .getByRole('main')
+    .getByRole('link')
+    .evaluateAll((links) => links.map((link) => link.getAttribute('href')))
+
+  expect([...tileLinks].sort()).toEqual(screens.map((entry) => publicPath(entry.href)).sort())
+  // Toutes les lectures ont abouti : aucune tuile en erreur.
+  await expect(page.getByRole('main').getByRole('alert')).toHaveCount(0)
 
   // **Un autre compte, dans un autre contexte** : il n'administre pas, et il ne
   // distingue pas le back-office d'une URL inventée.
@@ -137,7 +202,7 @@ test('le back-office sert la liste des comptes au compte désigné, et 404 aux a
 
   await aSignedInAccount(stranger, 's37b2-intrus')
 
-  const refused = await stranger.goto(publicPath('/admin/users'))
+  const refused = await stranger.goto(publicPath(ADMIN_USERS_SCREEN_PATH))
 
   expect(refused?.status()).toBe(404)
   // 404, et pas 403 : le second confirmerait que l'écran existe.
@@ -158,6 +223,75 @@ test('le back-office sert la liste des comptes au compte désigné, et 404 aux a
 })
 
 /**
+ * **La console n'existe pas pour qui n'est pas superadmin** (s60, critère 7).
+ *
+ * Trois appelants, et un seul statut : **404, sans redirection**. Un anonyme
+ * renvoyé vers la connexion apprendrait que la zone existe — c'est la réponse
+ * que les écrans servaient jusqu'à s60. La requête ne suit **aucune**
+ * redirection : une réponse 3xx rougit ici au lieu d'être lue comme la page
+ * d'arrivée.
+ *
+ * La décision est prise par le layout de la console **et** par la lecture de
+ * chaque écran ; ce parcours mesure le statut servi au bout du vrai chemin
+ * HTTP, avec de vrais cookies — ce qu'aucun appel à une fonction de page ne
+ * voit. Le troisième appelant, la **session empruntée**, est mesuré dans le
+ * parcours du bandeau d'impersonation, qui ouvre déjà l'emprunt : inscrire le
+ * compte désigné une fois de plus dépasserait les cinq inscriptions horaires
+ * par adresse (`config/security.ts`) que la série consomme déjà.
+ */
+const CONSOLE_SCREENS = [CONSOLE_SCREEN_PATH, ADMIN_USERS_SCREEN_PATH] as const
+
+const refusedWithoutRedirect = async (
+  request: APIRequestContext,
+  pathname: string,
+  who: string,
+): Promise<void> => {
+  const response = await request.get(publicPath(pathname), { maxRedirects: 0 })
+
+  expect(response.status(), `${who} — ${pathname}`).toBe(404)
+  expect(response.headers().location, `${who} — ${pathname}`).toBeUndefined()
+}
+
+test('la console répond 404, sans redirection, à l’anonyme et au compte ordinaire', async ({
+  browser,
+}) => {
+  // **L'anonyme** : aucun cookie, aucune redirection vers la connexion.
+  const anonymousContext = await browser.newContext()
+
+  for (const pathname of CONSOLE_SCREENS) {
+    await refusedWithoutRedirect(anonymousContext.request, pathname, 'anonyme')
+  }
+
+  // **L'ancien chemin** n'existe plus, et ne redirige pas vers le nouveau
+  // (ADR 070) : une redirection confirmerait la zone.
+  await refusedWithoutRedirect(anonymousContext.request, '/admin/users', 'ancien chemin')
+
+  // **Le 404 de la console ne rend rien de son shell** (ADR 071) : il est
+  // rendu par la frontière racine, au-dessus du layout de la console. Le
+  // témoin positif — le badge présent pour le superadmin — est dans le parcours
+  // du shell, plus bas.
+  const anonymous = await anonymousContext.newPage()
+  const refusedPage = await anonymous.goto(publicPath(CONSOLE_SCREEN_PATH))
+
+  expect(refusedPage?.status()).toBe(404)
+  await expect(anonymous.getByRole('heading', { level: 1 })).toBeVisible()
+  await expect(anonymous.getByText('Console', { exact: true })).toHaveCount(0)
+  await anonymousContext.close()
+
+  // **Le compte ordinaire**, connecté, dans son propre contexte.
+  const strangerContext = await browser.newContext()
+  const stranger = await strangerContext.newPage()
+
+  await aSignedInAccount(stranger, 's60-intrus')
+
+  for (const pathname of CONSOLE_SCREENS) {
+    await refusedWithoutRedirect(stranger.request, pathname, 'compte ordinaire')
+  }
+
+  await strangerContext.close()
+})
+
+/**
  * **L'écran de revenus, sur le vrai chemin HTTP** (s38).
  *
  * Deux choses que rien d'autre ne mesure : le **404** d'un compte qui
@@ -174,7 +308,7 @@ test('le back-office sert les revenus au compte désigné, en disant ce qu’ils
 
   // L'entrée est **dérivée du registre** : elle est déclarée par le module de
   // facturation, et c'est par elle qu'on arrive sur l'écran.
-  await page.goto(publicPath('/admin/users'))
+  await page.goto(publicPath(ADMIN_USERS_SCREEN_PATH))
   await page.getByRole('link', { name: 'Revenus', exact: true }).click()
 
   await expect(page.getByRole('heading', { name: 'Revenus', level: 1 })).toBeVisible()
@@ -205,7 +339,7 @@ test('le back-office sert les revenus au compte désigné, en disant ce qu’ils
 
   await aSignedInAccount(stranger, 's38-intrus')
 
-  const refused = await stranger.goto(publicPath('/admin/revenue'))
+  const refused = await stranger.goto(publicPath(ADMIN_REVENUE_SCREEN_PATH))
 
   expect(refused?.status()).toBe(404)
   // 404, et pas 403 : le second confirmerait que l'écran existe.
@@ -247,14 +381,14 @@ test('le back-office sert les revenus au compte désigné, en disant ce qu’ils
  *
  * **Ce que la coupure garantit, et par quoi.** Plus de **route** : c'est mesuré,
  * par le balayage du registre de `e2e/modules.spec.ts` et par `pnpm test:socle`.
- * Plus d'**entrée** : c'est *structurel*, pas mesuré — `backOfficeNavigation`
+ * Plus d'**entrée** : c'est *structurel*, pas mesuré — `consoleNavigation`
  * n'agrège que les modules du registre, qui n'agrège que les modules activés,
  * si bien qu'un module coupé ne peut pas déclarer d'entrée. Aucune exécution ne
  * rend la navigation du back-office avec le site public coupé, et le balayage
  * d'entrées de `pnpm test:minimal-profile` porte sur la surface principale, où
- * une entrée `surface: 'admin'` n'apparaît de toute façon jamais.
+ * une entrée `surface: 'console'` n'apparaît de toute façon jamais.
  */
-const SUBSCRIPTIONS_SCREEN = '/admin/subscriptions'
+const SUBSCRIPTIONS_SCREEN = ADMIN_SUBSCRIPTIONS_SCREEN_PATH
 
 /** Une adresse hostile : un tableur l'exécuterait à l'ouverture du fichier. */
 const HOSTILE_EMAIL = '=HYPERLINK("http://pirate.test")@example.test'
@@ -296,7 +430,7 @@ test('le back-office liste les inscriptions et en sert un CSV assaini', async ({
 
   // L'entrée est **dérivée du registre** : elle est déclarée par le module du
   // site public, et c'est par elle qu'on arrive sur l'écran.
-  await page.goto(publicPath('/admin/users'))
+  await page.goto(publicPath(ADMIN_USERS_SCREEN_PATH))
   await page.getByRole('link', { name: 'Inscriptions', exact: true }).click()
 
   await expect(page.getByRole('heading', { name: 'Inscriptions', level: 1 })).toBeVisible()
@@ -396,7 +530,7 @@ test('l’écran des inscriptions disparaît avec le module qui les porte', asyn
 
 test('le bandeau d’impersonation survit à une navigation complète', async ({ page, browser }) => {
   await aSignedInSuperadmin(page)
-  await page.goto(publicPath('/admin/users'))
+  await page.goto(publicPath(ADMIN_USERS_SCREEN_PATH))
   await expect(page.getByRole('heading', { name: 'Comptes', level: 1 })).toBeVisible()
 
   // La cible : un compte ordinaire, inscrit dans un autre contexte pour que sa
@@ -430,6 +564,12 @@ test('le bandeau d’impersonation survit à une navigation complète', async ({
   })
 
   expect(opened.status()).toBe(200)
+
+  // **La session empruntée n'entre pas dans la console** (s60, critère 7) :
+  // 404, sans redirection, quel que soit le rôle de l'emprunteur.
+  for (const pathname of CONSOLE_SCREENS) {
+    await refusedWithoutRedirect(page.request, pathname, 'session empruntée')
+  }
 
   // **Premier écran.** Le bandeau est là, et il porte sa sortie.
   await page.goto(publicPath('/account'))
@@ -516,7 +656,7 @@ test('une route réservée à un rôle sert son porteur, et 404 aux autres', asy
 
   // La désignation a lieu à la première requête d'administration : c'est elle
   // qui nomme le premier superadmin sur une plateforme qui n'en a aucun.
-  await page.goto(publicPath('/admin/users'))
+  await page.goto(publicPath(ADMIN_USERS_SCREEN_PATH))
   await expect(page.getByRole('heading', { name: 'Comptes', level: 1 })).toBeVisible()
 
   // **Servie au porteur du rôle** — la session est la même, aucune reconnexion.

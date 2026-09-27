@@ -318,7 +318,7 @@ export interface AdminMembership {
  * **Aucune méthode ne dit si le module existe**, et c'est délibéré : module
  * coupé, les lectures rendent des listes vides, et aucun écran ne porte de
  * condition sur un identifiant de module. Ce qui disparaît alors est l'**entrée
- * de navigation**, dérivée du registre (ADR 066, `surface: 'admin'`).
+ * de navigation**, dérivée du registre (ADR 066, `surface: 'console'`).
  */
 export interface AdminOrganizationsPort {
   listOrganizations(input: {

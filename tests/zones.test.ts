@@ -1,0 +1,99 @@
+import { readdirSync } from 'node:fs'
+import { sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+import { describe, expect, it } from 'vitest'
+
+import { urlSegment, warmUpTargets } from '../e2e/support/warm-up'
+
+/**
+ * **Les écrans sont rangés par zone** (s60, ADR 071).
+ *
+ * Quatre dossiers de routes — `(site)`, `(auth)`, `(app)`, `(console)` — et
+ * chaque page vit sous **exactement un** d'eux. Une page posée à la racine de
+ * `apps/web/app` n'hériterait d'aucun shell (le layout racine n'en rend plus),
+ * et une page sous deux zones imbriquées en rendrait deux. Les deux défauts se
+ * lisent sur le disque, sans rien rendre : la liste des pages est **dérivée**
+ * de l'arborescence, jamais recopiée.
+ */
+
+const APP_ROOT = fileURLToPath(new URL('../apps/web/app', import.meta.url))
+
+/** Les dossiers de zone, tels que l'ADR 071 les fixe. */
+const ZONES = ['(site)', '(auth)', '(app)', '(console)'] as const
+
+const pageFiles = (): readonly string[] =>
+  readdirSync(APP_ROOT, { recursive: true })
+    .map((entry) => String(entry).split(sep).join('/'))
+    .filter((file) => file === 'page.tsx' || file.endsWith('/page.tsx'))
+    .sort()
+
+const zonesOf = (file: string): readonly string[] =>
+  file.split('/').filter((segment) => (ZONES as readonly string[]).includes(segment))
+
+describe('chaque page vit dans exactement une zone', () => {
+  it('trouve des pages, faute de quoi ce cas ne vérifierait rien', () => {
+    // Le plancher : l'arborescence porte une trentaine de pages ; un balayage
+    // qui n'en verrait qu'une poignée aurait perdu un dossier entier.
+    expect(pageFiles().length).toBeGreaterThan(25)
+    // Et chaque zone en porte au moins une : une zone vide serait un dossier
+    // que la partition annonce sans le tenir.
+    for (const zone of ZONES) {
+      expect(
+        pageFiles().some((file) => file.startsWith(`${zone}/`)),
+        `aucune page sous ${zone}`,
+      ).toBe(true)
+    }
+  })
+
+  it('range chaque page sous un seul dossier de zone, au premier niveau', () => {
+    const misplaced = pageFiles().filter((file) => {
+      const zones = zonesOf(file)
+
+      return zones.length !== 1 || !file.startsWith(`${zones[0] ?? ''}/`)
+    })
+
+    expect(misplaced).toEqual([])
+  })
+
+  it('ne connaît aucun autre dossier de routes que les quatre zones', () => {
+    // Un cinquième groupe `(…)` hors de la partition serait une zone sans
+    // décision : il doit passer par un ADR, pas par un dossier.
+    const groups = readdirSync(APP_ROOT, { recursive: true })
+      .map((entry) => String(entry).split(sep).join('/'))
+      .flatMap((path) => path.split('/'))
+      .filter((segment) => segment.startsWith('('))
+
+    expect([...new Set(groups)].sort()).toEqual([...ZONES].sort())
+  })
+})
+
+describe('le préambule des parcours traduit les dossiers de routes', () => {
+  it('traduit un dossier de zone en « aucun segment »', () => {
+    expect(urlSegment('(site)')).toBe('')
+    expect(urlSegment('(console)')).toBe('')
+  })
+
+  it('refuse toujours une route parallèle, qu’aucun écran n’utilise', () => {
+    expect(() => urlSegment('@panneau')).toThrow(/préambule/)
+  })
+
+  it('demande l’URL de chaque page sans le dossier de zone, telle que le routeur la sert', async () => {
+    const targets = await warmUpTargets()
+    const expected = pageFiles().map(
+      (file) =>
+        `/${file
+          .split('/')
+          .slice(0, -1)
+          .filter((segment) => !segment.startsWith('('))
+          .map((segment) => (segment.startsWith('[') ? 'warm-up' : segment))
+          .join('/')}`,
+    )
+
+    // Aucune cible ne porte de groupe, de double barre ni de segment vide.
+    expect(targets.filter((target) => /[()@]|\/\//.test(target))).toEqual([])
+    expect(expected.filter((path) => !targets.includes(path))).toEqual([])
+    // Et l'accueil reste `/`, pas une chaîne vide.
+    expect(targets).toContain('/')
+  })
+})
