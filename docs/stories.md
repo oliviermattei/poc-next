@@ -1996,3 +1996,28 @@ s64-hote-application, s37b1-decompte-et-impersonation, s14-passkeys, s13-two-fac
 
 ### Agentic notes
 **Risque (complexité 4, sécurité)** : c'est la seule story qui demande à Better Auth de servir deux origines avec deux cookies de session distincts. La research doit mesurer si une instance le permet, ou s'il en faut deux ; si cela impose un second adaptateur, la story repasse par le porteur (une implémentation par port).
+
+---
+
+## Story s66-404-par-zone — Rendre une page introuvable avec un seul shell
+**As a** Visiteur **I want** qu'une page introuvable s'affiche une seule fois dans son gabarit **so that** l'écran reste lisible et ne duplique ni la navigation ni les bandeaux.
+
+> **Ajoutée le 27/09, sur une régression de s60 mesurée en CI et au navigateur.** s60 a rangé les pages dans des dossiers de routes et fait rendre l'`AppShell` à `app/not-found.tsx` (ADR 071). Or un `notFound()` levé **par une page** est rendu **à l'intérieur** du layout de sa zone : le shell paraît deux fois. Mesuré sous Chromium sur `dev` à `2f11ae9` : `/fr/blog/nexiste-pas` rend deux `[data-slot="sidebar"]`, `/fr/nexiste-pas` (aucune route) en rend un. La CI (`socle`, run 36350844663) rougit sur `e2e/admin.spec.ts:591` : deux bandeaux « Session empruntée » sur `/organizations`, module coupé. L'hypothèse de l'ADR 071 ne vaut que pour un `notFound()` levé par un **layout** (garde de la console, mesurée en s60).
+
+### Complexity
+2
+
+### Acceptance criteria
+- [ ] Un `notFound()` levé par une page de `(site)`, `(auth)`, `(app)` ou `(console)` rend l'écran 404 avec **un seul** shell : celui de la zone
+- [ ] Une URL qui ne correspond à aucune route rend toujours l'écran 404 avec l'`AppShell` et la bannière de consentement (`e2e/security-headers.spec.ts` reste vert)
+- [ ] Un refus de la garde du layout de la console (anonyme, non-superadmin, session empruntée) rend toujours la 404 **sans** élément du shell de console
+- [ ] Un test navigateur compte les shells sur une 404 levée par une page de chaque zone qui en lève une, et sur une URL inconnue
+- [ ] La CI est verte sur ses deux branches de matrice (`tous`, `socle`)
+- [ ] L'ADR 071 est corrigée par un nouvel ADR qui écrit la règle mesurée des frontières 404
+
+### Dependencies
+s60-console
+
+### Agentic notes
+Piste mesurée à confirmer en research : un `not-found.tsx` par dossier de zone, qui rend `NotFoundScreen` **sans** shell (le layout de la zone le fournit), et `app/not-found.tsx` qui garde l'`AppShell` pour les URL sans route. Un `notFound()` levé par le layout de la console remonte à la frontière du parent (la racine), pas à celle de `(console)` : c'est ce qui garde le critère 3.
+`tests/zones.test.ts` dérive les pages du disque : un `not-found.tsx` de zone n'est pas une page, mais la research vérifie que la dérivation l'ignore.
