@@ -1,151 +1,188 @@
-# Revue des stories — killer-boilerplate (ronde 7)
+# Revue des stories : killer-boilerplate (ronde 8)
 
-> Revue en contexte neuf (subagent `stories-reviewer`) de `docs/stories.md` contre `docs/prd.md`, suivant `templates/stories-review-checklist.md`. Tout le découpage est relu : 70 entrées, dont `s37` et `s37b` marquées « DÉCOUPÉE ». L'examen le plus serré porte sur `s60`, `s61` et `s62`. La numérotation reprend après F65 (ronde 6, dans l'historique git de ce fichier).
+> Relecture en contexte neuf (subagent `stories-reviewer`) de `docs/stories.md`, contre `docs/prd.md`, en suivant `templates/stories-review-checklist.md`. Tout le découpage est relu : 70 entrées, dont `s37` et `s37b` marquées « DÉCOUPÉE ». L'examen le plus serré porte sur s60–s64. La partition de s61 et les références de fichiers et de lignes ont été vérifiées sur le disque. Les constats reprennent la numérotation à F77 ; la ronde 7 est dans l'historique git de ce fichier.
 
 ## Couverture du périmètre
 
 | Fonctionnalité du PRD (core loop) | Couverte par | OK ? |
 |---|---|---|
-| Système de modules + `config/features.ts` + CLI toggle | s03, s04, s05 (+ s58 : clé facultative `seeds`) | ✅ |
-| Auth (password, magic link, OAuth, vérif, reset, sessions, 2FA, passkeys) | s07, s12, s13, s14, s46 (habillage), s56 (rôles de session) | ✅ |
-| Multi-tenant (orgs, invitations, rôles, switcher, scoping) | s15, s16, s17 | ✅ |
-| Billing Stripe (checkout, portail, abonnements, one-time, sièges, webhooks, essais) | s19, s20, s21, s23, s47 | ✅ |
-| Admin back-office (listes, recherche, bannissement, reset, sessions, impersonation, revenu) | s37a (ban), s37b1 (impersonation), s37b2 (listes, détail, sessions, reset), s38 (revenu), s37c, s60 (console, tableau de bord, point d'entrée) | ✅ |
+| Système de modules + `config/features.ts` + CLI toggle | s03, s04, s05 (+ s58) | ✅ |
+| Auth | s07, s12, s13, s14, s46, s56 | ✅ |
+| Multi-tenant | s15, s16, s17 | ✅ |
+| Billing Stripe | s19, s20, s21, s23, s47 | ✅ |
+| Admin back-office | s37a, s37b1, s37b2, s37c, s38, s60 (console, tableau de bord) | ✅ |
 | Emails transactionnels | s06, s09 | ✅ |
-| App shell (dashboard, nav depuis les modules, dark mode, paramètres, profil, avatar) | s08, s15, s18, s61 (surfaces site/app), s62 (préfixe `/app`) | ✅ |
-| Marketing (landing, pricing, FAQ, témoignages, contact, newsletter, légal, SEO/OG, sitemap, robots) | s10, s11, s22, s53 (robots/sitemap dérivés), s61 (en-tête du site) | ✅ |
-| Blog MDX (liste, article, tags, RSS, OG auto) | s29, s53 | ✅ |
-| Docs produit + recherche plein texte | s30, s54 | ✅ |
+| App shell (dashboard, nav, dark mode, réglages compte/org, profil, avatar) | s08, s15, s18, s61, s62 (zone Réglages), s63 | ✅ |
+| Marketing | s10, s11, s22, s53, s61 (en-tête du site) | ✅ |
+| Blog MDX | s29, s53 | ✅ |
+| Docs produit | s30, s54 | ✅ |
 | Changelog | s31 | ✅ |
 | i18n | s09 | ✅ |
 | Stockage de fichiers | s18 | ✅ |
 | Notifications in-app | s32 | ✅ |
 | Jobs & cron | s33 | ✅ |
-| Déploiement | s27, s59 | ✅ |
+| Déploiement | s27, s59, s64 (hôtes facultatifs) | ✅ |
 | Pack RGPD | s34, s34b, s35, s36 | ✅ |
 | Rate limiting + anti-bot | s28 | ✅ |
 | Guest checkout | s24 | ✅ |
 | Serveur MCP | s41 | ✅ |
 | Monitoring + analytics | s39 | ✅ |
 | Onboarding | s40 | ✅ |
-| Plugins bonus (waitlist, feedback, roadmap) | s42 ; s43 et s44 existent mais le porteur les a marquées « OPTIONNELLE — reportée » (voir F74) | ✅ (stories présentes) |
+| Plugins bonus | s42, s43, s44 (reportées par le porteur, voir F74) | ✅ (stories présentes) |
 | Tooling & DX | s01, s02, s48, s50, s51, s52, s55, s58 | ✅ |
 
-- [x] Chaque ligne du tableau « Replicated (core loop) » est livrée par au moins une story. 24/24, aucun trou. Les trois nouvelles stories affinent les lignes App shell, Marketing et Admin sans en retirer quoi que ce soit.
+- [x] Chaque ligne du tableau « Replicated » est livrée par au moins une story : 24/24. Le remplacement de s60–s62 par s60–s64 ne retire rien.
 
 ## Périmètre
-- [x] Aucune fuite du cimetière. Vérifications pour s60–s62 :
-  - Le tableau de bord de s60 lit des données existantes (« aucune table nouvelle ») : ce n'est pas un journal d'audit.
-  - s61 porte sur le site public du SaaS généré, pas sur un « site de vente » du boilerplate.
-  - s62 écarte explicitement le sous-domaine et ne livre aucun mécanisme multi-hôte.
-  - s58 (seed) et s59 (premier déploiement) ne touchent pas non plus au cimetière.
-- [x] Rien ne sort du périmètre. s48, s50, s51, s52 et s55 sont des stories d'entretien du harnais. Elles relèvent de la ligne Tooling & DX et de la règle « l'outillage du template n'est pas un module ».
+- [x] Aucune fuite du cimetière :
+  - la console s60 lit des données existantes, ce n'est pas un journal d'audit ;
+  - s61 porte sur le site du SaaS généré, pas sur un « site de vente » ;
+  - s64 n'ajoute ni provider, ni table, ni `eject`.
+- [~] Débordement : les hôtes dédiés par zone (s64) ne figurent dans aucune ligne du PRD. La décision n'est écrite que dans le préambule de la story (F88).
 
 ## Qualité des stories
-- [~] Tranches livrables : oui pour s60, s61 et s62. Chacune a une valeur visible (point d'entrée de la console, séparation site/application, adresses sous `/app`). Mais la frontière site/application n'est entièrement définie par aucune des deux dernières (F66).
-- [~] Critères testables : deux critères de s61 et s62 se contredisent avec des critères déjà livrés ou entre eux (F66, F67). Les critères de s59 ne sont pas marqués « recette manuelle » (F75).
-- [~] Notes agentiques : présentes partout. Les références au code de s60–s62 ont été vérifiées (voir « Vérification des affirmations sur le code »). Un piège manque, les identifiants d'organisation réservés (F71).
-- [x] Complexité : aucun 5 non découpé (s37, s23, s30 et s37b ont été redécoupées après recherche). s62 est cotée 4 et énonce son risque, tout comme s03, s09, s23 et s33.
+- [~] Tranches livrables : oui pour s60–s64. Mais s61 n'est pas exécutable seule : sa partition renvoie à s62/s63 (F77).
+- [~] Critères testables : plusieurs se contredisent entre eux ou avec des stories livrées :
+  - s61, critères 1 et 3 (F78) ;
+  - s61, critères 2 et 8 (F79) ;
+  - s63, critère 1 face à s60 (F81) ;
+  - s64, critères 3 et 4 (F82).
+- [~] Notes agentiques : présentes, et les références sont presque toutes exactes. Deux défauts :
+  - une référence fausse dans s60 (F83) ;
+  - des pièges absents : éléments transverses de l'`AppShell` (F80), groupes de routes (F87), passkeys et `baseURL` sur plusieurs hôtes (F82).
+- [~] Complexité : s62 et s64 sont cotées 4 et énoncent leur risque. s64 porte deux valeurs aux propriétés de sécurité distinctes et touche des systèmes externes (URI de rappel OAuth, retours Stripe, `rpID` des passkeys) : à découper, ou à recoter 5 (F82).
 
 ## La liste dans son ensemble
-- [~] Ordre exécutable :
-  - s45 → s62 : toutes les dépendances pointent vers des stories déjà écrites, aucun cycle.
-  - s60 → s37b2, s37c, s38 ; s61 → s08, s10, s40 ; s62 → s61, s60 : toutes déjà livrées (leur revue existe).
-  - Reste un défaut : des références pendantes vers des stories découpées (F68).
-- [~] Ids : uniques et stables. Suffixes alphabétiques (`s34b`, `s37a`, `s37b1`…) hors de la forme `s<number>-<slug>`, et un renvoi vers un id inexistant (F72).
-- [~] Recouvrements : s61/s62 se partagent le déplacement vers `/app` de façon voulue, mais sans partition complète (F66).
+- [~] Ordre exécutable : pas de cycle. s60 → s37b2, s37c, s38 ; s61 → s07, s08, s10, s22, s29, s30, s40 ; s62 → s61 ; s63 → s61, s62 ; s64 → s60, s63. Il reste :
+  - une référence en avant dans s61, vers s62/s63 et vers la console de s60 dont elle ne dépend pas (F77) ;
+  - des champs `Dependencies` incomplets (F85).
+- [x] Ids : bien formés, uniques. L'extension à suffixe est désormais écrite dans l'en-tête (ligne 5).
+- [~] Recouvrements :
+  - s62 et s63 portent deux mécanismes concurrents pour la table des 308 (F86) ;
+  - s63 capture, à la lettre, les écrans de la console de s60 (F81).
 
-## Vérification des affirmations sur le code (s60–s62)
+## Vérification des références (s60–s64)
 
 | Affirmation | Constaté | OK ? |
 |---|---|---|
-| `NavigationSurface` en `packages/core/src/module.ts:251`, `'app' \| 'footer' \| 'admin'` | exact | ✅ |
-| `apps/web/lib/back-office.ts:67` est le seul lecteur de la surface `admin` | exact : `visibleNavigation(moduleRegistry, session, 'admin')` ; aucun autre lecteur dans `apps/web` | ✅ |
-| « quatre entrées portent `surface: 'admin'` » | 4 : admin (`admin-routes.ts:537`), organizations (`organization-routes.ts:309`), billing (`billing-routes.ts:328`), marketing (`module.ts:58`) | ✅ |
-| `ADMIN_USERS_SCREEN_PATH` en `admin-routes.ts:513` ; ORGANIZATIONS / REVENUE / SUBSCRIPTIONS dans organizations / billing / marketing | exact (`organization-routes.ts:74`, `billing-routes.ts:60`, `public-form-routes.ts:41`) | ✅ |
-| Pas de page `/admin` | exact : seuls `admin/users`, `admin/users/[id]`, `admin/organizations`, `admin/organizations/[id]`, `admin/revenue`, `admin/subscriptions` | ✅ |
-| `apps/web/app/admin/`, `e2e/admin.spec.ts`, `apps/web/app/account-menu.tsx`, `apps/web/lib/admin.ts`, `apps/web/proxy.ts` existent | tous présents | ✅ |
-| `lib/admin.ts` porte les lectures comptes / organisations / revenu / inscriptions | exact (`adminOrganizationsPort`, `adminRevenuePort`, `adminSubscriptionsPort`, `organizations` rend un `total`) | ✅ |
-| `asSuperadmin` est la garde de référence | existe, `admin-routes.ts:182`, locale au module | ✅ |
-| `apps/web/app/page.tsx` : quatre sorties, deux partent sur `/app` | exact (onboarding, tableau de bord, accueil, redirection vers la connexion) | ✅ |
-| `apps/web/app/auth-form.tsx:181` (`redirectTo`) | ligne 181 = `window.location.assign(props.redirectTo)`. La valeur vient de `apps/web/app/sign-in/page.tsx:145` (`destination`, dérivée de `?next=` via `safeRedirectPath`) | ✅, mais voir F67 |
-| ADR 066 / 067 existent | présents | ✅ |
-| « Préfixe de langue `/fr/…` » | exact : c'est `proxy.ts` qui l'applique, il n'existe aucun segment `[locale]` | ✅ |
+| `NavigationSurface` en `packages/core/src/module.ts:251` | exact (`'app' \| 'footer' \| 'admin'`) | ✅ |
+| `apps/web/lib/back-office.ts:67` | exact (`visibleNavigation(moduleRegistry, session, 'admin')`) | ✅ |
+| `ADMIN_USERS_SCREEN_PATH` à `admin-routes.ts:513`, `asSuperadmin` à `:182` | exact | ✅ |
+| Chemins `ADMIN_*` répartis dans quatre modules | exact : admin, organizations (`organization-routes.ts:74`), billing (`billing-routes.ts:60`), marketing (`public-form-routes.ts:41`) | ✅ |
+| `reservedSlugs` (`apps/web/lib/organizations.ts:194`) « dérive les segments du disque » | **faux** : la ligne 194 est `APPLICATION_SEGMENTS`, une liste écrite à la main. `reservedSlugs` est à la ligne 284. C'est le test qui dérive du disque | ❌ F83 |
+| Aucune organisation adressée par URL | exact : le seul segment dynamique de tête est `blog/[slug]` | ✅ |
+| `apps/web/app/page.tsx` : quatre sorties, deux vers `/app` | exact (l. 83 onboarding, l. 86 tableau de bord, l. 107 connexion, l. 110 accueil) | ✅ |
+| `sign-in/page.tsx:145`, `auth-form.tsx:181` | exact (`destination` est calculée l. 58 et passée l. 145 ; `window.location.assign` l. 181) | ✅ |
+| `app/app-shell.tsx` entoure tous les écrans | exact. Il porte aussi `ConsentBanner`, `ConsentScripts` (nonce) et `ImpersonationBanner`, qu'aucune note ne cite | ✅, voir F80 |
+| `trustedOrigins: [options.appUrl]` à `better-auth-service.ts:603` | exact. À `:985-988`, `passkey({ rpID: hostname(appUrl), origin: appUrl })`, et le commentaire l. 965 : « Changer l'hôte d'`APP_URL` invalide toutes les passkeys déjà enregistrées » | ✅, voir F82 |
+| Cinq fichiers de route Next hors répartiteur | exact : health, i18n-probe, csp-report, consent-probe, billing-local-checkout | ✅ |
+| `proxy.ts` applique le préfixe de langue | exact | ✅ |
+
+**Partition de s61 contre le disque.** Segments relevés dans `apps/web/app/**/page.tsx` :
+- **Site (9)** : `/`, blog, docs, pricing, changelog, contact, legal, cookies, waitlist. Tous présents dans la table.
+- **Hors zone (8)** : sign-in, sign-up, forgot-password, reset-password, verify-email, two-factor, oauth/return, invitations/accept. Tous présents.
+- **Aucune zone nommée** : account, billing, organizations, notifications, onboarding, premium, et `admin/*` (six écrans). Ils ne sont couverts que par « ce que s62/s63 y placent » et par `/console/*` (s60), voir F77.
+
+## Statut des constats de la ronde 7
+
+| Constat | Statut |
+|---|---|
+| F66 | **Reformulé, en grande partie résolu**. La table de partition existe. La contradiction de s62 sur les liens d'email est levée (note de s62 : ils visent des écrans Hors zone). Le reste devient F77 |
+| F67 | **Résolu** : critère 5 de s61, destination par défaut plus liste blanche, et s07 est déclaré amendé |
+| F68 | **Résolu** : s38 → s37b2 ; s42, s43, s44 → s37a. Plus aucune dépendance vers `s37-admin-users` |
+| F69 | **Résolu** : `auth /sign-in` passe en `site`, `demo-enabled` reste en `app`. Il en découle F78 |
+| F70 | **Résolu** : critère 6 de s61 |
+| F71 | **Passé en note** (s60, s62). La note de s60 est inexacte (F83) |
+| F72 | **Résolu** : extension écrite en l. 5, `s34b-ecrans-rgpd` corrigé, une seule section de notes dans s34, s55 déplacée |
+| F73 | **Résolu** : paragraphe « amende » dans s60, notes de s37b et s37b2 à jour. La question du lien écrit à la main disparaît avec la décision « aucun lien » |
+| F74 | **Toujours ouvert**, laissé ouvert délibérément (décision de PRD) |
+| F75 | **Résolu** : tous les critères de s59 portent « Recette manuelle » |
+| F76 | **Résolu** pour s07, s22, s29, s30. Un résidu figure en F85 |
+
+Hérités des rondes précédentes, non touchés par cette édition : F59 et F64 restent ouverts. **F60 aussi, et il a maintenant une conséquence** : F79.
 
 ## Constats
 
-**F66 — major — s61 / s62 : la frontière site/application n'est entièrement définie nulle part, et s62 se contredit.**
-- **La liste de s62 est incomplète.** Le critère 4 de s62 dit ce qui reste public (site, blog, docs, tarifs, légal, connexion, inscription, mot de passe oublié, liste d'attente). Le critère 1 dit ce qui part sous `/app` (écrans `authenticated`/`entitlement`, plus compte, organisations, facturation, notifications, onboarding). Les deux laissent de côté des écrans qui existent sur le disque :
-  - `/verify-email`, `/reset-password`, `/two-factor`, `/oauth/return` ;
-  - `/invitations/accept`, servi à un anonyme comme à un connecté ;
-  - `/cookies`, `/contact`, `/changelog`, `/premium`.
-- **Le critère 3 de s62 contredit ce classement.** Il exige que les liens de vérification, de réinitialisation et d'invitation « pointent le nouveau chemin ». Or ces écrans servent des visiteurs non authentifiés (s07 interdit les routes protégées à un compte non vérifié). Soit ils ne bougent pas et le critère est faux, soit ils bougent et contredisent le critère 1.
-- **La dérivation des 308 est donc indécidable.** Le critère 2 dérive les 308 « des chemins déclarés », ce qui dépend du classement ci-dessus.
-- **Même lacune dans s61.** Elle ne dit pas quels écrans portent l'en-tête du site et lesquels la barre latérale. Aujourd'hui, `app/app-shell.tsx` entoure tous les écrans, authentification comprise. Le critère 1 (« rendus dans un en-tête, pas dans une barre latérale ») ne peut pas devenir un test déterministe pour `/sign-in`, `/legal`, `/contact` ou `/cookies`.
-- **Correctif attendu :** une table exhaustive écran → zone (site / application / hors des deux), dérivée du disque comme `tests/organizations.test.ts` dérive les segments.
+**F77, major. s61 : partition non exhaustive au moment où s61 sera livrée, par une référence en avant.**
+- **Ce que dit la story.** La table se dit « exhaustive sur les segments de `apps/web/app` », mais la zone Application vaut « `/app` et ce que s62/s63 y placent ».
+- **Ce qui reste sans zone.** Tant que s62 et s63 ne sont pas livrées, `/account`, `/billing`, `/organizations`, `/notifications`, `/onboarding` et `/premium` restent à la racine, sans zone ni gabarit. `/admin/*` aussi, si s60 n'est pas livrée d'abord, et s61 ne dépend pas de s60.
+- **Conséquence.** Le test du critère 2 (« chaque écran appartient à exactement une zone ») ne peut pas passer à la livraison de s61.
+- **Correctif.** Nommer ces six segments dans la zone Application (gabarit application, chemins inchangés jusqu'à s62/s63). Pour la console, ajouter s60 aux dépendances de s61, ou ranger `/admin/*` dans la zone Console en attendant.
 
-**F67 — major — s61, critère 7 : contredit trois critères déjà livrés s'il est pris à la lettre.**
-- **Le critère.** « La destination après connexion est une constante du code, jamais un paramètre d'URL. »
-- **Ce qu'il casse.** Aujourd'hui, `sign-in/page.tsx` honore `?next=` à travers la liste blanche `safeRedirectPath`, et cela porte :
-  - s07, critère 8 (« revient à l'URL demandée après authentification ») ;
-  - le retour de l'invitation, s16 (« connexion avec retour vers cette URL, jeton compris ») ;
-  - le retour des tarifs, s22/s24 (`/sign-in?next=/pricing?offer=…`), qui est sur le parcours doré.
-- **Le risque.** Un implémenteur fidèle au texte supprime ces trois retours : c'est une régression fonctionnelle.
-- **L'intention probable.** « La destination **par défaut** est une constante ; un `next` reste soumis à la liste blanche. » Il faut l'écrire ainsi. Il faut aussi ajouter s07 à la liste des critères amendés par s61, car le repli de `safeRedirectPath(next, '/')` pointerait désormais vers le site et non vers `/app`.
+**F78, major. s61, critères 1 et 3 : non satisfaisables ensemble avec le contrat actuel.**
+- **Le mécanisme.** `satisfiesProtection` montre une entrée `public` à tout le monde (`packages/core/src/protection.test.ts:84-92`). Il n'existe pas de niveau « anonyme seulement ».
+- **« Se connecter ».** L'entrée `auth /sign-in`, déclarée `site`, restera donc visible pour un connecté, ce que le critère 3 interdit.
+- **« Ouvrir l'application ».** Aucun module ne la déclare : `/app` est un écran de `apps/web`. Elle serait donc écrite à la main, ce que le critère 1 et `apps/web/AGENTS.md` interdisent.
+- **Correctif.** La story doit trancher : nouvelle visibilité au contrat (avec un ADR), ou exception nommée.
 
-**F68 — major — s38, s42, s43, s44 : dépendances vers `s37-admin-users`, une story « DÉCOUPÉE, ne pas implémenter telle quelle ».**
-- **Le constat.** `s37-admin-users` n'aura jamais de revue, donc jamais d'état « livrée ». Il en va de même pour `s37b`, que plus personne ne référence.
-- **L'impact.** L'état du pipeline se dérive des fichiers (`docs/reviews/<id>.md`). s43 et s44, pas encore livrées, dépendent donc d'une story que `/ks-status` ou l'orchestrateur ne verront jamais livrée. C'est une dépendance inexécutable au sens de la règle du fichier.
-- **La note contredit la dépendance.** La note de s37a dit « s42, s43 et s44 ne dépendent que d'elle », mais leur champ `Dependencies` n'a pas été mis à jour.
-- **Correctif :** s38 → s37b2 ; s42, s43, s44 → s37a.
+**F79, major. s61, critère 8 contre critère 2 : l'en-tête disparaît avec `marketing`, pas les pages du site.**
+- **Le constat.** `blog`, `docs`, `changelog` et `billing` déclarent `requires: []`. La configuration « site public coupé, blog activé » est valide et déjà mesurée par s53.
+- **Ce que produit le critère 8.** Dans cette configuration, `/blog`, `/docs` et `/pricing` sont rendus sans en-tête ni barre latérale. Cela contredit le critère 2, et leurs entrées `site` ne sont rendues nulle part.
+- **Correctif.** Dire à qui appartient l'en-tête : dérivé du registre, il existe dès qu'une entrée `site` existe. Et limiter le critère 8 à la redirection de `/`.
 
-**F69 — minor — s61 : destin de l'entrée de navigation `auth /sign-in` non tranché.**
-- **Le constat.** Le préambule de s61 range « connexion » parmi les liens du site. Mais le critère 1 ne fait déclarer `site` qu'à l'accueil, au blog, aux docs et aux tarifs. L'entrée publique d'`auth` reste donc en surface `app`, et le critère 5 (« aucun lien du site » dans la barre latérale) ne dit pas si elle doit disparaître.
-- **Le risque.** Le « Se connecter » de l'en-tête (critère 2) risque d'être écrit en dur, ce que `apps/web/AGENTS.md` interdit (« aucune entrée de navigation écrite à la main »).
-- **Même question** pour l'entrée publique `demo-enabled /api/modules/demo-enabled/items`.
+**F80, major. s61 (et le shell de console de s60) : les éléments transverses de l'`AppShell` ne sont garantis dans aucun des quatre gabarits.**
+- **Ce que porte l'`AppShell` aujourd'hui** (`app-shell.tsx` l. 1-2, 213, 256-257) :
+  - `ConsentBanner` et `ConsentScripts` avec le nonce (s36, socle légal non désactivable) ;
+  - `ImpersonationBanner` (s37b1 : « taire un emprunt en cours serait pire ») ;
+  - la réserve `pb-64` de la bannière.
+- **Le risque.** Découper en `(site)`, `(auth)`, `app/` et console peut faire perdre la bannière de consentement sur une zone, ou le bandeau d'emprunt sur le site, sans qu'aucun critère ne rougisse.
+- **Correctif.** Un critère exige ces éléments dans chaque gabarit concerné. La note rappelle que `tests/marketing.test.ts` compte les connexions au rendu du shell et doit suivre le nouveau gabarit du site.
 
-**F70 — minor — s61, critère 6 : « comme aujourd'hui » n'est vrai que pour un anonyme.** Aujourd'hui, avec le site public coupé, un visiteur **connecté** reçoit son tableau de bord sur `/` (`page.tsx`). Le critère le renverrait vers la connexion sans dire ce que `/sign-in` fait d'une personne déjà connectée : un rebond vers `/app` ou un formulaire inutile. Il faut nommer ce cas.
+**F81, major. s63, critère 1 : à la lettre, il déplace la console sous `/app`.**
+- **Le constat.** « Chaque écran qu'un module déclare `authenticated`, `role` ou `entitlement` » inclut les quatre entrées de la console. Elles sont déclarées `protection: { level: 'authenticated' }` (`admin-routes.ts:536`, `organization-routes.ts:308`, `billing-routes.ts:327`, marketing `module.ts:57`).
+- **Ce que cela casse.** Le critère 2 dériverait alors des 308 depuis `/console/*`. Cela contredit le 404 sans redirection de s60, la zone Console de s61 et le mapping de s64.
+- **Correctif.** Exclure explicitement la surface `console`, et ajouter s60 aux dépendances : le critère 3 cite déjà la console.
 
-**F71 — minor — s60 / s62 : le piège des identifiants d'organisation réservés manque aux notes.**
-- **Le mécanisme actuel.** `apps/web/lib/organizations.ts:194` (`APPLICATION_SEGMENTS`) réserve les segments de premier niveau pour qu'une organisation ne masque pas un écran. `tests/organizations.test.ts` les dérive du disque.
-- **Ce que s60 et s62 changent :**
-  - s60 crée `superadmin` et libère `admin` ;
-  - s62 crée `app`, et retire du disque `billing`, `organizations`, `notifications`, `onboarding`, `account`, `premium`, qui restent pourtant servis en 308 par le proxy.
-- **Ce qu'aucune des deux ne dit :**
-  - Une organisation **déjà créée** avec l'identifiant `app` ou `superadmin` devient une collision à la migration. C'est le socle de fiabilité : la migration doit rester compatible avec la version en ligne.
-  - Les anciens segments redirigés doivent rester réservés même absents du disque.
+**F82, major. s64 : le mapping d'hôtes est sous-spécifié, et la séparation de session de la console n'est pas cohérente.**
+- **a) Le mapping prend tout le chemin.** Le critère 4 envoie `console.<domaine>/x` vers `/console/x` pour tout `x`, `/api/*` et `/_next/*` compris ; le critère 3 fait de même pour l'hôte de l'application.
+  - Or l'API ne bouge pas (s63).
+  - Et les écrans Hors zone ne sont servis que sur l'hôte de l'application : l'hôte console n'a **ni écran de connexion, ni API d'auth joignable**. Le superadmin ne peut pas « s'y connecter séparément ».
+- **b) La séparation est cosmétique.** `/api/modules/admin/*` reste servi sur l'hôte de l'application avec la session de l'application. Bannir ou emprunter reste possible sans la session console. La propriété « une session de l'application n'ouvre pas la console » doit couvrir l'API d'administration, ou être réécrite.
+- **c) L'emprunt (s37b1) casse.** Lancé depuis l'hôte console, il pose un cookie host-only sur un hôte qui ne sert aucun écran applicatif.
+- **d) Better Auth n'a qu'une URL.** `baseURL`, les URI de rappel OAuth, les liens d'email, puis `rpID` et `origin` des passkeys (`better-auth-service.ts:985-988`) sont liés à une seule URL. Le code l'écrit (l. 965) : changer l'hôte d'`APP_URL` invalide toutes les passkeys, sans migration. La story ne dit pas quel hôte `APP_URL` désigne après s64, ni comment une passkey fonctionne sur l'hôte console. s14 n'est pas citée.
+- **e) Les retours `?next=` changent d'hôte.** `/sign-in?next=/pricing?offer=…` (s22/s24, parcours doré) part de l'hôte de l'application et revient vers une page du site, sur un autre hôte. `safeRedirectPath` ne connaît que des chemins, et l'élargir est une surface de redirection ouverte. Ce n'est pas traité.
+- **f) Trois pièges de sécurité à écrire :**
+  - « l'hôte de leur zone » (critère 6) doit venir de la configuration, jamais de l'en-tête `Host` (empoisonnement de lien de réinitialisation, `apps/web/AGENTS.md`) ;
+  - aucune variable ne nomme l'hôte du site, alors que le critère 5 en dépend ;
+  - le refus des hôtes inconnus doit épargner `/api/health`, sondé en `localhost` par l'orchestrateur.
+- **g) Les cookies `app_consent` et `app_locale` sont host-only.** Le consentement donné sur le site ne vaut pas sur l'application (s36).
+- **Recommandation.** Découper en deux stories, `APP_HOST` puis `CONSOLE_HOST`. Ou recoter 5, ce qui impose le découpage.
 
-**F72 — minor — ids et renvois.**
-- `s34b`, `s37a`, `s37b`, `s37b1`, `s37b2` et `s37c` s'écartent de la forme `s<number>-<slug>`. Ils sont déjà livrés et nomment des branches : ne pas renuméroter, mais consigner l'extension de format dans l'en-tête du fichier.
-- La note de s34 renvoie à `s34b-suppression-ecrans`, un id qui n'existe pas (le vrai est `s34b-ecrans-rgpd`).
-- s34 porte deux sections « Agentic notes ».
-- s55 est rangée physiquement entre s36 et s37, donc hors de la section « Stories ajoutées après le cadrage initial » où son en-tête la placerait.
+**F83, minor. s60, note : référence inexacte.**
+- `apps/web/lib/organizations.ts:194` est `APPLICATION_SEGMENTS`, une liste écrite ; `reservedSlugs` est à la ligne 284. Ce n'est pas `reservedSlugs` qui « dérive du disque » : c'est `tests/organizations.test.ts`.
+- Conséquence pratique : `console` sera réservé par le `href` de navigation (`firstSegmentOf`), mais `admin` ne « sort » pas tout seul. Il faut le retirer à la main d'`APPLICATION_SEGMENTS`.
 
-**F73 — minor — s60 : amende des stories livrées sans le dire, et ses notes sont périmées ailleurs.**
-- **Amendements non déclarés.** s60 change les chemins et la surface de s37b2, s37c et s38 (critères de 404 sur `/admin/...`, `AGENTS.md` du module `admin` et de `apps/web`, tableau « Les écrans du back-office »). Elle n'a pas le paragraphe « Cette story amende… » que s61 porte.
-- **Notes devenues fausses.** Celles de s37b et s37b2 disent « aucune story n'en dépend », ce qui est faux depuis s60.
-- **Contournement de s56.** La note de s60 oriente vers un lien écrit à la main dans `account-menu.tsx`. Or s56 (livrée) rend précisément une entrée de navigation `role` affichable pour son porteur. La note écarte `ModuleSession.roles` sans dire pourquoi le mécanisme dérivé du registre ne convient pas. C'est à trancher au plan, mais la note ne devrait pas préjuger contre la règle « aucune entrée de navigation écrite à la main ».
+**F84, minor. Amendements non déclarés (même forme que F73).**
+- s62 change les chemins et la surface de s08 (menu de compte), s15, s16, s17 (`/organizations`), s18 (avatar dans `/account`), s19 (`/billing`), s32 (préférences sur `/notifications`), s34b et s36 (carte « Cookies » de `/account`), sans paragraphe « Cette story amende… ».
+- s63 amende s21 (`/premium`), s32 et s40 sans le dire.
+- s64 amende le critère 3 de s61 dans une note seulement.
 
-**F74 — minor — s43 / s44 : report du porteur face au critère de succès n°3 du PRD.** Les deux stories existent, donc la couverture tient. Mais « le produit est livrable sans elle » contredit « Parité sur le périmètre : chaque feature du tableau Replicated est implémentée ». Soit le PRD est amendé (les plugins passent en post-v1), soit le report est provisoire. La décision doit être écrite dans le PRD, pas seulement dans stories.md.
+**F85, minor. Champs `Dependencies` incomplets.** Tout est livré, donc il n'y a pas de risque d'exécution, mais les champs ne listent pas les dépendances réelles :
+- s63 : manquent s60, s21, s32, s40 ;
+- s64 : manquent s12, s14, s19/s24 et s37b1 ;
+- s61 : manquent les propriétaires des écrans qu'elle partitionne (s11, s12, s13, s16, s31, s36).
 
-**F75 — minor — s59 : critères non automatisables non marqués « recette manuelle ».** Plusieurs critères sont par nature manuels : hôte réel, email réellement reçu, trace lisible chez le fournisseur, instance jetable. La note le dit (« ne peut pas être jouée seule par un agent »), mais la règle « Critères non automatisables » du fichier exige le marquage explicite et la trace dans la revue. Il n'existe pas de troisième régime.
+**F86, minor. s62 / s63 : trois imprécisions.**
+- **Deux formes pour la table des 308.** « une donnée » dans s62, « dérivée des chemins déclarés » dans s63. Il faut en choisir une.
+- **La barre du haut de s62, critère 3.** Le comportement de la cloche (module `notifications` coupé) et du sélecteur (module `organizations` coupé) n'est pas dit. Le critère 7 ne couvre que la zone Réglages.
+- **Le parcours doré n'est pas exigé.** s62 déplace `/billing`, que traverse le parcours doré, sans exiger que `pnpm test:golden-path` reste vert. Seule s63 l'exige.
 
-**F76 — minor — s61 : dépendances incomplètes.** s61 change la surface des entrées de navigation de s22 (tarifs), s29 (blog) et s30 (docs), et l'atterrissage de s07 (F67). Seules s08, s10 et s40 sont déclarées. Toutes sont livrées, donc il n'y a pas de risque d'exécution, mais le champ ne liste pas les dépendances réelles.
+**F87, minor. s61, note : piège des groupes de routes absent.** `e2e/support/warm-up.ts:65-68` refuse tout segment qui commence par `(` et fait échouer tout Playwright jusqu'à ce qu'il soit traduit. `tests/rendered-text.test.ts` demande aussi une mise à jour de déclaration. C'est documenté dans `apps/web/AGENTS.md`, mais la note de s61 propose `(site)` et `(auth)` sans le signaler.
 
-**Report des rondes précédentes, toujours ouverts :**
-- F59 : le test de template par locale est revendiqué à la fois par s03 et s09.
-- F60 : les arêtes « modules requis » de la famille marketing ne sont pas déclarées.
-- F64 : la politique de rétention étend le texte du PRD.
-- F57 est **résolu**, par le critère 5 de s36 et la carte « Cookies » de `/account`.
+**F88, minor. s64 : extension de périmètre écrite hors du PRD.** Les hôtes dédiés par zone ne figurent dans aucune ligne « Replicated ». Même remède que F74 : consigner la décision du porteur dans le PRD.
 
 ## Verdict
 
-- **Ce qui tient.** La couverture reste complète (24/24), le cimetière est intact et l'ordre ne contient aucun cycle. Les affirmations de s60–s62 sur le code sont exactes, à la ligne près.
+- **Ce qui tient.**
+  - La couverture est complète (24/24) et le cimetière intact.
+  - Il n'y a aucun cycle.
+  - Huit des onze constats de la ronde 7 sont résolus, dont les trois majors (F66 en grande partie, F67, F68).
+  - s60 et s62 sont prêtes à quelques retouches près (F83, F84, F86).
 - **Ce qui ne tient pas.**
-  - s61 et s62 ne partitionnent pas tous les écrans entre site et application (F66).
-  - s61 porte un critère qui, lu à la lettre, retire le retour `?next=` sur lequel reposent s07, s16 et le parcours doré (F67).
-  - Quatre stories dépendent encore d'une entrée découpée qui ne sera jamais livrée (F68).
-- **Avant de lancer `/ks-research`.** Il faut corriger F66 et F67 avant de lancer la recherche sur s61 et s62, et F68 avant d'ouvrir s43 ou s44.
+  - s61 : partition incomplète le jour de sa livraison (F77), critères 1/3 contradictoires (F78), critères 2/8 contradictoires (F79), éléments transverses du shell non garantis (F80).
+  - s63 : le critère 1 capture la console (F81).
+  - s64 : la console n'a pas d'écran de connexion sur son hôte, et sa séparation de session est cosmétique ; les passkeys, `baseURL` et les retours entre hôtes ne sont pas traités (F82).
+- **Avant de lancer `/ks-research`.** Il faut corriger F77 à F80 avant s61, qui est la racine de s62 à s64, F81 avant s63, et F82 avant s64.
 
 Max severity: major
 Stories ready: yes
