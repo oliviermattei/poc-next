@@ -1781,19 +1781,25 @@ Le régime `recorded` du parcours doré n'a **aucune capture Stripe** : la premi
 >
 > **Décision du porteur (27/09) : aucun lien visible depuis l'application.** On entre dans la console par son adresse, `/console`. Parité : MakerKit sert un « Super Admin panel » avec tableau de bord à métriques ; Supastarter redirige `/admin` vers la liste des comptes.
 >
+> **Décisions du porteur (27/09), après la research** (`docs/research/s60-console.md`) :
+> - **un anonyme reçoit 404** sur `/console`, comme le veut l'ADR 068 (« 404 à tout le monde, anonyme compris ») ; le superadmin se connecte d'abord, puis ouvre `/console` ;
+> - **la console sort de l'`AppShell` par des dossiers de routes**, la forme native de Next, et le déplacement se fait **une seule fois, vers la structure finale** : `(site)`, `(auth)`, `(app)` et `(console)`, selon la partition de s61. Les trois premiers gardent l'`AppShell` actuel ; s61 ne changera que leurs layouts.
+>
 > **Cette story amende s37b2, s37c et s38** : leurs critères sur les chemins `/admin/...` valent désormais pour `/console/...`, la surface `admin` devient `console`, et `AGENTS.md` (racine, `apps/web`, module `admin`) suit. Les notes de s37b et s37b2 le disent.
 
 ### Complexity
-3
+4 — relevée de 3 par la research : sortir la console de l'`AppShell` impose de restructurer `apps/web/app` en dossiers de routes
 
 ### Acceptance criteria
 - [ ] La valeur de surface de navigation `admin` n'existe plus : les entrées de la console déclarent `surface: 'console'`, et `pnpm typecheck` refuse l'ancienne valeur
 - [ ] Les écrans de la console sont servis sous `/console/*` (comptes, organisations, revenu, inscriptions, et leurs pages de détail) ; les anciens chemins `/admin/*` répondent **404**, sans redirection, car une redirection confirmerait l'existence de la surface
 - [ ] `/console` est un **tableau de bord** : nombre de comptes, nombre d'organisations, revenu récurrent estimé, nombre d'inscriptions publiques, chacun lié à son écran. Une tuile dont le module est coupé n'est pas rendue (même règle que l'entrée de navigation du module)
-- [ ] La console porte un shell reconnaissable : titre « Console » et un badge qui la distinguent de l'application, composés des composants et jetons existants du design system. Ce shell rend la bannière et les scripts de consentement (s36), comme tout gabarit
+- [ ] Les pages de `apps/web/app` sont rangées dans quatre dossiers de routes, `(site)`, `(auth)`, `(app)` et `(console)`, selon la partition de s61 ; **aucune URL ne change** hors `/admin` → `/console`. `(site)`, `(auth)` et `(app)` rendent l'`AppShell` actuel, à l'identique. Un test dérive les pages du disque et exige que chacune soit dans exactement un dossier de zone
+- [ ] La console porte son propre shell, **sans** la barre latérale de l'application : titre « Console » et un badge qui la distinguent, composés des composants et jetons existants du design system. Ce shell rend la bannière et les scripts de consentement (s36, avec le nonce), le sélecteur de langue (s09) et la bascule de thème (s08)
 - [ ] **Aucun lien** vers la console n'est rendu dans l'application, le site, le plan de site ou `robots.txt`, quel que soit le compte connecté
-- [ ] Un compte qui n'est pas superadmin, ou une session empruntée, reçoit **404** sur `/console` et sur chaque écran de la console
+- [ ] Un visiteur **anonyme**, un compte qui n'est pas superadmin, ou une session empruntée, reçoit **404** sur `/console` et sur chaque écran de la console : aucune redirection vers la connexion
 - [ ] Module `admin` coupé : `/console` répond 404, et `pnpm test:minimal-profile` reste vert
+- [ ] `pnpm test:e2e` passe avec les dossiers de routes : le préambule (`e2e/support/warm-up.ts`) traduit un groupe `(…)` en « aucun segment » au lieu d'échouer, et refuse toujours `@` (routes parallèles)
 
 ### Dependencies
 s37b2-back-office-lecture, s37c-inscriptions-publiques, s38-admin-revenue, s36-cookie-consent
@@ -1802,6 +1808,7 @@ s37b2-back-office-lecture, s37c-inscriptions-publiques, s38-admin-revenue, s36-c
 Les chemins d'écrans ne vivent pas tous dans `admin` : `ADMIN_USERS_SCREEN_PATH` (`packages/modules/admin/src/presentation/admin-routes.ts:513`), `ADMIN_ORGANIZATIONS_SCREEN_PATH` (module `organizations`), `ADMIN_REVENUE_SCREEN_PATH` (module `billing`), `ADMIN_SUBSCRIPTIONS_SCREEN_PATH` (module `marketing`). Cela fait quatre modules, plus `apps/web/app/admin/` et `e2e/admin.spec.ts`. Les **routes d'API** `/api/modules/admin/…` ne sont pas des écrans : elles gardent leur préfixe de montage, qui est l'id du module.
 `NavigationSurface` est dans `packages/core/src/module.ts:251` (`'app' | 'footer' | 'admin'`). Renommer une valeur touche les ADR 066/067 : un **nouvel ADR** porte le nom, il ne réécrit pas les anciens.
 Le tableau de bord réutilise les lectures de `apps/web/lib/admin.ts` (comptes, organisations — qui rend déjà un `total` —, revenu, inscriptions) : **aucune table nouvelle**. Si une lecture ne rend pas de total, la research le mesure et le plan l'ajoute au port existant.
+**Le déplacement** : ~40 dossiers passent sous les quatre groupes. **19 fichiers de `tests/`** importent une page par son chemin (`../apps/web/app/pricing/page`, `…/blog/[slug]/page`…) et suivent ; plusieurs suites dérivent aussi l'arborescence de `apps/web/app` (`tests/organizations.test.ts` pour les segments réservés, `tests/rendered-text.test.ts`, `tests/marketing.test.ts`) : un segment de premier niveau devient le premier segment **hors groupe**. Le layout racine garde `<html>` et les fournisseurs (langue, thème, nonce) ; l'`AppShell` descend dans les layouts de `(site)`, `(auth)` et `(app)`.
 La garde de référence reste `asSuperadmin` (`admin-routes.ts:182`), qui refuse l'emprunt **avant** de juger le rôle. La console n'a donc pas besoin du bandeau d'emprunt : une session empruntée n'y entre pas.
 Segments réservés aux organisations : `APPLICATION_SEGMENTS` (`apps/web/lib/organizations.ts:194`) est une liste **écrite** ; `reservedSlugs` (l. 284) y ajoute les premiers segments des `href` de navigation. `console` doit être **écrit** dans `APPLICATION_SEGMENTS` (son `href` ne le réserve que si `admin` est activé, alors que `apps/web/app/console/` existe sur le disque dans tous les cas, comme `blog` ou `billing`), et `admin` y être **retiré**. C'est `tests/organizations.test.ts` qui dérive les segments du disque et tient la règle. Aucune organisation n'est adressée par URL (le seul segment dynamique de tête est `blog/[slug]`) : la réservation est préventive.
 
@@ -1852,7 +1859,7 @@ L'atterrissage : le repli `'/'` de `safeRedirectPath` (`packages/modules/auth/sr
 `NavigationSurface` (`packages/core/src/module.ts:251`) gagne `site`. ADR 067 a tranché que la surface reste une propriété de l'entrée : pas de nouvelle clé de contrat. Le pied de page (`footer`) ne bouge pas. Une entrée `public` est visible de tous (`packages/core/src/protection.test.ts:84-92`), d'où la décision du bouton de gabarit.
 Les entrées publiques de démonstration (`demo-enabled`, dont `/api/modules/demo-enabled/items`, qui rend du JSON) restent en surface `app` : elles figurent les pages du SaaS construit.
 **Ce que porte l'`AppShell` aujourd'hui, et qu'aucun gabarit ne doit perdre** (`app/app-shell.tsx`) : `ConsentBanner`, `ConsentScripts` (nonce), `ImpersonationBanner` (l. 1-2, 213, 256-257), `LocaleSwitcher` (l. 141) et `ThemeToggle` (l. 147), et la réserve `pb-64` sous la bannière. Il est rendu par le layout racine (`app/layout.tsx:96`) autour de **toutes** les pages. `tests/marketing.test.ts` compte les connexions ouvertes au rendu du shell : il doit suivre le nouveau gabarit du site.
-**Piège des groupes de routes** : `e2e/support/warm-up.ts:65-68` refuse tout segment qui commence par `(` ou `@` et fait échouer tout Playwright tant qu'il n'est pas traduit ; `tests/rendered-text.test.ts` demande aussi une mise à jour de déclaration (`apps/web/AGENTS.md` le documente). Des groupes `(site)` et `(auth)` imposent ces deux mises à jour.
+**Les dossiers de routes existent depuis s60** (`(site)`, `(auth)`, `(app)`, `(console)`) : cette story **ne déplace aucun fichier**, elle donne à chaque layout son gabarit.
 L'en-tête du site se compose des composants existants de `packages/ui` ; un besoin non couvert est un **écart du design system** à signaler, pas à combler.
 
 ---
