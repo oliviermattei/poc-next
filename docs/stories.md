@@ -1999,6 +1999,8 @@ Le parcours doré dérive son atterrissage (s40) : le garder dérivé.
 ---
 
 ## Story s64-hote-application — Servir l'application sur son propre sous-domaine
+
+> **DÉCOUPÉE le 29/09 — ne pas implémenter telle quelle.** Sa research (`docs/research/s64-hote-application.md`) rend un verdict de complexité **5** : quatre chantiers qui se croisent (origines de l'auth, routage par hôte dans le proxy, cookies de domaine parent, recette à deux hôtes), sans aucune notion d'hôte ni de zone à l'exécution aujourd'hui. Elle est remplacée par **s64a**, **s64b** et **s64c** ci-dessous, qui se partagent ses critères. Chaque tranche est inerte sans `APP_HOST`.
 **As a** Propriétaire du produit **I want** servir l'application sur `app.<domaine>` quand je le configure **so that** le site et l'application aient chacun leur adresse.
 
 > **Décisions du porteur (27/09).**
@@ -2042,6 +2044,69 @@ Le cookie de langue est posé par `apps/web/proxy.ts:142`, celui du consentement
 Le cookie de session de Better Auth porte le préfixe `__Secure-`, qui n'empêche pas un sous-domaine frère d'en poser un de même nom sur le domaine parent (cookie tossing). La research mesure si `__Host-` est accessible par la configuration de la bibliothèque.
 En local, `app.localhost` résout dans Chromium sans DNS. Le comportement des cookies `Domain=localhost` et d'un `rpID` `localhost` depuis `app.localhost` dépend du navigateur : ce qui ne se mesure pas sous Playwright passe en recette manuelle, écrite dans la revue.
 Cette extension n'est écrite dans aucune ligne du PRD : la décision du porteur est à y consigner (constat F88 de la revue des stories).
+
+---
+
+## Story s64a-hote-origines — Construire chaque URL de session sur l'origine de l'application
+**As a** Propriétaire du produit **I want** qu'avec `APP_HOST` toute URL qui ouvre ou consomme une session vise l'application **so that** un déploiement à deux hôtes puisse ouvrir une session là où l'application est servie.
+
+> Tranche 1 de 3 de `s64-hote-application` (ses décisions du porteur valent ici). Faits vérifiés : `docs/research/s64-hote-application.md` (faits 2, 3, 5).
+
+### Complexity
+4
+
+### Acceptance criteria
+- [ ] `APP_HOST` est facultative et validée par Zod au démarrage. Une valeur malformée, ou qui n'est pas un sous-domaine de l'hôte d'`APP_URL`, arrête le démarrage **en nommant la variable** ; `.env.example` la déclare
+- [ ] **Sans `APP_HOST`**, le comportement est celui de s63, octet pour octet. La suite existante le prouve
+- [ ] Avec `APP_HOST`, **toute URL qui ouvre ou consomme une session** vise l'origine de l'application, à partir d'une résolution d'origines unique : `baseURL` et `trustedOrigins` de l'auth, magic link, retour OAuth, cérémonie passkey, deuxième facteur, emails de vérification, de réinitialisation et de changement d'email, lien d'invitation, définition du mot de passe du guest checkout, retours de checkout et de portail Stripe. Un test par parcours
+- [ ] Les URL du site (plan de site, `robots.txt`, `metadataBase`, blog, changelog) restent sur l'origine du site
+- [ ] Toute URL absolue est construite depuis la **configuration**, jamais depuis l'en-tête `Host`
+- [ ] Le `rpID` des passkeys reste l'hôte d'`APP_URL` : une passkey enregistrée avant `APP_HOST` fonctionne après (test sur la configuration du plugin)
+- [ ] Tant que s64c n'est pas livrée, `docs/deployment.md` dit qu'`APP_HOST` n'est pas encore supportée en production
+
+### Dependencies
+s63-application-sous-app, s12-oauth-signin, s13-two-factor, s14-passkeys, s16-invite-members, s19-subscribe-stripe, s24-guest-checkout
+
+---
+
+## Story s64b-hote-routage — Router chaque zone vers son hôte
+**As a** Propriétaire du produit **I want** qu'avec `APP_HOST` chaque hôte ne serve que ses zones **so that** le site et l'application aient chacun leur adresse, et que les anciens liens continuent de marcher.
+
+> Tranche 2 de 3 de `s64-hote-application`. Faits vérifiés : `docs/research/s64-hote-application.md` (faits 1, 3).
+
+### Complexity
+4
+
+### Acceptance criteria
+- [ ] Le proxy classe le **chemin interne** (après langue) dans une zone — Site, Hors zone, Application, Console, API — par une table dérivée des groupes de routes, qu'un test compare au disque
+- [ ] **Avec `APP_HOST`, sur l'hôte de l'application** : `/app/*`, `/console/*`, les écrans Hors zone et `/api/*` sont servis ; `/` répond 308 vers `/app` ; tout autre écran (zone Site) répond 308 vers le même chemin sur l'origine du site
+- [ ] **Avec `APP_HOST`, sur l'hôte du site** : `/app/*` et les écrans Hors zone répondent 308 vers le même chemin sur l'hôte de l'application ; `/console/*` répond **404** ; `/api/modules/auth/*` répond 308 pour un `GET` et 404 pour tout autre verbe ; le reste de `/api/*` y reste servi
+- [ ] **Sans `APP_HOST`**, aucun contrôle d'hôte, aucune redirection nouvelle
+- [ ] Le retour des tarifs fonctionne entre les deux hôtes : choisir une offre en étant connecté, ou se connecter pour la choisir, aboutit au checkout (`pnpm test:golden-path` joué avec `APP_HOST=app.localhost`)
+- [ ] La CSP reste `default-src 'self'` sur chaque hôte ; aucun formulaire d'un hôte ne redirige vers l'autre
+
+### Dependencies
+s64a-hote-origines, s22-pricing-page, s24-guest-checkout, s45-security-headers
+
+---
+
+## Story s64c-hote-cookies — Partager consentement et langue entre les deux hôtes, et documenter le déploiement
+**As a** Propriétaire du produit **I want** que les choix de consentement et de langue valent sur les deux hôtes, sans jamais partager la session **so that** un visiteur ne réponde qu'une fois, et que je puisse déployer les deux hôtes en suivant la documentation.
+
+> Tranche 3 de 3 de `s64-hote-application`. Faits vérifiés : `docs/research/s64-hote-application.md` (fait 4).
+
+### Complexity
+3
+
+### Acceptance criteria
+- [ ] Le cookie de session et celui du défi de deuxième facteur ne portent **aucun attribut `Domain`**, et le navigateur ne les envoie jamais à l'hôte du site. Mesuré au navigateur
+- [ ] Les cookies de consentement et de langue sont posés sur le domaine parent. Quand un ancien cookie propre à l'hôte coexiste avec le nouveau, **le cookie du domaine parent fait foi** et l'ancien est effacé à la première réponse : un refus de consentement n'est jamais masqué
+- [ ] `docs/deployment.md` décrit les deux configurations, la transmission de l'en-tête `Host` par le proxy amont, les URI de rappel OAuth à mettre à jour chez les fournisseurs, et le coût d'une disposition `www` + `app` ; la mention « pas encore supportée » de s64a est retirée
+- [ ] **Recette manuelle** : un déploiement à deux hôtes est servi de bout en bout, trace consignée dans la revue
+- [ ] L'extension multi-hôte est consignée dans le PRD (constat F88)
+
+### Dependencies
+s64b-hote-routage, s36-cookie-consent
 
 ---
 
