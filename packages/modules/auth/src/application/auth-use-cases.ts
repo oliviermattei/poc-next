@@ -1110,6 +1110,21 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
         return { status: 'unavailable' }
       }
 
+      /**
+       * **Les sessions ferment à la demande, pas à la purge** (revue s61, M2).
+       *
+       * Avec un ordonnanceur, la purge quitte cette requête : sans cette ligne,
+       * chaque session du compte servait encore le temps de la file, et
+       * `/sign-in` renvoyait ce « connecté » vers le tableau de bord du compte
+       * qu'il venait de supprimer. La révocation reste côté serveur
+       * (`docs/security.md` §2) — une ligne supprimée, relue à chaque requête.
+       *
+       * **Après** la mise en file et jamais avant : une émission refusée
+       * n'efface rien, elle ne doit rien fermer non plus. Sans ordonnanceur, la
+       * purge a déjà tout fermé et cet appel ne trouve plus rien.
+       */
+      await sessions.revokeAllForUser(userId)
+
       log(
         describeSecurityEvent({
           event: 'auth.account_deletion_requested',

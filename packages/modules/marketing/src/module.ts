@@ -18,9 +18,9 @@ import { marketingSchema } from './schema'
  * L'entrée de navigation du site public.
  *
  * Une seule, et **publique** : c'est elle qui disparaît avec le module, sans
- * qu'aucun composant ne porte de condition. `order: 0` la place avant l'entrée
- * de connexion du module `auth` — l'accueil est la première chose qu'un
- * visiteur voit.
+ * qu'aucun composant ne porte de condition. `order: 0` la place en tête de
+ * l'en-tête du site (surface `site`, s61) — l'accueil est la première chose
+ * qu'un visiteur voit.
  *
  * Les pages légales ne sont **pas** dans la navigation : leur point d'accès
  * déclaré est le pied de page (`docs/stories.md`, critère 2 ; finding F57 de la
@@ -34,6 +34,7 @@ const marketingNavigation: readonly NavigationEntry[] = [
     labelKey: 'navigation.home',
     order: 0,
     protection: { level: 'public' },
+    surface: 'site',
   },
   {
     /**

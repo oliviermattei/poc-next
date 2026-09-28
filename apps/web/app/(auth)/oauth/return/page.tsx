@@ -1,4 +1,4 @@
-import { safeRedirectPath } from '../../../../lib/auth'
+import { DEFAULT_SIGNED_IN_PATH, safeRedirectPath } from '../../../../lib/auth'
 import { appIntl } from '../../../../lib/i18n'
 
 /**
@@ -28,7 +28,7 @@ export default async function OAuthReturnPage({
   const params = await searchParams
   const { t, path } = await appIntl()
   const next = typeof params.next === 'string' ? params.next : null
-  const destination = path(safeRedirectPath(next, '/'))
+  const destination = path(safeRedirectPath(next, DEFAULT_SIGNED_IN_PATH))
 
   return (
     <main>

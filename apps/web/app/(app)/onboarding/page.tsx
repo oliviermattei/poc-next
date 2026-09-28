@@ -7,7 +7,7 @@ import { OnboardingScreen } from '@repo/module-onboarding/presentation'
 import { Button } from '@repo/ui'
 import { notFound, redirect } from 'next/navigation'
 
-import { authRoutePath, currentViewer } from '../../../lib/auth'
+import { authRoutePath, currentViewer, DEFAULT_SIGNED_IN_PATH } from '../../../lib/auth'
 import { appIntl } from '../../../lib/i18n'
 import { onboarding, onboardingRoutePath, ONBOARDING_STEPS } from '../../../lib/onboarding'
 import { AVATAR_CONTENT_TYPES, fileUrl, storage, storageRoutePath } from '../../../lib/storage'
@@ -29,8 +29,8 @@ import { AvatarForm } from '../account/avatar-form'
  * et la carte ne rend que le nom. L'étape, elle, reste — c'est la différence
  * avec les critères 3 et 8, où c'est l'étape entière qui disparaît.
  *
- * **Trois refus, dans cet ordre**, et ils sont complémentaires de ceux de la
- * racine :
+ * **Trois refus, dans cet ordre**, et ils sont complémentaires de ceux du
+ * tableau de bord (`/app`) :
  *
  * | Qui | Ce qu'il obtient |
  * |---|---|
@@ -48,8 +48,8 @@ import { AvatarForm } from '../account/avatar-form'
  *
  * `onboarding.available` est une **donnée**, pas un `if (module activé)`.
  * Parcours terminé, on renvoie au tableau de bord : c'est l'autre moitié de la
- * porte à sens unique, et la condition est l'exacte négation de celle qui, à la
- * racine, amène ici.
+ * porte à sens unique, et la condition est l'exacte négation de celle qui, sur
+ * le tableau de bord, amène ici.
  */
 export default async function OnboardingPage() {
   if (!onboarding.available) {
@@ -68,7 +68,10 @@ export default async function OnboardingPage() {
   const course = await onboarding.course(account.userId)
 
   if (!course.proposed) {
-    redirect(path('/'))
+    // Le parcours se termine sur le tableau de bord, `/app` (s61, amende
+    // s40) — la constante de la destination par défaut, jamais `/`, qui sert
+    // le site.
+    redirect(path(DEFAULT_SIGNED_IN_PATH))
   }
 
   const current = course.current

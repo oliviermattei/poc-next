@@ -167,6 +167,18 @@ point d'accès unique est `@repo/config`.
   cela vient du registre, et c'est ce qui fait qu'un module non activé n'expose
   rien du tout.
 
+  **Une exception nommée** (s61, ADR 073) — la seule trouvée jusqu'ici parmi
+  les entrées de l'en-tête du site ; d'autres liens écrits à la main existent
+  hors de cette surface, dont les liens de marque des gabarits et le menu de
+  compte de l'`AppShell`, et aucune commande ne tient ce décompte : le **bouton du
+  gabarit Site** — « Se connecter » vers `/sign-in` pour un anonyme, « Ouvrir
+  l'application » vers `/app` (`DEFAULT_SIGNED_IN_PATH`) pour un connecté —
+  est écrit dans `app/(site)/site-header.tsx`, pas déclaré par un module. Il
+  appartient au gabarit comme le menu de compte appartient à l'`AppShell`. Elle
+  est sûre parce que l'authentification est du socle et ne peut pas être
+  coupée : aucun module coupé ne laisse ce lien orphelin. Toute autre entrée de
+  l'en-tête vient de la surface `site` du registre.
+
 ## Les deux points de démarrage (s27, ADR 049)
 
 **Cette application valide sa configuration en deux endroits, et un seul texte
@@ -235,42 +247,69 @@ identifiant de module reviendrait à masquer une entrée au lieu de ne pas
 l'avoir, et le composant qui l'affiche (`app/app-navigation.tsx`) ne sait même
 pas ce qu'est un module : il reçoit des entrées.
 
-## Le shell, et les quatre zones (s60, ADR 071)
+## Les quatre zones et leurs gabarits (s60, ADR 071 ; s61, ADR 073)
 
 `app/layout.tsx` pose les polices, la langue, le thème et le nonce — **plus le
-shell**. Un layout imbriqué ne peut pas retirer celui de son parent, et la
-console a le sien : les pages sont donc rangées, une seule fois, dans quatre
-**dossiers de routes**, que Next ne met pas dans l'URL :
+gabarit**. Un layout imbriqué ne peut pas retirer celui de son parent : les
+pages sont donc rangées, une seule fois, dans quatre **dossiers de routes**, que
+Next ne met pas dans l'URL, et chacun rend **son** gabarit (s61) :
 
 | Dossier | Zone | Son `layout.tsx` rend |
 |---|---|---|
-| `app/(site)/` | le site public (accueil, contenus, tarifs, pages légales) | l'`AppShell` |
-| `app/(auth)/` | l'authentification, avant qu'une session existe | l'`AppShell` |
-| `app/(app)/` | le produit, derrière une session | l'`AppShell` |
+| `app/(site)/` | le site public (accueil, contenus, tarifs, pages légales) | le **gabarit Site** (`SiteTemplate`, `app/(site)/site-header.tsx`) : l'en-tête du site — marque, entrées de la surface `site`, langue, thème, bouton de gabarit —, **sans** barre latérale ni pied de page |
+| `app/(auth)/` | l'authentification, avant qu'une session existe | le **gabarit Hors zone** : une barre minimale (marque, langue, thème), l'écran centré ; ni navigation, ni bouton |
+| `app/(app)/` | le produit, derrière une session — dont `/app`, le tableau de bord | le **gabarit Application**, l'`AppShell` : barre latérale de la surface `app`, barre du haut, menu de compte ; sa marque mène à `/app` |
 | `app/(console)/` | la console du superadmin (`/console`, ADR 070) | `console-shell.tsx`, **après** sa garde |
 
-Les trois premiers rendent l'`AppShell` à l'identique en s60 ; leur gabarit
-propre est le travail de s61. `tests/zones.test.ts` dérive les `page.tsx` du
-disque et exige que chacune soit sous **exactement un** de ces dossiers, et
-qu'aucun autre groupe n'existe. `api/`, `layout.tsx`, le `not-found.tsx` racine,
-`global-error.tsx`, `robots.ts`, `sitemap.ts` et les composants partagés
-restent à la racine.
+**Ce que les trois premiers ont en commun vit dans un seul composant**,
+`app/zone-frame.tsx` (`ZoneFrame`) : le bandeau d'emprunt de session (s37b1),
+la bannière et les scripts de consentement (s36, avec le nonce), et la réserve
+`pb-64 md:pb-36` sous la bannière. Il est synchrone et ne lit rien : le gabarit
+lui passe l'emprunt (sorti de `currentViewer()`) et le consentement (sorti du
+cookie). Recopiés dans trois layouts, le premier qui en oublie un rendrait un
+écran sans choix de cookies, ou un emprunt que rien ne signale.
+
+**Le pied de page n'est pas dans le gabarit Site** : chaque page du site rend le
+sien (`publicFooterLinks`), et le gabarit le doublerait.
+
+**L'en-tête du site ne lit que `currentViewer()`** : ni avatar, ni compteur de
+notifications — il n'a ni menu de compte, ni cloche. Pour un anonyme sans
+cookie, aucune connexion n'est ouverte ; `tests/marketing.test.ts` rend le
+gabarit et compte les connexions, pour un anonyme **et** pour un connecté.
+
+`tests/zones.test.ts` dérive les `page.tsx` du disque et exige que chacune soit
+sous **exactement un** de ces dossiers, et qu'aucun autre groupe n'existe.
+`api/`, `layout.tsx`, le `not-found.tsx` racine, `global-error.tsx`,
+`robots.ts`, `sitemap.ts`, `zone-frame.tsx` et les composants partagés restent à
+la racine. `tests/rendered-text.test.ts` entoure chaque écran du gabarit de sa
+zone — le layout réel —, si bien que les textes de l'en-tête du site et de la
+barre minimale passent dans le même filet que ceux de la barre latérale.
 
 **Deux sortes de frontières 404** (ADR 072, qui corrige l'ADR 071).
-`app/not-found.tsx` rend l'`AppShell` lui-même : il sert l'URL sans route et le
-refus d'un **layout** de zone, que seul le layout racine entoure — sans shell,
-toute URL inconnue perdrait la navigation et la bannière de consentement. Le
-refus de la garde de la console ne rend donc **rien** de son shell, et
-`e2e/admin.spec.ts` le mesure. Chaque dossier de zone a en plus son
-`not-found.tsx`, **sans shell** : un `notFound()` levé par une **page** est
-rendu sous le layout de sa zone, qui fournit déjà le sien — la frontière racine
-y doublait le shell. `e2e/not-found-zones.spec.ts` compte les barres latérales.
-Le contenu commun vit dans `not-found-screen.tsx`, pour que
-`tests/rendered-text.test.ts` le rende dans le shell comme les autres écrans.
+`app/not-found.tsx` rend son gabarit lui-même — **le gabarit Site** depuis s61 :
+il sert l'URL sans route et le refus d'un **layout** de zone, que seul le layout
+racine entoure — sans gabarit, toute URL inconnue perdrait la navigation et la
+bannière de consentement. Le refus de la garde de la console ne rend donc
+**rien** de son shell, et `e2e/admin.spec.ts` le mesure. Chaque dossier de zone
+a en plus son `not-found.tsx`, **sans gabarit** : un `notFound()` levé par une
+**page** est rendu sous le layout de sa zone, qui fournit déjà le sien — la
+frontière racine l'y doublerait. `e2e/not-found-zones.spec.ts` compte les barres
+de tête (une par gabarit) et les barres latérales (une dans l'application,
+aucune ailleurs). Le contenu commun vit dans `not-found-screen.tsx`, pour que
+`tests/rendered-text.test.ts` le rende comme les autres écrans.
 
 **Le nonce est relu par chaque layout de zone** (et par `not-found.tsx`), comme
-le layout racine le lit : chaque shell rend les scripts non essentiels de s36,
-et `script-src` porte `'strict-dynamic'`.
+le layout racine le lit : chaque gabarit rend les scripts non essentiels de
+s36, et `script-src` porte `'strict-dynamic'`.
+
+**`/` sert le site, `/app` l'application** (s61). La destination par défaut
+d'une ouverture de session est `DEFAULT_SIGNED_IN_PATH` (`/app`), une
+constante du module `auth` réexportée par `lib/auth.ts` : le repli de chaque
+parcours de connexion, la fin du parcours d'intégration, la marque de l'`AppShell`
+et le bouton du site. Un connecté qui ouvre `/sign-in` ou `/sign-up` part vers
+son `?next=` filtré par `safeRedirectPath`, sinon vers `/app`.
+`tests/auth.test.ts` refuse un repli écrit en littéral dans les fichiers qui en
+portaient un.
 
 L'`AppShell` résout l'appelant une seule fois (`currentViewer`) et en tire deux
 choses : les entrées de navigation et le menu de compte. Un visiteur anonyme n'a
@@ -509,15 +548,13 @@ Deux fichiers, sur le modèle exact de l'i18n :
   deux écrans de formulaire se décident sur la même **donnée**,
   `marketingFormsAvailable` : site public coupé, ils répondent 404. Depuis s53,
   `app/sitemap.ts` et `app/robots.ts` ne le lisent plus du tout : ils lisent le
-  **registre** (voir « La syndication » plus bas). La racine a
-  quatre branches depuis s40 — redirection vers le parcours d'intégration pour
-  un visiteur connecté dont le parcours reste à finir, tableau de bord pour un
-  visiteur connecté (parcours terminé, ou module `onboarding` coupé : `pending`
-  rend alors `false` sans toucher la base), accueil marketing pour un visiteur
-  anonyme, redirection vers la connexion quand il n'y a pas de section — et
-  aucune ne nomme de module : les deux premières se départagent sur
-  `onboarding.pending()`, les deux dernières sur `sections.length`,
-  c'est-à-dire à chaque fois sur une donnée.
+  **registre** (voir « La syndication » plus bas). La racine sert le site
+  **connecté ou non** depuis s61 — accueil marketing pour tout visiteur ;
+  sans section, redirection vers la connexion pour un anonyme et vers `/app`
+  pour un connecté — et aucune branche ne nomme de module : elles se
+  départagent sur `sections.length` et sur la session. Le tableau de bord et
+  le renvoi vers le parcours d'intégration (`onboarding.pending()`) vivent sur
+  `/app` (`app/(app)/app/page.tsx`).
 
 La configuration (`config/marketing.ts`) n'est **validée que lorsque le module
 est monté** : un dépôt qui coupe le site public n'a pas à maintenir un fichier
@@ -553,12 +590,13 @@ segments de premier niveau et exige que chacun soit refusé à une organisation.
 supposé, et en deux moitiés (`tests/marketing.test.ts`) :
 
 - **le rendu** — l'accueil public, la redirection du site coupé, une page légale
-  et l'`AppShell` sont réellement exécutés, avec un compteur posé sur les
-  **prototypes** de `pg`. Toute connexion ouverte par n'importe quel fichier du
-  processus est donc comptée, y compris une base ouverte par un écran pour son
-  compte. Ajouter une lecture de base à l'accueil, à une page légale ou au shell
-  fait rougir cette mesure — vérifié en y ajoutant un vrai
-  `createDatabaseClient(…).pool.query('select 1')` ;
+  et le **gabarit Site** (s61) sont réellement exécutés, avec un compteur posé
+  sur les **prototypes** de `pg`. Toute connexion ouverte par n'importe quel
+  fichier du processus est donc comptée, y compris une base ouverte par un
+  écran pour son compte. Ajouter une lecture de base à l'accueil, à une page
+  légale ou au gabarit fait rougir cette mesure — vérifié en y ajoutant un vrai
+  `createDatabaseClient(…).pool.query('select 1')`, et en s61 en faisant lire
+  l'avatar à l'en-tête du site pour un connecté ;
 - **la résolution de session** — le vrai service d'authentification, contre une
   vraie base, sans cookie puis avec un cookie forgé : la signature est refusée
   avant tout accès. C'est ce qui rend la première moitié vraie en production, où
@@ -795,11 +833,11 @@ revenir vide.
 
 **Ce qui n'entre pas dans l'index, et il faut le savoir avant de « réparer »
 la dérivation** : une entrée de navigation **publique** n'est pas une URL
-indexable. La configuration livrée en compte cinq — `marketing /`,
-`auth /sign-in`, `blog /blog`, `billing /pricing`,
-`demo-enabled /api/modules/demo-enabled/items` — et en dériver l'index aurait
-publié l'écran de connexion et une route d'API. `tests/syndication.test.ts`
-porte le cas ; il rougit si quelqu'un rebranche la navigation.
+indexable. La configuration livrée en porte plusieurs — dont une route d'API de
+`demo-enabled` ; `auth /sign-in` en était jusqu'à s61, qui a retiré l'entrée —
+et en dériver l'index aurait publié une route d'API. Leur liste se dérive du
+registre dans `tests/syndication.test.ts`, qui porte le cas ; il rougit si
+quelqu'un rebranche la navigation.
 
 **Un changement de comportement assumé** : `robotsPolicy` n'annonce aucun plan
 de site quand rien n'est public. La liste ne venant plus d'un seul module, une
@@ -1411,8 +1449,9 @@ porté par Radix. Aucun `<noscript>` n'est nécessaire ici : il n'y a pas de bou
 **Le nonce descend jusqu'au shell, et il est obligatoire.** `script-src` porte
 `'strict-dynamic'` (s45) : un navigateur qui comprend CSP niveau 3 **ignore
 alors `'self'` et toute source d'hôte**, si bien qu'un `<script src>` sans nonce
-est refusé — y compris depuis notre propre origine. `app/layout.tsx` lit `x-nonce`
-et le passe à `AppShell`, qui le passe à `ConsentScripts`. Mesuré sous le build
+est refusé — y compris depuis notre propre origine. Chaque layout de zone lit
+`x-nonce` et le passe à son gabarit, qui le passe à `ZoneFrame`, puis à
+`ConsentScripts` (s60, s61). Mesuré sous le build
 de production en remplaçant le nonce par une valeur fausse : les deux scripts
 sont bloqués, `e2e/consent.spec.ts` rougit sur deux parcours, et la console dit
 « Note that 'strict-dynamic' is present, so host-based allowlisting is disabled ».
@@ -1422,8 +1461,8 @@ fixe sans réserve, elle interceptait les clics de **dix** parcours — pied de
 page marketing, formulaires de fin d'écran, actions d'une ligne de membre à
 390 px. Ce n'était pas un défaut de test : un visiteur ne pouvait pas atteindre
 le bas de la page avant d'avoir répondu, ce qui rend la bannière modale par
-accident. `app/app-shell.tsx` ajoute donc `pb-64 md:pb-36` au contenu tant que
-`bannerRequired` — mesuré au navigateur sous le build de production : la
+accident. `app/zone-frame.tsx` — commun aux trois gabarits depuis s61 — ajoute
+donc `pb-64 md:pb-36` au contenu tant que `bannerRequired` — mesuré au navigateur sous le build de production : la
 bannière fait 241 px à 390 px et 121 px à 1280 px, pour 256 px et 144 px
 réservés.
 
@@ -1531,8 +1570,9 @@ qu'aucun fichier de `apps/web` ne le nomme, et son adresse répond alors 404 sur
 une vraie requête HTTP — les deux moitiés, mesurées par
 `pnpm test:minimal-profile`.
 
-**Le bandeau d'impersonation est rendu par `app/app-shell.tsx`**, jamais par une
-page : c'est ce qui le fait survivre à une navigation complète. Il est lu
+**Le bandeau d'impersonation est rendu par `app/zone-frame.tsx`**, le cadre
+commun des trois gabarits (s61), jamais par une page : c'est ce qui le fait
+survivre à une navigation complète, sur le site comme dans l'application. Il est lu
 seulement quand il y a une session — un visiteur anonyme n'emprunte rien, et une
 lecture inconditionnelle ouvrirait une connexion à chaque rendu du shell, ce que
 `tests/marketing.test.ts` compte. Module `admin` coupé, le bandeau **reste

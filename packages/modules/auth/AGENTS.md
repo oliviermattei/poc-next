@@ -761,6 +761,17 @@ et le nombre vieillira : ce qui compte est qu'il ne soit pas nul, la commande qu
 le dit est `pnpm test` avec `users.deleteById` neutralisé. L'appel explicite est
 une ceinture, il n'est pas la bretelle — ne pas le citer comme la garantie.
 
+**Mais les sessions ferment à la demande, pas à la purge** (revue s61, M2).
+`requestAccountDeletion` appelle `sessions.revokeAllForUser` **après** une mise
+en file réussie : avec le module `jobs` activé, la purge quitte la requête, et
+sans cet appel chaque session servait encore le temps de la file — `/sign-in`
+renvoyait alors ce « connecté » vers le tableau de bord du compte supprimé. Ici
+l'appel **est** la garantie, la cascade n'ayant pas encore eu lieu : le cas « révoque
+toutes les sessions du compte dès la demande » de `tests/account-deletion.test.ts`
+rougit quand on le retire, et `e2e/rgpd.spec.ts` aussi. Une émission refusée
+ne ferme rien. Ce que l'appel ne ferme pas : une **nouvelle** connexion ouverte
+entre la demande et la purge, que la purge ferme ensuite.
+
 **L'orchestration n'est pas dans ce module, elle y arrive.** Ce qui demande de
 connaître les **autres** modules est **injecté** par `apps/web/lib/auth.ts`,
 comme le mailer : `@repo/core` construit le registre à partir des modules, donc

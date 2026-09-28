@@ -1,6 +1,6 @@
 import { Card, CardContent, PageHeader, Separator } from '@repo/ui'
 
-import { authRoutePath, safeRedirectPath } from '../../../lib/auth'
+import { authRoutePath, DEFAULT_SIGNED_IN_PATH, safeRedirectPath } from '../../../lib/auth'
 import { appIntl } from '../../../lib/i18n'
 import { TwoFactorForm } from './two-factor-form'
 
@@ -39,7 +39,7 @@ export default async function TwoFactorPage({
   const params = await searchParams
   const { t, path } = await appIntl()
   const next = typeof params.next === 'string' ? params.next : null
-  const destination = path(safeRedirectPath(next, '/'))
+  const destination = path(safeRedirectPath(next, DEFAULT_SIGNED_IN_PATH))
 
   return (
     <main className="mx-auto flex w-full max-w-md min-w-0 flex-col gap-6">

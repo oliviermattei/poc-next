@@ -32,7 +32,9 @@ import { dispatchAllowingRateLimit } from './fixtures/rate-limit'
  * ------------------------------------------------------------------------- */
 
 vi.mock('../apps/web/lib/auth', async () => {
-  const { authRoutePath, safeRedirectPath } = await import('@repo/module-auth')
+  const { authRoutePath, DEFAULT_SIGNED_IN_PATH, safeRedirectPath } = await import(
+    '@repo/module-auth'
+  )
   const {
     FIXTURE_DATA_EXPORTS,
     FIXTURE_PASSKEYS,
@@ -43,6 +45,7 @@ vi.mock('../apps/web/lib/auth', async () => {
 
   return {
     authRoutePath,
+    DEFAULT_SIGNED_IN_PATH,
     safeRedirectPath,
     currentViewer: () => Promise.resolve(state.value),
     currentSessions: () => Promise.resolve(FIXTURE_SESSIONS),

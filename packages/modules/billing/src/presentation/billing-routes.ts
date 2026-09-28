@@ -299,6 +299,7 @@ export const billingNavigation: readonly NavigationEntry[] = [
     labelKey: 'navigation.pricing',
     order: 10,
     protection: { level: 'public' },
+    surface: 'site',
   },
   {
     id: 'billing',

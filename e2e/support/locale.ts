@@ -1,7 +1,10 @@
+import { visibleNavigation } from '@repo/core'
+import { DEFAULT_SIGNED_IN_PATH } from '@repo/module-auth'
 import { onboardingModule, ONBOARDING_SCREEN_PATH } from '@repo/module-onboarding'
 
 import { localeRouting } from '../../apps/web/lib/locale-routing'
 import { marketingSite } from '../../apps/web/lib/marketing'
+import { moduleRegistry } from '../../apps/web/lib/module-registry'
 import { enabledModules } from '../../config/features'
 import { defaultLocale } from '../../config/i18n'
 
@@ -46,11 +49,24 @@ export const signInRedirectedFrom = (pathname: string): RegExp =>
  * elle sert l'accueil ; coupé, elle redirige vers la connexion (critère 6).
  * Les parcours qui se déconnectent ou changent de langue traversent ce chemin,
  * et leur attente est donc **dérivée** de l'état du module — comme la forme des
- * URL l'est de `localeRouting`. Un visiteur **connecté**, lui, conserve son
- * tableau de bord dans les deux états : les cas qui l'observent gardent `/`.
+ * URL l'est de `localeRouting`. Un visiteur **connecté** qui ouvre `/` voit le
+ * site aussi (s61) ; son tableau de bord est sur `/app`.
  */
 export const anonymousLanding = (): string =>
   marketingSite.sections.length > 0 ? '/' : '/sign-in'
+
+/**
+ * **Une page de la zone Site servie dans cette configuration** (s61).
+ *
+ * L'en-tête du site n'est rendu que sur les écrans de la zone Site : un
+ * parcours qui l'observe doit donc en ouvrir un qui existe. La racine redirige
+ * quand le site public est coupé, et chaque autre page du site disparaît avec
+ * son module — la première entrée de la surface `site` est, elle, servie par
+ * construction. Aucune entrée (tous les modules du site coupés) : l'atterrissage
+ * anonyme, en dernier recours — et le parcours qui en dépend le dit.
+ */
+export const sitePage = (): string =>
+  visibleNavigation(moduleRegistry, null, 'site')[0]?.href ?? anonymousLanding()
 
 /**
  * **Le parcours d'intégration est-il sur la route d'un compte connecté ?**
@@ -79,8 +95,11 @@ export const onboardingCourseMounted = (): boolean =>
  * Où atterrit un compte **qui vient d'ouvrir une session** et dont le parcours
  * d'intégration n'a pas été fait (s40).
  *
- * Depuis s40, la racine mène au parcours tant qu'il reste à faire : un compte
- * fraîchement inscrit n'atterrit plus au tableau de bord. L'attente est donc
+ * Depuis s61, une ouverture de session sans destination demandée atterrit sur
+ * le tableau de bord, `/app` — la constante du module `auth`
+ * (`DEFAULT_SIGNED_IN_PATH`), importée ici plutôt que recopiée. Depuis s40, le
+ * tableau de bord mène au parcours tant qu'il reste à faire : un compte
+ * fraîchement inscrit n'atterrit pas au tableau de bord. L'attente est donc
  * **dérivée** de la configuration, comme celle du visiteur anonyme au-dessus —
  * l'écrire en dur la rendrait fausse dans l'un des deux états, et c'est
  * exactement le défaut que ce fichier existe pour éviter. L'adresse de l'écran
@@ -92,4 +111,4 @@ export const onboardingCourseMounted = (): boolean =>
  * le chemin réel d'un acheteur, et la raison est écrite dans son fichier.
  */
 export const signedInLanding = (): string =>
-  onboardingCourseMounted() ? ONBOARDING_SCREEN_PATH : '/'
+  onboardingCourseMounted() ? ONBOARDING_SCREEN_PATH : DEFAULT_SIGNED_IN_PATH

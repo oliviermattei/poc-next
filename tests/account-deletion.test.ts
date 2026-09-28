@@ -1286,6 +1286,56 @@ describe.runIf(databaseReachable)('les sessions, après la suppression', () => {
     // Et la reconnexion est impossible : le compte n'existe plus.
     expect((await callAuth('signIn', { email, password: PASSWORD })).status).toBe(401)
   }, 60_000)
+
+  /**
+   * **La demande ferme les sessions tout de suite, pas la purge** (revue s61,
+   * M2). Avec le module `jobs` activé, la purge quitte la requête : sans
+   * révocation à la demande, la session servait encore le temps de la file, et
+   * `/sign-in` renvoyait ce « connecté » vers le tableau de bord du compte
+   * qu'il venait de supprimer.
+   *
+   * Deux sessions : la révocation porte sur **toutes** celles du compte, pas
+   * sur la seule qui a demandé. Et un refus de confirmation n'en ferme aucune.
+   */
+  it('révoque toutes les sessions du compte dès la demande, avant que la purge ne passe', async () => {
+    const email = `s34-${randomUUID()}@example.test`
+
+    expect((await callAuth('signUp', { email, password: PASSWORD, name: 'Compte s34' })).status).toBe(200)
+    await connection.db.execute(
+      sql`update auth_user set email_verified = true where email = ${email}`,
+    )
+
+    const cookies = [
+      (await callAuth('signIn', { email, password: PASSWORD })).headers.get('set-cookie') ?? '',
+      (await callAuth('signIn', { email, password: PASSWORD })).headers.get('set-cookie') ?? '',
+    ]
+
+    for (const cookie of cookies) {
+      expect(cookie).not.toBe('')
+      expect((await servedWithCookie(cookie)).status).toBe(200)
+    }
+
+    const userId = (await auth.useCases.identifyAccount(email))?.userId ?? ''
+    const session = { userId, roles: [] }
+
+    jobsRegime = 'recording'
+
+    // Un refus n'en ferme aucune.
+    expect(
+      (await callAuth('deleteAccount', { confirmation: 'pas-la-bonne@example.test' }, session)).status,
+    ).toBe(400)
+    expect((await servedWithCookie(cookies[0] ?? '')).status).toBe(200)
+
+    expect((await callAuth('deleteAccount', { confirmation: email }, session)).status).toBe(202)
+
+    // La purge n'a pas eu lieu — le compte est là —, et pourtant plus aucune
+    // session ne sert.
+    expect(await auth.useCases.viewAccount(userId)).not.toBeNull()
+
+    for (const cookie of cookies) {
+      expect((await servedWithCookie(cookie)).status).toBe(401)
+    }
+  }, 60_000)
 })
 
 describe.runIf(databaseReachable)('la confirmation de suppression', () => {

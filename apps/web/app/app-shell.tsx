@@ -1,11 +1,8 @@
-import { ImpersonationBanner } from '@repo/module-admin/presentation'
-import { ConsentBanner, ConsentScripts } from '@repo/module-consent/presentation'
-import { Badge, Button, LocaleSwitcher, Sidebar, SidebarBrand, ThemeToggle, cn } from '@repo/ui'
+import { Badge, Button, LocaleSwitcher, Sidebar, SidebarBrand, ThemeToggle } from '@repo/ui'
 import { BellIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 
-import { currentImpersonation } from '../lib/admin'
-import { authRoutePath, currentViewer } from '../lib/auth'
+import { authRoutePath, currentViewer, DEFAULT_SIGNED_IN_PATH } from '../lib/auth'
 import { currentConsent } from '../lib/consent'
 import { appIntl } from '../lib/i18n'
 import { localeRouting } from '../lib/locale-routing'
@@ -19,15 +16,18 @@ import {
 import { fileUrl, storage } from '../lib/storage'
 import { AccountMenu } from './account-menu'
 import { DesktopNavigation, MobileNavigation } from './app-navigation'
+import { ZoneFrame } from './zone-frame'
 
 /**
- * Le shell de l'application : navigation latérale, langue, menu de compte,
- * contenu.
+ * Le shell de l'application — **le gabarit Application** (s61) : navigation
+ * latérale, langue, menu de compte, contenu.
  *
- * Il entoure **tous** les écrans, y compris ceux de l'authentification : la
- * navigation n'y montre alors que les entrées publiques, et le menu de compte
- * n'existe pas. C'est la même règle qui décide des deux — celle qui refuserait
- * la route (`docs/security.md` §3) —, pas une condition d'écran.
+ * Il n'entoure que les écrans de la zone Application (`app/(app)/`) ; le site
+ * et l'authentification ont leur propre gabarit. Sa barre latérale ne rend que
+ * la surface `app` — les liens du site sont dans l'en-tête du site (ADR 073) —,
+ * et sa marque mène au tableau de bord, `/app`. Le menu de compte n'est rendu
+ * que pour un compte : c'est la même règle qui décide des entrées — celle qui
+ * refuserait la route (`docs/security.md` §3) —, pas une condition d'écran.
  *
  * Le sélecteur de langue suit la même logique : il apparaît quand
  * l'application **sert plusieurs langues**, pas quand un module s'appelle
@@ -91,28 +91,16 @@ export async function AppShell({
    * Aucune connexion à la base n'est ouverte pour cela.
    */
   const consentState = await currentConsent()
-  /**
-   * **L'emprunt de session en cours** (s37b2, critère 5).
-   *
-   * Rendu **ici, dans la coquille**, et pas dans une page : c'est ce qui fait
-   * survivre le bandeau à une navigation complète. Une page qui le rendrait le
-   * perdrait au premier lien suivi, et l'emprunteur continuerait d'agir au nom
-   * d'un client sans plus rien pour le lui rappeler.
-   *
-   * **Aucune lecture n'est faite ici** : l'emprunt arrive avec la session, dans
-   * la résolution que `currentViewer()` a déjà payée. Il était relu — deux
-   * allers-retours de base par page authentifiée, dans toutes les
-   * configurations (revue de s37b2, F3) —, et `tests/marketing.test.ts` compte
-   * désormais ce que le rendu d'un compte connecté coûte en propre.
-   */
-  const impersonation = currentImpersonation(impersonatedBy)
+  // **L'emprunt de session en cours** (s37b2, critère 5) : le bandeau est
+  // rendu par `ZoneFrame`, commun aux trois gabarits. Aucune lecture n'est
+  // faite pour lui — l'emprunt arrive avec la session, dans la résolution que
+  // `currentViewer()` a déjà payée (revue de s37b2, F3).
 
   return (
-    <>
     <div className="flex min-h-svh w-full">
       <Sidebar>
         <SidebarBrand>
-          <a href={path('/')} className="rounded-sm focus-visible:ring-2 focus-visible:ring-ring">
+          <a href={path(DEFAULT_SIGNED_IN_PATH)} className="rounded-sm focus-visible:ring-2 focus-visible:ring-ring">
             {t('app.name')}
           </a>
         </SidebarBrand>
@@ -129,7 +117,7 @@ export async function AppShell({
             title={t('app.name')}
           />
           <a
-            href={path('/')}
+            href={path(DEFAULT_SIGNED_IN_PATH)}
             className="truncate text-sm font-semibold md:hidden"
             aria-hidden
             tabIndex={-1}
@@ -185,76 +173,17 @@ export async function AppShell({
           </div>
         </header>
 
-        {/*
-          **La bannière réserve sa place plutôt que de couvrir la page.**
-          Mesuré : posée en surface fixe sans cette réserve, elle interceptait
-          les clics de dix parcours — pied de page marketing, formulaires de
-          fin d'écran, actions d'une ligne de membre à 390 px. Ce n'était pas
-          un défaut de test : un visiteur ne pouvait littéralement pas
-          atteindre le bas de la page avant d'avoir répondu, ce qui revient à
-          rendre la bannière modale par accident — exactement ce que le design
-          refuse. La réserve est plus haute sous `md`, où les deux boutons
-          passent en colonne.
-        */}
-        <main
-          className={cn(
-            'min-w-0 flex-1 px-4 py-6 md:px-8 md:py-10',
-            consentState.bannerRequired && 'pb-64 md:pb-36',
-          )}
+        <ZoneFrame
+          nonce={nonce}
+          intl={intl}
+          consent={consentState}
+          impersonatedBy={impersonatedBy}
+          accountEmail={account?.email ?? null}
+          variant="contained"
         >
-          <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-6">
-            {/*
-              **Au-dessus du contenu de la page, dans la coquille.** C'est la
-              position qui porte la garantie : le bandeau est rendu par ce
-              fichier, donc il est là sur chaque écran, y compris ceux qu'aucune
-              story d'administration n'a écrits.
-            */}
-            {impersonation === null ? null : (
-              <ImpersonationBanner
-                /*
-                  **Les textes viennent du catalogue de l'application**, pas de
-                  celui du module. Le bandeau est rendu dans toutes les
-                  configurations, y compris celle où `admin` est coupé — et le
-                  catalogue d'un module coupé n'existe plus, si bien qu'une clé
-                  `admin.*` ferait tomber **chaque écran** en 500 pour la
-                  personne dont la session est empruntée. Mesuré par
-                  `pnpm test:minimal-profile`.
-                */
-                labels={{
-                  title: t('app.shell.impersonation.title'),
-                  /*
-                    **Il nomme le compte emprunté**, comme le design l'exige :
-                    « vous agissez au nom d'un autre » sans dire duquel laisse
-                    l'emprunteur deviner sur quel dossier il travaille. Le nom
-                    est celui de la session en cours — donc du compte emprunté,
-                    jamais de l'emprunteur —, et il ne coûte aucune lecture : la
-                    coquille l'a déjà pour son menu de compte.
-                  */
-                  description: t('app.shell.impersonation.description', {
-                    account: account?.email ?? '',
-                  }),
-                  stop: t('app.shell.impersonation.stop'),
-                  noExit: t('app.shell.impersonation.noExit'),
-                }}
-                stopAction={impersonation.stopAction}
-              />
-            )}
-            {children}
-          </div>
-        </main>
+          {children}
+        </ZoneFrame>
       </div>
     </div>
-
-    {/*
-      **En fin de document**, et les deux pour la même raison. La bannière ne
-      doit pas précéder le contenu pour une aide technique : elle est une
-      annonce, pas un préambule. Les scripts non essentiels, eux, ne sont rendus
-      que si leur catégorie est accordée — aucune balise n'existe avant le
-      choix, ce que `e2e/consent.spec.ts` vérifie sur les requêtes réellement
-      émises.
-    */}
-    <ConsentBanner state={consentState} intl={intl} />
-    <ConsentScripts scripts={consentState.allowedScripts} nonce={nonce} />
-    </>
   )
 }

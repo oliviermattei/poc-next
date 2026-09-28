@@ -19,7 +19,7 @@ import {
   runModuleMigrations,
 } from '@repo/db'
 import { sql } from 'drizzle-orm'
-import { configureAuth, resetAuthService } from '@repo/module-auth'
+import { configureAuth, DEFAULT_SIGNED_IN_PATH, resetAuthService } from '@repo/module-auth'
 import {
   CONTACT_PATH,
   EMPTY_MARKETING_SITE,
@@ -112,10 +112,13 @@ const viewer = vi.hoisted(() => ({ value: null as unknown }))
 const requestLocale = vi.hoisted(() => ({ value: '' }))
 
 vi.mock('../apps/web/lib/auth', async () => {
-  const { authRoutePath, safeRedirectPath } = await import('@repo/module-auth')
+  const { authRoutePath, DEFAULT_SIGNED_IN_PATH, safeRedirectPath } = await import(
+    '@repo/module-auth'
+  )
 
   return {
     authRoutePath,
+    DEFAULT_SIGNED_IN_PATH,
     safeRedirectPath,
     currentViewer: () => Promise.resolve(viewer.value),
     currentSessions: () => Promise.resolve([]),
@@ -544,12 +547,22 @@ describe('le module marketing coupé', () => {
     }
   })
 
-  it('ne sert aucune page publique : la racine redirige vers la connexion', async () => {
-    const outcome = await renderRoot(EMPTY_MARKETING_SITE, ANONYMOUS)
+  it('ne sert aucune page publique : la racine redirige l’anonyme vers la connexion, le connecté vers /app', async () => {
+    // s61 (critère 7) : sans site, `/` n'a rien à montrer. Chaque visiteur est
+    // envoyé là où il a quelque chose à faire — et la destination est une
+    // constante du code, jamais un paramètre.
+    const anonymous = await renderRoot(EMPTY_MARKETING_SITE, ANONYMOUS)
 
-    expect(outcome.html).toBe('')
-    expect(outcome.digest).toContain('NEXT_REDIRECT')
-    expect(outcome.digest).toContain('/sign-in')
+    expect(anonymous.html).toBe('')
+    expect(anonymous.digest).toContain('NEXT_REDIRECT')
+    expect(anonymous.digest).toContain('/sign-in')
+
+    const signedIn = await renderRoot(EMPTY_MARKETING_SITE, SIGNED_IN)
+
+    expect(signedIn.html).toBe('')
+    expect(signedIn.digest).toContain('NEXT_REDIRECT')
+    expect(signedIn.digest).toContain(`;${localeRouting.publicPath(DEFAULT_SIGNED_IN_PATH, localeRouting.defaultLocale)};`)
+    expect(signedIn.digest).not.toContain('/sign-in')
   })
 
   it('ne sert aucune page légale, pas même celles que la configuration nomme', async () => {
@@ -801,12 +814,14 @@ describe('le module marketing activé', () => {
     ).toHaveLength(shippedSite.sections.length)
   })
 
-  it('sert le tableau de bord à un visiteur connecté, jamais la page publique', async () => {
+  it('sert l’accueil public à un visiteur connecté, jamais le tableau de bord', async () => {
+    // s61 (critère 7, amende s08 et s10) : `/` est le site, connecté ou non.
+    // Le tableau de bord vit sur `/app`.
     const outcome = await renderRoot(shippedSite, SIGNED_IN)
 
     expect(outcome.digest).toBeNull()
-    expect(outcome.html).toContain(markerFor('app.dashboard.title'))
-    expect(outcome.html).not.toContain(markerFor('marketing.section.hero.title'))
+    expect(outcome.html).toContain(markerFor('marketing.section.hero.title'))
+    expect(outcome.html).not.toContain(markerFor('app.dashboard.title'))
   })
 
   it('sert une page légale déclarée, et 404 sur tout autre chemin', async () => {
@@ -1137,11 +1152,14 @@ describe('le rendu des pages publiques', () => {
     const slug = shippedSite.legalDocuments[0]?.slug ?? ''
 
     try {
-      // Le shell, qui entoure tous les écrans…
+      // Le gabarit du site, qui entoure toutes ses pages (s61) — son en-tête
+      // choisit son bouton selon la session, et ne doit rien lire d'autre…
       vi.resetModules()
-      const { AppShell } = await import('../apps/web/app/app-shell')
+      const { SiteTemplate } = await import('../apps/web/app/(site)/site-header')
 
-      await AppShell({ children: null })
+      expect(
+        renderToStaticMarkup(withMessages(await SiteTemplate({ children: null, nonce: null }))),
+      ).toContain(markerFor('app.site.signIn'))
 
       // …puis les trois issues publiques, réellement rendues.
       expect((await renderRoot(shippedSite, ANONYMOUS)).html).not.toBe('')
@@ -1289,6 +1307,39 @@ describe('le rendu des pages publiques', () => {
       postgres.restore()
       vi.doUnmock('../apps/web/lib/storage')
       vi.doUnmock('../apps/web/lib/notifications')
+      viewer.value = ANONYMOUS
+    }
+  })
+
+  /**
+   * **Le gabarit du site, pour un compte connecté** (s61, ADR 073).
+   *
+   * Son en-tête choisit son bouton selon la session et ne lit **rien d'autre**
+   * que `currentViewer()` : ni avatar, ni compteur de notifications — il n'a ni
+   * menu de compte, ni cloche. Contrairement au cas de la coquille ci-dessus,
+   * les deux lectures ne sont **pas** remplacées : un gabarit qui les ferait
+   * ouvrirait une connexion, et c'est ce que ce cas compte.
+   */
+  it('n’émet aucune requête pour le gabarit du site, compte connecté et emprunt compris', async () => {
+    viewer.value = BORROWED
+
+    vi.resetModules()
+
+    const postgres = instrumentPostgres()
+
+    try {
+      const { SiteTemplate } = await import('../apps/web/app/(site)/site-header')
+      const site = renderToStaticMarkup(
+        withMessages(await SiteTemplate({ children: null, nonce: null })),
+      )
+
+      // L'anti-vacuité : la branche connectée a bien été rendue — le bouton
+      // « Ouvrir l'application » et le bandeau d'emprunt.
+      expect(site).toContain(markerFor('app.site.openApp'))
+      expect(site).toContain(markerFor('app.shell.impersonation.title'))
+      expect(postgres.seen).toEqual([])
+    } finally {
+      postgres.restore()
       viewer.value = ANONYMOUS
     }
   })

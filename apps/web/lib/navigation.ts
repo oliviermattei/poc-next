@@ -4,6 +4,7 @@ import {
   type LocaleRouting,
   type ModuleRegistry,
   type ModuleSession,
+  type NavigationSurface,
 } from '@repo/core'
 import type { LocaleOption, SidebarItem } from '@repo/ui'
 
@@ -36,8 +37,11 @@ export function shellNavigation(
   registry: ModuleRegistry,
   session: ModuleSession | null,
   intl: NavigationIntl,
+  // La barre latérale rend `app`, l'en-tête du site `site` (s61, ADR 073) :
+  // la même dérivation, seule la surface change.
+  surface: NavigationSurface = 'app',
 ): readonly SidebarItem[] {
-  return visibleNavigation(registry, session).map((entry) => ({
+  return visibleNavigation(registry, session, surface).map((entry) => ({
     // Deux modules peuvent nommer leur entrée pareil : la clé de rendu porte
     // donc le module, comme la clé de traduction.
     id: `${entry.moduleId}:${entry.id}`,

@@ -4,6 +4,7 @@ import {
   billingRoutePath,
   formatOfferPrice,
 } from '@repo/module-billing'
+import { DEFAULT_SIGNED_IN_PATH } from '@repo/module-auth'
 import { demoEnabledModule, DEMO_PREMIUM_SCREEN_PATH } from '@repo/module-demo-enabled'
 import { expect, test } from '@playwright/test'
 
@@ -11,7 +12,7 @@ import { billing } from '../apps/web/lib/billing'
 import { billingOffers } from '../config/billing'
 import { defaultLocale } from '../config/i18n'
 import { aSignedInAccount, anEmail, linkSentTo, signIn, signUp } from './support/account'
-import { publicPath, signInRedirectedFrom, urlOf } from './support/locale'
+import { publicPath, signInRedirectedFrom, sitePage, urlOf } from './support/locale'
 
 /**
  * Le parcours de souscription, **de bout en bout et sans un octet vers
@@ -286,7 +287,7 @@ test.describe('la facturation', () => {
   test('mène de la navigation à l’écran de la fonctionnalité réservée', async ({ page }) => {
     await aSignedInAccount(page, 's21-navigation')
 
-    await page.goto('/')
+    await page.goto(DEFAULT_SIGNED_IN_PATH)
     await page
       .getByRole('navigation', { name: 'Modules' })
       .getByRole('link', { name: 'Rapport détaillé' })
@@ -325,11 +326,12 @@ test.describe('la facturation', () => {
   test('paie sans compte, et le compte naît du webhook — pas du retour', async ({ page }) => {
     test.skip(!mounted, 'module de facturation coupé')
 
-    // L'entrée est **publique** : un visiteur sans session la voit, et elle
-    // mène à un écran — pas à du JSON.
-    await page.goto('/')
+    // L'entrée est **publique** : un visiteur sans session la voit — dans
+    // l'en-tête du site depuis s61 (surface `site`) —, et elle mène à un
+    // écran — pas à du JSON.
+    await page.goto(sitePage())
     await page
-      .getByRole('navigation', { name: 'Modules' })
+      .getByRole('navigation', { name: 'Site' })
       .getByRole('link', { name: 'Tarifs' })
       .click()
 

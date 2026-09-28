@@ -4,7 +4,7 @@ import { organizations } from '../apps/web/lib/organizations'
 import { publicPath } from './support/locale'
 
 /**
- * **Une 404, un shell** (s66, ADR 072).
+ * **Une 404, un gabarit** (s66, ADR 072 ; gabarits propres depuis s61).
  *
  * Un `notFound()` levé par une **page** est rendu sous le layout de sa zone,
  * qui fournit déjà le shell ; une URL qui ne mène à aucune route n'a que le
@@ -37,8 +37,20 @@ import { publicPath } from './support/locale'
 
 const NOT_FOUND_TITLE = 'Page introuvable'
 
-/** Attend l'écran 404, puis compte les shells sans réessayer. */
-const expectOneShell = async (page: Page, pathname: string): Promise<void> => {
+/**
+ * Attend l'écran 404, puis compte les gabarits sans réessayer.
+ *
+ * Depuis s61, chaque zone a son gabarit : l'en-tête du site (la 404 racine
+ * comprise), la barre minimale de l'authentification, la barre du haut et la
+ * barre latérale de l'application. Les trois ont **une** barre de tête — le
+ * repère `banner` —, et seul celui de l'application a une barre latérale. Un
+ * gabarit doublé rend donc deux bannières, ou une barre latérale de trop.
+ */
+const expectOneShell = async (
+  page: Page,
+  pathname: string,
+  sidebars: 0 | 1,
+): Promise<void> => {
   const response = await page.goto(publicPath(pathname))
 
   expect(response?.status(), pathname).toBe(404)
@@ -48,20 +60,25 @@ const expectOneShell = async (page: Page, pathname: string): Promise<void> => {
   ).toBeVisible()
   await page.waitForLoadState('networkidle')
 
-  expect(await page.locator('[data-slot="sidebar"]').count(), `${pathname} : barres latérales`).toBe(1)
+  expect(await page.getByRole('banner').count(), `${pathname} : barres de tête`).toBe(1)
+  expect(await page.locator('[data-slot="sidebar"]').count(), `${pathname} : barres latérales`).toBe(
+    sidebars,
+  )
   expect(await page.getByRole('heading', { level: 1 }).count(), `${pathname} : titres`).toBe(1)
 }
 
 test('une URL sans route rend la 404 dans un seul shell, bannière comprise', async ({ page }) => {
-  await expectOneShell(page, '/nexiste-pas-s66')
+  // Le gabarit Site (s61) : une 404 ne ressemble ni à l'application, ni à la
+  // console.
+  await expectOneShell(page, '/nexiste-pas-s66', 0)
 
-  // Le shell de `app/not-found.tsx` est ici le **seul** : sans lui, la page
+  // Le gabarit de `app/not-found.tsx` est ici le **seul** : sans lui, la page
   // perdrait la navigation et la bannière de consentement.
   await expect(page.getByRole('region', { name: 'Consentement aux cookies' })).toBeVisible()
 })
 
 test('une 404 levée par une page de (site) rend un seul shell', async ({ page }) => {
-  await expectOneShell(page, '/blog/aucun-article-s66')
+  await expectOneShell(page, '/blog/aucun-article-s66', 0)
 })
 
 test('une 404 levée par une page de (auth) rend un seul shell', async ({ page }) => {
@@ -71,7 +88,7 @@ test('une 404 levée par une page de (auth) rend un seul shell', async ({ page }
       '(invitations/accept) ne lève que module coupé. Témoin atteignable en socle.',
   )
 
-  await expectOneShell(page, '/invitations/accept')
+  await expectOneShell(page, '/invitations/accept', 0)
 })
 
 test('une 404 levée par une page de (app) rend un seul shell', async ({ page }) => {
@@ -81,5 +98,5 @@ test('une 404 levée par une page de (app) rend un seul shell', async ({ page })
       'sur un module ou une fonctionnalité absente. Témoin atteignable en socle.',
   )
 
-  await expectOneShell(page, '/organizations')
+  await expectOneShell(page, '/organizations', 1)
 })

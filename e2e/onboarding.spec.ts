@@ -1,3 +1,4 @@
+import { DEFAULT_SIGNED_IN_PATH } from '@repo/module-auth'
 import { ONBOARDING_SCREEN_PATH } from '@repo/module-onboarding'
 import { expect, test } from '@playwright/test'
 
@@ -54,9 +55,9 @@ test.describe('le parcours d’intégration', () => {
     await expect(page.getByRole('button', { name: 'Passer cette étape' })).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Continuer' })).toHaveCount(0)
 
-    // La racine y ramène tant qu'il reste à faire : c'est la porte, dans le
-    // sens qui n'enferme personne.
-    await page.goto('/')
+    // Le tableau de bord y ramène tant qu'il reste à faire : c'est la porte,
+    // dans le sens qui n'enferme personne. (`/` sert le site depuis s61.)
+    await page.goto(DEFAULT_SIGNED_IN_PATH)
     expect(page.url()).toMatch(urlOf(ONBOARDING_SCREEN_PATH))
 
     // Le nom, saisi dans le formulaire que `/account` porte déjà.
@@ -71,11 +72,12 @@ test.describe('le parcours d’intégration', () => {
     // acheteur après l'avoir suivi.
     await clearRemainingOnboardingSteps(page)
 
-    // **Critère 5** : le parcours terminé mène au tableau de bord, et la racine
-    // n'y ramène plus. L'erreur qui compte de ce côté est la boucle.
-    expect(page.url()).toMatch(urlOf('/'))
+    // **Critère 5** : le parcours terminé mène au tableau de bord — `/app`
+    // depuis s61 —, qui n'y ramène plus. L'erreur qui compte de ce côté est la
+    // boucle.
+    expect(page.url()).toMatch(urlOf(DEFAULT_SIGNED_IN_PATH))
 
     await page.goto(ONBOARDING_SCREEN_PATH)
-    expect(page.url()).toMatch(urlOf('/'))
+    expect(page.url()).toMatch(urlOf(DEFAULT_SIGNED_IN_PATH))
   })
 })

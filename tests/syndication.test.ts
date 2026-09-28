@@ -185,9 +185,11 @@ describe('tout est activé : le blog est indexable', () => {
 
   it('n’indexe pas un écran au seul motif que sa navigation est publique', async () => {
     // La décision de s53, mesurée : la configuration livrée porte des entrées
-    // de navigation publiques que **personne ne contribue au plan de site**,
-    // dont `/sign-in`. Les dériver aurait publié l'écran de connexion
-    // (`docs/security.md` §7). Seule la quinzième clé décide (ADR 054).
+    // de navigation publiques que **personne ne contribue au plan de site**
+    // (`/sign-in` en était jusqu'à s61, qui a retiré l'entrée ; une route
+    // d'API de `demo-enabled` en est toujours). Les dériver aurait publié ce
+    // qui n'est pas un contenu (`docs/security.md` §7). Seule la quinzième clé
+    // décide (ADR 054).
     //
     // **Leur nombre n'est pas écrit ici** : il valait cinq à l'écriture de ce
     // cas, huit à la revue de s31, et le cas était resté vert — la liste se
@@ -206,7 +208,7 @@ describe('tout est activé : le blog est indexable', () => {
       (entry) => !declared.has(`/fr${entry.href}`) && !declared.has(entry.href),
     )
 
-    expect(notContributed.map((entry) => entry.href)).toContain('/sign-in')
+    expect(notContributed).not.toEqual([])
 
     for (const entry of notContributed) {
       expect(robotsAllows(policy, `/fr${entry.href}`), entry.href).toBe(false)

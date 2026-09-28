@@ -65,6 +65,11 @@ test('la suppression de compte : la saisie est jugée par le serveur, puis la se
 
   // La saisie exacte, cette fois. L'atterrissage est l'écran de connexion : la
   // session ne survit pas à sa propre suppression.
+  //
+  // **Strictement `/sign-in`, sans `?next=`** : la demande révoque toutes les
+  // sessions du compte avant de répondre, même quand la purge quitte la requête
+  // (revue s61, M2). Une session qui survivrait le temps de la file ferait
+  // rebondir `/sign-in` vers `/app` — le tableau de bord du compte supprimé.
   await page.getByLabel(/Saisissez/).fill(email)
   await page.getByRole('button', { name: DELETE_BUTTON }).click()
   await expect(page).toHaveURL(urlOf('/sign-in'))

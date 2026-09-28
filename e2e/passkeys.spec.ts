@@ -1,3 +1,4 @@
+import { DEFAULT_SIGNED_IN_PATH } from '@repo/module-auth'
 import { expect, test, type Page } from '@playwright/test'
 
 import { aSignedInAccount, PASSWORD, signIn, signOut } from './support/account'
@@ -108,7 +109,7 @@ test('enregistrement, connexion sans mot de passe, renommage puis révocation', 
   await page.goto('/sign-in')
 
   await press(page, 'Se connecter avec une passkey', async () => {
-    await expect(page).toHaveURL(urlOf('/'))
+    await expect(page).toHaveURL(urlOf(DEFAULT_SIGNED_IN_PATH))
   })
 
   // La session est bien celle du compte : l'écran de compte le sert.
@@ -180,7 +181,7 @@ test('sans WebAuthn, l’option disparaît et les autres moyens de connexion res
     ).toHaveCount(0)
 
     await signIn(page, email, PASSWORD)
-    await expect(page).toHaveURL(urlOf('/'))
+    await expect(page).toHaveURL(urlOf(DEFAULT_SIGNED_IN_PATH))
   } finally {
     await context.close()
   }

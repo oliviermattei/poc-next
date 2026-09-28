@@ -1,5 +1,6 @@
 import { createHmac } from 'node:crypto'
 
+import { DEFAULT_SIGNED_IN_PATH } from '@repo/module-auth'
 import { expect, test, type Page } from '@playwright/test'
 
 import { aSignedInAccount, PASSWORD, signIn } from './support/account'
@@ -241,7 +242,7 @@ test('activation, connexion par code, puis connexion par code de secours', async
   // rendre la main pendant la redirection ; `page.url()` ne réessaie pas et le
   // dirait. Les deux connexions suivantes gardent leur `toHaveURL` : une seule
   // mesure du contrat suffit, les autres attestent l'écran.
-  expect(page.url()).toMatch(urlOf('/two-factor', '?next=%2F'))
+  expect(page.url()).toMatch(urlOf('/two-factor', `?next=${encodeURIComponent(DEFAULT_SIGNED_IN_PATH)}`))
 
   // **Le compteur suivant** : celui de la confirmation vient d'être consommé,
   // et le rejouer serait refusé — c'est exactement ce que la garde protège.
@@ -249,25 +250,25 @@ test('activation, connexion par code, puis connexion par code de secours', async
 
   await page.getByLabel('Code à six chiffres').fill(signInCode)
   await press(page, 'Vérifier', async () => {
-    await expect(page).toHaveURL(urlOf('/'))
+    await expect(page).toHaveURL(urlOf(DEFAULT_SIGNED_IN_PATH))
   })
 
   // --- Connexion par code de secours ------------------------------------
   await anonymousAgain(page)
   await page.goto('/sign-in')
   await signIn(page, email)
-  await expect(page).toHaveURL(urlOf('/two-factor', '?next=%2F'))
+  await expect(page).toHaveURL(urlOf('/two-factor', `?next=${encodeURIComponent(DEFAULT_SIGNED_IN_PATH)}`))
 
   await page.getByLabel('Code de secours').fill(backupCodes[0] ?? '')
   await press(page, 'Valider ce code', async () => {
-    await expect(page).toHaveURL(urlOf('/'))
+    await expect(page).toHaveURL(urlOf(DEFAULT_SIGNED_IN_PATH))
   })
 
   // --- Le même code, une seconde fois -----------------------------------
   await anonymousAgain(page)
   await page.goto('/sign-in')
   await signIn(page, email)
-  await expect(page).toHaveURL(urlOf('/two-factor', '?next=%2F'))
+  await expect(page).toHaveURL(urlOf('/two-factor', `?next=${encodeURIComponent(DEFAULT_SIGNED_IN_PATH)}`))
 
   await page.getByLabel('Code de secours').fill(backupCodes[0] ?? '')
   // Le texte plutôt que le rôle : Next pose son propre `role="alert"` vide
@@ -276,7 +277,7 @@ test('activation, connexion par code, puis connexion par code de secours', async
     await expect(page.getByText('n’est pas valide')).toBeVisible()
   })
 
-  await expect(page).toHaveURL(urlOf('/two-factor', '?next=%2F'))
+  await expect(page).toHaveURL(urlOf('/two-factor', `?next=${encodeURIComponent(DEFAULT_SIGNED_IN_PATH)}`))
 
   // --- Et le code d'application déjà servi, sur le même défi -------------
   // C'est le cas de tous les jours : un second navigateur dans les trente
@@ -290,5 +291,5 @@ test('activation, connexion par code, puis connexion par code de secours', async
     await expect(page.getByText('a déjà servi')).toBeVisible()
   })
 
-  await expect(page).toHaveURL(urlOf('/two-factor', '?next=%2F'))
+  await expect(page).toHaveURL(urlOf('/two-factor', `?next=${encodeURIComponent(DEFAULT_SIGNED_IN_PATH)}`))
 })

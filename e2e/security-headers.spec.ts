@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 import { CSP_REPORT_PATH } from '../apps/web/lib/security-headers'
-import { anonymousLanding, publicPath } from './support/locale'
+import { anonymousLanding, publicPath, sitePage } from './support/locale'
 
 /**
  * La politique de sécurité du contenu, vue depuis un navigateur qui l'applique.
@@ -139,8 +139,11 @@ test('une visite normale ne produit aucune violation', async ({ page }) => {
   await page.getByRole('menuitem').nth(1).click()
   await collect()
 
+  // Le panneau de navigation vit dans l'en-tête du site depuis s61 : il est
+  // ouvert sur une page du site servie dans cette configuration — la racine
+  // redirige vers la connexion, sans navigation, quand le site public est coupé.
   await page.setViewportSize({ width: 380, height: 800 })
-  await page.goto(publicPath(home))
+  await page.goto(publicPath(sitePage()))
   await page.getByRole('button', { name: /navigation/i }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
   await collect()
@@ -175,7 +178,7 @@ test('tout `<style>` injecté par une bibliothèque porte le nonce de la requêt
     )) ?? ''
 
   await page.setViewportSize({ width: 380, height: 800 })
-  await page.goto(publicPath(home))
+  await page.goto(publicPath(sitePage()))
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
 
   await page.getByRole('button', { name: /th[eè]me/i }).click()

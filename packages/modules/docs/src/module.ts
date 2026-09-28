@@ -24,6 +24,7 @@ const docsNavigation: readonly NavigationEntry[] = [
     labelKey: 'navigation.docs',
     order: 2,
     protection: { level: 'public' },
+    surface: 'site',
   },
 ]
 

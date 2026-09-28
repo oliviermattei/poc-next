@@ -1,6 +1,13 @@
 import { Alert, Card, CardContent, cn, PageHeader, Separator } from '@repo/ui'
+import { redirect } from 'next/navigation'
 
-import { authRoutePath, readOAuthFailureClass, safeRedirectPath } from '../../../lib/auth'
+import {
+  authRoutePath,
+  currentViewer,
+  DEFAULT_SIGNED_IN_PATH,
+  readOAuthFailureClass,
+  safeRedirectPath,
+} from '../../../lib/auth'
 import { appIntl } from '../../../lib/i18n'
 import { AuthForm } from '../../auth-form'
 import { OAuthProviderButtons } from '../../oauth-buttons'
@@ -15,12 +22,11 @@ import { PasskeyButton } from './passkey-button'
  * puis mis dans la forme publique de la locale — module `i18n` coupé, cette
  * mise en forme est l'identité.
  *
- * Ce repli est le **tableau de bord**, et pas l'écran de compte : c'est le
- * critère 1 de s08 — « une fois connecté, l'utilisateur atteint un tableau de
- * bord avec navigation latérale et menu de compte ». s07 repliait sur
- * `/account` faute de tableau de bord ; s08 en livre un, et le commentaire
- * ci-dessus redevient vrai. Une demande explicite (`?next=/account`) reste
- * respectée : c'est le repli qui change, pas la règle.
+ * Ce repli est le **tableau de bord**, `/app` : la constante du module
+ * (`DEFAULT_SIGNED_IN_PATH`, s61, ADR 073), la même pour chaque parcours —
+ * mot de passe, magic link, OAuth, passkey, second facteur. `/` sert le site
+ * public. Une demande explicite (`?next=/account`) reste respectée : c'est le
+ * repli qui change, pas la règle.
  *
  * **Une carte, deux moyens** (s46). Le mot de passe, la passkey et les
  * fournisseurs mènent à la même session : ils tiennent dans la même carte,
@@ -55,7 +61,15 @@ export default async function SignInPage({
   const params = await searchParams
   const { t, path } = await appIntl()
   const next = typeof params.next === 'string' ? params.next : null
-  const destination = path(safeRedirectPath(next, '/'))
+  const destination = path(safeRedirectPath(next, DEFAULT_SIGNED_IN_PATH))
+
+  // **Un visiteur déjà connecté n'a rien à faire ici** (s61, critère 10) : il
+  // part vers son `?next=` s'il passe le filtre, sinon vers le tableau de bord.
+  // La même destination que le formulaire lui aurait donnée — jamais une URL
+  // que la requête aurait choisie hors du filtre (`docs/security.md` §4).
+  if ((await currentViewer()).session !== null) {
+    redirect(destination)
+  }
   // La classe d'un refus est **relue**, jamais recalculée : la route a déjà
   // replié tous les codes de la bibliothèque avant que le navigateur ne voie
   // l'URL. Un paramètre inventé (`?oauth=account_not_linked`) retombe donc sur
@@ -66,7 +80,7 @@ export default async function SignInPage({
   // formulaire de mot de passe et le bouton de passkey mènent au même endroit
   // quand un second facteur attend (ADR 031).
   const twoFactorDestination = `${path('/two-factor')}?next=${encodeURIComponent(
-    safeRedirectPath(next, '/'),
+    safeRedirectPath(next, DEFAULT_SIGNED_IN_PATH),
   )}`
 
   return (
@@ -123,7 +137,7 @@ export default async function SignInPage({
             twoFactorDestination={twoFactorDestination}
           />
 
-          <OAuthProviderButtons next={next === null ? undefined : safeRedirectPath(next, '/')} />
+          <OAuthProviderButtons next={next === null ? undefined : safeRedirectPath(next, DEFAULT_SIGNED_IN_PATH)} />
 
           <AuthForm
             action={authRoutePath('signIn')}

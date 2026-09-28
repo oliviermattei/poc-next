@@ -2,6 +2,7 @@ import { readdir, readFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 
+import { DEFAULT_SIGNED_IN_PATH } from '@repo/module-auth'
 import { ONBOARDING_SCREEN_PATH } from '@repo/module-onboarding'
 import { expect, type Page } from '@playwright/test'
 
@@ -274,9 +275,10 @@ export const clearRemainingOnboardingSteps = async (page: Page): Promise<void> =
  * La connexion aboutit au **tableau de bord** (critère 1 de s08) : un parcours
  * qui a besoin de l'écran de compte le demande ensuite, explicitement.
  *
- * Depuis s40, elle referme d'abord le parcours d'intégration : sans cela, la
- * racine mènerait au parcours et non au tableau de bord. Le parcours lui-même a
- * son propre fichier, qui n'emprunte pas ce chemin.
+ * Depuis s40, elle referme d'abord le parcours d'intégration : sans cela, le
+ * tableau de bord mènerait au parcours. Le parcours lui-même a son propre
+ * fichier, qui n'emprunte pas ce chemin. Depuis s61, le tableau de bord est sur
+ * `/app` (`DEFAULT_SIGNED_IN_PATH`) : `/` sert le site.
  */
 export const aSignedInAccount = async (page: Page, prefix: string): Promise<string> => {
   const email = anEmail(prefix)
@@ -285,7 +287,7 @@ export const aSignedInAccount = async (page: Page, prefix: string): Promise<stri
   await page.goto(await linkSentTo(email))
   await closeOnboardingCourse(email)
   await signIn(page, email)
-  await expect(page).toHaveURL(urlOf('/'))
+  await expect(page).toHaveURL(urlOf(DEFAULT_SIGNED_IN_PATH))
 
   return email
 }

@@ -3,6 +3,7 @@ import { getDatabase } from '@repo/db'
 import {
   authRoutePath,
   configureAuth,
+  DEFAULT_SIGNED_IN_PATH,
   readOAuthFailureClass,
   safeRedirectPath,
   type AccountView,
@@ -56,7 +57,7 @@ import { resolveOAuthConfig } from './oauth-config'
  * routes et la règle de destination de retour. Réexportés d'ici, pour que
  * l'exception « un seul fichier importe un module » reste vraie.
  */
-export { authRoutePath, readOAuthFailureClass, safeRedirectPath }
+export { authRoutePath, DEFAULT_SIGNED_IN_PATH, readOAuthFailureClass, safeRedirectPath }
 
 /**
  * La langue d'une requête entrante, telle que le module d'authentification la
