@@ -57,6 +57,12 @@ export interface OrgSwitcherProps {
   /** Le nom du champ posté. Le composant ne le devine pas. */
   readonly fieldName: string
   readonly options: readonly OrgSwitcherOption[]
+  /**
+   * Un champ caché posté avec le choix — typiquement l'écran où revenir
+   * (s62c). Le composant ne sait pas ce qu'il signifie : c'est la route qui le
+   * lit, et qui le filtre.
+   */
+  readonly returnTo?: { readonly name: string; readonly value: string }
 }
 
 export function OrgSwitcher({
@@ -66,6 +72,7 @@ export function OrgSwitcher({
   action,
   fieldName,
   options,
+  returnTo,
 }: OrgSwitcherProps) {
   /**
    * L'identifiant du formulaire, et il n'est **pas** décoratif.
@@ -83,6 +90,13 @@ export function OrgSwitcher({
 
   return (
     <form method="post" action={action} id={formId} className="min-w-0">
+      {/*
+        Hors du `<noscript>` : le champ part avec les deux chemins, le menu (par
+        l'attribut `form` de ses boutons) comme le repli sans script.
+      */}
+      {returnTo === undefined ? null : (
+        <input type="hidden" name={returnTo.name} value={returnTo.value} />
+      )}
       {/*
         **Le repli sans JavaScript**, et il ne coûte que ce formulaire.
 

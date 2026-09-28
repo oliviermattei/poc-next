@@ -2,7 +2,11 @@ import { MODULE_ROUTE_PREFIX, type ModuleRoute, type NavigationEntry } from '@re
 import { z } from 'zod'
 
 import type { NotificationUseCases } from '../application/notification-use-cases'
-import { NOTIFICATIONS_SCREEN_PATH, type NotificationScope } from '../domain/notification'
+import {
+  NOTIFICATIONS_SCREEN_PATH,
+  NOTIFICATIONS_SETTINGS_SCREEN_PATH,
+  type NotificationScope,
+} from '../domain/notification'
 
 /**
  * Les routes du module, **énumérées une par une**, avec leur niveau de
@@ -84,10 +88,17 @@ const submittedBody = async (request: Request): Promise<unknown> => {
 }
 
 /** Le retour à l'écran après une écriture. 303 : un rechargement ne repostera pas. */
-const backToScreen = (request: Request): Response =>
+const backToScreen = (
+  request: Request,
+  /**
+   * L'écran du formulaire — une constante, jamais un paramètre : le centre,
+   * ou la rubrique des préférences depuis s62c.
+   */
+  screen: typeof NOTIFICATIONS_SCREEN_PATH | typeof NOTIFICATIONS_SETTINGS_SCREEN_PATH = NOTIFICATIONS_SCREEN_PATH,
+): Response =>
   new Response(null, {
     status: 303,
-    headers: { location: new URL(NOTIFICATIONS_SCREEN_PATH, request.url).toString() },
+    headers: { location: new URL(screen, request.url).toString() },
   })
 
 /**
@@ -256,7 +267,11 @@ export function createNotificationRoutes(
 
       // Un canal que **ce type** ne déclare pas est une requête fautive, pas
       // une ressource absente : le type, lui, existe.
-      return outcome === 'unknown_channel' ? invalidRequest() : backToScreen(request)
+      // Le retour est la **rubrique des préférences** (s62c) : c'est là que vit
+      // le formulaire.
+      return outcome === 'unknown_channel'
+        ? invalidRequest()
+        : backToScreen(request, NOTIFICATIONS_SETTINGS_SCREEN_PATH)
     },
   }
 
@@ -264,7 +279,9 @@ export function createNotificationRoutes(
 }
 
 /**
- * La navigation du module : **une entrée**, le centre lui-même.
+ * La navigation du module : **une entrée**, la rubrique des préférences dans
+ * les réglages (s62c). Le centre n'en a plus : la barre latérale ne porte que
+ * les pages du produit, et la cloche de la barre du haut y mène.
  *
  * `authenticated` pour la même raison que les routes : afficher l'entrée d'un
  * écran auquel on n'a pas accès divulgue son existence et promet ce qu'on
@@ -272,10 +289,13 @@ export function createNotificationRoutes(
  */
 export const notificationsNavigation: readonly NavigationEntry[] = [
   {
-    id: 'notifications',
-    href: NOTIFICATIONS_SCREEN_PATH,
+    id: 'notifications-settings',
+    href: NOTIFICATIONS_SETTINGS_SCREEN_PATH,
     labelKey: 'navigation.notifications',
-    order: 30,
+    // Les réglages personnels d'abord : Profil (2), Sécurité (3), puis
+    // Notifications, avant ceux de l'organisation (design de s62c).
+    order: 5,
     protection: { level: 'authenticated' },
+    surface: 'settings',
   },
 ]

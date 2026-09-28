@@ -1,9 +1,11 @@
 import { getEnv } from '@repo/config'
 import { resolveDataOwner, type ModuleScope, type ModuleSession } from '@repo/core'
 import { getDatabase } from '@repo/db'
+import { safeRedirectPath } from '@repo/module-auth'
 import { CONSENT_SCREEN_SEGMENT } from '@repo/module-consent'
 import {
   allows,
+  EMPTY_ORGANIZATION_SWITCHER,
   EMPTY_ORGANIZATIONS_VIEW,
   INVITATION_REFUSALS,
   ORGANIZATION_ACTION,
@@ -12,6 +14,7 @@ import {
   MEMBERS_SCREEN_PATH,
   organizationRoutePath,
   organizationsModule,
+  ORGANIZATIONS_KEYS,
   ORGANIZATIONS_SCREEN_PATH,
   provideOrganizations,
   refusalMessageKey,
@@ -20,6 +23,7 @@ import {
   type OrganizationsService,
   type OrganizationsUseCases,
   type OrganizationsView,
+  type OrganizationSwitcherView,
 } from '@repo/module-organizations'
 
 import { purgeModules } from '@repo/core'
@@ -85,6 +89,13 @@ export interface OrganizationsFeature {
   readonly activeOrganizationId: (userId: string) => Promise<string | null>
   /** Ce que l'écran affiche. Vide et immuable module coupé. */
   readonly view: (userId: string) => Promise<OrganizationsView>
+  /**
+   * **Ce que le sélecteur de la barre du haut affiche** (s62c) : les
+   * organisations du compte et la courante. Lue sur chaque écran de
+   * l'application, donc légère — jamais `view`. Vide module coupé, **sans
+   * toucher la base**.
+   */
+  readonly switcher: (userId: string) => Promise<OrganizationSwitcherView>
   /**
    * Ce que l'écran d'atterrissage d'un lien d'invitation montre, ou `null`.
    *
@@ -170,6 +181,7 @@ const ABSENT_ORGANIZATIONS: OrganizationsFeature = {
   // **Sans toucher la base**, comme le reste de cet état.
   exportPermission: () => Promise.resolve('unknown'),
   view: () => Promise.resolve(EMPTY_ORGANIZATIONS_VIEW),
+  switcher: () => Promise.resolve(EMPTY_ORGANIZATION_SWITCHER),
   invitation: () => Promise.resolve(null),
   countMembers: () => Promise.resolve(null),
   soleOwnerships: () => Promise.resolve([]),
@@ -360,6 +372,11 @@ const provide = (): void => {
     // périmètre de lecture d'un compte), et un import statique en sens inverse
     // fermerait le cycle.
     notify: async (input) => await (await import('./notifications')).emitNotification(input),
+    // **Le filtre du retour de `switch`** (s62c, ADR 076) : le même que celui
+    // de toutes les redirections de l'application, passé au module qui n'a pas
+    // le droit d'importer `auth` (`docs/security.md` §7). Un seul filtre : le
+    // prochain contournement se corrige à un seul endroit.
+    safeReturnPath: safeRedirectPath,
     /**
      * **L'effacement de tous les modules activés** (s34), branché sur le
      * registre de l'application.
@@ -414,6 +431,7 @@ export const organizations: OrganizationsFeature = mounted
       activeOrganizationId: async (userId) =>
         await organizationsService().useCases.activeOrganizationId(userId),
       view: async (userId) => await organizationsService().useCases.viewOrganizations(userId),
+      switcher: async (userId) => await organizationsService().useCases.switcherOf(userId),
       invitation: async (token) =>
         await organizationsService().useCases.describeInvitation(token),
       countMembers: async (organizationId) =>
@@ -491,6 +509,16 @@ export const organizationRefusalKey = (value: string | string[] | undefined): st
 
   return parsed.success ? refusalMessageKey(parsed.data) : null
 }
+
+/**
+ * **Les libellés du sélecteur de la barre du haut** (s62c) : ceux du module,
+ * relus de son catalogue, jamais recopiés. Ils ne sont traduits que lorsqu'il y
+ * a une organisation à montrer — module coupé, ces clés n'existent pas.
+ */
+export const ORGANIZATION_SWITCHER_KEYS = {
+  label: ORGANIZATIONS_KEYS.switcherLabel,
+  none: ORGANIZATIONS_KEYS.switcherNone,
+} as const
 
 /** Ce que les écrans ont le droit de connaître du module : ses chemins. */
 export { INVITATION_SCREEN_PATH, MEMBERS_SCREEN_PATH, ORGANIZATIONS_SCREEN_PATH, organizationRoutePath }

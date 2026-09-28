@@ -181,6 +181,19 @@ vi.mock('../apps/web/lib/organizations', async (importOriginal) => {
       ...actual.organizations,
       activeOrganizationId: () => Promise.resolve(FIXTURE_ORGANIZATIONS.current.id),
       view: () => Promise.resolve(FIXTURE_ORGANIZATIONS),
+      // s62c — le sélecteur de la barre du haut : la même fixture, par nom.
+      // Module coupé, la vraie lecture — vide, sans base : le shell n'a alors
+      // rien à rendre, et le catalogue n'a pas les clés du sélecteur.
+      switcher: actual.organizations.available
+        ? () =>
+            Promise.resolve({
+              current: {
+                id: FIXTURE_ORGANIZATIONS.current.id,
+                name: FIXTURE_ORGANIZATIONS.current.name,
+              },
+              options: FIXTURE_ORGANIZATIONS.memberships.map(({ id, name }) => ({ id, name })),
+            })
+        : actual.organizations.switcher,
       invitation: () => Promise.resolve(FIXTURE_INVITATION),
     },
   }
@@ -559,6 +572,12 @@ const TECHNICAL_PROPS = new Set([
   'callbackURL',
   'className',
   'currentPath',
+  // s62c — l'identifiant de l'organisation courante et le nom du champ posté,
+  // remis au sélecteur d'organisation de la barre du **shell**, donc présents
+  // sur chaque écran. Même raison qu'`accountHref` : ce sont les props du
+  // shell. Le garde-fou de prose reste actif — `fieldName="Organisation
+  // courante"` rougirait.
+  'currentValue',
   // s36 — la destination de « personnaliser » de la bannière de consentement,
   // remise au composant du design system. Elle entre ici pour la même raison
   // qu'`accountHref` : la bannière vit dans le **shell**, donc sur chaque
@@ -566,6 +585,7 @@ const TECHNICAL_PROPS = new Set([
   // prose reste actif — `customizeHref="Personnaliser"` rougirait.
   'customizeHref',
   'destination',
+  'fieldName',
   'href',
   'hrefLang',
   'htmlFor',
@@ -1419,6 +1439,20 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         render: async () => (await import('../apps/web/app/(app)/app/settings/cookies/page')).default(),
       },
       {
+        // s62c — la rubrique Notifications : la carte des préférences, sortie
+        // du centre. Elle refuse quand le module n'est pas monté, et le refus
+        // attendu est **dérivé** de l'état du module.
+        id: 'réglages — notifications',
+        file: '(app)/app/settings/notifications/page.tsx',
+        viewer: SIGNED_IN,
+        refuses: notificationsMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        // Le type et le canal d'une préférence : des identifiants, jamais du
+        // texte — les mêmes que ceux que portait le centre.
+        technicalProps: ['organizationId', 'channel'],
+        render: async () =>
+          (await import('../apps/web/app/(app)/app/settings/notifications/page')).default(),
+      },
+      {
         // s19. Trois rendus du même fichier : les états que l'écran distingue
         // portent chacun des textes qu'aucun autre ne rend — l'alerte de tête,
         // « accès jusqu'au … », l'essai, l'offre retirée du catalogue.
@@ -1603,7 +1637,9 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // identifiants, jamais du texte. Déclarés **sur cet écran** : ailleurs,
         // une prop nommée `read` portant une chaîne fait toujours rougir, et le
         // garde-fou de prose reste actif ici aussi.
-        technicalProps: ['read', 'readAll', 'setPreference', 'organizationId', 'channel'],
+        // s62c : la carte des préférences est partie dans les réglages ; l'état
+        // vide y mène par `preferencesHref`, une URL.
+        technicalProps: ['read', 'readAll', 'preferencesHref', 'organizationId', 'channel'],
         // Les numéros de page rendus par la pagination du design system : des
         // **données**, comme un prix ou un nom, et **dérivées de la fixture**
         // plutôt que recopiées — une page de plus entre ici sans que personne y

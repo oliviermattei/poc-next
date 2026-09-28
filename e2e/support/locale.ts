@@ -7,6 +7,7 @@ import {
 } from '@repo/module-auth'
 import { BILLING_SCREEN_PATH } from '@repo/module-billing'
 import { CONSENT_SETTINGS_SCREEN_PATH } from '@repo/module-consent'
+import { NOTIFICATIONS_SETTINGS_SCREEN_PATH } from '@repo/module-notifications'
 import { onboardingModule, ONBOARDING_SCREEN_PATH } from '@repo/module-onboarding'
 import { MEMBERS_SCREEN_PATH, ORGANIZATIONS_SCREEN_PATH } from '@repo/module-organizations'
 
@@ -60,7 +61,7 @@ export const signInRedirectedFrom = (pathname: string): RegExp =>
  * redirection au lieu de l'écran. Un déplacement suivant change la constante
  * du module, et chaque parcours suit.
  *
- * Depuis s62b, les six rubriques : `account` reste l'entrée de la zone — celle
+ * Depuis s62b, les rubriques (sept depuis s62c) : `account` reste l'entrée de la zone — celle
  * du menu de compte, qui est Profil —, et un parcours qui agit sur une carte
  * ouvre **la rubrique qui la porte** (Sécurité pour une session, Membres pour
  * une invitation).
@@ -69,6 +70,8 @@ export const SETTINGS_SCREENS = {
   account: ACCOUNT_SCREEN_PATH,
   profile: PROFILE_SCREEN_PATH,
   security: SECURITY_SCREEN_PATH,
+  // s62c : les préférences de notification, sorties du centre.
+  notifications: NOTIFICATIONS_SETTINGS_SCREEN_PATH,
   organization: ORGANIZATIONS_SCREEN_PATH,
   members: MEMBERS_SCREEN_PATH,
   billing: BILLING_SCREEN_PATH,

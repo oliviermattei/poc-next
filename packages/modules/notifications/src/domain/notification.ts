@@ -14,6 +14,12 @@ export const NOTIFICATIONS_MODULE_ID = 'notifications'
 /** Le chemin de l'écran, servi par l'application. */
 export const NOTIFICATIONS_SCREEN_PATH = '/notifications'
 
+/**
+ * **La rubrique Notifications des réglages** (s62c) : les préférences, sorties
+ * du centre. Constante, comme l'écran : c'est ce qui rend la redirection sûre.
+ */
+export const NOTIFICATIONS_SETTINGS_SCREEN_PATH = '/app/settings/notifications'
+
 /** Le nombre de notifications par page du centre. */
 export const NOTIFICATION_PAGE_SIZE = 20
 

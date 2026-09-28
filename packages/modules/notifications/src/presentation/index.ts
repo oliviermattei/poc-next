@@ -10,5 +10,9 @@
  *
  * Seule l'application importe ce point d'entrée.
  */
+export {
+  NotificationPreferencesCard,
+  type NotificationPreferencesCardProps,
+} from './notification-preferences-card'
 export { NotificationsScreen, type NotificationsScreenProps } from './notifications-screen'
 export type { NotificationsIntl } from './notifications-intl'

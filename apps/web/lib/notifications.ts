@@ -14,6 +14,7 @@ import {
   requireNotificationsService,
   EMPTY_NOTIFICATIONS_VIEW,
   NOTIFICATIONS_SCREEN_PATH,
+  NOTIFICATIONS_SETTINGS_SCREEN_PATH,
   type NotificationScope,
   type NotificationsView,
   type NotificationTypeSummary,
@@ -303,7 +304,7 @@ export const notifications: NotificationsFeature = mounted
   : ABSENT_NOTIFICATIONS
 
 /** Ce que les écrans ont le droit de connaître du module : ses chemins. */
-export { NOTIFICATIONS_SCREEN_PATH, notificationRoutePath }
+export { NOTIFICATIONS_SCREEN_PATH, NOTIFICATIONS_SETTINGS_SCREEN_PATH, notificationRoutePath }
 
 /**
  * La clé du nom accessible du badge, **réexportée d'ici**.

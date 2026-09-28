@@ -64,7 +64,6 @@ export default async function OrganizationPage({
       intl={{ t }}
       actions={{
         create: organizationRoutePath('create'),
-        switch: organizationRoutePath('switch'),
         update: organizationRoutePath('update'),
         delete: organizationRoutePath('delete'),
       }}
