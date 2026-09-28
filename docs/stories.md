@@ -1835,7 +1835,7 @@ Segments réservés aux organisations : `APPLICATION_SEGMENTS` (`apps/web/lib/or
 > **Cette story amende quatre critères déjà livrés** : s07 (le repli de `safeRedirectPath(next, '/')` devient `/app`), s08 (le tableau de bord d'un connecté est sur `/app`, plus sur `/`), s10 (critère 6 : un connecté sur `/` voit le site) et s40 (le parcours d'intégration se termine sur `/app`). L'ADR de la story le dit.
 
 ### Complexity
-3
+4 — relevée de 3 par la research (`docs/research/s61-site-et-application.md`) : une dizaine de parcours e2e attendent `/` comme atterrissage
 
 ### Acceptance criteria
 - [ ] Une nouvelle valeur de surface `site` existe : les entrées de navigation de l'accueil, du blog, des docs et des tarifs la déclarent, et sont rendues dans l'**en-tête** du site. L'entrée de navigation `/sign-in` du module `auth` est retirée
