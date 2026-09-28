@@ -377,6 +377,11 @@ export interface AuthUseCases {
    */
   readonly dataExport: DataExportUseCases | null
   log: AuthDependencies['log']
+  /**
+   * **Le consommateur des emprunts fermés** (s67), exposé comme `log` : la
+   * route de suppression lui remet ce que la demande a fermé.
+   */
+  impersonationsEnded: AuthDependencies['impersonationsEnded']
 }
 
 /**
@@ -414,7 +419,15 @@ export type BanOutcome =
  * supprimez » sans dire laquelle ne le précise pas.
  */
 export type AccountDeletionOutcome =
-  | { readonly status: 'queued' }
+  | {
+      readonly status: 'queued'
+      /**
+       * Les emprunts que la révocation de la demande vient de terminer (s67) —
+       * la forme de `BanOutcome.endedImpersonations`, et pour la même raison :
+       * le socle est le seul à savoir lesquels il a fermés.
+       */
+      readonly endedImpersonations: readonly EndedImpersonation[]
+    }
   | { readonly status: 'invalid_request' }
   | { readonly status: 'confirmation_mismatch' }
   | { readonly status: 'not_found' }
@@ -520,6 +533,8 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
 
   return {
     log,
+
+    impersonationsEnded: dependencies.impersonationsEnded,
 
     issueToken,
 
@@ -1111,6 +1126,20 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
       }
 
       /**
+       * **Le compte ferme à la demande** (s67, ADR 074) : la marque pose le
+       * refus de `refusesSignIn` sur toute nouvelle session, sur tous les
+       * parcours, jusqu'au passage de la purge.
+       *
+       * **Après** la mise en file, pour la même raison que la révocation
+       * ci-dessous : une émission refusée n'efface rien, elle ne ferme rien.
+       * Et **avant** la révocation, pour la raison de `banAccount` : révoquer
+       * sans marquer laisserait la personne se reconnecter à la seconde
+       * suivante. Sous le repli synchrone, la purge a déjà effacé le compte
+       * et la marque ne touche aucune ligne — ce n'est pas un échec.
+       */
+      await users.markDeletionRequested({ userId, at: now() })
+
+      /**
        * **Les sessions ferment à la demande, pas à la purge** (revue s61, M2).
        *
        * Avec un ordonnanceur, la purge quitte cette requête : sans cette ligne,
@@ -1123,16 +1152,22 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
        * n'efface rien, elle ne doit rien fermer non plus. Sans ordonnanceur, la
        * purge a déjà tout fermé et cet appel ne trouve plus rien.
        */
-      await sessions.revokeAllForUser(userId)
+      const revoked = await sessions.revokeAllForUser(userId)
 
       log(
         describeSecurityEvent({
           event: 'auth.account_deletion_requested',
           actor: { userId },
+          // **Le compte, jamais les identifiants** (s67) : combien de sessions
+          // la demande a fermées, emprunts compris.
+          details: { sessionsRevoked: revoked.length },
         }),
       )
 
-      return { status: 'queued' }
+      // Les emprunts fermés remontent à l'appelant, comme pour `banAccount`
+      // (revue s37b1, C3) : les jeter laissait un journal avec des débuts
+      // sans fin (revue s61).
+      return { status: 'queued', endedImpersonations: endedImpersonationsOf(revoked) }
     },
 
     runAccountPurge: async ({ userId, knownLocale }) => {

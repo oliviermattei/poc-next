@@ -148,6 +148,50 @@ const dataExportNotConfigured = (): Response =>
 const redirect = (location: string): Response =>
   new Response(null, { status: 302, headers: { location } })
 
+/**
+ * **Le refus unique d'un magic link** (s67) : la destination demandée par le
+ * lien — filtrée comme partout (`docs/security.md` §4) —, marquée d'un seul
+ * code, quel que soit l'état du compte ou du jeton.
+ *
+ * Le code est **ajouté à la chaîne que rend `safeRedirectPath`**, jamais
+ * re-sérialisé par un `URL.pathname` : c'est cette re-sérialisation qui
+ * résolvait `/.//evil.test` en `//evil.test` après le filtre (revue s67, C1).
+ */
+const magicLinkRefusal = (request: Request): Response => {
+  const destination = safeRedirectPath(
+    new URL(request.url).searchParams.get('callbackURL'),
+    DEFAULT_SIGNED_IN_PATH,
+  )
+  const hashAt = destination.indexOf('#')
+  const path = hashAt === -1 ? destination : destination.slice(0, hashAt)
+  const hash = hashAt === -1 ? '' : destination.slice(hashAt)
+
+  return redirect(`${path}${path.includes('?') ? '&' : '?'}error=invalid_token${hash}`)
+}
+
+/**
+ * **La requête de vérification d'un magic link, destinations filtrées** avant
+ * que la bibliothèque ne les lise (`docs/security.md` §4).
+ *
+ * La bibliothèque redirige vers le `callbackURL` **de la requête**, pas vers
+ * celui de la demande de lien : un lien valide dont on réécrit ce paramètre
+ * ouvrait une session et renvoyait la personne vers `http://evil.test/`
+ * (antérieur à s67, relevé à sa revue). Elle **redécode** en outre la valeur
+ * (`decodeURIComponent`) : la destination sûre lui est donc passée encodée une
+ * fois de plus, sans quoi un `%2F%2F` accepté ici deviendrait `//` chez elle.
+ * `newUserCallbackURL` et `errorCallbackURL` ne sont pas servis : le module
+ * n'inscrit personne par magic link (`new_user_signup_disabled`), et tout
+ * refus est remplacé par `magicLinkRefusal`.
+ */
+const withSafeMagicLinkDestination = (request: Request): Request => {
+  const url = new URL(request.url)
+  const destination = safeRedirectPath(url.searchParams.get('callbackURL'), DEFAULT_SIGNED_IN_PATH)
+
+  url.searchParams.set('callbackURL', encodeURIComponent(destination))
+
+  return new Request(url, { method: request.method, headers: request.headers })
+}
+
 const jsonBody = async (request: Request): Promise<unknown> =>
   await request.json().catch(() => null)
 
@@ -912,7 +956,7 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
       rateLimit: { policy: 'magicLink' },
       handler: async (request) => {
         const auth = service()
-        const response = await auth.handle(request)
+        const response = await auth.handle(withSafeMagicLinkDestination(request))
 
         // **Le second facteur s'applique ici aussi** (revue s13, C2). Le
         // greffon ne couvre que `/sign-in/email` ; le module étend son crochet
@@ -936,7 +980,15 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
           }),
         )
 
-        return response
+        // **Un lien refusé répond d'une seule façon** (s67). Mesuré : la
+        // bibliothèque rend une redirection `?error=new_user_signup_disabled`
+        // pour une adresse inconnue, `?error=INVALID_TOKEN` pour un lien
+        // périmé, et la **levée brute** du crochet de session — 401 JSON — pour
+        // un compte fermé (banni, ou dont la suppression est demandée). Trois
+        // réponses, donc un oracle sur l'état du compte (`docs/security.md` §2
+        // et §7). Le journal, au-dessus, garde le détail ; l'appelant reçoit
+        // un refus unique, sur la destination demandée.
+        return actor === null ? magicLinkRefusal(request) : response
       },
     },
     {
@@ -1151,6 +1203,10 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
 
           switch (outcome.status) {
             case 'queued':
+              // **Les emprunts que la demande a fermés** (s67) partent chez qui
+              // tient leur journal — le module `admin` quand il est monté.
+              await auth.useCases.impersonationsEnded(outcome.endedImpersonations)
+
               // **202 et non 200** : la mise en file a réussi. Avec un
               // ordonnanceur, le compte n'est pas encore parti ; sans lui, il
               // l'est déjà. Une seule réponse pour les deux, parce que

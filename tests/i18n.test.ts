@@ -1099,9 +1099,10 @@ const authUseCasesWith = (mailer: ReturnType<typeof createRecordingMailer>) =>
       changeName: () => Promise.resolve(false),
       deleteById: () => Promise.resolve(false),
       // s37a : la doublure refuse **fermé** — un compte qu'elle ne connaît pas
-      // est banni. Aucun cas de ce fichier n'ouvre de session ; ce qui compte
-      // est qu'elle ne dise pas « non banni » par défaut.
-      isBanned: () => Promise.resolve(true),
+      // ne peut pas entrer. Aucun cas de ce fichier n'ouvre de session ; ce
+      // qui compte est qu'elle ne dise pas « ouvert » par défaut.
+      isSignInBlocked: () => Promise.resolve(true),
+      markDeletionRequested: () => Promise.resolve(false),
       setBanned: () => Promise.resolve(false),
     },
     sessions: {
@@ -1111,7 +1112,7 @@ const authUseCasesWith = (mailer: ReturnType<typeof createRecordingMailer>) =>
       revokeBorrowsBy: () => Promise.resolve([]),
       revokeForUser: () => Promise.resolve(false),
       // s37b1 : ce fichier mesure des langues d'email, aucune session n'y est
-      // ouverte. La doublure refuse **fermé**, comme `isBanned` au-dessus.
+      // ouverte. La doublure refuse **fermé**, comme `isSignInBlocked` au-dessus.
       create: () => Promise.resolve(false),
       findById: () => Promise.resolve(null),
       deleteById: () => Promise.resolve(false),
@@ -1153,6 +1154,8 @@ const authUseCasesWith = (mailer: ReturnType<typeof createRecordingMailer>) =>
     // s56 : aucun rôle de plateforme n'entre ici — la langue d'un email n'en
     // dépend pas, et la forme fermée est la liste vide.
     platformRolesOf: () => Promise.resolve([]),
+    // s67 : aucun emprunt n'est fermé ici, aucun journal n'est tenu.
+    impersonationsEnded: () => Promise.resolve(),
     jobs: {
       emit: () =>
         Promise.resolve({

@@ -36,7 +36,7 @@ la liste** : un compte écrit à côté de lui vieillit à la ligne suivante.
 | **Aucune session ouverte par ce dépôt n'échappe au refus du socle** (revue s37b1, C1 et MJ1) | l'écriture de session porte la garde **dans son `insert`** (`insert … select … from auth_user where banned = false`) : le crochet de la bibliothèque ne voit pas ce chemin, la condition, si | `tests/admin.test.ts` (« refuse d'emprunter un compte banni ») **et** `tests/lint-rules.test.ts`, qui exige un **seul** écrivain de `auth_session` dans le dépôt ; mesuré : reprendre un `insert().values()` rougit 2 cas |
 | **Un emprunt meurt avec le droit qui l'a ouvert** (revue s37b1, C3) | bannir l'emprunteur efface aussi les sessions qu'il **tient** (`revokeAllForUser` filtre les deux sens) ; lui retirer le rôle appelle `endBorrowsBy`. Les deux journalisent la fin | `tests/admin.test.ts` (« éteint la session empruntée quand l'emprunteur est banni », « … quand le rôle de l'emprunteur est révoqué ») |
 | **L'échéance d'un emprunt tient** (revue s37b1, C2) | la fenêtre glissante de la bibliothèque ne prolonge jamais une ligne empruntée (`auth/infrastructure/session-refresh-adapter.ts`) : sans cela, la première lecture portait l'heure annoncée à sept jours | `tests/admin.test.ts` (« ne prolonge pas une session empruntée à la première lecture », et son témoin inverse pour les sessions ordinaires) |
-| **Un emprunt est journalisé aux deux bouts, sur les fins balayées ci-dessous** | début et fin nomment les deux comptes ; la fin est écrite par la sortie, le bannissement, le retrait du rôle **et** le balayage des échus, qui efface les lignes — donc le rejeu n'émet rien de plus | `tests/admin.test.ts` (« journalise le début et la fin », « compte l'expiration d'un emprunt comme une fin ») et `tests/jobs.test.ts`, qui éprouve la **cadence** du balayage, pas sa seule présence ; mesuré : retirer l'un ou l'autre journal rougit 1 cas chacun, et une cadence annuelle rougit 1 cas |
+| **Un emprunt est journalisé aux deux bouts, sur les fins balayées ci-dessous** | début et fin nomment les deux comptes ; la fin est écrite par la sortie, le bannissement, le retrait du rôle, la demande de suppression du compte (s67) **et** le balayage des échus, qui efface les lignes — donc le rejeu n'émet rien de plus | `tests/admin.test.ts` (« journalise le début et la fin », « compte l'expiration d'un emprunt comme une fin ») et `tests/jobs.test.ts`, qui éprouve la **cadence** du balayage, pas sa seule présence ; mesuré : retirer l'un ou l'autre journal rougit 1 cas chacun, et une cadence annuelle rougit 1 cas |
 
 ## Imports autorisés
 
@@ -195,11 +195,13 @@ n'émet alors sa fin : le balayage est déclaré par ce module. C'est le prix
 assumé d'une surface optionnelle posée sur un état du socle, le même que pour le
 bannissement (ADR 058).
 
-### Comment un emprunt se termine — les sept fins balayées
+### Comment un emprunt se termine — les fins balayées
 
 **Ce tableau est ce qui a été balayé** — les écritures qui effacent une ligne de
-`auth_session` portant un emprunteur —, pas la liste de ce qui existe. Une
-huitième fin ouverte par une story suivante ne s'y inscrira pas toute seule.
+`auth_session` portant un emprunteur —, pas la liste de ce qui existe, et aucune
+commande n'en tient le compte. La demande de suppression y a été ajoutée par s67
+sur un constat de revue (s61, m5) : une fin ouverte par une story suivante ne
+s'y inscrira pas toute seule.
 
 | Fin | Journalisée ? |
 |---|---|
@@ -207,6 +209,7 @@ huitième fin ouverte par une story suivante ne s'y inscrira pas toute seule.
 | le bannissement de l'emprunteur ou de l'emprunté (`revokeAllForUser`) | **oui** |
 | le retrait du rôle de l'emprunteur (`endBorrowsBy`) | **oui** |
 | le balayage horaire des emprunts échus | **oui** |
+| la **demande de suppression** du compte de l'emprunteur ou de l'emprunté : sa révocation ferme toutes ses sessions (s67) | **oui** — le socle rend les fins, `apps/web/lib/auth.ts` les remet à `admin.impersonationsEnded`, qui les remet à `recordEndedImpersonations` ; `tests/admin.test.ts` (« journalise l’emprunt que ferme la demande de suppression du compte emprunté », et « sont journalisés par le point de composition du back-office » pour le maillon de `apps/web/lib/admin.ts`) |
 | un emprunt échu **présenté** à la bibliothèque avant le balayage : `getSession` efface une session expirée | **non** — et c'est le cas pour lequel le balayage n'est pas fait : un emprunt abandonné n'est présenté par personne, le cookie portant `Max-Age=3600` |
 | l'**effacement du compte** de l'emprunteur ou de l'emprunté (`purgeAccount`, s34, et la cascade de `auth_user`) | **non**, délibérément : la purge efface le compte que l'événement nommerait, et la cascade ferme les mêmes lignes sans passer par du code |
 | le **changement d'adresse** de l'emprunteur : il révoque toutes ses sessions, emprunts compris (s37b1) | **non** — le module `admin` n'est pas dans ce chemin |

@@ -322,6 +322,17 @@ export interface AdminUseCases {
    * l'effacement de la session *est* l'idempotence (`docs/reliability.md` §1).
    */
   endExpiredImpersonations(at: Date): Promise<number>
+  /**
+   * **Journalise des emprunts que le socle a fermés ailleurs** (s67) — la
+   * demande de suppression d'un compte révoque ses sessions, emprunts compris.
+   *
+   * Rien n'est lu ni écrit : le socle a déjà effacé les sessions, et il nomme
+   * les deux comptes. Ce module ne fait que tenir le journal, avec la même
+   * forme que les autres fins.
+   */
+  recordEndedImpersonations(
+    ended: readonly { readonly userId: string; readonly impersonatedBy: string }[],
+  ): Promise<void>
 }
 
 export function createAdminUseCases(dependencies: AdminDependencies): AdminUseCases {
@@ -339,7 +350,8 @@ export function createAdminUseCases(dependencies: AdminDependencies): AdminUseCa
   /**
    * **Une fin d'emprunt se journalise là où le début l'a été**, avec les deux
    * mêmes identifiants — quelle que soit la manière dont elle est arrivée :
-   * sortie explicite, expiration, bannissement, retrait du rôle.
+   * sortie explicite, expiration, bannissement, retrait du rôle, demande de
+   * suppression du compte (s67).
    */
   const logEndedImpersonations = (
     ended: readonly { readonly userId: string; readonly impersonatedBy: string }[],
@@ -817,6 +829,12 @@ export function createAdminUseCases(dependencies: AdminDependencies): AdminUseCa
       logEndedImpersonations(swept.ended)
 
       return swept.ended.length
+    },
+
+    recordEndedImpersonations: async (ended) => {
+      logEndedImpersonations(ended)
+
+      return await Promise.resolve()
     },
   }
 }

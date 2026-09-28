@@ -1281,10 +1281,15 @@ describe('l’écriture d’une session (s37b1)', () => {
     )
 
     // La ligne n'est écrite que par un `insert … select … from auth_user`, dont
-    // la qualification exclut un compte banni. Une reprise en `.values(...)`
+    // la qualification exclut un compte fermé — banni, ou en attente de
+    // suppression. Une reprise en `.values(...)`
     // — la forme d'avant la revue — ne porte aucune condition, et ce cas la
     // refuse.
     expect(source).toMatch(/insert\(authSession\)\s*\.select\(/)
     expect(source).toMatch(/eq\(authUser\.banned, false\)/)
+    // **Et la suppression demandée** (s67, ADR 074) : le même `insert` refuse
+    // un compte dont la purge est en file. Sans ce motif, une impersonation ou
+    // un retour de main rouvrirait une session dans la fenêtre de la purge.
+    expect(source).toMatch(/isNull\(authUser\.deletionRequestedAt\)/)
   })
 })

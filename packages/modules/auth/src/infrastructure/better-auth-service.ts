@@ -34,7 +34,6 @@ import {
   type OAuthProviderId,
 } from '../domain/oauth'
 import { digestBackupCode, digestBackupCodes } from '../domain/backup-code'
-import { refusesSignIn } from '../domain/ban'
 import { serializeSessionCookie } from '../domain/impersonation'
 import { signSessionCookieValue } from './session-cookie'
 import { withTwoFactorOnEverySignIn } from './two-factor-challenge'
@@ -191,6 +190,16 @@ export interface ConfigureAuthOptions {
    * toute route réservée à un rôle. Le sens ouvert serait de deviner.
    */
   readonly platformRolesOf?: (userId: string) => Promise<readonly string[]>
+  /**
+   * **Les emprunts que la suppression d'un compte ferme** (s67), remis à qui
+   * tient leur journal.
+   *
+   * Absente, ils ne sont journalisés nulle part : c'est l'état d'un projet dont
+   * le module `admin` est coupé — et sans lui, aucun emprunt n'a pu s'ouvrir.
+   */
+  readonly impersonationsEnded?: (
+    ended: readonly { readonly userId: string; readonly impersonatedBy: string }[],
+  ) => Promise<void>
   /**
    * Le port d'émission de tâches (s33).
    *
@@ -401,6 +410,7 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
      */
     platformRolesOf:
       options.platformRolesOf ?? ((): Promise<readonly string[]> => Promise.resolve([])),
+    impersonationsEnded: options.impersonationsEnded ?? ((): Promise<void> => Promise.resolve()),
     /**
      * **Fail-closed, comme `purgeScope`.** Le repli synchrone existe déjà et
      * n'est pas ici : `lib/jobs.ts` rend un port qui exécute dans la requête
@@ -692,7 +702,10 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
       session: {
         create: {
           before: async (session: { readonly userId: string }) => {
-            if (refusesSignIn({ banned: await dependencies.users.isBanned(session.userId) })) {
+            // Banni **ou** suppression demandée (s67, ADR 074) : la décision
+            // est `refusesSignIn`, lue par le dépôt. Le refus est celui d'un
+            // identifiant invalide — aucun des deux états ne se nomme.
+            if (await dependencies.users.isSignInBlocked(session.userId)) {
               throw new APIError('UNAUTHORIZED', { message: 'Invalid email or password' })
             }
           },

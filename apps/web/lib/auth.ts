@@ -126,6 +126,21 @@ export const platformRolesOf: (userId: string) => Promise<readonly string[]> =
     ? async (userId) => await (await import('./admin')).admin.platformRolesOf(userId)
     : NO_ROLES
 
+/**
+ * **Les emprunts que la suppression d'un compte ferme** (s67), remis au module
+ * qui tient leur journal.
+ *
+ * La cinquième fonction que ce fichier branche sur ce que le socle ne peut pas
+ * se procurer. **L'import est différé** pour la raison de `platformRolesOf` ;
+ * module `admin` coupé, `admin.impersonationsEnded` ne fait rien — par la
+ * valeur, sans condition écrite ici.
+ */
+const impersonationsEnded = async (
+  ended: readonly { readonly userId: string; readonly impersonatedBy: string }[],
+): Promise<void> => {
+  await (await import('./admin')).admin.impersonationsEnded(ended)
+}
+
 export interface AppAuthOptions {
   readonly env?: Env
 }
@@ -203,6 +218,11 @@ export function appAuth(options: AppAuthOptions = {}): AuthService {
        * protection `role`, liste vide sinon — par la valeur.
        */
       platformRolesOf,
+      /**
+       * **Les emprunts fermés par une demande de suppression** (s67), journalisés
+       * par le module `admin` — juste au-dessus.
+       */
+      impersonationsEnded,
       /**
        * **Le port d'émission de tâches** (s33) : l'effacement quitte la requête
        * quand le module `jobs` est activé, et s'exécute dedans quand il est
