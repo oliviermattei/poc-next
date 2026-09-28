@@ -416,6 +416,20 @@ const SCREEN_ROOT = join(REPO_ROOT, 'apps/web/app')
  */
 const SCREEN_FILENAMES = ['page.tsx', 'not-found.tsx', 'global-error.tsx']
 
+/**
+ * Le rendu d'une frontière 404 de zone (s66) : elle renvoie `<NotFoundScreen />`,
+ * un composant serveur asynchrone que `renderToStaticMarkup` ne résout pas. Le
+ * niveau est résolu ici ; une frontière qui ne renverrait plus un composant
+ * fonction rougit au lieu d'être rendue vide.
+ */
+const zoneBoundary = async (element: ReactNode): Promise<ReactNode> => {
+  if (!isValidElement(element) || typeof element.type !== 'function') {
+    throw new Error('frontière 404 de zone : un composant fonction était attendu')
+  }
+
+  return (element.type as (props: unknown) => Promise<ReactNode>)(element.props)
+}
+
 const pageFilesUnder = (directory: string): readonly string[] => {
   const found: string[] = []
 
@@ -1997,6 +2011,44 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // s60 : `not-found.tsx` rend le shell lui-même (ADR 071) ; son
         // contenu est rendu ici dans le shell, comme les autres écrans.
         render: async () => (await import('../apps/web/app/not-found-screen')).NotFoundScreen(),
+      },
+      // s66 (ADR 072) : la frontière 404 de chaque zone, pour un `notFound()`
+      // levé par une page. Elle ne rend aucun shell — celui du layout de la zone
+      // l'entoure —, donc elle est rendue ici dans le shell comme les autres.
+      // Rendue **par son export**, pas par `NotFoundScreen` : un texte ajouté
+      // au fichier rougirait. Le niveau asynchrone imbriqué est résolu à la main,
+      // `renderToStaticMarkup` ne sait pas le faire.
+      {
+        id: 'page introuvable — (site)',
+        file: '(site)/not-found.tsx',
+        viewer: ANONYMOUS,
+        refuses: null,
+        render: async () =>
+          zoneBoundary((await import('../apps/web/app/(site)/not-found')).default()),
+      },
+      {
+        id: 'page introuvable — (auth)',
+        file: '(auth)/not-found.tsx',
+        viewer: ANONYMOUS,
+        refuses: null,
+        render: async () =>
+          zoneBoundary((await import('../apps/web/app/(auth)/not-found')).default()),
+      },
+      {
+        id: 'page introuvable — (app)',
+        file: '(app)/not-found.tsx',
+        viewer: SIGNED_IN,
+        refuses: null,
+        render: async () =>
+          zoneBoundary((await import('../apps/web/app/(app)/not-found')).default()),
+      },
+      {
+        id: 'page introuvable — (console)',
+        file: '(console)/not-found.tsx',
+        viewer: SIGNED_IN,
+        refuses: null,
+        render: async () =>
+          zoneBoundary((await import('../apps/web/app/(console)/not-found')).default()),
       },
       {
         // L'écran de dernier recours, qui remplace `app/layout.tsx` : son texte
