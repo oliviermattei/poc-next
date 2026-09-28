@@ -548,6 +548,15 @@ export interface AdminFeature {
    */
   readonly isSuperadmin: (userId: string) => Promise<boolean>
   /**
+   * **Les emprunts que le socle a fermés hors du back-office** (s67) : la
+   * demande de suppression d'un compte révoque ses sessions, emprunts compris,
+   * et c'est ici que leur fin se journalise. Module coupé : rien à journaliser
+   * — sans lui, aucun emprunt n'a pu s'ouvrir —, et rien n'est ouvert.
+   */
+  readonly impersonationsEnded: (
+    ended: readonly { readonly userId: string; readonly impersonatedBy: string }[],
+  ) => Promise<void>
+  /**
    * Le revenu de la plateforme (s38) : ni recherche, ni page — des indicateurs,
    * et une **période** (critère 4) qui ne borne que la moitié constatée.
    */
@@ -606,6 +615,9 @@ export const admin: AdminFeature = mounted
       platformRolesOf: async (userId) =>
         await backOfficeService().useCases.platformRolesOf(userId),
       isSuperadmin: async (userId) => await backOfficeService().useCases.isSuperadmin(userId),
+      impersonationsEnded: async (ended) => {
+        await backOfficeService().useCases.recordEndedImpersonations(ended)
+      },
       revenue: async ({ viewerId, parameters }) =>
         await backOfficeService().useCases.viewRevenue({
           request: await incomingRequest(),
@@ -630,6 +642,7 @@ export const admin: AdminFeature = mounted
       // vient de la **valeur**, pas d'une condition écrite plus haut.
       platformRolesOf: () => Promise.resolve([]),
       isSuperadmin: () => Promise.resolve(false),
+      impersonationsEnded: () => Promise.resolve(),
       revenue: () => Promise.resolve(ABSENT),
       subscriptions: () => Promise.resolve(ABSENT),
     }

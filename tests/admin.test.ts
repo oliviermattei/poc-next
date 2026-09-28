@@ -40,6 +40,7 @@ import {
   configureAuth,
   resetAuthService,
   type AuthService,
+  type SecurityEventRecord,
 } from '@repo/module-auth'
 import {
   BILLING_DISPLAY_STATES,
@@ -133,6 +134,8 @@ let service: AdminService
 const mailer = createRecordingMailer()
 
 const securityEvents: AdminSecurityEvent[] = []
+/** Le journal du **socle** (s67) : l'événement de la demande de suppression y vit. */
+const authEvents: SecurityEventRecord[] = []
 
 const anEmail = (): string => `s37a-${randomUUID()}@example.test`
 
@@ -629,6 +632,17 @@ beforeAll(async () => {
      * révocation d'un rôle se mesure sur la même session.
      */
     platformRolesOf: async (userId) => await service.useCases.platformRolesOf(userId),
+    /**
+     * **Les emprunts que le socle ferme hors du back-office** (s67), remis au
+     * module qui tient leur journal — le branchement de `lib/auth.ts`.
+     */
+    impersonationsEnded: async (ended) => {
+      await service.useCases.recordEndedImpersonations(ended)
+    },
+    log: (record) => authEvents.push(record),
+    // La suppression de compte met en file et ne s'exécute pas ici : ce qui
+    // est mesuré est ce que la **demande** ferme, pas la purge.
+    jobs: { emit: (emission) => Promise.resolve({ ok: true, id: emission.key }) },
   })
 })
 
@@ -644,6 +658,7 @@ beforeEach(async () => {
   // désignation a un sens.
   await connection.db.execute(sql`delete from admin_platform_role`)
   securityEvents.length = 0
+  authEvents.length = 0
   banGate = null
   blockedGate = null
   blockedReadable = true
@@ -2748,6 +2763,58 @@ describe.runIf(databaseReachable)('un emprunt ne survit pas à ce qui ferme son 
   }, 60_000)
 
   /**
+   * **La demande de suppression ferme aussi des emprunts** (s67). La
+   * révocation de la demande emporte la session empruntée sur le compte qui
+   * part ; c'est une fin, et une fin se journalise — les deux comptes nommés,
+   * comme pour le bannissement. Le socle ne tient pas ce journal : il rend les
+   * fins, et le point de composition les remet au module `admin`.
+   */
+  it('journalise l’emprunt que ferme la demande de suppression du compte emprunté', async () => {
+    const superadmin = await signedIn()
+    const target = await signedIn()
+
+    configure(superadmin.email)
+    await call('grantSuperadmin', {
+      cookie: superadmin.cookie,
+      body: { userId: superadmin.userId },
+    })
+
+    const borrowed = cookieOf(
+      await call('startImpersonation', {
+        cookie: superadmin.cookie,
+        body: { userId: target.userId },
+      }),
+    )
+
+    expect(borrowed).not.toBe('')
+
+    const requested = await dispatchAllowingRateLimit(
+      registry,
+      new Request(`${APP_URL}${MODULE_ROUTE_PREFIX}/auth/delete-account`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: APP_URL, cookie: target.cookie },
+        body: JSON.stringify({ confirmation: target.email }),
+      }),
+      { resolveSession: (request) => auth.resolveSession(request) },
+    )
+
+    expect(requested.status).toBe(202)
+    await expect(auth.resolveSession(requestWith(borrowed))).resolves.toBeNull()
+    expect(securityEvents).toContainEqual({
+      event: 'admin.impersonation_ended',
+      actor: superadmin.userId,
+      target: target.userId,
+    })
+    // Le socle compte ce qu'il a fermé : la session de la personne **et**
+    // celle que l'administrateur lui empruntait.
+    expect(authEvents).toContainEqual({
+      event: 'auth.account_deletion_requested',
+      actor: target.userId,
+      details: { sessionsRevoked: 2 },
+    })
+  }, 60_000)
+
+  /**
    * **MJ1 — un compte banni ne s'emprunte pas.** Le refus n'est pas une
    * politesse : la session empruntée porte le compte du banni, et l'ouvrir
    * revient à lui rendre une session par la bande.
@@ -3498,6 +3565,82 @@ describe('la lecture des rôles de plateforme se dérive du registre', () => {
     vi.doUnmock('../apps/web/lib/module-registry')
     vi.doUnmock('../apps/web/lib/admin')
     vi.resetModules()
+  })
+})
+
+/**
+ * **Les emprunts fermés par le socle remontent au back-office** (s67) — le
+ * témoin du point de composition. Le module `admin` est doublé : ce qui se
+ * mesure ici est que le service que `apps/web/lib/auth.ts` **monte** remet au
+ * module ce que le socle rend ; la journalisation elle-même est prouvée contre
+ * une vraie base, plus haut.
+ */
+describe('les emprunts fermés par une demande de suppression', () => {
+  afterEach(() => {
+    vi.doUnmock('../apps/web/lib/admin')
+    vi.unstubAllEnvs()
+    vi.resetModules()
+  })
+
+  // Revue s67, M-1 : le maillon `apps/web/lib/admin.ts` → journal n'était
+  // tenu par rien — le cas suivant double ce fichier, et celui du journal réel
+  // branche `recordEndedImpersonations` dans son propre `configureAuth`. Ici,
+  // c'est le **vrai** point de composition qui est appelé, et le journal du
+  // module qui est lu. Module coupé, `admin.impersonationsEnded` ne fait rien,
+  // et il n'y a rien à mesurer : aucun emprunt n'a pu s'ouvrir.
+  it.runIf(databaseReachable && admin.available)(
+    'sont journalisés par le point de composition du back-office',
+    async () => {
+      await admin.impersonationsEnded([{ userId: 'usr_cible', impersonatedBy: 'usr_emprunteur' }])
+
+      expect(securityEvents).toContainEqual(
+        expect.objectContaining({
+          event: 'admin.impersonation_ended',
+          actor: 'usr_emprunteur',
+          target: 'usr_cible',
+        }),
+      )
+    },
+  )
+
+  it('sont remis au module qui tient leur journal, par le service que l’application monte', async () => {
+    // **L'intégralité** de ce que `appAuth()` lit, y compris les valeurs
+    // vides (revue de s06, G1 ; précédent de `tests/data-export.test.ts`).
+    vi.stubEnv('DATABASE_URL', databaseUrl)
+    vi.stubEnv('AUTH_SECRET', 'x'.repeat(40))
+    vi.stubEnv('APP_URL', 'http://localhost:3000')
+    vi.stubEnv('RESEND_API_KEY', '')
+    vi.stubEnv('EMAIL_FROM', '')
+    vi.stubEnv('EMAIL_LOCAL_CAPTURE', '1')
+    vi.stubEnv('STORAGE_S3_BUCKET', '')
+    vi.stubEnv('STORAGE_S3_REGION', '')
+    vi.stubEnv('STORAGE_S3_ACCESS_KEY_ID', '')
+    vi.stubEnv('STORAGE_S3_SECRET_ACCESS_KEY', '')
+    vi.stubEnv('STORAGE_LOCAL_DIRECTORY', '.storage')
+    vi.stubEnv('STRIPE_SECRET_KEY', '')
+    vi.stubEnv('STRIPE_WEBHOOK_SECRET', '')
+    vi.stubEnv('PAYMENTS_LOCAL_MODE', '1')
+    vi.stubEnv('INNGEST_EVENT_KEY', '')
+    vi.stubEnv('INNGEST_SIGNING_KEY', '')
+    vi.stubEnv('INNGEST_BASE_URL', '')
+    vi.stubEnv('JOBS_LOCAL_RUNNER', '1')
+    vi.stubEnv('GITHUB_CLIENT_ID', '')
+    vi.stubEnv('GITHUB_CLIENT_SECRET', '')
+    vi.stubEnv('GOOGLE_CLIENT_ID', '')
+    vi.stubEnv('GOOGLE_CLIENT_SECRET', '')
+    vi.stubEnv('SUPERADMIN_EMAIL', '')
+
+    const recorded = vi.fn(() => Promise.resolve())
+
+    vi.resetModules()
+    vi.doMock('../apps/web/lib/admin', () => ({ admin: { impersonationsEnded: recorded } }))
+
+    const { appAuth } = await import('../apps/web/lib/auth')
+    const ended = [{ userId: 'usr_cible', impersonatedBy: 'usr_emprunteur' }]
+
+    await appAuth().useCases.impersonationsEnded(ended)
+
+    expect(recorded).toHaveBeenCalledWith(ended)
   })
 })
 

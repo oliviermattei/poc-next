@@ -40,6 +40,13 @@ export interface AuthUserRecord {
    * règle du socle, et la règle a besoin de l'état, pas d'une requête.
    */
   readonly banned: boolean
+  /**
+   * La suppression du compte est-elle demandée (s67, ADR 074) ?
+   *
+   * Lue pour la même raison que `banned` : `refusesSignIn` décide sur l'état,
+   * et le décompte des superadmins capables d'entrer passe par elle.
+   */
+  readonly deletionRequested: boolean
 }
 
 /**
@@ -63,14 +70,25 @@ export interface AuthUserRepository {
   findByEmail(email: string): Promise<AuthUserRecord | null>
   findById(userId: string): Promise<AuthUserRecord | null>
   /**
-   * **Le seul état lu sur le chemin de la création de session** (s37a).
+   * **Le seul état lu sur le chemin de la création de session** (s37a, étendu
+   * par s67 — ADR 074).
    *
    * Distinct de `findById` parce qu'il est appelé à chaque ouverture de
-   * session, sur tous les parcours : il ne rend qu'une colonne, et il rend
-   * `true` pour un compte introuvable — un compte qu'on ne trouve pas
-   * n'ouvre pas de session, c'est le sens fermé.
+   * session, sur tous les parcours : il ne lit que les deux colonnes qui
+   * ferment un compte, décide par `refusesSignIn`, et rend `true` pour un
+   * compte introuvable — un compte qu'on ne trouve pas n'ouvre pas de
+   * session, c'est le sens fermé.
    */
-  isBanned(userId: string): Promise<boolean>
+  isSignInBlocked(userId: string): Promise<boolean>
+  /**
+   * **Pose la marque « suppression demandée »** (s67, ADR 074).
+   *
+   * Rend `false` quand aucune ligne ne correspond — ce qui arrive, sans être
+   * une erreur, quand le repli synchrone a déjà purgé le compte pendant la mise
+   * en file. Rejouée, elle ne déplace pas la date : la première demande fait
+   * foi.
+   */
+  markDeletionRequested(input: { readonly userId: string; readonly at: Date }): Promise<boolean>
   /**
    * Écrit l'état de bannissement. Rend `false` si aucun compte ne correspond.
    *
@@ -569,6 +587,19 @@ export interface AuthDependencies {
    * la lecture que si un module activé déclare une protection `role`.
    */
   readonly platformRolesOf: (userId: string) => Promise<readonly string[]>
+  /**
+   * **Les emprunts que le socle ferme hors du back-office** (s67), remis à qui
+   * tient leur journal.
+   *
+   * Le socle ne journalise pas les emprunts — c'est le module `admin` qui tient
+   * ce journal, et `auth` ne peut pas l'importer (il le `requires`, pas
+   * l'inverse). Il reçoit donc la fonction, comme `platformRolesOf`. Module
+   * `admin` coupé : le point de composition rend une fonction qui ne fait rien
+   * — il n'existe alors aucun emprunt à fermer.
+   */
+  readonly impersonationsEnded: (
+    ended: readonly { readonly userId: string; readonly impersonatedBy: string }[],
+  ) => Promise<void>
   /**
    * **Le port d'émission de tâches** (s33) : le seul chemin par lequel
    * l'effacement quitte la requête.

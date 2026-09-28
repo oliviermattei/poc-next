@@ -57,15 +57,32 @@ export interface AccountBan {
 }
 
 /**
+ * Les deux états qui ferment un compte, et rien de plus.
+ *
+ * `deletionRequested` (s67, ADR 074) : la purge du compte est en file. Il n'est
+ * **pas** un bannissement — un débannissement ne le lève pas —, mais il ferme
+ * la porte de la même façon, au même endroit.
+ */
+export interface SignInState {
+  readonly banned: boolean
+  readonly deletionRequested: boolean
+}
+
+/**
  * **La décision de laisser entrer.**
  *
- * Un compte banni n'ouvre pas de session — sur aucun chemin : mot de passe,
- * magic link, fournisseur externe ou passkey. Elle est ici, et non dans le
- * gestionnaire de la route de connexion, pour cette raison exacte : une règle
- * écrite à la porte d'un seul parcours laisse les autres ouvertes.
+ * Un compte banni, ou dont la suppression est demandée, n'ouvre pas de session
+ * — sur aucun chemin : mot de passe, magic link, fournisseur externe, passkey
+ * ou second facteur. Elle est ici, et non dans le gestionnaire de la route de
+ * connexion, pour cette raison exacte : une règle écrite à la porte d'un seul
+ * parcours laisse les autres ouvertes.
+ *
+ * **Un seul prédicat pour les deux états** (ADR 074) : le crochet de la
+ * bibliothèque et le décompte des superadmins le consomment ; l'écrivain de
+ * session en porte la traduction SQL, tenue par `tests/lint-rules.test.ts`.
  */
-export function refusesSignIn(account: { readonly banned: boolean }): boolean {
-  return account.banned
+export function refusesSignIn(account: SignInState): boolean {
+  return account.banned || account.deletionRequested
 }
 
 /**
@@ -77,18 +94,20 @@ export function refusesSignIn(account: { readonly banned: boolean }): boolean {
  * qu'un superadmin banni y comptait encore — et deux séquences de gestes tous
  * permis laissaient la plateforme sans administrateur utilisable.
  *
- * **Un identifiant absent de la lecture est bloqué**, comme `isBanned` rend
- * `true` pour un compte introuvable : c'est le sens fermé. Compter un compte
+ * **Un identifiant absent de la lecture est bloqué**, comme l'écrivain de
+ * session refuse un compte introuvable : c'est le sens fermé. Compter un compte
  * qu'on n'a pas lu comme « capable d'entrer » ferait décider une garde sur une
  * absence.
  *
  * Elle réutilise `refusesSignIn` plutôt que de relire `banned` : une seconde
  * lecture de la même colonne serait une seconde règle, et la première à
- * diverger déciderait pour l'autre.
+ * diverger déciderait pour l'autre. C'est aussi ce qui fait qu'un superadmin
+ * dont la suppression est demandée (s67) ne compte plus parmi ceux qui peuvent
+ * entrer — sans une ligne de plus ici.
  */
 export function signInBlockedAmong(input: {
   readonly requested: readonly string[]
-  readonly accounts: readonly { readonly id: string; readonly banned: boolean }[]
+  readonly accounts: readonly ({ readonly id: string } & SignInState)[]
 }): readonly string[] {
   const known = new Map(input.accounts.map((account) => [account.id, account]))
 

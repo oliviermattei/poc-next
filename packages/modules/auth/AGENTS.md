@@ -585,6 +585,46 @@ délégation. La conséquence est écrite dans
 `packages/modules/admin/AGENTS.md` : le rôle de superadmin **vaut** le second
 facteur de tous les comptes du produit.
 
+## Le compte dont la suppression est demandée (s67, ADR 074)
+
+Entre la demande (202) et le passage de la purge — une tâche de fond, non bornée
+sous Inngest —, la ligne `auth_user` vit. Elle porte alors
+`deletion_requested_at`, posée par `requestAccountDeletion` **après** une mise
+en file réussie et **avant** la révocation des sessions ; une émission refusée
+ne pose rien et ne ferme rien.
+
+Ce n'est **pas** un bannissement — un débannissement ne rouvre pas un compte dont
+la personne a demandé l'effacement —, mais il ferme la porte **au même endroit
+et par la même règle** :
+
+- **un seul prédicat**, `refusesSignIn({ banned, deletionRequested })`
+  (`domain/ban.ts`), lu par `AuthUserRepository.isSignInBlocked` dans le crochet
+  `databaseHooks.session.create.before`, et par `signInBlockedAmong` pour le
+  décompte des superadmins capables d'entrer ;
+- **sa traduction SQL dans l'écrivain unique de session** :
+  `insert … select … from auth_user where banned = false and
+  deletion_requested_at is null`. `tests/lint-rules.test.ts` exige les deux
+  motifs — `eq(authUser.banned, false)` **et**
+  `isNull(authUser.deletionRequestedAt)`.
+
+**Le refus est celui d'un compte inconnu**, jamais un message propre
+(`docs/security.md` §2 et §7). Mesuré dans `tests/auth.test.ts` (« compte en
+attente de suppression ») pour le mot de passe — message **et** temps —, le
+magic link, la passkey et le second facteur ; pour le fournisseur externe, où
+un compte inconnu se **crée**, la référence est le compte banni. Le magic link
+demandait une correction : la bibliothèque rendait au compte fermé la levée
+brute du crochet (401 JSON) et à l'adresse inconnue une redirection
+`?error=new_user_signup_disabled`. La route ramène désormais **tout** lien
+refusé à une seule redirection (`magicLinkRefusal`).
+
+La purge ne connaît pas la marque : elle efface le compte comme avant, et son
+rejeu ne trouve plus rien. Les emprunts que la demande ferme sont **rendus**
+(`AccountDeletionOutcome.endedImpersonations`) et remis par la route à
+`impersonationsEnded`, que le point de composition branche sur le module
+`admin` ; l'événement `auth.account_deletion_requested` porte
+`sessionsRevoked`. Aucune commande n'annule une demande : ce serait une
+fonctionnalité, hors périmètre.
+
 ## Ce que la bibliothèque fait déjà bien, et qu'il ne faut pas réécrire
 
 Mesuré dans le paquet **installé** (1.7.2), sur les quatre points regardés :

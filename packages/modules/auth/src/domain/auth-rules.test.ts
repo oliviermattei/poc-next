@@ -35,7 +35,7 @@ import {
   twoFactorRefusal,
   TWO_FACTOR_REFUSAL_STATUS,
 } from './two-factor'
-import { signInBlockedAmong } from './ban'
+import { refusesSignIn, signInBlockedAmong } from './ban'
 import {
   describePasskeys,
   parsePasskeyName,
@@ -158,6 +158,26 @@ describe('destination de retour après authentification', () => {
 
   it('refuse un chemin qui ne commence pas par une barre oblique', () => {
     expect(safeRedirectPath('account', '/')).toBe('/')
+  })
+
+  it('refuse un segment point qui, résolu, laisse une destination protocole-relative (revue s67, C1)', () => {
+    // Le navigateur — et `new URL` — résolvent `.`, `..` et leurs formes
+    // encodées : `/.//evil.test` devient `//evil.test` une fois servi.
+    for (const hostile of [
+      '/.//evil.test',
+      '/..//evil.test',
+      '/%2e//evil.test',
+      '/a/..//evil.test',
+      '/%2E%2E//evil.test',
+    ]) {
+      expect(safeRedirectPath(hostile, '/app'), hostile).toBe('/app')
+    }
+  })
+
+  it('rend la forme résolue, que l’appelant n’a plus à re-sérialiser', () => {
+    expect(safeRedirectPath('/app', '/')).toBe('/app')
+    expect(safeRedirectPath('/invitations/accept?token=x', '/')).toBe('/invitations/accept?token=x')
+    expect(safeRedirectPath('/a/../b', '/')).toBe('/b')
   })
 
   it('refuse une destination absente', () => {
@@ -802,29 +822,60 @@ describe('liste des passkeys', () => {
  * La règle est ici, dans le socle, parce que « banni » y vit (ADR 058) : le
  * module `admin` la reçoit par son port et ne lit jamais `auth_user`.
  */
+/**
+ * **La décision de laisser entrer** (s37a, étendue par s67 — ADR 074).
+ *
+ * Deux états ferment un compte : le bannissement et la suppression demandée.
+ * Les quatre combinaisons sont énumérées **ici, une fois** : les appelants —
+ * le crochet de la bibliothèque, l'écrivain de session, le décompte des
+ * superadmins — n'en portent chacun qu'un témoin.
+ */
+describe('la décision de laisser entrer', () => {
+  it.each([
+    { banned: false, deletionRequested: false, refused: false },
+    { banned: true, deletionRequested: false, refused: true },
+    { banned: false, deletionRequested: true, refused: true },
+    { banned: true, deletionRequested: true, refused: true },
+  ])(
+    'banni $banned, suppression demandée $deletionRequested → refusé $refused',
+    ({ banned, deletionRequested, refused }) => {
+      expect(refusesSignIn({ banned, deletionRequested })).toBe(refused)
+    },
+  )
+})
+
 describe('comptes incapables d’ouvrir une session', () => {
-  it('nomme les comptes bannis, et eux seuls', () => {
+  it('nomme les comptes fermés — bannis ou en attente de suppression —, et eux seuls', () => {
     expect(
       signInBlockedAmong({
-        requested: ['a', 'b', 'c'],
+        requested: ['a', 'b', 'c', 'd'],
         accounts: [
-          { id: 'a', banned: false },
-          { id: 'b', banned: true },
-          { id: 'c', banned: false },
+          { id: 'a', banned: false, deletionRequested: false },
+          { id: 'b', banned: true, deletionRequested: false },
+          { id: 'c', banned: false, deletionRequested: false },
+          { id: 'd', banned: false, deletionRequested: true },
         ],
       }),
-    ).toEqual(['b'])
+    ).toEqual(['b', 'd'])
   })
 
   it('compte un identifiant introuvable comme bloqué : c’est le sens fermé', () => {
     // Un compte que la lecture ne rend pas ne prouve rien de sa capacité à
     // entrer. Le tenir pour capable ferait décider une garde sur une absence.
     expect(
-      signInBlockedAmong({ requested: ['a', 'disparu'], accounts: [{ id: 'a', banned: false }] }),
+      signInBlockedAmong({
+        requested: ['a', 'disparu'],
+        accounts: [{ id: 'a', banned: false, deletionRequested: false }],
+      }),
     ).toEqual(['disparu'])
   })
 
   it('ne nomme personne quand la demande est vide', () => {
-    expect(signInBlockedAmong({ requested: [], accounts: [{ id: 'a', banned: true }] })).toEqual([])
+    expect(
+      signInBlockedAmong({
+        requested: [],
+        accounts: [{ id: 'a', banned: true, deletionRequested: false }],
+      }),
+    ).toEqual([])
   })
 })

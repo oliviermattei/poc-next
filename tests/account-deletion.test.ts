@@ -213,7 +213,7 @@ let adminService: AdminService
  * enregistre sans exécuter : c'est le régime d'un ordonnanceur réel, où la
  * requête rend la main avant que quoi que ce soit ne soit effacé.
  */
-let jobsRegime: 'synchronous' | 'recording' = 'synchronous'
+let jobsRegime: 'synchronous' | 'recording' | 'refusing' = 'synchronous'
 
 /**
  * **L'état du compte au moment où la confirmation part** (critère 8).
@@ -426,10 +426,17 @@ beforeAll(async () => {
     releaseOrganizations: async (userId) =>
       await organizationsService.useCases.releaseMemberships(userId),
     jobs: {
-      emit: async (emission) =>
-        jobsRegime === 'recording'
+      emit: async (emission) => {
+        if (jobsRegime === 'refusing') {
+          // **Le fournisseur refuse la mise en file** (s67) : rien n'est parti,
+          // donc rien ne doit être marqué ni fermé.
+          return { ok: false, error: { code: 'provider_unavailable', message: 'file indisponible' } }
+        }
+
+        return jobsRegime === 'recording'
           ? await recordingJobs.jobs.emit(emission)
-          : await synchronousJobs.emit(emission),
+          : await synchronousJobs.emit(emission)
+      },
     },
   })
 })
@@ -1335,6 +1342,96 @@ describe.runIf(databaseReachable)('les sessions, après la suppression', () => {
     for (const cookie of cookies) {
       expect((await servedWithCookie(cookie)).status).toBe(401)
     }
+  }, 60_000)
+})
+
+/**
+ * **La marque « suppression demandée »** (s67, ADR 074).
+ *
+ * La demande et l'effacement sont séparés par une file : entre les deux, la
+ * ligne `auth_user` vit. La marque est ce qui la ferme — posée **après** une
+ * mise en file réussie, jamais avant, et jamais quand l'émission est refusée.
+ */
+describe.runIf(databaseReachable)('la marque de la suppression demandée', () => {
+  const deletionRequestedAt = async (userId: string): Promise<string | null | undefined> => {
+    const read = await connection.db.execute<{ at: string | null }>(
+      sql`select deletion_requested_at as at from auth_user where id = ${userId}`,
+    )
+
+    return read.rows[0]?.at
+  }
+
+  it('est posée avec la mise en file, et le compte attend sa purge', async () => {
+    const { session, email } = await anAccount()
+
+    jobsRegime = 'recording'
+
+    expect(await deletionRequestedAt(session.userId)).toBeNull()
+    expect((await callAuth('deleteAccount', { confirmation: email }, session)).status).toBe(202)
+
+    // La purge n'a pas eu lieu — la ligne est là —, et elle porte la marque.
+    expect(recordingJobs.emissions).toHaveLength(1)
+    expect(await deletionRequestedAt(session.userId)).toEqual(expect.any(String))
+  })
+
+  it('n’est pas posée quand l’émission est refusée, et aucune session ne ferme', async () => {
+    const email = `s34-${randomUUID()}@example.test`
+
+    expect((await callAuth('signUp', { email, password: PASSWORD, name: 'Compte s34' })).status).toBe(200)
+    await connection.db.execute(
+      sql`update auth_user set email_verified = true where email = ${email}`,
+    )
+
+    const cookie =
+      (await callAuth('signIn', { email, password: PASSWORD })).headers.get('set-cookie') ?? ''
+    const userId = (await auth.useCases.identifyAccount(email))?.userId ?? ''
+
+    expect(cookie).not.toBe('')
+
+    jobsRegime = 'refusing'
+
+    expect(
+      (await callAuth('deleteAccount', { confirmation: email }, { userId, roles: [] })).status,
+    ).toBe(503)
+
+    // Rien n'a été mis en file : rien n'est marqué, rien n'est fermé (constat
+    // m7 de la revue de s61), et la personne se reconnecte comme avant.
+    expect(await deletionRequestedAt(userId)).toBeNull()
+    expect((await servedWithCookie(cookie)).status).toBe(200)
+    expect((await callAuth('signIn', { email, password: PASSWORD })).status).toBe(200)
+  }, 60_000)
+
+  /**
+   * **La purge ne change pas pour un compte marqué** (critère 4) : la marque
+   * ferme la porte, elle n'est pas un état que la purge aurait à connaître.
+   * Rejouée, la purge ne trouve plus le compte et n'envoie rien de plus —
+   * l'idempotence par absence, mesurée par deux exécutions et un seul email.
+   */
+  it('laisse la purge effacer le compte marqué, et son rejeu n’a aucun effet de plus', async () => {
+    const { session, email } = await anAccount()
+
+    jobsRegime = 'recording'
+
+    expect((await callAuth('deleteAccount', { confirmation: email }, session)).status).toBe(202)
+    expect(await deletionRequestedAt(session.userId)).toEqual(expect.any(String))
+
+    const emission = recordingJobs.emissions[0] ?? { job: '', key: '', data: {} }
+
+    for (const run of [1, 2]) {
+      const ran = await dispatchModuleJob({
+        registry,
+        emission,
+        log: () => {},
+        retry: { maxAttempts: 1, baseMs: 0, maxMs: 0 },
+        now: () => new Date(),
+      })
+
+      await settled()
+      expect(ran, `exécution ${run}`).toMatchObject({ ok: true, ran: true })
+    }
+
+    expect(await auth.useCases.viewAccount(session.userId)).toBeNull()
+    expect(deletionEmails().map((sent) => sent.to)).toEqual([email])
   }, 60_000)
 })
 
