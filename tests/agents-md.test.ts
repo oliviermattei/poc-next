@@ -229,12 +229,18 @@ describe('le squelette de `ks scaffold` (s41)', () => {
 })
 
 /**
- * `AGENTS.md` racine : le fichier que lit un agent avant de toucher au dépôt.
- * Trois choses doivent y être, faute de quoi il improvise — l'architecture en
- * couches, les règles de module, et les commandes qui vérifient le tout.
+ * Les règles du projet que lit un agent avant de toucher au dépôt. Trois choses
+ * doivent y être, faute de quoi il improvise — l'architecture en couches, les
+ * règles de module, et les commandes qui vérifient le tout.
+ *
+ * **Elles vivent dans `AGENTS.local.md`**, section « Project conventions », et
+ * non dans `AGENTS.md` : depuis la réinstallation de la méthode killer-saas,
+ * `AGENTS.md` appartient à la méthode et est reconstruit par `install.sh`, qui
+ * y ajoute `AGENTS.local.md`. Lire `AGENTS.md` seul faisait rougir ces cas sur
+ * un fichier que le projet n'a plus le droit d'éditer.
  */
-describe('AGENTS.md racine', () => {
-  const content = read('AGENTS.md')
+describe('Conventions du projet (AGENTS.local.md)', () => {
+  const content = read('AGENTS.local.md')
 
   it('décrit les quatre couches et leur sens de dépendance', () => {
     for (const layer of ['domain', 'application', 'infrastructure', 'presentation']) {
@@ -244,11 +250,11 @@ describe('AGENTS.md racine', () => {
 
   it('porte les sections opposables en revue', () => {
     for (const section of [
-      '## Technical conventions',
-      '## Commands',
-      '## Security baseline',
-      '## Reliability baseline',
-      '## Agent-oriented repo',
+      '### Technical conventions',
+      '### Commands',
+      '### Security baseline',
+      '### Reliability baseline',
+      '### Agent-oriented repo',
     ]) {
       expect(content).toContain(section)
     }
@@ -262,10 +268,12 @@ describe('AGENTS.md racine', () => {
       (JSON.parse(read('package.json')) as { scripts: Record<string, string> }).scripts,
     )
 
-    const commandsSection = content.slice(
-      content.indexOf('## Commands'),
-      content.indexOf('\n## ', content.indexOf('## Commands')),
-    )
+    const start = content.indexOf('### Commands')
+    // `-1` rendrait une tranche vide, et chaque attente rougirait sans dire
+    // pourquoi : la section absente est nommée par le cas précédent.
+    expect(start).toBeGreaterThanOrEqual(0)
+    const end = content.indexOf('\n### ', start + 1)
+    const commandsSection = content.slice(start, end === -1 ? undefined : end)
 
     for (const script of scripts) {
       expect(commandsSection).toContain(`pnpm ${script}`)
