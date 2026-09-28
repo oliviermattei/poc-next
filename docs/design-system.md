@@ -382,6 +382,19 @@ Jusque-là, **un fil d'étapes se compose en ligne**, et cette section fait foi 
 ### Navigation
 La barre latérale est construite depuis les modules actifs (s08). Aucune entrée n'est écrite en dur : un module désactivé n'a pas d'entrée, sans condition dans le composant.
 
+**Chaque zone a son gabarit** (s61, ADR 073) :
+
+- **Site** — un **en-tête** (`h-16`, bordure basse `border-border`, fond `bg-background`, contenu borné à `max-w-6xl`) : la marque vers `/`, les entrées de la surface `site` (accueil, blog, docs, tarifs) en `Button` `ghost` — l'entrée courante en `secondary` avec `aria-current="page"` —, le sélecteur de langue, la bascule de thème, puis le **bouton de gabarit** en `Button` `default` : « Se connecter » pour un anonyme, « Ouvrir l'application » pour un connecté. C'est la seule entrée écrite à la main, et elle appartient au gabarit comme le menu de compte à l'application. Sous `md`, les entrées passent dans un `Sheet` ; le bouton reste dans la barre. L'en-tête est rendu même sans aucune entrée `site`. Le pied de page reste rendu par chaque page.
+- **Hors zone** (authentification) — une barre minimale (`h-14`, sans bordure) : la marque, la langue, le thème ; ni navigation ni bouton. L'écran est centré sous la barre et garde son `max-w-md`.
+- **Application** — la barre latérale et la barre du haut ci-dessus ; la barre latérale ne rend que la surface `app`, et la marque mène au tableau de bord, `/app`.
+
+Les trois rendent le consentement, le bandeau d'emprunt de session et la réserve sous la bannière de la même façon (`apps/web/app/zone-frame.tsx`).
+
+**Lacunes connues** (design de s61, non comblées) :
+
+1. **Aucun composant d'en-tête de site ni de `NavigationMenu`.** L'en-tête est **composé** dans `apps/web` avec `Button` et `Sheet`. S'il gagne un second appelant — la documentation, par exemple —, il mériterait un `SiteHeader` dans `packages/ui`.
+2. **Aucune largeur de conteneur d'en-tête nommée.** Le système borne la prose (`max-w-2xl`) et les sections marketing, pas un en-tête : `max-w-6xl` est choisi pour celui du site, sans jeton.
+
 ### Responsive
 Mobile d'abord. Toute page est utilisable sous 400 px sans débordement horizontal (critère de s08). La barre latérale devient un `Sheet` sous `md`. Les tableaux passent en liste de cartes, jamais en défilement horizontal dans l'application — le défilement horizontal reste réservé aux blocs de code de la documentation.
 

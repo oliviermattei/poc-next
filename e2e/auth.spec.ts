@@ -211,10 +211,13 @@ test('la navigation montre « Mon compte » une fois connecté, jamais avant', a
 
   const navigation = page.getByRole('navigation', { name: 'Modules' })
 
+  // Avant la connexion : ni le site (s61, son en-tête ne porte que la surface
+  // `site`) ni l'écran de connexion ne mènent à « Mon compte ».
   await page.goto('/')
-  await expect(navigation.getByRole('link', { name: 'Mon compte' })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Mon compte' })).toHaveCount(0)
 
   await page.goto('/sign-in')
+  await expect(page.getByRole('link', { name: 'Mon compte' })).toHaveCount(0)
   await signIn(page, email)
   await expect(page).toHaveURL(urlOf(signedInLanding()))
 

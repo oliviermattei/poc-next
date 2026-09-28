@@ -34,6 +34,40 @@ export interface NavigationProps {
   readonly label: string
 }
 
+/**
+ * **Les entrées du site, dans son en-tête** (s61), à partir de `md`.
+ *
+ * Des `Button` plutôt que la liste de la barre latérale : l'en-tête est une
+ * rangée, et la règle visuelle est celle de la console — l'entrée courante en
+ * `secondary`, les autres en `ghost`. `aria-current` porte la distinction pour
+ * un lecteur d'écran : la couleur seule ne dit rien. Sous `md`, les mêmes
+ * entrées passent dans `MobileNavigation`, et celle-ci est masquée : jamais
+ * deux navigations du même nom en même temps.
+ */
+export function SiteNavigation({ items, label }: NavigationProps) {
+  const pathname = usePathname()
+
+  return (
+    <nav aria-label={label} className="hidden min-w-0 md:block">
+      <ul className="flex items-center gap-1">
+        {items.map((item) => {
+          const current = item.href === pathname
+
+          return (
+            <li key={item.id}>
+              <Button asChild variant={current ? 'secondary' : 'ghost'}>
+                <a href={item.href} aria-current={current ? 'page' : undefined}>
+                  {item.label}
+                </a>
+              </Button>
+            </li>
+          )
+        })}
+      </ul>
+    </nav>
+  )
+}
+
 export function DesktopNavigation({ items, label }: NavigationProps) {
   return <SidebarNav items={items} label={label} currentPath={usePathname()} />
 }

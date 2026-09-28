@@ -47,9 +47,8 @@ import { defaultLocale } from '../config/i18n'
  * ------------------------------------------------------------------------- */
 
 vi.mock('../apps/web/lib/auth', async () => {
-  const { authRoutePath, readOAuthFailureClass, safeRedirectPath } = await import(
-    '@repo/module-auth'
-  )
+  const { authRoutePath, DEFAULT_SIGNED_IN_PATH, readOAuthFailureClass, safeRedirectPath } =
+    await import('@repo/module-auth')
   const {
     FIXTURE_DATA_EXPORTS,
     FIXTURE_PASSKEYS,
@@ -60,6 +59,7 @@ vi.mock('../apps/web/lib/auth', async () => {
 
   return {
     authRoutePath,
+    DEFAULT_SIGNED_IN_PATH,
     readOAuthFailureClass,
     safeRedirectPath,
     currentViewer: () => Promise.resolve(viewerState.value),
@@ -383,6 +383,16 @@ vi.mock('next/navigation', async (importOriginal) => ({
 }))
 
 /**
+ * Le nonce de la requête, que chaque layout de zone relit (s60) : du contexte
+ * de requête, comme la session. Aucun en-tête n'est posé — un rendu hors Next
+ * n'a pas de politique de sécurité du contenu à satisfaire.
+ */
+vi.mock('next/headers', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('next/headers')>()),
+  headers: () => Promise.resolve(new Headers()),
+}))
+
+/**
  * Le plancher de marqueurs d'**un** écran rendu.
  *
  * Mesuré, pas choisi : l'écran le plus pauvre de la liste — le tableau de bord
@@ -428,6 +438,55 @@ const zoneBoundary = async (element: ReactNode): Promise<ReactNode> => {
   }
 
   return (element.type as (props: unknown) => Promise<ReactNode>)(element.props)
+}
+
+/**
+ * **Le gabarit d'un écran, dérivé de sa zone** (s61) : chaque layout de zone
+ * rend le sien, et c'est lui — pas l'`AppShell` pour tous — qui entoure l'écran
+ * au serveur. Les textes de l'en-tête du site et de la barre minimale de
+ * l'authentification passent ainsi dans le même filet que ceux de la barre
+ * latérale. La 404 racine prend le gabarit Site (`app/not-found.tsx`). La
+ * console garde l'`AppShell` ici : son layout porte une garde, et son shell a
+ * ses propres textes, rendus par le cas de chacun de ses écrans.
+ *
+ * Le layout rend un composant serveur asynchrone que `renderToStaticMarkup`
+ * ne résout pas : les niveaux asynchrones de tête sont résolus à la main.
+ */
+const resolveAsyncHead = async (element: ReactNode): Promise<ReactNode> => {
+  let current = element
+
+  while (
+    isValidElement(current) &&
+    typeof current.type === 'function' &&
+    current.type.constructor.name === 'AsyncFunction'
+  ) {
+    current = await (current.type as (props: unknown) => Promise<ReactNode>)(current.props)
+  }
+
+  return current
+}
+
+const zoneTemplateOf = async (
+  file: string,
+): Promise<(children: ReactNode) => Promise<ReactNode>> => {
+  const layoutOf = async (zone: '(site)' | '(auth)' | '(app)') => {
+    const layouts = {
+      '(site)': () => import('../apps/web/app/(site)/layout'),
+      '(auth)': () => import('../apps/web/app/(auth)/layout'),
+      '(app)': () => import('../apps/web/app/(app)/layout'),
+    }
+    const { default: Layout } = await layouts[zone]()
+
+    return async (children: ReactNode) => resolveAsyncHead(await Layout({ children }))
+  }
+
+  if (file === 'not-found.tsx' || file.startsWith('(site)/')) return layoutOf('(site)')
+  if (file.startsWith('(auth)/')) return layoutOf('(auth)')
+  if (file.startsWith('(app)/')) return layoutOf('(app)')
+
+  const { AppShell } = await import('../apps/web/app/app-shell')
+
+  return async (children: ReactNode) => AppShell({ children })
 }
 
 const pageFilesUnder = (directory: string): readonly string[] => {
@@ -727,8 +786,6 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       entitlementState,
       viewerState,
     } = await import('./fixtures/screen-viewer')
-    const { AppShell } = await import('../apps/web/app/app-shell')
-
     /**
      * Le montant tel que `backOfficeIntl` le formate (s38) — la **même**
      * expression, dans la même locale. Un formatage recopié à la main ici
@@ -1191,11 +1248,27 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         render: async () => (await import('../apps/web/app/(site)/page')).default(),
       },
       {
+        // s61 : le tableau de bord d'un connecté a quitté `/` pour `/app`. Un
+        // connecté sur `/` reçoit l'accueil marketing, comme un anonyme.
         id: 'accueil connecté',
         file: '(site)/page.tsx',
         viewer: SIGNED_IN,
-        refuses: null,
+        refuses: publicSite ? null : 'NEXT_REDIRECT',
+        technicalProps: [
+          'contactRecipient',
+          'newsletterSource',
+          'waitlistSource',
+          'type',
+          'labelKey',
+        ],
         render: async () => (await import('../apps/web/app/(site)/page')).default(),
+      },
+      {
+        id: 'tableau de bord',
+        file: '(app)/app/page.tsx',
+        viewer: SIGNED_IN,
+        refuses: null,
+        render: async () => (await import('../apps/web/app/(app)/app/page')).default(),
       },
       {
         // L'accueil marketing est servi par le même fichier que le tableau de
@@ -1846,7 +1919,10 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         file: '(auth)/sign-up/page.tsx',
         viewer: ANONYMOUS,
         refuses: null,
-        render: async () => (await import('../apps/web/app/(auth)/sign-up/page')).default(),
+        render: async () =>
+          (await import('../apps/web/app/(auth)/sign-up/page')).default({
+            searchParams: Promise.resolve({}),
+          }),
       },
       {
         id: 'mot de passe oublié',
@@ -2075,6 +2151,18 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
     let markers = 0
     const { localeRouting: routing } = await import('../apps/web/lib/locale-routing')
     const MARKERS_PER_SCREEN = markersPerScreen(routing.prefixed)
+    /**
+     * **Le plancher d'un écran de la zone Hors zone** (s61) : son gabarit n'a
+     * ni navigation ni bouton, et rend donc moins de marqueurs que la barre
+     * latérale qui entourait ces écrans jusqu'à s61. L'écart est **mesuré**, pas
+     * choisi : l'écran le plus court de la zone (`/oauth/return`) rend 17
+     * marqueurs sous ce gabarit, sélecteur de langue compris. Le plancher suit
+     * le reste de la dérivation — un de moins quand une seule langue est servie.
+     */
+    const AUTH_MARKERS_PER_SCREEN = MARKERS_PER_SCREEN - 5
+    const floorOf = (screen: { readonly file: string; readonly floor?: number }): number =>
+      screen.floor ??
+      (screen.file.startsWith('(auth)/') ? AUTH_MARKERS_PER_SCREEN : MARKERS_PER_SCREEN)
 
     let rendered = 0
     let floors = 0
@@ -2111,9 +2199,10 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       const before = markers
 
       rendered += 1
-      floors += screen.floor ?? MARKERS_PER_SCREEN
+      floors += floorOf(screen)
 
-      const tree = screen.ownDocument === true ? content : await AppShell({ children: content })
+      const tree =
+        screen.ownDocument === true ? content : await (await zoneTemplateOf(screen.file))(content)
       const html = renderToStaticMarkup(
         createElement(NextIntlClientProvider, {
           locale: defaultLocale,
@@ -2140,7 +2229,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       // Écran par écran : un rendu qui n'affiche plus rien ne peut plus se
       // cacher derrière le total des autres.
       expect(markers - before, `${screen.id} — marqueurs`).toBeGreaterThanOrEqual(
-        screen.floor ?? MARKERS_PER_SCREEN,
+        floorOf(screen),
       )
 
       failures.push(

@@ -32,7 +32,7 @@ import {
   DATA_EXPORT_DOWNLOAD_PATH,
   dataExportRequestBodySchema,
 } from '../domain/data-export'
-import { safeRedirectPath } from '../domain/redirect'
+import { DEFAULT_SIGNED_IN_PATH, safeRedirectPath } from '../domain/redirect'
 import { TWO_FACTOR_CHALLENGE_COOKIES } from '../domain/two-factor'
 import {
   TWO_FACTOR_REFUSAL_STATUS,
@@ -367,8 +367,8 @@ const twoFactorChallengeRedirect = (request: Request, response: Response): Respo
   const requested = parsed()
   const next =
     requested !== null && requested.origin === origin
-      ? safeRedirectPath(`${requested.pathname}${requested.search}`, '/')
-      : '/'
+      ? safeRedirectPath(`${requested.pathname}${requested.search}`, DEFAULT_SIGNED_IN_PATH)
+      : DEFAULT_SIGNED_IN_PATH
 
   return withCookiesOf(
     response,
@@ -643,7 +643,7 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
 
         const destination = safeRedirectPath(
           typeof body?.next === 'string' ? body.next : null,
-          '/',
+          DEFAULT_SIGNED_IN_PATH,
         )
 
         // **Le corps est reconstruit, jamais transmis.** Celui de la
@@ -894,9 +894,12 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
               // La destination de retour est filtrée avant d'atteindre la
               // bibliothèque : un paramètre non validé pilote sinon une
               // redirection (`docs/security.md` §4).
+              // Le repli est la constante du module (s61) : la page de
+              // connexion envoie toujours une destination, mais un appelant
+              // qui n'en envoie pas atterrit comme tous les autres parcours.
               callbackURL: safeRedirectPath(
                 typeof body?.callbackURL === 'string' ? body.callbackURL : null,
-                '/account',
+                DEFAULT_SIGNED_IN_PATH,
               ),
             }),
           )
@@ -1849,19 +1852,15 @@ async function actorOf(response: Response): Promise<{ userId: string } | null> {
 /**
  * La navigation du module.
  *
- * Deux entrées, deux protections : « Connexion » est publique, « Mon compte »
- * ne s'affiche que pour une session. C'est `visibleNavigation` qui décide, avec
- * le prédicat qui décide aussi du sort des routes — le composant de navigation
- * n'a aucune condition.
+ * Une entrée, « Mon compte », qui ne s'affiche que pour une session. C'est
+ * `visibleNavigation` qui décide, avec le prédicat qui décide aussi du sort des
+ * routes — le composant de navigation n'a aucune condition.
+ *
+ * **L'entrée « Connexion » n'existe plus** (s61, ADR 073) : une entrée publique
+ * reste visible d'un connecté. Le bouton du gabarit Site la remplace —
+ * « Se connecter » ou « Ouvrir l'application » selon la session.
  */
 export const authNavigation: readonly NavigationEntry[] = [
-  {
-    id: 'sign-in',
-    href: '/sign-in',
-    labelKey: 'navigation.signIn',
-    order: 1,
-    protection: { level: 'public' },
-  },
   {
     id: 'account',
     href: '/account',

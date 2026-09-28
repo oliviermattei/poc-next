@@ -15,8 +15,8 @@ import { createBlogFeedRoutes } from './presentation/feed-routes'
  * les modules activés. C'est la moitié « le lien disparaît de la navigation
  * publique » du critère 6, tenue par le mécanisme existant.
  *
- * `order: 1` la place après l'accueil du module `marketing` (`order: 0`) et
- * avant l'entrée de connexion.
+ * `order: 1` la place après l'accueil du module `marketing` (`order: 0`), dans
+ * l'en-tête du site (surface `site`, s61).
  */
 const blogNavigation: readonly NavigationEntry[] = [
   {
@@ -25,6 +25,7 @@ const blogNavigation: readonly NavigationEntry[] = [
     labelKey: 'navigation.blog',
     order: 1,
     protection: { level: 'public' },
+    surface: 'site',
   },
 ]
 

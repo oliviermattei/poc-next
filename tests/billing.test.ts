@@ -4699,21 +4699,24 @@ describe('un module de facturation non activé', () => {
  * `packages/core/src/protection.test.ts` ; ici, un seul témoin par sens.
  * -------------------------------------------------------------------------- */
 describe('l’entrée de navigation des tarifs', () => {
-  const hrefsFor = (built: typeof registry, session: ModuleSession | null): readonly string[] =>
-    visibleNavigation(built, session).map((entry) => entry.href)
+  // Les tarifs sont une entrée de l'en-tête du site (surface `site`, s61, ADR
+  // 073) ; la facturation reste dans la barre latérale de l'application.
+  const hrefsFor = (
+    built: typeof registry,
+    session: ModuleSession | null,
+    surface: 'app' | 'site' = 'app',
+  ): readonly string[] => visibleNavigation(built, session, surface).map((entry) => entry.href)
 
   it('s’affiche pour un visiteur sans session, contrairement à l’écran de facturation', () => {
-    const anonymous = hrefsFor(registry, null)
-
-    expect(anonymous).toContain(PRICING_SCREEN_PATH)
+    expect(hrefsFor(registry, null, 'site')).toContain(PRICING_SCREEN_PATH)
     // Le témoin de refus, sur le **même** module : la facturation reste
     // `authenticated`, et une entrée visible vers un écran qui redirige
     // promettrait ce qu'elle ne tient pas.
-    expect(anonymous).not.toContain(BILLING_SCREEN_PATH)
+    expect(hrefsFor(registry, null)).not.toContain(BILLING_SCREEN_PATH)
   })
 
   it('disparaît avec le module, sans condition dans aucun composant', () => {
-    expect(hrefsFor(withoutBilling, null)).not.toContain(PRICING_SCREEN_PATH)
+    expect(hrefsFor(withoutBilling, null, 'site')).not.toContain(PRICING_SCREEN_PATH)
   })
 })
 

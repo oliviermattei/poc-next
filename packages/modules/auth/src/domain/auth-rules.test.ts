@@ -142,6 +142,20 @@ describe('destination de retour après authentification', () => {
     expect(safeRedirectPath('\\\\evil.test', '/')).toBe('/')
   })
 
+  it('refuse un caractère de contrôle ou un blanc, que le navigateur retire avant de lire //', () => {
+    // `/\t/evil.test` : Chromium retire la tabulation de l'en-tête `Location`
+    // et navigue vers `//evil.test` (revue s61, C1). CR et LF font en plus
+    // lever `ERR_INVALID_CHAR` à l'écriture de l'en-tête — une 500.
+    expect(safeRedirectPath('/\t/evil.test', '/app')).toBe('/app')
+    expect(safeRedirectPath('/\n/evil.test', '/app')).toBe('/app')
+    expect(safeRedirectPath('/\r/evil.test', '/app')).toBe('/app')
+    expect(safeRedirectPath('/\u0000/evil.test', '/app')).toBe('/app')
+    expect(safeRedirectPath('/\u001f/evil.test', '/app')).toBe('/app')
+    expect(safeRedirectPath('/\u007f/evil.test', '/app')).toBe('/app')
+    expect(safeRedirectPath('/ /evil.test', '/app')).toBe('/app')
+    expect(safeRedirectPath('/ /evil.test', '/app')).toBe('/app')
+  })
+
   it('refuse un chemin qui ne commence pas par une barre oblique', () => {
     expect(safeRedirectPath('account', '/')).toBe('/')
   })

@@ -1,6 +1,7 @@
 import { MODULE_ROUTE_PREFIX } from '@repo/core'
 import { createDatabaseClient } from '@repo/db'
 import { billingWebhookEvent, PRICING_SCREEN_PATH } from '@repo/module-billing'
+import { DEFAULT_SIGNED_IN_PATH } from '@repo/module-auth'
 import { demoEnabledModule } from '@repo/module-demo-enabled'
 import { ONBOARDING_SCREEN_PATH } from '@repo/module-onboarding'
 import { expect, test, type Page } from '@playwright/test'
@@ -142,7 +143,8 @@ const ORGANIZATION = { name: 'Parcours doré', slug: 'parcours-dore' }
  * demandé directement quand il n'y a pas de parcours à suivre.
  *
  * C'est ce que fait un acheteur : il suit ce qu'on lui propose. Le passage par
- * la racine n'est pas décoratif — il mesure, **au milieu du chemin d'achat**,
+ * le tableau de bord (`/app`, s61) n'est pas décoratif — il mesure, **au milieu
+ * du chemin d'achat**,
  * que le parcours reprend à l'étape en cours (critère 4 de s40) et que la
  * précédente en est sortie.
  *
@@ -152,7 +154,7 @@ const ORGANIZATION = { name: 'Parcours doré', slug: 'parcours-dore' }
  */
 const reachFromCourse = async (page: Page, action: string, screen: string): Promise<void> => {
   if (COURSE_ON_THE_WAY) {
-    await page.goto('/')
+    await page.goto(DEFAULT_SIGNED_IN_PATH)
     await expect(page).toHaveURL(urlOf(ONBOARDING_SCREEN_PATH))
     await page.getByRole('link', { name: action }).click()
   } else {
@@ -312,7 +314,7 @@ test('un clone mène à un premier paiement, et le paiement ouvre la fonctionnal
 
   if (COURSE_ON_THE_WAY) {
     await step('fin du parcours d’intégration', async () => {
-      await page.goto('/')
+      await page.goto(DEFAULT_SIGNED_IN_PATH)
       await expect(page).toHaveURL(urlOf(ONBOARDING_SCREEN_PATH))
 
       // Ce qu'il reste est franchi comme l'écran le propose, sans nommer une
@@ -321,12 +323,13 @@ test('un clone mène à un premier paiement, et le paiement ouvre la fonctionnal
       await clearRemainingOnboardingSteps(page)
 
       // **La porte à sens unique**, mesurée dans le parcours qui vend le
-      // produit : le parcours terminé mène au tableau de bord, et la racine n'y
-      // ramène plus. L'erreur qui compte de ce côté est la boucle.
-      await expect(page).toHaveURL(urlOf('/'))
+      // produit : le parcours terminé mène au tableau de bord — `/app` depuis
+      // s61 —, qui n'y ramène plus. L'erreur qui compte de ce côté est la
+      // boucle.
+      await expect(page).toHaveURL(urlOf(DEFAULT_SIGNED_IN_PATH))
 
       await page.goto(ONBOARDING_SCREEN_PATH)
-      await expect(page).toHaveURL(urlOf('/'))
+      await expect(page).toHaveURL(urlOf(DEFAULT_SIGNED_IN_PATH))
     })
   }
 

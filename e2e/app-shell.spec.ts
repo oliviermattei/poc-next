@@ -1,5 +1,9 @@
+import { visibleNavigation } from '@repo/core'
+import { DEFAULT_SIGNED_IN_PATH } from '@repo/module-auth'
 import { expect, test } from '@playwright/test'
 
+import { marketingSite } from '../apps/web/lib/marketing'
+import { moduleRegistry } from '../apps/web/lib/module-registry'
 import {
   aSignedInAccount,
   anEmail,
@@ -9,7 +13,7 @@ import {
   signIn,
   signUp,
 } from './support/account'
-import { signInRedirectedFrom, urlOf } from './support/locale'
+import { publicPath, signInRedirectedFrom, sitePage, urlOf } from './support/locale'
 
 /**
  * Le shell applicatif, dans un vrai navigateur.
@@ -82,7 +86,17 @@ test.describe('sous 400 px', () => {
   test('aucun écran ne déborde horizontalement', async ({ page }) => {
     const email = await aSignedInAccount(page, 's08-narrow')
 
-    for (const path of ['/', '/account', '/sign-in']) {
+    // Les trois gabarits (s61) : le site et l'application connecté, puis
+    // l'authentification en anonyme — un connecté sur `/sign-in` est renvoyé.
+    for (const path of [sitePage(), DEFAULT_SIGNED_IN_PATH, '/account']) {
+      await page.goto(path)
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+      expect(await horizontalOverflow(page), `${path} déborde à ${NARROW.width} px`).toBeLessThanOrEqual(0)
+    }
+
+    await page.context().clearCookies()
+
+    for (const path of [sitePage(), '/sign-in']) {
       await page.goto(path)
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
       expect(await horizontalOverflow(page), `${path} déborde à ${NARROW.width} px`).toBeLessThanOrEqual(0)
@@ -94,7 +108,8 @@ test.describe('sous 400 px', () => {
   })
 
   test('la navigation devient un panneau, et il n’y en a qu’une', async ({ page }) => {
-    await page.goto('/')
+    await aSignedInAccount(page, 's08-panneau')
+    await page.goto(DEFAULT_SIGNED_IN_PATH)
 
     const navigation = page.getByRole('navigation', { name: 'Modules' })
 
@@ -105,7 +120,7 @@ test.describe('sous 400 px', () => {
     await page.getByRole('button', { name: 'Ouvrir la navigation' }).click()
 
     await expect(navigation).toHaveCount(1)
-    await expect(navigation.getByRole('link', { name: 'Connexion' })).toBeVisible()
+    await expect(navigation.getByRole('link', { name: 'Mon compte' })).toBeVisible()
 
     // Le bouton de fermeture porte un nom accessible **traduit** : c'est le
     // seul texte que la primitive `Sheet` affiche, et il était écrit en dur en
@@ -117,7 +132,7 @@ test.describe('sous 400 px', () => {
 test('le tableau de bord porte la navigation et le menu de compte', async ({ page }) => {
   const email = await aSignedInAccount(page, 's08-shell')
 
-  await page.goto('/')
+  await page.goto(DEFAULT_SIGNED_IN_PATH)
 
   await expect(page.getByRole('heading', { name: 'Tableau de bord' })).toBeVisible()
   await expect(
@@ -140,10 +155,11 @@ test('une session révoquée depuis un autre appareil est refusée par le serveu
   await signUp(page, email)
   await page.goto(await linkSentTo(email))
   // Ce parcours mesure la révocation de session, pas l'intégration (s40) : le
-  // parcours est refermé pour que la racine serve le tableau de bord.
+  // parcours est refermé pour que la connexion atterrisse sur le tableau de
+  // bord.
   await closeOnboardingCourse(email)
   await signIn(page, email)
-  await expect(page).toHaveURL(urlOf('/'))
+  await expect(page).toHaveURL(urlOf(DEFAULT_SIGNED_IN_PATH))
 
   // Un second navigateur : deux sessions réelles, deux cookies distincts.
   const otherContext = await browser.newContext()
@@ -151,7 +167,7 @@ test('une session révoquée depuis un autre appareil est refusée par le serveu
 
   await other.goto('/sign-in')
   await signIn(other, email)
-  await expect(other).toHaveURL(urlOf('/'))
+  await expect(other).toHaveURL(urlOf(DEFAULT_SIGNED_IN_PATH))
 
   await page.goto('/account')
 
@@ -189,14 +205,14 @@ test('changer son mot de passe depuis l’écran révoque l’autre session', as
   // Ce parcours mesure le changement de mot de passe, pas l'intégration (s40).
   await closeOnboardingCourse(email)
   await signIn(page, email)
-  await expect(page).toHaveURL(urlOf('/'))
+  await expect(page).toHaveURL(urlOf(DEFAULT_SIGNED_IN_PATH))
 
   const otherContext = await browser.newContext()
   const other = await otherContext.newPage()
 
   await other.goto('/sign-in')
   await signIn(other, email)
-  await expect(other).toHaveURL(urlOf('/'))
+  await expect(other).toHaveURL(urlOf(DEFAULT_SIGNED_IN_PATH))
 
   await page.goto('/account')
 
@@ -228,7 +244,7 @@ test('changer son nom met à jour le compte affiché', async ({ page }) => {
   await expect(page.getByRole('status')).toContainText('Nom enregistré')
 
   // Rechargé depuis le serveur, pas depuis l'état local du formulaire.
-  await page.goto('/')
+  await page.goto(DEFAULT_SIGNED_IN_PATH)
   await expect(page.getByText('Bonjour Olivier de Test')).toBeVisible()
 })
 
@@ -304,7 +320,9 @@ test.describe('les formulaires sans JavaScript', () => {
     ).toHaveAttribute('method', 'post')
 
     // Le même défaut préexiste sur l'écran de connexion de s07 : un seul
-    // correctif, deux écrans.
+    // correctif, deux écrans. Sans session : un connecté est renvoyé de
+    // `/sign-in` vers le tableau de bord (s61).
+    await context.clearCookies()
     await noScript.goto('/sign-in')
 
     await expect(noScript.getByRole('button', { name: 'Se connecter', exact: true })).toBeDisabled()
@@ -323,5 +341,171 @@ test.describe('les formulaires sans JavaScript', () => {
     ).toHaveAttribute('method', 'post')
 
     await context.close()
+  })
+})
+
+/**
+ * **Chaque zone a son gabarit** (s61, ADR 073).
+ *
+ * Ce que seul un navigateur voit : quelle barre entoure l'écran servi, ce que
+ * son bouton annonce selon la session, et où mène une ouverture de session.
+ * Les listes d'entrées sont **dérivées du registre** — surface `site` pour
+ * l'en-tête, surface `app` pour la barre latérale —, jamais recopiées : c'est
+ * ce qui fait passer le même parcours dans les deux configurations de la CI.
+ */
+test.describe('les gabarits de zone', () => {
+  const siteEntries = visibleNavigation(moduleRegistry, null, 'site')
+
+  test('le site porte son en-tête et son bouton, sans barre latérale', async ({ page }) => {
+    await page.goto(sitePage())
+
+    const header = page.getByRole('banner')
+
+    // L'en-tête est rendu **quelles que soient les entrées visibles**
+    // (critère 3) : le bouton de gabarit y est toujours.
+    await expect(header.getByRole('link', { name: 'Se connecter' })).toHaveAttribute(
+      'href',
+      publicPath('/sign-in'),
+    )
+
+    const links = page.getByRole('navigation', { name: 'Site' }).getByRole('link')
+
+    await expect(links).toHaveCount(siteEntries.length)
+
+    for (const [index, entry] of siteEntries.entries()) {
+      await expect(links.nth(index)).toHaveAttribute('href', publicPath(entry.href))
+    }
+
+    // **Aucune** barre latérale sur le site : ni sa navigation, ni sa colonne.
+    await expect(page.getByRole('navigation', { name: 'Modules' })).toHaveCount(0)
+    await expect(page.locator('[data-slot="sidebar"]')).toHaveCount(0)
+  })
+
+  test('un connecté voit le site, avec « Ouvrir l’application »', async ({ page }) => {
+    await aSignedInAccount(page, 's61-site')
+    await page.goto(sitePage())
+
+    const header = page.getByRole('banner')
+
+    await expect(header.getByRole('link', { name: 'Ouvrir l’application' })).toHaveAttribute(
+      'href',
+      publicPath(DEFAULT_SIGNED_IN_PATH),
+    )
+    await expect(header.getByRole('link', { name: 'Se connecter' })).toHaveCount(0)
+    await expect(page.locator('[data-slot="sidebar"]')).toHaveCount(0)
+
+    // `/` est le site, connecté ou non (critère 7) : jamais le tableau de bord.
+    // Site public coupé, `/` n'a rien à montrer et renvoie le connecté vers
+    // `/app` — les deux branches, selon la configuration jouée.
+    await page.goto('/')
+
+    if (marketingSite.sections.length > 0) {
+      await expect(page).toHaveURL(urlOf('/'))
+      await expect(page.getByRole('heading', { name: 'Tableau de bord' })).toHaveCount(0)
+    } else {
+      await expect(page).toHaveURL(urlOf(DEFAULT_SIGNED_IN_PATH))
+    }
+  })
+
+  test('l’authentification n’a ni barre latérale, ni en-tête du site, mais le consentement', async ({
+    page,
+  }) => {
+    await page.goto('/sign-in')
+
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+    await expect(page.locator('[data-slot="sidebar"]')).toHaveCount(0)
+    await expect(page.getByRole('navigation', { name: 'Site' })).toHaveCount(0)
+    await expect(page.getByRole('navigation', { name: 'Modules' })).toHaveCount(0)
+    // Ni le bouton du site : un visiteur qui se connecte n'a rien d'autre à
+    // faire ici que se connecter.
+    await expect(page.getByRole('banner').getByRole('link', { name: 'Se connecter' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Thème' })).toBeVisible()
+    // Le cadre commun des gabarits (`ZoneFrame`) : la bannière de consentement
+    // est là, sur un écran qui n'a plus l'`AppShell` autour de lui.
+    await expect(page.getByRole('region', { name: 'Consentement aux cookies' })).toBeVisible()
+  })
+
+  test('la barre latérale de l’application ne rend que la surface `app`', async ({ page }) => {
+    await aSignedInAccount(page, 's61-barre')
+    await page.goto(DEFAULT_SIGNED_IN_PATH)
+
+    // Le critère 10, sur l'écran : aucun lien du site dans la barre latérale.
+    // L'ensemble exact de la barre est comparé au registre dans
+    // `e2e/modules.spec.ts` ; ici, l'absence des entrées du site.
+    const rendered = await Promise.all(
+      (await page.getByRole('navigation', { name: 'Modules' }).getByRole('link').all()).map(
+        (link) => link.getAttribute('href'),
+      ),
+    )
+
+    expect(rendered.length).toBeGreaterThan(0)
+
+    for (const entry of siteEntries) {
+      expect(rendered, entry.href).not.toContain(publicPath(entry.href))
+    }
+
+    // Et l'en-tête du site n'y est pas : l'application a sa propre barre.
+    await expect(page.getByRole('navigation', { name: 'Site' })).toHaveCount(0)
+  })
+})
+
+/**
+ * **La destination d'une ouverture de session** (s61, critères 8 et 10).
+ *
+ * Le repli est la constante du module `auth` ; un `?next=` n'est honoré qu'à
+ * travers `safeRedirectPath`. Les parcours par méthode de connexion vivent dans
+ * leurs fichiers (`auth`, `oauth`, `passkeys`, `two-factor`), qui atterrissent
+ * par `signedInLanding()` ; ce fichier tient les deux écrans qui ne sont pas
+ * des méthodes.
+ */
+test.describe('l’atterrissage sur l’application', () => {
+  test('un anonyme sur /app passe par la connexion et revient sur /app', async ({ page }) => {
+    const email = anEmail('s61-retour')
+
+    await signUp(page, email)
+    await page.goto(await linkSentTo(email))
+    await closeOnboardingCourse(email)
+    await page.context().clearCookies()
+
+    await page.goto(DEFAULT_SIGNED_IN_PATH)
+    await expect(page).toHaveURL(signInRedirectedFrom(DEFAULT_SIGNED_IN_PATH))
+
+    await signIn(page, email)
+    await expect(page).toHaveURL(urlOf(DEFAULT_SIGNED_IN_PATH))
+    await expect(page.getByRole('heading', { name: 'Tableau de bord' })).toBeVisible()
+  })
+
+  test('un connecté sur /sign-in ou /sign-up part vers son next filtré, sinon vers /app', async ({
+    page,
+  }) => {
+    await aSignedInAccount(page, 's61-deja')
+
+    await page.goto('/sign-in')
+    await expect(page).toHaveURL(urlOf(DEFAULT_SIGNED_IN_PATH))
+
+    await page.goto('/sign-up')
+    await expect(page).toHaveURL(urlOf(DEFAULT_SIGNED_IN_PATH))
+
+    // Un `next` de même origine est honoré, requête comprise.
+    const invitation = '/invitations/accept?token=x'
+
+    // Les deux écrans servent chacun leur propre redirection : chacun est
+    // mesuré, un filtre contourné sur l'un seul resterait sinon vert (revue
+    // s61, M1).
+    for (const screen of ['/sign-in', '/sign-up']) {
+      await page.goto(`${screen}?next=${encodeURIComponent(invitation)}`)
+      await expect(page).toHaveURL(urlOf('/invitations/accept', '?token=x'))
+
+      // Un `next` qui sort du site retombe sur la constante — y compris déguisé
+      // par un caractère de contrôle que le navigateur retire avant de lire
+      // `//evil.test` (revue s61, C1 : reproduit avec `i18n` coupé). CR et LF
+      // faisaient en plus lever une 500 à l'écriture de l'en-tête `Location`.
+      for (const outside of ['//evil.test', '/\t/evil.test', '/\n/evil.test', '/\r/evil.test']) {
+        const response = await page.goto(`${screen}?next=${encodeURIComponent(outside)}`)
+
+        expect(response?.status(), `${screen} ${JSON.stringify(outside)}`).toBeLessThan(500)
+        await expect(page).toHaveURL(urlOf(DEFAULT_SIGNED_IN_PATH))
+      }
+    }
   })
 })

@@ -1,4 +1,5 @@
 import { createHmac, randomUUID } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { buildRegistry, MODULE_ROUTE_PREFIX } from '@repo/core'
@@ -17,6 +18,7 @@ import {
   authSchema,
   configureAuth,
   createDrizzleVerificationTokenRepository,
+  DEFAULT_SIGNED_IN_PATH,
   resetAuthService,
   type AuthService,
   type ConfigureAuthOptions,
@@ -627,6 +629,21 @@ describe.skipIf(!databaseReachable)('connexion, magic link et réinitialisation'
     const second = await call(link)
 
     expect(sessionCookie(second)).toBeNull()
+  }, 30_000)
+
+  it('ramène le magic link sur le tableau de bord quand aucune destination n’est demandée', async () => {
+    // s61 (critère 9) : le repli est la constante du module, `/app` — plus
+    // `/account`, et jamais `/` qui est le site.
+    const { email } = await aVerifiedAccount()
+
+    await call('/sign-in/magic-link', { body: { email } })
+
+    const back = await call(pathOf(lastLink('magic-link')))
+
+    expect(sessionCookie(back)).not.toBeNull()
+    expect(new URL(back.headers.get('location') ?? '', 'http://localhost').pathname).toBe(
+      DEFAULT_SIGNED_IN_PATH,
+    )
   }, 30_000)
 
   it('périme le lien précédent quand un nouveau magic link est demandé', async () => {
@@ -1647,6 +1664,17 @@ describe.skipIf(!databaseReachable)('connexion par un fournisseur externe', () =
     expect(destination.startsWith('/')).toBe(true)
   }, 30_000)
 
+  it('ramène sur le tableau de bord quand aucune destination n’est demandée', async () => {
+    // s61 (critère 9) : le départ du parcours sans `next` porte la constante
+    // du module jusqu'à l'écran de rebond.
+    const email = anOAuthEmail()
+    const { back } = await signInWith({ email, emailVerified: true })
+
+    expect(back.headers.get('location')).toContain(
+      `next=${encodeURIComponent(DEFAULT_SIGNED_IN_PATH)}`,
+    )
+  }, 30_000)
+
   it('respecte une destination interne demandée', async () => {
     const email = anOAuthEmail()
     const { back } = await signInWith({ email, emailVerified: true }, { next: '/account' })
@@ -2463,6 +2491,12 @@ describe.skipIf(!databaseReachable)('second facteur — connexion', () => {
     expect(await openedSession(link)).toBeNull()
     expect(link.status).toBe(302)
     expect(link.headers.get('location')).toContain('/two-factor')
+    // s61 (critère 9) : sans destination demandée, le défi reporte la
+    // constante du module — le second facteur n'est pas une escale qui ramène
+    // sur le site.
+    expect(link.headers.get('location')).toContain(
+      `next=${encodeURIComponent(DEFAULT_SIGNED_IN_PATH)}`,
+    )
     expect(logs.map((record) => record.event)).toEqual(['auth.two_factor_challenged'])
     expect(logs[0]?.actor).toBe(enrolled.userId)
 
@@ -3561,4 +3595,53 @@ describe.skipIf(!databaseReachable)('passkeys — la purge du compte', () => {
     expect(refused.status).toBe(401)
     expect(await openedSession(refused)).toBeNull()
   }, 120_000)
+})
+
+/**
+ * **Aucun parcours de connexion ne retombe ailleurs que sur `/app`** (s61,
+ * critère 9, ADR 073).
+ *
+ * Le repli de `safeRedirectPath` était écrit huit fois en littéral — sept
+ * `'/'`, un `'/account'` — et la fin du parcours d'intégration menait à `/`.
+ * Un seul oublié envoie ce parcours sur le **site**, et aucun test de rendu ne
+ * le voit : l'écran d'arrivée existe, il n'est simplement pas le bon. Les cas
+ * de route ci-dessus tiennent trois départs (magic link, OAuth, second
+ * facteur) ; celui-ci tient **chaque** point de repli des fichiers balayés.
+ *
+ * **Ce qui est balayé, et rien d'autre** : les cinq fichiers où la research de
+ * s61 a trouvé un repli. Un sixième fichier qui écrirait un repli en littéral
+ * n'est pas vu ici — c'est l'e2e par méthode de connexion qui le rattrape.
+ */
+describe('la destination par défaut, dans les fichiers qui la replient', () => {
+  const FILES = [
+    'packages/modules/auth/src/presentation/auth-routes.ts',
+    'apps/web/app/(auth)/sign-in/page.tsx',
+    'apps/web/app/(auth)/two-factor/page.tsx',
+    'apps/web/app/(auth)/oauth/return/page.tsx',
+    'apps/web/app/(app)/onboarding/page.tsx',
+  ] as const
+
+  /** Un repli en littéral : `safeRedirectPath(…, '/…')`, sur une ou plusieurs lignes. */
+  const LITERAL_FALLBACK = /safeRedirectPath\([^()]*(?:\([^()]*\)[^()]*)*,\s*'\/[^']*'\s*,?\s*\)/g
+
+  it('ne replie jamais sur un chemin écrit en dur, seulement sur la constante', () => {
+    for (const file of FILES) {
+      const source = readFileSync(`${REPO_ROOT}${file}`, 'utf8')
+
+      expect(source.match(LITERAL_FALLBACK) ?? [], file).toEqual([])
+      // La branche « destination illisible » du défi de second facteur, et la
+      // fin du parcours d'intégration : deux sorties qui n'appellent pas
+      // `safeRedirectPath`, et que le motif ci-dessus ne verrait pas.
+      expect(source.match(/:\s*'\/'\s*$/gm) ?? [], file).toEqual([])
+      expect(source.match(/redirect\(path\('\/'\)\)/g) ?? [], file).toEqual([])
+    }
+  })
+
+  it('porte la constante dans chacun de ces fichiers', () => {
+    // L'anti-vacuité : un fichier qui ne replierait plus du tout rendrait le
+    // cas du dessus vrai sans rien prouver.
+    for (const file of FILES) {
+      expect(readFileSync(`${REPO_ROOT}${file}`, 'utf8'), file).toContain('DEFAULT_SIGNED_IN_PATH')
+    }
+  })
 })

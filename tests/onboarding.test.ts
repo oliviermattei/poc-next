@@ -546,12 +546,13 @@ describe('l’écran du parcours, avant tout rendu', () => {
 })
 
 /* ------------------------------------------------------------------------- *
- * La porte : la racine mène au parcours, et cesse d'y mener.
+ * La porte : le tableau de bord mène au parcours, et cesse d'y mener.
  *
- * Mesurée **sur l'écran de la racine**, parce que c'est là que le défaut
- * vivrait : la redirection retirée, `courseOf` resterait juste et personne ne
- * verrait jamais le parcours. C'est aussi là que la règle de destination
- * s'applique — une constante du code, jamais un paramètre d'URL.
+ * Mesurée **sur l'écran du tableau de bord** — `/app` depuis s61, où atterrit
+ * chaque ouverture de session ; `/` sert le site —, parce que c'est là que le
+ * défaut vivrait : la redirection retirée, `courseOf` resterait juste et
+ * personne ne verrait jamais le parcours. C'est aussi là que la règle de
+ * destination s'applique — une constante du code, jamais un paramètre d'URL.
  * ------------------------------------------------------------------------- */
 
 /** Le parcours que voit la racine pendant ce rendu. Une **lecture**, doublée. */
@@ -587,7 +588,7 @@ const renderRoot = async (): Promise<{
   })
 
   try {
-    const HomePage = (await import('../apps/web/app/(site)/page')).default
+    const HomePage = (await import('../apps/web/app/(app)/app/page')).default
 
     return { html: renderToStaticMarkup(await HomePage()), digest: null }
   } catch (error) {
@@ -606,7 +607,7 @@ const renderRoot = async (): Promise<{
   }
 }
 
-describe('la racine, pour un compte connecté', () => {
+describe('le tableau de bord, pour un compte connecté', () => {
   it('mène au parcours tant qu’il reste à faire', async () => {
     pendingState.value = true
 

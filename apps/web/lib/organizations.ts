@@ -194,6 +194,12 @@ const ABSENT_ORGANIZATIONS: OrganizationsFeature = {
 const APPLICATION_SEGMENTS = [
   'account',
   'api',
+  // Le tableau de bord de l'application (s61, `app/(app)/app/page.tsx`) : la
+  // destination par défaut de chaque ouverture de session. Une organisation qui
+  // s'appellerait `app` masquerait l'écran où tout le monde atterrit. Aucune
+  // entrée de navigation ne le porte — la marque de la barre latérale et le
+  // bouton du site y mènent —, donc rien ne le dérive du registre.
+  'app',
   // L'écran de facturation (s19) : un segment que l'application sert, donc un
   // identifiant qu'aucune organisation ne peut prendre. Il est écrit ici en
   // plus d'être dérivé de la navigation du registre, parce que le fichier

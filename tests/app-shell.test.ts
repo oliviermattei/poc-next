@@ -1,4 +1,9 @@
-import { buildRegistry, singleLocaleRouting } from '@repo/core'
+import {
+  buildRegistry,
+  navigationSurfaceOf,
+  singleLocaleRouting,
+  visibleNavigation,
+} from '@repo/core'
 import { authModule } from '@repo/module-auth'
 import { demoEnabledModule } from '@repo/module-demo-enabled'
 import { i18nModule, localePrefixRouting } from '@repo/module-i18n'
@@ -77,7 +82,6 @@ describe('navigation du shell', () => {
     const anonymous = shellNavigation(registryOf(['auth']), null, intlFor('fr', undefined, ['auth']))
 
     expect(anonymous.map((item) => item.href)).not.toContain('/account')
-    expect(anonymous.map((item) => item.href)).toContain('/sign-in')
   })
 
   it('perd l’entrée d’un module désactivé, sans condition dans le composant', () => {
@@ -97,6 +101,62 @@ describe('navigation du shell', () => {
     // désactivée — rien du tout, ce qui est plus fort.
     for (const item of disabled) {
       expect(item.id.startsWith('demo-enabled:'), item.id).toBe(false)
+    }
+  })
+})
+
+/**
+ * **Le site a sa surface, l'application la sienne** (s61, ADR 073).
+ *
+ * Les quatre entrées du site sont déclarées `surface: 'site'` par leurs
+ * modules ; oublier la déclaration sur l'une d'elles la ferait retomber dans la
+ * barre latérale (défaut `app`), sans erreur à l'écran. L'entrée de connexion
+ * n'existe plus : le bouton du gabarit la remplace.
+ *
+ * Le premier cas lit **l'annuaire** (`availableModules`), pas le registre : il
+ * tient la déclaration quelle que soit la configuration jouée — le profil
+ * minimal et la branche `socle` coupent trois de ces quatre modules. Le second
+ * lit le registre en vigueur, et vaut dans toute configuration.
+ */
+describe('les surfaces du site et de l’application', () => {
+  const siteIds = ['marketing:home', 'blog:index', 'docs:index', 'billing:pricing']
+
+  it('déclare exactement l’accueil, le blog, les docs et les tarifs dans la surface `site`', async () => {
+    const { availableModules } = await import('../config/features')
+    const declared = availableModules.flatMap((module) =>
+      module.navigation
+        .filter((entry) => navigationSurfaceOf(entry) === 'site')
+        .map((entry) => `${module.id}:${entry.id}`),
+    )
+
+    expect([...declared].sort()).toEqual([...siteIds].sort())
+  })
+
+  it('rend dans la surface `site` les entrées du site des seuls modules activés', async () => {
+    const { moduleRegistry } = await import('../apps/web/lib/module-registry')
+    const { enabledModules } = await import('../config/features')
+    const expected = siteIds.filter((id) =>
+      (enabledModules as readonly string[]).includes(id.split(':')[0] ?? ''),
+    )
+
+    for (const viewer of [null, aSession]) {
+      expect(
+        visibleNavigation(moduleRegistry, viewer, 'site')
+          .map((entry) => `${entry.moduleId}:${entry.id}`)
+          .sort(),
+      ).toEqual([...expected].sort())
+    }
+  })
+
+  it('ne laisse aucun lien du site, ni la connexion, dans la barre latérale', async () => {
+    const { moduleRegistry } = await import('../apps/web/lib/module-registry')
+
+    for (const viewer of [null, aSession]) {
+      const app = visibleNavigation(moduleRegistry, viewer).map((entry) => `${entry.moduleId}:${entry.id}`)
+
+      // L'anti-vacuité : la barre latérale d'un connecté porte bien des entrées.
+      if (viewer !== null) expect(app).not.toEqual([])
+      expect(app.filter((id) => siteIds.includes(id) || id === 'auth:sign-in')).toEqual([])
     }
   })
 })

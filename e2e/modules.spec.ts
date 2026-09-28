@@ -3,7 +3,10 @@ import { expect, test } from '@playwright/test'
 
 import { moduleRegistry } from '../apps/web/lib/module-registry'
 import { availableModules } from '../config/features'
-import { publicPath } from './support/locale'
+import { DEFAULT_SIGNED_IN_PATH } from '@repo/module-auth'
+
+import { aSignedInAccount } from './support/account'
+import { publicPath, sitePage } from './support/locale'
 
 /**
  * Le registre, vu depuis un serveur réellement démarré.
@@ -93,11 +96,16 @@ test('une route protégée refuse l’appel anonyme sans atteindre son gestionna
   }
 })
 
+/**
+ * **Chaque navigation rend exactement sa surface** (s61, critère 10) : l'en-tête
+ * du site la surface `site`, la barre latérale de l'application la surface
+ * `app`. Les deux listes sont dérivées du registre ; aucune n'est recopiée.
+ */
 test('la navigation rendue est exactement celle que le registre autorise', async ({ page }) => {
-  await page.goto('/')
+  await page.goto(sitePage())
 
-  const links = page.getByRole('navigation', { name: 'Modules' }).getByRole('link')
-  const expected = visibleNavigation(moduleRegistry, null)
+  const links = page.getByRole('navigation', { name: 'Site' }).getByRole('link')
+  const expected = visibleNavigation(moduleRegistry, null, 'site')
 
   await expect(links).toHaveCount(expected.length)
 
@@ -121,5 +129,24 @@ test('la navigation rendue est exactement celle que le registre autorise', async
 
   for (const entry of hidden) {
     expect(rendered, entry.id).not.toContain(publicPath(entry.href))
+  }
+})
+
+test('la barre latérale rend exactement la surface `app` d’un compte connecté', async ({
+  page,
+}) => {
+  await aSignedInAccount(page, 's61-surface')
+  await page.goto(DEFAULT_SIGNED_IN_PATH)
+
+  const links = page.getByRole('navigation', { name: 'Modules' }).getByRole('link')
+  // Un compte neuf ne porte aucun rôle de plateforme : c'est la session que le
+  // serveur résout pour lui.
+  const expected = visibleNavigation(moduleRegistry, { userId: 'compte-neuf', roles: [] }, 'app')
+
+  expect(expected.length).toBeGreaterThan(0)
+  await expect(links).toHaveCount(expected.length)
+
+  for (const [index, entry] of expected.entries()) {
+    await expect(links.nth(index)).toHaveAttribute('href', publicPath(entry.href))
   }
 })

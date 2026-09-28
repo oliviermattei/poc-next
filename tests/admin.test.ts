@@ -3155,7 +3155,7 @@ describe('l’entrée du back-office se dérive du registre', () => {
       ),
     ).toBe(true)
 
-    for (const surface of ['app', 'footer'] as const) {
+    for (const surface of ['app', 'footer', 'site'] as const) {
       for (const viewer of [null, session]) {
         expect(
           visibleNavigation(moduleRegistry, viewer, surface)

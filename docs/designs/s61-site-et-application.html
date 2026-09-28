@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>s61 — Site et application (maquette de référence)</title>
+<!-- RÉFÉRENCE, PAS DU CODE. Jetons recopiés de docs/design-system.md. -->
+<style>
+  :root { --background: oklch(1 0 0); --foreground: oklch(0.145 0 0); --card: oklch(1 0 0);
+    --muted-foreground: oklch(0.54 0 0); --primary: oklch(0.205 0 0); --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.97 0 0); --accent: oklch(0.97 0 0); --border: oklch(0.922 0 0);
+    --warning-subtle-foreground: oklch(0.535 0.16 86); --radius: 0.5rem; }
+  .dark { --background: oklch(0.145 0 0); --foreground: oklch(0.985 0 0); --card: oklch(0.205 0 0);
+    --muted-foreground: oklch(0.708 0 0); --primary: oklch(0.985 0 0); --primary-foreground: oklch(0.205 0 0);
+    --secondary: oklch(0.269 0 0); --accent: oklch(0.269 0 0); --border: oklch(1 0 0 / 10%);
+    --warning-subtle-foreground: oklch(0.83 0.14 86); }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 400 0.875rem/1.5 system-ui, sans-serif; background: var(--background); color: var(--foreground); }
+  .note { max-width: 72rem; margin: 1.5rem auto 0.5rem; padding: 0 1rem; color: var(--muted-foreground); font-size: 0.75rem; }
+  .note h2 { font-size: 1.25rem; font-weight: 600; color: var(--foreground); margin: 1.5rem 0 0.25rem; }
+  .frame { max-width: 72rem; margin: 0 auto 1.5rem; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .btn { height: 2.5rem; padding: 0 1rem; border-radius: calc(var(--radius) - 2px); border: 0; font: inherit; font-weight: 500; display: inline-flex; align-items: center; background: transparent; color: inherit; }
+  .btn.ghost:hover { background: var(--accent); }
+  .btn.secondary { background: var(--secondary); }
+  .btn.primary { background: var(--primary); color: var(--primary-foreground); }
+  .btn.icon { width: 2.5rem; padding: 0; justify-content: center; }
+  .siteheader { height: 4rem; border-bottom: 1px solid var(--border); }
+  .wrap { max-width: 72rem; margin: 0 auto; height: 100%; padding: 0 1.5rem; display: flex; align-items: center; gap: 0.5rem; }
+  .brand { font-weight: 600; margin-right: 1rem; }
+  .spacer { flex: 1; }
+  .hero { padding: 4rem 1.5rem; text-align: center; }
+  .hero h1 { font-size: 3rem; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 0.5rem; }
+  .muted { color: var(--muted-foreground); }
+  .footer { border-top: 1px solid var(--border); padding: 1rem 1.5rem; font-size: 0.75rem; color: var(--muted-foreground); }
+  .authbar { height: 3.5rem; display: flex; align-items: center; padding: 0 1.5rem; gap: 0.25rem; }
+  .authmain { min-height: 22rem; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+  .card { width: 100%; max-width: 28rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); padding: 1.5rem; }
+  .field { height: 2.5rem; border: 1px solid var(--border); border-radius: calc(var(--radius) - 2px); margin: 0.25rem 0 1rem; }
+  .banner { border: 1px solid var(--border); border-radius: var(--radius); padding: 0.5rem 0.75rem; color: var(--warning-subtle-foreground); margin: 0 1.5rem 1rem; font-size: 0.75rem; }
+  .app { display: flex; min-height: 20rem; }
+  .side { width: 15rem; background: var(--card); border-right: 1px solid var(--border); padding: 1rem; }
+  .side a { display: block; height: 2.5rem; line-height: 2.5rem; padding: 0 0.75rem; border-radius: calc(var(--radius) - 2px); color: var(--muted-foreground); text-decoration: none; }
+  .side a.cur { background: var(--accent); color: var(--foreground); font-weight: 500; }
+  .top { height: 3.5rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 1.5rem; }
+  .content { padding: 1.5rem; }
+  .empty { border: 1px dashed var(--border); border-radius: var(--radius); padding: 2rem; text-align: center; margin-top: 1rem; }
+  .mobile { max-width: 24rem; }
+  .mobile .wrap { padding: 0 0.75rem; }
+</style>
+</head>
+<body>
+<button class="btn ghost" style="position:fixed;top:.75rem;right:.75rem;border:1px solid var(--border)" onclick="document.documentElement.classList.toggle('dark')">Clair / sombre</button>
+
+<div class="note"><strong>s61 — maquette de référence.</strong> Basse fidélité ; libellés indicatifs (ils passent par les messages).
+<h2>1. Gabarit Site — anonyme, bureau</h2>Entrées de surface <code>site</code> dérivées du registre ; bouton de gabarit à droite. Le pied de page reste rendu par la page.</div>
+<div class="frame">
+  <header class="siteheader"><div class="wrap">
+    <span class="brand">killer-saas</span>
+    <a class="btn secondary" aria-current="page">Accueil</a><a class="btn ghost">Blog</a><a class="btn ghost">Docs</a><a class="btn ghost">Tarifs</a>
+    <span class="spacer"></span>
+    <button class="btn ghost">FR ▾</button><button class="btn ghost icon">◐</button>
+    <a class="btn primary">Se connecter</a>
+  </div></header>
+  <section class="hero"><h1>Le titre du héros</h1><p class="muted">Sections marketing existantes, inchangées.</p></section>
+  <div class="footer">[ Pied de page existant, rendu par la page : légal · contact · changelog · cookies ]</div>
+</div>
+
+<div class="note"><h2>2. Gabarit Site — connecté, mobile</h2>Le bouton devient « Ouvrir l'application » (vers <code>/app</code>) ; les entrées passent dans un Sheet.</div>
+<div class="frame mobile">
+  <header class="siteheader"><div class="wrap">
+    <button class="btn ghost icon" aria-label="Ouvrir la navigation">☰</button><span class="brand">killer-saas</span>
+    <span class="spacer"></span><a class="btn primary">Ouvrir l'application</a>
+  </div></header>
+  <section class="hero" style="padding:2rem 1rem"><h1 style="font-size:1.875rem">Le titre du héros</h1></section>
+</div>
+
+<div class="note"><h2>3. Gabarit Hors zone — /sign-in</h2>Barre minimale (marque, langue, thème) ; aucune navigation ; écran centré, <code>max-w-md</code> gardé.</div>
+<div class="frame">
+  <div class="authbar"><span class="brand">killer-saas</span><span class="spacer"></span><button class="btn ghost">FR ▾</button><button class="btn ghost icon">◐</button></div>
+  <main class="authmain"><div class="card">
+    <h1 style="font-size:1.5rem;margin:0 0 1rem">Connexion</h1>
+    <div class="muted">Adresse email</div><div class="field"></div>
+    <div class="muted">Mot de passe</div><div class="field"></div>
+    <button class="btn primary" style="width:100%;justify-content:center">Se connecter</button>
+  </div></main>
+</div>
+
+<div class="note"><h2>4. Gabarit Application — /app, session empruntée</h2>Barre latérale réservée à la surface <code>app</code> (pages du produit construit) ; plus aucun lien du site. Bandeau d'emprunt en tête du contenu.</div>
+<div class="frame">
+  <div class="app">
+    <aside class="side"><strong>killer-saas</strong><div style="height:1rem"></div>
+      <a class="cur">[ pages du produit ]</a><a>Compte</a><a>Organisations</a><a>Facturation</a><a>Notifications</a>
+    </aside>
+    <div style="flex:1">
+      <div class="top"><span class="spacer"></span><button class="btn ghost">FR ▾</button><button class="btn ghost icon">◐</button><button class="btn ghost">AD ▾</button></div>
+      <div class="content">
+        <div class="banner" style="margin:0 0 1rem">Session empruntée — vous agissez au nom de Ada Démo. [Quitter]</div>
+        <h1 style="font-size:1.875rem;margin:0">Tableau de bord</h1><p class="muted" style="margin:.25rem 0 0">Bonjour Ada</p>
+        <div class="empty"><strong>Rien à afficher pour l'instant</strong><p class="muted">Le contenu actuel de « / » pour un connecté, déplacé tel quel.</p><a class="btn primary">Compléter mon compte</a></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="note">Compte, Organisations, Facturation, Notifications quittent la barre latérale en s62 (zone Réglages) ; s61 ne retire que les liens du site.</div>
+</body>
+</html>

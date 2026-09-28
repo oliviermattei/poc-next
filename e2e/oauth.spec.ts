@@ -1,7 +1,7 @@
-import { LOCAL_OAUTH_SLOT_PARAM } from '@repo/module-auth'
+import { DEFAULT_SIGNED_IN_PATH, LOCAL_OAUTH_SLOT_PARAM } from '@repo/module-auth'
 import { expect, test } from '@playwright/test'
 
-import { anonymousLanding, publicPath, signedInLanding, urlOf } from './support/locale'
+import { publicPath, signedInLanding, signInRedirectedFrom, urlOf } from './support/locale'
 
 /**
  * La connexion par fournisseur externe, dans un vrai navigateur (s12).
@@ -199,10 +199,9 @@ test('le fournisseur n’est proposé qu’une fois, et la page de rebond ne red
   await expect(page.getByRole('button', { name: LOCAL_PROVIDER_BUTTON })).toHaveCount(1)
 
   // La destination du rebond est **revalidée** : elle arrive dans l'URL. Le
-  // repli est la racine, et ce que la racine sert à un visiteur anonyme dépend
-  // du site public — l'attente est donc **dérivée**, comme celle de
-  // `e2e/auth.spec.ts` depuis s10. Écrite `urlOf('/')`, elle rougissait dès que
-  // le module `marketing` était coupé (mesuré en s11).
+  // repli est le tableau de bord depuis s61 (`DEFAULT_SIGNED_IN_PATH`), qui
+  // renvoie un visiteur anonyme à la connexion avec retour sur lui — jamais
+  // vers l'adresse étrangère.
   await page.goto(`${publicPath('/oauth/return')}?next=${encodeURIComponent('https://evil.test')}`)
-  await expect(page).toHaveURL(urlOf(anonymousLanding()))
+  await expect(page).toHaveURL(signInRedirectedFrom(DEFAULT_SIGNED_IN_PATH))
 })

@@ -7,7 +7,7 @@ import { marketingSite } from '../apps/web/lib/marketing'
 import { flatMessagesFor } from '../apps/web/lib/messages'
 import { publicUrls, servedPath } from '../apps/web/lib/public-urls'
 import { defaultLocale } from '../config/i18n'
-import { publicPath, urlOf } from './support/locale'
+import { publicPath, sitePage, urlOf } from './support/locale'
 
 /**
  * Le site public, dans un vrai navigateur.
@@ -338,10 +338,12 @@ test('le lien de navigation du module suit son activation', async ({ page }) => 
 
   expect(label).not.toBe('')
 
-  await page.goto(publicPath('/sign-in'))
+  // L'entrée vit dans l'en-tête du site depuis s61 (surface `site`) : elle
+  // est lue sur une page du site servie dans cette configuration.
+  await page.goto(publicPath(sitePage()))
 
   const home = page
-    .getByRole('navigation', { name: 'Modules' })
+    .getByRole('navigation', { name: 'Site' })
     .getByRole('link', { name: label })
 
   await expect(home).toHaveCount(publicSite ? 1 : 0)

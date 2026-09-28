@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
+import { DEFAULT_SIGNED_IN_PATH } from '@repo/module-auth'
 import { expect, test, type Page } from '@playwright/test'
 
 import { flatMessagesFor } from '../apps/web/lib/messages'
@@ -120,7 +121,7 @@ test('crée une organisation, la renomme, et la retrouve à la session suivante'
   await signIn(reopened, email)
   // La connexion navigue : attendre son atterrissage avant de demander l'écran
   // suivant, sans quoi la seconde navigation annule la première.
-  await expect(reopened).toHaveURL(urlOf('/'))
+  await expect(reopened).toHaveURL(urlOf(DEFAULT_SIGNED_IN_PATH))
   await reopened.goto(publicPath('/organizations'))
 
   await expect(reopened.getByRole('button', { name: 'Atelier Nord' })).toBeVisible()

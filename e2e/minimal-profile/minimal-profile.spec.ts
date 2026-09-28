@@ -1,11 +1,12 @@
 import { MODULE_ROUTE_PREFIX, navigationSurfaceOf, type NavigationSurface } from '@repo/core'
+import { DEFAULT_SIGNED_IN_PATH } from '@repo/module-auth'
 import { expect, test, type Page } from '@playwright/test'
 
 import { moduleRegistry } from '../../apps/web/lib/module-registry'
 import { availableModules } from '../../config/features'
 import { assertSweepIsNotEmpty, sweepProfile } from '../../scripts/minimal-profile-rules'
 import { aSignedInAccount } from '../support/account'
-import { publicPath, urlOf } from '../support/locale'
+import { publicPath, sitePage, urlOf } from '../support/locale'
 
 /**
  * **La recette du profil minimal, vue depuis un serveur réellement démarré**
@@ -60,9 +61,15 @@ const footerEntriesOf = <T extends { readonly surface?: NavigationSurface }>(
   entries: readonly T[],
 ): readonly T[] => entries.filter((entry) => navigationSurfaceOf(entry) === 'footer')
 
-/** Les `href` réellement rendus dans la navigation des modules. */
-const renderedNavigation = async (page: Page): Promise<string[]> => {
-  const links = page.getByRole('navigation', { name: 'Modules' }).getByRole('link')
+/**
+ * Les `href` réellement rendus dans une navigation : l'en-tête du site
+ * (`Site`, surface `site`) ou la barre latérale de l'application (`Modules`,
+ * surface `app`) — deux surfaces, deux gabarits depuis s61.
+ */
+const NAVIGATION_NAME = { site: 'Site', app: 'Modules' } as const
+
+const renderedNavigation = async (page: Page, surface: 'site' | 'app'): Promise<string[]> => {
+  const links = page.getByRole('navigation', { name: NAVIGATION_NAME[surface] }).getByRole('link')
 
   return (await Promise.all((await links.all()).map((link) => link.getAttribute('href')))).filter(
     (href): href is string => href !== null,
@@ -76,13 +83,17 @@ const renderedNavigation = async (page: Page): Promise<string[]> => {
  * Deux sens, et le second est celui que la story vise : aucune entrée rendue
  * n'est étrangère au registre, et aucune entrée d'un module coupé n'apparaît.
  */
-const expectNavigationIsDerivedFromEnabledModules = (rendered: readonly string[]): void => {
-  // La barre latérale ne rend que les entrées de la surface « app » : une
-  // entrée de pied de page y serait un lien de service au rang des
-  // fonctionnalités du produit (`packages/core/src/protection.test.ts`).
+const expectNavigationIsDerivedFromEnabledModules = (
+  rendered: readonly string[],
+  surface: 'site' | 'app',
+): void => {
+  // Chaque navigation ne rend que les entrées de sa surface : une entrée de
+  // pied de page dans la barre latérale serait un lien de service au rang des
+  // fonctionnalités du produit (`packages/core/src/protection.test.ts`), une
+  // entrée du site un lien du site dans l'application (s61).
   const declared = new Set(
     moduleRegistry.navigation
-      .filter((entry) => navigationSurfaceOf(entry) === 'app')
+      .filter((entry) => navigationSurfaceOf(entry) === surface)
       .map((entry) => publicPath(entry.href)),
   )
 
@@ -169,12 +180,13 @@ test('aucune route d’un module coupé n’est joignable (critère 3)', async (
 test('la navigation anonyme ne contient que des entrées de modules activés (critère 4)', async ({
   page,
 }) => {
-  await page.goto('/')
+  // L'en-tête du site (s61) : la navigation qu'un visiteur anonyme voit.
+  await page.goto(sitePage())
 
-  const rendered = await renderedNavigation(page)
+  const rendered = await renderedNavigation(page, 'site')
 
   expect(rendered.length).toBeGreaterThan(0)
-  expectNavigationIsDerivedFromEnabledModules(rendered)
+  expectNavigationIsDerivedFromEnabledModules(rendered, 'site')
 })
 
 /**
@@ -290,10 +302,10 @@ test('inscription et connexion de bout en bout, puis navigation connectée (crit
 }) => {
   await aSignedInAccount(page, 'profil-minimal')
 
-  await expect(page).toHaveURL(urlOf('/'))
+  await expect(page).toHaveURL(urlOf(DEFAULT_SIGNED_IN_PATH))
 
-  const rendered = await renderedNavigation(page)
+  const rendered = await renderedNavigation(page, 'app')
 
   expect(rendered.length).toBeGreaterThan(0)
-  expectNavigationIsDerivedFromEnabledModules(rendered)
+  expectNavigationIsDerivedFromEnabledModules(rendered, 'app')
 })
