@@ -105,7 +105,7 @@ jobs:
       # l'arbre vierge, sans quoi il rougirait pour la commande qu'on vient
       # d'exécuter exprès.
       - name: Photographier l'arbre après configuration
-        run: git status --porcelain > /tmp/arbre-attendu.txt
+        run: git status --porcelain > "$RUNNER_TEMP/arbre-attendu.txt"
 
       - name: Typage
         run: pnpm typecheck
@@ -168,8 +168,8 @@ jobs:
       # position unique en fin de job ne coûte donc pas l'attribution.
       - name: L'arbre reste propre après le build et les parcours
         run: |
-          git status --porcelain > /tmp/arbre-constate.txt
-          if ! diff -u /tmp/arbre-attendu.txt /tmp/arbre-constate.txt; then
+          git status --porcelain > "$RUNNER_TEMP/arbre-constate.txt"
+          if ! diff -u "$RUNNER_TEMP/arbre-attendu.txt" "$RUNNER_TEMP/arbre-constate.txt"; then
             echo "Une commande a modifié des fichiers versionnés au-delà de la configuration demandée :"
             git diff
             exit 1

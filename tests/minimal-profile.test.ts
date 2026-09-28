@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { createServer } from 'node:net'
 import { fileURLToPath } from 'node:url'
 
 import { BUILD_ENV_KEYS, ENV_KEYS } from '@repo/config'
@@ -20,6 +21,7 @@ import {
   MINIMAL_PROFILE_TRACES_DIRECTORY,
   moduleTableNames,
   parseModuleProfile,
+  recipePort,
   suiteReport,
   sweepProfile,
   sweepReport,
@@ -834,5 +836,43 @@ describe('le job de CI de la recette (critère 7)', () => {
     // parce que Playwright écrit dans le clone que la commande détruit.
     expect(MINIMAL_PROFILE_TRACES_DIRECTORY).not.toMatch(/^test-results(\/|$)/)
     expect(workflow).toContain(`path: ${MINIMAL_PROFILE_TRACES_DIRECTORY}/`)
+  })
+})
+
+/**
+ * **Le port des parcours d'une recette** (s68).
+ *
+ * Les trois recettes démarrent un serveur pour leurs parcours. Un port écrit en
+ * dur — 3100 par défaut chez Playwright, 3110 et 3120 pour deux d'entre elles —
+ * a été pris par la copie d'une autre worktree : deux stories menées en
+ * parallèle se faussaient leurs vérifications. Une recette prend donc le port
+ * qu'on lui donne, ou en réserve un libre.
+ */
+describe('le port des parcours d’une recette', () => {
+  const canListenOn = (port: number): Promise<boolean> =>
+    new Promise((resolve) => {
+      const server = createServer()
+
+      server.once('error', () => resolve(false))
+      server.listen(port, () => server.close(() => resolve(true)))
+    })
+
+  it('garde le port fourni par `E2E_PORT`', async () => {
+    expect(await recipePort({ E2E_PORT: '3413' })).toEqual({ port: 3413, origin: 'E2E_PORT' })
+  })
+
+  it('réserve un port libre quand aucun n’est fourni — jamais le 3100 de Playwright', async () => {
+    const chosen = await recipePort({})
+
+    expect(chosen.origin).toBe('réservé')
+    expect(chosen.port).not.toBe(3100)
+    // Libre, et **relâché** : le serveur des parcours doit pouvoir s'y lier.
+    expect(await canListenOn(chosen.port)).toBe(true)
+  })
+
+  it('refuse un `E2E_PORT` illisible en le nommant, plutôt que de le remplacer', async () => {
+    for (const value of ['abc', '0', '70000', '31.5']) {
+      await expect(recipePort({ E2E_PORT: value })).rejects.toThrow(/E2E_PORT/)
+    }
   })
 })
