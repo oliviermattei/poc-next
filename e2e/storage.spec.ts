@@ -7,7 +7,7 @@ import { organizations } from '../apps/web/lib/organizations'
 import { storage } from '../apps/web/lib/storage'
 import { defaultLocale } from '../config/i18n'
 import { aSignedInAccount } from './support/account'
-import { publicPath } from './support/locale'
+import { publicPath, settingsPath } from './support/locale'
 
 /**
  * L'avatar, dans un vrai navigateur.
@@ -68,7 +68,7 @@ const fileInput = (page: Page) => page.locator('input[type="file"]')
  * rend cette lecture sûre dans les deux configurations.
  */
 const createAnOrganization = async (page: Page, name: string): Promise<void> => {
-  await page.goto(publicPath('/organizations'))
+  await page.goto(publicPath(settingsPath('organization')))
 
   const form = page.getByRole('form', { name: text('organizations.create.title') })
 
@@ -82,7 +82,7 @@ const createAnOrganization = async (page: Page, name: string): Promise<void> => 
 }
 
 const goToAccount = async (page: Page): Promise<void> => {
-  await page.goto(publicPath('/account'))
+  await page.goto(publicPath(settingsPath('account')))
   await expect(page.getByRole('heading', { name: text('storage.avatar.title') })).toBeVisible()
 }
 
@@ -318,7 +318,7 @@ test.describe('le module coupé', () => {
 
   test('n’affiche aucune carte de photo de profil, et aucune route ne répond', async ({ page }) => {
     await aSignedInAccount(page, 'e2e-avatar-off')
-    await page.goto(publicPath('/account'))
+    await page.goto(publicPath(settingsPath('account')))
 
     // L'écran est bien rendu — c'est la carte qui n'y est pas. Le catalogue du
     // module n'est **pas** consulté ici : ses clés n'existent pas dans cette

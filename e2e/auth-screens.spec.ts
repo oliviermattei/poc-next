@@ -8,6 +8,7 @@ import { localeRouting } from '../apps/web/lib/locale-routing'
 import { flatMessagesFor } from '../apps/web/lib/messages'
 import { defaultLocale } from '../config/i18n'
 import { CONTRAST_THRESHOLDS, contrastRatio } from '../scripts/contrast-rules'
+import { settingsPath } from './support/locale'
 import { painted } from './support/painted'
 
 /**
@@ -85,7 +86,7 @@ const authFamily = (): readonly string[] =>
  * raison écrite — la forme que `pnpm test:socle` impose à ses exclusions.
  */
 const EXCLUDED: Readonly<Record<string, string>> = {
-  '/account':
+  [settingsPath('account')]:
     'l’écran de compte : il est servi derrière une session, un visiteur anonyme y reçoit une redirection et non un écran. Il appartient à s08 et s34b, pas à la famille que s46 habille.',
 }
 

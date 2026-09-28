@@ -4,9 +4,11 @@ import {
   singleLocaleRouting,
   visibleNavigation,
 } from '@repo/core'
-import { authModule } from '@repo/module-auth'
+import { ACCOUNT_SCREEN_PATH, authModule } from '@repo/module-auth'
+import { BILLING_SCREEN_PATH } from '@repo/module-billing'
 import { demoEnabledModule } from '@repo/module-demo-enabled'
 import { i18nModule, localePrefixRouting } from '@repo/module-i18n'
+import { ORGANIZATIONS_SCREEN_PATH } from '@repo/module-organizations'
 import { describe, expect, it } from 'vitest'
 
 import { flatMessagesFor } from '../apps/web/lib/messages'
@@ -66,11 +68,18 @@ const prefixed = localePrefixRouting({ locales: ['fr', 'en'], defaultLocale: 'fr
 
 describe('navigation du shell', () => {
   it('traduit les entrées que la session a le droit de voir', () => {
-    const items = shellNavigation(registryOf(['auth']), aSession, intlFor('fr', undefined, ['auth']))
+    // L'entrée du compte vit dans la surface `settings` depuis s62a : c'est
+    // la sous-navigation des réglages qui la rend, par la même dérivation.
+    const items = shellNavigation(
+      registryOf(['auth']),
+      aSession,
+      intlFor('fr', undefined, ['auth']),
+      'settings',
+    )
 
     expect(items).toContainEqual({
       id: 'auth:account',
-      href: '/account',
+      href: ACCOUNT_SCREEN_PATH,
       label: 'Mon compte',
     })
   })
@@ -79,9 +88,14 @@ describe('navigation du shell', () => {
     // Le témoin de refus : « Mon compte » est déclarée `authenticated`, et la
     // masquer n'est pas une permission — c'est la route qui refusera. Mais une
     // entrée visible vers un écran refusé divulgue son existence (§3).
-    const anonymous = shellNavigation(registryOf(['auth']), null, intlFor('fr', undefined, ['auth']))
+    const anonymous = shellNavigation(
+      registryOf(['auth']),
+      null,
+      intlFor('fr', undefined, ['auth']),
+      'settings',
+    )
 
-    expect(anonymous.map((item) => item.href)).not.toContain('/account')
+    expect(anonymous.map((item) => item.href)).not.toContain(ACCOUNT_SCREEN_PATH)
   })
 
   it('perd l’entrée d’un module désactivé, sans condition dans le composant', () => {
@@ -161,13 +175,74 @@ describe('les surfaces du site et de l’application', () => {
   })
 })
 
+/**
+ * **La zone Réglages a sa surface** (s62a, ADR 075).
+ *
+ * Compte, organisation et facturation quittent la barre latérale du produit
+ * pour la sous-navigation de `/app/settings`. Les attentes sont des **chemins**
+ * — les constantes des modules —, jamais des identifiants de module : une
+ * entrée oubliée en surface `app` retomberait dans la barre latérale sans
+ * erreur à l'écran, et c'est ce que ces cas voient.
+ *
+ * Le premier lit **l'annuaire** (`availableModules`) : il tient la déclaration
+ * quelle que soit la configuration jouée. Le second lit le registre en
+ * vigueur, et vaut dans toute configuration — `socle` et le profil minimal
+ * coupent deux de ces trois modules.
+ */
+describe('la surface des réglages', () => {
+  const SETTINGS_SCREENS = [ACCOUNT_SCREEN_PATH, ORGANIZATIONS_SCREEN_PATH, BILLING_SCREEN_PATH]
+
+  it('déclare exactement le compte, l’organisation et la facturation dans la surface `settings`', async () => {
+    const { availableModules } = await import('../config/features')
+    const declared = availableModules.flatMap((module) =>
+      module.navigation
+        .filter((entry) => navigationSurfaceOf(entry) === 'settings')
+        .map((entry) => entry.href),
+    )
+
+    expect([...declared].sort()).toEqual([...SETTINGS_SCREENS].sort())
+
+    for (const href of declared) {
+      expect(href.startsWith('/app/settings/'), href).toBe(true)
+    }
+  })
+
+  it('rend les réglages des modules activés, et aucun dans la barre latérale', async () => {
+    const { moduleRegistry } = await import('../apps/web/lib/module-registry')
+    const declared = moduleRegistry.navigation
+      .filter((entry) => navigationSurfaceOf(entry) === 'settings')
+      .map((entry) => entry.href)
+    const settings = visibleNavigation(moduleRegistry, aSession, 'settings').map(
+      (entry) => entry.href,
+    )
+    const sidebar = visibleNavigation(moduleRegistry, aSession).map((entry) => entry.href)
+
+    // L'anti-vacuité : le compte appartient au socle, il est toujours là.
+    expect(settings).toContain(ACCOUNT_SCREEN_PATH)
+    expect([...settings].sort()).toEqual([...declared].sort())
+    expect(sidebar.filter((href) => SETTINGS_SCREENS.includes(href))).toEqual([])
+    // Un visiteur anonyme n'a aucun réglage.
+    expect(visibleNavigation(moduleRegistry, null, 'settings')).toEqual([])
+  })
+})
+
 describe('navigation du shell et langue', () => {
   it('rend le libellé du catalogue de la locale demandée', () => {
     // Le même scénario, deux langues : c'est la traduction qui change, pas le
     // code de l'écran. La clé vient du **module**, ce qui prouve que le
     // catalogue agrégé par le registre est réellement consommé.
-    const french = shellNavigation(registryOf(['auth']), aSession, intlFor('fr', undefined, ['auth']))
-    const english = shellNavigation(registryOf(['auth']), aSession, intlFor('en', undefined, ['auth']))
+    const french = shellNavigation(
+      registryOf(['auth']),
+      aSession,
+      intlFor('fr', undefined, ['auth']),
+      'settings',
+    )
+    const english = shellNavigation(
+      registryOf(['auth']),
+      aSession,
+      intlFor('en', undefined, ['auth']),
+      'settings',
+    )
 
     expect(french.find((item) => item.id === 'auth:account')?.label).toBe('Mon compte')
     expect(english.find((item) => item.id === 'auth:account')?.label).toBe('My account')
@@ -180,15 +255,17 @@ describe('navigation du shell et langue', () => {
       registryOf(['auth']),
       aSession,
       intlFor('fr', undefined, ['auth']),
+      'settings',
     )
     const withPrefix = shellNavigation(
       registryOf(['auth']),
       aSession,
       intlFor('fr', prefixed, ['auth']),
+      'settings',
     )
 
-    expect(withoutPrefix.map((item) => item.href)).toContain('/account')
-    expect(withPrefix.map((item) => item.href)).toContain('/fr/account')
+    expect(withoutPrefix.map((item) => item.href)).toContain(ACCOUNT_SCREEN_PATH)
+    expect(withPrefix.map((item) => item.href)).toContain(`/fr${ACCOUNT_SCREEN_PATH}`)
     expect(withPrefix.map((item) => item.id)).toEqual(withoutPrefix.map((item) => item.id))
     expect(withPrefix.map((item) => item.label)).toEqual(withoutPrefix.map((item) => item.label))
   })

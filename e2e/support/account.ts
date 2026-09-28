@@ -7,7 +7,13 @@ import { ONBOARDING_SCREEN_PATH } from '@repo/module-onboarding'
 import { expect, type Page } from '@playwright/test'
 
 import { clickOnce } from './interaction'
-import { anonymousLanding, onboardingCourseMounted, publicPath, urlOf } from './locale'
+import {
+  anonymousLanding,
+  onboardingCourseMounted,
+  publicPath,
+  settingsPath,
+  urlOf,
+} from './locale'
 
 /**
  * Les gestes communs aux parcours : inscrire un compte, lire son email, se
@@ -166,7 +172,7 @@ export const signIn = async (page: Page, email: string, password = PASSWORD): Pr
  * `window.location.assign` provoque.
  */
 export const signOut = async (page: Page): Promise<void> => {
-  await page.goto('/account')
+  await page.goto(settingsPath('account'))
   await clickOnce(page, page.getByRole('button', { name: 'Se déconnecter' }), async () => {
     await expect(page).toHaveURL(urlOf(anonymousLanding()))
   })

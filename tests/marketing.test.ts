@@ -19,7 +19,12 @@ import {
   runModuleMigrations,
 } from '@repo/db'
 import { sql } from 'drizzle-orm'
-import { configureAuth, DEFAULT_SIGNED_IN_PATH, resetAuthService } from '@repo/module-auth'
+import {
+  ACCOUNT_SCREEN_PATH,
+  configureAuth,
+  DEFAULT_SIGNED_IN_PATH,
+  resetAuthService,
+} from '@repo/module-auth'
 import {
   CONTACT_PATH,
   EMPTY_MARKETING_SITE,
@@ -112,11 +117,11 @@ const viewer = vi.hoisted(() => ({ value: null as unknown }))
 const requestLocale = vi.hoisted(() => ({ value: '' }))
 
 vi.mock('../apps/web/lib/auth', async () => {
-  const { authRoutePath, DEFAULT_SIGNED_IN_PATH, safeRedirectPath } = await import(
-    '@repo/module-auth'
-  )
+  const { ACCOUNT_SCREEN_PATH, authRoutePath, DEFAULT_SIGNED_IN_PATH, safeRedirectPath } =
+    await import('@repo/module-auth')
 
   return {
+    ACCOUNT_SCREEN_PATH,
     authRoutePath,
     DEFAULT_SIGNED_IN_PATH,
     safeRedirectPath,
@@ -920,7 +925,7 @@ describe('le module marketing activé', () => {
     // Garde contre l'inertie : un balayage qui ne trouverait aucun écran, ou
     // qui n'en trouverait que des publics, rendrait la boucle ci-dessus vraie
     // sans rien mesurer.
-    expect(probes).toContain('/account')
+    expect(probes).toContain(ACCOUNT_SCREEN_PATH)
     expect(opened).toBeGreaterThan(0)
     expect(closed).toBeGreaterThan(0)
 

@@ -24,6 +24,8 @@
   "app.dashboard.empty.title": "Rien à afficher pour l’instant",
   "app.dashboard.empty.description": "Ce tableau de bord se remplira avec les modules que vous activerez. En attendant, vos paramètres de compte sont accessibles ici.",
   "app.dashboard.empty.action": "Paramètres du compte",
+  "app.settings.title": "Réglages",
+  "app.settings.navigation": "Rubriques des réglages",
   "app.notFound.title": "Page introuvable",
   "app.notFound.empty.title": "Cette adresse ne mène nulle part",
   "app.notFound.empty.description": "Le lien est peut-être périmé, ou l’adresse comporte une faute de frappe. Reprenez depuis l’accueil.",

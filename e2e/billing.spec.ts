@@ -12,7 +12,7 @@ import { billing } from '../apps/web/lib/billing'
 import { billingOffers } from '../config/billing'
 import { defaultLocale } from '../config/i18n'
 import { aSignedInAccount, anEmail, linkSentTo, signIn, signUp } from './support/account'
-import { publicPath, signInRedirectedFrom, sitePage, urlOf } from './support/locale'
+import { publicPath, settingsPath, signInRedirectedFrom, sitePage, urlOf } from './support/locale'
 
 /**
  * Le parcours de souscription, **de bout en bout et sans un octet vers
@@ -42,15 +42,15 @@ test.describe('la facturation', () => {
   test('redirige un visiteur anonyme vers la connexion, avec son retour', async ({ page }) => {
     test.skip(!mounted, 'module de facturation coupé')
 
-    await page.goto('/billing')
+    await page.goto(settingsPath('billing'))
 
-    await expect(page).toHaveURL(signInRedirectedFrom('/billing'))
+    await expect(page).toHaveURL(signInRedirectedFrom(settingsPath('billing')))
   })
 
   test('répond 404 quand le module est coupé', async ({ page }) => {
     test.skip(mounted, 'module de facturation activé')
 
-    const response = await page.goto('/billing')
+    const response = await page.goto(settingsPath('billing'))
 
     expect(response?.status()).toBe(404)
   })
@@ -59,7 +59,7 @@ test.describe('la facturation', () => {
     test.skip(!mounted, 'module de facturation coupé')
 
     await aSignedInAccount(page, 's19')
-    await page.goto('/billing')
+    await page.goto(settingsPath('billing'))
 
     // **Sans abonnement**, le premier des trois états que la story exige.
     await expect(page.getByText('Aucun abonnement').first()).toBeVisible()
@@ -75,7 +75,7 @@ test.describe('la facturation', () => {
     // Le retour de paiement : la navigation est pilotée par le script, jamais
     // par une redirection de formulaire — `form-action 'self'` refuserait la
     // seconde (recherche §7).
-    await expect(page).toHaveURL(urlOf('/billing', '?checkout=success'))
+    await expect(page).toHaveURL(urlOf(settingsPath('billing'), '?checkout=success'))
     await expect(page.getByText('Paiement enregistré.', { exact: false })).toBeVisible()
 
     // **L'état vient de la base**, écrite par le webhook que la simulation a
@@ -104,7 +104,7 @@ test.describe('la facturation', () => {
     test.skip(!mounted, 'module de facturation coupé')
 
     await aSignedInAccount(page, 's20')
-    await page.goto('/billing')
+    await page.goto(settingsPath('billing'))
 
     // L'offre unique dit ce qu'elle est : un paiement, pas un abonnement.
     await expect(page.getByRole('heading', { name: 'Licence à vie' })).toBeVisible()
@@ -115,7 +115,7 @@ test.describe('la facturation', () => {
     await expect(buy).toBeEnabled()
     await buy.click()
 
-    await expect(page).toHaveURL(urlOf('/billing', '?checkout=success'))
+    await expect(page).toHaveURL(urlOf(settingsPath('billing'), '?checkout=success'))
 
     // **L'état vient de la base**, écrite par le webhook : l'achat apparaît
     // dans l'historique des paiements, et il n'est plus proposé.
@@ -137,9 +137,9 @@ test.describe('la facturation', () => {
     test.skip(!mounted, 'module de facturation coupé')
 
     await aSignedInAccount(page, 's19-portail')
-    await page.goto('/billing')
+    await page.goto(settingsPath('billing'))
     await page.getByRole('button', { name: 'Souscrire' }).first().click()
-    await expect(page).toHaveURL(urlOf('/billing', '?checkout=success'))
+    await expect(page).toHaveURL(urlOf(settingsPath('billing'), '?checkout=success'))
 
     const manage = page.getByRole('button', { name: 'Gérer la facturation' })
 
@@ -148,7 +148,7 @@ test.describe('la facturation', () => {
 
     // La simulation ramène dans l'application : elle ne rejoue pas le portail
     // du fournisseur, et `packages/payments-testing/AGENTS.md` le dit.
-    await expect(page).toHaveURL(urlOf('/billing', '?portal=local'))
+    await expect(page).toHaveURL(urlOf(settingsPath('billing'), '?portal=local'))
   })
 
   test('refuse un webhook dont la signature est invalide, en 400', async ({ request }) => {
@@ -237,9 +237,9 @@ test.describe('la facturation', () => {
 
     // Souscrire : l'offre livrée porte quatorze jours d'essai, donc l'accès
     // vient d'un essai, pas d'un paiement.
-    await page.goto('/billing')
+    await page.goto(settingsPath('billing'))
     await page.getByRole('button', { name: 'Souscrire' }).first().click()
-    await expect(page).toHaveURL(urlOf('/billing', '?checkout=success'))
+    await expect(page).toHaveURL(urlOf(settingsPath('billing'), '?checkout=success'))
     await expect(page.getByText('Période d’essai').first()).toBeVisible()
 
     await page.goto('/premium')
@@ -380,8 +380,8 @@ test.describe('la facturation', () => {
     // **Aucune session ouverte depuis la page de retour** (critère 7) : le
     // visiteur est toujours anonyme, et `/billing` le renvoie à la connexion
     // comme n'importe quel anonyme.
-    await page.goto('/billing')
-    await expect(page).toHaveURL(signInRedirectedFrom('/billing'))
+    await page.goto(settingsPath('billing'))
+    await expect(page).toHaveURL(signInRedirectedFrom(settingsPath('billing')))
 
     // Le compte, lui, existe : il a été créé par le **webhook**. Le seul chemin
     // qui y mène est le lien envoyé à l'adresse du paiement — ici celle que la

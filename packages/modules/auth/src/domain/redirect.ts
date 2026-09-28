@@ -10,6 +10,16 @@
  */
 export const DEFAULT_SIGNED_IN_PATH = '/app'
 
+/**
+ * **L'écran du compte**, dans la zone Réglages (s62a, ADR 075).
+ *
+ * Il n'avait pas de constante jusqu'à s62a : `/account` était écrit en
+ * littéral dans la navigation, les écrans et les menus, si bien que le
+ * déplacer demandait de retrouver chaque copie. L'ancien chemin répond 308 vers
+ * celui-ci, par la table de `apps/web/lib/legacy-paths.ts`.
+ */
+export const ACCOUNT_SCREEN_PATH = '/app/settings/account'
+
 // C0 (U+0000–U+001F), DEL (U+007F) et tout blanc au sens de `\s`, espace et
 // blancs Unicode compris.
 // eslint-disable-next-line no-control-regex

@@ -14,7 +14,7 @@ import { marketingSubscriptions } from '../apps/web/lib/marketing'
 import { moduleRegistry } from '../apps/web/lib/module-registry'
 import { E2E_SUPERADMIN_EMAIL } from '../playwright.config'
 import { PASSWORD, aSignedInAccount, linkSentTo, signIn, signUp } from './support/account'
-import { publicPath } from './support/locale'
+import { publicPath, settingsPath } from './support/locale'
 
 /**
  * **Le back-office, vu depuis un navigateur réel** (s37b2).
@@ -587,7 +587,7 @@ test('le bandeau d’impersonation survit à une navigation complète', async ({
   }
 
   // **Premier écran.** Le bandeau est là, et il porte sa sortie.
-  await page.goto(publicPath('/account'))
+  await page.goto(publicPath(settingsPath('account')))
 
   const banner = page.getByRole('alert').filter({ hasText: 'Session empruntée' })
 
@@ -602,7 +602,7 @@ test('le bandeau d’impersonation survit à une navigation complète', async ({
   // **Second écran, navigation complète.** C'est ce que la coquille garantit et
   // qu'une page ne garantirait pas : le mesurer sur un seul rendu ne prouverait
   // rien.
-  await page.goto(publicPath('/organizations'))
+  await page.goto(publicPath(settingsPath('organization')))
   await expect(page.getByRole('alert').filter({ hasText: 'Session empruntée' })).toBeVisible()
 
   // Et la sortie rend la main : le bandeau disparaît, sur la coquille comme sur
@@ -681,7 +681,7 @@ test('une route réservée à un rôle sert son porteur, et 404 aux autres', asy
 
   // **Et l'entrée de navigation suit, mesurée sur le rendu** (critère 3) : le
   // registre la déclare pour tout le monde, seul le rendu distingue.
-  await page.goto(publicPath('/account'))
+  await page.goto(publicPath(settingsPath('account')))
 
   const linksFor = async (target: Page): Promise<readonly (string | null)[]> =>
     await Promise.all(
@@ -705,7 +705,7 @@ test('une route réservée à un rôle sert son porteur, et 404 aux autres', asy
   expect(refused.status()).not.toBe(403)
   expect(await refused.json()).toEqual({ error: 'not_found' })
 
-  await stranger.goto(publicPath('/account'))
+  await stranger.goto(publicPath(settingsPath('account')))
 
   const strangerLinks = await linksFor(stranger)
 

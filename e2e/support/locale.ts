@@ -1,6 +1,8 @@
 import { visibleNavigation } from '@repo/core'
-import { DEFAULT_SIGNED_IN_PATH } from '@repo/module-auth'
+import { ACCOUNT_SCREEN_PATH, DEFAULT_SIGNED_IN_PATH } from '@repo/module-auth'
+import { BILLING_SCREEN_PATH } from '@repo/module-billing'
 import { onboardingModule, ONBOARDING_SCREEN_PATH } from '@repo/module-onboarding'
+import { ORGANIZATIONS_SCREEN_PATH } from '@repo/module-organizations'
 
 import { localeRouting } from '../../apps/web/lib/locale-routing'
 import { marketingSite } from '../../apps/web/lib/marketing'
@@ -41,6 +43,26 @@ export const signInRedirectedFrom = (pathname: string): RegExp =>
   new RegExp(
     `${escape(publicPath('/sign-in'))}\\?next=(${escape(encodeURIComponent(pathname))}|${escape(pathname)})$`,
   )
+
+/**
+ * **Les écrans de la zone Réglages** (s62a, ADR 075), chemins internes.
+ *
+ * Importés des modules qui les servent, jamais recopiés : `/account`,
+ * `/organizations` et `/billing` étaient écrits en dur dans une quinzaine de
+ * parcours, et les anciens chemins **répondent encore** — par un 308 —, si
+ * bien qu'un parcours resté sur l'ancien serait vert en mesurant la
+ * redirection au lieu de l'écran. Un déplacement suivant change la constante
+ * du module, et chaque parcours suit.
+ */
+export const SETTINGS_SCREENS = {
+  account: ACCOUNT_SCREEN_PATH,
+  organization: ORGANIZATIONS_SCREEN_PATH,
+  billing: BILLING_SCREEN_PATH,
+} as const
+
+/** Le chemin interne d'un écran de réglages : à passer à `publicPath`, `urlOf` ou `goto`. */
+export const settingsPath = (screen: keyof typeof SETTINGS_SCREENS): string =>
+  SETTINGS_SCREENS[screen]
 
 /**
  * Où atterrit un visiteur **anonyme** qui suit la racine du site.

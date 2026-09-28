@@ -6,7 +6,7 @@ import { useTranslations } from 'next-intl'
 import { useRouter } from 'next/navigation'
 import { useState, type FormEvent } from 'react'
 
-import { useHydrated } from '../../use-hydrated'
+import { useHydrated } from '../../../../use-hydrated'
 
 /**
  * Les passkeys, dans les paramètres du compte (s14).

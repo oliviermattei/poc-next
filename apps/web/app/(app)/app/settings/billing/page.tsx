@@ -3,10 +3,10 @@ import { BillingScreen } from '@repo/module-billing/presentation'
 import { notFound, redirect } from 'next/navigation'
 import { z } from 'zod'
 
-import { BillingAction } from '../../billing-actions'
-import { currentViewer } from '../../../lib/auth'
-import { billing } from '../../../lib/billing'
-import { appIntl } from '../../../lib/i18n'
+import { BillingAction } from '../../../../billing-actions'
+import { currentViewer } from '../../../../../lib/auth'
+import { billing, BILLING_SCREEN_PATH } from '../../../../../lib/billing'
+import { appIntl } from '../../../../../lib/i18n'
 
 /**
  * L'écran de facturation.
@@ -55,7 +55,7 @@ export default async function BillingPage({
   const { t, path, locale } = await appIntl()
 
   if (session === null) {
-    redirect(`${path('/sign-in')}?next=${encodeURIComponent('/billing')}`)
+    redirect(`${path('/sign-in')}?next=${encodeURIComponent(BILLING_SCREEN_PATH)}`)
   }
 
   const view = await billing.view(session, locale)

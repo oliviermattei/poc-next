@@ -7,9 +7,13 @@ import { OrganizationsScreen } from '@repo/module-organizations/presentation'
 import { notFound, redirect } from 'next/navigation'
 import { z } from 'zod'
 
-import { currentViewer } from '../../../lib/auth'
-import { appIntl } from '../../../lib/i18n'
-import { organizationRoutePath, organizations } from '../../../lib/organizations'
+import { currentViewer } from '../../../../../lib/auth'
+import { appIntl } from '../../../../../lib/i18n'
+import {
+  organizationRoutePath,
+  organizations,
+  ORGANIZATIONS_SCREEN_PATH,
+} from '../../../../../lib/organizations'
 
 /**
  * L'écran des organisations.
@@ -67,7 +71,7 @@ export default async function OrganizationsPage({
   if (session === null) {
     // Le chemin **interne** part dans `next` : c'est l'écran de connexion qui le
     // met dans la forme publique de sa locale, une seule fois.
-    redirect(`${path('/sign-in')}?next=${encodeURIComponent('/organizations')}`)
+    redirect(`${path('/sign-in')}?next=${encodeURIComponent(ORGANIZATIONS_SCREEN_PATH)}`)
   }
 
   const view = await organizations.view(session.userId)

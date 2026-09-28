@@ -2,7 +2,7 @@ import { expect, test, type Page, type Request } from '@playwright/test'
 
 import { aSignedInAccount } from './support/account'
 import { clickOnce } from './support/interaction'
-import { anonymousLanding, publicPath, urlOf } from './support/locale'
+import { anonymousLanding, publicPath, settingsPath, urlOf } from './support/locale'
 
 /**
  * Le consentement aux cookies, mesuré là où il compte : dans un navigateur, sur
@@ -153,7 +153,7 @@ test('le retrait depuis les paramètres de compte empêche le chargement suivant
   await expect(preferences(page).getByRole('checkbox', { name: /Publicité/ })).toBeChecked()
 
   const afterConsent = recordProbeRequests(page)
-  await page.goto(publicPath('/account'))
+  await page.goto(publicPath(settingsPath('account')))
   await expectProbesExecuted(page, ['demo-advertising', 'demo-analytics'])
   expect([...afterConsent].sort()).toEqual(['demo-advertising', 'demo-analytics'])
 
@@ -178,7 +178,7 @@ test('le retrait depuis les paramètres de compte empêche le chargement suivant
   await expect(preferences(page).getByRole('checkbox', { name: /Publicité/ })).not.toBeChecked()
 
   const afterWithdrawal = recordProbeRequests(page)
-  await page.goto(publicPath('/account'))
+  await page.goto(publicPath(settingsPath('account')))
 
   // Le retrait empêche l'injection **au chargement suivant** : c'est le
   // critère 4 de la story, et il ne se mesure qu'après une navigation.
