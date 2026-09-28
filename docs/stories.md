@@ -2109,7 +2109,7 @@ s64a-hote-origines, s22-pricing-page, s24-guest-checkout, s45-security-headers
 - [ ] La garde d'origine du consentement compare aux origines **configurées**, pas à l'hôte d'écoute : un choix de consentement réussit derrière un serveur qui écoute sur `0.0.0.0` (#66)
 - [ ] Les origines de confiance de l'auth sont prouvées par un test qui exerce le contrôle d'origine ; l'origine du site en sort, les écrans d'auth n'étant plus servis que par l'application (#64)
 - [ ] La CSP reste `default-src 'self'` sur chaque hôte ; aucun formulaire d'un hôte ne redirige vers l'autre
-- [ ] Un parcours e2e à deux origines (`site.localhost` / `app.site.localhost`) mesure les redirections de chaque hôte
+- [ ] Les redirections de chaque hôte sont mesurées sur le proxy lui-même, requêtes construites avec leurs en-têtes d'hôte ; le parcours navigateur à deux origines est celui de s64b2
 
 ### Dependencies
 s64a-hote-origines, s45-security-headers, s36-cookie-consent
@@ -2127,6 +2127,7 @@ s64a-hote-origines, s45-security-headers, s36-cookie-consent
 ### Acceptance criteria
 - [ ] Le retour des tarifs fonctionne entre les deux hôtes : choisir une offre en étant connecté, ou se connecter pour la choisir, aboutit au checkout ; le retour d'un paiement invité revient sur le site **avec sa requête**
 - [ ] `pnpm test:golden-path` est joué avec `APP_HOST` (origines hors de l'hôte d'écoute) et reste vert ; sans `APP_HOST`, il reste inchangé
+- [ ] Ce parcours à deux origines (`site.localhost` / `app.site.localhost`) mesure au navigateur les redirections de s64b1 qu'il traverse
 
 ### Dependencies
 s64b1-hote-routage, s22-pricing-page, s24-guest-checkout
