@@ -51,7 +51,7 @@ import { organizations } from './organizations'
  *
  * | | module activé | module coupé |
  * |---|---|---|
- * | `/notifications` | l'écran | **404** |
+ * | `/app/notifications` (ancien `/notifications` : 308, s63) | l'écran | **404** (ancien chemin compris) |
  * | entrée de navigation | présente (authentifiée) | absente |
  * | `emitNotification` | in-app + email selon les préférences | **envoi email direct pour les types qui le veulent par défaut**, rien pour les autres |
  * | requêtes en base | celles de l'écran | **aucune** |

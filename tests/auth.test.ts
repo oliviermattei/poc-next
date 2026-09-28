@@ -3847,7 +3847,7 @@ describe('la destination par défaut, dans les fichiers qui la replient', () => 
     'apps/web/app/(auth)/sign-in/page.tsx',
     'apps/web/app/(auth)/two-factor/page.tsx',
     'apps/web/app/(auth)/oauth/return/page.tsx',
-    'apps/web/app/(app)/onboarding/page.tsx',
+    'apps/web/app/(app)/app/onboarding/page.tsx',
   ] as const
 
   /** Un repli en littéral : `safeRedirectPath(…, '/…')`, sur une ou plusieurs lignes. */

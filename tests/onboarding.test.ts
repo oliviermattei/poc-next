@@ -491,7 +491,7 @@ const onboardingScreenRefusal = async (options: {
   }))
 
   try {
-    await (await import('../apps/web/app/(app)/onboarding/page')).default()
+    await (await import('../apps/web/app/(app)/app/onboarding/page')).default()
 
     return null
   } catch (error) {

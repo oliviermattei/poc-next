@@ -2,14 +2,14 @@ import { NotificationsScreen } from '@repo/module-notifications/presentation'
 import { notFound, redirect } from 'next/navigation'
 import { z } from 'zod'
 
-import { currentViewer } from '../../../lib/auth'
-import { appIntl } from '../../../lib/i18n'
+import { currentViewer } from '../../../../lib/auth'
+import { appIntl } from '../../../../lib/i18n'
 import {
   notificationRoutePath,
   notifications,
   NOTIFICATIONS_SCREEN_PATH,
   NOTIFICATIONS_SETTINGS_SCREEN_PATH,
-} from '../../../lib/notifications'
+} from '../../../../lib/notifications'
 
 /**
  * L'écran du centre de notifications.

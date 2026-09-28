@@ -31,6 +31,7 @@ import {
   typeBodyKey,
   typeLabelKey,
   NOTIFICATIONS_KEYS,
+  NOTIFICATIONS_SCREEN_PATH,
   NOTIFICATIONS_SETTINGS_SCREEN_PATH,
   type NotificationsService,
   type NotificationsView,
@@ -1179,7 +1180,7 @@ describe('l’écran du centre — ce qu’il montre et ce qu’il retire', () =
         view,
         intl,
         actions: { read: '/read', readAll: '/read-all' },
-        hrefForPage: (page: number) => `/notifications?page=${page}`,
+        hrefForPage: (page: number) => `${NOTIFICATIONS_SCREEN_PATH}?page=${page}`,
         preferencesHref: '/route-preferences',
       }),
     )
@@ -1235,7 +1236,7 @@ describe('l’écran du centre — ce qu’il montre et ce qu’il retire', () =
         createElement(NotificationsScreen, {
           intl: interpolating,
           actions: { read: '/read', readAll: '/read-all' },
-          hrefForPage: (page: number) => `/notifications?page=${page}`,
+          hrefForPage: (page: number) => `${NOTIFICATIONS_SCREEN_PATH}?page=${page}`,
           preferencesHref: '/route-preferences',
           view: view({
           notifications: [

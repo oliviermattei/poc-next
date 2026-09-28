@@ -224,7 +224,7 @@ test.describe('la facturation', () => {
 
     // **L'écran invite, il ne masque pas.** Une fonctionnalité qu'on ne voit
     // pas ne s'achète pas, et masquer n'a jamais été une permission.
-    await page.goto('/premium')
+    await page.goto(DEMO_PREMIUM_SCREEN_PATH)
     await expect(page.getByText('Réservé aux offres payantes')).toBeVisible()
     await expect(page.getByRole('link', { name: 'Voir les offres' })).toBeVisible()
 
@@ -242,7 +242,7 @@ test.describe('la facturation', () => {
     await expect(page).toHaveURL(urlOf(settingsPath('billing'), '?checkout=success'))
     await expect(page.getByText('Période d’essai').first()).toBeVisible()
 
-    await page.goto('/premium')
+    await page.goto(DEMO_PREMIUM_SCREEN_PATH)
     await expect(page.getByText('Accès ouvert')).toBeVisible()
 
     const served = await page.request.get(`${MODULE_ROUTE_PREFIX}${PREMIUM_ROUTE}`)
@@ -261,9 +261,9 @@ test.describe('la facturation', () => {
     page,
     request,
   }) => {
-    await page.goto('/premium')
+    await page.goto(DEMO_PREMIUM_SCREEN_PATH)
 
-    await expect(page).toHaveURL(signInRedirectedFrom('/premium'))
+    await expect(page).toHaveURL(signInRedirectedFrom(DEMO_PREMIUM_SCREEN_PATH))
 
     const response = await request.get(`${MODULE_ROUTE_PREFIX}${PREMIUM_ROUTE}`)
 

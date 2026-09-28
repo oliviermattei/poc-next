@@ -12,7 +12,7 @@
 export const NOTIFICATIONS_MODULE_ID = 'notifications'
 
 /** Le chemin de l'écran, servi par l'application. */
-export const NOTIFICATIONS_SCREEN_PATH = '/notifications'
+export const NOTIFICATIONS_SCREEN_PATH = '/app/notifications'
 
 /**
  * **La rubrique Notifications des réglages** (s62c) : les préférences, sorties

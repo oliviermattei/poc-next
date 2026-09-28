@@ -1528,13 +1528,13 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // n'est pas un écran de facturation, c'est un écran de produit —, et le
         // droit est piloté par la fixture, non par l'état du dépôt.
         id: 'fonctionnalité réservée, sans le droit',
-        file: '(app)/premium/page.tsx',
+        file: '(app)/app/premium/page.tsx',
         viewer: SIGNED_IN,
         refuses: premiumGated ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         render: async () => {
           entitlementState.value = false
 
-          return (await import('../apps/web/app/(app)/premium/page')).default()
+          return (await import('../apps/web/app/(app)/app/premium/page')).default()
         },
       },
       {
@@ -1542,13 +1542,13 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // textes qu'aucun autre écran ne rend — le titre, le badge et la
         // description de l'accès accordé.
         id: 'fonctionnalité réservée, avec le droit',
-        file: '(app)/premium/page.tsx',
+        file: '(app)/app/premium/page.tsx',
         viewer: SIGNED_IN,
         refuses: premiumGated ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         render: async () => {
           entitlementState.value = true
 
-          return (await import('../apps/web/app/(app)/premium/page')).default()
+          return (await import('../apps/web/app/(app)/app/premium/page')).default()
         },
       },
       {
@@ -1613,7 +1613,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // n'est pas monté — le refus attendu est **dérivé** de l'état du
         // module, jamais concédé.
         id: 'intégration',
-        file: '(app)/onboarding/page.tsx',
+        file: '(app)/app/onboarding/page.tsx',
         viewer: SIGNED_IN,
         refuses: onboardingMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         // Les deux URL des routes du module et l'identifiant de l'étape que
@@ -1622,14 +1622,14 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // nommée `skip` portant une chaîne fait toujours rougir, et le
         // garde-fou de prose reste actif ici aussi.
         technicalProps: ['continue', 'skip', 'fields', 'state'],
-        render: async () => (await import('../apps/web/app/(app)/onboarding/page')).default(),
+        render: async () => (await import('../apps/web/app/(app)/app/onboarding/page')).default(),
       },
       {
         // s32. L'écran du centre de notifications. Il refuse quand le module
         // n'est pas monté — le refus attendu est **dérivé** de l'état du
         // module, jamais concédé.
         id: 'notifications',
-        file: '(app)/notifications/page.tsx',
+        file: '(app)/app/notifications/page.tsx',
         viewer: SIGNED_IN,
         refuses: notificationsMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         // Les trois URL des routes du module, le périmètre d'une notification
@@ -1648,7 +1648,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           String(index + 1),
         ),
         render: async () =>
-          (await import('../apps/web/app/(app)/notifications/page')).default({
+          (await import('../apps/web/app/(app)/app/notifications/page')).default({
             searchParams: noParams,
           }),
       },
