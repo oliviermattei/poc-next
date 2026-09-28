@@ -1,5 +1,6 @@
-import { getNodeEnv } from '@repo/config'
-import { carriesLocalePrefix } from '@repo/core'
+import { getHostRouting, getNodeEnv, type HostRouting } from '@repo/config'
+import { carriesLocalePrefix, MODULE_ROUTE_PREFIX, type Locale } from '@repo/core'
+import { authModule } from '@repo/module-auth'
 import { NextResponse, type NextRequest } from 'next/server'
 
 import { contentSecurityPolicySources } from '../../config/security'
@@ -8,6 +9,106 @@ import { legacyScreenTarget } from './lib/legacy-paths'
 import { LOCALE_COOKIE, LOCALE_COOKIE_MAX_AGE, localeRouting } from './lib/locale-routing'
 import { moduleRegistry } from './lib/module-registry'
 import { CSP_REPORT_PATH, NONCE_HEADER, policyMode, securityHeaders } from './lib/security-headers'
+import { zoneOf } from './lib/zones'
+
+/**
+ * **L'hôte demandé**, en minuscules : `x-forwarded-host` (premier élément
+ * d'une liste), sinon `host`. Next remplit le premier depuis le second ;
+ * `request.url` porte l'hôte d'**écoute**, jamais celui-là (s64b, fait 1).
+ *
+ * Contrôlable par le client sans proxy amont : il **choisit une branche** et
+ * rien d'autre — aucune URL n'est construite avec (ADR 079).
+ */
+const requestedHost = (headers: Headers): string | null => {
+  const forwarded = headers.get('x-forwarded-host')?.split(',')[0]?.trim() ?? ''
+  const host = forwarded === '' ? (headers.get('host')?.trim() ?? '') : forwarded
+
+  return host === '' ? null : host.toLowerCase()
+}
+
+/** Le préfixe des routes du module d'authentification, servies par la seule application. */
+const AUTH_ROUTES_PREFIX = `${MODULE_ROUTE_PREFIX}/${authModule.id}/`
+
+interface HostRouteInput {
+  readonly request: NextRequest
+  readonly routing: HostRouting
+  /** Le chemin interne, préfixe de langue retiré. */
+  readonly internal: string
+  readonly locale: Locale
+}
+
+/**
+ * **L'aiguillage par hôte** (s64b1, ADR 079) : la réponse du proxy quand
+ * l'hôte demandé n'a pas le droit de servir cette zone, ou `null` pour servir.
+ *
+ * | zone | hôte de l'application | hôte du site |
+ * |---|---|---|
+ * | site | 308 vers le site (`/` : 308 vers `/app`) | servie |
+ * | Hors zone | servie | 308 vers l'application |
+ * | application, anciens chemins | servie | 308 vers la cible finale, un saut |
+ * | console | servie | **404** |
+ * | `/api/modules/auth/*` | servie | GET/HEAD : 308 ; autre verbe : 404 |
+ * | reste de l'API | servie | servie |
+ *
+ * Un hôte ni du site ni de l'application — la sonde de santé sur l'IP du
+ * conteneur — n'est pas aiguillé. **Toute cible est bâtie sur une origine
+ * configurée** : le chemin est posé par `pathname`, jamais concaténé à
+ * l'origine, si bien qu'un chemin `//ailleurs` ne change pas d'hôte.
+ */
+function hostRoute({ request, routing, internal, locale }: HostRouteInput): NextResponse | null {
+  const host = requestedHost(request.headers)
+  const { pathname, search } = request.nextUrl
+
+  const redirectTo = (origin: string, path: string): NextResponse => {
+    const target = new URL(origin)
+
+    target.pathname = path
+    target.search = search
+
+    return NextResponse.redirect(target, 308)
+  }
+
+  const zone = zoneOf(internal)
+
+  if (host === new URL(routing.appOrigin).host) {
+    if (internal === '/') {
+      return redirectTo(routing.appOrigin, localeRouting.publicPath('/app', locale))
+    }
+
+    return zone === 'site' ? redirectTo(routing.siteOrigin, pathname) : null
+  }
+
+  if (host !== new URL(routing.siteOrigin).host) {
+    return null
+  }
+
+  switch (zone) {
+    case 'app': {
+      const legacy = carriesLocalePrefix(pathname)
+        ? legacyScreenTarget(internal, moduleRegistry)
+        : null
+
+      return redirectTo(
+        routing.appOrigin,
+        legacy === null ? pathname : localeRouting.publicPath(legacy, locale),
+      )
+    }
+    case 'outside':
+      return redirectTo(routing.appOrigin, pathname)
+    case 'console':
+      return new NextResponse(null, { status: 404 })
+    case 'api':
+      if (!internal.startsWith(AUTH_ROUTES_PREFIX)) {
+        return null
+      }
+
+      return request.method === 'GET' || request.method === 'HEAD'
+        ? redirectTo(routing.appOrigin, pathname)
+        : new NextResponse(null, { status: 404 })
+    default:
+      return null
+  }
+}
 
 /**
  * Le préfixe de locale des URL, **et le socle d'en-têtes de sécurité**.
@@ -90,6 +191,18 @@ export function proxy(request: NextRequest): NextResponse {
     ? localeRouting.internalPath(pathname)
     : pathname
   const locale = localeRouting.resolve(localeRequest)
+
+  /**
+   * **L'aiguillage par hôte** (s64b1, ADR 079), avant tout le reste : placé
+   * après le 308 legacy, `/billing` demandé au site ferait deux sauts. Sans
+   * `APP_HOST`, `getHostRouting` rend `null` et rien ne change.
+   */
+  const routing = getHostRouting()
+  const routed = routing === null ? null : hostRoute({ request, routing, internal, locale })
+
+  if (routed !== null) {
+    return withSecurityHeaders(routed)
+  }
 
   /**
    * **Les anciens chemins d'écran** (s62a, ADR 075) : 308 vers la cible de la

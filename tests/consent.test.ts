@@ -16,7 +16,12 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { GET as probeRoute } from '../apps/web/app/api/consent-probe/[script]/route'
-import { consent, probeScriptOf, resolveNonEssentialScripts } from '../apps/web/lib/consent'
+import {
+  acceptedOrigins,
+  consent,
+  probeScriptOf,
+  resolveNonEssentialScripts,
+} from '../apps/web/lib/consent'
 import { localeRouting } from '../apps/web/lib/locale-routing'
 import { moduleRegistry } from '../apps/web/lib/module-registry'
 import { availableModules, enabledModules, requiredModules } from '../config/features'
@@ -193,7 +198,7 @@ const submit = async (
 
 describe('la route de décision', () => {
   beforeEach(() => {
-    configureConsent({ scripts: DEMO_SCRIPTS })
+    configureConsent({ scripts: DEMO_SCRIPTS, acceptedOrigins: [ORIGIN] })
   })
 
   afterEach(() => {
@@ -224,6 +229,43 @@ describe('la route de décision', () => {
 
     expect(response.status).toBe(403)
     expect(response.headers.get('set-cookie')).toBeNull()
+  })
+
+  it('compare aux origines configurées, jamais à l’hôte d’écoute de la requête (#66)', async () => {
+    // L'image écoute sur `0.0.0.0:3000` : c'est l'hôte que porte `request.url`,
+    // pas celui que le navigateur a demandé. Les origines acceptées viennent du
+    // point de composition, sur la configuration à deux hôtes.
+    configureConsent({
+      scripts: DEMO_SCRIPTS,
+      acceptedOrigins: acceptedOrigins({
+        AUTH_SECRET: 'x'.repeat(32),
+        APP_URL: 'https://exemple.com',
+        APP_HOST: 'app.exemple.com',
+      } as Env),
+    })
+
+    const decide = async (origin: string): Promise<Response> =>
+      await dispatchAllowingRateLimit(
+        moduleRegistry,
+        new Request(`http://0.0.0.0:3000${consentRoutePath('decide')}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/x-www-form-urlencoded', origin },
+          body: new URLSearchParams({ decision: 'refuse-all' }),
+        }),
+      )
+
+    for (const configured of ['https://exemple.com', 'https://app.exemple.com']) {
+      expect((await decide(configured)).status, configured).toBe(303)
+    }
+
+    // L'hôte d'écoute n'est pas une origine du produit : l'accepter, c'est
+    // comparer de nouveau à `request.url`.
+    for (const foreign of ['http://0.0.0.0:3000', 'https://evil.test']) {
+      const response = await decide(foreign)
+
+      expect(response.status, foreign).toBe(403)
+      expect(response.headers.get('set-cookie')).toBeNull()
+    }
   })
 
   it('refuse une intention inconnue sans rien dire de plus', async () => {

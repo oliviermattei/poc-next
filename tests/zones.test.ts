@@ -6,6 +6,8 @@ import { buildRegistry, MODULE_ROUTE_PREFIX, navigationSurfaceOf } from '@repo/c
 import { describe, expect, it } from 'vitest'
 
 import { urlSegment, warmUpTargets } from '../e2e/support/warm-up'
+import { LEGACY_SCREEN_PATHS } from '../apps/web/lib/legacy-paths'
+import { zoneOf } from '../apps/web/lib/zones'
 import { availableModules, requiredModules } from '../config/features'
 import { appLocales } from '../config/i18n'
 
@@ -143,5 +145,72 @@ describe('chaque écran applicatif vit sous /app', () => {
         .filter((entry) => entry.href !== '/app' && !entry.href.startsWith('/app/'))
         .map((entry) => `${entry.id} → ${entry.href}`),
     ).toEqual([])
+  })
+})
+
+/**
+ * **La table des zones du proxy** (s64b1, ADR 079) comparée au disque.
+ *
+ * `apps/web/lib/zones.ts` classe un chemin interne par son premier segment ;
+ * chaque premier segment de page d'un dossier de zone doit y être classé dans
+ * la zone de ce dossier, sinon une page ajoutée serait servie sur le mauvais
+ * hôte — ou redirigée vers lui — sans que rien ne rougisse.
+ */
+describe('la table des zones du proxy suit le disque', () => {
+  const ZONE_OF_FOLDER = {
+    '(site)': 'site',
+    '(auth)': 'outside',
+    '(app)': 'app',
+    '(console)': 'console',
+  } as const
+
+  /** Les fichiers de métadonnées de Next, et l'URL que chacun sert. */
+  const METADATA_URLS: Readonly<Record<string, string>> = {
+    robots: 'robots.txt',
+    sitemap: 'sitemap.xml',
+    manifest: 'manifest.webmanifest',
+  }
+
+  it('classe chaque premier segment de page, de métadonnées et d’API dans la zone de son dossier', () => {
+    const expected = new Map<string, string>()
+
+    for (const file of pageFiles()) {
+      const [folder, ...rest] = file.split('/')
+      const zone = ZONE_OF_FOLDER[folder as keyof typeof ZONE_OF_FOLDER]
+      // `page.tsx` directement sous le dossier de zone : la racine du chemin.
+      const segment = rest.length === 1 ? '' : (rest[0] ?? '')
+
+      expected.set(`/${segment}`, zone)
+    }
+
+    const metadata = readdirSync(APP_ROOT)
+      .map((file) => METADATA_URLS[file.replace(/\.[^.]+$/, '')])
+      .filter((url): url is string => url !== undefined)
+
+    // L'anti-vacuité : les deux fichiers de métadonnées livrés sont vus.
+    expect(metadata).toEqual(expect.arrayContaining(['robots.txt', 'sitemap.xml']))
+
+    for (const url of metadata) {
+      expected.set(`/${url}`, 'site')
+    }
+
+    expected.set('/api/health', 'api')
+    // L'anti-vacuité : chaque zone du disque a fourni au moins un segment.
+    expect(new Set(expected.values())).toEqual(
+      new Set(['site', 'outside', 'app', 'console', 'api']),
+    )
+
+    const actual = new Map([...expected.keys()].map((path) => [path, zoneOf(path)]))
+
+    expect(Object.fromEntries(actual)).toEqual(Object.fromEntries(expected))
+    // Et un segment qu'aucun dossier ne sert n'est aiguillé nulle part.
+    expect(zoneOf('/inconnu')).toBeNull()
+  })
+
+  it('range chaque ancien chemin d’écran dans la zone Application', () => {
+    const legacy = Object.keys(LEGACY_SCREEN_PATHS)
+
+    expect(legacy.length).toBeGreaterThan(0)
+    expect(legacy.filter((path) => zoneOf(path) !== 'app')).toEqual([])
   })
 })

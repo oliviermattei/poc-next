@@ -23,6 +23,12 @@ import {
 export interface ConsentDependencies {
   /** Les scripts non essentiels **déclarés par les modules activés**. */
   readonly scripts: readonly NonEssentialScript[]
+  /**
+   * Les origines d'où une soumission est acceptée : celles que le déploiement
+   * **configure** — le site et l'application (s64b1, ADR 079). Obligatoire :
+   * une garde sans origine n'aurait rien à comparer.
+   */
+  readonly acceptedOrigins: readonly string[]
 }
 
 /** Ce qu'une décision enregistrée produit : un en-tête, et rien d'autre. */
@@ -34,6 +40,8 @@ export interface RecordedConsent {
 export interface ConsentUseCases {
   /** Les scripts déclarés, tels quels : l'écran de préférences en dérive ses cases. */
   readonly scripts: readonly NonEssentialScript[]
+  /** Les origines configurées, que la garde de la route compare à `Origin`. */
+  readonly acceptedOrigins: readonly string[]
   /** L'état du visiteur, lu dans son cookie. Une valeur illisible vaut « rien de décidé ». */
   readonly stateOf: (cookieValue: string | null | undefined) => ConsentState
   readonly record: (submission: ConsentSubmission) => RecordedConsent
@@ -45,6 +53,7 @@ export function createConsentUseCases(dependencies: ConsentDependencies): Consen
 
   return {
     scripts: dependencies.scripts,
+    acceptedOrigins: dependencies.acceptedOrigins,
     stateOf,
     record: (submission) => {
       // Les catégories **déclarées** décident de ce qui est enregistré : le

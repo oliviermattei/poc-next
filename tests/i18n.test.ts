@@ -966,7 +966,10 @@ const moduleRouteSetCookies = async (): Promise<readonly string[]> => {
   // Le module `consent` est le seul, à ce jour, dont une route publique pose un
   // cookie : il lui faut sa liste de scripts pour répondre autre chose qu'une
   // erreur de configuration.
-  configureConsent({ scripts: FIXTURE_CONSENT_SCRIPTS })
+  configureConsent({
+    scripts: FIXTURE_CONSENT_SCRIPTS,
+    acceptedOrigins: ['https://example.test'],
+  })
 
   try {
     const collected: string[] = []

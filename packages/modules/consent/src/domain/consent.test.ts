@@ -169,29 +169,29 @@ describe('le cookie de consentement', () => {
 })
 
 describe('la garde d’une soumission', () => {
-  const url = 'https://app.example.test/api/modules/consent/decide'
+  const acceptedOrigins = ['https://app.example.test']
 
   it('accepte une soumission de notre propre origine', () => {
     expect(
-      isSameSiteSubmission({ origin: 'https://app.example.test', referer: null, requestUrl: url }),
+      isSameSiteSubmission({ origin: 'https://app.example.test', referer: null, acceptedOrigins }),
     ).toBe(true)
   })
 
   it('refuse une soumission venue d’ailleurs : un consentement forgé n’en est pas un', () => {
     expect(
-      isSameSiteSubmission({ origin: 'https://evil.test', referer: null, requestUrl: url }),
+      isSameSiteSubmission({ origin: 'https://evil.test', referer: null, acceptedOrigins }),
     ).toBe(false)
   })
 
   it('ignore le schéma, que la terminaison TLS change', () => {
-    // Derrière un proxy qui termine TLS, `request.url` peut être en `http:`
-    // alors que le navigateur a vu `https:`. Comparer les schémas refuserait
-    // toutes les soumissions en production.
+    // Une configuration en `http:` derrière un proxy qui termine TLS, alors que
+    // le navigateur a vu `https:` : comparer les schémas refuserait toutes les
+    // soumissions en production.
     expect(
       isSameSiteSubmission({
         origin: 'https://app.example.test',
         referer: null,
-        requestUrl: 'http://app.example.test/api/modules/consent/decide',
+        acceptedOrigins: ['http://app.example.test'],
       }),
     ).toBe(true)
   })
@@ -201,7 +201,7 @@ describe('la garde d’une soumission', () => {
       isSameSiteSubmission({
         origin: null,
         referer: 'https://evil.test/piege',
-        requestUrl: url,
+        acceptedOrigins,
       }),
     ).toBe(false)
 
@@ -209,7 +209,7 @@ describe('la garde d’une soumission', () => {
       isSameSiteSubmission({
         origin: null,
         referer: 'https://app.example.test/fr/cookies',
-        requestUrl: url,
+        acceptedOrigins,
       }),
     ).toBe(true)
   })
@@ -220,7 +220,7 @@ describe('la garde d’une soumission', () => {
     // le retrait de consentement chez ceux dont un outil de confidentialité
     // supprime ces en-têtes — c'est-à-dire exactement ceux que cet écran sert.
     // Ce cas est celui de l'**absence**, et lui seul : voir juste en dessous.
-    expect(isSameSiteSubmission({ origin: null, referer: null, requestUrl: url })).toBe(true)
+    expect(isSameSiteSubmission({ origin: null, referer: null, acceptedOrigins })).toBe(true)
   })
 
   it('refuse une origine opaque : `Origin: null` est présent, pas absent', () => {
@@ -230,7 +230,7 @@ describe('la garde d’une soumission', () => {
     // redirections inter-origines font tous émettre `Origin: null` par le
     // navigateur de la victime. Le traiter comme une absence laisse forger un
     // consentement complet, ce que ce module existe pour empêcher.
-    expect(isSameSiteSubmission({ origin: 'null', referer: null, requestUrl: url })).toBe(false)
+    expect(isSameSiteSubmission({ origin: 'null', referer: null, acceptedOrigins })).toBe(false)
 
     // Et le repli sur le référent ne rattrape pas une origine opaque : ce que
     // le navigateur a rendu opaque ne redevient pas digne de confiance parce
@@ -239,14 +239,14 @@ describe('la garde d’une soumission', () => {
       isSameSiteSubmission({
         origin: 'null',
         referer: 'https://app.example.test/fr/cookies',
-        requestUrl: url,
+        acceptedOrigins,
       }),
     ).toBe(false)
 
     // Toute autre valeur présente qui n'est pas une URL est refusée pour la
     // même raison : elle ne prouve pas l'origine.
     expect(
-      isSameSiteSubmission({ origin: 'app.example.test', referer: null, requestUrl: url }),
+      isSameSiteSubmission({ origin: 'app.example.test', referer: null, acceptedOrigins }),
     ).toBe(false)
 
     // Et un en-tête **répété**, que `Headers` joint en « a, a », n'est pas une
@@ -258,11 +258,11 @@ describe('la garde d’une soumission', () => {
       isSameSiteSubmission({
         origin: 'https://app.example.test, https://app.example.test',
         referer: null,
-        requestUrl: url,
+        acceptedOrigins,
       }),
     ).toBe(false)
     expect(
-      isSameSiteSubmission({ origin: null, referer: 'null', requestUrl: url }),
+      isSameSiteSubmission({ origin: null, referer: 'null', acceptedOrigins }),
     ).toBe(false)
   })
 })
