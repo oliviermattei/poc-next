@@ -1,5 +1,5 @@
 ---
-description: Get a story implemented in TDD, in an isolated subagent. Never codes in the main context.
+description: Get a story implemented in an isolated subagent. Never codes in the main context.
 argument-hint: <story id or name>
 allowed-tools:
   - Read
@@ -29,18 +29,18 @@ If you can't invoke the Agent tool, stop and report the error. Don't improvise.
 3. From that worktree, read docs/plans/<id>.md. If it doesn't exist, STOP: ask for /ks-plan <id> first. Go no further.
 4. Check the plan's frontmatter: it must contain `validated: yes`. Otherwise STOP: "Plan not validated. Review it, then rerun /ks-plan <id> to validate."
 5. Read docs/reviews/<id>.md from the worktree if it exists. If it contains `Ship allowed: no`, this is a FIX run: the review findings come first.
+6. Read AGENTS.local.md: the project commands (`Test`, `Typecheck`, `E2E`, `Build`), `Test budget`, and the stages (`Full suite`, `E2E stage`, `Build stage`). Missing file → STOP: "No project settings. Run /ks-setup." A command left at `—` is one the implementer must not invent: pass it along as unavailable.
 
 ### Step 2 — Delegate
 Invoke the Agent tool:
 - subagent_type: implementer
-- description: Implement story <id> in TDD
+- description: Implement story <id>
 - working directory: the absolute dedicated worktree path verified in Step 1.
-- prompt: Implement story <id> from docs/plans/<id>.md, following docs/architecture.md and AGENTS.md. Read docs/research/<id>.md first when it exists — the plan decides, the research holds the verified facts and the traps, and you commit it. The worktree and branch are already prepared and verified: do not create a worktree, switch branches, checkout, or stash. Strict TDD, task by task: failing test → code → passing test, checkbox ticked. One single commit at the end of the story, carrying the story docs and every task — never one commit per task. Implement only what the plan specifies. The tdd-skill is preloaded in your context.
-- On a FIX run, prepend to the prompt: This story was blocked in review. Fix every critical and major finding from docs/reviews/<id>.md first, test-first, then finish any unimplemented plan task.
-
+- prompt: Implement story <id> from docs/plans/<id>.md. Your agent definition is your contract — this prompt carries only what is specific to this run. The worktree and branch are prepared and verified: do not create a worktree, switch branches, checkout, or stash. The project commands, `Test budget` and the stages live in AGENTS.local.md — quote them verbatim, and one left at `—` does not exist in this project.
+- On a FIX run, add: This story was blocked in review. docs/reviews/<id>.md is your fix list; your definition says how to work it.
 Wait for the agent to finish. Capture its summary.
 
 ### Step 3 — Report
-Summarize: tasks done, files touched, tests added, and any blocker the agent reported. No line-by-line detail.
+Summarize: tasks done, files touched, tests added, what the verification record says (commands, exit codes, tree), and any blocker the agent reported. No line-by-line detail.
 
 End with: "Implementation done. Next step: /ks-review <id>"

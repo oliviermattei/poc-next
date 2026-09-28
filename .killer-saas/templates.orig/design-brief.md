@@ -1,6 +1,6 @@
 # Design Brief — Story <id>
 
-> Paste this brief into the external design tool (Claude Design / Gemini). It is self-contained: story, screens, constraints, expected output.
+> Paste this brief into whichever external design tool holds the design system. It is self-contained: story, screens, constraints, expected output.
 
 ## Story
 <recap + acceptance criteria>
@@ -24,6 +24,4 @@ Do not invent components, tokens or colors outside these.
 <what NOT to design — perimeter guard>
 
 ## Expected output
-A static HTML mockup of each screen (low fidelity is fine), using only the tokens above. Bring the export back — it will be saved as docs/designs/<id>.html.
-
-<< IP Mike: brief level of detail, what makes an external tool productive on first pass. >>
+A finished static HTML mockup of each screen, using only the tokens above: every state listed, light and dark, desktop and mobile, real copy — never lorem ipsum. The design system exists, so there is no visual direction left to explore. Bring the export back — it will be saved as docs/designs/<id>/mockup.html, and it will be rendered and checked before the story is planned.

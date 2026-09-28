@@ -3,6 +3,23 @@
 > Fresh-context review. Each issue classified: critical / major / minor.
 > Diff reviewed: `git diff <default-branch>...feature/<id>`
 
+Review status: <complete | blocked>
+
+If blocked, do not leave this implicit:
+
+## Review failure
+### Failure cause
+<concrete command, tool, prerequisite, or state that prevented completion, including the error>
+
+### Missing
+<exact evidence, file, setting, or access that was unavailable>
+
+### Required adaptation
+<precise change or input the project agent must provide before rerunning>
+
+### Next action
+<exact command or human gesture>
+
 ## Plan compliance
 - [ ] The code does what the plan specifies, nothing more
 - [ ] Run interdicts respected — each one checked and named
@@ -15,10 +32,10 @@
 ## Rules compliance
 - [ ] Repo conventions followed (AGENTS.md)
 - [ ] No accepted ADR contradicted (docs/decisions/)
-- [ ] Design system respected — components/tokens from docs/design-system.md, screen matches the intent of docs/designs/<id>.md (UI stories)
+- [ ] Design system respected — components/tokens from docs/design-system.md, screen matches the intent of docs/designs/<id>/design.md (UI stories)
 
 ## Tests
-- [ ] Test suite run by the reviewer, passing
+- [ ] Verification record checked (`ks-gate verif-current <id>`): <current, taken as proof | stale/missing → suite and type check re-run here>
 - [ ] Assertions pin the acceptance criteria (no assertion-free tests)
 - [ ] Bite proven by neutralization: <what was neutralized> → <N> tests red, restored (`git diff --exit-code` clean)
 - [ ] Tests the story made redundant are named and removed — or their absence justified
@@ -37,5 +54,3 @@
 ## Verdict
 Max severity: <critical | major | minor | none>
 Ship allowed: <yes | no>
-
-<< IP Mike: hallucination detection heuristics, false positive/negative examples. >>

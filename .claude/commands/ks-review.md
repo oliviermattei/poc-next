@@ -23,7 +23,7 @@ If you can't invoke the Agent tool, stop and report the error. Don't improvise.
 ## Workflow
 
 ### Step 1 — Delegate
-Resolve $ARGUMENTS to the story id (`s<number>-<slug>`) against docs/stories.md.
+Resolve $ARGUMENTS to the story id (`s<number>-<slug>`) against docs/stories.md. Read AGENTS.local.md for the project commands and `Test budget` — missing file → STOP: "No project settings. Run /ks-setup."
 Locate `.worktrees/<id>`, verify its branch is exactly `feature/<id>`, and use
 that absolute worktree as the reviewer working directory and report location.
 Missing worktree, wrong branch, detached HEAD or repository base → STOP; never
@@ -31,12 +31,12 @@ switch branches. Then invoke the Agent tool:
 - subagent_type: reviewer
 - description: Anti-hallucination review of story <id>
 - working directory: the absolute dedicated worktree path verified above.
-- prompt: Review story <id>. The story diff is `git diff <default-branch>...feature/<id>` — judge that diff, and only that diff, against docs/plans/<id>.md, docs/research/<id>.md when it exists, AGENTS.md and the accepted ADRs in docs/decisions/. When docs/design-system.md and docs/designs/<id>.md exist, also check conformity to the design system and to the screen's INTENT — not to the mockup HTML line by line; any component, token or color outside the system is drift to classify (major by default, critical if it breaks the product's visual coherence). Run the test suite yourself; don't trust reported results. The review-antihallu skill is preloaded. Fill the checklist from templates/review-checklist.md, classify each issue (critical / major / minor), and end your report with the exact lines "Max severity: <critical|major|minor|none>" and "Ship allowed: <yes|no>".
+- prompt: Review story <id>. Your agent definition and the preloaded `review-antihallu` skill are your contract — this prompt carries only what is specific to this run. Judge `git diff <default-branch>...feature/<id>`, and only that diff. Fill the checklist from templates/review-checklist.md, and end with the exact lines "Max severity: <critical|major|minor|none>" and "Ship allowed: <yes|no>". Report every finding in this review; never hold one back for a later pass. The project commands and settings are in AGENTS.local.md — quote them verbatim, and one left at `—` is reported as not run, never substituted.
 
-Wait for the verdict.
+Wait for the verdict. If the Agent call fails, times out, returns no report, or returns a report without both exact verdict lines, write `docs/reviews/<id>.md` yourself with `Review status: blocked`, the concrete failure cause, missing information/evidence, and the exact adaptation required. End it with `Max severity: critical` and `Ship allowed: no` when review completeness is compromised. Do not replace the failure with a vague "review failed" message.
 
 ### Step 2 — Report
-Write the full report to docs/reviews/<id>.md. It MUST end with the exact lines `Max severity: ...` and `Ship allowed: yes` or `Ship allowed: no` — /ks-ship greps that line, and without it the ship stays blocked. A single critical = no.
+Write the full report to docs/reviews/<id>.md. It MUST include a `Review status: complete|blocked` line, and, when blocked, the sections `Failure cause`, `Missing`, and `Required adaptation` with concrete details. It MUST end with the exact lines `Max severity: ...` and `Ship allowed: yes` or `Ship allowed: no` — /ks-ship greps that line, and without it the ship stays blocked. A single critical = no. An incomplete review is never a pass.
 
 ### Step 3 — Gate (fail-closed)
 - Verdict with a CRITICAL → Ship blocked. End with: "Ship blocked (critical). Fix via /ks-execute <id> (fix mode), then rerun /ks-review <id>."

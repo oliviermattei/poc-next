@@ -15,11 +15,9 @@ Resolve $ARGUMENTS to the story id (`s<number>-<slug>`) against docs/stories.md.
 
 ## Workspace bootstrap (fail-closed)
 
-Before reading or writing story files, invoke the `worktree-manager` subagent
-with the resolved id and repository base directory. Continue only after it
-returns the absolute `.worktrees/<id>` path, confirms branch `feature/<id>` and
-a clean status. Perform every Research read and write in that worktree. Never
-create or checkout the feature branch in the repository base directory.
+Bootstrap or verify the story's workspace exactly as AGENTS.md, "Where work happens",
+specifies, and perform every read and write there. Report the absolute path, the branch and
+the environment files copied (names only, never values). Any conflict it names is a hard stop.
 
 If docs/reviews/stories.md is missing, or says `Stories ready: no`, say so: the breakdown hasn't passed /ks-stories-review, so this story may not match the PRD perimeter. Continue only if I confirm — this is a warning, not a block.
 
@@ -35,7 +33,10 @@ Proceed as follows:
 4. Spot the traps: existing tests, dependencies between modules, code touched by previous stories.
 5. Note what you could NOT settle in the "Open questions" section — an honest unknown beats a plausible guess.
 6. Re-score the story's complexity now that you have read the code, and compare with docs/stories.md. A score given before anyone opened a file is a guess; yours is not. A verdict of 5 carries a split proposal — it belongs here, where the facts are.
-7. Write the result to `docs/research/<id>.md`.
+7. Write the result to `docs/research/<id>.md`. **Cap it at ~200 lines.** Three agents read
+   this file afterwards and pay for its length. Keep what carries decisions — false
+   premises first, migration yes/no, name collisions, open questions, complexity — and cut
+   the narrative around them. A verified fact needs its `path:line`, not a paragraph.
 
 Write no code. Plan nothing: this command produces verified context, not a plan.
 
