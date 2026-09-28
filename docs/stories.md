@@ -2147,6 +2147,7 @@ s64b1-hote-routage, s22-pricing-page, s24-guest-checkout
 - [ ] Les cookies de consentement et de langue sont posés sur le domaine parent. Quand un ancien cookie propre à l'hôte coexiste avec le nouveau, **le cookie du domaine parent fait foi** et l'ancien est effacé à la première réponse : un refus de consentement n'est jamais masqué
 - [ ] `docs/deployment.md` décrit les deux configurations, la transmission de l'en-tête `Host` par le proxy amont, les URI de rappel OAuth à mettre à jour chez les fournisseurs, et le coût d'une disposition `www` + `app` ; la mention « pas encore supportée » de s64a est retirée
 - [ ] **Recette manuelle** : un déploiement à deux hôtes est servi de bout en bout, trace consignée dans la revue
+- [ ] L'aiguillage par hôte ne peut pas empoisonner un cache partagé (#67) : `docs/deployment.md` exige que le proxy amont réécrive `Host` et retire ou écrase `x-forwarded-host`, et les réponses qui dépendent de l'hôte le déclarent (`Vary`) ou ne sont pas cachables
 - [ ] L'extension multi-hôte est consignée dans le PRD (constat F88)
 
 ### Dependencies
