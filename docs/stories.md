@@ -1865,6 +1865,8 @@ L'en-tête du site se compose des composants existants de `packages/ui` ; un bes
 ---
 
 ## Story s62-zone-reglages — Régler son compte et son organisation dans une zone dédiée
+
+> **DÉCOUPÉE le 28/09 — ne pas implémenter telle quelle.** Sa research (`docs/research/s62-zone-reglages.md`) rend un verdict de complexité **5** : trois chantiers indépendants (zone et chemins, redécoupage du contenu, barre du haut), aucune infrastructure de redirection, plus de 150 chemins écrits en dur. Elle est remplacée par **s62a**, **s62b** et **s62c** ci-dessous, qui se partagent ses critères.
 **As a** User **I want** retrouver profil, sécurité, organisation, membres et facturation dans une zone Réglages **so that** la barre latérale de l'application reste celle du produit, comme dans tout SaaS.
 
 > **Décision du porteur (27/09).** La barre latérale de `/app` est **réservée aux pages du SaaS construit**. Compte, organisation, membres, facturation et préférences quittent la navigation principale. Parité : MakerKit (`/home/settings`, `/home/[account]/billing`), Supastarter (`/settings/general`).
@@ -1895,6 +1897,77 @@ Les segments redirigés restent réservés aux organisations (`APPLICATION_SEGME
 
 ---
 
+## Story s62a-reglages-deplacement — Donner une adresse sous `/app/settings` à chaque réglage
+**As a** User **I want** que compte, organisation et facturation vivent sous `/app/settings` **so that** les réglages quittent la navigation du produit et aient une adresse stable.
+
+> Tranche 1 de 3 de `s62-zone-reglages`. Les écrans sont **déplacés tels quels** ; leur redécoupage est s62b, la barre du haut s62c.
+
+### Complexity
+4
+
+### Acceptance criteria
+- [ ] Une nouvelle surface `settings` existe ; le layout `/app/settings` rend sa sous-navigation, dérivée du registre, avec les entrées Compte (`/app/settings/account`), Organisation (`/app/settings/organization`), Facturation (`/app/settings/billing`) ; chacune disparaît avec son module
+- [ ] Le contenu de `/account`, `/organizations` et `/billing` est servi **à l'identique** sous ces trois chemins ; `/app` et sa barre latérale ne portent plus ces entrées
+- [ ] Les anciens chemins `/account`, `/organizations`, `/billing` répondent **308** vers leur équivalent (requête conservée, préfixe de langue respecté) par **une seule table** de redirections, lue dans `apps/web/proxy.ts` ; un test compare la table à une **fixture figée** des anciens chemins de la zone Application de s61 et exige que chacun soit servi ou redirigé
+- [ ] `/account` a une constante de chemin ; les retours de checkout et de portail Stripe (`billing-use-cases.ts:616`), le repli du guest checkout (`apps/web/lib/guest-account.ts:154`), les redirections 303 des routes vers leur écran et les liens internes pointent le nouveau chemin
+- [ ] Le menu de compte (« Réglages ») pointe vers `/app/settings/account`, dans l'application et dans la console
+- [ ] Module `organizations` coupé : ni l'entrée Organisation ni son 308 ne servent ; module `billing` coupé : idem pour Facturation. `pnpm test:minimal-profile`, `pnpm test:socle` et `pnpm test:golden-path` restent verts
+
+### Dependencies
+s61-site-et-application
+
+### Agentic notes
+Faits vérifiés : `docs/research/s62-zone-reglages.md` (faits 2 et 3). Aucune table de redirection n'existe ; `proxy.ts` ne sait que la redirection canonique de langue (307) et la réécriture. La recherche dans la table se fait sur le chemin **interne** (après `internalPath`), puis la cible est re-préfixée.
+La migration des chemins écrits en dur dans les tests est l'essentiel du travail : la dériver d'un seul endroit côté e2e (`e2e/support/locale.ts`) plutôt que de remplacer une chaîne par une autre.
+Le centre de notifications et ses préférences ne bougent pas ici (s62c, s63).
+
+---
+
+## Story s62b-reglages-decoupage — Ranger les réglages en rubriques
+**As a** User **I want** retrouver mon profil, ma sécurité, mes cookies, mon organisation et ses membres dans des rubriques séparées **so that** chaque réglage se trouve là où on l'attend, comme dans tout SaaS.
+
+> Tranche 2 de 3 de `s62-zone-reglages`.
+
+### Complexity
+3
+
+### Acceptance criteria
+- [ ] La sous-navigation des réglages porte les rubriques Profil, Sécurité, Organisation, Membres, Facturation, Cookies ; chacune disparaît avec son module
+- [ ] Le contenu de l'actuel `/app/settings/account` est réparti **sans perte** entre Profil, Sécurité et Cookies selon le design de la story ; celui de `/app/settings/organization` entre Organisation et Membres ; un test retrouve chaque carte et chaque action d'avant sous son nouveau chemin
+- [ ] Les écrans RGPD (export, suppression) restent atteignables depuis une rubrique listée, jamais une page non listée
+- [ ] Les anciens chemins de s62a qui ne correspondent plus à une rubrique répondent 308 par la table de s62a
+
+### Dependencies
+s62a-reglages-deplacement
+
+### Agentic notes
+Faits vérifiés : `docs/research/s62-zone-reglages.md` (fait 4, question ouverte 1). UI : passe par `/ks-design`.
+
+---
+
+## Story s62c-barre-du-haut — Changer d'organisation et régler ses notifications depuis la barre du haut
+**As a** User **I want** changer d'organisation et voir mes notifications depuis la barre du haut, et régler mes préférences dans la zone Réglages **so that** la barre latérale de l'application ne porte plus que le produit.
+
+> Tranche 3 de 3 de `s62-zone-reglages`.
+
+### Complexity
+3
+
+### Acceptance criteria
+- [ ] La barre du haut de l'application porte le sélecteur d'organisation (absent si `organizations` est coupé), la cloche avec le compteur de non-lus (absente si `notifications` est coupé) et le menu de compte (Réglages, Déconnexion)
+- [ ] Changer d'organisation depuis la barre du haut ramène sur l'écran courant, jamais sur une page de réglages imposée
+- [ ] Les préférences de notification sont servies sous `/app/settings/notifications`, rubrique de la sous-navigation ; le centre de notifications ne les porte plus
+- [ ] La barre latérale de `/app` ne contient plus aucune entrée de réglage ni de notification
+- [ ] Modules coupés : `pnpm test:minimal-profile` et `pnpm test:socle` restent verts
+
+### Dependencies
+s62b-reglages-decoupage, s32-notifications-inapp, s15-organizations
+
+### Agentic notes
+Faits vérifiés : `docs/research/s62-zone-reglages.md` (fait 5) : `OrgSwitcher` n'est rendu que dans `organizations-screen.tsx:407`, la route `switch` répond 303 vers `/organizations` ; la cloche existe déjà dans l'`AppShell`.
+
+---
+
 ## Story s63-application-sous-app — Servir tout l'écran applicatif sous `/app`
 **As a** Propriétaire du produit **I want** que chaque écran authentifié de l'application vive sous `/app` **so that** le site et l'application soient séparés par leur adresse, et qu'un hôte dédié (s64) n'ait qu'un préfixe à associer.
 
@@ -1913,7 +1986,7 @@ Les segments redirigés restent réservés aux organisations (`APPLICATION_SEGME
 - [ ] `pnpm test:e2e`, `pnpm test:golden-path` et `pnpm test:minimal-profile` restent verts sous les nouveaux chemins
 
 ### Dependencies
-s60-console, s61-site-et-application, s62-zone-reglages, s21-trials-and-gating, s32-notifications-inapp, s40-onboarding
+s60-console, s61-site-et-application, s62c-barre-du-haut, s21-trials-and-gating, s32-notifications-inapp, s40-onboarding
 
 ### Agentic notes
 Les quatre entrées de la console sont déclarées `protection: { level: 'authenticated' }` (`admin-routes.ts:536`, `organization-routes.ts:308`, `billing-routes.ts:327`, marketing `module.ts:57`) : sans l'exclusion du critère 1, une dérivation par niveau de protection les capturerait.
