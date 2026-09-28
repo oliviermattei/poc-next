@@ -4,11 +4,16 @@ import {
   singleLocaleRouting,
   visibleNavigation,
 } from '@repo/core'
-import { ACCOUNT_SCREEN_PATH, authModule } from '@repo/module-auth'
+import {
+  authModule,
+  PROFILE_SCREEN_PATH,
+  SECURITY_SCREEN_PATH,
+} from '@repo/module-auth'
 import { BILLING_SCREEN_PATH } from '@repo/module-billing'
+import { CONSENT_SETTINGS_SCREEN_PATH } from '@repo/module-consent'
 import { demoEnabledModule } from '@repo/module-demo-enabled'
 import { i18nModule, localePrefixRouting } from '@repo/module-i18n'
-import { ORGANIZATIONS_SCREEN_PATH } from '@repo/module-organizations'
+import { MEMBERS_SCREEN_PATH, ORGANIZATIONS_SCREEN_PATH } from '@repo/module-organizations'
 import { describe, expect, it } from 'vitest'
 
 import { flatMessagesFor } from '../apps/web/lib/messages'
@@ -40,7 +45,7 @@ const aSession = { userId: 'user-1', roles: [] as readonly string[] }
 /**
  * Le traducteur, tel que le shell le passe : le catalogue réel de la locale, et
  * **aucun repli** sur la clé — c'est la règle de la story, et un repli ici
- * rendrait vert un libellé que l'écran afficherait en « auth.navigation.account ».
+ * rendrait vert un libellé que l'écran afficherait en « auth.navigation.profile ».
  */
 const intlFor = (
   locale: string,
@@ -78,14 +83,14 @@ describe('navigation du shell', () => {
     )
 
     expect(items).toContainEqual({
-      id: 'auth:account',
-      href: ACCOUNT_SCREEN_PATH,
-      label: 'Mon compte',
+      id: 'auth:profile',
+      href: PROFILE_SCREEN_PATH,
+      label: 'Profil',
     })
   })
 
   it('n’affiche pas l’entrée qu’un visiteur anonyme n’a pas le droit de voir', () => {
-    // Le témoin de refus : « Mon compte » est déclarée `authenticated`, et la
+    // Le témoin de refus : « Profil » est déclarée `authenticated`, et la
     // masquer n'est pas une permission — c'est la route qui refusera. Mais une
     // entrée visible vers un écran refusé divulgue son existence (§3).
     const anonymous = shellNavigation(
@@ -95,7 +100,7 @@ describe('navigation du shell', () => {
       'settings',
     )
 
-    expect(anonymous.map((item) => item.href)).not.toContain(ACCOUNT_SCREEN_PATH)
+    expect(anonymous.map((item) => item.href)).not.toContain(PROFILE_SCREEN_PATH)
   })
 
   it('perd l’entrée d’un module désactivé, sans condition dans le composant', () => {
@@ -179,32 +184,108 @@ describe('les surfaces du site et de l’application', () => {
  * **La zone Réglages a sa surface** (s62a, ADR 075).
  *
  * Compte, organisation et facturation quittent la barre latérale du produit
- * pour la sous-navigation de `/app/settings`. Les attentes sont des **chemins**
+ * pour la sous-navigation de `/app/settings`, rangés depuis s62b en six
+ * rubriques : Profil, Sécurité, Organisation, Membres, Facturation, Cookies. Les attentes sont des **chemins**
  * — les constantes des modules —, jamais des identifiants de module : une
  * entrée oubliée en surface `app` retomberait dans la barre latérale sans
  * erreur à l'écran, et c'est ce que ces cas voient.
  *
  * Le premier lit **l'annuaire** (`availableModules`) : il tient la déclaration
- * quelle que soit la configuration jouée. Le second lit le registre en
+ * et son ordre quelle que soit la configuration jouée. Le deuxième coupe tour à
+ * tour chaque module qui déclare une rubrique. Le dernier lit le registre en
  * vigueur, et vaut dans toute configuration — `socle` et le profil minimal
  * coupent deux de ces trois modules.
  */
 describe('la surface des réglages', () => {
-  const SETTINGS_SCREENS = [ACCOUNT_SCREEN_PATH, ORGANIZATIONS_SCREEN_PATH, BILLING_SCREEN_PATH]
+  // L'ordre du design de s62b : Profil, Sécurité, Organisation, Membres,
+  // Facturation, Cookies. Des **chemins** — les constantes des modules —,
+  // jamais des identifiants de module.
+  const SETTINGS_SCREENS = [
+    PROFILE_SCREEN_PATH,
+    SECURITY_SCREEN_PATH,
+    ORGANIZATIONS_SCREEN_PATH,
+    MEMBERS_SCREEN_PATH,
+    BILLING_SCREEN_PATH,
+    CONSENT_SETTINGS_SCREEN_PATH,
+  ]
 
-  it('déclare exactement le compte, l’organisation et la facturation dans la surface `settings`', async () => {
-    const { availableModules } = await import('../config/features')
-    const declared = availableModules.flatMap((module) =>
-      module.navigation
-        .filter((entry) => navigationSurfaceOf(entry) === 'settings')
-        .map((entry) => entry.href),
-    )
+  /** Un module et ce qu'il requiert, transitivement, plus le socle. */
+  const closureOf = (
+    modules: readonly { readonly id: string; readonly requires: readonly string[] }[],
+    root: string,
+    required: readonly string[],
+  ): readonly string[] => {
+    const found = new Set<string>()
+    const visit = (id: string): void => {
+      if (found.has(id)) return
+      found.add(id)
+      for (const dependency of modules.find((module) => module.id === id)?.requires ?? []) {
+        visit(dependency)
+      }
+    }
 
-    expect([...declared].sort()).toEqual([...SETTINGS_SCREENS].sort())
+    for (const id of [root, ...required]) visit(id)
+
+    return [...found]
+  }
+
+  it('déclare les six rubriques dans la surface `settings`, dans l’ordre du design', async () => {
+    const { availableModules, requiredModules } = await import('../config/features')
+    const everything = buildRegistry({
+      available: [...availableModules],
+      // Tout l'annuaire activé : c'est la déclaration qui est jugée, pas la
+      // configuration jouée.
+      enabled: availableModules.map((module) => module.id),
+      required: [...requiredModules],
+      locales: ['fr', 'en'],
+    })
+    const declared = everything.navigation
+      .filter((entry) => navigationSurfaceOf(entry) === 'settings')
+      .map((entry) => entry.href)
+
+    expect(declared).toEqual(SETTINGS_SCREENS)
 
     for (const href of declared) {
       expect(href.startsWith('/app/settings/'), href).toBe(true)
     }
+  })
+
+  it('perd chaque rubrique avec le module qui la déclare, sans condition ailleurs', async () => {
+    const { availableModules, requiredModules } = await import('../config/features')
+    const settingsOf = (enabled: readonly string[]) =>
+      buildRegistry({
+        available: [...availableModules],
+        enabled,
+        required: [...requiredModules],
+        locales: ['fr', 'en'],
+      })
+        .navigation.filter((entry) => navigationSurfaceOf(entry) === 'settings')
+        .map((entry) => entry.href)
+    const owners = availableModules.filter((module) =>
+      module.navigation.some((entry) => navigationSurfaceOf(entry) === 'settings'),
+    )
+    let cut = 0
+
+    for (const owner of owners) {
+      const own = owner.navigation
+        .filter((entry) => navigationSurfaceOf(entry) === 'settings')
+        .map((entry) => entry.href)
+      const on = closureOf(availableModules, owner.id, requiredModules)
+
+      expect(settingsOf(on), owner.id).toEqual(expect.arrayContaining(own))
+
+      // Le socle ne se coupe pas : ses rubriques restent, par construction.
+      if ((requiredModules as readonly string[]).includes(owner.id)) continue
+
+      const off = settingsOf(on.filter((id) => id !== owner.id))
+
+      expect(off.filter((href) => own.includes(href)), owner.id).toEqual([])
+      cut += 1
+    }
+
+    // L'anti-vacuité : des rubriques appartiennent bien à des modules qu'on
+    // peut couper — sans quoi la boucle serait verte sans rien couper.
+    expect(cut).toBeGreaterThan(0)
   })
 
   it('rend les réglages des modules activés, et aucun dans la barre latérale', async () => {
@@ -217,9 +298,10 @@ describe('la surface des réglages', () => {
     )
     const sidebar = visibleNavigation(moduleRegistry, aSession).map((entry) => entry.href)
 
-    // L'anti-vacuité : le compte appartient au socle, il est toujours là.
-    expect(settings).toContain(ACCOUNT_SCREEN_PATH)
-    expect([...settings].sort()).toEqual([...declared].sort())
+    // L'anti-vacuité : le profil appartient au socle, il est toujours là.
+    expect(settings).toContain(PROFILE_SCREEN_PATH)
+    // Dans l'ordre du design, quelle que soit la configuration jouée.
+    expect(settings).toEqual(SETTINGS_SCREENS.filter((href) => declared.includes(href)))
     expect(sidebar.filter((href) => SETTINGS_SCREENS.includes(href))).toEqual([])
     // Un visiteur anonyme n'a aucun réglage.
     expect(visibleNavigation(moduleRegistry, null, 'settings')).toEqual([])
@@ -244,8 +326,8 @@ describe('navigation du shell et langue', () => {
       'settings',
     )
 
-    expect(french.find((item) => item.id === 'auth:account')?.label).toBe('Mon compte')
-    expect(english.find((item) => item.id === 'auth:account')?.label).toBe('My account')
+    expect(french.find((item) => item.id === 'auth:profile')?.label).toBe('Profil')
+    expect(english.find((item) => item.id === 'auth:profile')?.label).toBe('Profile')
   })
 
   it('sert les mêmes entrées, préfixées ou non, sans variante dans le composant', () => {
@@ -264,8 +346,8 @@ describe('navigation du shell et langue', () => {
       'settings',
     )
 
-    expect(withoutPrefix.map((item) => item.href)).toContain(ACCOUNT_SCREEN_PATH)
-    expect(withPrefix.map((item) => item.href)).toContain(`/fr${ACCOUNT_SCREEN_PATH}`)
+    expect(withoutPrefix.map((item) => item.href)).toContain(PROFILE_SCREEN_PATH)
+    expect(withPrefix.map((item) => item.href)).toContain(`/fr${PROFILE_SCREEN_PATH}`)
     expect(withPrefix.map((item) => item.id)).toEqual(withoutPrefix.map((item) => item.id))
     expect(withPrefix.map((item) => item.label)).toEqual(withoutPrefix.map((item) => item.label))
   })

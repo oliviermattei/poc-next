@@ -52,7 +52,13 @@ export {
   type AnyOAuthProviderId,
   type OAuthFailureClass,
 } from './domain/oauth'
-export { ACCOUNT_SCREEN_PATH, DEFAULT_SIGNED_IN_PATH, safeRedirectPath } from './domain/redirect'
+export {
+  ACCOUNT_SCREEN_PATH,
+  DEFAULT_SIGNED_IN_PATH,
+  PROFILE_SCREEN_PATH,
+  safeRedirectPath,
+  SECURITY_SCREEN_PATH,
+} from './domain/redirect'
 // s34 : l'identifiant de la tâche de purge et le champ de sa charge utile. Le
 // point de composition en a besoin pour n'écrire aucun de ces noms deux fois.
 export {

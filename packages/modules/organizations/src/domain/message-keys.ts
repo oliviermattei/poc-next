@@ -134,6 +134,9 @@ export const ORGANIZATIONS_KEYS = {
   /* ----------------------------------------------------------------------- *
    * s16 — les membres, les invitations, et l'écran d'atterrissage du lien.
    * ----------------------------------------------------------------------- */
+  /** s62b — le titre et la description de la rubrique Membres. */
+  membersScreenTitle: organizationsKey('members.screenTitle'),
+  membersScreenDescription: organizationsKey('members.screenDescription'),
   membersTitle: organizationsKey('members.title'),
   membersDescription: organizationsKey('members.description'),
   membersYou: organizationsKey('members.you'),

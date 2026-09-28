@@ -90,10 +90,10 @@ test.describe('sous 400 px', () => {
     // l'authentification en anonyme — un connecté sur `/sign-in` est renvoyé.
     for (const path of [sitePage(), DEFAULT_SIGNED_IN_PATH, settingsPath('account')]) {
       await page.goto(path)
-      // `first()` : un écran de réglages porte deux titres de premier niveau
-      // depuis s62a — celui de la zone et celui de l'écran déplacé tel quel —,
-      // jusqu'au redécoupage de s62b.
-      await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible()
+      // **Un seul** titre de premier niveau par écran (s62b) : sur un écran de
+      // réglages, celui de la zone — la rubrique ouvre par un `h2`. Sans
+      // `first()`, deux `h1` font échouer le localisateur.
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
       expect(await horizontalOverflow(page), `${path} déborde à ${NARROW.width} px`).toBeLessThanOrEqual(0)
     }
 
@@ -149,8 +149,9 @@ test('le tableau de bord porte la navigation et le menu de compte', async ({ pag
   // lequel, et c'est l'information qui compte quand on est connecté avec le
   // mauvais.
   await page.getByRole('button', { name: `Compte — ${email}` }).click()
-  // Et il mène à la zone Réglages (s62a), sans détour par un ancien chemin.
-  await page.getByRole('menuitem', { name: 'Paramètres du compte' }).click()
+  // Et il mène à la zone Réglages (s62a), sans détour par un ancien chemin —
+  // l'entrée s'appelle « Réglages » depuis s62b.
+  await page.getByRole('menuitem', { name: 'Réglages' }).click()
   await expect(page).toHaveURL(urlOf(settingsPath('account')))
 })
 
@@ -177,7 +178,7 @@ test('une session révoquée depuis un autre appareil est refusée par le serveu
   await signIn(other, email)
   await expect(other).toHaveURL(urlOf(DEFAULT_SIGNED_IN_PATH))
 
-  await page.goto(settingsPath('account'))
+  await page.goto(settingsPath('security'))
 
   const sessions = page.getByRole('listitem').filter({ hasText: 'Révoquer' })
 
@@ -222,7 +223,7 @@ test('changer son mot de passe depuis l’écran révoque l’autre session', as
   await signIn(other, email)
   await expect(other).toHaveURL(urlOf(DEFAULT_SIGNED_IN_PATH))
 
-  await page.goto(settingsPath('account'))
+  await page.goto(settingsPath('security'))
 
   // Un mot de passe courant faux est refusé, et rien ne change.
   await page.getByLabel('Mot de passe actuel').fill('ce-n-est-pas-le-bon')
@@ -303,7 +304,7 @@ test.describe('les formulaires sans JavaScript', () => {
     })
     const noScript = await context.newPage()
 
-    await noScript.goto(settingsPath('account'))
+    await noScript.goto(settingsPath('security'))
 
     // Rien ne peut être soumis par un chemin que le composant ne contrôle pas :
     // l'envoi n'est actif qu'une fois React aux commandes. Sans cela, la

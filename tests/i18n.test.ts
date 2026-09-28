@@ -595,7 +595,7 @@ describe('aucune chaîne visible n’est écrite en dur', () => {
     // rendrait tout ce qui suit vert sur du vide.
     expect(RENDER_FILES.length).toBeGreaterThan(20)
     expect(RENDER_FILES.some((file) => file.endsWith('app/(site)/page.tsx'))).toBe(true)
-    expect(RENDER_FILES.some((file) => file.endsWith('account/page.tsx'))).toBe(true)
+    expect(RENDER_FILES.some((file) => file.endsWith('settings/profile/page.tsx'))).toBe(true)
   })
 
   it.each(PLANTED)('détecte %s', (_form, source) => {
@@ -833,8 +833,8 @@ describe('chaque module apporte ses traductions', () => {
   it('les fait entrer dans le catalogue servi, préfixées par leur module', () => {
     const registry = registryOf(['auth', 'i18n'])
 
-    expect(registry.messages.fr?.['auth.navigation.account']).toBe('Mon compte')
-    expect(registry.messages.en?.['auth.navigation.account']).toBe('My account')
+    expect(registry.messages.fr?.['auth.navigation.profile']).toBe('Profil')
+    expect(registry.messages.en?.['auth.navigation.profile']).toBe('Profile')
     expect(registry.messages.fr?.['i18n.switcher.label']).toBe('Langue')
   })
 
@@ -853,8 +853,8 @@ describe('chaque module apporte ses traductions', () => {
 
     // Et ce qui reste est intact : retirer un module ne dégrade pas le
     // catalogue des autres.
-    expect(withoutI18n.messages.fr?.['auth.navigation.account']).toBe('Mon compte')
-    expect(withoutI18n.messages.en?.['auth.navigation.account']).toBe('My account')
+    expect(withoutI18n.messages.fr?.['auth.navigation.profile']).toBe('Profil')
+    expect(withoutI18n.messages.en?.['auth.navigation.profile']).toBe('Profile')
   })
 })
 

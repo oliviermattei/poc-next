@@ -5,8 +5,10 @@ import {
   configureAuth,
   ACCOUNT_SCREEN_PATH,
   DEFAULT_SIGNED_IN_PATH,
+  PROFILE_SCREEN_PATH,
   readOAuthFailureClass,
   safeRedirectPath,
+  SECURITY_SCREEN_PATH,
   type AccountView,
   type AnyOAuthProviderId,
   type AuthService,
@@ -62,8 +64,10 @@ export {
   ACCOUNT_SCREEN_PATH,
   authRoutePath,
   DEFAULT_SIGNED_IN_PATH,
+  PROFILE_SCREEN_PATH,
   readOAuthFailureClass,
   safeRedirectPath,
+  SECURITY_SCREEN_PATH,
 }
 
 /**

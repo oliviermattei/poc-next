@@ -10,7 +10,6 @@ import {
   CardHeader,
   CardTitle,
   EmptyState,
-  PageHeader,
 } from '@repo/ui'
 import { CreditCardIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -29,7 +28,7 @@ import type { BillingIntl } from './billing-intl'
 /**
  * L'écran de facturation — **composé, jamais inventé**.
  *
- * Tout vient de `@repo/ui` (`docs/design-system.md`) : `PageHeader`, `Card`,
+ * Tout vient de `@repo/ui` (`docs/design-system.md`) : `Card`,
  * `Badge`, `Alert`, `EmptyState`. Aucune primitive maison, aucune couleur
  * Tailwind brute, aucun texte en dur.
  *
@@ -179,7 +178,12 @@ export function BillingScreen({
 
   return (
     <div className="space-y-8">
-      <PageHeader title={intl.t(K.title)} description={intl.t(K.description)} />
+      {/* **Un `h2`, pas un `PageHeader`** (s62b) : l'écran est une rubrique de
+          la zone Réglages, dont le cadre porte le seul `h1` (« Réglages »). */}
+      <div className="min-w-0 space-y-1">
+        <h2 className="text-2xl font-semibold tracking-tight">{intl.t(K.title)}</h2>
+        <p className="text-sm text-muted-foreground">{intl.t(K.description)}</p>
+      </div>
 
       {checkoutOutcome === null ? null : (
         <Alert variant={paid ? 'success' : 'info'} role="status">

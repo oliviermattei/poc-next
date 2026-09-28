@@ -1,0 +1,87 @@
+{
+  "$comment": "Inventaire figé des cartes et actions des écrans Compte et Organisation **tels que livrés par s62a** (dev 0387df4, relevé le 28/09 sur dcd0102, dont le code applicatif est identique). Relevé par le rendu : chaque enfant de premier niveau de `app/(app)/app/settings/account/page.tsx` et de `OrganizationsScreen`, rendu en pseudo-locale ; `title` est la clé du `CardTitle`, `actions` les routes du module (props et attributs `action`/`href` du rendu). Un lien d’écran est noté par son chemin **interne** (`/cookies`, rendu `/fr/cookies` sous préfixe de langue). L’URL de lecture de l’avatar — une donnée de la fixture, pas une action — n'y est pas. `when` : la donnée `available` qui conditionnait la carte à s62a. Ne se dérive pas : c'est ce qui a été publié. `tests/rendered-text.test.ts` exige que chaque carte soit retrouvée sous une rubrique de la surface `settings`, avec ses actions sous la même rubrique.",
+  "screens": {
+    "account": {
+      "headerActions": ["/api/modules/auth/sign-out"],
+      "cards": [
+        {
+          "title": "storage.avatar.title",
+          "when": "storage",
+          "actions": [
+            "/api/modules/storage/avatar/confirm",
+            "/api/modules/storage/avatar/presign",
+            "/api/modules/storage/avatar/remove"
+          ]
+        },
+        { "title": "app.account.profile.title", "actions": ["/api/modules/auth/change-name"] },
+        { "title": "app.account.email.title", "actions": ["/api/modules/auth/change-email"] },
+        { "title": "app.account.password.title", "actions": ["/api/modules/auth/change-password"] },
+        { "title": "app.account.connections.title", "actions": ["/api/modules/auth/unlink-provider"] },
+        {
+          "title": "app.account.passkeys.title",
+          "actions": [
+            "/api/modules/auth/passkey/generate-register-options",
+            "/api/modules/auth/passkey/rename",
+            "/api/modules/auth/passkey/revoke",
+            "/api/modules/auth/passkey/verify-registration"
+          ]
+        },
+        {
+          "title": "app.account.twoFactor.title",
+          "actions": [
+            "/api/modules/auth/two-factor/disable",
+            "/api/modules/auth/two-factor/enable",
+            "/api/modules/auth/two-factor/generate-backup-codes",
+            "/api/modules/auth/two-factor/verify-totp"
+          ]
+        },
+        { "title": "consent.settings.title", "when": "consent", "actions": ["/cookies"] },
+        { "title": "app.account.sessions.title", "actions": ["/api/modules/auth/revoke-session"] },
+        { "title": "app.account.export.title", "actions": ["/api/modules/auth/data-export"] },
+        { "title": "app.account.deletion.title", "actions": ["/api/modules/auth/delete-account"] }
+      ]
+    },
+    "organization": {
+      "headerActions": [],
+      "cards": [
+        {
+          "title": "organizations.current.title",
+          "when": "organizations",
+          "actions": ["/api/modules/organizations/switch"]
+        },
+        {
+          "title": "organizations.members.title",
+          "when": "organizations",
+          "actions": [
+            "/api/modules/organizations/members/remove",
+            "/api/modules/organizations/members/role"
+          ]
+        },
+        {
+          "title": "organizations.invitations.title",
+          "when": "organizations",
+          "actions": [
+            "/api/modules/organizations/invitations/resend",
+            "/api/modules/organizations/invitations/revoke",
+            "/api/modules/organizations/invite"
+          ]
+        },
+        {
+          "title": "organizations.settings.title",
+          "when": "organizations",
+          "actions": ["/api/modules/organizations/update"]
+        },
+        {
+          "title": "organizations.delete.title",
+          "when": "organizations",
+          "actions": ["/api/modules/organizations/delete"]
+        },
+        {
+          "title": "organizations.create.title",
+          "when": "organizations",
+          "actions": ["/api/modules/organizations/create"]
+        }
+      ]
+    }
+  }
+}

@@ -392,14 +392,15 @@ const renderScreen = async (screen: () => Promise<unknown>): Promise<string> => 
 }
 
 describe('la gestion du consentement est atteignable', () => {
-  it('depuis les paramètres de compte, quel que soit l’état du site public', async () => {
-    // C'est **le** point d'accès qui ne dépend d'aucun module optionnel. Sur une
+  it('depuis la rubrique Cookies des réglages, quel que soit l’état du site public', async () => {
+    // C'est **le** point d'accès qui ne dépend d'aucun module optionnel — rangé
+    // depuis s62b sous sa propre rubrique des réglages. Sur une
     // installation « marketing coupé, analytique activée » — légale au regard de
     // s10 et de s39 —, il est le seul moyen de retirer son consentement.
     viewerState.value = SIGNED_IN
 
     const html = await renderScreen(
-      async () => (await import('../apps/web/app/(app)/app/settings/account/page')).default(),
+      async () => (await import('../apps/web/app/(app)/app/settings/cookies/page')).default(),
     )
 
     expect(html).toContain(`href="${screenPath}"`)

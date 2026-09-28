@@ -28,6 +28,9 @@ export const LEGACY_SCREEN_PATHS: Readonly<Record<string, string>> = {
   '/account': ACCOUNT_SCREEN_PATH,
   '/organizations': ORGANIZATIONS_SCREEN_PATH,
   '/billing': BILLING_SCREEN_PATH,
+  // s62b — l'écran Compte de s62a, rangé en rubriques : son adresse mène à la
+  // première, Profil, comme `/account` — directement, jamais par un second 308.
+  '/app/settings/account': ACCOUNT_SCREEN_PATH,
 }
 
 const TABLE: ReadonlyMap<string, string> = new Map(Object.entries(LEGACY_SCREEN_PATHS))

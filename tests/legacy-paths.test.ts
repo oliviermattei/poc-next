@@ -4,7 +4,7 @@ import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { buildRegistry, carriesLocalePrefix } from '@repo/core'
-import { ACCOUNT_SCREEN_PATH } from '@repo/module-auth'
+import { ACCOUNT_SCREEN_PATH, PROFILE_SCREEN_PATH } from '@repo/module-auth'
 import { BILLING_SCREEN_PATH } from '@repo/module-billing'
 import { NextRequest } from 'next/server'
 import { describe, expect, it } from 'vitest'
@@ -81,6 +81,20 @@ describe('le proxy répond 308 vers la cible de la table', () => {
     expect(new URL(response.headers.get('location') ?? '').search).toBe('?x=1')
     // La réponse passe par le socle d'en-têtes comme toutes les autres.
     expect(response.headers.get('content-security-policy')).not.toBeNull()
+  })
+
+  it('ramène l’ancien écran Compte, d’où qu’on vienne, sur la rubrique Profil en un seul saut', () => {
+    // s62b : `/app/settings/account` (s62a) a disparu en deux rubriques, et
+    // `/account` (s61) ne passe pas par lui — un 308 vers un autre 308 serait
+    // un saut de plus pour chaque favori.
+    for (const legacy of ['/account', '/app/settings/account']) {
+      const response = proxied(`${localeRouting.publicPath(legacy, LOCALE)}?x=1`)
+      const location = new URL(response.headers.get('location') ?? '')
+
+      expect(response.status, legacy).toBe(308)
+      expect(location.pathname, legacy).toBe(localeRouting.publicPath(PROFILE_SCREEN_PATH, LOCALE))
+      expect(location.search, legacy).toBe('?x=1')
+    }
   })
 
   it('lit la table sur le chemin interne, préfixe de langue retiré puis remis', () => {

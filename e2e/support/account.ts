@@ -158,24 +158,28 @@ export const signIn = async (page: Page, email: string, password = PASSWORD): Pr
 }
 
 /**
- * Déconnecte le compte courant depuis l'écran de compte.
+ * Déconnecte le compte courant depuis le **menu de compte** — le seul endroit
+ * qui porte la déconnexion depuis s62b (elle a quitté l'en-tête de l'écran
+ * Compte).
  *
  * Ici, et plus dans chaque parcours : `passkeys.spec.ts` et
  * `two-factor.spec.ts` en portaient deux copies identiques, toutes deux fondées
  * sur le `clickUntil` que `support/interaction.ts` remplace.
  *
- * Le bouton de déconnexion n'est **pas** désactivé jusqu'à l'hydratation
- * (`app/sign-out-button.tsx` : un `type="button"` avec un `onClick`, sans
- * formulaire derrière) : avant que React n'ait repris la main, le clic n'a
- * aucun gestionnaire et disparaît sans trace. C'est exactement le cas que
- * `clickOnce` attend — et le signal d'achèvement est la navigation que
- * `window.location.assign` provoque.
+ * Le déclencheur du menu n'a **aucun** repli sans script : avant que React
+ * n'ait repris la main, le clic n'a aucun gestionnaire et disparaît sans trace.
+ * C'est exactement le cas que `clickOnce` attend — le signal d'achèvement est
+ * le menu ouvert. L'entrée « Se déconnecter » appelle ensuite `signOut`
+ * (`app/sign-out-button.tsx`), dont la navigation (`window.location.assign`)
+ * est le signal de la fin.
  */
 export const signOut = async (page: Page): Promise<void> => {
   await page.goto(settingsPath('account'))
-  await clickOnce(page, page.getByRole('button', { name: 'Se déconnecter' }), async () => {
-    await expect(page).toHaveURL(urlOf(anonymousLanding()))
+  await clickOnce(page, page.getByRole('button', { name: /^Compte — / }), async () => {
+    await expect(page.getByRole('menuitem', { name: 'Se déconnecter' })).toBeVisible()
   })
+  await page.getByRole('menuitem', { name: 'Se déconnecter' }).click()
+  await expect(page).toHaveURL(urlOf(anonymousLanding()))
 }
 
 /**

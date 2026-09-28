@@ -1,8 +1,14 @@
 import { visibleNavigation } from '@repo/core'
-import { ACCOUNT_SCREEN_PATH, DEFAULT_SIGNED_IN_PATH } from '@repo/module-auth'
+import {
+  ACCOUNT_SCREEN_PATH,
+  DEFAULT_SIGNED_IN_PATH,
+  PROFILE_SCREEN_PATH,
+  SECURITY_SCREEN_PATH,
+} from '@repo/module-auth'
 import { BILLING_SCREEN_PATH } from '@repo/module-billing'
+import { CONSENT_SETTINGS_SCREEN_PATH } from '@repo/module-consent'
 import { onboardingModule, ONBOARDING_SCREEN_PATH } from '@repo/module-onboarding'
-import { ORGANIZATIONS_SCREEN_PATH } from '@repo/module-organizations'
+import { MEMBERS_SCREEN_PATH, ORGANIZATIONS_SCREEN_PATH } from '@repo/module-organizations'
 
 import { localeRouting } from '../../apps/web/lib/locale-routing'
 import { marketingSite } from '../../apps/web/lib/marketing'
@@ -53,11 +59,20 @@ export const signInRedirectedFrom = (pathname: string): RegExp =>
  * bien qu'un parcours resté sur l'ancien serait vert en mesurant la
  * redirection au lieu de l'écran. Un déplacement suivant change la constante
  * du module, et chaque parcours suit.
+ *
+ * Depuis s62b, les six rubriques : `account` reste l'entrée de la zone — celle
+ * du menu de compte, qui est Profil —, et un parcours qui agit sur une carte
+ * ouvre **la rubrique qui la porte** (Sécurité pour une session, Membres pour
+ * une invitation).
  */
 export const SETTINGS_SCREENS = {
   account: ACCOUNT_SCREEN_PATH,
+  profile: PROFILE_SCREEN_PATH,
+  security: SECURITY_SCREEN_PATH,
   organization: ORGANIZATIONS_SCREEN_PATH,
+  members: MEMBERS_SCREEN_PATH,
   billing: BILLING_SCREEN_PATH,
+  cookies: CONSENT_SETTINGS_SCREEN_PATH,
 } as const
 
 /** Le chemin interne d'un écran de réglages : à passer à `publicPath`, `urlOf` ou `goto`. */

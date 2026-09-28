@@ -59,9 +59,9 @@ test('la suppression de compte : la saisie est jugée par le serveur, puis la se
 
   // Le compte est toujours là : un refus ne supprime rien.
   await page.reload()
-  // `exact` : le titre de la zone dangereuse — « Supprimer mon compte » —
-  // contient celui de la page, et une correspondance partielle en désigne deux.
-  await expect(page.getByRole('heading', { name: 'Mon compte', exact: true })).toBeVisible()
+  // La rubrique Profil, qui porte les données depuis s62b : son titre est un
+  // `h2`, le seul `h1` étant celui de la zone.
+  await expect(page.getByRole('heading', { name: 'Profil', level: 2, exact: true })).toBeVisible()
 
   // La saisie exacte, cette fois. L'atterrissage est l'écran de connexion : la
   // session ne survit pas à sa propre suppression.

@@ -1,6 +1,7 @@
 {
-  "navigation.organizations": "Organizations",
-  "screen.title": "Organizations",
+  "navigation.organizations": "Organization",
+  "navigation.members": "Members",
+  "screen.title": "Organization",
   "screen.description": "Pick the working context and edit its details.",
   "current.title": "Current organization",
   "current.description": "Your data belongs to this organization.",
@@ -23,6 +24,8 @@
   "create.submit": "Create organization",
   "empty.title": "No organization yet",
   "empty.description": "Create one to keep your data separated by working context.",
+  "members.screenTitle": "Members",
+  "members.screenDescription": "The people who can access the current organization, and the ones you invite.",
   "members.title": "Members",
   "members.description": "The people who can reach this organization's data.",
   "members.you": "You",

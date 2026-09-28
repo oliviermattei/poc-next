@@ -11,14 +11,28 @@
 export const DEFAULT_SIGNED_IN_PATH = '/app'
 
 /**
- * **L'écran du compte**, dans la zone Réglages (s62a, ADR 075).
+ * **La rubrique Profil** des réglages (s62b) : avatar, nom, email, et en bas
+ * les données — export et suppression du compte.
+ */
+export const PROFILE_SCREEN_PATH = '/app/settings/profile'
+
+/**
+ * **La rubrique Sécurité** des réglages (s62b) : mot de passe, connexions,
+ * passkeys, second facteur, sessions actives.
+ */
+export const SECURITY_SCREEN_PATH = '/app/settings/security'
+
+/**
+ * **L'écran du compte** : l'entrée de la zone Réglages, celle du menu de compte.
  *
  * Il n'avait pas de constante jusqu'à s62a : `/account` était écrit en
  * littéral dans la navigation, les écrans et les menus, si bien que le
- * déplacer demandait de retrouver chaque copie. L'ancien chemin répond 308 vers
- * celui-ci, par la table de `apps/web/lib/legacy-paths.ts`.
+ * déplacer demandait de retrouver chaque copie. Depuis s62b, le compte est
+ * rangé en deux rubriques et cette constante désigne la première, Profil ;
+ * `/account` (s61) et `/app/settings/account` (s62a) répondent 308 vers elle,
+ * par la table de `apps/web/lib/legacy-paths.ts`.
  */
-export const ACCOUNT_SCREEN_PATH = '/app/settings/account'
+export const ACCOUNT_SCREEN_PATH = PROFILE_SCREEN_PATH
 
 // C0 (U+0000–U+001F), DEL (U+007F) et tout blanc au sens de `\s`, espace et
 // blancs Unicode compris.

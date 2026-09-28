@@ -13,8 +13,8 @@ import { appIntl } from '../../../lib/i18n'
 import { onboarding, onboardingRoutePath, ONBOARDING_STEPS } from '../../../lib/onboarding'
 import { ORGANIZATIONS_SCREEN_PATH } from '../../../lib/organizations'
 import { AVATAR_CONTENT_TYPES, fileUrl, storage, storageRoutePath } from '../../../lib/storage'
-import { AccountForm } from '../app/settings/account/account-form'
-import { AvatarForm } from '../app/settings/account/avatar-form'
+import { AccountForm } from '../app/settings/profile/account-form'
+import { AvatarForm } from '../app/settings/profile/avatar-form'
 
 /**
  * L'écran du parcours d'intégration (s40).

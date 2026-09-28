@@ -71,6 +71,15 @@ export const organizationRoutePath = (path: keyof typeof PATHS): string =>
 export const ORGANIZATIONS_SCREEN_PATH = '/app/settings/organization'
 
 /**
+ * **La rubrique Membres** (s62b) : les membres de l'organisation courante et
+ * ses invitations. Séparée de l'écran de l'organisation, avec sa propre entrée.
+ */
+export const MEMBERS_SCREEN_PATH = '/app/settings/members'
+
+/** Les deux rubriques vers lesquelles une route du module peut revenir. */
+type OrganizationScreenPath = typeof ORGANIZATIONS_SCREEN_PATH | typeof MEMBERS_SCREEN_PATH
+
+/**
  * **L'écran d'administration des organisations** (s37b2).
  *
  * Le chemin vit ici, avec le module qui le déclare : c'est ce qui permet à
@@ -122,14 +131,23 @@ const submittedBody = async (request: Request): Promise<unknown> => {
 }
 
 /**
- * La réponse d'une soumission : un retour à l'écran, avec le motif du refus
- * quand il y en a un.
+ * La réponse d'une soumission : un retour à la **rubrique de l'action**, avec
+ * le motif du refus quand il y en a un.
+ *
+ * La rubrique est une constante choisie par la route (s62b) : Membres pour
+ * l'invitation, son cycle de vie, le rôle et le retrait d'un membre ;
+ * Organisation pour le reste. Y revenir ailleurs afficherait le motif d'un refus
+ * sous une rubrique qui ne montre pas le formulaire refusé.
  *
  * Le motif est un **code**, jamais une phrase : la traduction appartient au
  * catalogue du module, et une chaîne dans une URL serait un texte affiché qui
  * n'en vient pas.
  */
-const backToScreen = (request: Request, outcome: OrganizationOutcome): Response => {
+const backToScreen = (
+  request: Request,
+  outcome: OrganizationOutcome,
+  screen: OrganizationScreenPath,
+): Response => {
   if (outcome.status === 'not_found') {
     return notFound()
   }
@@ -138,7 +156,7 @@ const backToScreen = (request: Request, outcome: OrganizationOutcome): Response 
     return forbidden()
   }
 
-  const destination = new URL(ORGANIZATIONS_SCREEN_PATH, request.url)
+  const destination = new URL(screen, request.url)
 
   if (outcome.status === 'refused') {
     destination.searchParams.set('error', outcome.refusal)
@@ -189,6 +207,8 @@ export function createOrganizationRoutes(
 ): readonly ModuleRoute[] {
   const submit = (
     path: string,
+    /** La rubrique où revient l'action — une constante, jamais un paramètre. */
+    screen: OrganizationScreenPath,
     run: (
       useCases: OrganizationsUseCases,
       input: { readonly userId: string; readonly body: unknown },
@@ -223,7 +243,7 @@ export function createOrganizationRoutes(
         body: await submittedBody(request),
       })
 
-      return backToScreen(request, outcome)
+      return backToScreen(request, outcome, screen)
     },
   })
 
@@ -257,33 +277,62 @@ export function createOrganizationRoutes(
   }
 
   return [
-    submit(PATHS.create, async (useCases, input) => await useCases.createOrganization(input)),
-    submit(PATHS.switch, async (useCases, input) => await useCases.switchOrganization(input)),
-    submit(PATHS.update, async (useCases, input) => await useCases.renameOrganization(input)),
-    submit(PATHS.invite, async (useCases, input) => await useCases.inviteMember(input), {
-      policy: 'invitation',
-      subjectField: 'email',
-    }),
+    submit(
+      PATHS.create,
+      ORGANIZATIONS_SCREEN_PATH,
+      async (useCases, input) => await useCases.createOrganization(input),
+    ),
+    submit(
+      PATHS.switch,
+      ORGANIZATIONS_SCREEN_PATH,
+      async (useCases, input) => await useCases.switchOrganization(input),
+    ),
+    submit(
+      PATHS.update,
+      ORGANIZATIONS_SCREEN_PATH,
+      async (useCases, input) => await useCases.renameOrganization(input),
+    ),
+    submit(
+      PATHS.invite,
+      MEMBERS_SCREEN_PATH,
+      async (useCases, input) => await useCases.inviteMember(input),
+      { policy: 'invitation', subjectField: 'email' },
+    ),
     submit(
       PATHS.resendInvitation,
+      MEMBERS_SCREEN_PATH,
       async (useCases, input) => await useCases.resendInvitation(input),
       { policy: 'invitation' },
     ),
     submit(
       PATHS.revokeInvitation,
+      MEMBERS_SCREEN_PATH,
       async (useCases, input) => await useCases.revokeInvitation(input),
     ),
     acceptRoute,
-    submit(PATHS.removeMember, async (useCases, input) => await useCases.removeMember(input)),
-    submit(PATHS.delete, async (useCases, input) => await useCases.deleteOrganization(input)),
-    submit(PATHS.setMemberRole, async (useCases, input) => await useCases.setMemberRole(input)),
+    submit(
+      PATHS.removeMember,
+      MEMBERS_SCREEN_PATH,
+      async (useCases, input) => await useCases.removeMember(input),
+    ),
+    submit(
+      PATHS.delete,
+      ORGANIZATIONS_SCREEN_PATH,
+      async (useCases, input) => await useCases.deleteOrganization(input),
+    ),
+    submit(
+      PATHS.setMemberRole,
+      MEMBERS_SCREEN_PATH,
+      async (useCases, input) => await useCases.setMemberRole(input),
+    ),
   ]
 }
 
 /**
- * L'entrée de navigation du module — **une seule, et authentifiée**.
+ * Les entrées de navigation du module — **authentifiées**, deux rubriques des
+ * réglages (Organisation et Membres, s62b) et une entrée de la console.
  *
- * C'est elle qui disparaît avec le module, sans qu'aucun composant ne porte de
+ * Ce sont elles qui disparaissent avec le module, sans qu'aucun composant ne porte de
  * condition. `protection` est lue par `visibleNavigation` : un visiteur anonyme
  * ne la voit pas, parce qu'elle n'est pas rendue.
  */
@@ -296,6 +345,14 @@ export const organizationsNavigation: readonly NavigationEntry[] = [
     protection: { level: 'authenticated' },
     // La sous-navigation des réglages (s62a) : la barre latérale reste celle
     // du produit construit.
+    surface: 'settings',
+  },
+  {
+    id: 'members',
+    href: MEMBERS_SCREEN_PATH,
+    labelKey: 'navigation.members',
+    order: 25,
+    protection: { level: 'authenticated' },
     surface: 'settings',
   },
   {

@@ -4,7 +4,7 @@ import { CONSENT_MODULE_ID } from './domain/consent-category'
 import { requireConsentService } from './infrastructure/consent-runtime'
 import enMessages from './messages/en.json' with { type: 'json' }
 import frMessages from './messages/fr.json' with { type: 'json' }
-import { CONSENT_SCREEN_PATH } from './presentation/consent-paths'
+import { CONSENT_SCREEN_PATH, CONSENT_SETTINGS_SCREEN_PATH } from './presentation/consent-paths'
 import { createConsentRoutes } from './presentation/consent-routes'
 
 /**
@@ -41,11 +41,11 @@ export const consentModule = defineModule({
   migrations: null,
   routes: createConsentRoutes(requireConsentService),
   /**
-   * **Une entrée, et sur le pied de page seulement** (s31, ADR 066).
+   * **Deux entrées : le pied de page** (s31, ADR 066) **et la rubrique Cookies des réglages** (s62b).
    *
    * L'écran `/cookies` est servi par l'application, pas par une route de module,
    * et ses deux points d'accès sont **contextuels** : le pied de page du site
-   * public, et la carte des paramètres de compte. Rien dans la barre latérale —
+   * public, et la rubrique Cookies des réglages (s62b). Rien dans la barre latérale —
    * une entrée de plus y mettrait un réglage de confidentialité au même rang que
    * les fonctionnalités du produit, et elle serait visible pour un visiteur
    * anonyme qui n'a pas de barre latérale à lui. C'est ce que `surface`
@@ -66,6 +66,17 @@ export const consentModule = defineModule({
       order: 0,
       protection: { level: 'public' },
       surface: 'footer',
+    },
+    {
+      // **La rubrique Cookies des réglages** (s62b) : la même carte que celle
+      // de l'ancien écran Compte, rangée sous sa propre rubrique. Réservée à
+      // une session — un visiteur anonyme a le lien du pied de page.
+      id: 'settings',
+      href: CONSENT_SETTINGS_SCREEN_PATH,
+      labelKey: 'navigation.settings',
+      order: 50,
+      protection: { level: 'authenticated' },
+      surface: 'settings',
     },
   ],
   /**

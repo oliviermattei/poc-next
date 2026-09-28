@@ -297,7 +297,7 @@ du périmètre courant au moment de la soumission. C'est le prix de la persistan
 
 ## Les formulaires n'ont pas de JavaScript
 
-Les **neuf** routes répondent **303 vers l'écran** ou, depuis s17, **403** quand
+Les routes répondent **303 vers l'écran** ou, depuis s17, **403** quand
 le rôle ne suffit pas — jamais du JSON de succès. Les formulaires
 sont donc des `<form method="post">` natifs, sans composant client : il n'y a
 aucune fenêtre pré-hydratation à couvrir, puisque la soumission native **est**
@@ -312,6 +312,25 @@ soumission natifs, l'organisation courante exclue puisque le déclencheur la
 porte déjà. `e2e/organizations.spec.ts` le parcourt dans un contexte
 `javaScriptEnabled: false` ; aucun rendu statique ne peut le prouver, un moteur
 seul décide d'afficher un `<noscript>`.
+
+**Deux écrans, deux rubriques des réglages** (s62b) : `OrganizationScreen`
+(organisation courante et sélecteur, renommage, suppression, création) et
+`MembersScreen` (membres, rôles, retrait, invitations), exportés par
+`@repo/module-organizations/presentation` et issus de l'écran unique de s15 —
+les cartes sont les mêmes, réparties, aucune réécrite. Chaque écran ouvre par un
+`h2` : le `h1` est celui de la zone Réglages. Sans organisation courante,
+`MembersScreen` n'a rien à lister et mène à la rubrique Organisation, dont
+l'adresse lui est **passée** par l'application (la locale en fait partie).
+
+**Chaque route revient sur la rubrique de son action** : `MEMBERS_SCREEN_PATH`
+pour l'invitation, son renvoi, sa révocation, le rôle et le retrait d'un membre ;
+`ORGANIZATIONS_SCREEN_PATH` pour la création, la bascule, le renommage, la
+suppression et l'acceptation réussie. Revenir sur l'autre afficherait le motif
+d'un refus sous une rubrique qui ne montre pas le formulaire refusé, sans
+qu'aucune carte ne casse : `src/presentation/organization-routes.test.ts` juge
+la destination **de chaque route** (le succès et le refus), et exige qu'une
+route ajoutée y reçoive une rubrique au lieu d'en hériter une. Renvoyer
+l'invitation sur Organisation : 2 rouges là, 9 dans `tests/organizations.test.ts`.
 
 La destination d'une redirection est une **constante** du module, jamais un
 paramètre (`docs/security.md` §4). La protection contre la soumission

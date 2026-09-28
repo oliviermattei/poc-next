@@ -100,7 +100,7 @@ module (`packages/modules/<module>/src/domain`).
   requête qui n'est qu'une préférence d'affichage (`?offer=` des tarifs, s22),
   le motif de refus rapporté par une redirection de route (`?error=` des
   organisations) et **le corps d'une réponse que le navigateur va rendre**
-  (`app/(app)/app/settings/account/rgpd-outcomes.ts`, s34b : la liste d'organisations d'un 409
+  (`app/(app)/app/settings/profile/rgpd-outcomes.ts`, s34b : la liste d'organisations d'un 409
   s'affiche, donc elle se valide).
   **Aucune liste ne fait foi ici, et aucun « à ce jour » n'est écrit** : rien ne
   dérive les points d'appel de `zod`, contrairement à la liste des fichiers de
@@ -117,13 +117,13 @@ module (`packages/modules/<module>/src/domain`).
 - `lucide-react` pour les icônes : un seul jeu dans tout le produit, 16 px dans
   l'application. Ce n'est pas le socle de composants — celui-là ne sort pas de
   `packages/ui` ;
-- `uqr` dans **`app/(app)/app/settings/account/two-factor-qr.tsx` uniquement** : il rend la
+- `uqr` dans **`app/(app)/app/settings/security/two-factor-qr.tsx` uniquement** : il rend la
   **matrice** d'un QR code, pas une image. C'est ce qui permet de composer le
   `<svg>` en JSX — donc sans `dangerouslySetInnerHTML` (`docs/security.md` §4)
   et sans style en ligne, que la politique livrée par s45 refuse. Le secret
   TOTP ne quitte pas le processus : ni URL d'image, ni service tiers, ni appel
   réseau ;
-- `@simplewebauthn/browser` dans **`app/(app)/app/settings/account/passkey-card.tsx` et
+- `@simplewebauthn/browser` dans **`app/(app)/app/settings/security/passkey-card.tsx` et
   `app/(auth)/sign-in/passkey-button.tsx` uniquement** (s14) : ce sont les deux seuls
   endroits où le navigateur doit appeler `navigator.credentials`. Le paquet
   n'apporte que trois choses, et chacune est une raison de ne pas la réécrire —
@@ -262,7 +262,7 @@ Next ne met pas dans l'URL, et chacun rend **son** gabarit (s61) :
 |---|---|---|
 | `app/(site)/` | le site public (accueil, contenus, tarifs, pages légales) | le **gabarit Site** (`SiteTemplate`, `app/(site)/site-header.tsx`) : l'en-tête du site — marque, entrées de la surface `site`, langue, thème, bouton de gabarit —, **sans** barre latérale ni pied de page |
 | `app/(auth)/` | l'authentification, avant qu'une session existe | le **gabarit Hors zone** : une barre minimale (marque, langue, thème), l'écran centré ; ni navigation, ni bouton |
-| `app/(app)/` | le produit, derrière une session — dont `/app`, le tableau de bord, et `/app/settings/*`, la zone Réglages (s62a) | le **gabarit Application**, l'`AppShell` : barre latérale de la surface `app`, barre du haut, menu de compte (qui mène à `/app/settings/account`) ; sa marque mène à `/app` |
+| `app/(app)/` | le produit, derrière une session — dont `/app`, le tableau de bord, et `/app/settings/*`, la zone Réglages (s62a) | le **gabarit Application**, l'`AppShell` : barre latérale de la surface `app`, barre du haut, menu de compte (« Réglages », qui mène à la rubrique Profil, `ACCOUNT_SCREEN_PATH`, et « Se déconnecter », seul point de déconnexion depuis s62b) ; sa marque mène à `/app` |
 | `app/(console)/` | la console du superadmin (`/console`, ADR 070) | `console-shell.tsx`, **après** sa garde |
 
 **Ce que les trois premiers ont en commun vit dans un seul composant**,
@@ -316,11 +316,29 @@ son `?next=` filtré par `safeRedirectPath`, sinon vers `/app`.
 portaient un.
 
 **La zone Réglages** (s62a, ADR 075) : `app/(app)/app/settings/layout.tsx`,
-rendu **dans** le gabarit Application. Il ajoute le titre de la zone et sa
-sous-navigation, dérivée par `shellNavigation(…, 'settings')` — la surface
-`settings` que déclarent le compte (`ACCOUNT_SCREEN_PATH`, module `auth`),
-l'organisation (`ORGANIZATIONS_SCREEN_PATH`) et la facturation
-(`BILLING_SCREEN_PATH`). La barre latérale ne rend plus que la surface `app` :
+rendu **dans** le gabarit Application. Il ajoute le titre de la zone — **le seul
+`h1`** de chaque écran de réglages — et sa sous-navigation, dérivée par
+`shellNavigation(…, 'settings')` : la surface `settings`, rangée en **rubriques**
+depuis s62b, chacune déclarée par le module qui la sert et disparaissant avec
+lui. Ce qui a été relevé en s62b, sur la configuration livrée :
+
+| Rubrique | Chemin (constante) | Module | Cartes (dossier) |
+|---|---|---|---|
+| Profil | `PROFILE_SCREEN_PATH` (= `ACCOUNT_SCREEN_PATH`) | `auth` | avatar (si `storage`), nom, email, puis « Vos données » : export et suppression du compte (`settings/profile/`) |
+| Sécurité | `SECURITY_SCREEN_PATH` | `auth` | mot de passe, connexions, passkeys, second facteur, sessions (`settings/security/` ; le formulaire de compte est importé de `profile/`) |
+| Organisation | `ORGANIZATIONS_SCREEN_PATH` | `organizations` | `OrganizationScreen` du module : organisation courante et sélecteur, renommage, suppression, création |
+| Membres | `MEMBERS_SCREEN_PATH` | `organizations` | `MembersScreen` du module : membres, rôles, retrait, invitations |
+| Facturation | `BILLING_SCREEN_PATH` | `billing` | `BillingScreen` du module |
+| Cookies | `CONSENT_SETTINGS_SCREEN_PATH` | `consent` | `ConsentSettingsCard`, qui mène à l'écran public `/cookies` |
+
+Chaque rubrique ouvre par un **`h2`** à son nom, jamais par un `PageHeader` —
+qui est toujours un `h1` (lacune notée dans `docs/design-system.md`) ;
+`e2e/settings.spec.ts` suit chaque lien de la sous-navigation rendue et exige un
+seul `h1` « Réglages » et un `h2` au libellé du lien. **Aucune carte n'est
+perdue au découpage** : `tests/rendered-text.test.ts` retrouve, sous une
+rubrique, chaque carte et chaque action de l'inventaire figé de s62a
+(`tests/fixtures/settings-cards-s62a.json`) — une carte retirée d'une page, ou
+dont le formulaire perd sa route, fait rougir ce cas. La barre latérale ne rend plus que la surface `app` :
 elle est celle du produit construit. L'entrée courante de la sous-navigation se
 reconnaît **par préfixe** (`SettingsNavigation`, `app/app-navigation.tsx`), la
 plus longue gagnant. Les écrans déplacés gardent leurs gardes (connexion, 404
@@ -331,7 +349,8 @@ entoure chaque écran de réglages de ce cadre, dans le gabarit Application.
 **Les anciens chemins d'écran répondent 308** par une **table unique**,
 `lib/legacy-paths.ts`, lue par `proxy.ts` sur le chemin **interne** et **avant**
 la redirection de langue : `/account?x=1` part en un seul saut vers
-`/fr/app/settings/account?x=1`, `/fr/organizations` vers
+`/fr/app/settings/profile?x=1` — comme `/app/settings/account`, l'écran Compte de
+s62a rangé en rubriques par s62b —, `/fr/organizations` vers
 `/fr/app/settings/organization`. La cible est une constante de la table, jamais
 une valeur de la requête (`docs/security.md` §4) ; une entrée dont l'écran n'est
 pas annoncé par la navigation du registre (module coupé) ne redirige pas, et
@@ -356,7 +375,7 @@ chargement ; l'étendre à l'arbre masquerait de vrais écarts.
 
 ## Les formulaires
 
-Trois composants, `app/auth-form.tsx`, `app/(app)/app/settings/account/account-form.tsx` et
+Trois composants, `app/auth-form.tsx`, `app/(app)/app/settings/profile/account-form.tsx` et
 `app/public-form.tsx` (s11), et deux règles que tout écran hérite d'eux :
 
 - **`method="post"` sur le `<form>`, toujours.** Sans `method`, le repli du
@@ -1015,10 +1034,12 @@ Un fichier, sur le modèle exact du site public :
   une valeur dont la **forme est la même dans les deux états** : un drapeau
   `available`, une vue à deux champs, une organisation active qui vaut `null`.
   Module coupé, ses deux lectures n'ouvrent **aucune connexion** ;
-- `app/(app)/app/settings/organization/page.tsx` **lit** cette valeur sans jamais nommer de
+- `app/(app)/app/settings/organization/page.tsx` et `…/members/page.tsx` (s62b)
+  **lisent** cette valeur sans jamais nommer de
   module : `available` est une **donnée**, comme `sections.length` l'est pour la
-  racine. Module coupé, l'écran répond 404 — le même arbitrage que
-  `legal/[document]` ;
+  racine. Module coupé, les deux rubriques répondent 404 — le même arbitrage que
+  `legal/[document]`. Le motif de refus de `?error=` est validé une fois, par
+  `organizationRefusalKey` de `lib/organizations.ts` ;
 - `app/(auth)/invitations/accept/page.tsx` (s16) fait de même : c'est l'écran
   d'atterrissage d'un lien d'invitation, servi à un visiteur **anonyme comme
   connecté** — un anonyme y voit deux chemins, connexion (avec retour vers cette
@@ -1141,8 +1162,8 @@ rôle (constat F1). `e2e/storage.spec.ts` crée une organisation et exige que la
 photo du compte lui survive.
 
 Deux surfaces en héritent : le menu de compte du shell et la carte « Photo de
-profil » de `/account`. Le composant qui téléverse
-(`app/(app)/app/settings/account/avatar-form.tsx`) vit ici et non dans le module, pour la raison
+profil » de la rubrique Profil. Le composant qui téléverse
+(`app/(app)/app/settings/profile/avatar-form.tsx`) vit ici et non dans le module, pour la raison
 déjà donnée à `app/public-form.tsx` : il appelle `fetch`, et `eslint.config.ts`
 refuse un appel réseau dans un module hors de sa porte bornée.
 ## Le montage de la facturation (s19)
