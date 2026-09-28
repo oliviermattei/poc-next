@@ -721,6 +721,8 @@ beforeAll(async () => {
     // est acceptée sans être lue — le choix des destinataires est éprouvé dans
     // `tests/organizations.test.ts`, au producteur.
     notify: () => Promise.resolve({ ok: true }),
+    // s62c (ADR 076) : le vrai filtre, comme au point de composition.
+    safeReturnPath: safeRedirectPath,
   })
 
   configureBilling(suiteBilling())

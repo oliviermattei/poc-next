@@ -8,6 +8,7 @@ import {
   notificationRoutePath,
   notifications,
   NOTIFICATIONS_SCREEN_PATH,
+  NOTIFICATIONS_SETTINGS_SCREEN_PATH,
 } from '../../../lib/notifications'
 
 /**
@@ -76,9 +77,10 @@ export default async function NotificationsPage({
       actions={{
         read: notificationRoutePath('read'),
         readAll: notificationRoutePath('readAll'),
-        setPreference: notificationRoutePath('setPreference'),
       }}
       hrefForPage={(page) => `${path(NOTIFICATIONS_SCREEN_PATH)}?page=${page}`}
+      // Les préférences vivent dans les réglages depuis s62c : l'état vide y mène.
+      preferencesHref={path(NOTIFICATIONS_SETTINGS_SCREEN_PATH)}
     />
   )
 }

@@ -9,21 +9,11 @@ import {
   EmptyState,
   PageHeader,
   Pagination,
-  Separator,
 } from '@repo/ui'
 import { BellIcon } from 'lucide-react'
 
-import type {
-  NotificationsView,
-  NotificationView,
-  TypePreferenceView,
-} from '../application/notification-use-cases'
-import {
-  channelLabelKey,
-  typeBodyKey,
-  typeLabelKey,
-  NOTIFICATIONS_KEYS as K,
-} from '../domain/message-keys'
+import type { NotificationsView, NotificationView } from '../application/notification-use-cases'
+import { typeBodyKey, typeLabelKey, NOTIFICATIONS_KEYS as K } from '../domain/message-keys'
 import type { ResolvedPayload } from '../domain/notification'
 import type { NotificationsIntl } from './notifications-intl'
 
@@ -31,7 +21,7 @@ import type { NotificationsIntl } from './notifications-intl'
  * L'écran du centre de notifications — **composé, jamais inventé**.
  *
  * Tout vient de `@repo/ui` (`docs/design-system.md`) : `PageHeader`, `Card`,
- * `Badge`, `Button`, `EmptyState`, `Pagination`, `Separator`. Aucune primitive
+ * `Badge`, `Button`, `EmptyState`, `Pagination`. Aucune primitive
  * maison, aucune couleur Tailwind brute, aucun texte en dur.
  *
  * **Aucun composant client, et c'est le point.** Les formulaires postent
@@ -54,10 +44,14 @@ export interface NotificationsScreenProps {
   readonly actions: {
     readonly read: string
     readonly readAll: string
-    readonly setPreference: string
   }
   /** L'URL d'une page du centre, connue de l'application seule. */
   readonly hrefForPage: (page: number) => string
+  /**
+   * L'URL de la rubrique des préférences (s62c), connue de l'application
+   * seule — la sortie de l'état vide. Les préférences ne vivent plus ici.
+   */
+  readonly preferencesHref: string
 }
 
 /**
@@ -79,9 +73,6 @@ const displayable = (
       value === null ? intl.t(K.deletedActor) : value,
     ]),
   )
-
-/** L'ancre de la carte des préférences : la sortie de l'état vide. */
-const PREFERENCES_ANCHOR = 'notification-preferences'
 
 function NotificationRow({
   notification,
@@ -121,59 +112,12 @@ function NotificationRow({
   )
 }
 
-function PreferenceRow({
-  preference,
-  intl,
-  action,
-}: {
-  readonly preference: TypePreferenceView
-  readonly intl: NotificationsIntl
-  readonly action: string
-}) {
-  const type = intl.t(typeLabelKey(preference.type))
-
-  return (
-    <li className="flex min-w-0 flex-wrap items-center justify-between gap-3 py-3">
-      <span className="min-w-0 text-sm font-semibold">{type}</span>
-      <div className="flex flex-wrap items-center gap-2">
-        {preference.channels.map((setting) => {
-          const channel = intl.t(channelLabelKey(setting.channel))
-
-          return (
-            <form method="post" action={action} key={setting.channel}>
-              <input type="hidden" name="type" value={preference.type} />
-              <input type="hidden" name="channel" value={setting.channel} />
-              <input type="hidden" name="enabled" value={setting.enabled ? 'false' : 'true'} />
-              <Button
-                type="submit"
-                variant={setting.enabled ? 'default' : 'outline'}
-
-                // Le nom accessible dit le canal **et** le type : sans lui,
-                // quatre boutons portant « Par email » seraient indiscernables
-                // au clavier comme pour une aide technique.
-                aria-label={intl.t(
-                  setting.enabled ? K.preferencesDisableFor : K.preferencesEnableFor,
-                  { channel, type },
-                )}
-              >
-                <span aria-hidden>{channel}</span>
-                <Badge variant={setting.enabled ? 'success' : 'outline'}>
-                  {intl.t(setting.enabled ? K.preferencesOn : K.preferencesOff)}
-                </Badge>
-              </Button>
-            </form>
-          )
-        })}
-      </div>
-    </li>
-  )
-}
-
 export function NotificationsScreen({
   view,
   intl,
   actions,
   hrefForPage,
+  preferencesHref,
 }: NotificationsScreenProps) {
   return (
     <>
@@ -204,7 +148,7 @@ export function NotificationsScreen({
               description={intl.t(K.emptyDescription)}
               action={
                 <Button asChild variant="outline">
-                  <a href={`#${PREFERENCES_ANCHOR}`}>{intl.t(K.emptyAction)}</a>
+                  <a href={preferencesHref}>{intl.t(K.emptyAction)}</a>
                 </Button>
               }
             />
@@ -234,26 +178,6 @@ export function NotificationsScreen({
           pageLabel={(page) => intl.t(K.paginationPage, { page })}
         />
       )}
-
-      <Card id={PREFERENCES_ANCHOR}>
-        <CardHeader>
-          <CardTitle>{intl.t(K.preferencesTitle)}</CardTitle>
-          <CardDescription>{intl.t(K.preferencesDescription)}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Separator />
-          <ul className="divide-y divide-border">
-            {view.preferences.map((preference) => (
-              <PreferenceRow
-                key={preference.type}
-                preference={preference}
-                intl={intl}
-                action={actions.setPreference}
-              />
-            ))}
-          </ul>
-        </CardContent>
-      </Card>
     </>
   )
 }

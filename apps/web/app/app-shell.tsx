@@ -13,9 +13,15 @@ import {
   NOTIFICATIONS_BADGE_LABEL_KEY,
   NOTIFICATIONS_SCREEN_PATH,
 } from '../lib/notifications'
+import {
+  ORGANIZATION_SWITCHER_KEYS,
+  organizationRoutePath,
+  organizations,
+} from '../lib/organizations'
 import { fileUrl, storage } from '../lib/storage'
 import { AccountMenu } from './account-menu'
 import { DesktopNavigation, MobileNavigation } from './app-navigation'
+import { ShellOrgSwitcher } from './shell-org-switcher'
 import { ZoneFrame } from './zone-frame'
 
 /**
@@ -86,6 +92,27 @@ export async function AppShell({
    */
   const unread = session === null ? 0 : await notifications.unreadCount(session)
   /**
+   * **Les organisations du compte, pour le sélecteur de la barre du haut**
+   * (s62c). Même règle que le compteur : lues **seulement avec une session** —
+   * `tests/marketing.test.ts` compte les lectures du shell d'un anonyme. Module
+   * coupé, la liste est vide **sans toucher la base**, et c'est elle qui décide
+   * du rendu : aucune condition ne nomme un module.
+   */
+  const switcher = session === null ? null : await organizations.switcher(session.userId)
+  const orgSwitcher =
+    switcher === null || switcher.options.length === 0 ? null : (
+      <ShellOrgSwitcher
+        label={t(ORGANIZATION_SWITCHER_KEYS.label)}
+        // Des organisations sans courante : le déclencheur invite à choisir, il
+        // ne constate pas un vide (constat F7 de s15).
+        current={switcher.current === null ? t(ORGANIZATION_SWITCHER_KEYS.none) : switcher.current.name}
+        currentValue={switcher.current === null ? null : switcher.current.id}
+        action={organizationRoutePath('switch')}
+        fieldName="organizationId"
+        options={switcher.options.map((option) => ({ value: option.id, label: option.name }))}
+      />
+    )
+  /**
    * Le consentement du **visiteur**, lu dans son cookie et non dans un compte
    * (s36) : un anonyme a exactement le même droit qu'un utilisateur connecté.
    * Aucune connexion à la base n'est ouverte pour cela.
@@ -115,6 +142,9 @@ export async function AppShell({
             openLabel={t('app.shell.openNavigation')}
             closeLabel={t('app.shell.closeNavigation')}
             title={t('app.name')}
+            // Sous `md`, le sélecteur passe dans le panneau : la barre garde la
+            // cloche et le menu de compte, sans déborder.
+            header={orgSwitcher}
           />
           <a
             href={path(DEFAULT_SIGNED_IN_PATH)}
@@ -124,7 +154,10 @@ export async function AppShell({
           >
             {t('app.name')}
           </a>
-          <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex min-w-0 items-center gap-1">
+            {orgSwitcher === null ? null : (
+              <div className="hidden min-w-0 md:block">{orgSwitcher}</div>
+            )}
             {languages.length === 0 ? null : (
               <LocaleSwitcher
                 label={t('i18n.switcher.label')}

@@ -20,6 +20,7 @@ export {
   resolveActorReferences,
   NOTIFICATIONS_MODULE_ID,
   NOTIFICATIONS_SCREEN_PATH,
+  NOTIFICATIONS_SETTINGS_SCREEN_PATH,
   NOTIFICATION_PAGE_SIZE,
   type ChannelPreference,
   type NotificationAddress,

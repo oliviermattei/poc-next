@@ -102,10 +102,27 @@ export interface ConfigureOrganizationsOptions {
    * facturer n'en est pas un.
    */
   readonly cancelBilling?: CancelBilling
+  /**
+   * **Le filtre du retour de la route `switch`** (s62c, ADR 076) : le chemin
+   * reçu du navigateur s'il est interne au site, sinon le repli.
+   *
+   * Injecté et non importé : la frontière lint de `docs/security.md` §7
+   * interdit `@repo/module-auth` hors de deux fichiers de ce module, et le
+   * point de composition passe `safeRedirectPath`. **Obligatoire, sans repli
+   * permissif**, pour la raison qui rend `seatSync` obligatoire : un point de
+   * composition qui l'oublierait doit le voir au compilateur, pas à la première
+   * redirection ouverte.
+   */
+  readonly safeReturnPath: SafeReturnPath
 }
+
+/** Le chemin `candidate` s'il est sûr, sinon `fallback` — jamais autre chose. */
+export type SafeReturnPath = (candidate: string | null | undefined, fallback: string) => string
 
 export interface OrganizationsService {
   readonly useCases: OrganizationsUseCases
+  /** Le filtre injecté, lu par la route `switch` (ADR 076). */
+  readonly safeReturnPath: SafeReturnPath
 }
 
 export class OrganizationsNotConfiguredError extends Error {
@@ -142,6 +159,7 @@ const build = (options: ConfigureOrganizationsOptions): OrganizationsService => 
     securityLog: options.securityLog ?? consoleSecurityLog,
     notify: options.notify,
   }),
+  safeReturnPath: options.safeReturnPath,
 })
 
 /** Construit le service **maintenant**. C'est la forme qu'une suite de tests emploie. */

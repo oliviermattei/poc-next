@@ -10,7 +10,7 @@
   "screen.deletedActor": "Compte supprimé",
   "screen.read": "Lue",
   "screen.empty.title": "Aucune notification",
-  "screen.empty.description": "Ce qui vous concerne apparaîtra ici. Réglez ci-dessous la façon d’en être prévenu.",
+  "screen.empty.description": "Ce qui vous concerne apparaîtra ici. Choisissez dans vos réglages comment en être prévenu.",
   "screen.empty.action": "Régler mes préférences",
   "screen.pagination.label": "Pages de notifications",
   "screen.pagination.previous": "Page précédente",

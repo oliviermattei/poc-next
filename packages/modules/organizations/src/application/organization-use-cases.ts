@@ -141,6 +141,19 @@ export const EMPTY_ORGANIZATIONS_VIEW: OrganizationsView = {
   permissions: permissionsOf(null),
 }
 
+/**
+ * **Ce que la barre du haut affiche** (s62c) : les organisations du compte et
+ * la courante, par leur nom. Rien d'autre — ni membres, ni invitations, ni
+ * rôle : cette lecture est payée sur chaque écran de l'application.
+ */
+export interface OrganizationSwitcherView {
+  readonly current: { readonly id: string; readonly name: string } | null
+  readonly options: readonly { readonly id: string; readonly name: string }[]
+}
+
+/** L'état sans organisation — et celui du module coupé, servi sans base. */
+export const EMPTY_ORGANIZATION_SWITCHER: OrganizationSwitcherView = { current: null, options: [] }
+
 /** Ce qu'un écran a le droit de savoir d'une invitation avant de l'accepter. */
 export interface InvitationPreview {
   readonly organizationName: string
@@ -202,6 +215,11 @@ export interface OrganizationsUseCases {
     readonly body: unknown
   }): Promise<OrganizationOutcome>
   viewOrganizations(userId: string): Promise<OrganizationsView>
+  /**
+   * **La lecture de la barre du haut** (s62c) : deux requêtes, jamais les
+   * membres ni les invitations que `viewOrganizations` lit en plus.
+   */
+  switcherOf(userId: string): Promise<OrganizationSwitcherView>
   activeOrganizationId(userId: string): Promise<string | null>
   /**
    * Le nombre de membres d'une organisation **nommée** — s23.
@@ -815,6 +833,24 @@ export function createOrganizationsUseCases(
           email: invitation.email,
           status: invitationStatus(invitation, instant),
         })),
+      }
+    },
+
+    switcherOf: async (userId) => {
+      const [memberships, activeId] = await Promise.all([
+        repository.listMemberships(userId),
+        repository.findActiveOrganizationId(userId),
+      ])
+      const options = memberships.map((membership) => ({
+        id: membership.organizationId,
+        name: membership.name,
+      }))
+
+      return {
+        // Cherchée **dans les appartenances**, comme `viewOrganizations` : une
+        // sélection qui aurait survécu au retrait du membre ne ressort pas.
+        current: options.find((option) => option.id === activeId) ?? null,
+        options,
       }
     },
 

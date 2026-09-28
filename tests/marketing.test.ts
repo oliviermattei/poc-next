@@ -49,6 +49,7 @@ import {
   createRouteRateLimitGuard,
   parseRateLimitPolicies,
 } from '@repo/module-rate-limit'
+import { organizationRoutePath } from '@repo/module-organizations'
 import { qualifyEmailTemplateId } from '@repo/emails'
 import {
   ContactView,
@@ -1204,8 +1205,12 @@ describe('le rendu des pages publiques', () => {
    * — celle qui l'active comme celle qui le coupe —, et le cas commence par
    * vérifier qu'il l'est : sans cette ligne, il retomberait dans la vacuité
    * qu'il existe pour fermer.
+   *
+   * **Le sélecteur d'organisation de la barre du haut** (s62c) suit la même
+   * règle et la même mesure : `organizations` est monté de force lui aussi, et
+   * sa lecture n'est faite qu'avec une session.
    */
-  it('ne lit aucun compteur de notifications pour un visiteur sans session', async () => {
+  it('ne lit ni compteur de notifications ni organisations pour un visiteur sans session', async () => {
     viewer.value = ANONYMOUS
 
     vi.resetModules()
@@ -1215,11 +1220,12 @@ describe('le rendu des pages publiques', () => {
         '../config/features'
       )
       const { notificationsModule } = await import('@repo/module-notifications')
+      const { organizationsModule } = await import('@repo/module-organizations')
 
       return {
         moduleRegistry: build({
           available: [...modules],
-          enabled: [...new Set([...base, notificationsModule.id])],
+          enabled: [...new Set([...base, notificationsModule.id, organizationsModule.id])],
           required: [...base],
           locales: [...appLocales],
         }),
@@ -1227,11 +1233,13 @@ describe('le rendu des pages publiques', () => {
     })
 
     const { notifications } = await import('../apps/web/lib/notifications')
+    const { organizations } = await import('../apps/web/lib/organizations')
 
     // L'anti-vacuité, et c'est tout le sujet de ce cas : module coupé,
     // `unreadCount` rend zéro sans toucher la base et la mesure serait vraie
-    // quoi que le shell écrive.
+    // quoi que le shell écrive. Même chose pour `organizations.switcher`.
     expect(notifications.available).toBe(true)
+    expect(organizations.available).toBe(true)
 
     const postgres = instrumentPostgres()
 
@@ -1260,8 +1268,9 @@ describe('le rendu des pages publiques', () => {
    * page, dans toutes les configurations, module `admin` coupé compris.
    *
    * **Ce que ce cas mesure** : le coût **propre** de la coquille pour un
-   * appelant connecté, emprunt en cours compris. Les deux lectures qu'elle
-   * délègue — l'avatar (s18) et le compteur de notifications (s32) — sont
+   * appelant connecté, emprunt en cours compris. Les trois lectures qu'elle
+   * délègue — l'avatar (s18), le compteur de notifications (s32) et le
+   * sélecteur d'organisation (s62c) — sont
    * remplacées par leur forme « module coupé », qui est celle du vrai point de
    * composition : leur coût est le leur, il est déjà gardé chez eux, et sans
    * cela ce cas exigerait une base joignable pour mesurer autre chose que ce
@@ -1295,6 +1304,18 @@ describe('le rendu des pages publiques', () => {
         notifications: { ...actual.notifications, unreadCount: () => Promise.resolve(0) },
       }
     })
+    vi.doMock('../apps/web/lib/organizations', async (importOriginal) => {
+      const actual =
+        await importOriginal<typeof import('../apps/web/lib/organizations')>()
+
+      return {
+        ...actual,
+        organizations: {
+          ...actual.organizations,
+          switcher: () => Promise.resolve({ current: null, options: [] }),
+        },
+      }
+    })
 
     const postgres = instrumentPostgres()
 
@@ -1312,6 +1333,7 @@ describe('le rendu des pages publiques', () => {
       postgres.restore()
       vi.doUnmock('../apps/web/lib/storage')
       vi.doUnmock('../apps/web/lib/notifications')
+      vi.doUnmock('../apps/web/lib/organizations')
       viewer.value = ANONYMOUS
     }
   })
@@ -1347,6 +1369,83 @@ describe('le rendu des pages publiques', () => {
       postgres.restore()
       viewer.value = ANONYMOUS
     }
+  })
+})
+
+/**
+ * **Le sélecteur d'organisation de la barre du haut** (s62c, critères 1 et 2).
+ *
+ * Rendu par le vrai shell ; seules les lectures déléguées sont remplacées. Ce
+ * qui est mesuré est la décision du shell — rendu si le compte a des
+ * organisations, absent sinon — et le chemin courant posté avec le choix. La
+ * lecture des organisations est prouvée contre une base dans
+ * `tests/organizations.test.ts`, et le filtre du retour à la route.
+ */
+describe('le sélecteur d’organisation de la barre du haut', () => {
+  const renderShellWith = async (switcher: {
+    readonly current: { readonly id: string; readonly name: string } | null
+    readonly options: readonly { readonly id: string; readonly name: string }[]
+  }): Promise<string> => {
+    viewer.value = SIGNED_IN
+    vi.resetModules()
+    vi.doMock('next/navigation', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('next/navigation')>()),
+      usePathname: () => '/app/demo',
+    }))
+    vi.doMock('../apps/web/lib/storage', () => ({
+      storage: { available: false, prepare: () => {}, avatarOf: () => Promise.resolve(null) },
+      fileUrl: () => '',
+    }))
+    vi.doMock('../apps/web/lib/notifications', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('../apps/web/lib/notifications')>()
+
+      return {
+        ...actual,
+        notifications: { ...actual.notifications, unreadCount: () => Promise.resolve(0) },
+      }
+    })
+    vi.doMock('../apps/web/lib/organizations', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('../apps/web/lib/organizations')>()
+
+      return {
+        ...actual,
+        organizations: { ...actual.organizations, switcher: () => Promise.resolve(switcher) },
+      }
+    })
+
+    try {
+      const { AppShell } = await import('../apps/web/app/app-shell')
+
+      return renderToStaticMarkup(withMessages(await AppShell({ children: null })))
+    } finally {
+      vi.doUnmock('next/navigation')
+      vi.doUnmock('../apps/web/lib/storage')
+      vi.doUnmock('../apps/web/lib/notifications')
+      vi.doUnmock('../apps/web/lib/organizations')
+      viewer.value = ANONYMOUS
+    }
+  }
+
+  it('se rend quand le compte a des organisations, et poste l’écran courant', async () => {
+    const html = await renderShellWith({
+      current: { id: 'org_1', name: 'Studio Nord' },
+      options: [
+        { id: 'org_1', name: 'Studio Nord' },
+        { id: 'org_2', name: 'Studio Sud' },
+      ],
+    })
+
+    expect(html).toContain(`action="${organizationRoutePath('switch')}"`)
+    expect(html).toContain('Studio Nord')
+    expect(html).toContain('<input type="hidden" name="next" value="/app/demo"/>')
+  })
+
+  it('est absent quand le compte n’a aucune organisation', async () => {
+    const html = await renderShellWith({ current: null, options: [] })
+
+    // L'anti-vacuité : la barre est bien rendue, le menu de compte y est.
+    expect(html).toContain(markerFor('app.shell.account.menu'))
+    expect(html).not.toContain(organizationRoutePath('switch'))
   })
 })
 

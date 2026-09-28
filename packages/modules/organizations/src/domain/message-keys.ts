@@ -117,6 +117,8 @@ export const ORGANIZATIONS_KEYS = {
    * vide.
    */
   switcherNone: organizationsKey('current.none'),
+  /** La carte « Organisation courante » renvoie à la barre du haut (s62c). */
+  switchHint: organizationsKey('current.switchHint'),
   settingsTitle: organizationsKey('settings.title'),
   settingsDescription: organizationsKey('settings.description'),
   settingsName: organizationsKey('settings.nameLabel'),

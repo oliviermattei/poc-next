@@ -152,3 +152,35 @@ test('chaque rubrique a un seul `h1`, « Réglages », et un `h2` à son nom', a
     ).toBeVisible()
   }
 })
+
+/**
+ * **La rubrique Notifications** (s62c, critère 3) : les préférences y vivent,
+ * une bascule est une soumission native, et la route revient **sur la
+ * rubrique** — plus sur le centre, qui ne porte plus la carte.
+ */
+test('la rubrique Notifications bascule une préférence et y revient', async ({ page }) => {
+  test.skip(
+    !moduleRegistry.moduleIds.includes('notifications'),
+    'Le module est coupé dans cette configuration.',
+  )
+
+  await aSignedInAccount(page, 's62c-preferences')
+  await page.goto(publicPath(settingsPath('notifications')))
+
+  const toggle = page.getByRole('main').getByRole('button', { name: /^(Activer|Désactiver) « / })
+  const before = (await toggle.first().getAttribute('aria-label')) ?? ''
+
+  // L'anti-vacuité : la carte est bien là, avec au moins un interrupteur.
+  expect(before).not.toBe('')
+
+  await toggle.first().click()
+
+  await expect(page).toHaveURL(new RegExp(`${publicPath(settingsPath('notifications'))}$`))
+
+  const after = before.startsWith('Activer')
+    ? before.replace(/^Activer/, 'Désactiver')
+    : before.replace(/^Désactiver/, 'Activer')
+
+  await expect(page.getByRole('button', { name: after, exact: true })).toBeVisible()
+})
+

@@ -32,6 +32,7 @@
   "app.settings.security.title": "Security",
   "app.settings.security.description": "How you sign in, and from which devices.",
   "app.settings.cookies.title": "Cookies",
+  "app.settings.notifications.title": "Notifications",
   "app.notFound.title": "Page not found",
   "app.notFound.empty.title": "This address leads nowhere",
   "app.notFound.empty.description": "The link may be outdated, or the address has a typo. Start again from the home page.",

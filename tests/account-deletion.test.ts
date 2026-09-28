@@ -25,6 +25,7 @@ import {
   authRoutePath,
   configureAuth,
   resetAuthService,
+  safeRedirectPath,
   type AuthService,
 } from '@repo/module-auth'
 import {
@@ -393,6 +394,8 @@ beforeAll(async () => {
     // Ce fichier ne mesure pas les notifications émises par les organisations :
     // elles ont leur suite. La forme est respectée, l'émission est neutre.
     notify: () => Promise.resolve({ ok: true }),
+    // s62c (ADR 076) : le vrai filtre, comme au point de composition.
+    safeReturnPath: safeRedirectPath,
     purgeScope: async (scope) => await purgeModules(registry, scope),
     cancelBilling: async (organizationId) => {
       cancelledScopes.push(organizationId)

@@ -16,7 +16,7 @@ import {
   type DatabaseConnection,
 } from '@repo/db'
 import { createRecordingMailer } from '@repo/mailer-testing'
-import { authModule, authUser } from '@repo/module-auth'
+import { authModule, authUser, safeRedirectPath } from '@repo/module-auth'
 import {
   ACCEPT_REFUSALS,
   acceptRefusalMessageKey,
@@ -314,6 +314,9 @@ beforeAll(async () => {
     // quantité qui en part sont éprouvés dans `tests/billing.test.ts`, où le
     // vrai couplage est branché.
     seatSync: () => Promise.resolve({ ok: true }),
+    // s62c (ADR 076) : **le vrai filtre**, jamais un double — les retours de
+    // `switch` ci-dessous ne prouvent quelque chose que contre lui.
+    safeReturnPath: safeRedirectPath,
   })
 })
 
@@ -373,6 +376,44 @@ describe.runIf(databaseReachable)('le périmètre organisationnel', () => {
     expect(
       await countRows('organization_active_selection', 'user_id', stranger.userId),
     ).toBe(0)
+  })
+
+  /**
+   * **Critère 2 de s62c (ADR 076)** : le changement revient à l'écran courant —
+   * par le vrai filtre, injecté comme au point de composition. Un chemin qui
+   * sortirait du site revient à la rubrique, jamais ailleurs.
+   */
+  it('revient à l’écran courant après un changement, et refuse un chemin hors du site', async () => {
+    const owner = await anAccount()
+
+    await call('create', { session: owner, body: { name: 'Studio Retour', slug: aSlug() } })
+
+    const [organization] = await service.useCases
+      .viewOrganizations(owner.userId)
+      .then((view) => view.memberships)
+    const organizationId = organization?.id ?? ''
+    const returned = async (next?: string): Promise<string> => {
+      const response = await call('switch', {
+        session: owner,
+        form: true,
+        body: next === undefined ? { organizationId } : { organizationId, next },
+      })
+
+      expect(response.status).toBe(303)
+
+      const location = new URL(response.headers.get('location') ?? '')
+
+      expect(location.origin).toBe(new URL(APP_URL).origin)
+
+      return location.pathname
+    }
+
+    expect(await returned('/app/demo')).toBe('/app/demo')
+    expect(await returned()).toBe(ORGANIZATIONS_SCREEN_PATH)
+
+    for (const outside of ['//evil.test', '/.//evil.test', 'https://evil.test/app']) {
+      expect(await returned(outside), outside).toBe(ORGANIZATIONS_SCREEN_PATH)
+    }
   })
 
   it('rend exactement la même chose pour une organisation qui n’existe pas', async () => {
@@ -2386,6 +2427,64 @@ describe.runIf(databaseReachable)('la résolution du propriétaire, telle qu’e
     const { dataOwnerOf } = await import('../apps/web/lib/organizations')
 
     expect(await dataOwnerOf(null)).toBeNull()
+  })
+})
+
+/**
+ * **La lecture de la barre du haut** (s62c) : les organisations du compte et la
+ * courante, par leur nom — et, module coupé, rien, sans ouvrir de connexion.
+ */
+describe('le sélecteur de la barre du haut', () => {
+  it.runIf(databaseReachable)('rend les organisations du compte et la courante', async () => {
+    const account = await anAccount()
+
+    await call('create', { session: account, body: { name: 'Studio Premier', slug: aSlug() } })
+    await call('create', { session: account, body: { name: 'Studio Second', slug: aSlug() } })
+
+    const [first] = await service.useCases
+      .viewOrganizations(account.userId)
+      .then((view) => view.memberships.filter((entry) => entry.name === 'Studio Premier'))
+
+    await call('switch', { session: account, body: { organizationId: first?.id ?? '' } })
+
+    const switcher = await service.useCases.switcherOf(account.userId)
+
+    expect(switcher.current).toEqual({ id: first?.id, name: 'Studio Premier' })
+    expect(switcher.options.map((option) => option.name).sort()).toEqual([
+      'Studio Premier',
+      'Studio Second',
+    ])
+    await expect(service.useCases.switcherOf((await anAccount()).userId)).resolves.toEqual({
+      current: null,
+      options: [],
+    })
+  })
+
+  it('est vide module coupé, sans ouvrir de connexion', async () => {
+    vi.resetModules()
+    // Le registre du produit **sans** le module, et une base qui échoue si on
+    // l'ouvre : le point de composition réel doit répondre par la valeur.
+    vi.doMock('../apps/web/lib/module-registry', () => ({ moduleRegistry: withoutOrganizations }))
+    vi.doMock('@repo/db', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('@repo/db')>()),
+      getDatabase: () => {
+        throw new Error('aucune connexion attendue, module coupé')
+      },
+    }))
+
+    try {
+      const { organizations } = await import('../apps/web/lib/organizations')
+
+      expect(organizations.available).toBe(false)
+      await expect(organizations.switcher('usr_1')).resolves.toEqual({
+        current: null,
+        options: [],
+      })
+    } finally {
+      vi.doUnmock('../apps/web/lib/module-registry')
+      vi.doUnmock('@repo/db')
+      vi.resetModules()
+    }
   })
 })
 

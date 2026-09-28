@@ -7,6 +7,7 @@
   "current.description": "Vos données sont rattachées à cette organisation.",
   "current.switcherLabel": "Changer d’organisation",
   "current.none": "Choisir une organisation",
+  "current.switchHint": "Changez d’organisation depuis la barre du haut.",
   "role.owner": "Propriétaire",
   "role.admin": "Administrateur",
   "role.member": "Membre",

@@ -33,7 +33,9 @@ import { INVITATION_SCREEN_PATH } from '../domain/invitation'
  *
  * La destination est une **constante de ce fichier**, et son origine vient de
  * la requête entrante : aucune redirection n'est pilotée par un paramètre
- * (`docs/security.md` §4).
+ * (`docs/security.md` §4) — **à une exception écrite près** : le succès de
+ * `switch` revient à l'écran courant, par un champ `next` que filtre
+ * `safeReturnPath`, injecté par le point de composition (ADR 076).
  *
  * La protection contre la soumission d'origine tierce est celle du cookie de
  * session, `SameSite=Strict` (module `auth`) : une requête intersite n'emporte
@@ -147,6 +149,12 @@ const backToScreen = (
   request: Request,
   outcome: OrganizationOutcome,
   screen: OrganizationScreenPath,
+  /**
+   * Le retour d'un **succès**, déjà filtré — la rubrique par défaut. Seule
+   * `switch` en fournit un autre (ADR 076) ; un refus revient toujours sur la
+   * rubrique, qui montre le formulaire refusé.
+   */
+  returnPath: string = screen,
 ): Response => {
   if (outcome.status === 'not_found') {
     return notFound()
@@ -156,7 +164,7 @@ const backToScreen = (
     return forbidden()
   }
 
-  const destination = new URL(screen, request.url)
+  const destination = new URL(outcome.status === 'refused' ? screen : returnPath, request.url)
 
   if (outcome.status === 'refused') {
     destination.searchParams.set('error', outcome.refusal)
@@ -202,12 +210,35 @@ const backToInvitation = (
   return new Response(null, { status: 303, headers: { location: destination.toString() } })
 }
 
+/**
+ * Le champ `next` d'un corps soumis, ou `null`. **Une valeur reçue** : elle ne
+ * sert qu'à travers `safeReturnPath` (ADR 076).
+ */
+const nextOf = (body: unknown): string | null =>
+  typeof body === 'object' && body !== null && 'next' in body
+    ? typeof (body as { next: unknown }).next === 'string'
+      ? (body as { next: string }).next
+      : null
+    : null
+
 export function createOrganizationRoutes(
-  service: () => { readonly useCases: OrganizationsUseCases },
+  service: () => {
+    readonly useCases: OrganizationsUseCases
+    /**
+     * Le filtre des chemins reçus, **injecté** (ADR 076) : `safeRedirectPath`
+     * du module `auth`, que ce fichier n'a pas le droit d'importer
+     * (`docs/security.md` §7).
+     */
+    readonly safeReturnPath: (candidate: string | null | undefined, fallback: string) => string
+  },
 ): readonly ModuleRoute[] {
   const submit = (
     path: string,
-    /** La rubrique où revient l'action — une constante, jamais un paramètre. */
+    /**
+     * La rubrique où revient l'action — une constante, jamais un paramètre. Un
+     * refus y revient toujours ; seul le succès de `switch` peut aller ailleurs,
+     * par `returnTo` (ADR 076).
+     */
     screen: OrganizationScreenPath,
     run: (
       useCases: OrganizationsUseCases,
@@ -224,6 +255,11 @@ export function createOrganizationRoutes(
      * confondues.
      */
     rateLimit?: RouteRateLimit,
+    /**
+     * **Le retour d'un succès, lu dans le corps** (s62c, ADR 076) — `switch`
+     * seule. Absent : la rubrique. Ce qu'il rend doit déjà être filtré.
+     */
+    returnTo?: (body: unknown) => string,
   ): ModuleRoute => ({
     method: 'POST',
     path,
@@ -236,14 +272,15 @@ export function createOrganizationRoutes(
         return notFound()
       }
 
+      const body = await submittedBody(request)
       const outcome = await run(service().useCases, {
         // Le compte vient de la **session**, jamais du corps : aucun chemin ne
         // laisse agir au nom d'un autre (`docs/security.md` §3).
         userId: context.session.userId,
-        body: await submittedBody(request),
+        body,
       })
 
-      return backToScreen(request, outcome, screen)
+      return backToScreen(request, outcome, screen, returnTo?.(body) ?? screen)
     },
   })
 
@@ -286,6 +323,12 @@ export function createOrganizationRoutes(
       PATHS.switch,
       ORGANIZATIONS_SCREEN_PATH,
       async (useCases, input) => await useCases.switchOrganization(input),
+      undefined,
+      // **L'écran courant** (critère 2 de s62c) : le sélecteur de la barre du
+      // haut poste le chemin où il est affiché. Filtré ici, avant d'être posé
+      // dans l'en-tête `Location` — un chemin refusé ou absent revient à la
+      // rubrique Organisation, comme avant (ADR 076).
+      (body) => service().safeReturnPath(nextOf(body), ORGANIZATIONS_SCREEN_PATH),
     ),
     submit(
       PATHS.update,

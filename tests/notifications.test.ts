@@ -31,7 +31,7 @@ import {
   typeBodyKey,
   typeLabelKey,
   NOTIFICATIONS_KEYS,
-  NOTIFICATIONS_SCREEN_PATH,
+  NOTIFICATIONS_SETTINGS_SCREEN_PATH,
   type NotificationsService,
   type NotificationsView,
 } from '@repo/module-notifications'
@@ -687,6 +687,10 @@ describe.skipIf(!databaseReachable)('les préférences, respectées à l’émis
       })
 
       expect(response.status).toBe(303)
+      // s62c : le formulaire vit dans la rubrique des réglages, et y revient.
+      expect(new URL(response.headers.get('location') ?? '').pathname).toBe(
+        NOTIFICATIONS_SETTINGS_SCREEN_PATH,
+      )
     }
 
     const outcome = await emitterFor(registry)({
@@ -1006,10 +1010,32 @@ describe('module `notifications` coupé — les quatre garanties (critère 7)', 
   })
 
   it('n’apparaît dans aucune entrée de navigation', () => {
-    const entries = visibleNavigation(withoutNotifications, { userId: 'u-1', roles: [] })
+    // Les deux surfaces : la barre latérale, et la sous-navigation des
+    // réglages où vit sa rubrique depuis s62c.
+    const entries = (['app', 'settings'] as const).flatMap((surface) =>
+      visibleNavigation(withoutNotifications, { userId: 'u-1', roles: [] }, surface),
+    )
 
     expect(entries.map((entry) => entry.moduleId)).not.toContain(notificationsModule.id)
-    expect(entries.map((entry) => entry.href)).not.toContain(NOTIFICATIONS_SCREEN_PATH)
+    expect(entries.map((entry) => entry.href)).not.toContain(NOTIFICATIONS_SETTINGS_SCREEN_PATH)
+  })
+
+  /**
+   * **Critères 3 et 4 de s62c** : module monté, le centre n'a plus d'entrée
+   * dans la barre latérale — la cloche y mène —, et les préférences ont leur
+   * rubrique dans les réglages.
+   */
+  it('module monté : aucune entrée dans la barre latérale, une rubrique des réglages', () => {
+    const session = { userId: 'u-1', roles: [] }
+    const ofModule = (surface: 'app' | 'settings') =>
+      visibleNavigation(registry, session, surface).filter(
+        (entry) => entry.moduleId === notificationsModule.id,
+      )
+
+    expect(ofModule('app')).toEqual([])
+    expect(ofModule('settings').map((entry) => entry.href)).toEqual([
+      NOTIFICATIONS_SETTINGS_SCREEN_PATH,
+    ])
   })
 
   it('replie sur l’email les types qui le veulent par défaut, et eux seuls', async () => {
@@ -1152,8 +1178,9 @@ describe('l’écran du centre — ce qu’il montre et ce qu’il retire', () =
       createElement(NotificationsScreen, {
         view,
         intl,
-        actions: { read: '/read', readAll: '/read-all', setPreference: '/set' },
+        actions: { read: '/read', readAll: '/read-all' },
         hrefForPage: (page: number) => `/notifications?page=${page}`,
+        preferencesHref: '/route-preferences',
       }),
     )
 
@@ -1207,8 +1234,9 @@ describe('l’écran du centre — ce qu’il montre et ce qu’il retire', () =
       renderToStaticMarkup(
         createElement(NotificationsScreen, {
           intl: interpolating,
-          actions: { read: '/read', readAll: '/read-all', setPreference: '/set' },
+          actions: { read: '/read', readAll: '/read-all' },
           hrefForPage: (page: number) => `/notifications?page=${page}`,
+          preferencesHref: '/route-preferences',
           view: view({
           notifications: [
             {
@@ -1238,7 +1266,12 @@ describe('l’écran du centre — ce qu’il montre et ce qu’il retire', () =
     const html = render(view({}))
 
     // Un tableau vide sans action est un écran cassé (`docs/design-system.md`).
-    expect(html).toContain('#notification-preferences')
+    // Sa sortie mène à la rubrique des préférences (s62c)…
+    expect(html).toContain('href="/route-preferences"')
+    // … et le centre ne porte plus la carte : elle vit dans les réglages.
+    expect(render(view({ preferences: [{ type: EMAIL_TYPE, channels: [] }] }))).not.toContain(
+      NOTIFICATIONS_KEYS.preferencesTitle,
+    )
   })
 
   it('n’affiche aucune pagination quand il n’y a qu’une page', () => {

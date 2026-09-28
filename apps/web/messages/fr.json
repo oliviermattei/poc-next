@@ -32,6 +32,7 @@
   "app.settings.security.title": "Sécurité",
   "app.settings.security.description": "Comment vous vous connectez, et depuis quels appareils.",
   "app.settings.cookies.title": "Cookies",
+  "app.settings.notifications.title": "Notifications",
   "app.notFound.title": "Page introuvable",
   "app.notFound.empty.title": "Cette adresse ne mène nulle part",
   "app.notFound.empty.description": "Le lien est peut-être périmé, ou l’adresse comporte une faute de frappe. Reprenez depuis l’accueil.",

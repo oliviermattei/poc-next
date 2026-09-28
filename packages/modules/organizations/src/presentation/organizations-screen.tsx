@@ -10,7 +10,6 @@ import {
   EmptyState,
   Input,
   Label,
-  OrgSwitcher,
   Separator,
 } from '@repo/ui'
 import { Building2Icon, MailPlusIcon } from 'lucide-react'
@@ -67,14 +66,14 @@ interface ScreenBase {
 }
 
 /**
- * **La rubrique Organisation** (s62b) : l'organisation courante et son
- * sélecteur, le renommage, la suppression, la création.
+ * **La rubrique Organisation** (s62b) : l'organisation courante — son
+ * sélecteur est dans la barre du haut depuis s62c —, le renommage, la
+ * suppression, la création.
  */
 export interface OrganizationScreenProps extends ScreenBase {
   /** URL des routes du module, résolues par l'application. */
   readonly actions: {
     readonly create: string
-    readonly switch: string
     readonly update: string
     readonly delete: string
   }
@@ -430,24 +429,23 @@ export function OrganizationScreen({
             <CardTitle>{intl.t(K.currentTitle)}</CardTitle>
             <CardDescription>{intl.t(K.currentDescription)}</CardDescription>
           </CardHeader>
-          <CardContent className="flex min-w-0 flex-wrap items-center gap-3">
-            <OrgSwitcher
-              label={intl.t(K.switcherLabel)}
-              // Aucune sélection courante n'est pas « aucune organisation » :
-              // le compte en a, il n'en a simplement pas choisi. Le
-              // déclencheur invite, il ne constate pas un vide (F7).
-              current={current === null ? intl.t(K.switcherNone) : current.name}
-              currentValue={current === null ? null : current.id}
-              action={actions.switch}
-              fieldName="organizationId"
-              options={memberships.map((membership) => ({
-                value: membership.id,
-                label: membership.name,
-              }))}
-            />
-            {current === null ? null : (
-              <Badge variant="secondary">{intl.t(roleLabelKey(current.role))}</Badge>
-            )}
+          <CardContent className="flex min-w-0 flex-col gap-3">
+            {/*
+              **Informative depuis s62c** : le sélecteur vit dans la barre du
+              haut, présente sur tout écran de l'application — deux sélecteurs
+              sur la même page seraient indiscernables. Aucune sélection
+              courante n'est pas « aucune organisation » : le compte en a, il
+              n'en a simplement pas choisi, et la carte invite (F7).
+            */}
+            <div className="flex min-w-0 flex-wrap items-center gap-3">
+              <span className="truncate font-medium">
+                {current === null ? intl.t(K.switcherNone) : current.name}
+              </span>
+              {current === null ? null : (
+                <Badge variant="secondary">{intl.t(roleLabelKey(current.role))}</Badge>
+              )}
+            </div>
+            <p className="text-sm text-muted-foreground">{intl.t(K.switchHint)}</p>
           </CardContent>
         </Card>
       )}
