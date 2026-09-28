@@ -1,4 +1,6 @@
 import { readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
@@ -10,6 +12,7 @@ import {
   SOCLE_STEP_DISPOSITION,
   socleJobPlan,
   socleJobSteps,
+  socleReplayEnvironment,
   socleToggles,
 } from '../scripts/socle-rules'
 
@@ -243,5 +246,68 @@ describe('les commandes du job, dérivées du même fichier', () => {
     }
 
     expect(plan.executed.length + plan.excluded.length).toBe(socleJobSteps(WORKFLOW).length)
+  })
+})
+
+/**
+ * **Deux exécutions simultanées ne partagent aucun fichier** (s68).
+ *
+ * Les étapes rejouées sont celles du workflow, telles qu'écrites : un chemin
+ * fixe comme `/tmp/arbre-attendu.txt` y est donc écrit par **chaque**
+ * exécution, et la seconde lisait la photographie de l'arbre de la première.
+ * Le workflow écrit sous `$RUNNER_TEMP`, que GitHub définit par job ; la
+ * commande locale le fournit, un dossier par exécution.
+ */
+describe('les étapes rejouées n’écrivent que dans le dossier de leur exécution', () => {
+  it('refuse une étape rejouée qui écrit dans un chemin fixe de `/tmp`, en la nommant', () => {
+    expect(() =>
+      socleJobPlan({
+        workflow: workflowOf([
+          ...étape({ guarded: true, run: 'pnpm ks toggle alpha', name: 'Couper les modules' }),
+          ...étape({
+            guarded: false,
+            run: 'git status --porcelain > /tmp/arbre-attendu.txt',
+            name: 'Photographier',
+          }),
+        ]),
+        disposition: {
+          'Couper les modules': { kind: 'executed' },
+          Photographier: { kind: 'executed' },
+        },
+      }),
+    ).toThrow(/Photographier/)
+  })
+
+  it('accepte la même étape quand elle écrit sous `$RUNNER_TEMP`', () => {
+    const plan = socleJobPlan({
+      workflow: workflowOf([
+        ...étape({ guarded: true, run: 'pnpm ks toggle alpha', name: 'Couper les modules' }),
+        ...étape({
+          guarded: false,
+          run: 'git status --porcelain > "$RUNNER_TEMP/arbre-attendu.txt"',
+          name: 'Photographier',
+        }),
+      ]),
+      disposition: {
+        'Couper les modules': { kind: 'executed' },
+        Photographier: { kind: 'executed' },
+      },
+    })
+
+    expect(plan.executed.map((step) => step.name)).toContain('Photographier')
+  })
+
+  it('pose `RUNNER_TEMP` sur le dossier de l’exécution, même quand le poste en exporte un', () => {
+    const runnerTemp = join(tmpdir(), 'socle-123', 'runner-temp')
+    const env = socleReplayEnvironment({ PATH: '/bin', RUNNER_TEMP: '/tmp' }, { runnerTemp })
+
+    expect(env.RUNNER_TEMP).toBe(runnerTemp)
+    expect(env.PATH).toBe('/bin')
+  })
+
+  it('refuse un `RUNNER_TEMP` qui serait le dossier temporaire partagé du poste', () => {
+    for (const shared of ['/tmp', '/tmp/', tmpdir()]) {
+      expect(() => socleReplayEnvironment({}, { runnerTemp: shared })).toThrow(/RUNNER_TEMP/)
+    }
   })
 })

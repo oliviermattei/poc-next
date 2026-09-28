@@ -20,6 +20,9 @@
  * paraissant plus simple.
  */
 
+import { tmpdir } from 'node:os'
+import { resolve } from 'node:path'
+
 /** La valeur de matrice qui, dans le workflow, désigne la configuration réduite. */
 export const SOCLE_MATRIX_VALUE = 'socle'
 
@@ -338,7 +341,12 @@ export const SOCLE_STEP_DISPOSITION: Readonly<Record<string, SocleDisposition>> 
  * 2. une exclusion sans raison — sans quoi « exclue » redeviendrait « oubliée » ;
  * 3. une décision qui ne correspond à aucune étape — une étape renommée en CI
  *    laisserait sinon une décision périmée derrière elle ;
- * 4. une répartition qui n'exécute rien — le « balayage vide » de s26.
+ * 4. une répartition qui n'exécute rien — le « balayage vide » de s26 ;
+ * 5. une étape rejouée qui écrit dans un **chemin fixe de `/tmp`** (s68) : la
+ *    commande rejoue le texte du workflow, et deux exécutions simultanées sur le
+ *    même poste s'y écrasaient — l'une a comparé l'arbre attendu de l'autre. Le
+ *    workflow écrit sous `$RUNNER_TEMP`, que la commande fournit par exécution
+ *    (`socleReplayEnvironment`).
  */
 export function socleJobPlan(input: {
   readonly workflow: string
@@ -395,5 +403,46 @@ export function socleJobPlan(input: {
     )
   }
 
+  const sharing = executed.filter((step) => FIXED_TMP_PATH.test(step.run))
+
+  if (sharing.length > 0) {
+    fail(
+      `${sharing.map((step) => quote(step.name)).join(', ')} écri(ven)t dans un chemin fixe de ` +
+        '`/tmp` : deux exécutions simultanées sur le même poste s’y écraseraient. Écrire sous ' +
+        '`"$RUNNER_TEMP/…"`, que GitHub définit par job et que la commande fournit par exécution.',
+    )
+  }
+
   return { executed, excluded }
+}
+
+/**
+ * Un chemin absolu sous `/tmp`, là où un argument de shell commence : après un
+ * blanc, une redirection, un guillemet ou un `=`. `$RUNNER_TEMP/tmp/…` n'y
+ * répond pas, le `/` y suit une variable.
+ */
+const FIXED_TMP_PATH = /(^|[\s<>"'=])\/tmp\//m
+
+/**
+ * **L'environnement des étapes rejouées**, avec leur dossier temporaire à eux
+ * (s68).
+ *
+ * `RUNNER_TEMP` est posé **par-dessus** l'environnement reçu : un poste — ou un
+ * runner — qui en exporterait un le partagerait sinon entre deux exécutions.
+ * Le dossier temporaire du poste lui-même est refusé, pour la même raison.
+ */
+export function socleReplayEnvironment(
+  base: Readonly<Record<string, string | undefined>>,
+  options: { readonly runnerTemp: string },
+): Record<string, string | undefined> {
+  const shared = new Set(['/tmp', '/private/tmp', resolve(tmpdir())])
+
+  if (options.runnerTemp.trim() === '' || shared.has(resolve(options.runnerTemp))) {
+    fail(
+      `RUNNER_TEMP désignerait ${quote(options.runnerTemp)}, le dossier temporaire partagé du ` +
+        'poste : deux exécutions simultanées s’y écraseraient. Il doit être propre à l’exécution.',
+    )
+  }
+
+  return { ...base, RUNNER_TEMP: options.runnerTemp }
 }

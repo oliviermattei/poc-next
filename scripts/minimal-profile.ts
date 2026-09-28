@@ -32,10 +32,13 @@ import {
   CLONE_STRIPPED_ENV_KEYS,
   MINIMAL_PROFILE_TRACES_DIRECTORY,
   readSuiteCounts,
+  recipePort,
+  recipePortReport,
   suiteReport,
   sweepProfile,
   sweepReport,
 } from './minimal-profile-rules'
+import { cloneReport, cloneWorkingTree } from './working-tree'
 
 /**
  * `pnpm test:minimal-profile` — **la promesse de modularité, éprouvée** (s26).
@@ -85,9 +88,6 @@ import {
 
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url))
 
-/** Le port du serveur éphémère de cette recette, distinct des deux autres. */
-const PORT = process.env.MINIMAL_PROFILE_PORT ?? '3120'
-
 /**
  * L'environnement est un dictionnaire simple, et pas un `NodeJS.ProcessEnv` :
  * Next augmente ce type d'un `NODE_ENV` obligatoire, que l'environnement du
@@ -110,35 +110,6 @@ const gitLines = (args: readonly string[]): string[] =>
 
 /** L'état de l'arbre de travail, tel que `git status --porcelain` le rend. */
 const workingTree = (): readonly string[] => gitLines(['status', '--porcelain'])
-
-/**
- * Le clone, **plus l'état du plan de travail**.
- *
- * `git clone` ne connaît que `HEAD` : sur une branche en cours d'écriture, il
- * mesurerait le code d'avant. Les fichiers modifiés et les fichiers non suivis
- * (hors ignorés) sont donc recopiés par-dessus, et **le journal dit combien**.
- * Repris tel quel du parcours doré : deux implémentations de ce geste
- * divergeraient, et c'est un piège que s25 a déjà payé.
- */
-const cloneRepository = (destination: string): number => {
-  run('git', ['clone', '--local', '--no-hardlinks', REPO_ROOT, destination], REPO_ROOT, process.env)
-
-  const changed = gitLines(['ls-files', '--modified', '--others', '--exclude-standard'])
-  const deleted = new Set(gitLines(['ls-files', '--deleted']))
-
-  for (const file of deleted) {
-    rmSync(join(destination, file), { force: true })
-  }
-
-  for (const file of changed) {
-    if (deleted.has(file)) continue
-
-    mkdirSync(dirname(join(destination, file)), { recursive: true })
-    cpSync(join(REPO_ROOT, file), join(destination, file))
-  }
-
-  return changed.length - deleted.size
-}
 
 const withMaintenanceConnection = async (
   databaseUrl: string,
@@ -247,13 +218,7 @@ const main = async (): Promise<void> => {
   let failure: unknown
 
   try {
-    const overlaid = cloneRepository(clone)
-
-    console.log(
-      overlaid === 0
-        ? 'Clone local de HEAD, arbre propre : aucun fichier recopié par-dessus.'
-        : `Clone local de HEAD, plus ${overlaid} fichier(s) du plan de travail recopiés par-dessus.`,
-    )
+    console.log(cloneReport(cloneWorkingTree({ source: REPO_ROOT, destination: clone })))
 
     writeFileSync(
       join(clone, '.env'),
@@ -354,6 +319,13 @@ const main = async (): Promise<void> => {
     console.log(suiteReport(counts))
 
     const suiteMs = Date.now() - suiteStarted
+    // Le port des parcours : `E2E_PORT`, ou un port libre réservé ici — jamais
+    // un port fixe qu'une autre copie du dépôt occuperait déjà (s68).
+    const journeyPort = await recipePort(process.env)
+
+    console.log('')
+    console.log(recipePortReport(journeyPort))
+
     const journeyStarted = Date.now()
 
     // **Critères 3, 4 et 6** — sur un serveur réellement démarré depuis le
@@ -362,7 +334,7 @@ const main = async (): Promise<void> => {
       'pnpm',
       ['exec', 'playwright', 'test', '--config', 'playwright.minimal-profile.config.ts'],
       clone,
-      { ...cloneEnv, E2E_PORT: PORT },
+      { ...cloneEnv, E2E_PORT: String(journeyPort.port) },
     )
 
     console.log('')

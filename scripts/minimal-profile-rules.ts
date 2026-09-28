@@ -1,3 +1,5 @@
+import { createServer } from 'node:net'
+
 import { BUILD_ENV_KEYS, ENV_KEYS } from '@repo/config'
 import type { NavigationSurface } from '@repo/core'
 import { getTableConfig, PgTable } from 'drizzle-orm/pg-core'
@@ -708,3 +710,63 @@ export function cloneEnvironment(
   // du clone fournit le reste.
   return { ...kept, DATABASE_URL: options.databaseUrl }
 }
+
+/**
+ * **Un port libre, réservé puis relâché** : le système en choisit un sur une
+ * écoute au port `0`, et la recette le passe au serveur de ses parcours.
+ * Relâché avant le lancement, il reste exposé à un autre processus pendant
+ * l'intervalle — une fenêtre de quelques secondes, contre un port fixe que
+ * toutes les copies du dépôt se disputaient.
+ */
+const reserveFreePort = (): Promise<number> =>
+  new Promise((resolve, reject) => {
+    const server = createServer()
+
+    server.once('error', reject)
+    server.listen(0, () => {
+      const address = server.address()
+      const port = typeof address === 'object' && address !== null ? address.port : 0
+
+      server.close(() => resolve(port))
+    })
+  })
+
+export interface RecipePort {
+  readonly port: number
+  /** D'où vient le port : fourni par `E2E_PORT`, ou réservé par la recette. */
+  readonly origin: 'E2E_PORT' | 'réservé'
+}
+
+/**
+ * **Le port des parcours d'une recette** (s68) : celui d'`E2E_PORT` s'il est
+ * fourni, sinon un port libre qu'elle réserve. Les trois recettes l'**écrivent**
+ * dans leur sortie.
+ *
+ * Jamais un port écrit en dur : 3100 — le défaut de `playwright.config.ts` — a
+ * été pris par la copie d'une autre worktree pendant qu'une recette en avait
+ * besoin. Un `E2E_PORT` illisible est refusé en le nommant, jamais remplacé :
+ * le développeur qui l'a posé croit ses parcours sur ce port-là.
+ */
+export async function recipePort(
+  env: Readonly<Record<string, string | undefined>>,
+): Promise<RecipePort> {
+  const requested = env.E2E_PORT
+
+  if (requested === undefined || requested === '') {
+    return { port: await reserveFreePort(), origin: 'réservé' }
+  }
+
+  const port = /^\d+$/.test(requested) ? Number(requested) : Number.NaN
+
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    fail(`E2E_PORT vaut ${quote(requested)}, qui n’est pas un port (un entier de 1 à 65535).`)
+  }
+
+  return { port, origin: 'E2E_PORT' }
+}
+
+/** La ligne que chaque recette journalise avant de lancer ses parcours. */
+export const recipePortReport = (chosen: RecipePort): string =>
+  chosen.origin === 'E2E_PORT'
+    ? `Parcours sur le port ${chosen.port}, fourni par E2E_PORT.`
+    : `Parcours sur le port ${chosen.port}, réservé libre par la recette (E2E_PORT non fourni).`

@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process'
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { readEnabledModules } from '@repo/cli'
@@ -17,13 +17,17 @@ import {
   assertWorkingTreeUnchanged,
   cloneEnvironment,
   CLONE_STRIPPED_ENV_KEYS,
+  recipePort,
+  recipePortReport,
 } from './minimal-profile-rules'
 import {
   cutModulesOfSocle,
   SOCLE_MATRIX_VALUE,
   SOCLE_STEP_DISPOSITION,
   socleJobPlan,
+  socleReplayEnvironment,
 } from './socle-rules'
+import { cloneReport, cloneWorkingTree } from './working-tree'
 
 /**
  * `pnpm test:socle` — **la moitié de la matrice de CI qui n'était jouable nulle
@@ -71,11 +75,13 @@ import {
  * dans ce commentaire : la lire, c'est lancer la commande ou ouvrir la
  * répartition.
  *
- * Deux étapes rejouées écrivent dans `/tmp` (la photographie de l'arbre et sa
- * comparaison), parce que c'est ce que le workflow écrit : deux exécutions
- * simultanées sur la même machine se marcheraient dessus. Ce sont les seules
- * écritures hors de la copie, et elles portent sur l'arbre **de la copie**,
- * `git` étant lancé dedans.
+ * Deux étapes rejouées écrivent hors de la copie : la photographie de l'arbre et
+ * sa comparaison, sous `$RUNNER_TEMP` — le dossier temporaire que GitHub
+ * définit par job. La commande le fournit, **un dossier par exécution** créé
+ * dans son répertoire de travail et supprimé avec lui (s68) : deux exécutions
+ * simultanées depuis deux copies du dépôt ne partagent plus aucun fichier, et
+ * `socleJobPlan` refuse une étape rejouée qui écrirait dans un chemin fixe de
+ * `/tmp`.
  *
  * ## Pourquoi une copie, et pas l'arbre courant
  *
@@ -125,31 +131,6 @@ const gitLines = (args: readonly string[]): string[] =>
     .filter((line) => line.length > 0)
 
 const workingTree = (): readonly string[] => gitLines(['status', '--porcelain'])
-
-/**
- * Le clone, **plus l'état du plan de travail** — repris tel quel de
- * `scripts/minimal-profile.ts` : `git clone` ne connaît que `HEAD`, et sur une
- * branche en cours d'écriture il mesurerait le code d'avant.
- */
-const cloneRepository = (destination: string): number => {
-  run('git', ['clone', '--local', '--no-hardlinks', REPO_ROOT, destination], REPO_ROOT, process.env)
-
-  const changed = gitLines(['ls-files', '--modified', '--others', '--exclude-standard'])
-  const deleted = new Set(gitLines(['ls-files', '--deleted']))
-
-  for (const file of deleted) {
-    rmSync(join(destination, file), { force: true })
-  }
-
-  for (const file of changed) {
-    if (deleted.has(file)) continue
-
-    mkdirSync(dirname(join(destination, file)), { recursive: true })
-    cpSync(join(REPO_ROOT, file), join(destination, file))
-  }
-
-  return changed.length - deleted.size
-}
 
 const withMaintenanceConnection = async (
   databaseUrl: string,
@@ -214,13 +195,7 @@ const main = async (): Promise<void> => {
   let failure: unknown
 
   try {
-    const overlaid = cloneRepository(clone)
-
-    console.log(
-      overlaid === 0
-        ? 'Clone local de HEAD, arbre propre : aucun fichier recopié par-dessus.'
-        : `Clone local de HEAD, plus ${overlaid} fichier(s) du plan de travail recopiés par-dessus.`,
-    )
+    console.log(cloneReport(cloneWorkingTree({ source: REPO_ROOT, destination: clone })))
 
     writeFileSync(
       join(clone, '.env'),
@@ -269,11 +244,29 @@ const main = async (): Promise<void> => {
     // avant `db:migrate`, les deux avant `pnpm test` dont trois cas interrogent
     // une vraie base, et la comparaison d'arbre **après** les parcours, parce que
     // c'est `next dev` qui réécrit `apps/web/AGENTS.md` et `next-env.d.ts`.
+    // `RUNNER_TEMP` : le dossier de **cette** exécution, où les étapes écrivent
+    // l'état de l'arbre — jamais un chemin que deux exécutions partageraient.
+    const runnerTemp = join(workspace, 'runner-temp')
+
+    mkdirSync(runnerTemp)
+
+    // Le port des parcours rejoués (`pnpm test:e2e`) : `E2E_PORT`, ou un port
+    // libre réservé ici — le 3100 par défaut de Playwright a été pris par la
+    // copie d'une autre worktree (s68).
+    const journeyPort = await recipePort(process.env)
+
+    console.log(recipePortReport(journeyPort))
+
+    const replayEnv = {
+      ...socleReplayEnvironment(cloneEnv, { runnerTemp }),
+      E2E_PORT: String(journeyPort.port),
+    }
+
     for (const step of job.executed) {
       console.log('')
       console.log(`— ${step.name}`)
 
-      runShell(step.run, clone, cloneEnv)
+      runShell(step.run, clone, replayEnv)
     }
 
     console.log('')
