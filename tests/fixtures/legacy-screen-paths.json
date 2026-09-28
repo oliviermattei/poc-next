@@ -1,4 +1,13 @@
 {
-  "$comment": "Inventaire figé des écrans de la zone Application à s61 (dev 4fcf61f, `apps/web/app/(app)/*/page.tsx`). Ne se dérive pas : c'est ce qui a été publié. Chaque chemin doit rester servi ou redirigé (ADR 075, `tests/legacy-paths.test.ts`).",
-  "paths": ["/account", "/app", "/billing", "/notifications", "/onboarding", "/organizations", "/premium"]
+  "$comment": "Inventaire figé des écrans de la zone Application à s61 (dev 4fcf61f, `apps/web/app/(app)/*/page.tsx`), plus les écrans de réglages que s62a a publiés et qu'une story suivante a retirés : `/app/settings/account` (s62a, dev 0387df4), rangé en rubriques par s62b. Ne se dérive pas : c'est ce qui a été publié. Chaque chemin doit rester servi ou redirigé (ADR 075, `tests/legacy-paths.test.ts`).",
+  "paths": [
+    "/account",
+    "/app",
+    "/app/settings/account",
+    "/billing",
+    "/notifications",
+    "/onboarding",
+    "/organizations",
+    "/premium"
+  ]
 }

@@ -105,6 +105,7 @@ export {
 } from './domain/message-keys'
 export {
   ADMIN_ORGANIZATIONS_SCREEN_PATH,
+  MEMBERS_SCREEN_PATH,
   ORGANIZATIONS_SCREEN_PATH,
   organizationRoutePath,
 } from './presentation/organization-routes'

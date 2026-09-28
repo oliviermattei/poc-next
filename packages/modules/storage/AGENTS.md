@@ -13,7 +13,7 @@ le premier appelant réel du port `Storage`.
 | la clé d'objet ne contient **rien** du client | `domain/avatar.ts` — `avatarKeyFor` | idem |
 | une clé hors du périmètre d'attente de l'appelant rend **404** | `application/storage-use-cases.ts` — `confirmAvatar` | `tests/storage.test.ts` |
 | ce qui est servi n'est jamais ce qu'une URL présignée nomme | `domain/avatar.ts` — `servedKeyOf`, `application` — promotion | idem |
-| un rejeu de confirmation refuse **sans mentir** sur ce qui s'est passé | `application/storage-use-cases.ts` — `confirmAvatar`, et `apps/web/app/(app)/app/settings/account/avatar-form.tsx` pour le message | idem, et `e2e/storage.spec.ts` |
+| un rejeu de confirmation refuse **sans mentir** sur ce qui s'est passé | `application/storage-use-cases.ts` — `confirmAvatar`, et `apps/web/app/(app)/app/settings/profile/avatar-form.tsx` pour le message | idem, et `e2e/storage.spec.ts` |
 | écrire, afficher et retirer résolvent **le même** propriétaire | `infrastructure/storage-runtime.ts` — `avatarOfUser` | idem, et `e2e/storage.spec.ts` |
 | aucun cache ne garde un avatar | `presentation/storage-routes.ts` | idem |
 | le fichier d'un autre périmètre rend **404**, jamais 403 | `application` — `readFile` | idem |

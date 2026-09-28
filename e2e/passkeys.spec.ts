@@ -80,7 +80,7 @@ test('enregistrement, connexion sans mot de passe, renommage puis révocation', 
 
   const email = await aSignedInAccount(page, 's14-e2e')
 
-  await page.goto(settingsPath('account'))
+  await page.goto(settingsPath('security'))
 
   // --- Aucune passkey : l'état vide, avec l'action qui en sort -----------
   await expect(page.getByText('Aucune passkey enregistrée')).toBeVisible()
@@ -120,7 +120,9 @@ test('enregistrement, connexion sans mot de passe, renommage puis révocation', 
 
   // --- Révocation -------------------------------------------------------
   // Le mot de passe reste : la passkey n'est pas le dernier moyen de
-  // connexion, et le bouton existe donc.
+  // connexion, et le bouton existe donc. La carte vit dans la rubrique
+  // Sécurité depuis s62b.
+  await page.goto(settingsPath('security'))
   await press(page, 'Révoquer la passkey MacBook', async () => {
     await expect(page.getByText('Aucune passkey enregistrée')).toBeVisible()
   })
@@ -156,8 +158,8 @@ test('sans WebAuthn, l’option disparaît et les autres moyens de connexion res
   try {
     const email = await aSignedInAccount(page, 's14-e2e-sans-webauthn')
 
-    // Les paramètres : la carte reste, la liste aussi, le bouton non.
-    await page.goto(settingsPath('account'))
+    // La rubrique Sécurité : la carte reste, la liste aussi, le bouton non.
+    await page.goto(settingsPath('security'))
     await expect(page.getByText('Aucune passkey enregistrée')).toBeVisible()
 
     // **Le témoin d'hydratation, et il n'est pas décoratif.** Sans lui,
@@ -216,7 +218,7 @@ test('une cérémonie d’enrôlement annulée le dit, et n’écrit rien', asyn
       }
     })
 
-    await page.goto(settingsPath('account'))
+    await page.goto(settingsPath('security'))
     await expect(page.getByText('Aucune passkey enregistrée')).toBeVisible()
 
     // Le critère 5 de la story, dans ses deux moitiés.

@@ -16,6 +16,7 @@
   "settings.description": "Change or withdraw your consent to non-essential cookies at any time.",
   "settings.action": "Manage my cookies",
   "footer.link": "Cookies",
+  "navigation.settings": "Cookies",
   "status.granted": "Accepted",
   "status.denied": "Refused",
   "status.undecided": "Pending",

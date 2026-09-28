@@ -162,10 +162,9 @@ test('le retour venu d’un autre site atterrit connecté', async ({ page, conte
   await expect(page).toHaveURL(urlOf(signedInLanding()))
   await expect(page.getByRole('button', { name: /Mon compte|Compte/ })).toBeVisible()
 
-  await page.goto(settingsPath('account'))
-  // `exact` depuis s34b : la zone dangereuse de l'écran porte le titre
-  // « Supprimer mon compte », qu'une correspondance partielle désigne aussi.
-  await expect(page.getByRole('heading', { name: 'Mon compte', exact: true })).toBeVisible()
+  // Les connexions externes vivent dans la rubrique Sécurité depuis s62b.
+  await page.goto(settingsPath('security'))
+  await expect(page.getByRole('heading', { name: 'Sécurité', level: 2, exact: true })).toBeVisible()
   await expect(page.getByText('Connexions externes')).toBeVisible()
 })
 

@@ -1,9 +1,10 @@
-import { OrganizationScreen } from '@repo/module-organizations/presentation'
+import { MembersScreen } from '@repo/module-organizations/presentation'
 import { notFound, redirect } from 'next/navigation'
 
 import { currentViewer } from '../../../../../lib/auth'
 import { appIntl } from '../../../../../lib/i18n'
 import {
+  MEMBERS_SCREEN_PATH,
   organizationRefusalKey,
   organizationRoutePath,
   organizations,
@@ -11,9 +12,10 @@ import {
 } from '../../../../../lib/organizations'
 
 /**
- * **La rubrique Organisation** des réglages : l'organisation courante et son
- * sélecteur, le renommage, la suppression, la création. Les membres et les
- * invitations sont dans la rubrique Membres (s62b, `../members/page.tsx`).
+ * **La rubrique Membres** des réglages (s62b) : les membres de l'organisation
+ * courante, leurs rôles, leur retrait, et les invitations. Issue de l'écran
+ * unique des organisations ; l'organisation elle-même est dans la rubrique
+ * Organisation (`../organization/page.tsx`).
  *
  * Trois refus, dans cet ordre, et aucun ne nomme un module :
  *
@@ -37,7 +39,7 @@ import {
  * est servie ou non selon la configuration.
  */
 
-export default async function OrganizationPage({
+export default async function MembersPage({
   searchParams,
 }: {
   readonly searchParams?: Promise<Record<string, string | string[] | undefined>>
@@ -52,22 +54,25 @@ export default async function OrganizationPage({
   if (session === null) {
     // Le chemin **interne** part dans `next` : c'est l'écran de connexion qui le
     // met dans la forme publique de sa locale, une seule fois.
-    redirect(`${path('/sign-in')}?next=${encodeURIComponent(ORGANIZATIONS_SCREEN_PATH)}`)
+    redirect(`${path('/sign-in')}?next=${encodeURIComponent(MEMBERS_SCREEN_PATH)}`)
   }
 
   const view = await organizations.view(session.userId)
   const parameters = (await searchParams) ?? {}
 
   return (
-    <OrganizationScreen
+    <MembersScreen
       view={view}
       intl={{ t }}
       actions={{
-        create: organizationRoutePath('create'),
-        switch: organizationRoutePath('switch'),
-        update: organizationRoutePath('update'),
-        delete: organizationRoutePath('delete'),
+        invite: organizationRoutePath('invite'),
+        resendInvitation: organizationRoutePath('resendInvitation'),
+        revokeInvitation: organizationRoutePath('revokeInvitation'),
+        removeMember: organizationRoutePath('removeMember'),
+        setMemberRole: organizationRoutePath('setMemberRole'),
       }}
+      viewerId={session.userId}
+      organizationHref={path(ORGANIZATIONS_SCREEN_PATH)}
       refusalKey={organizationRefusalKey(parameters['error'])}
     />
   )

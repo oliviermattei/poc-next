@@ -1,6 +1,7 @@
 {
-  "navigation.organizations": "Organisations",
-  "screen.title": "Organisations",
+  "navigation.organizations": "Organisation",
+  "navigation.members": "Membres",
+  "screen.title": "Organisation",
   "screen.description": "Choisissez le contexte de travail et modifiez ses informations.",
   "current.title": "Organisation courante",
   "current.description": "Vos données sont rattachées à cette organisation.",
@@ -23,6 +24,8 @@
   "create.submit": "Créer l’organisation",
   "empty.title": "Aucune organisation",
   "empty.description": "Créez-en une pour séparer vos données par contexte de travail.",
+  "members.screenTitle": "Membres",
+  "members.screenDescription": "Les personnes qui accèdent à l’organisation courante, et celles que vous y invitez.",
   "members.title": "Membres",
   "members.description": "Les personnes qui accèdent aux données de cette organisation.",
   "members.you": "Vous",

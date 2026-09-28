@@ -463,7 +463,7 @@ monde. Ce qu'il faut faire quand cela arrive :
   un (mot de passe, lien de connexion ou compte externe) ;
 - faire **réenregistrer** une passkey depuis le nouvel hôte ; les anciennes
   lignes restent en base sans jamais pouvoir servir, et se révoquent depuis
-  l'écran de compte ;
+  la rubrique Sécurité des réglages ;
 - ne pas « rattraper » en figeant l'ancien `rpID` : il doit rester un suffixe
   enregistrable de l'origine servie, donc le mensonge ne tient que si le nouvel
   hôte est un sous-domaine de l'ancien — et le navigateur refuse le reste.

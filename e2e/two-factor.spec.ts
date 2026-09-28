@@ -163,7 +163,7 @@ const anonymousAgain = async (page: Page): Promise<void> => {
 test('activation, connexion par code, puis connexion par code de secours', async ({ page }) => {
   const email = await aSignedInAccount(page, 's13-e2e')
 
-  await page.goto(settingsPath('account'))
+  await page.goto(settingsPath('security'))
   await expect(page.getByText('Désactivée', { exact: true })).toBeVisible()
 
   // --- Activation -------------------------------------------------------
