@@ -1936,6 +1936,8 @@ Le centre de notifications et ses préférences ne bougent pas ici (s62c, s63).
 - [ ] Le contenu de l'actuel `/app/settings/account` est réparti **sans perte** entre Profil, Sécurité et Cookies selon le design de la story ; celui de `/app/settings/organization` entre Organisation et Membres ; un test retrouve chaque carte et chaque action d'avant sous son nouveau chemin
 - [ ] Les écrans RGPD (export, suppression) restent atteignables depuis une rubrique listée, jamais une page non listée
 - [ ] Les anciens chemins de s62a qui ne correspondent plus à une rubrique répondent 308 par la table de s62a
+- [ ] Chaque écran de réglages a **un seul** titre de niveau 1 : le titre de la zone (« Réglages ») et celui de la rubrique ne sont plus deux `h1` (revue de s62a, m1) ; l'assertion `.first()` d'`e2e/app-shell.spec.ts` redevient un titre précis
+- [ ] Les libellés suivent la story : rubriques « Compte » → Profil/Sécurité…, « Organisation », « Facturation », et l'entrée du menu de compte « Réglages » (revue de s62a, m2)
 
 ### Dependencies
 s62a-reglages-deplacement
