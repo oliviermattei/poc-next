@@ -31,6 +31,8 @@ import {
   resolveGoldenPathRegime,
   type GoldenPathRegime,
 } from './golden-path-regime'
+import { recipePort, recipePortReport } from './minimal-profile-rules'
+import { cloneReport, cloneWorkingTree } from './working-tree'
 
 /**
  * `pnpm test:golden-path` — **clone → premier paiement**, mesuré (s25).
@@ -74,46 +76,15 @@ import {
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url))
 const RECORDINGS_DIRECTORY = join(REPO_ROOT, 'tests', 'fixtures', 'stripe-events')
 
-/** Le port du serveur éphémère du parcours doré, distinct de celui de `test:e2e`. */
-const PORT = process.env.GOLDEN_PATH_PORT ?? '3110'
+/**
+ * Le port que la **consigne de capture** du régime réel imprime : celui où le
+ * développeur fait tourner son serveur. Le parcours, lui, prend le sien de
+ * `recipePort` (s68).
+ */
+const LIVE_CAPTURE_PORT = process.env.E2E_PORT ?? '3110'
 
 const run = (command: string, args: readonly string[], cwd: string, env: NodeJS.ProcessEnv): void => {
   execFileSync(command, [...args], { cwd, env, stdio: 'inherit' })
-}
-
-const gitLines = (args: readonly string[]): string[] =>
-  execFileSync('git', [...args], { cwd: REPO_ROOT, encoding: 'utf8' })
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-
-/**
- * Le clone, **plus l'état du plan de travail**.
- *
- * `git clone` ne connaît que `HEAD` : sur une branche en cours d'écriture, il
- * mesurerait le code d'avant. Les fichiers modifiés et les fichiers non suivis
- * (hors ignorés) sont donc recopiés par-dessus, et **le journal dit combien**.
- * Un arbre propre — la CI, ou l'après-commit — en recopie zéro, et le clone est
- * alors exactement ce qu'un acheteur obtiendrait.
- */
-const cloneRepository = (destination: string): number => {
-  run('git', ['clone', '--local', '--no-hardlinks', REPO_ROOT, destination], REPO_ROOT, process.env)
-
-  const changed = gitLines(['ls-files', '--modified', '--others', '--exclude-standard'])
-  const deleted = new Set(gitLines(['ls-files', '--deleted']))
-
-  for (const file of deleted) {
-    rmSync(join(destination, file), { force: true })
-  }
-
-  for (const file of changed) {
-    if (deleted.has(file)) continue
-
-    mkdirSync(dirname(join(destination, file)), { recursive: true })
-    cpSync(join(REPO_ROOT, file), join(destination, file))
-  }
-
-  return changed.length - deleted.size
 }
 
 /**
@@ -190,13 +161,7 @@ const main = async (): Promise<void> => {
   const started = Date.now()
 
   try {
-    const overlaid = cloneRepository(clone)
-
-    console.log(
-      overlaid === 0
-        ? 'Clone local de HEAD, arbre propre : aucun fichier recopié par-dessus.'
-        : `Clone local de HEAD, plus ${overlaid} fichier(s) du plan de travail recopiés par-dessus.`,
-    )
+    console.log(cloneReport(cloneWorkingTree({ source: REPO_ROOT, destination: clone })))
 
     writeFileSync(
       join(clone, '.env'),
@@ -213,6 +178,12 @@ const main = async (): Promise<void> => {
     run('pnpm', ['db:seed'], clone, cloneEnv)
 
     const bootstrapMs = Date.now() - started
+    // Le port des parcours : `E2E_PORT`, ou un port libre réservé ici — jamais
+    // un port fixe qu'une autre copie du dépôt occuperait déjà (s68).
+    const journeyPort = await recipePort(process.env)
+
+    console.log(recipePortReport(journeyPort))
+
     const journeyStarted = Date.now()
 
     run(
@@ -221,7 +192,7 @@ const main = async (): Promise<void> => {
       clone,
       {
         ...cloneEnv,
-        E2E_PORT: PORT,
+        E2E_PORT: String(journeyPort.port),
         ...(regime.kind === 'recorded'
           ? { PAYMENTS_RECORDED_EVENTS: join(clone, 'tests', 'fixtures', 'stripe-events') }
           : {}),
@@ -297,7 +268,7 @@ const captureAgainstRealKeys = async (
         '',
         'Clés de test éprouvées. Les enregistrements, eux, se capturent en deux gestes :',
         '',
-        `  1. stripe listen --forward-to http://localhost:${PORT}/api/modules/billing/webhook \\`,
+        `  1. stripe listen --forward-to http://localhost:${LIVE_CAPTURE_PORT}/api/modules/billing/webhook \\`,
         '       --print-json > /tmp/evenements.ndjson',
         '  2. déroulez le parcours (souscription, achat unique), puis :',
         '     GOLDEN_PATH_PAYMENTS=live GOLDEN_PATH_CAPTURE_FROM=/tmp/evenements.ndjson \\',
