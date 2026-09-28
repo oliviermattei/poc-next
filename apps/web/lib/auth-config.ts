@@ -1,4 +1,4 @@
-import type { Env } from '@repo/config'
+import { applicationOrigin, type Env } from '@repo/config'
 
 /**
  * **La règle qui exige une authentification configurée**, isolée de ce qui la
@@ -56,11 +56,9 @@ export function resolveAuthConfig(env: Env): AuthConfig {
   return {
     secret,
     // Construite depuis la configuration, jamais depuis l'en-tête `Host`. La
-    // forme d'`APP_HOST` et sa relation à `APP_URL` sont jugées par le schéma.
-    appUrl:
-      appHost === undefined
-        ? appUrl
-        : `${site.protocol}//${appHost}${site.port === '' ? '' : `:${site.port}`}`,
+    // forme d'`APP_HOST` et sa relation à `APP_URL` sont jugées par le schéma ;
+    // le calcul est celui qu'emprunte aussi l'aiguillage du proxy (ADR 079).
+    appUrl: appHost === undefined ? appUrl : applicationOrigin(appUrl, appHost),
     siteUrl: appUrl,
     passkeyRpId: site.hostname,
   }

@@ -94,7 +94,7 @@ export function createConsentRoutes(
           !isSameSiteSubmission({
             origin: request.headers.get('origin'),
             referer: request.headers.get('referer'),
-            requestUrl: request.url,
+            acceptedOrigins: service().useCases.acceptedOrigins,
           })
         ) {
           return refuse(403)

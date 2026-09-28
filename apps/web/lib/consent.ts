@@ -15,6 +15,7 @@ import { cookies } from 'next/headers'
 
 import { enabledModules } from '../../../config/features'
 import { resolveAnalyticsConfig } from './analytics-config'
+import { resolveAuthConfig } from './auth-config'
 import { moduleRegistry } from './module-registry'
 
 /**
@@ -166,6 +167,19 @@ const declaredScripts = (): readonly NonEssentialScript[] => {
   return cachedScripts
 }
 
+/**
+ * **Les origines d'où une soumission de consentement est acceptée** (s64b1,
+ * #66, ADR 079) : le site et l'application, **configurés** — dédoublonnées,
+ * puisqu'elles se confondent sans `APP_HOST`. La garde du module comparait à
+ * l'hôte de `request.url`, qui est l'hôte d'**écoute** (`0.0.0.0` dans
+ * l'image) : chaque choix y répondait 403.
+ */
+export const acceptedOrigins = (env: Env): readonly string[] => {
+  const { siteUrl, appUrl } = resolveAuthConfig(env)
+
+  return [...new Set([new URL(siteUrl).origin, new URL(appUrl).origin])]
+}
+
 export const consent: ConsentFeature = {
   available: mounted,
   get scripts() {
@@ -176,7 +190,10 @@ export const consent: ConsentFeature = {
   },
   prepare: () => {
     if (mounted) {
-      provideConsent(() => ({ scripts: declaredScripts() }))
+      provideConsent(() => ({
+        scripts: declaredScripts(),
+        acceptedOrigins: acceptedOrigins(getEnv()),
+      }))
     }
   },
 }

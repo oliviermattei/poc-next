@@ -3994,12 +3994,14 @@ const twoOrigins = resolveAuthConfig(
 )
 
 describe.skipIf(!databaseReachable)('deux origines — le point de composition', () => {
-  it('garde le rpID du site et accepte la cérémonie depuis l’application comme depuis le site', async () => {
+  it('garde le rpID du site et n’accepte la cérémonie que depuis l’application (#64)', async () => {
     // **Le vrai `appAuth()`**, construit sur l'environnement déclaré ici en
     // entier : ce cas mesure ce que `lib/auth.ts` passe au module, pas
     // seulement ce que le module sait faire. Les origines de confiance de
     // Better Auth ne s'observent pas sous Vitest (`isTest()` y désarme la
-    // vérification d'origine) ; la cérémonie passkey, elle, compare toujours.
+    // vérification d'origine) ; la cérémonie passkey, elle, compare toujours,
+    // et contre **la même liste** (`better-auth-service.ts`, `trustedOrigins`) :
+    // l'origine du site remise dans la composition la ferait passer ici.
     vi.stubEnv('DATABASE_URL', databaseUrl)
     vi.stubEnv('AUTH_SECRET', TEST_SECRET)
     vi.stubEnv('APP_URL', APP_URL)
@@ -4029,19 +4031,22 @@ describe.skipIf(!databaseReachable)('deux origines — le point de composition',
 
       const cookie = sessionCookie(await signIn(email))?.value ?? ''
       // L'authentificateur scelle le `rpID` du **site** : un `rpID` déplacé
-      // vers l'application refuse l'enrôlement.
-      const authenticator = anAuthenticator()
+      // vers l'application refuse l'enrôlement. L'enrôlement, lui, a lieu
+      // depuis l'application, où l'écran de sécurité est servi.
+      const authenticator = createVirtualAuthenticator({ rpId: RP_ID, origin: APP_ORIGIN })
 
       expect((await registerPasskey({ cookie, authenticator })).status).toBe(200)
 
-      for (const origin of [APP_ORIGIN, APP_URL]) {
-        const signedIn = await signInWithPasskey(authenticator, { origin })
+      const signedIn = await signInWithPasskey(authenticator, { origin: APP_ORIGIN })
 
-        expect(signedIn.status, origin).toBe(200)
-        expect(await openedSession(signedIn), origin).not.toBeNull()
+      expect(signedIn.status).toBe(200)
+      expect(await openedSession(signedIn)).not.toBeNull()
+
+      // s64b1 : le site ne sert plus l'authentification, son origine n'est
+      // plus de confiance — refusée comme une origine étrangère.
+      for (const origin of [APP_URL, 'https://evil.test']) {
+        expect((await signInWithPasskey(authenticator, { origin })).status, origin).toBe(401)
       }
-
-      expect((await signInWithPasskey(authenticator, { origin: 'https://evil.test' })).status).toBe(401)
     } finally {
       vi.unstubAllEnvs()
       service = configureService()

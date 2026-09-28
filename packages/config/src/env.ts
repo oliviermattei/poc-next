@@ -835,6 +835,68 @@ export function getNodeEnv(source: EnvSource = process.env): Env['NODE_ENV'] {
 }
 
 /**
+ * **L'origine de l'application** construite depuis `APP_URL` et `APP_HOST`
+ * (s64a, ADR 078) : le schéma et le port d'`APP_URL`, l'hôte d'`APP_HOST`.
+ *
+ * Le **seul** calcul de cette origine : `resolveAuthConfig`
+ * (`apps/web/lib/auth-config.ts`) et `getHostRouting` ci-dessous l'appellent
+ * tous les deux (s64b1, ADR 079). Deux écritures auraient pu diverger — et
+ * c'est la même origine qui construit les liens de session et qui aiguille.
+ */
+export function applicationOrigin(appUrl: string, appHost: string): string {
+  const site = new URL(appUrl)
+
+  return `${site.protocol}//${appHost}${site.port === '' ? '' : `:${site.port}`}`
+}
+
+/** Les deux origines entre lesquelles le proxy aiguille (s64b1, ADR 079). */
+export interface HostRouting {
+  /** L'origine d'`APP_URL`. */
+  readonly siteOrigin: string
+  /** L'origine de l'application, par `applicationOrigin`. */
+  readonly appOrigin: string
+}
+
+/** Une variable déclarée vide vaut absente, ici comme dans `parseEnv`. */
+const declaredValue = (value: string | undefined): string | undefined => {
+  const trimmed = value?.trim()
+
+  return trimmed === undefined || trimmed === '' ? undefined : trimmed
+}
+
+/**
+ * **Les origines du routage par hôte**, sans juger le reste de l'environnement
+ * — le patron de `getNodeEnv`, et pour la même raison : le proxy est appelé à
+ * chaque requête, et `getEnv` lèverait sur une base absente.
+ *
+ * Ne lève **jamais**. Rend `null` quand `APP_HOST` est absente — rien n'est
+ * aiguillé, c'est le comportement d'avant — **ou invalide** : le démarrage
+ * l'a déjà refusée en la nommant (`parseEnv`, `assertStartupEnv`), et ce repli
+ * ne sert qu'un processus qui n'a pas démarré par là (une suite de tests).
+ *
+ * Les origines viennent **de la configuration** et de rien d'autre : l'hôte de
+ * la requête choisit une branche, il ne construit aucune URL (ADR 079).
+ */
+export function getHostRouting(source: EnvSource = process.env): HostRouting | null {
+  const appUrl = declaredValue(source.APP_URL)
+  const appHost = declaredValue(source.APP_HOST)
+
+  if (
+    appUrl === undefined ||
+    appHost === undefined ||
+    !envShape.APP_URL.safeParse(appUrl).success ||
+    appHostProblem(appHost, appUrl) !== null
+  ) {
+    return null
+  }
+
+  return {
+    siteOrigin: new URL(appUrl).origin,
+    appOrigin: applicationOrigin(appUrl, appHost),
+  }
+}
+
+/**
  * Point d'accès unique à l'environnement. Aucun autre module du dépôt ne lit
  * `process.env` directement.
  *

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { getEnv, getNodeEnv, parseEnv } from './env'
+import { getEnv, getHostRouting, getNodeEnv, parseEnv } from './env'
 
 const DATABASE_URL = 'postgres://user:password@localhost:5432/app'
 
@@ -198,5 +198,38 @@ describe('la lecture du seul mode d’exécution', () => {
     // seule chose écrite quelque part serait un commentaire, et le repli
     // ci-dessus serait un trou silencieux.
     expect(() => parseEnv({ DATABASE_URL, NODE_ENV: 'prod' })).toThrowError(/NODE_ENV/)
+  })
+})
+
+/* ------------------------------------------------------------------------- *
+ * Les origines du routage par hôte, lues seules (s64b1, ADR 079).
+ * ------------------------------------------------------------------------- */
+
+describe('la lecture des seules origines du routage par hôte', () => {
+  it('ne rend rien sans APP_HOST : rien n’est aiguillé', () => {
+    expect(getHostRouting({ APP_URL: 'https://exemple.com' })).toBeNull()
+    expect(getHostRouting({ APP_URL: 'https://exemple.com', APP_HOST: '' })).toBeNull()
+  })
+
+  it('rend les deux origines, construites depuis la configuration seule', () => {
+    expect(
+      getHostRouting({ APP_URL: 'http://exemple.localhost:3000/', APP_HOST: 'app.exemple.localhost' }),
+    ).toEqual({
+      siteOrigin: 'http://exemple.localhost:3000',
+      appOrigin: 'http://app.exemple.localhost:3000',
+    })
+  })
+
+  it('rend null sans lever sur une valeur que le démarrage refuse', () => {
+    // Pas un sous-domaine, un `APP_URL` illisible, un `APP_URL` avec chemin :
+    // `parseEnv` les refuse en les nommant ; le proxy, lui, ne doit pas lever.
+    for (const source of [
+      { APP_URL: 'https://exemple.com', APP_HOST: 'evilexemple.com' },
+      { APP_URL: 'pas une url', APP_HOST: 'app.exemple.com' },
+      { APP_URL: 'https://exemple.com/base', APP_HOST: 'app.exemple.com' },
+    ]) {
+      expect(() => getHostRouting(source)).not.toThrow()
+      expect(getHostRouting(source), JSON.stringify(source)).toBeNull()
+    }
   })
 })
