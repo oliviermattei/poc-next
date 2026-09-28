@@ -2070,6 +2070,8 @@ s63-application-sous-app, s12-oauth-signin, s13-two-factor, s14-passkeys, s16-in
 ---
 
 ## Story s64b-hote-routage — Router chaque zone vers son hôte
+
+> **DÉCOUPÉE le 29/09 — ne pas implémenter telle quelle.** Sa research (`docs/research/s64b-hote-routage.md`) rend un verdict de complexité **5** : l'hôte demandé ne se lit que dans les en-têtes (Next donne l'hôte d'écoute), un harnais e2e à deux origines est à construire, un défaut de production du consentement (#66) relève de la même question, et le retour des tarifs demande une décision produit. Remplacée par **s64b1** et **s64b2** ci-dessous.
 **As a** Propriétaire du produit **I want** qu'avec `APP_HOST` chaque hôte ne serve que ses zones **so that** le site et l'application aient chacun leur adresse, et que les anciens liens continuent de marcher.
 
 > Tranche 2 de 3 de `s64-hote-application`. Faits vérifiés : `docs/research/s64-hote-application.md` (faits 1, 3).
@@ -2090,6 +2092,47 @@ s64a-hote-origines, s22-pricing-page, s24-guest-checkout, s45-security-headers
 
 ---
 
+## Story s64b1-hote-routage — Aiguiller chaque zone vers son hôte
+**As a** Propriétaire du produit **I want** qu'avec `APP_HOST` chaque hôte ne serve que ses zones **so that** le site et l'application aient chacun leur adresse, et que les anciens liens continuent de marcher.
+
+> Tranche 1 de 2 de `s64b-hote-routage`. Faits vérifiés : `docs/research/s64b-hote-routage.md` (faits 1, 2, 3, 5).
+
+### Complexity
+4
+
+### Acceptance criteria
+- [ ] Le proxy classe le **chemin interne** (après langue) dans une zone — Site, Hors zone, Application, Console, API — par une table qu'un test compare au disque
+- [ ] L'hôte demandé est lu dans les en-têtes de la requête **pour aiguiller seulement** ; toute URL de redirection est construite depuis les origines configurées (ADR 078), jamais depuis un en-tête
+- [ ] **Avec `APP_HOST`, sur l'hôte de l'application** : `/app/*`, `/console/*`, les écrans Hors zone et `/api/*` sont servis ; `/` répond 308 vers `/app` ; tout autre écran (zone Site) répond 308 vers le même chemin sur l'origine du site, requête conservée
+- [ ] **Avec `APP_HOST`, sur l'hôte du site** : `/app/*`, les anciens chemins de l'application et les écrans Hors zone répondent 308 vers l'hôte de l'application **en un seul saut** ; `/console/*` répond **404** ; `/api/modules/auth/*` répond 308 pour un `GET` et 404 pour tout autre verbe ; le reste de `/api/*` y reste servi
+- [ ] **Sans `APP_HOST`**, aucun contrôle d'hôte, aucune redirection nouvelle
+- [ ] La garde d'origine du consentement compare aux origines **configurées**, pas à l'hôte d'écoute : un choix de consentement réussit derrière un serveur qui écoute sur `0.0.0.0` (#66)
+- [ ] Les origines de confiance de l'auth sont prouvées par un test qui exerce le contrôle d'origine ; l'origine du site en sort, les écrans d'auth n'étant plus servis que par l'application (#64)
+- [ ] La CSP reste `default-src 'self'` sur chaque hôte ; aucun formulaire d'un hôte ne redirige vers l'autre
+- [ ] Un parcours e2e à deux origines (`site.localhost` / `app.site.localhost`) mesure les redirections de chaque hôte
+
+### Dependencies
+s64a-hote-origines, s45-security-headers, s36-cookie-consent
+
+---
+
+## Story s64b2-hote-tarifs — Choisir une offre entre le site et l'application
+**As a** Visiteur ou client **I want** choisir une offre sur le site et arriver au paiement, connecté ou non **so that** séparer les deux hôtes ne casse pas l'achat.
+
+> Tranche 2 de 2 de `s64b-hote-routage`. Faits vérifiés : `docs/research/s64b-hote-routage.md` (fait 4). Question produit ouverte : où un compte connecté choisit une offre quand le site ne voit pas la session.
+
+### Complexity
+3
+
+### Acceptance criteria
+- [ ] Le retour des tarifs fonctionne entre les deux hôtes : choisir une offre en étant connecté, ou se connecter pour la choisir, aboutit au checkout ; le retour d'un paiement invité revient sur le site **avec sa requête**
+- [ ] `pnpm test:golden-path` est joué avec `APP_HOST` (origines hors de l'hôte d'écoute) et reste vert ; sans `APP_HOST`, il reste inchangé
+
+### Dependencies
+s64b1-hote-routage, s22-pricing-page, s24-guest-checkout
+
+---
+
 ## Story s64c-hote-cookies — Partager consentement et langue entre les deux hôtes, et documenter le déploiement
 **As a** Propriétaire du produit **I want** que les choix de consentement et de langue valent sur les deux hôtes, sans jamais partager la session **so that** un visiteur ne réponde qu'une fois, et que je puisse déployer les deux hôtes en suivant la documentation.
 
@@ -2106,7 +2149,7 @@ s64a-hote-origines, s22-pricing-page, s24-guest-checkout, s45-security-headers
 - [ ] L'extension multi-hôte est consignée dans le PRD (constat F88)
 
 ### Dependencies
-s64b-hote-routage, s36-cookie-consent
+s64b2-hote-tarifs, s36-cookie-consent
 
 ---
 
