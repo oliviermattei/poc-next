@@ -50,6 +50,9 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
+import { parseEnv } from '@repo/config'
+
+import { resolveAuthConfig } from '../apps/web/lib/auth-config'
 import { flatMessagesFor } from '../apps/web/lib/messages'
 import { appLocales, defaultLocale } from '../config/i18n'
 import { availableModules } from '../config/features'
@@ -298,12 +301,17 @@ beforeAll(async () => {
     }),
   })
 
-  service = configureOrganizations({
+  service = configureSuiteOrganizations(APP_URL)
+})
+
+/** Le service de la suite, sur l'origine donnée — `APP_URL` sauf pour s64a. */
+const configureSuiteOrganizations = (appUrl: string): OrganizationsService =>
+  configureOrganizations({
     db: connection.db,
     reservedSlugs: RESERVED,
     generateId,
     mailer,
-    appUrl: APP_URL,
+    appUrl,
     emailLocale: defaultLocale,
     now: () => clock,
     securityLog: (event) => securityEvents.push(event),
@@ -318,7 +326,6 @@ beforeAll(async () => {
     // `switch` ci-dessous ne prouvent quelque chose que contre lui.
     safeReturnPath: safeRedirectPath,
   })
-})
 
 afterAll(async () => {
   resetOrganizationsService()
@@ -689,6 +696,40 @@ const invitationsOf = async (session: ModuleSession) =>
 
 const membersOf = async (session: ModuleSession) =>
   (await service.useCases.viewOrganizations(session.userId)).members
+
+describe.runIf(databaseReachable)('deux origines (s64a)', () => {
+  it('envoie le lien d’invitation sur l’origine de l’application', async () => {
+    // L'origine vient de la résolution, sur un environnement validé — jamais
+    // d'une URL écrite dans le cas (ADR 078).
+    const { appUrl } = resolveAuthConfig(
+      parseEnv({
+        DATABASE_URL: 'postgres://user:password@localhost:5432/app',
+        AUTH_SECRET: 'secret-de-test-uniquement-0123456789abcdef',
+        APP_URL,
+        APP_HOST: 'app.localhost',
+      }),
+    )
+
+    service = configureSuiteOrganizations(appUrl)
+
+    try {
+      const founder = await anAccount()
+      const organizationId = await anOrganization(founder)
+      const invited = await call('invite', {
+        session: founder,
+        body: { organizationId, email: anUnknownEmail() },
+      })
+
+      expect(invited.status).toBe(303)
+
+      const link = lastInvitationLink()
+
+      expect(link.startsWith('http://app.localhost:3000/'), link).toBe(true)
+    } finally {
+      service = configureSuiteOrganizations(APP_URL)
+    }
+  })
+})
 
 describe.runIf(databaseReachable)('l’émission d’une invitation', () => {
   it('écrit une invitation en attente et envoie un lien dont la base ne garde que l’empreinte', async () => {

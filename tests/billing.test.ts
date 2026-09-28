@@ -25,6 +25,7 @@ import {
   authModule,
   authUser,
   configureAuth,
+  createBetterAuthService,
   safeRedirectPath,
   type AuthService,
 } from '@repo/module-auth'
@@ -84,6 +85,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import Stripe from 'stripe'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { resolveAuthConfig } from '../apps/web/lib/auth-config'
 import { billing as appBilling, guestFallbackUrl } from '../apps/web/lib/billing'
 import { LOCAL_WEBHOOK_SECRET, resolveBillingConfig } from '../apps/web/lib/billing-config'
 import { billingPermissionOf } from '../apps/web/lib/billing-permission'
@@ -2064,6 +2066,57 @@ describe.runIf(compositionMeasurable)('le point de composition de l’applicatio
     // Ce que le **réseau** a vu partir : l'adresse est celle du compte appelant,
     // résolue par `lib/auth` à partir de son seul identifiant.
     expect(new URLSearchParams(calls[0]?.body ?? '').get('email')).toBe(email)
+  })
+
+  it('fait revenir du checkout et du portail sur l’origine de l’application quand APP_HOST est posée', async () => {
+    // s64a (ADR 078) : **aucune origine donnée au module** — c'est le point de
+    // composition qui la résout, depuis l'environnement déclaré ici.
+    vi.stubEnv('APP_HOST', 'app.localhost')
+
+    try {
+      resetBillingService()
+      appBilling.prepare({ db: connection.db, payments })
+
+      const { other } = await anOrganizationWithRole('owner')
+
+      responses = [
+        () => json({ id: 'cus_s64a_composition', object: 'customer' }),
+        () =>
+          json({
+            id: 'cs_s64a_composition',
+            object: 'checkout.session',
+            url: 'https://checkout.stripe.com/c/pay/cs_s64a_composition',
+            customer: 'cus_s64a_composition',
+          }),
+        () =>
+          json({
+            id: 'bps_s64a_composition',
+            object: 'billing_portal.session',
+            url: 'https://billing.stripe.com/p/session/s64a',
+          }),
+      ]
+
+      expect((await call('checkout', { session: other, body: { offerId: SHIPPED_OFFER } })).status).toBe(200)
+      expect((await call('portal', { session: other })).status).toBe(200)
+
+      const checkoutBody = new URLSearchParams(
+        calls.find((recorded) => recorded.url.includes('/checkout/sessions'))?.body ?? '',
+      )
+      const portalBody = new URLSearchParams(
+        calls.find((recorded) => recorded.url.includes('/billing_portal/sessions'))?.body ?? '',
+      )
+      const emitted = {
+        success: checkoutBody.get('success_url') ?? '',
+        cancel: checkoutBody.get('cancel_url') ?? '',
+        portal: portalBody.get('return_url') ?? '',
+      }
+
+      for (const [journey, url] of Object.entries(emitted)) {
+        expect(url.startsWith('http://app.localhost:3000/'), `${journey} : ${url}`).toBe(true)
+      }
+    } finally {
+      vi.stubEnv('APP_HOST', '')
+    }
   })
 
   /**
@@ -6360,6 +6413,44 @@ describe.runIf(databaseReachable)('le lien envoyé à l’adresse du paiement', 
     expect(
       outbox.sent.filter((message) => message.template === 'auth.reset-password'),
     ).toHaveLength(0)
+  })
+
+  it('envoie le lien de définition de mot de passe sur l’origine de l’application quand APP_HOST est posée', async () => {
+    // s64a (ADR 078) : l'origine vient de la résolution, sur un environnement
+    // validé. Le service est construit **à part** — le singleton du module
+    // reste celui du bloc.
+    const { appUrl, passkeyRpId } = resolveAuthConfig(
+      parseEnv({
+        DATABASE_URL: 'postgres://user:password@localhost:5432/app',
+        AUTH_SECRET: 'x'.repeat(32),
+        APP_URL,
+        APP_HOST: 'app.localhost',
+      }),
+    )
+    const onApp = createBetterAuthService({
+      db: connection.db,
+      mailer: outbox,
+      secret: 'x'.repeat(32),
+      appUrl,
+      passkeyRpId,
+      log: () => {},
+      runInBackground: (task) => {
+        void task
+      },
+    })
+    const onAppRule = guestAccountsOf(() => Promise.resolve(onApp), {
+      appUrl,
+      generatePassword: () => `s64a-${randomUUID()}-${randomUUID()}`,
+    })
+    const email = `s19-guest-${randomUUID()}@example.test`
+    const account = await onAppRule.accountFor({ email })
+
+    await onAppRule.sendAccessLink({ account: account ?? { userId: '', created: true }, email })
+
+    const link = String(outbox.sent.at(-1)?.data['url'] ?? '')
+
+    expect(outbox.sent.map((message) => message.template)).toEqual(['auth.reset-password'])
+    expect(link.startsWith('http://app.localhost:3000/'), link).toBe(true)
   })
 
   it('retrouve le compte qu’elle vient de créer, sans en fabriquer un second', async () => {
