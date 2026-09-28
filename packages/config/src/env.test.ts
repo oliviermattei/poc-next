@@ -120,6 +120,38 @@ describe('validation de l’environnement', () => {
     }
   })
 
+  it('refuse un hôte d’application qui n’est pas un sous-domaine d’APP_URL, en nommant APP_HOST', () => {
+    // s64a (ADR 078). `evilexemple.com` est le cas qui distingue la règle
+    // « se termine par `.` + hôte » d'un simple suffixe.
+    const refused: readonly (readonly [string, string | undefined, string])[] = [
+      ['malformé', 'https://exemple.com', 'https://app.exemple.com'],
+      ['avec port', 'https://exemple.com', 'app.exemple.com:3000'],
+      ['majuscules', 'https://exemple.com', 'App.exemple.com'],
+      ['égal', 'https://exemple.com', 'exemple.com'],
+      ['frère', 'https://www.exemple.com', 'app.exemple.com'],
+      ['sans rapport', 'https://exemple.com', 'app.autre.com'],
+      ['suffixe sans point', 'https://exemple.com', 'evilexemple.com'],
+      ['APP_URL absente', undefined, 'app.exemple.com'],
+      ['APP_URL avec chemin', 'https://exemple.com/saas', 'app.exemple.com'],
+    ]
+
+    for (const [label, APP_URL, APP_HOST] of refused) {
+      expect(() => parseEnv({ DATABASE_URL, APP_URL, APP_HOST }), label).toThrowError(/APP_HOST/)
+    }
+  })
+
+  it('accepte un sous-domaine de l’hôte d’APP_URL, port et barre finale compris', () => {
+    const accepted = [
+      ['http://localhost:3000', 'app.localhost'],
+      ['https://exemple.com', 'app.exemple.com'],
+      ['https://exemple.com/', 'console.app.exemple.com'],
+    ] as const
+
+    for (const [APP_URL, APP_HOST] of accepted) {
+      expect(parseEnv({ DATABASE_URL, APP_URL, APP_HOST }).APP_HOST).toBe(APP_HOST)
+    }
+  })
+
   it('annonce bruyamment que SKIP_ENV_VALIDATION désactive la validation', () => {
     // Une trappe silencieuse est pire que pas de trappe : elle transforme une
     // variable manquante en comportement par défaut du pilote.

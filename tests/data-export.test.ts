@@ -38,7 +38,10 @@ import type { JobEmission, Jobs } from '@repo/ports'
 import { provideStorage, resetStorageService } from '@repo/module-storage'
 import { createLocalDiskStorage } from '@repo/storage-testing'
 
+import { parseEnv } from '@repo/config'
+
 import { appAuth } from '../apps/web/lib/auth'
+import { resolveAuthConfig } from '../apps/web/lib/auth-config'
 import { moduleRegistry } from '../apps/web/lib/module-registry'
 import { prepareModuleServices } from '../apps/web/lib/module-services'
 import {
@@ -643,12 +646,14 @@ describe.runIf(databaseReachable)('l’export de bout en bout', () => {
     }),
   }
 
-  const configureTestAuth = (options: { readonly jobs?: Jobs } = {}): void => {
+  const configureTestAuth = (
+    options: { readonly jobs?: Jobs; readonly appUrl?: string } = {},
+  ): void => {
     configureAuth({
       db: getDatabase().db,
       mailer,
       secret: TEST_SECRET,
-      appUrl: APP_URL,
+      appUrl: options.appUrl ?? APP_URL,
       now: () => clock,
       log: () => {},
       // Par défaut, le régime « module `jobs` coupé » : l'archive est prête à la
@@ -778,6 +783,29 @@ describe.runIf(databaseReachable)('l’export de bout en bout', () => {
     expect(parsed.success).toBe(true)
     expect(parsed.data?.modules.map((entry) => entry.id)).toEqual([...moduleRegistry.moduleIds])
     expect(parsed.data?.scope).toEqual({ kind: 'user', id: userId })
+  })
+
+  it('envoie le lien de téléchargement sur l’origine de l’application quand APP_HOST est posée', async () => {
+    // s64a (ADR 078) : l'origine vient de la résolution, sur un environnement
+    // validé — jamais d'une URL écrite dans le cas.
+    const { appUrl } = resolveAuthConfig(
+      parseEnv({
+        DATABASE_URL: 'postgres://user:password@localhost:5432/app',
+        AUTH_SECRET: TEST_SECRET,
+        APP_URL,
+        APP_HOST: 'app.localhost',
+      }),
+    )
+    const userId = await anAccount()
+
+    configureTestAuth({ appUrl })
+
+    try {
+      expect((await post({ scope: 'user' }, { userId, roles: [] })).status).toBe(202)
+      expect(linkOf().startsWith('http://app.localhost:3000/'), linkOf()).toBe(true)
+    } finally {
+      configureTestAuth()
+    }
   })
 
   it('refuse une seconde demande tant que la première est en cours (critère 7)', async () => {

@@ -31,9 +31,11 @@ import { twoFactor } from 'better-auth/plugins/two-factor'
 import { passkey } from '@better-auth/passkey'
 import { sql } from 'drizzle-orm'
 import { getTableConfig } from 'drizzle-orm/pg-core'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { SecurityEventRecord } from '@repo/module-auth'
+import { parseEnv } from '@repo/config'
+import { resolveAuthConfig } from '../apps/web/lib/auth-config'
 import { databaseUrl, isDatabaseReachable } from './fixtures/database'
 import {
   createDrizzleAuthSessionRepository,
@@ -3970,4 +3972,130 @@ describe.skipIf(!databaseReachable)('compte en attente de suppression — les au
     await expect(refused.json()).resolves.toEqual(await unknown.json())
     expect(await openedSession(refused)).toBeNull()
   }, 90_000)
+})
+
+/* -------------------------------------------------------------------------- *
+ * Deux origines (s64a, ADR 078) : `APP_URL` reste le site, `APP_HOST` nomme
+ * l'application. Chaque service de ce bloc est construit depuis un
+ * environnement **validé** et résolu par `resolveAuthConfig` — jamais depuis
+ * une URL écrite dans le cas.
+ * -------------------------------------------------------------------------- */
+
+const APP_HOST = 'app.localhost'
+const APP_ORIGIN = 'http://app.localhost:3000'
+
+const twoOrigins = resolveAuthConfig(
+  parseEnv({
+    DATABASE_URL: 'postgres://user:password@localhost:5432/app',
+    AUTH_SECRET: TEST_SECRET,
+    APP_URL,
+    APP_HOST,
+  }),
+)
+
+describe.skipIf(!databaseReachable)('deux origines — le point de composition', () => {
+  it('garde le rpID du site et accepte la cérémonie depuis l’application comme depuis le site', async () => {
+    // **Le vrai `appAuth()`**, construit sur l'environnement déclaré ici en
+    // entier : ce cas mesure ce que `lib/auth.ts` passe au module, pas
+    // seulement ce que le module sait faire. Les origines de confiance de
+    // Better Auth ne s'observent pas sous Vitest (`isTest()` y désarme la
+    // vérification d'origine) ; la cérémonie passkey, elle, compare toujours.
+    vi.stubEnv('DATABASE_URL', databaseUrl)
+    vi.stubEnv('AUTH_SECRET', TEST_SECRET)
+    vi.stubEnv('APP_URL', APP_URL)
+    vi.stubEnv('APP_HOST', APP_HOST)
+    vi.stubEnv('RESEND_API_KEY', '')
+    vi.stubEnv('EMAIL_FROM', '')
+    vi.stubEnv('EMAIL_LOCAL_CAPTURE', '1')
+    vi.stubEnv('GOOGLE_CLIENT_ID', '')
+    vi.stubEnv('GOOGLE_CLIENT_SECRET', '')
+    vi.stubEnv('GITHUB_CLIENT_ID', '')
+    vi.stubEnv('GITHUB_CLIENT_SECRET', '')
+    vi.stubEnv('OAUTH_LOCAL_PROVIDER', '')
+    vi.stubEnv('POSTHOG_KEY', '')
+    vi.stubEnv('POSTHOG_HOST', '')
+
+    try {
+      // Le compte est créé par le service de la suite, dont le mailer est
+      // lisible : c'est la cérémonie qui est mesurée ici, pas l'inscription —
+      // et `after`, que `appAuth` donne à l'envoi différé, n'existe pas hors
+      // d'une requête Next.
+      const { email } = await aVerifiedAccount()
+      const { appAuth } = await import('../apps/web/lib/auth')
+
+      // `appAuth` pose le service du module : le répartiteur de la suite le
+      // sert désormais, et `openedSession` le lit.
+      service = appAuth()
+
+      const cookie = sessionCookie(await signIn(email))?.value ?? ''
+      // L'authentificateur scelle le `rpID` du **site** : un `rpID` déplacé
+      // vers l'application refuse l'enrôlement.
+      const authenticator = anAuthenticator()
+
+      expect((await registerPasskey({ cookie, authenticator })).status).toBe(200)
+
+      for (const origin of [APP_ORIGIN, APP_URL]) {
+        const signedIn = await signInWithPasskey(authenticator, { origin })
+
+        expect(signedIn.status, origin).toBe(200)
+        expect(await openedSession(signedIn), origin).not.toBeNull()
+      }
+
+      expect((await signInWithPasskey(authenticator, { origin: 'https://evil.test' })).status).toBe(401)
+    } finally {
+      vi.unstubAllEnvs()
+      service = configureService()
+    }
+  }, 90_000)
+})
+
+describe.skipIf(!databaseReachable)('deux origines — un lien par parcours', () => {
+  beforeAll(() => {
+    service = configureService({
+      appUrl: twoOrigins.appUrl,
+      passkeyRpId: twoOrigins.passkeyRpId,
+      additionalTrustedOrigins: [new URL(twoOrigins.siteUrl).origin],
+      oauth: { providers: [GITHUB_CREDENTIALS] },
+    })
+  })
+
+  afterAll(() => {
+    service = configureService()
+  })
+
+  it('émet chaque URL de session sur l’origine de l’application', async () => {
+    const email = anEmail()
+
+    await call('/sign-up/email', { body: { email, password: PASSWORD } })
+
+    const verification = lastLink('verify-email')
+
+    expect((await call(pathOf(verification))).status).toBe(302)
+
+    await call('/sign-in/magic-link', { body: { email } })
+    await call('/request-password-reset', { body: { email } })
+    await settled()
+
+    const cookie = sessionCookie(await signIn(email))?.value
+
+    expect((await call('/change-email', { body: { email: anEmail() }, cookie })).status).toBe(200)
+
+    providerNetwork = githubNetwork({ email: anOAuthEmail(), emailVerified: true })
+
+    const social = await startSocial({ provider: 'github' })
+
+    const emitted = {
+      verification,
+      magicLink: lastLink('magic-link'),
+      reset: lastLink('reset-password'),
+      changeEmail: lastLink('verify-email'),
+      oauthCallback: social.authorizeUrl.searchParams.get('redirect_uri') ?? '',
+    }
+
+    expect(emitted.changeEmail).not.toBe(verification)
+
+    for (const [journey, url] of Object.entries(emitted)) {
+      expect(url.startsWith(`${APP_ORIGIN}/`), `${journey} : ${url}`).toBe(true)
+    }
+  }, 60_000)
 })

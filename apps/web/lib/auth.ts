@@ -161,13 +161,19 @@ let service: AuthService | null = null
 export function appAuth(options: AppAuthOptions = {}): AuthService {
   if (service === null) {
     const env = options.env ?? getEnv()
-    const { secret, appUrl } = resolveAuthConfig(env)
+    const { secret, appUrl, siteUrl, passkeyRpId } = resolveAuthConfig(env)
 
     service = configureAuth({
       db: getDatabase().db,
       mailer: createAppMailer(),
       secret,
       appUrl,
+      // s64a (ADR 078) : le `rpID` reste l'hôte du site, et l'origine du site
+      // reste de confiance tant que ses écrans d'authentification y sont
+      // servis (s64b pourra la retirer). Sans `APP_HOST`, les deux se
+      // confondent avec `appUrl` et rien ne change.
+      passkeyRpId,
+      additionalTrustedOrigins: siteUrl === appUrl ? [] : [new URL(siteUrl).origin],
       // Les fournisseurs externes, **décidés par la configuration** et jamais
       // par le module : il ne lit aucune variable d'environnement, et une paire
       // incomplète a déjà arrêté le démarrage en nommant la variable absente.
