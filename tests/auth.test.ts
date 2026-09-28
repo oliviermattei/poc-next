@@ -35,6 +35,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import type { SecurityEventRecord } from '@repo/module-auth'
 import { databaseUrl, isDatabaseReachable } from './fixtures/database'
+import {
+  createDrizzleAuthSessionRepository,
+  createDrizzleAuthUserRepository,
+} from '../packages/modules/auth/src/infrastructure/drizzle-auth-repositories'
 import { createVirtualAuthenticator } from './fixtures/webauthn'
 import { dispatchAllowingRateLimit } from './fixtures/rate-limit'
 
@@ -646,6 +650,54 @@ describe.skipIf(!databaseReachable)('connexion, magic link et réinitialisation'
     )
   }, 30_000)
 
+  it('ne suit jamais une destination hostile, ni sur un lien refusé ni sur un lien valide (§4)', async () => {
+    // Revue s67, C1 : un segment point (`/.//evil.test`) passait le filtre,
+    // puis `URL.pathname` le résolvait en `//evil.test`. Et, antérieur à s67,
+    // un lien **valide** dont on réécrit `callbackURL` redirigeait la session
+    // ouverte vers `http://evil.test/` : la bibliothèque relit la destination
+    // de la requête, pas celle de la demande.
+    const offSite = (response: Response): boolean => {
+      const location = response.headers.get('location') ?? ''
+
+      return (
+        location.startsWith('//') ||
+        new URL(location, APP_URL).origin !== new URL(APP_URL).origin
+      )
+    }
+
+    for (const hostile of ['/.//evil.test', '/%2e//evil.test', '/a/..//evil.test']) {
+      const refused = await call(
+        `/magic-link/verify?token=bogus&callbackURL=${encodeURIComponent(hostile)}`,
+      )
+
+      expect(refused.status, hostile).toBe(302)
+      expect(offSite(refused), `${hostile} → ${refused.headers.get('location')}`).toBe(false)
+    }
+
+    // `/%2F%2Fevil.test` vise le second décodage de la bibliothèque : la
+    // destination reste sur le site (un chemin littéral), jamais `//evil.test`.
+    for (const hostile of ['//evil.test', '/.//evil.test', '/%2F%2Fevil.test']) {
+      const { email } = await aVerifiedAccount()
+
+      await call('/sign-in/magic-link', { body: { email } })
+
+      const link = new URL(lastLink('magic-link'))
+
+      link.searchParams.set('callbackURL', hostile)
+
+      const landed = await call(pathOf(link.toString()))
+
+      expect(sessionCookie(landed), hostile).not.toBeNull()
+      expect(offSite(landed), `${hostile} → ${landed.headers.get('location')}`).toBe(false)
+
+      if (!hostile.includes('%')) {
+        expect(new URL(landed.headers.get('location') ?? '', APP_URL).pathname, hostile).toBe(
+          DEFAULT_SIGNED_IN_PATH,
+        )
+      }
+    }
+  }, 60_000)
+
   it('périme le lien précédent quand un nouveau magic link est demandé', async () => {
     const { email } = await aVerifiedAccount()
 
@@ -1254,6 +1306,150 @@ describe.skipIf(!databaseReachable)('compte banni', () => {
   }, 30_000)
 })
 
+/**
+ * **Le compte dont la suppression est demandée** (s67, ADR 074).
+ *
+ * La purge est une tâche de fond : entre la demande (202) et son passage, la
+ * ligne `auth_user` vit. Ces cas mesurent qu'elle ne rouvre rien dans
+ * l'intervalle — la lecture du dépôt et l'écrivain de session, puis chaque
+ * méthode de connexion contre un compte inconnu, en message et en temps.
+ *
+ * La marque est posée par le **dépôt**, pas par une requête SQL écrite ici : la
+ * demande elle-même (émission puis marque) est mesurée dans
+ * `tests/account-deletion.test.ts`, là où vit la doublure de tâches.
+ */
+/** Pose la marque « suppression demandée » par le dépôt du module (s67). */
+const markDeletionRequested = async (userId: string): Promise<void> => {
+  expect(
+    await createDrizzleAuthUserRepository(connection.db).markDeletionRequested({
+      userId,
+      at: new Date(),
+    }),
+  ).toBe(true)
+}
+
+describe.skipIf(!databaseReachable)('compte en attente de suppression', () => {
+  const users = () => createDrizzleAuthUserRepository(connection.db)
+
+  /** Un compte vérifié dont la suppression vient d'être demandée. */
+  const aPendingAccount = async (): Promise<{ email: string; userId: string }> => {
+    const account = await aVerifiedAccount()
+
+    await markDeletionRequested(account.userId)
+
+    return account
+  }
+
+  it('ferme la lecture du dépôt pour le compte en attente, et pour lui comme pour l’inconnu', async () => {
+    const open = await aVerifiedAccount()
+    const banned = await aVerifiedAccount()
+    const pending = await aPendingAccount()
+
+    await service.useCases.banAccount({ userId: banned.userId, reason: null })
+
+    expect(await users().isSignInBlocked(open.userId)).toBe(false)
+    expect(await users().isSignInBlocked(banned.userId)).toBe(true)
+    expect(await users().isSignInBlocked(pending.userId)).toBe(true)
+    // Le sens fermé : un compte introuvable n'ouvre rien.
+    expect(await users().isSignInBlocked(`usr_${randomUUID()}`)).toBe(true)
+  }, 30_000)
+
+  it('refuse le bon mot de passe avec la réponse d’un compte inconnu', async () => {
+    const pending = await aPendingAccount()
+
+    const refused = await signIn(pending.email)
+    const unknown = await call('/sign-in/email', {
+      body: { email: anEmail(), password: PASSWORD },
+    })
+
+    // Aucun message propre à « compte en cours de suppression » : ce serait
+    // un oracle d'existence (`docs/security.md` §2 et §7).
+    expect(refused.status).toBe(unknown.status)
+    await expect(refused.json()).resolves.toEqual(await unknown.json())
+    expect(sessionCookie(refused)).toBeNull()
+  }, 30_000)
+
+  it('refuse le bon mot de passe en un temps que le chronomètre ne distingue pas d’un compte inconnu', async () => {
+    // **Le point sur lequel la story tourne.** Le compte en attente paie le
+    // vrai hachage **et** la lecture de la garde ; l'inconnu paie un hachage
+    // factice. Même forme et même seuil que la mesure du mot de passe faux,
+    // plus haut : neuf passages entrelacés, écart des médianes sous la moitié
+    // de la plus grande.
+    const pending = await aPendingAccount()
+    const attempts = 9
+    const unknown: number[] = []
+    const refused: number[] = []
+
+    for (let index = 0; index < attempts; index += 1) {
+      const startUnknown = performance.now()
+      await call('/sign-in/email', { body: { email: anEmail(), password: PASSWORD } })
+      unknown.push(performance.now() - startUnknown)
+
+      const startRefused = performance.now()
+      await signIn(pending.email)
+      refused.push(performance.now() - startRefused)
+    }
+
+    const unknownMedian = median(unknown)
+    const refusedMedian = median(refused)
+
+    expect(Math.abs(unknownMedian - refusedMedian)).toBeLessThan(
+      Math.max(unknownMedian, refusedMedian) * 0.5,
+    )
+  }, 120_000)
+
+  it('n’écrit aucune session pour lui, même hors du crochet de la bibliothèque', async () => {
+    // L'écrivain unique en Drizzle (s37b1, C1) : l'impersonation et le retour
+    // de la main y passent sans traverser `databaseHooks`. La garde est dans
+    // l'`insert` lui-même.
+    const pending = await aPendingAccount()
+    const at = new Date()
+    const created = await createDrizzleAuthSessionRepository(connection.db).create({
+      id: `ses_${randomUUID()}`,
+      token: randomUUID(),
+      userId: pending.userId,
+      impersonatedBy: null,
+      expiresAt: new Date(at.getTime() + 3_600_000),
+      at,
+    })
+
+    expect(created).toBe(false)
+
+    const rows = await connection.db.execute<{ rows: number }>(
+      sql`select count(*)::int as rows from auth_session where user_id = ${pending.userId}`,
+    )
+
+    expect(rows.rows[0]?.rows).toBe(0)
+  }, 30_000)
+
+  it('garde la date de la première demande quand la marque est rejouée', async () => {
+    // Revue s67, m-2 : un second clic, ou une émission rejouée, ne déplace pas
+    // la date — c'est elle que la purge et le journal lisent.
+    const { userId } = await aVerifiedAccount()
+    const first = new Date('2026-01-01T00:00:00.000Z')
+
+    expect(await users().markDeletionRequested({ userId, at: first })).toBe(true)
+    expect(
+      await users().markDeletionRequested({ userId, at: new Date('2026-02-01T00:00:00.000Z') }),
+    ).toBe(true)
+
+    const [row] = await connection.db
+      .select({ at: authSchema.authUser.deletionRequestedAt })
+      .from(authSchema.authUser)
+      .where(sql`id = ${userId}`)
+
+    expect(row?.at?.toISOString()).toBe(first.toISOString())
+  })
+
+  it('marque sans erreur un compte déjà effacé : zéro ligne, et rien d’autre', async () => {
+    // Sous le repli synchrone, la purge a pu passer **pendant** l'émission :
+    // la marque arrive alors sur une ligne partie. Ce n'est pas un échec.
+    expect(
+      await users().markDeletionRequested({ userId: `usr_${randomUUID()}`, at: new Date() }),
+    ).toBe(false)
+  })
+})
+
 describe.skipIf(!databaseReachable)('journalisation des événements de sécurité', () => {
   it('journalise la connexion avec son acteur, l’échec sans acteur', async () => {
     const { email, userId } = await aVerifiedAccount()
@@ -1621,6 +1817,36 @@ describe.skipIf(!databaseReachable)('connexion par un fournisseur externe', () =
       expect(response.headers.get('location')).not.toContain('email')
     }
   }, 30_000)
+
+  it('refuse un compte en attente de suppression comme un compte banni, sans ouvrir de session', async () => {
+    // s67 : au retour du fournisseur, un compte inconnu **se crée** — la
+    // référence d'un refus est donc le compte banni, fermé au même endroit.
+    // Mesuré : les deux reçoivent la levée du crochet de session, 401
+    // `{"message":"Invalid email or password"}`, sans redirection.
+    const returnOf = async (
+      email: string,
+    ): Promise<{ status: number; location: string | null; body: string; opened: boolean }> => {
+      const { back } = await signInWith({ email, emailVerified: true })
+
+      return {
+        status: back.status,
+        location: back.headers.get('location'),
+        body: await back.text(),
+        opened: sessionCookie(back) !== null,
+      }
+    }
+
+    const pending = await aVerifiedAccount()
+    const banned = await aVerifiedAccount()
+
+    await markDeletionRequested(pending.userId)
+    await service.useCases.banAccount({ userId: banned.userId, reason: null })
+
+    const refused = await returnOf(pending.email)
+
+    expect(refused).toEqual(await returnOf(banned.email))
+    expect(refused.opened).toBe(false)
+  }, 60_000)
 
   it('refuse un retour sans état, avec l’état d’un autre navigateur, ou rejoué', async () => {
     const email = anOAuthEmail()
@@ -3647,4 +3873,101 @@ describe('la destination par défaut, dans les fichiers qui la replient', () => 
       expect(readFileSync(`${REPO_ROOT}${file}`, 'utf8'), file).toContain('DEFAULT_SIGNED_IN_PATH')
     }
   })
+})
+
+/**
+ * **Le compte en attente de suppression, par les autres méthodes** (s67).
+ *
+ * Le mot de passe et le temps sont mesurés plus haut, à côté du compte banni ;
+ * ces cas-ci ont besoin des outils du second facteur et des passkeys, déclarés
+ * plus bas dans ce fichier. Chacun compare le refus à celui d'un compte
+ * **inconnu** — la référence que `docs/security.md` §2 impose.
+ */
+describe.skipIf(!databaseReachable)('compte en attente de suppression — les autres méthodes', () => {
+  it('refuse le magic link comme celui d’une adresse inconnue', async () => {
+    const pending = await aVerifiedAccount()
+
+    // Le lien est demandé **avant** la suppression : c'est la fenêtre qui
+    // compte — un lien encore valide dans la boîte de la personne.
+    await call('/sign-in/magic-link', { body: { email: pending.email } })
+    const pendingLink = pathOf(lastLink('magic-link'))
+
+    await markDeletionRequested(pending.userId)
+
+    const requestedForUnknown = await call('/sign-in/magic-link', { body: { email: anEmail() } })
+    const unknownLink = pathOf(lastLink('magic-link'))
+
+    const refused = await call(pendingLink)
+    const unknown = await call(unknownLink)
+
+    // La demande d'un lien, elle, ne distingue rien non plus — faite après la
+    // consommation, pour ne pas périmer le lien mesuré au-dessus.
+    const requestedForPending = await call('/sign-in/magic-link', { body: { email: pending.email } })
+
+
+    // **Mesuré avant correction** (question ouverte 1 de la research) : la
+    // bibliothèque rendait au compte en attente la levée brute du crochet —
+    // 401 `{"message":"Invalid email or password"}` —, et à l'adresse inconnue
+    // une redirection `?error=new_user_signup_disabled`. Deux réponses, donc un
+    // oracle ; la route les ramène à une seule.
+    expect(requestedForPending.status).toBe(requestedForUnknown.status)
+    await expect(requestedForPending.json()).resolves.toEqual(await requestedForUnknown.json())
+    expect(refused.status).toBe(unknown.status)
+    expect(refused.headers.get('location')).toBe(unknown.headers.get('location'))
+    expect(await refused.text()).toBe(await unknown.text())
+    expect(sessionCookie(refused)).toBeNull()
+  }, 30_000)
+
+  it('refuse la passkey comme un justificatif inconnu', async () => {
+    const pending = await anAccountWithPasskey()
+
+    await markDeletionRequested(pending.userId)
+
+    const refused = await signInWithPasskey(pending.authenticator)
+    const unknown = await signInWithPasskey(anAuthenticator())
+
+    expect(refused.status).toBe(unknown.status)
+    await expect(refused.json()).resolves.toEqual(await unknown.json())
+    expect(await openedSession(refused)).toBeNull()
+  }, 90_000)
+
+  it('refuse le second facteur : au mot de passe comme un inconnu, et au code sans session', async () => {
+    const pending = await anAccountWithTwoFactor()
+
+    await withinStablePeriod()
+
+    // Un défi posé **avant** la demande : la fenêtre où la personne a déjà
+    // tapé son mot de passe et pas encore son code.
+    const challenge = await signIn(pending.email)
+
+    expect(challenge.status).toBe(200)
+
+    await markDeletionRequested(pending.userId)
+
+    const verified = await call('/two-factor/verify-totp', {
+      body: { code: totpAt(pending.totpURI, 1) },
+      cookie: cookiesOf(challenge),
+    })
+    // La référence : un code présenté sans défi valable — ce qu'obtient qui
+    // n'a pas de compte. Mesuré : `401 {"error":"invalid"}` des deux côtés.
+    const invalidCode = await call('/two-factor/verify-totp', {
+      body: { code: '000000' },
+      cookie: cookiesOf(await signIn(anEmail())),
+    })
+
+    expect(verified.status).toBe(invalidCode.status)
+    await expect(verified.json()).resolves.toEqual(await invalidCode.json())
+    expect(await openedSession(verified)).toBeNull()
+
+    // Et après la demande, le mot de passe juste n'ouvre même plus de défi :
+    // la réponse est celle d'une adresse inconnue.
+    const refused = await signIn(pending.email)
+    const unknown = await call('/sign-in/email', {
+      body: { email: anEmail(), password: PASSWORD },
+    })
+
+    expect(refused.status).toBe(unknown.status)
+    await expect(refused.json()).resolves.toEqual(await unknown.json())
+    expect(await openedSession(refused)).toBeNull()
+  }, 90_000)
 })

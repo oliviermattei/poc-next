@@ -27,7 +27,7 @@
 - Révocation effective : une session révoquée est refusée **côté serveur**, pas seulement retirée d'une liste.
 - Changement de mot de passe, d'email ou de second facteur ⇒ révocation des autres sessions.
 - Verrouillage progressif sur échecs répétés, par compte **et** par adresse IP (s28).
-- Messages d'erreur indistinguables entre compte inconnu et mot de passe invalide, y compris en temps de réponse.
+- Messages d'erreur indistinguables entre compte inconnu et mot de passe invalide, y compris en temps de réponse. **Un compte banni ou dont la suppression est demandée est traité comme un compte inconnu** (s67, ADR 074) : sur chaque méthode de connexion, le refus ne dit rien de son état — `tests/auth.test.ts` (« compte en attente de suppression ») le mesure en message et, pour le mot de passe, en temps.
 - Jetons à usage unique (vérification, réinitialisation, invitation, magic link) : durée de vie courte, consommation atomique, invalidation des jetons frères à l'usage.
 - **Un paiement n'ouvre jamais de session** (s24). Une page de retour de
   paiement n'accorde rien : ni depuis un paramètre d'URL, ni depuis un

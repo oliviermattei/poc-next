@@ -81,6 +81,21 @@ export const authUser = pgTable(
      * oracle d'énumération (`docs/security.md` §7).
      */
     bannedReason: text('banned_reason'),
+    /**
+     * **La suppression demandée** (s67, ADR 074) : posée quand la purge du
+     * compte a été mise en file, jamais avant.
+     *
+     * Elle ferme le compte **comme** un bannissement — même prédicat, mêmes
+     * deux gardes — sans en être un : un débannissement ne rouvre pas un compte
+     * dont la personne a demandé l'effacement, et le motif d'un bannissement ne
+     * ment pas sur la cause.
+     *
+     * **Nullable, sans défaut** : la version encore en ligne ne la lit pas et
+     * continue d'écrire sans elle (`docs/reliability.md` §4, « ajouter avant de
+     * lire »). Aucune commande ne l'efface : annuler une demande serait une
+     * fonctionnalité, hors périmètre.
+     */
+    deletionRequestedAt: timestamp('deletion_requested_at', { withTimezone: true, mode: 'date' }),
     image: text('image'),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),

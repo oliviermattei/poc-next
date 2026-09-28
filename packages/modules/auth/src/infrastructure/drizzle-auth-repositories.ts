@@ -12,6 +12,7 @@ import type {
   VerificationToken,
   VerificationTokenRepository,
 } from '../application/ports'
+import { refusesSignIn } from '../domain/ban'
 import { canUnlinkSignInMethod } from '../domain/oauth'
 import { isTokenExpired } from '../domain/one-time-token'
 import {
@@ -93,6 +94,7 @@ const toRecord = (row: {
   emailVerified: boolean
   twoFactorEnabled: boolean
   banned: boolean
+  deletionRequestedAt: Date | null
 }): AuthUserRecord => ({
   id: row.id,
   name: row.name,
@@ -100,6 +102,7 @@ const toRecord = (row: {
   emailVerified: row.emailVerified,
   twoFactorEnabled: row.twoFactorEnabled,
   banned: row.banned,
+  deletionRequested: row.deletionRequestedAt !== null,
 })
 
 /** Le résumé d'un compte, tel qu'une liste d'administration l'affiche (s37b2). */
@@ -127,6 +130,7 @@ export function createDrizzleAuthUserRepository(db: AuthDatabase): AuthUserRepos
     emailVerified: authUser.emailVerified,
     twoFactorEnabled: authUser.twoFactorEnabled,
     banned: authUser.banned,
+    deletionRequestedAt: authUser.deletionRequestedAt,
   }
 
   /** Les colonnes du résumé : celles-là, et **pas** `...authUser`. */
@@ -157,19 +161,36 @@ export function createDrizzleAuthUserRepository(db: AuthDatabase): AuthUserRepos
     },
 
     /**
-     * **Lue à chaque ouverture de session** (s37a) : une seule colonne, un seul
-     * index primaire. Un compte introuvable rend `true` — le sens fermé : la
-     * garde refuse plutôt que d'ouvrir une session à un compte qui n'existe
-     * plus.
+     * **Lue à chaque ouverture de session** (s37a, s67) : les deux colonnes qui
+     * ferment un compte, un seul index primaire, et la décision laissée au
+     * `domain`. Un compte introuvable rend `true` — le sens fermé : la garde
+     * refuse plutôt que d'ouvrir une session à un compte qui n'existe plus.
      */
-    isBanned: async (userId) => {
+    isSignInBlocked: async (userId) => {
       const [row] = await db
-        .select({ banned: authUser.banned })
+        .select({ banned: authUser.banned, deletionRequestedAt: authUser.deletionRequestedAt })
         .from(authUser)
         .where(eq(authUser.id, userId))
         .limit(1)
 
-      return row === undefined ? true : row.banned
+      return row === undefined
+        ? true
+        : refusesSignIn({ banned: row.banned, deletionRequested: row.deletionRequestedAt !== null })
+    },
+
+    /**
+     * **La marque de la suppression demandée** (s67). `coalesce` garde la date
+     * de la première demande : un second clic ne la déplace pas, et la ligne
+     * est quand même comptée comme touchée — la demande est bien posée.
+     */
+    markDeletionRequested: async ({ userId, at }) => {
+      const updated = await db
+        .update(authUser)
+        .set({ deletionRequestedAt: sql`coalesce(${authUser.deletionRequestedAt}, ${at})`, updatedAt: at })
+        .where(eq(authUser.id, userId))
+        .returning({ id: authUser.id })
+
+      return updated.length > 0
     },
 
     setBanned: async ({ userId, banned, at, reason }) => {
@@ -398,7 +419,8 @@ export function createDrizzleAuthSessionRepository(db: AuthDatabase): AuthSessio
      * compte banni pouvait être emprunté, ce qui lui rendait une session par la
      * bande.
      *
-     * `insert … select … from auth_user where banned = false` : une seule
+     * `insert … select … from auth_user where banned = false and
+     * deletion_requested_at is null` (s67, ADR 074) : une seule
      * instruction, la garde dans sa propre qualification. Jamais une lecture qui
      * décide suivie d'une écriture qui obéit (`docs/reliability.md` §1) — un
      * bannissement validé entre les deux ouvrirait la session qu'il refuse.
@@ -408,8 +430,9 @@ export function createDrizzleAuthSessionRepository(db: AuthDatabase): AuthSessio
      * qu'**un** écrivain de `auth_session` hors de la bibliothèque — celui-ci.
      * Un second ferait rougir la suite au lieu d'hériter du silence.
      *
-     * Rend `false` pour un compte inconnu **comme** pour un compte banni : le
-     * refus ne distingue pas, et l'appelant n'a pas à distinguer non plus.
+     * Rend `false` pour un compte inconnu **comme** pour un compte banni ou en
+     * attente de suppression : le refus ne distingue pas, et l'appelant n'a pas
+     * à distinguer non plus.
      */
     create: async ({ id, token, userId, impersonatedBy, expiresAt, at }) => {
       const created = await db
@@ -431,7 +454,15 @@ export function createDrizzleAuthSessionRepository(db: AuthDatabase): AuthSessio
               updatedAt: sql<Date>`${at}::timestamptz`.as('updated_at'),
             })
             .from(authUser)
-            .where(and(eq(authUser.id, userId), eq(authUser.banned, false))),
+            .where(
+              and(
+                eq(authUser.id, userId),
+                eq(authUser.banned, false),
+                // s67, ADR 074 : la suppression demandée ferme comme le
+                // bannissement — la traduction SQL de `refusesSignIn`.
+                isNull(authUser.deletionRequestedAt),
+              ),
+            ),
         )
         .returning({ id: authSession.id })
 

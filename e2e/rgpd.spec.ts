@@ -75,22 +75,24 @@ test('la suppression de compte : la saisie est jugée par le serveur, puis la se
   await expect(page).toHaveURL(urlOf('/sign-in'))
 
   /**
-   * **La reconnexion est impossible**, et l'attente est reprise jusqu'à ce que
-   * la purge ait eu lieu : l'effacement quitte la requête quand le module
-   * `jobs` est activé (s33), donc le compte peut survivre quelques
-   * millisecondes à la réponse.
+   * **La reconnexion est refusée dès la réponse, avec le refus générique**
+   * (s67, ADR 074). Plus d'attente reprise jusqu'au passage de la purge : la
+   * demande marque le compte avant de répondre, et la marque ferme la porte
+   * quel que soit l'état de la file. Le premier essai doit donc être refusé.
+   *
+   * Ce que ce parcours ne voit pas, dit plutôt que sous-entendu : le serveur
+   * des parcours tourne sous `JOBS_LOCAL_RUNNER=1`, la purge y passe dans la
+   * requête, et le compte est déjà effacé ici. La fenêtre où il vit encore,
+   * marqué, est mesurée par Vitest — `tests/account-deletion.test.ts` et
+   * `tests/auth.test.ts` (« compte en attente de suppression »).
    */
-  await expect(async () => {
-    await page.goto('/sign-in')
-    await page.getByLabel('Adresse email', { exact: true }).fill(email)
-    await page.getByLabel('Mot de passe').fill(PASSWORD)
-    await page.getByRole('button', { name: 'Se connecter', exact: true }).click()
+  await page.goto('/sign-in')
+  await page.getByLabel('Adresse email', { exact: true }).fill(email)
+  await page.getByLabel('Mot de passe').fill(PASSWORD)
+  await page.getByRole('button', { name: 'Se connecter', exact: true }).click()
 
-    await expect(page.getByRole('main').getByRole('alert')).toContainText(
-      'Identifiants invalides',
-      { timeout: 2_000 },
-    )
-  }).toPass({ timeout: 20_000 })
+  await expect(page.getByRole('main').getByRole('alert')).toContainText('Identifiants invalides')
+  await expect(page).toHaveURL(urlOf('/sign-in'))
 })
 
 test('l’export de ses données : la demande est posée, son état s’affiche, et le jeton n’atteint jamais l’écran', async ({

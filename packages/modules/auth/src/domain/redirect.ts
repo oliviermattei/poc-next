@@ -39,6 +39,9 @@ export const ACCOUNT_SCREEN_PATH = PROFILE_SCREEN_PATH
 // eslint-disable-next-line no-control-regex
 const UNSAFE_CHARACTER = /[\u0000-\u001f\u007f\s]/u
 
+/** Une origine qui ne résout rien d'autre que les chemins de `safeRedirectPath`. */
+const RESOLUTION_ORIGIN = 'http://destination.invalid'
+
 /**
  * La destination de retour après authentification (`docs/security.md` §4 :
  * « Redirections : liste blanche de destinations. Aucune redirection pilotée
@@ -75,5 +78,29 @@ export function safeRedirectPath(candidate: string | null | undefined, fallback:
     return fallback
   }
 
-  return normalized
+  // **La forme résolue, pas la forme reçue** (revue s67, C1). Un navigateur
+  // résout les segments point — `.`, `..`, et leurs formes encodées `%2e` —
+  // avant de suivre un `Location` : `/.//evil.test` y devient `//evil.test`,
+  // qui sort du site. Le candidat est donc résolu comme un analyseur d'URL le
+  // ferait, sur une origine qui ne sert à rien d'autre, et c'est **ce résultat**
+  // qui est contrôlé et rendu : un appelant n'a plus rien à re-sérialiser.
+  let resolved: URL
+
+  try {
+    resolved = new URL(normalized, RESOLUTION_ORIGIN)
+  } catch {
+    return fallback
+  }
+
+  const path = `${resolved.pathname}${resolved.search}${resolved.hash}`
+
+  if (
+    resolved.origin !== RESOLUTION_ORIGIN ||
+    path.startsWith('//') ||
+    path.startsWith('/\\')
+  ) {
+    return fallback
+  }
+
+  return path
 }
