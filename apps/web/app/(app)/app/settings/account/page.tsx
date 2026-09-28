@@ -12,17 +12,18 @@ import {
 import { redirect } from 'next/navigation'
 
 import {
+  ACCOUNT_SCREEN_PATH,
   authRoutePath,
   currentDataExportRequests,
   currentPasskeys,
   currentSessions,
   currentSignInMethods,
   currentViewer,
-} from '../../../lib/auth'
-import { consent } from '../../../lib/consent'
-import { appIntl } from '../../../lib/i18n'
-import { AVATAR_CONTENT_TYPES, fileUrl, storage, storageRoutePath } from '../../../lib/storage'
-import { SignOutButton } from '../../sign-out-button'
+} from '../../../../../lib/auth'
+import { consent } from '../../../../../lib/consent'
+import { appIntl } from '../../../../../lib/i18n'
+import { AVATAR_CONTENT_TYPES, fileUrl, storage, storageRoutePath } from '../../../../../lib/storage'
+import { SignOutButton } from '../../../../sign-out-button'
 import { AccountForm } from './account-form'
 import { AvatarForm } from './avatar-form'
 import { ConnectionList, type ConnectionRow } from './connection-list'
@@ -87,7 +88,7 @@ export default async function AccountPage() {
     // dans la forme publique de sa locale, une seule fois. Y mettre le chemin
     // déjà préfixé le ferait préfixer deux fois — et surtout, la règle
     // `safeRedirectPath` du module juge un chemin interne, pas une URL de langue.
-    redirect(`${path('/sign-in')}?next=${encodeURIComponent('/account')}`)
+    redirect(`${path('/sign-in')}?next=${encodeURIComponent(ACCOUNT_SCREEN_PATH)}`)
   }
 
   // Module de stockage coupé : `avatarOf` rend `null` **sans toucher la base**,

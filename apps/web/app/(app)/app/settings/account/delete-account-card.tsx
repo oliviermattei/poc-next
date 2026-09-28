@@ -4,7 +4,7 @@ import { Alert, AlertDescription, AlertTitle, Button, Input, Label } from '@repo
 import { useTranslations } from 'next-intl'
 import { useState, type FormEvent } from 'react'
 
-import { useHydrated } from '../../use-hydrated'
+import { useHydrated } from '../../../../use-hydrated'
 import {
   deletionOutcomeOf,
   deletionRefusalKey,

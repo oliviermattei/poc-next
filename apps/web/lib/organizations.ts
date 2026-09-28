@@ -192,6 +192,12 @@ const ABSENT_ORGANIZATIONS: OrganizationsFeature = {
  *    sans réserver son segment fait rougir `pnpm test`.
  */
 const APPLICATION_SEGMENTS = [
+  // **Les trois anciens chemins redirigés** (s62a, ADR 075) : `account`,
+  // `billing` et `organizations` n'ont plus de fichier d'écran — ils répondent
+  // 308 vers la zone Réglages, par la table de `lib/legacy-paths.ts` —, et
+  // aucune navigation ne les dérive plus. Ils restent réservés : une
+  // organisation qui prendrait l'un d'eux serait masquée par le 308.
+  // `tests/organizations.test.ts` dérive ces segments de la table.
   'account',
   'api',
   // Le tableau de bord de l'application (s61, `app/(app)/app/page.tsx`) : la
@@ -200,12 +206,8 @@ const APPLICATION_SEGMENTS = [
   // entrée de navigation ne le porte — la marque de la barre latérale et le
   // bouton du site y mènent —, donc rien ne le dérive du registre.
   'app',
-  // L'écran de facturation (s19) : un segment que l'application sert, donc un
-  // identifiant qu'aucune organisation ne peut prendre. Il est écrit ici en
-  // plus d'être dérivé de la navigation du registre, parce que le fichier
-  // d'écran existe sur le disque **même quand le module est coupé** — et
-  // `tests/organizations.test.ts` dérive les segments du disque, pas du
-  // registre.
+  // L'ancien écran de facturation (s19) : redirigé depuis s62a, voir `account`
+  // plus haut.
   'billing',
   // Les écrans de la console (s37b2, sous `/console` depuis s60) : leurs
   // fichiers existent sur le disque **même quand le module `admin` est
@@ -219,7 +221,7 @@ const APPLICATION_SEGMENTS = [
   // Les deux écrans du blog (s29) : ils sont aussi dérivés de la navigation du
   // registre, mais leurs fichiers existent sur le disque **même quand le
   // module `blog` est coupé** — et c'est du disque que
-  // `tests/organizations.test.ts` dérive. Même raison que `billing` juste
+  // `tests/organizations.test.ts` dérive. Même raison que `console` juste
   // au-dessus, mesurée par `pnpm test:minimal-profile`, qui coupe ce module.
   'blog',
   // L'écran des nouveautés (s31), pour la même raison encore, et trouvée par la
@@ -252,7 +254,7 @@ const APPLICATION_SEGMENTS = [
   // Le centre de notifications (s32) : il est aussi dérivé de la navigation du
   // registre, mais son fichier d'écran existe sur le disque **même quand le
   // module est coupé** — et c'est du disque que `tests/organizations.test.ts`
-  // dérive. Même raison que `billing` et `blog` plus haut.
+  // dérive. Même raison que `blog` plus haut.
   'notifications',
   // Le parcours d'intégration (s40) : il n'a **aucune** entrée de navigation —
   // la racine y mène tant qu'il reste à faire, et cesse d'y mener une fois
@@ -269,7 +271,7 @@ const APPLICATION_SEGMENTS = [
   // La page publique de tarifs (s22) : elle est aussi dérivée de la navigation
   // du registre, mais son fichier d'écran existe sur le disque **même quand le
   // module de facturation est coupé** — et c'est du disque que
-  // `tests/organizations.test.ts` dérive. Même raison que `billing` plus haut.
+  // `tests/organizations.test.ts` dérive. Même raison que `blog` plus haut.
   'pricing',
   'reset-password',
   'sign-in',

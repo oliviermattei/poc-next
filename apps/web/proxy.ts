@@ -4,7 +4,9 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 import { contentSecurityPolicySources } from '../../config/security'
 import { LOCALE_HEADER } from './lib/current-locale'
+import { legacyScreenTarget } from './lib/legacy-paths'
 import { LOCALE_COOKIE, LOCALE_COOKIE_MAX_AGE, localeRouting } from './lib/locale-routing'
+import { moduleRegistry } from './lib/module-registry'
 import { CSP_REPORT_PATH, NONCE_HEADER, policyMode, securityHeaders } from './lib/security-headers'
 
 /**
@@ -84,6 +86,37 @@ export function proxy(request: NextRequest): NextResponse {
     return response
   }
 
+  const internal = carriesLocalePrefix(pathname)
+    ? localeRouting.internalPath(pathname)
+    : pathname
+  const locale = localeRouting.resolve(localeRequest)
+
+  /**
+   * **Les anciens chemins d'écran** (s62a, ADR 075) : 308 vers la cible de la
+   * table, **avant** la redirection de langue.
+   *
+   * La recherche porte sur le chemin **interne** — `/fr/account` et `/account`
+   * y sont la même clé —, et la cible est re-préfixée dans la langue de la
+   * requête : l'URL préfixée l'emporte, puis le cookie, puis le navigateur,
+   * exactement comme pour la redirection canonique. Placée après celle-ci,
+   * `/account` aurait fait deux sauts (307 vers `/fr/account`, puis 308) ;
+   * placée avant `internalPath`, `/fr/account` n'aurait rien trouvé. La
+   * cible est une constante de la table, jamais une valeur de la requête ; la
+   * chaîne de requête suit telle quelle, comme pour la redirection de langue.
+   */
+  const legacy = carriesLocalePrefix(pathname)
+    ? legacyScreenTarget(internal, moduleRegistry)
+    : null
+
+  if (legacy !== null) {
+    return withSecurityHeaders(
+      NextResponse.redirect(
+        new URL(`${localeRouting.publicPath(legacy, locale)}${search}`, request.url),
+        308,
+      ),
+    )
+  }
+
   const canonical = carriesLocalePrefix(pathname)
     ? localeRouting.canonicalPath(localeRequest)
     : null
@@ -94,10 +127,6 @@ export function proxy(request: NextRequest): NextResponse {
     )
   }
 
-  const internal = carriesLocalePrefix(pathname)
-    ? localeRouting.internalPath(pathname)
-    : pathname
-  const locale = localeRouting.resolve(localeRequest)
   const headers = new Headers(request.headers)
 
   headers.set(LOCALE_HEADER, locale)

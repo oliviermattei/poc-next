@@ -987,6 +987,19 @@ describe.runIf(databaseReachable)('le portail client', () => {
     await expect(response.json()).resolves.toEqual({
       url: 'https://billing.stripe.com/p/session/s19',
     })
+
+    // **Les retours visent l'écran de facturation, là où il est servi**
+    // (s62a) : sa constante, jamais un littéral. Un retour resté sur l'ancien
+    // chemin ferait un 308 de plus — et un chemin oublié le jour d'un second
+    // déplacement, un 404 au retour d'un paiement.
+    const checkoutBody = new URLSearchParams(
+      calls.find((recorded) => recorded.url.includes('/checkout/sessions'))?.body ?? '',
+    )
+    const portalBody = new URLSearchParams(calls.at(-1)?.body ?? '')
+
+    expect(checkoutBody.get('success_url')).toBe(`${APP_URL}${BILLING_SCREEN_PATH}?checkout=success`)
+    expect(checkoutBody.get('cancel_url')).toBe(`${APP_URL}${BILLING_SCREEN_PATH}?checkout=cancelled`)
+    expect(portalBody.get('return_url')).toBe(`${APP_URL}${BILLING_SCREEN_PATH}`)
   })
 
   it('refuse celui qui n’a pas le droit de gérer la facturation', async () => {
@@ -6420,8 +6433,8 @@ describe('la simulation locale d’un tunnel invité', () => {
       customerId: null,
       customerEmail: null,
       reference: billingScopeReference({ kind: 'user', userId: 'usr_local' }),
-      successUrl: `${APP_URL}/billing?checkout=success`,
-      cancelUrl: `${APP_URL}/billing?checkout=cancelled`,
+      successUrl: `${APP_URL}${BILLING_SCREEN_PATH}?checkout=success`,
+      cancelUrl: `${APP_URL}${BILLING_SCREEN_PATH}?checkout=cancelled`,
       trialPeriodDays: null,
       locale: null,
       idempotencyKey: 'checkout:user:test',

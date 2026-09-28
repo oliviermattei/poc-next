@@ -1936,6 +1936,8 @@ Le centre de notifications et ses préférences ne bougent pas ici (s62c, s63).
 - [ ] Le contenu de l'actuel `/app/settings/account` est réparti **sans perte** entre Profil, Sécurité et Cookies selon le design de la story ; celui de `/app/settings/organization` entre Organisation et Membres ; un test retrouve chaque carte et chaque action d'avant sous son nouveau chemin
 - [ ] Les écrans RGPD (export, suppression) restent atteignables depuis une rubrique listée, jamais une page non listée
 - [ ] Les anciens chemins de s62a qui ne correspondent plus à une rubrique répondent 308 par la table de s62a
+- [ ] Chaque écran de réglages a **un seul** titre de niveau 1 : le titre de la zone (« Réglages ») et celui de la rubrique ne sont plus deux `h1` (revue de s62a, m1) ; l'assertion `.first()` d'`e2e/app-shell.spec.ts` redevient un titre précis
+- [ ] Les libellés suivent la story : rubriques « Compte » → Profil/Sécurité…, « Organisation », « Facturation », et l'entrée du menu de compte « Réglages » (revue de s62a, m2)
 
 ### Dependencies
 s62a-reglages-deplacement
@@ -2120,3 +2122,24 @@ s34-account-deletion, s37b1-decompte-et-impersonation, s61-site-et-application
 L'état « banni » vit déjà dans le socle (ADR 058) et sa garde est portée par l'écriture de session (`insert … select … from auth_user where banned = false`, voir `packages/modules/admin/AGENTS.md`). « En attente de suppression » est un état du même genre : même lieu, même forme de garde, pour qu'aucun chemin de session n'y échappe.
 Le refus à la connexion doit être **indiscernable** d'un compte inconnu, en message et en temps : un message dédié (« compte en cours de suppression ») serait un oracle d'existence.
 Sous `JOBS_LOCAL_RUNNER=1`, la purge s'exécute tout de suite et la fenêtre est nulle : les tests doivent utiliser le double d'enregistrement des tâches (`recordingJobs`, déjà dans `tests/account-deletion.test.ts`) pour tenir la purge en attente.
+
+---
+
+## Story s68-recettes-paralleles — Rejouer les recettes depuis deux worktrees à la fois
+**As a** Dev **I want** lancer `pnpm test:socle`, `pnpm test:minimal-profile` et `pnpm test:golden-path` dans deux worktrees en même temps, sur un arbre de travail non commité **so that** deux stories menées en parallèle ne se faussent pas leurs vérifications.
+
+> **Ajoutée le 28/09, sur deux défauts observés par les implémenteurs de s62a et s67, lancés en parallèle.** (1) `pnpm test:socle` rejoue les étapes de `.github/workflows/ci.yml`, qui écrivent l'état de l'arbre dans des chemins **fixes** `/tmp/arbre-attendu.txt` et `/tmp/arbre-constate.txt` (l. 108, 171-172) : deux exécutions simultanées s'écrasent, et l'une a comparé l'arbre attendu de l'autre. (2) Les trois recettes recopient les changements non commités par `git ls-files --modified --others --exclude-standard` (`scripts/golden-path.ts:102`, `scripts/minimal-profile.ts:126`, `scripts/socle.ts:137`) : un **renommage indexé** (`git mv`) n'y paraît pas, et la copie échoue ou teste un arbre qui n'est pas celui du poste.
+
+### Complexity
+2
+
+### Acceptance criteria
+- [ ] Les étapes de CI qui mémorisent l'état de l'arbre écrivent dans un dossier propre à l'exécution (`$RUNNER_TEMP` en CI, un dossier temporaire créé par la recette en local), jamais un chemin fixe partagé ; deux `pnpm test:socle` lancés en même temps depuis deux copies du dépôt passent tous deux
+- [ ] Les trois recettes reproduisent dans leur copie un arbre de travail qui contient des renommages **indexés**, des suppressions et des fichiers non suivis ; un test construit un tel arbre et vérifie que la copie lui est identique
+- [ ] La dérivation des étapes rejouées par `pnpm test:socle` depuis `ci.yml` reste dérivée (aucune liste recopiée) et continue de refuser une étape ni rejouée ni exclue
+
+### Dependencies
+s48-ci-verte, s26-minimal-profile-check, s25-golden-path-e2e
+
+### Agentic notes
+Le port par défaut 3100 des parcours a aussi été pris par une copie de `test:socle` d'une autre worktree : vérifier que chaque recette prend son port d'`E2E_PORT` (ou d'un port libre qu'elle réserve) et l'écrit dans sa sortie.

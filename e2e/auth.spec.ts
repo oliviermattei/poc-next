@@ -1,7 +1,13 @@
 import { expect, test } from '@playwright/test'
 
 import { anEmail as anAddress, linkSentTo, PASSWORD, signIn, signUp } from './support/account'
-import { anonymousLanding, signedInLanding, signInRedirectedFrom, urlOf } from './support/locale'
+import {
+  anonymousLanding,
+  settingsPath,
+  signedInLanding,
+  signInRedirectedFrom,
+  urlOf,
+} from './support/locale'
 
 /**
  * Le parcours d'authentification, dans un vrai navigateur.
@@ -49,7 +55,7 @@ test('inscription, vérification, connexion, écran protégé, déconnexion', as
   // éprouvé le contrat de `signIn`, une fois, pour ses dix-sept appelants.
   expect(page.url()).toMatch(urlOf(signedInLanding()))
 
-  await page.goto('/account')
+  await page.goto(settingsPath('account'))
   // `exact` depuis s34b : la zone dangereuse de l'écran porte le titre
   // « Supprimer mon compte », qu'une correspondance partielle désigne aussi.
   await expect(page.getByRole('heading', { name: 'Mon compte', exact: true })).toBeVisible()
@@ -81,8 +87,8 @@ test('inscription, vérification, connexion, écran protégé, déconnexion', as
   // La session est révoquée **côté serveur** : reposer le cookie ne la
   // ressuscite pas.
   await context.addCookies([cookie ?? { name: 'x', value: 'x', url: 'http://localhost' }])
-  await page.goto('/account')
-  await expect(page).toHaveURL(signInRedirectedFrom('/account'))
+  await page.goto(settingsPath('account'))
+  await expect(page).toHaveURL(signInRedirectedFrom(settingsPath('account')))
 })
 
 test('une route protégée redirige vers la connexion, puis ramène à l’URL demandée', async ({
@@ -93,8 +99,8 @@ test('une route protégée redirige vers la connexion, puis ramène à l’URL d
   await signUp(page, email)
   await page.goto(await linkSentTo(email))
 
-  await page.goto('/account')
-  await expect(page).toHaveURL(signInRedirectedFrom('/account'))
+  await page.goto(settingsPath('account'))
+  await expect(page).toHaveURL(signInRedirectedFrom(settingsPath('account')))
 
   await signIn(page, email)
 
@@ -105,7 +111,7 @@ test('une route protégée redirige vers la connexion, puis ramène à l’URL d
   // compte de `?next=` laissait les vingt parcours verts. C'est le seul endroit
   // du dépôt qui tient cette propriété ; le repli, lui, est tenu par les
   // assertions `/localhost:\d+\/$/` des autres parcours.
-  await expect(page).toHaveURL(urlOf('/account'))
+  await expect(page).toHaveURL(urlOf(settingsPath('account')))
 })
 
 test('compte inconnu, mot de passe invalide et adresse non vérifiée affichent le même message', async ({
@@ -209,7 +215,9 @@ test('la navigation montre « Mon compte » une fois connecté, jamais avant', a
   await signUp(page, email)
   await page.goto(await linkSentTo(email))
 
-  const navigation = page.getByRole('navigation', { name: 'Modules' })
+  // Depuis s62a, « Mon compte » est une rubrique des réglages, plus une entrée
+  // de la barre latérale du produit.
+  const navigation = page.getByRole('navigation', { name: 'Rubriques des réglages' })
 
   // Avant la connexion : ni le site (s61, son en-tête ne porte que la surface
   // `site`) ni l'écran de connexion ne mènent à « Mon compte ».
@@ -221,5 +229,6 @@ test('la navigation montre « Mon compte » une fois connecté, jamais avant', a
   await signIn(page, email)
   await expect(page).toHaveURL(urlOf(signedInLanding()))
 
+  await page.goto(settingsPath('account'))
   await expect(navigation.getByRole('link', { name: 'Mon compte' })).toHaveCount(1)
 })

@@ -13,7 +13,7 @@ import {
   signIn,
   signUp,
 } from './support/account'
-import { publicPath, signInRedirectedFrom, sitePage, urlOf } from './support/locale'
+import { publicPath, settingsPath, signInRedirectedFrom, sitePage, urlOf } from './support/locale'
 
 /**
  * Le shell applicatif, dans un vrai navigateur.
@@ -70,7 +70,7 @@ test.describe('thème', () => {
     // rendu : au tout premier instant de la page suivante, elle est déjà là.
     // Sans ce script, la page s'affiche claire puis bascule — c'est le
     // clignotement que la story interdit.
-    await page.goto('/account')
+    await page.goto(settingsPath('account'))
 
     const classAtFirstPaint = await page.evaluate<string>(
       'document.documentElement.className',
@@ -88,9 +88,12 @@ test.describe('sous 400 px', () => {
 
     // Les trois gabarits (s61) : le site et l'application connecté, puis
     // l'authentification en anonyme — un connecté sur `/sign-in` est renvoyé.
-    for (const path of [sitePage(), DEFAULT_SIGNED_IN_PATH, '/account']) {
+    for (const path of [sitePage(), DEFAULT_SIGNED_IN_PATH, settingsPath('account')]) {
       await page.goto(path)
-      await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+      // `first()` : un écran de réglages porte deux titres de premier niveau
+      // depuis s62a — celui de la zone et celui de l'écran déplacé tel quel —,
+      // jusqu'au redécoupage de s62b.
+      await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible()
       expect(await horizontalOverflow(page), `${path} déborde à ${NARROW.width} px`).toBeLessThanOrEqual(0)
     }
 
@@ -120,7 +123,12 @@ test.describe('sous 400 px', () => {
     await page.getByRole('button', { name: 'Ouvrir la navigation' }).click()
 
     await expect(navigation).toHaveCount(1)
-    await expect(navigation.getByRole('link', { name: 'Mon compte' })).toBeVisible()
+    // Les entrées du produit, dérivées du registre : depuis s62a, les réglages
+    // n'y sont plus (`e2e/settings.spec.ts`).
+    await expect(navigation.getByRole('link')).toHaveCount(
+      visibleNavigation(moduleRegistry, { userId: 'compte-neuf', roles: [] }, 'app').length,
+    )
+    await expect(navigation.getByRole('link').first()).toBeVisible()
 
     // Le bouton de fermeture porte un nom accessible **traduit** : c'est le
     // seul texte que la primitive `Sheet` affiche, et il était écrit en dur en
@@ -135,15 +143,15 @@ test('le tableau de bord porte la navigation et le menu de compte', async ({ pag
   await page.goto(DEFAULT_SIGNED_IN_PATH)
 
   await expect(page.getByRole('heading', { name: 'Tableau de bord' })).toBeVisible()
-  await expect(
-    page.getByRole('navigation', { name: 'Modules' }).getByRole('link', { name: 'Mon compte' }),
-  ).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'Modules' })).toBeVisible()
 
   // Le menu de compte nomme le compte : « menu de compte » seul ne dit pas
   // lequel, et c'est l'information qui compte quand on est connecté avec le
   // mauvais.
   await page.getByRole('button', { name: `Compte — ${email}` }).click()
-  await expect(page.getByRole('menuitem', { name: 'Paramètres du compte' })).toBeVisible()
+  // Et il mène à la zone Réglages (s62a), sans détour par un ancien chemin.
+  await page.getByRole('menuitem', { name: 'Paramètres du compte' }).click()
+  await expect(page).toHaveURL(urlOf(settingsPath('account')))
 })
 
 test('une session révoquée depuis un autre appareil est refusée par le serveur', async ({
@@ -169,7 +177,7 @@ test('une session révoquée depuis un autre appareil est refusée par le serveu
   await signIn(other, email)
   await expect(other).toHaveURL(urlOf(DEFAULT_SIGNED_IN_PATH))
 
-  await page.goto('/account')
+  await page.goto(settingsPath('account'))
 
   const sessions = page.getByRole('listitem').filter({ hasText: 'Révoquer' })
 
@@ -185,8 +193,8 @@ test('une session révoquée depuis un autre appareil est refusée par le serveu
 
   // **Côté serveur** : l'autre navigateur garde son cookie, et il ne lui sert
   // plus à rien. C'est la différence entre révoquer et retirer d'une liste.
-  await other.goto('/account')
-  await expect(other).toHaveURL(signInRedirectedFrom('/account'))
+  await other.goto(settingsPath('account'))
+  await expect(other).toHaveURL(signInRedirectedFrom(settingsPath('account')))
 
   await otherContext.close()
 })
@@ -214,7 +222,7 @@ test('changer son mot de passe depuis l’écran révoque l’autre session', as
   await signIn(other, email)
   await expect(other).toHaveURL(urlOf(DEFAULT_SIGNED_IN_PATH))
 
-  await page.goto('/account')
+  await page.goto(settingsPath('account'))
 
   // Un mot de passe courant faux est refusé, et rien ne change.
   await page.getByLabel('Mot de passe actuel').fill('ce-n-est-pas-le-bon')
@@ -228,8 +236,8 @@ test('changer son mot de passe depuis l’écran révoque l’autre session', as
   await expect(page.getByRole('status')).toContainText('révoquées')
 
   // L'autre appareil est déconnecté, côté serveur.
-  await other.goto('/account')
-  await expect(other).toHaveURL(signInRedirectedFrom('/account'))
+  await other.goto(settingsPath('account'))
+  await expect(other).toHaveURL(signInRedirectedFrom(settingsPath('account')))
 
   await otherContext.close()
 })
@@ -237,7 +245,7 @@ test('changer son mot de passe depuis l’écran révoque l’autre session', as
 test('changer son nom met à jour le compte affiché', async ({ page }) => {
   await aSignedInAccount(page, 's08-profil')
 
-  await page.goto('/account')
+  await page.goto(settingsPath('account'))
   await page.getByLabel('Nom affiché').fill('Olivier de Test')
   await page.getByRole('button', { name: 'Enregistrer le nom' }).click()
 
@@ -295,7 +303,7 @@ test.describe('les formulaires sans JavaScript', () => {
     })
     const noScript = await context.newPage()
 
-    await noScript.goto('/account')
+    await noScript.goto(settingsPath('account'))
 
     // Rien ne peut être soumis par un chemin que le composant ne contrôle pas :
     // l'envoi n'est actif qu'une fois React aux commandes. Sans cela, la

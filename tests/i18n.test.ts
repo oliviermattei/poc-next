@@ -10,6 +10,7 @@ import {
   singleLocaleRouting,
   type AnyModuleDefinition,
 } from '@repo/core'
+import { ACCOUNT_SCREEN_PATH } from '@repo/module-auth'
 import { configureConsent, resetConsentService } from '@repo/module-consent'
 import { localePrefixRouting } from '@repo/module-i18n'
 import { createRecordingMailer } from '@repo/mailer-testing'
@@ -872,27 +873,27 @@ const aRequest = (pathname: string, cookieLocale: string | null = null, acceptLa
 
 describe('module i18n activé', () => {
   it('préfixe les URL par la locale', () => {
-    expect(prefixed.publicPath('/account', 'en')).toBe('/en/account')
+    expect(prefixed.publicPath(ACCOUNT_SCREEN_PATH, 'en')).toBe(`/en${ACCOUNT_SCREEN_PATH}`)
     expect(prefixed.publicPath('/', 'fr')).toBe('/fr')
   })
 
   it('redirige une URL sans préfixe vers sa forme canonique', () => {
-    expect(prefixed.canonicalPath(aRequest('/account'))).toBe('/fr/account')
-    expect(prefixed.canonicalPath(aRequest('/account', 'en'))).toBe('/en/account')
+    expect(prefixed.canonicalPath(aRequest(ACCOUNT_SCREEN_PATH))).toBe(`/fr${ACCOUNT_SCREEN_PATH}`)
+    expect(prefixed.canonicalPath(aRequest(ACCOUNT_SCREEN_PATH, 'en'))).toBe(`/en${ACCOUNT_SCREEN_PATH}`)
   })
 
   it('ne redirige pas une URL déjà préfixée, et lui rend son chemin interne', () => {
-    expect(prefixed.canonicalPath(aRequest('/en/account'))).toBeNull()
-    expect(prefixed.internalPath('/en/account')).toBe('/account')
+    expect(prefixed.canonicalPath(aRequest(`/en${ACCOUNT_SCREEN_PATH}`))).toBeNull()
+    expect(prefixed.internalPath(`/en${ACCOUNT_SCREEN_PATH}`)).toBe(ACCOUNT_SCREEN_PATH)
   })
 
   it('fait gagner l’URL sur le cookie : un lien partagé s’ouvre dans sa langue', () => {
-    expect(prefixed.resolve(aRequest('/en/account', 'fr'))).toBe('en')
+    expect(prefixed.resolve(aRequest(`/en${ACCOUNT_SCREEN_PATH}`, 'fr'))).toBe('en')
   })
 
   it('retombe sur la langue du navigateur, puis sur celle du site', () => {
-    expect(prefixed.resolve(aRequest('/account', null, 'en-GB,en;q=0.9'))).toBe('en')
-    expect(prefixed.resolve(aRequest('/account', null, 'de-DE,de;q=0.9'))).toBe('fr')
+    expect(prefixed.resolve(aRequest(ACCOUNT_SCREEN_PATH, null, 'en-GB,en;q=0.9'))).toBe('en')
+    expect(prefixed.resolve(aRequest(ACCOUNT_SCREEN_PATH, null, 'de-DE,de;q=0.9'))).toBe('fr')
   })
 
   it('ne préfixe pas deux fois un chemin déjà public', () => {
@@ -900,32 +901,32 @@ describe('module i18n activé', () => {
     // un aller-retour par la chaîne de requête, et un second passage produisait
     // `/fr/fr/account` — une URL que rien ne sert. L'idempotence ferme la classe
     // entière, pas seulement l'appelant fautif.
-    expect(prefixed.publicPath('/fr/account', 'fr')).toBe('/fr/account')
-    expect(prefixed.publicPath(prefixed.publicPath('/account', 'en'), 'en')).toBe('/en/account')
+    expect(prefixed.publicPath(`/fr${ACCOUNT_SCREEN_PATH}`, 'fr')).toBe(`/fr${ACCOUNT_SCREEN_PATH}`)
+    expect(prefixed.publicPath(prefixed.publicPath(ACCOUNT_SCREEN_PATH, 'en'), 'en')).toBe(`/en${ACCOUNT_SCREEN_PATH}`)
     // Et changer de langue reste possible sur un chemin déjà public.
-    expect(prefixed.publicPath('/fr/account', 'en')).toBe('/en/account')
+    expect(prefixed.publicPath(`/fr${ACCOUNT_SCREEN_PATH}`, 'en')).toBe(`/en${ACCOUNT_SCREEN_PATH}`)
   })
 
   it('ne sert pas une locale que le projet ne livre pas, d’où qu’elle vienne', () => {
-    expect(prefixed.resolve(aRequest('/account', 'de'))).toBe('fr')
-    expect(prefixed.internalPath('/de/account')).toBe('/de/account')
+    expect(prefixed.resolve(aRequest(ACCOUNT_SCREEN_PATH, 'de'))).toBe('fr')
+    expect(prefixed.internalPath(`/de${ACCOUNT_SCREEN_PATH}`)).toBe(`/de${ACCOUNT_SCREEN_PATH}`)
   })
 })
 
 describe('module i18n non activé', () => {
   it('sert les routes sans préfixe de locale', () => {
-    expect(single.publicPath('/account', 'en')).toBe('/account')
-    expect(single.internalPath('/account')).toBe('/account')
+    expect(single.publicPath(ACCOUNT_SCREEN_PATH, 'en')).toBe(ACCOUNT_SCREEN_PATH)
+    expect(single.internalPath(ACCOUNT_SCREEN_PATH)).toBe(ACCOUNT_SCREEN_PATH)
   })
 
   it('n’effectue aucune redirection de locale, quelle que soit la demande', () => {
-    expect(single.canonicalPath(aRequest('/account'))).toBeNull()
-    expect(single.canonicalPath(aRequest('/account', 'en', 'en-GB,en;q=0.9'))).toBeNull()
-    expect(single.canonicalPath(aRequest('/en/account'))).toBeNull()
+    expect(single.canonicalPath(aRequest(ACCOUNT_SCREEN_PATH))).toBeNull()
+    expect(single.canonicalPath(aRequest(ACCOUNT_SCREEN_PATH, 'en', 'en-GB,en;q=0.9'))).toBeNull()
+    expect(single.canonicalPath(aRequest(`/en${ACCOUNT_SCREEN_PATH}`))).toBeNull()
   })
 
   it('utilise la langue par défaut configurée, cookie et navigateur compris', () => {
-    expect(single.resolve(aRequest('/account', 'en', 'en-GB,en;q=0.9'))).toBe(defaultLocale)
+    expect(single.resolve(aRequest(ACCOUNT_SCREEN_PATH, 'en', 'en-GB,en;q=0.9'))).toBe(defaultLocale)
   })
 
   it('n’a qu’une langue à proposer, donc aucun sélecteur à afficher', () => {
@@ -938,7 +939,7 @@ describe('module i18n non activé', () => {
   it('répond à la même URL interne que le module activé, sans variante', () => {
     // Le critère qui décide de la forme de toutes les routes du dépôt : le
     // chemin qui atteint le fichier de route est le même dans les deux états.
-    for (const path of ['/', '/account', '/sign-in', '/api/modules/auth/sign-in/email']) {
+    for (const path of ['/', ACCOUNT_SCREEN_PATH, '/sign-in', '/api/modules/auth/sign-in/email']) {
       expect(single.internalPath(path)).toBe(path)
       expect(prefixed.internalPath(prefixed.publicPath(path, 'en'))).toBe(path)
     }
@@ -1014,7 +1015,9 @@ describe('aucun cookie ne part sans les attributs du socle', () => {
     // test sur l'en-tête `Set-Cookie`. Il n'existait pour aucun cookie hors
     // session. Rien côté client ne lit `app_locale` : le sélecteur est une
     // liste de liens, et c'est le proxy qui écrit, côté serveur.
-    const cookies = setCookiesFor('/en/account')
+    // Un écran servi, et non un ancien chemin : celui-là répond 308 (s62a)
+    // avant que le proxy ne pose quoi que ce soit.
+    const cookies = setCookiesFor(localeRouting.publicPath(ACCOUNT_SCREEN_PATH, 'en'))
 
     // La garde contre le vide : dans l'état où le projet sert plusieurs
     // langues, suivre une URL préfixée **doit** poser le choix, sans quoi tout

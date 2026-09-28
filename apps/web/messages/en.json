@@ -24,6 +24,8 @@
   "app.dashboard.empty.title": "Nothing to show yet",
   "app.dashboard.empty.description": "This dashboard fills up with the modules you enable. In the meantime, your account settings are available here.",
   "app.dashboard.empty.action": "Account settings",
+  "app.settings.title": "Settings",
+  "app.settings.navigation": "Settings sections",
   "app.notFound.title": "Page not found",
   "app.notFound.empty.title": "This address leads nowhere",
   "app.notFound.empty.description": "The link may be outdated, or the address has a typo. Start again from the home page.",

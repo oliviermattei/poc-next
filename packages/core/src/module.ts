@@ -221,10 +221,13 @@ export interface NavigationEntry {
 /**
  * Les surfaces où une entrée de navigation peut paraître.
  *
- * Quatre, et elles ne se recouvrent pas : la barre latérale de l'application, le
- * pied de page du site public, la navigation du **back-office** (s37b2) et
+ * Cinq, et elles ne se recouvrent pas : la barre latérale de l'application, le
+ * pied de page du site public, la navigation du **back-office** (s37b2),
  * l'**en-tête du site public** (`site`, s61, ADR 073 : accueil, blog, docs,
- * tarifs — rendue par le gabarit Site, jamais par la barre latérale). Une
+ * tarifs — rendue par le gabarit Site, jamais par la barre latérale) et la
+ * **sous-navigation des réglages** (`settings`, s62a, ADR 075 : compte,
+ * organisation, facturation — rendue par le layout de `/app/settings`, pour que
+ * la barre latérale reste celle du produit construit). Une
  * entrée déclarée pour l'une n'apparaît jamais dans une autre — un lien de
  * service au rang des fonctionnalités du produit serait une régression d'écran,
  * et c'est exactement ce que le module `consent` refusait en déclarant
@@ -255,7 +258,7 @@ export interface NavigationEntry {
  * `protection` reste néanmoins déclarée, comme partout — elle n'a pas de défaut
  * sûr.
  */
-export type NavigationSurface = 'app' | 'footer' | 'console' | 'site'
+export type NavigationSurface = 'app' | 'footer' | 'console' | 'site' | 'settings'
 
 /**
  * **Ce qu'un module donne à indexer** (s53, ADR 054).

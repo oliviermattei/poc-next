@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 import { aSignedInAccount, linkSentTo, PASSWORD } from './support/account'
-import { urlOf } from './support/locale'
+import { settingsPath, urlOf } from './support/locale'
 
 /**
  * **Les deux droits RGPD, exercés depuis un vrai navigateur** (s34b, critère 7).
@@ -32,7 +32,7 @@ test('la suppression de compte : la saisie est jugée par le serveur, puis la se
 }) => {
   const email = await aSignedInAccount(page, 's34b-delete')
 
-  await page.goto('/account')
+  await page.goto(settingsPath('account'))
 
   const confirmation = page.getByLabel(/Saisissez/)
 
@@ -101,7 +101,7 @@ test('l’export de ses données : la demande est posée, son état s’affiche,
   const email = await aSignedInAccount(page, 's34b-export')
   const since = Date.now()
 
-  await page.goto('/account')
+  await page.goto(settingsPath('account'))
 
   const request = page.getByRole('button', { name: EXPORT_BUTTON })
 
@@ -130,7 +130,7 @@ test('l’export de ses données : la demande est posée, son état s’affiche,
 
   expect(token).not.toBe('')
 
-  await page.goto('/account')
+  await page.goto(settingsPath('account'))
 
   // L'état vient du **serveur** : la demande est rendue avec sa date et
   // l'échéance de son lien.

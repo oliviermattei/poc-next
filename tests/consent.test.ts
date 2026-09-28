@@ -399,7 +399,7 @@ describe('la gestion du consentement est atteignable', () => {
     viewerState.value = SIGNED_IN
 
     const html = await renderScreen(
-      async () => (await import('../apps/web/app/(app)/account/page')).default(),
+      async () => (await import('../apps/web/app/(app)/app/settings/account/page')).default(),
     )
 
     expect(html).toContain(`href="${screenPath}"`)

@@ -3,7 +3,7 @@ import { billingScopeReference } from '@repo/module-billing'
 import { z } from 'zod'
 
 import { currentViewer } from '../../../lib/auth'
-import { billing, billingRoutePath } from '../../../lib/billing'
+import { billing, BILLING_SCREEN_PATH, billingRoutePath } from '../../../lib/billing'
 import { moduleRegistry } from '../../../lib/module-registry'
 import { prepareModuleServices } from '../../../lib/module-services'
 import { rateLimitGuard } from '../../../lib/rate-limit'
@@ -147,5 +147,5 @@ export async function GET(request: Request): Promise<Response> {
 
   const outcome = deliveries.length === 0 ? 'cancelled' : 'success'
 
-  return Response.redirect(new URL(`/billing?checkout=${outcome}`, request.url), 303)
+  return Response.redirect(new URL(`${BILLING_SCREEN_PATH}?checkout=${outcome}`, request.url), 303)
 }

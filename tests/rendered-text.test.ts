@@ -47,8 +47,13 @@ import { defaultLocale } from '../config/i18n'
  * ------------------------------------------------------------------------- */
 
 vi.mock('../apps/web/lib/auth', async () => {
-  const { authRoutePath, DEFAULT_SIGNED_IN_PATH, readOAuthFailureClass, safeRedirectPath } =
-    await import('@repo/module-auth')
+  const {
+    ACCOUNT_SCREEN_PATH,
+    authRoutePath,
+    DEFAULT_SIGNED_IN_PATH,
+    readOAuthFailureClass,
+    safeRedirectPath,
+  } = await import('@repo/module-auth')
   const {
     FIXTURE_DATA_EXPORTS,
     FIXTURE_PASSKEYS,
@@ -58,6 +63,7 @@ vi.mock('../apps/web/lib/auth', async () => {
   } = await import('./fixtures/screen-viewer')
 
   return {
+    ACCOUNT_SCREEN_PATH,
     authRoutePath,
     DEFAULT_SIGNED_IN_PATH,
     readOAuthFailureClass,
@@ -482,6 +488,18 @@ const zoneTemplateOf = async (
 
   if (file === 'not-found.tsx' || file.startsWith('(site)/')) return layoutOf('(site)')
   if (file.startsWith('(auth)/')) return layoutOf('(auth)')
+
+  // **La zone Réglages** (s62a) : son cadre — titre et sous-navigation —
+  // entoure l'écran **dans** le gabarit Application, comme au serveur. Ses
+  // textes passent ainsi dans le même filet que ceux de l'écran.
+  if (file.startsWith('(app)/app/settings/')) {
+    const application = await layoutOf('(app)')
+    const { default: SettingsLayout } = await import('../apps/web/app/(app)/app/settings/layout')
+
+    return async (children: ReactNode) =>
+      application(await resolveAsyncHead(await SettingsLayout({ children })))
+  }
+
   if (file.startsWith('(app)/')) return layoutOf('(app)')
 
   const { AppShell } = await import('../apps/web/app/app-shell')
@@ -1336,7 +1354,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
       },
       {
         id: 'compte',
-        file: '(app)/account/page.tsx',
+        file: '(app)/app/settings/account/page.tsx',
         viewer: SIGNED_IN,
         refuses: null,
         // s13. Les quatre URL des routes de second facteur, remises à la carte.
@@ -1371,14 +1389,14 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           // toujours rougir.
           'status',
         ],
-        render: async () => (await import('../apps/web/app/(app)/account/page')).default(),
+        render: async () => (await import('../apps/web/app/(app)/app/settings/account/page')).default(),
       },
       {
         // s19. Trois rendus du même fichier : les états que l'écran distingue
         // portent chacun des textes qu'aucun autre ne rend — l'alerte de tête,
         // « accès jusqu'au … », l'essai, l'offre retirée du catalogue.
         id: 'facturation, sans abonnement',
-        file: '(app)/billing/page.tsx',
+        file: '(app)/app/settings/billing/page.tsx',
         viewer: SIGNED_IN,
         refuses: billingMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         // Les clés de libellé remises aux boutons, l'identifiant d'offre
@@ -1391,35 +1409,35 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         render: async () => {
           billingState.value = FIXTURE_BILLING_NONE
 
-          return (await import('../apps/web/app/(app)/billing/page')).default({
+          return (await import('../apps/web/app/(app)/app/settings/billing/page')).default({
             searchParams: Promise.resolve({ checkout: 'success' }),
           })
         },
       },
       {
         id: 'facturation, paiement échoué',
-        file: '(app)/billing/page.tsx',
+        file: '(app)/app/settings/billing/page.tsx',
         viewer: SIGNED_IN,
         refuses: billingMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         technicalProps: ['labelKey', 'offerId', 'state', 'checkoutOutcome'],
         render: async () => {
           billingState.value = FIXTURE_BILLING_PAST_DUE
 
-          return (await import('../apps/web/app/(app)/billing/page')).default({
+          return (await import('../apps/web/app/(app)/app/settings/billing/page')).default({
             searchParams: Promise.resolve({ checkout: 'cancelled' }),
           })
         },
       },
       {
         id: 'facturation, abonnement résilié',
-        file: '(app)/billing/page.tsx',
+        file: '(app)/app/settings/billing/page.tsx',
         viewer: SIGNED_IN,
         refuses: billingMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         technicalProps: ['labelKey', 'offerId', 'state', 'checkoutOutcome'],
         render: async () => {
           billingState.value = FIXTURE_BILLING_ENDING
 
-          return (await import('../apps/web/app/(app)/billing/page')).default({
+          return (await import('../apps/web/app/(app)/app/settings/billing/page')).default({
             searchParams: noParams,
           })
         },
@@ -1430,14 +1448,14 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // « déjà acheté » — quatre textes qu'aucun des trois autres ne rend —
         // et il est le seul où le bouton du portail doit être absent.
         id: 'facturation, achat unique',
-        file: '(app)/billing/page.tsx',
+        file: '(app)/app/settings/billing/page.tsx',
         viewer: SIGNED_IN,
         refuses: billingMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         technicalProps: ['labelKey', 'offerId', 'state', 'checkoutOutcome'],
         render: async () => {
           billingState.value = FIXTURE_BILLING_PURCHASED
 
-          return (await import('../apps/web/app/(app)/billing/page')).default({
+          return (await import('../apps/web/app/(app)/app/settings/billing/page')).default({
             searchParams: noParams,
           })
         },
@@ -1787,7 +1805,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // de l'état du module, jamais concédé : le fichier passe donc dans les
         // deux configurations, et une redirection inattendue rougirait.
         id: 'organisations',
-        file: '(app)/organizations/page.tsx',
+        file: '(app)/app/settings/organization/page.tsx',
         viewer: SIGNED_IN,
       refuses: organizationsMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         // Les trois URL des routes du module, remises à son écran. Ce sont des
@@ -1824,7 +1842,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           'delete',
         ],
         render: async () =>
-          (await import('../apps/web/app/(app)/organizations/page')).default({
+          (await import('../apps/web/app/(app)/app/settings/organization/page')).default({
             searchParams: Promise.resolve({ error: 'slug_unavailable' }),
           }),
       },
@@ -1901,7 +1919,9 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         refuses: null,
         render: async () =>
           (await import('../apps/web/app/(auth)/two-factor/page')).default({
-            searchParams: Promise.resolve({ next: '/account' }),
+            searchParams: Promise.resolve({
+              next: (await import('@repo/module-auth')).ACCOUNT_SCREEN_PATH,
+            }),
           }),
       },
       {
@@ -1911,7 +1931,9 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         refuses: null,
         render: async () =>
           (await import('../apps/web/app/(auth)/oauth/return/page')).default({
-            searchParams: Promise.resolve({ next: '/account' }),
+            searchParams: Promise.resolve({
+              next: (await import('@repo/module-auth')).ACCOUNT_SCREEN_PATH,
+            }),
           }),
       },
       {

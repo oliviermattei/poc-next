@@ -1,5 +1,5 @@
 import { authRoutePath } from '@repo/module-auth'
-import type { GuestAccounts } from '@repo/module-billing'
+import { BILLING_SCREEN_PATH, type GuestAccounts } from '@repo/module-billing'
 
 /**
  * **Le compte d'un paiement invité** (s24, ADR 047) — la règle qui décide,
@@ -151,7 +151,7 @@ export function guestAccountsOf(
       await service.handle(
         jsonRequest(url('magicLink'), {
           email,
-          callbackURL: options.callbackPath ?? '/billing',
+          callbackURL: options.callbackPath ?? BILLING_SCREEN_PATH,
         }),
       )
     },

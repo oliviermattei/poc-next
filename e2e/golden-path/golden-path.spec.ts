@@ -16,7 +16,13 @@ import {
   signIn,
   signUp,
 } from '../support/account'
-import { onboardingCourseMounted, publicPath, signedInLanding, urlOf } from '../support/locale'
+import {
+  onboardingCourseMounted,
+  publicPath,
+  settingsPath,
+  signedInLanding,
+  urlOf,
+} from '../support/locale'
 import { humanDuration, measuredStep, totalOf, type StepMeasurement } from '../support/steps'
 
 /**
@@ -274,7 +280,7 @@ test('un clone mène à un premier paiement, et le paiement ouvre la fonctionnal
   }
 
   await step('création de l’organisation', async () => {
-    await reachFromCourse(page, 'Créer une organisation', '/organizations')
+    await reachFromCourse(page, 'Créer une organisation', settingsPath('organization'))
 
     const form = page.getByRole('form', { name: 'Créer une organisation' })
 
@@ -299,13 +305,13 @@ test('un clone mène à un premier paiement, et le paiement ouvre la fonctionnal
     // dérivation**, sans que personne ne l'ait franchie, et c'est l'offre qui
     // est proposée. Rien ici ne le suppose — le libellé cliqué est celui de
     // l'étape en cours, et le parcours rougirait s'il en restait une autre.
-    await reachFromCourse(page, 'Voir les offres', '/billing')
+    await reachFromCourse(page, 'Voir les offres', settingsPath('billing'))
 
     const subscribe = page.getByRole('button', { name: 'Souscrire' }).first()
 
     await expect(subscribe).toBeEnabled()
     await subscribe.click()
-    await expect(page).toHaveURL(urlOf('/billing', '?checkout=success'))
+    await expect(page).toHaveURL(urlOf(settingsPath('billing'), '?checkout=success'))
     // **L'état vient de la base**, écrite par le webhook que la route de
     // simulation a fait passer par la vraie route du module. Un
     // `?checkout=success` n'accorde rien par lui-même.
@@ -357,13 +363,13 @@ test('un achat unique ouvre la même fonctionnalité qu’un abonnement', async 
   })
 
   await step('achat unique', async () => {
-    await page.goto('/billing')
+    await page.goto(settingsPath('billing'))
 
     const buy = page.getByRole('button', { name: 'Acheter' })
 
     await expect(buy).toBeEnabled()
     await buy.click()
-    await expect(page).toHaveURL(urlOf('/billing', '?checkout=success'))
+    await expect(page).toHaveURL(urlOf(settingsPath('billing'), '?checkout=success'))
     await expect(page.getByText('Payé')).toBeVisible()
   })
 

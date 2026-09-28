@@ -3,7 +3,7 @@ import { ConsentBanner, ConsentScripts } from '@repo/module-consent/presentation
 import { Badge, LocaleSwitcher, Sidebar, SidebarBrand, ThemeToggle, cn } from '@repo/ui'
 import type { ReactNode } from 'react'
 
-import { authRoutePath, currentViewer } from '../../lib/auth'
+import { ACCOUNT_SCREEN_PATH, authRoutePath, currentViewer } from '../../lib/auth'
 import { consoleNavigation } from '../../lib/back-office'
 import { currentConsent } from '../../lib/consent'
 import { appIntl } from '../../lib/i18n'
@@ -101,7 +101,7 @@ export async function ConsoleShell({
                 <AccountMenu
                   email={account.email}
                   name={account.name}
-                  accountHref={path('/account')}
+                  accountHref={path(ACCOUNT_SCREEN_PATH)}
                   signOutAction={authRoutePath('signOut')}
                   avatarUrl={avatar === null ? null : fileUrl(avatar.fileId, avatar.version)}
                 />

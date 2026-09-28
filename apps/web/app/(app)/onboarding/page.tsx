@@ -8,11 +8,13 @@ import { Button } from '@repo/ui'
 import { notFound, redirect } from 'next/navigation'
 
 import { authRoutePath, currentViewer, DEFAULT_SIGNED_IN_PATH } from '../../../lib/auth'
+import { BILLING_SCREEN_PATH } from '../../../lib/billing'
 import { appIntl } from '../../../lib/i18n'
 import { onboarding, onboardingRoutePath, ONBOARDING_STEPS } from '../../../lib/onboarding'
+import { ORGANIZATIONS_SCREEN_PATH } from '../../../lib/organizations'
 import { AVATAR_CONTENT_TYPES, fileUrl, storage, storageRoutePath } from '../../../lib/storage'
-import { AccountForm } from '../account/account-form'
-import { AvatarForm } from '../account/avatar-form'
+import { AccountForm } from '../app/settings/account/account-form'
+import { AvatarForm } from '../app/settings/account/avatar-form'
 
 /**
  * L'écran du parcours d'intégration (s40).
@@ -119,7 +121,9 @@ export default async function OnboardingPage() {
         <Button asChild variant="secondary">
           <a
             href={path(
-              current.id === ONBOARDING_STEPS.organization ? '/organizations' : '/billing',
+              current.id === ONBOARDING_STEPS.organization
+                ? ORGANIZATIONS_SCREEN_PATH
+                : BILLING_SCREEN_PATH,
             )}
           >
             {t(stepActionKey(current.id))}

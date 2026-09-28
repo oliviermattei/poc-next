@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
 import { organizations } from '../apps/web/lib/organizations'
-import { publicPath } from './support/locale'
+import { publicPath, settingsPath } from './support/locale'
 
 /**
  * **Une 404, un gabarit** (s66, ADR 072 ; gabarits propres depuis s61).
@@ -98,5 +98,5 @@ test('une 404 levée par une page de (app) rend un seul shell', async ({ page })
       'sur un module ou une fonctionnalité absente. Témoin atteignable en socle.',
   )
 
-  await expectOneShell(page, '/organizations', 1)
+  await expectOneShell(page, settingsPath('organization'), 1)
 })

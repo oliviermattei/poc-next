@@ -3264,17 +3264,21 @@ describe('l’entrée du back-office se dérive du registre', () => {
     // qui l'en tient à l'écart, et depuis s56 elle est seule à le faire : les
     // rôles de plateforme sont peuplés, donc une protection `role` serait
     // satisfaite par un superadmin — la session ci-dessous n'en porte aucun.
-    const sidebar = visibleNavigation(
-      buildRegistry({
-        available: [authModule, adminModule, organizationsModule],
-        enabled: ['auth', 'admin', 'organizations'],
-        locales: [...appLocales],
-      }),
-      { userId: 'usr_1', roles: [] },
-    ).map((entry) => `${entry.moduleId}:${entry.id}`)
+    const registry = buildRegistry({
+      available: [authModule, adminModule, organizationsModule],
+      enabled: ['auth', 'admin', 'organizations'],
+      locales: [...appLocales],
+    })
+    const session = { userId: 'usr_1', roles: [] }
+    // La barre latérale **et** la sous-navigation des réglages (s62a) : les
+    // deux surfaces qu'un compte connecté voit dans l'application.
+    const product = (['app', 'settings'] as const).flatMap((surface) =>
+      visibleNavigation(registry, session, surface).map((entry) => `${entry.moduleId}:${entry.id}`),
+    )
 
-    expect(sidebar.some((id) => id.startsWith(`${adminModule.id}:`))).toBe(false)
-    expect(sidebar).toContain(`${organizationsModule.id}:organizations`)
+    expect(product.some((id) => id.startsWith(`${adminModule.id}:`))).toBe(false)
+    // L'anti-vacuité : ces surfaces portent bien des entrées pour cette session.
+    expect(product).toContain(`${organizationsModule.id}:organizations`)
   })
 
   it('ne dépend d’aucun module de contenu, ni dans le module ni dans son point de composition', () => {

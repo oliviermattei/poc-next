@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>s62a — Zone Réglages (maquette de référence)</title>
+<!-- RÉFÉRENCE, PAS DU CODE. Jetons recopiés de docs/design-system.md. -->
+<style>
+  :root { --background: oklch(1 0 0); --foreground: oklch(0.145 0 0); --card: oklch(1 0 0);
+    --muted-foreground: oklch(0.54 0 0); --accent: oklch(0.97 0 0); --border: oklch(0.922 0 0); --radius: 0.5rem; }
+  .dark { --background: oklch(0.145 0 0); --foreground: oklch(0.985 0 0); --card: oklch(0.205 0 0);
+    --muted-foreground: oklch(0.708 0 0); --accent: oklch(0.269 0 0); --border: oklch(1 0 0 / 10%); }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 400 0.875rem/1.5 system-ui, sans-serif; background: var(--background); color: var(--foreground); }
+  .note { max-width: 72rem; margin: 1.5rem auto .5rem; padding: 0 1rem; font-size: .75rem; color: var(--muted-foreground); }
+  .note h2 { font-size: 1.25rem; font-weight: 600; color: var(--foreground); margin: 1rem 0 .25rem; }
+  .frame { max-width: 72rem; margin: 0 auto 1.5rem; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; display: flex; min-height: 26rem; }
+  .side { width: 15rem; background: var(--card); border-right: 1px solid var(--border); padding: 1rem; }
+  a.item { display: block; height: 2.5rem; line-height: 2.5rem; padding: 0 .75rem; border-radius: calc(var(--radius) - 2px); color: var(--muted-foreground); text-decoration: none; }
+  a.item.cur { background: var(--accent); color: var(--foreground); font-weight: 500; }
+  .main { flex: 1; }
+  .top { height: 3.5rem; border-bottom: 1px solid var(--border); }
+  .content { padding: 1.5rem; }
+  h1 { font-size: 1.875rem; font-weight: 600; margin: 0 0 1.5rem; }
+  .grid { display: grid; grid-template-columns: 12rem 1fr; gap: 1.5rem; }
+  .card { border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1rem; background: var(--card); }
+  .mobile { max-width: 24rem; display: block; min-height: 0; }
+  .mobile .grid { grid-template-columns: 1fr; }
+  hr { border: 0; border-top: 1px solid var(--border); margin: .5rem 0 1rem; }
+</style>
+</head>
+<body>
+<button onclick="document.documentElement.classList.toggle('dark')" style="position:fixed;top:.75rem;right:.75rem">Clair / sombre</button>
+<div class="note"><strong>s62a — maquette de référence.</strong> La barre latérale du produit ne porte plus les réglages ; la zone a sa sous-navigation dérivée de la surface <code>settings</code>.
+<h2>1. /app/settings/account — bureau</h2></div>
+<div class="frame">
+  <aside class="side"><strong>killer-saas</strong><div style="height:1rem"></div><a class="item cur">[ pages du produit ]</a><a class="item">Notifications</a></aside>
+  <div class="main"><div class="top"></div><div class="content">
+    <h1>Réglages</h1>
+    <div class="grid">
+      <nav aria-label="Réglages"><a class="item cur" aria-current="page">Compte</a><a class="item">Organisation</a><a class="item">Facturation</a></nav>
+      <div><div class="card"><strong>[ Écran /account actuel, déplacé tel quel ]</strong><p style="color:var(--muted-foreground)">Avatar, nom, email, mot de passe, connexions, passkeys, 2FA, cookies, sessions, export, suppression — redécoupés en s62b.</p></div></div>
+    </div>
+  </div></div>
+</div>
+<div class="note"><h2>2. Mobile — sous-navigation au-dessus du contenu</h2></div>
+<div class="frame mobile"><div class="content">
+  <h1>Réglages</h1>
+  <nav aria-label="Réglages"><a class="item cur">Compte</a><a class="item">Organisation</a><a class="item">Facturation</a></nav><hr>
+  <div class="card">[ Écran /account déplacé ]</div>
+</div></div>
+<div class="note">« Notifications » reste dans la barre latérale du produit jusqu'à s62c (préférences) et s63 (centre sous /app).</div>
+</body>
+</html>
