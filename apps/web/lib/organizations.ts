@@ -268,22 +268,19 @@ const APPLICATION_SEGMENTS = [
   // Le rebond same-site du retour de fournisseur (s12) : un écran servi par
   // l'application, donc un identifiant qu'aucune organisation ne peut prendre.
   'oauth',
-  // Le centre de notifications (s32) : il est aussi dérivé de la navigation du
-  // registre, mais son fichier d'écran existe sur le disque **même quand le
-  // module est coupé** — et c'est du disque que `tests/organizations.test.ts`
-  // dérive. Même raison que `blog` plus haut.
+  // L'ancien centre de notifications (s32) : servi sous `/app/notifications`
+  // depuis s63, son ancien chemin répond 308 par la table de
+  // `lib/legacy-paths.ts` — même statut que `account` plus haut. Il reste
+  // réservé : une organisation qui le prendrait serait masquée par le 308.
+  // `tests/organizations.test.ts` dérive ce segment de la table.
   'notifications',
-  // Le parcours d'intégration (s40) : il n'a **aucune** entrée de navigation —
-  // la racine y mène tant qu'il reste à faire, et cesse d'y mener une fois
-  // terminé —, donc rien ne le dérive du registre. Son fichier d'écran existe
-  // sur le disque quel que soit l'état du module, et c'est du disque que
-  // `tests/organizations.test.ts` dérive.
+  // L'ancien parcours d'intégration (s40) : servi sous `/app/onboarding` depuis
+  // s63, redirigé par la table comme `notifications` juste au-dessus.
   'onboarding',
   'organizations',
-  // L'écran d'une fonctionnalité réservée à une offre payante (s21) : un écran
-  // servi par l'application, donc un identifiant qu'aucune organisation ne peut
-  // prendre. Il existe sur le disque quel que soit l'état du module de
-  // facturation, et c'est du disque que `tests/organizations.test.ts` dérive.
+  // L'ancien écran de la fonctionnalité réservée (s21) : servi sous
+  // `/app/premium` depuis s63, redirigé par la table comme `notifications`
+  // plus haut.
   'premium',
   // La page publique de tarifs (s22) : elle est aussi dérivée de la navigation
   // du registre, mais son fichier d'écran existe sur le disque **même quand le

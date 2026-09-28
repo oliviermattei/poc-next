@@ -31,7 +31,7 @@ import { storage } from './storage'
  *
  * | | module activé | module coupé |
  * |---|---|---|
- * | `/onboarding` | l'écran | **404** |
+ * | `/app/onboarding` (ancien `/onboarding` : 308, s63) | l'écran | **404** (ancien chemin compris) |
  * | routes d'API | deux | **404** |
  * | `pending(userId)` | vrai tant qu'il reste une étape | **toujours faux**, sans requête |
  * | table `onboarding_progress` | créée | absente d'une base vierge |

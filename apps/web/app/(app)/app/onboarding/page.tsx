@@ -7,14 +7,14 @@ import { OnboardingScreen } from '@repo/module-onboarding/presentation'
 import { Button } from '@repo/ui'
 import { notFound, redirect } from 'next/navigation'
 
-import { authRoutePath, currentViewer, DEFAULT_SIGNED_IN_PATH } from '../../../lib/auth'
-import { BILLING_SCREEN_PATH } from '../../../lib/billing'
-import { appIntl } from '../../../lib/i18n'
-import { onboarding, onboardingRoutePath, ONBOARDING_STEPS } from '../../../lib/onboarding'
-import { ORGANIZATIONS_SCREEN_PATH } from '../../../lib/organizations'
-import { AVATAR_CONTENT_TYPES, fileUrl, storage, storageRoutePath } from '../../../lib/storage'
-import { AccountForm } from '../app/settings/profile/account-form'
-import { AvatarForm } from '../app/settings/profile/avatar-form'
+import { authRoutePath, currentViewer, DEFAULT_SIGNED_IN_PATH } from '../../../../lib/auth'
+import { BILLING_SCREEN_PATH } from '../../../../lib/billing'
+import { appIntl } from '../../../../lib/i18n'
+import { onboarding, onboardingRoutePath, ONBOARDING_STEPS } from '../../../../lib/onboarding'
+import { ORGANIZATIONS_SCREEN_PATH } from '../../../../lib/organizations'
+import { AVATAR_CONTENT_TYPES, fileUrl, storage, storageRoutePath } from '../../../../lib/storage'
+import { AccountForm } from '../settings/profile/account-form'
+import { AvatarForm } from '../settings/profile/avatar-form'
 
 /**
  * L'écran du parcours d'intégration (s40).

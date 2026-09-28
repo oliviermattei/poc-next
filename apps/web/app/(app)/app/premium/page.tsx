@@ -4,11 +4,11 @@ import { SparklesIcon } from 'lucide-react'
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 
-import { currentViewer } from '../../../lib/auth'
-import { BILLING_SCREEN_PATH } from '../../../lib/billing'
-import { entitlements } from '../../../lib/entitlements'
-import { featureGates } from '../../../lib/feature-gates'
-import { appIntl } from '../../../lib/i18n'
+import { currentViewer } from '../../../../lib/auth'
+import { BILLING_SCREEN_PATH } from '../../../../lib/billing'
+import { entitlements } from '../../../../lib/entitlements'
+import { featureGates } from '../../../../lib/feature-gates'
+import { appIntl } from '../../../../lib/i18n'
 
 /**
  * L'écran d'une fonctionnalité **réservée à une offre payante** (s21).

@@ -262,7 +262,7 @@ Next ne met pas dans l'URL, et chacun rend **son** gabarit (s61) :
 |---|---|---|
 | `app/(site)/` | le site public (accueil, contenus, tarifs, pages légales) | le **gabarit Site** (`SiteTemplate`, `app/(site)/site-header.tsx`) : l'en-tête du site — marque, entrées de la surface `site`, langue, thème, bouton de gabarit —, **sans** barre latérale ni pied de page |
 | `app/(auth)/` | l'authentification, avant qu'une session existe | le **gabarit Hors zone** : une barre minimale (marque, langue, thème), l'écran centré ; ni navigation, ni bouton |
-| `app/(app)/` | le produit, derrière une session — dont `/app`, le tableau de bord, et `/app/settings/*`, la zone Réglages (s62a) | le **gabarit Application**, l'`AppShell` : barre latérale de la surface `app`, barre du haut, menu de compte (« Réglages », qui mène à la rubrique Profil, `ACCOUNT_SCREEN_PATH`, et « Se déconnecter », seul point de déconnexion depuis s62b) ; sa marque mène à `/app` |
+| `app/(app)/` | le produit, derrière une session — **tout entier sous `/app`** (s63) : le tableau de bord `/app`, la zone Réglages `/app/settings/*` (s62a), le centre de notifications `/app/notifications`, le parcours d'intégration `/app/onboarding` et la fonctionnalité réservée `/app/premium` ; `tests/zones.test.ts` refuse une page de `(app)` hors de `app/` | le **gabarit Application**, l'`AppShell` : barre latérale de la surface `app`, barre du haut, menu de compte (« Réglages », qui mène à la rubrique Profil, `ACCOUNT_SCREEN_PATH`, et « Se déconnecter », seul point de déconnexion depuis s62b) ; sa marque mène à `/app` |
 | `app/(console)/` | la console du superadmin (`/console`, ADR 070) | `console-shell.tsx`, **après** sa garde |
 
 **Ce que les trois premiers ont en commun vit dans un seul composant**,
@@ -352,14 +352,17 @@ la redirection de langue : `/account?x=1` part en un seul saut vers
 `/fr/app/settings/profile?x=1` — comme `/app/settings/account`, l'écran Compte de
 s62a rangé en rubriques par s62b —, `/fr/organizations` vers
 `/fr/app/settings/organization`. La cible est une constante de la table, jamais
-une valeur de la requête (`docs/security.md` §4) ; une entrée dont l'écran n'est
-pas annoncé par la navigation du registre (module coupé) ne redirige pas, et
-l'ancien chemin répond 404. **Pas de `redirects()` dans `next.config.ts`**
+une valeur de la requête (`docs/security.md` §4) ; chaque ligne nomme **le
+module qui sert son écran** (ADR 077, qui amende l'ADR 075 — le centre de
+notifications et le parcours d'intégration n'ont aucune entrée de navigation) :
+module absent du registre, l'entrée ne redirige pas, et l'ancien chemin répond
+404. Depuis s63, `/notifications`, `/onboarding` et `/premium` y figurent. **Pas de `redirects()` dans `next.config.ts`**
 (ADR 075). Déplacer un écran, c'est une ligne dans la table et son ancien
 chemin dans `tests/fixtures/legacy-screen-paths.json` : `tests/legacy-paths.test.ts`
 exige que chaque chemin de cet inventaire soit servi ou redirigé, et refuse un
 ancien chemin écrit en littéral ailleurs que dans la table — dans `apps/web` et
-les modules `auth`, `organizations`, `billing`. Les segments redirigés restent
+les modules `auth`, `organizations`, `billing`, `notifications`, `onboarding`,
+`demo-enabled`. Les segments redirigés restent
 réservés aux organisations (`APPLICATION_SEGMENTS`, `lib/organizations.ts`).
 
 L'`AppShell` résout l'appelant une seule fois (`currentViewer`) et en tire deux
@@ -1400,7 +1403,7 @@ Deux fichiers, sur le modèle du catalogue et de la permission de facturation �
 |---|---|---|
 | `featuresOf(session)` | ce que ses offres ouvrent | **toutes** les fonctionnalités déclarées |
 | route réservée | 403 sans le droit | servie |
-| `/premium` | l'invitation à souscrire, ou la fonctionnalité | la fonctionnalité |
+| `/app/premium` | l'invitation à souscrire, ou la fonctionnalité | la fonctionnalité |
 | invitation à souscrire | affichée sans le droit | **jamais** |
 
 « Tout est accordé » veut dire **toutes les fonctionnalités déclarées**, jamais
@@ -1422,7 +1425,7 @@ en 403. Le parcours navigateur porte `test.skip(!mounted)` : sans ce second cas,
 retirer la ligne ne faisait rougir **aucune** commande dans la configuration
 sans facturation (constat m1 de la revue).
 
-`app/(app)/premium/page.tsx` est l'écran de la fonctionnalité réservée. **Il invite,
+`app/(app)/app/premium/page.tsx` est l'écran de la fonctionnalité réservée. **Il invite,
 il ne masque pas** : une fonctionnalité qu'on ne voit pas ne s'achète pas, et
 masquer n'a jamais été une permission (`docs/security.md` §3). Son segment est
 **réservé** dans `lib/organizations.ts`, comme tout écran servi par
@@ -1438,7 +1441,7 @@ nombre de cas passés au rouge, sur les mutations **posées** :
 | retirer `resolveFeatures` du point de montage, `billing` **activé** | 1 | `E2E_PORT=3121 pnpm test:e2e e2e/billing.spec.ts` (9 verts) |
 | retirer `resolveFeatures` du point de montage, `billing` **coupé** | 1 | `pnpm test` (1 653 verts) |
 | l'entrée de navigation réservée pointe la route d'API au lieu de l'écran | 1 | `E2E_PORT=3121 pnpm test:e2e e2e/billing.spec.ts`, **dans les deux configurations** |
-| supprimer `app/(app)/premium/page.tsx` | 2 | `pnpm test` |
+| supprimer `app/(app)/app/premium/page.tsx` | 2 | `pnpm test` |
 
 Les deux premières lignes sont la **même** mutation, mesurée dans les deux
 configurations de modules : c'est ce qui manquait. Module de facturation activé,
@@ -1662,7 +1665,7 @@ choses au lieu d'une, et c'est ce que l'ADR 057 décide :
 
 | | module activé | module coupé |
 |---|---|---|
-| `/notifications` | l'écran | **404** |
+| `/app/notifications` (ancien `/notifications` : 308, s63) | l'écran | **404** (ancien chemin compris) |
 | entrée de navigation | présente (authentifiée) | absente |
 | badge du shell | le nombre de non-lues | **absent**, sans requête |
 | `emitNotification` | in-app + email selon les préférences | **envoi email direct pour les types qui le veulent par défaut**, rien pour les autres |

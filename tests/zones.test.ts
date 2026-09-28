@@ -2,9 +2,12 @@ import { readdirSync } from 'node:fs'
 import { sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { buildRegistry, MODULE_ROUTE_PREFIX, navigationSurfaceOf } from '@repo/core'
 import { describe, expect, it } from 'vitest'
 
 import { urlSegment, warmUpTargets } from '../e2e/support/warm-up'
+import { availableModules, requiredModules } from '../config/features'
+import { appLocales } from '../config/i18n'
 
 /**
  * **Les écrans sont rangés par zone** (s60, ADR 071).
@@ -95,5 +98,50 @@ describe('le préambule des parcours traduit les dossiers de routes', () => {
     expect(expected.filter((path) => !targets.includes(path))).toEqual([])
     // Et l'accueil reste `/`, pas une chaîne vide.
     expect(targets).toContain('/')
+  })
+})
+
+/**
+ * **L'application est servie sous `/app`** (s63).
+ *
+ * `/` est le site, `/console` le back-office ; tout écran de l'application —
+ * celui d'un compte connecté — vit sous `/app`. Deux lectures, chacune dérivée :
+ * le disque (aucune page de la zone `(app)` hors de son dossier `app/`), et le
+ * registre complet (aucune entrée protégée d'un module, hors console et hors
+ * API, ne mène ailleurs). Un écran laissé à la racine répondrait encore, et
+ * aucun parcours ne rougirait.
+ */
+describe('chaque écran applicatif vit sous /app', () => {
+  it('ne trouve aucune page de la zone Application hors de son dossier app/', () => {
+    const application = pageFiles().filter((file) => file.startsWith('(app)/'))
+
+    // L'anti-vacuité : la zone porte bien des pages.
+    expect(application.length).toBeGreaterThan(5)
+    expect(application.filter((file) => !file.startsWith('(app)/app/'))).toEqual([])
+  })
+
+  it('ne déclare, dans aucun module, d’entrée protégée hors /app, sauf console et API', () => {
+    // Le registre **complet** : chaque module de l'annuaire, activé ou non ici
+    // — un écran qu'une configuration coupe reste un écran que le module déclare.
+    const everything = buildRegistry({
+      available: availableModules,
+      enabled: availableModules.map((module) => module.id),
+      required: requiredModules,
+      locales: [...appLocales],
+    })
+    const protectedScreens = everything.navigation.filter(
+      (entry) =>
+        entry.protection.level !== 'public' &&
+        navigationSurfaceOf(entry) !== 'console' &&
+        !entry.href.startsWith(MODULE_ROUTE_PREFIX),
+    )
+
+    // L'anti-vacuité : des entrées protégées existent hors console.
+    expect(protectedScreens.length).toBeGreaterThan(0)
+    expect(
+      protectedScreens
+        .filter((entry) => entry.href !== '/app' && !entry.href.startsWith('/app/'))
+        .map((entry) => `${entry.id} → ${entry.href}`),
+    ).toEqual([])
   })
 })

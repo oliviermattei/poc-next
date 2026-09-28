@@ -2,7 +2,7 @@ import { MODULE_ROUTE_PREFIX } from '@repo/core'
 import { createDatabaseClient } from '@repo/db'
 import { billingWebhookEvent, PRICING_SCREEN_PATH } from '@repo/module-billing'
 import { DEFAULT_SIGNED_IN_PATH } from '@repo/module-auth'
-import { demoEnabledModule } from '@repo/module-demo-enabled'
+import { demoEnabledModule, DEMO_PREMIUM_SCREEN_PATH } from '@repo/module-demo-enabled'
 import { ONBOARDING_SCREEN_PATH } from '@repo/module-onboarding'
 import { expect, test, type Page } from '@playwright/test'
 
@@ -172,7 +172,7 @@ const reachFromCourse = async (page: Page, action: string, screen: string): Prom
 
 /** Le droit d'accès, des deux côtés du mur : l'écran **et** la route. */
 const expectFeatureGranted = async (page: Page): Promise<void> => {
-  await page.goto('/premium')
+  await page.goto(DEMO_PREMIUM_SCREEN_PATH)
   await expect(page.getByText('Accès ouvert')).toBeVisible()
 
   const served = await page.request.get(`${MODULE_ROUTE_PREFIX}${PREMIUM_ROUTE}`)
@@ -182,7 +182,7 @@ const expectFeatureGranted = async (page: Page): Promise<void> => {
 
 /** L'état verrouillé : ce que voit un compte qui n'a rien payé. */
 const expectFeatureLocked = async (page: Page): Promise<void> => {
-  await page.goto('/premium')
+  await page.goto(DEMO_PREMIUM_SCREEN_PATH)
   await expect(page.getByText('Réservé aux offres payantes')).toBeVisible()
 
   const refused = await page.request.get(`${MODULE_ROUTE_PREFIX}${PREMIUM_ROUTE}`)

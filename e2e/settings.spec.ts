@@ -62,7 +62,7 @@ test.describe('les anciens chemins', () => {
     request,
   }) => {
     const legacy = Object.keys(LEGACY_SCREEN_PATHS).find(
-      (path) => LEGACY_SCREEN_PATHS[path] === settingsPath('organization'),
+      (path) => LEGACY_SCREEN_PATHS[path]?.target === settingsPath('organization'),
     )
 
     expect(legacy).toBeDefined()

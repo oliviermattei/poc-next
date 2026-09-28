@@ -17,7 +17,7 @@ import type { DemoItemUseCases } from '../application/demo-items'
  * **La fonctionnalité que ce module réserve à une offre payante** (s21).
  *
  * Écrite une seule fois, et exportée : la route la déclare,
- * `config/gating.ts` dit quelles offres l'ouvrent, et l'écran `/premium` de
+ * `config/gating.ts` dit quelles offres l'ouvrent, et l'écran `/app/premium` de
  * l'application la nomme. Trois littéraux identiques divergeraient, et le
  * premier à diverger fermerait la porte à tout le monde — c'est justement ce
  * que `assertGatesCoverRoutes` refuse au démarrage.
@@ -34,7 +34,7 @@ export const DEMO_PREMIUM_FEATURE = 'premium-report'
  * souscrire**, et une invitation ne s'écrit pas dans un corps JSON. La route
  * d'API, elle, reste du JSON — c'est ce qu'une route d'API sert.
  */
-export const DEMO_PREMIUM_SCREEN_PATH = '/premium'
+export const DEMO_PREMIUM_SCREEN_PATH = '/app/premium'
 
 /**
  * **Le rôle de plateforme que ce module démontre** (s56).
