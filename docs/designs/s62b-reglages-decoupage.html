@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>s62b — Rubriques des réglages (maquette de référence)</title>
+<!-- RÉFÉRENCE, PAS DU CODE. Jetons recopiés de docs/design-system.md. -->
+<style>
+  :root { --background: oklch(1 0 0); --foreground: oklch(0.145 0 0); --card: oklch(1 0 0);
+    --muted-foreground: oklch(0.54 0 0); --accent: oklch(0.97 0 0); --border: oklch(0.922 0 0);
+    --destructive: oklch(0.577 0.245 27.325); --radius: 0.5rem; }
+  .dark { --background: oklch(0.145 0 0); --foreground: oklch(0.985 0 0); --card: oklch(0.205 0 0);
+    --muted-foreground: oklch(0.708 0 0); --accent: oklch(0.269 0 0); --border: oklch(1 0 0 / 10%);
+    --destructive: oklch(0.704 0.191 22.216); }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 400 .875rem/1.5 system-ui, sans-serif; background: var(--background); color: var(--foreground); }
+  .wrap { max-width: 64rem; margin: 1.5rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.875rem; font-weight: 600; margin: 0 0 1.5rem; }
+  h2 { font-size: 1.5rem; font-weight: 600; margin: 0 0 .25rem; }
+  .muted { color: var(--muted-foreground); }
+  .grid { display: grid; grid-template-columns: 12rem 1fr; gap: 1.5rem; }
+  a.item { display: block; height: 2.5rem; line-height: 2.5rem; padding: 0 .75rem; border-radius: calc(var(--radius) - 2px); color: var(--muted-foreground); text-decoration: none; }
+  a.item.cur { background: var(--accent); color: var(--foreground); font-weight: 500; }
+  .card { border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; margin: 1rem 0; background: var(--card); }
+  .danger { border-color: color-mix(in oklch, var(--destructive) 50%, transparent); }
+  hr { border: 0; border-top: 1px solid var(--border); margin: 1.5rem 0 .5rem; }
+  .note { font-size: .75rem; color: var(--muted-foreground); }
+</style>
+</head>
+<body>
+<button onclick="document.documentElement.classList.toggle('dark')" style="position:fixed;top:.75rem;right:.75rem">Clair / sombre</button>
+<div class="wrap">
+  <p class="note"><strong>s62b — maquette de référence.</strong> Un seul <code>h1</code> (« Réglages ») ; chaque rubrique ouvre par un <code>h2</code>. Cartes existantes réparties, aucune nouvelle.</p>
+  <h1>Réglages</h1>
+  <div class="grid">
+    <nav aria-label="Rubriques des réglages">
+      <a class="item cur" aria-current="page">Profil</a><a class="item">Sécurité</a><a class="item">Organisation</a><a class="item">Membres</a><a class="item">Facturation</a><a class="item">Cookies</a>
+    </nav>
+    <div>
+      <h2>Profil</h2><p class="muted">Ce que les autres voient de vous.</p>
+      <div class="card"><strong>Avatar</strong> <span class="muted">(carte existante)</span></div>
+      <div class="card"><strong>Nom</strong> <span class="muted">(carte existante)</span></div>
+      <div class="card"><strong>Adresse email</strong> <span class="muted">(carte existante)</span></div>
+      <hr><p class="muted" style="margin:0 0 .5rem">Vos données</p>
+      <div class="card"><strong>Exporter mes données</strong> <span class="muted">(carte existante)</span></div>
+      <div class="card danger"><strong>Supprimer mon compte</strong> <span class="muted">(carte existante, bordure destructive)</span></div>
+    </div>
+  </div>
+  <p class="note" style="margin-top:2rem">Sécurité : mot de passe, connexions, passkeys, 2FA, sessions. Organisation : courante + sélecteur, renommage, création, suppression. Membres : membres + invitations. Cookies : réglages de consentement.</p>
+</div>
+</body>
+</html>

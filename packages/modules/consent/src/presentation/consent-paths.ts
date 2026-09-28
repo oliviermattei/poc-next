@@ -14,5 +14,12 @@
  */
 export const CONSENT_SCREEN_PATH = '/cookies'
 
+/**
+ * **La rubrique Cookies** des réglages (s62b) : la carte qui mène à l'écran de
+ * préférences, pour un compte connecté. L'écran public `/cookies` reste celui
+ * du site ; cette rubrique n'en est pas une copie, elle y mène.
+ */
+export const CONSENT_SETTINGS_SCREEN_PATH = '/app/settings/cookies'
+
 /** Le segment de premier niveau que cet écran réserve. */
 export const CONSENT_SCREEN_SEGMENT = 'cookies'

@@ -176,8 +176,8 @@ avec le site public**, c'est-à-dire exactement la non-conformité que s36 exist
 pour empêcher.
 
 Ce module ne sait donc pas ce qu'est le consentement : il affiche un lien qu'on
-lui donne. Le point d'accès qui ne dépend de rien vit ailleurs, dans les
-paramètres de compte de l'application.
+lui donne. Le point d'accès qui ne dépend de rien vit ailleurs, dans la
+rubrique Cookies des réglages de l'application (s62b).
 
 ## Ce qui n'est pas livré, et pourquoi
 

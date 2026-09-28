@@ -11,7 +11,6 @@ import {
   Input,
   Label,
   OrgSwitcher,
-  PageHeader,
   Separator,
 } from '@repo/ui'
 import { Building2Icon, MailPlusIcon } from 'lucide-react'
@@ -33,14 +32,19 @@ import { grantsOwnership, ORGANIZATION_ACTION } from '../domain/permissions'
 import type { OrganizationsIntl } from './organizations-intl'
 
 /**
- * L'écran des organisations — **composé, jamais inventé**.
+ * Les écrans des organisations — **composés, jamais inventés** — : la
+ * rubrique Organisation et la rubrique Membres des réglages (s62b, issues de
+ * l'écran unique de s15). Les cartes sont les mêmes, **réparties** : aucune
+ * n'est réécrite. Chaque écran ouvre par un `h2` — le seul `h1` est le titre
+ * de la zone Réglages, rendu par son cadre.
  *
- * Tout vient de `@repo/ui` (`docs/design-system.md`) : `PageHeader`, `Card`,
+ * Tout vient de `@repo/ui` (`docs/design-system.md`) : `Card`,
  * `OrgSwitcher`, `EmptyState`, `Input`, `Label`, `Button`, `Alert`, `Badge`.
  * Aucune primitive maison, aucune couleur Tailwind brute, aucun texte en dur.
  *
  * **Aucun composant client, et c'est le point.** Les deux formulaires postent
- * nativement vers les routes du module, qui répondent 303 vers cet écran. Il
+ * nativement vers les routes du module, qui répondent 303 vers la rubrique de
+ * l'action (`organization-routes.ts`). Il
  * n'y a donc pas de fenêtre entre le premier octet et l'hydratation pendant
  * laquelle une soumission serait perdue — la soumission native *est* le chemin.
  * Le `method="post"` reste écrit en toutes lettres : `pnpm lint` le refuse
@@ -48,23 +52,10 @@ import type { OrganizationsIntl } from './organizations-intl'
  * (`docs/security.md` §5).
  */
 
-export interface OrganizationsScreenProps {
+/** Ce que les deux écrans partagent. */
+interface ScreenBase {
   readonly view: OrganizationsView
   readonly intl: OrganizationsIntl
-  /** URL des routes du module, résolues par l'application. */
-  readonly actions: {
-    readonly create: string
-    readonly switch: string
-    readonly update: string
-    readonly invite: string
-    readonly resendInvitation: string
-    readonly revokeInvitation: string
-    readonly removeMember: string
-    readonly setMemberRole: string
-    readonly delete: string
-  }
-  /** Le compte de l'appelant : c'est lui qui « quitte » au lieu de « retirer ». */
-  readonly viewerId: string
   /**
    * La **clé de catalogue** du refus rapporté par la redirection, ou `null`.
    *
@@ -73,6 +64,43 @@ export interface OrganizationsScreenProps {
    * garde-fou de `tests/rendered-text.test.ts` reconnaît une clé du catalogue.
    */
   readonly refusalKey: string | null
+}
+
+/**
+ * **La rubrique Organisation** (s62b) : l'organisation courante et son
+ * sélecteur, le renommage, la suppression, la création.
+ */
+export interface OrganizationScreenProps extends ScreenBase {
+  /** URL des routes du module, résolues par l'application. */
+  readonly actions: {
+    readonly create: string
+    readonly switch: string
+    readonly update: string
+    readonly delete: string
+  }
+}
+
+/**
+ * **La rubrique Membres** (s62b) : les membres de l'organisation courante,
+ * leurs rôles, leur retrait, et les invitations.
+ */
+export interface MembersScreenProps extends ScreenBase {
+  /** URL des routes du module, résolues par l'application. */
+  readonly actions: {
+    readonly invite: string
+    readonly resendInvitation: string
+    readonly revokeInvitation: string
+    readonly removeMember: string
+    readonly setMemberRole: string
+  }
+  /** Le compte de l'appelant : c'est lui qui « quitte » au lieu de « retirer ». */
+  readonly viewerId: string
+  /**
+   * L'adresse de la rubrique Organisation, **résolue par l'application** (la
+   * locale en fait partie) : sans organisation courante, il n'y a pas de
+   * membres à montrer, et c'est là-bas qu'on en crée ou qu'on en choisit une.
+   */
+  readonly organizationHref: string
 }
 
 /**
@@ -364,21 +392,20 @@ const SETTINGS_LABELS = {
   slugHint: K.settingsSlugHint,
 }
 
-export function OrganizationsScreen({
+export function OrganizationScreen({
   view,
   intl,
   actions,
   refusalKey,
-  viewerId,
-}: OrganizationsScreenProps) {
-  const { current, memberships, members, invitations, permissions } = view
+}: OrganizationScreenProps) {
+  const { current, memberships, permissions } = view
 
   return (
     <>
-      <PageHeader
-        title={intl.t(K.screenTitle)}
-        description={intl.t(K.screenDescription)}
-      />
+      <div className="min-w-0 space-y-1">
+        <h2 className="text-2xl font-semibold tracking-tight">{intl.t(K.screenTitle)}</h2>
+        <p className="text-sm text-muted-foreground">{intl.t(K.screenDescription)}</p>
+      </div>
 
       {refusalKey === null ? null : (
         <Alert variant="destructive" role="alert">
@@ -425,32 +452,6 @@ export function OrganizationsScreen({
         </Card>
       )}
 
-      {current === null ? null : (
-        <MembersCard
-          intl={intl}
-          members={members}
-          organizationId={current.id}
-          viewerId={viewerId}
-          removeAction={actions.removeMember}
-          setRoleAction={actions.setMemberRole}
-        />
-      )}
-
-      {/* **Les cartes disparaissent, elles ne sont pas grisées** (s17). Le
-          design system réserve « l'action reste visible mais mène à une
-          invitation à souscrire » au gating d'offre (s21) : un simple membre ne
-          peut rien acheter pour devenir administrateur. La carte des membres,
-          elle, reste — savoir avec qui l'on partage ses données n'est pas un
-          privilège. */}
-      {current === null || !permissions[ORGANIZATION_ACTION.invite] ? null : (
-        <InvitationsCard
-          intl={intl}
-          invitations={invitations}
-          organizationId={current.id}
-          actions={actions}
-        />
-      )}
-
       {current === null || !permissions[ORGANIZATION_ACTION.rename] ? null : (
         <Card>
           <CardHeader>
@@ -493,7 +494,7 @@ export function OrganizationsScreen({
 
         La saisie est **présentée ici et comparée là-bas** : `confirmsOrganization`
         vit dans le `domain` du module, avec la mutation de s34. Un formulaire
-        natif suffit — la route répond 303 vers cet écran, motif compris —, donc
+        natif suffit — la route répond 303 vers cette rubrique, motif compris —, donc
         aucun composant client, et le `method="post"` reste écrit en toutes
         lettres.
       */}
@@ -551,6 +552,107 @@ export function OrganizationsScreen({
           </form>
         </CardContent>
       </Card>
+    </>
+  )
+}
+
+/**
+ * La rubrique Membres **sans organisation courante** : rien à lister, et
+ * l'invite mène à la rubrique Organisation — pour en créer une quand le compte
+ * n'en a aucune, pour en choisir une quand il en a sans en avoir choisi
+ * (constat F7 de la revue de s15 : ne pas annoncer « aucune organisation » à un
+ * compte qui en a).
+ */
+function NoCurrentOrganization({
+  intl,
+  hasMemberships,
+  organizationHref,
+}: {
+  readonly intl: OrganizationsIntl
+  readonly hasMemberships: boolean
+  readonly organizationHref: string
+}) {
+  return hasMemberships ? (
+    <EmptyState
+      icon={<Building2Icon />}
+      title={intl.t(K.switcherNone)}
+      description={intl.t(K.currentDescription)}
+      action={
+        <Button asChild>
+          <a href={organizationHref}>{intl.t(K.switcherLabel)}</a>
+        </Button>
+      }
+    />
+  ) : (
+    <EmptyState
+      icon={<Building2Icon />}
+      title={intl.t(K.emptyTitle)}
+      description={intl.t(K.emptyDescription)}
+      action={
+        <Button asChild>
+          <a href={`${organizationHref}#create-organization`}>{intl.t(K.createSubmit)}</a>
+        </Button>
+      }
+    />
+  )
+}
+
+export function MembersScreen({
+  view,
+  intl,
+  actions,
+  refusalKey,
+  viewerId,
+  organizationHref,
+}: MembersScreenProps) {
+  const { current, memberships, members, invitations, permissions } = view
+
+  return (
+    <>
+      <div className="min-w-0 space-y-1">
+        <h2 className="text-2xl font-semibold tracking-tight">{intl.t(K.membersScreenTitle)}</h2>
+        <p className="text-sm text-muted-foreground">{intl.t(K.membersScreenDescription)}</p>
+      </div>
+
+      {refusalKey === null ? null : (
+        <Alert variant="destructive" role="alert">
+          {intl.t(refusalKey)}
+        </Alert>
+      )}
+
+      {current === null ? (
+        <NoCurrentOrganization
+          intl={intl}
+          hasMemberships={memberships.length > 0}
+          organizationHref={organizationHref}
+        />
+      ) : null}
+
+      {current === null ? null : (
+        <MembersCard
+          intl={intl}
+          members={members}
+          organizationId={current.id}
+          viewerId={viewerId}
+          removeAction={actions.removeMember}
+          setRoleAction={actions.setMemberRole}
+        />
+      )}
+
+      {/* **Les cartes disparaissent, elles ne sont pas grisées** (s17). Le
+          design system réserve « l'action reste visible mais mène à une
+          invitation à souscrire » au gating d'offre (s21) : un simple membre ne
+          peut rien acheter pour devenir administrateur. La carte des membres,
+          elle, reste — savoir avec qui l'on partage ses données n'est pas un
+          privilège. */}
+      {current === null || !permissions[ORGANIZATION_ACTION.invite] ? null : (
+        <InvitationsCard
+          intl={intl}
+          invitations={invitations}
+          organizationId={current.id}
+          actions={actions}
+        />
+      )}
     </>
   )
 }

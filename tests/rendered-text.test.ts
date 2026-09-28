@@ -51,8 +51,10 @@ vi.mock('../apps/web/lib/auth', async () => {
     ACCOUNT_SCREEN_PATH,
     authRoutePath,
     DEFAULT_SIGNED_IN_PATH,
+    PROFILE_SCREEN_PATH,
     readOAuthFailureClass,
     safeRedirectPath,
+    SECURITY_SCREEN_PATH,
   } = await import('@repo/module-auth')
   const {
     FIXTURE_DATA_EXPORTS,
@@ -66,8 +68,10 @@ vi.mock('../apps/web/lib/auth', async () => {
     ACCOUNT_SCREEN_PATH,
     authRoutePath,
     DEFAULT_SIGNED_IN_PATH,
+    PROFILE_SCREEN_PATH,
     readOAuthFailureClass,
     safeRedirectPath,
+    SECURITY_SCREEN_PATH,
     currentViewer: () => Promise.resolve(viewerState.value),
     currentSessions: () =>
       Promise.resolve(viewerState.value.session === null ? [] : FIXTURE_SESSIONS),
@@ -1353,25 +1357,13 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         render: async () => (await import('../apps/web/app/(site)/cookies/page')).default(),
       },
       {
-        id: 'compte',
-        file: '(app)/app/settings/account/page.tsx',
+        // s62b — l'ancien écran Compte, rangé en trois rubriques. Profil porte
+        // l'avatar, le nom, l'email et les données (export, suppression).
+        id: 'profil',
+        file: '(app)/app/settings/profile/page.tsx',
         viewer: SIGNED_IN,
         refuses: null,
-        // s13. Les quatre URL des routes de second facteur, remises à la carte.
-        // Déclarées **sur cet écran** et pas globalement : ailleurs, une prop
-        // nommée `enableAction` portant une chaîne fait toujours rougir, et le
-        // garde-fou de prose reste actif ici aussi — `enableAction="Activer"`
-        // rougirait.
         technicalProps: [
-          'enableAction',
-          'verifyAction',
-          'regenerateAction',
-          'disableAction',
-          // s14. Les quatre URL des routes de passkey, remises à la carte.
-          'optionsAction',
-          'registerAction',
-          'renameAction',
-          'revokeAction',
           // s18. Les trois routes du module de stockage et la liste des types
           // acceptés, remises à la carte « Photo de profil ». Déclarées **sur
           // cet écran** : ailleurs, une prop nommée `accept` portant une chaîne
@@ -1389,7 +1381,42 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           // toujours rougir.
           'status',
         ],
-        render: async () => (await import('../apps/web/app/(app)/app/settings/account/page')).default(),
+        render: async () => (await import('../apps/web/app/(app)/app/settings/profile/page')).default(),
+      },
+      {
+        // s62b — Sécurité : mot de passe, connexions, passkeys, second
+        // facteur, sessions.
+        id: 'sécurité',
+        file: '(app)/app/settings/security/page.tsx',
+        viewer: SIGNED_IN,
+        refuses: null,
+        // s13. Les quatre URL des routes de second facteur, remises à la carte.
+        // Déclarées **sur cet écran** et pas globalement : ailleurs, une prop
+        // nommée `enableAction` portant une chaîne fait toujours rougir, et le
+        // garde-fou de prose reste actif ici aussi — `enableAction="Activer"`
+        // rougirait.
+        technicalProps: [
+          'enableAction',
+          'verifyAction',
+          'regenerateAction',
+          'disableAction',
+          // s14. Les quatre URL des routes de passkey, remises à la carte.
+          'optionsAction',
+          'registerAction',
+          'renameAction',
+          'revokeAction',
+        ],
+        render: async () => (await import('../apps/web/app/(app)/app/settings/security/page')).default(),
+      },
+      {
+        // s62b — la rubrique Cookies : la carte de consentement de l'ancien
+        // écran Compte. Elle refuse quand le module n'est pas monté, et le
+        // refus attendu est **dérivé** de l'état du module.
+        id: 'réglages — cookies',
+        file: '(app)/app/settings/cookies/page.tsx',
+        viewer: SIGNED_IN,
+        refuses: consentMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        render: async () => (await import('../apps/web/app/(app)/app/settings/cookies/page')).default(),
       },
       {
         // s19. Trois rendus du même fichier : les états que l'écran distingue
@@ -1804,11 +1831,11 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // légale dont le slug n'est pas déclaré. Le refus attendu est **dérivé**
         // de l'état du module, jamais concédé : le fichier passe donc dans les
         // deux configurations, et une redirection inattendue rougirait.
-        id: 'organisations',
+        id: 'organisation',
         file: '(app)/app/settings/organization/page.tsx',
         viewer: SIGNED_IN,
-      refuses: organizationsMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
-        // Les trois URL des routes du module, remises à son écran. Ce sont des
+        refuses: organizationsMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        // Les URL des routes du module, remises à son écran. Ce sont des
         // chemins montés, jamais du texte — et le garde-fou de prose reste
         // actif ici aussi : `create="Créer une organisation"` rougirait.
         // Déclarées **sur cet écran** : ailleurs, une prop nommée `create`
@@ -1817,8 +1844,28 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           'create',
           'switch',
           'update',
-          // s16 — les quatre URL de plus, déclarées **sur cet écran** : ailleurs,
-          // une prop nommée `invite` portant une chaîne fait toujours rougir.
+          // s34b — la route de suppression de l'organisation, remise à sa zone
+          // dangereuse. Un chemin monté, jamais du texte : le garde-fou de
+          // prose reste actif, `delete="Supprimer"` rougirait. Déclarée **sur
+          // cet écran**.
+          'delete',
+        ],
+        render: async () =>
+          (await import('../apps/web/app/(app)/app/settings/organization/page')).default({
+            searchParams: Promise.resolve({ error: 'slug_unavailable' }),
+          }),
+      },
+      {
+        // s62b — la rubrique Membres, issue de l'écran des organisations. Elle
+        // refuse quand le module n'est pas monté, comme sa voisine.
+        id: 'membres',
+        file: '(app)/app/settings/members/page.tsx',
+        viewer: SIGNED_IN,
+        refuses: organizationsMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        technicalProps: [
+          // s16 — les URL des routes d'invitation et de retrait, déclarées
+          // **sur cet écran** : ailleurs, une prop nommée `invite` portant une
+          // chaîne fait toujours rougir.
           'invite',
           'resendInvitation',
           'revokeInvitation',
@@ -1835,15 +1882,13 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           'setMemberRole',
           'setRoleAction',
           'fields',
-          // s34b — la route de suppression de l'organisation, remise à sa zone
-          // dangereuse. Un chemin monté, jamais du texte : le garde-fou de
-          // prose reste actif, `delete="Supprimer"` rougirait. Déclarée **sur
-          // cet écran**.
-          'delete',
+          // s62b — l'adresse de la rubrique Organisation, remise à l'écran pour
+          // l'état sans organisation courante. Un chemin, jamais du texte.
+          'organizationHref',
         ],
         render: async () =>
-          (await import('../apps/web/app/(app)/app/settings/organization/page')).default({
-            searchParams: Promise.resolve({ error: 'slug_unavailable' }),
+          (await import('../apps/web/app/(app)/app/settings/members/page')).default({
+            searchParams: Promise.resolve({ error: 'already_invited' }),
           }),
       },
       {
@@ -2276,5 +2321,150 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
     expect(rendered).toBe(screens.filter((screen) => screen.refuses === null).length)
     expect(markers).toBeGreaterThanOrEqual(floors)
     expect(failures, failures.join(' ;; ')).toEqual([])
+  })
+})
+
+/* ------------------------------------------------------------------------- *
+ * s62b — **le redécoupage des réglages, sans perte**.
+ *
+ * L'inventaire d'avant est une fixture figée, relevée sur le code livré par
+ * s62a (`tests/fixtures/settings-cards-s62a.json`) : dérivé de l'arbre d'après,
+ * il ne prouverait rien. Chaque carte doit être retrouvée sous **une** rubrique
+ * de la surface `settings`, et ses actions **sous la même** : une carte dont le
+ * formulaire aurait perdu sa route rougit, une carte retirée d'une page aussi.
+ *
+ * Les rubriques sont **dérivées du registre** — l'entrée de navigation désigne
+ * sa page —, jamais listées ici : une rubrique ajoutée entre dans le balayage,
+ * une rubrique coupée en sort avec son module. Les pages sont rendues dans leur
+ * gabarit, comme au serveur : la déconnexion, qui a quitté l'en-tête de l'écran
+ * Compte pour le seul menu de compte, y est retrouvée.
+ * ------------------------------------------------------------------------- */
+interface SettingsCardsInventory {
+  readonly screens: Readonly<
+    Record<
+      string,
+      {
+        readonly headerActions: readonly string[]
+        readonly cards: readonly {
+          readonly title: string
+          readonly when?: 'storage' | 'consent' | 'organizations'
+          readonly actions: readonly string[]
+        }[]
+      }
+    >
+  >
+}
+
+describe('les réglages en rubriques, sans perte (s62b)', () => {
+  it('retrouve chaque carte et chaque action d’avant sous une rubrique', { timeout: 30_000 }, async () => {
+    const inventory = JSON.parse(
+      readFileSync(join(REPO_ROOT, 'tests/fixtures/settings-cards-s62a.json'), 'utf8'),
+    ) as SettingsCardsInventory
+    const { pseudoRequestConfig, isMarker } = await import('./fixtures/pseudo-locale')
+    const { SIGNED_IN, FIXTURE_BILLING_NONE, billingState, viewerState } = await import(
+      './fixtures/screen-viewer'
+    )
+    const { MODULE_ROUTE_PREFIX } = await import('@repo/core')
+    const { moduleRegistry } = await import('../apps/web/lib/module-registry')
+    const { localeRouting } = await import('../apps/web/lib/locale-routing')
+    const { storage } = await import('../apps/web/lib/storage')
+    const { consent } = await import('../apps/web/lib/consent')
+    const { organizations } = await import('../apps/web/lib/organizations')
+    const available = {
+      storage: storage.available,
+      consent: consent.available,
+      organizations: organizations.available,
+    }
+    const config = pseudoRequestConfig(defaultLocale)
+
+    // L'inventaire d'avant n'est pas vide : onze cartes à Compte, six blocs à
+    // Organisation (research de s62, fait 4). Une fixture tronquée ne prouverait
+    // plus « sans perte ».
+    expect(inventory.screens['account']?.cards.length).toBeGreaterThanOrEqual(11)
+    expect(inventory.screens['organization']?.cards.length).toBeGreaterThanOrEqual(6)
+
+    viewerState.value = SIGNED_IN
+    billingState.value = FIXTURE_BILLING_NONE
+
+    const rubrics = moduleRegistry.navigation.filter((entry) => entry.surface === 'settings')
+
+    expect(rubrics.length).toBeGreaterThan(0)
+
+    const found = new Map<string, { titles: Set<string>; targets: Set<string> }>()
+
+    for (const rubric of rubrics) {
+      const file = `(app)${rubric.href}/page.tsx`
+      const page = (await import(/* @vite-ignore */ join(SCREEN_ROOT, file))) as {
+        default: (props: unknown) => Promise<ReactNode>
+      }
+      const content = await page.default({
+        searchParams: Promise.resolve({}),
+        params: Promise.resolve({}),
+      })
+      const tree = await (await zoneTemplateOf(file))(content)
+      const html = renderToStaticMarkup(
+        createElement(NextIntlClientProvider, {
+          locale: defaultLocale,
+          messages: config.messages,
+          timeZone: 'UTC',
+          onError: config.onError,
+          getMessageFallback: config.getMessageFallback,
+          children: tree,
+        }),
+      )
+      const titles = [...html.matchAll(/<h3 data-slot="card-title"[^>]*>([^<]*)</g)]
+        .map((match) => decodeEntities(match[1] ?? ''))
+        .filter(isMarker)
+        .map((marker) => marker.slice(1, -1))
+      const targets = [
+        ...[...html.matchAll(/\s(?:action|href)="([^"#][^"]*)"/g)].map((match) =>
+          decodeEntities(match[1] ?? ''),
+        ),
+        ...propStringsOf(tree)
+          .map(({ value }) => value)
+          .filter((value) => value.startsWith(`${MODULE_ROUTE_PREFIX}/`)),
+      ]
+
+      found.set(rubric.href, { titles: new Set(titles), targets: new Set(targets) })
+    }
+
+    // Une cible d'écran est notée par son chemin interne dans la fixture.
+    const rendered = (target: string): string =>
+      target.startsWith(`${MODULE_ROUTE_PREFIX}/`)
+        ? target
+        : localeRouting.publicPath(target, defaultLocale)
+
+    const missing: string[] = []
+
+    for (const [screen, { headerActions, cards }] of Object.entries(inventory.screens)) {
+      for (const action of headerActions) {
+        if (![...found.values()].some(({ targets }) => targets.has(rendered(action)))) {
+          missing.push(`${screen} — action d’en-tête ${action}`)
+        }
+      }
+
+      for (const card of cards) {
+        if (card.when !== undefined && !available[card.when]) {
+          continue
+        }
+
+        const homes = [...found.entries()].filter(([, { titles }]) => titles.has(card.title))
+
+        if (homes.length === 0) {
+          missing.push(`${screen} — carte ${card.title} : sous aucune rubrique`)
+          continue
+        }
+
+        for (const action of card.actions) {
+          if (!homes.some(([, { targets }]) => targets.has(rendered(action)))) {
+            missing.push(
+              `${screen} — ${card.title} : action ${action} absente de ${homes.map(([href]) => href).join(', ')}`,
+            )
+          }
+        }
+      }
+    }
+
+    expect(missing, missing.join(' ;; ')).toEqual([])
   })
 })

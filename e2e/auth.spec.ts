@@ -56,9 +56,9 @@ test('inscription, vérification, connexion, écran protégé, déconnexion', as
   expect(page.url()).toMatch(urlOf(signedInLanding()))
 
   await page.goto(settingsPath('account'))
-  // `exact` depuis s34b : la zone dangereuse de l'écran porte le titre
-  // « Supprimer mon compte », qu'une correspondance partielle désigne aussi.
-  await expect(page.getByRole('heading', { name: 'Mon compte', exact: true })).toBeVisible()
+  // L'entrée des réglages est la rubrique Profil depuis s62b : son titre est
+  // un `h2`, le seul `h1` étant celui de la zone.
+  await expect(page.getByRole('heading', { name: 'Profil', level: 2, exact: true })).toBeVisible()
 
   // Le cookie de session, tel que le navigateur le stocke.
   const cookie = (await context.cookies()).find((candidate) => candidate.name.includes('session_token'))
@@ -77,8 +77,12 @@ test('inscription, vérification, connexion, écran protégé, déconnexion', as
   // Playwright n'y voit qu'un clic réussi. Mesuré : une exécution sur dix
   // partait en échec sur cette ligne, ce qui fait d'un test un bruit et non
   // une garde. Une déconnexion rejouée reste sans effet supplémentaire.
+  //
+  // La déconnexion vit dans le **menu de compte** depuis s62b : elle a quitté
+  // l'en-tête de l'écran Compte.
   await expect(async () => {
-    await page.getByRole('button', { name: 'Se déconnecter' }).click()
+    await page.getByRole('button', { name: /^Compte — / }).click()
+    await page.getByRole('menuitem', { name: 'Se déconnecter' }).click({ timeout: 2_000 })
     // Déconnecté, l'appelant est anonyme : il atteint l'accueil public, ou
     // l'écran de connexion si le site public est coupé. L'attente est dérivée.
     await expect(page).toHaveURL(urlOf(anonymousLanding()), { timeout: 2_000 })
@@ -209,26 +213,26 @@ test('mot de passe oublié : le lien reçu mène à l’écran, et le nouveau mo
   await expect(page).toHaveURL(urlOf(signedInLanding()))
 })
 
-test('la navigation montre « Mon compte » une fois connecté, jamais avant', async ({ page }) => {
+test('la navigation montre « Profil » une fois connecté, jamais avant', async ({ page }) => {
   const email = anEmail()
 
   await signUp(page, email)
   await page.goto(await linkSentTo(email))
 
-  // Depuis s62a, « Mon compte » est une rubrique des réglages, plus une entrée
-  // de la barre latérale du produit.
+  // Depuis s62a, le compte est une rubrique des réglages, plus une entrée de la
+  // barre latérale du produit — « Profil » depuis s62b (« Mon compte » avant).
   const navigation = page.getByRole('navigation', { name: 'Rubriques des réglages' })
 
   // Avant la connexion : ni le site (s61, son en-tête ne porte que la surface
-  // `site`) ni l'écran de connexion ne mènent à « Mon compte ».
+  // `site`) ni l'écran de connexion ne mènent à « Profil ».
   await page.goto('/')
-  await expect(page.getByRole('link', { name: 'Mon compte' })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Profil' })).toHaveCount(0)
 
   await page.goto('/sign-in')
-  await expect(page.getByRole('link', { name: 'Mon compte' })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Profil' })).toHaveCount(0)
   await signIn(page, email)
   await expect(page).toHaveURL(urlOf(signedInLanding()))
 
   await page.goto(settingsPath('account'))
-  await expect(navigation.getByRole('link', { name: 'Mon compte' })).toHaveCount(1)
+  await expect(navigation.getByRole('link', { name: 'Profil' })).toHaveCount(1)
 })

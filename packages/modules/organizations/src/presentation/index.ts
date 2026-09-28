@@ -11,8 +11,10 @@
  * Seule l'application importe ce point d'entrée.
  */
 export {
-  OrganizationsScreen,
-  type OrganizationsScreenProps,
+  MembersScreen,
+  type MembersScreenProps,
+  OrganizationScreen,
+  type OrganizationScreenProps,
 } from './organizations-screen'
 export { InvitationScreen, type InvitationScreenProps } from './invitation-screen'
 export type { OrganizationsIntl } from './organizations-intl'

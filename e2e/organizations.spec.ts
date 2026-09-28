@@ -53,6 +53,15 @@ const createForm = (page: Page) =>
 const settingsForm = (page: Page) =>
   page.getByRole('form', { name: text('organizations.settings.title') })
 
+/**
+ * La rubrique Membres (s62b) : l'invitation, les rôles et le retrait y vivent,
+ * et chaque action y revient — c'est ce que les `toHaveURL` qui suivent une
+ * invitation mesurent.
+ */
+const openMembers = async (page: Page): Promise<void> => {
+  await page.goto(publicPath(settingsPath('members')))
+}
+
 const submitCreation = async (page: Page, name: string, slug: string): Promise<void> => {
   const form = createForm(page)
 
@@ -210,6 +219,7 @@ test('invite quelqu’un, il accepte, puis il est retiré', async ({ page, brows
   await page.goto(publicPath(settingsPath('organization')))
   await submitCreation(page, 'Studio Invité', aSlug())
   await expect(page).toHaveURL(urlOf(settingsPath('organization')))
+  await openMembers(page)
 
   // L'invité a **déjà** un compte : c'est la moitié « utilisateur existant » du
   // critère 2. L'autre moitié — l'inscription enchaînée — est couverte par le
@@ -229,8 +239,9 @@ test('invite quelqu’un, il accepte, puis il est retiré', async ({ page, brows
     .getByRole('button', { name: text('organizations.invitations.submit') })
     .click()
 
-  // L'invitation apparaît dans la liste en attente (critère 1).
-  await expect(page).toHaveURL(urlOf(settingsPath('organization')))
+  // L'invitation apparaît dans la liste en attente (critère 1), sur la
+  // rubrique de l'action : Membres, et pas Organisation (s62b).
+  await expect(page).toHaveURL(urlOf(settingsPath('members')))
   await expect(page.getByText(guestEmail, { exact: true })).toBeVisible()
   await expect(
     page.getByText(text('organizations.invitations.status.pending')),
@@ -270,7 +281,7 @@ test('invite quelqu’un, il accepte, puis il est retiré', async ({ page, brows
 
   // Le retrait, et la perte d'accès **immédiate** pour la même session.
   await page.getByRole('button', { name: `Retirer ${guestEmail}` }).click()
-  await expect(page).toHaveURL(urlOf(settingsPath('organization')))
+  await expect(page).toHaveURL(urlOf(settingsPath('members')))
   await expect(page.getByText(guestEmail, { exact: true })).toBeHidden()
 
   await guest.goto(publicPath(settingsPath('organization')))
@@ -300,6 +311,7 @@ test('promeut un membre, puis le rétrograde : l’écran et la route suivent', 
   await page.goto(publicPath(settingsPath('organization')))
   await submitCreation(page, 'Studio Rôles', aSlug())
   await expect(page).toHaveURL(urlOf(settingsPath('organization')))
+  await openMembers(page)
 
   const memberContext = await browser.newContext({ locale: 'fr-FR' })
   const member = await memberContext.newPage()
@@ -315,29 +327,37 @@ test('promeut un membre, puis le rétrograde : l’écran et la route suivent', 
     .getByRole('form', { name: text('organizations.invitations.title') })
     .getByRole('button', { name: text('organizations.invitations.submit') })
     .click()
-  await expect(page).toHaveURL(urlOf(settingsPath('organization')))
+  await expect(page).toHaveURL(urlOf(settingsPath('members')))
 
   await member.goto(await linkSentTo(memberEmail, { since: sentAfter }))
   await member.getByRole('button', { name: text('organizations.accept.submit') }).click()
   await expect(member).toHaveURL(urlOf(settingsPath('organization')))
 
-  // **Un simple membre ne voit ni la carte d'invitation, ni les paramètres.**
-  await expect(
-    member.getByRole('form', { name: text('organizations.invitations.title') }),
-  ).toBeHidden()
+  // **Un simple membre ne voit ni la carte d'invitation, ni les paramètres** —
+  // chacune sur sa rubrique depuis s62b. Le témoin de rendu d'abord : sans
+  // lui, une rubrique pas encore affichée rendrait l'absence triviale.
+  await expect(member.getByRole('button', { name: 'Studio Rôles' })).toBeVisible()
   await expect(
     member.getByRole('form', { name: text('organizations.settings.title') }),
   ).toBeHidden()
+  await openMembers(member)
+  await expect(
+    member.getByRole('form', { name: text('organizations.invitations.title') }),
+  ).toBeHidden()
   // La carte des membres, elle, reste : savoir avec qui l'on partage ses
   // données n'est pas un privilège.
-  await expect(member.getByText(text('organizations.members.title'))).toBeVisible()
+  // Désignée par le titre de sa **carte** : « Membres » est aussi le nom de la
+  // rubrique, dans la sous-navigation et dans son titre (s62b).
+  await expect(
+    member.getByRole('heading', { level: 3, name: text('organizations.members.title') }),
+  ).toBeVisible()
 
   // Le propriétaire le promeut, par un bouton de ligne nommant sa cible.
   await page.reload()
   await page
     .getByRole('button', { name: `Nommer ${memberEmail} administrateur` })
     .click()
-  await expect(page).toHaveURL(urlOf(settingsPath('organization')))
+  await expect(page).toHaveURL(urlOf(settingsPath('members')))
 
   // **Sans reconnexion** : le même contexte, le même cookie, un simple
   // rechargement — et la carte d'invitation est là.
@@ -355,7 +375,7 @@ test('promeut un membre, puis le rétrograde : l’écran et la route suivent', 
 
   // Rétrogradé, toujours sans reconnexion.
   await page.getByRole('button', { name: `Ramener ${memberEmail} au rang de membre` }).click()
-  await expect(page).toHaveURL(urlOf(settingsPath('organization')))
+  await expect(page).toHaveURL(urlOf(settingsPath('members')))
 
   await member.reload()
   await expect(
@@ -395,6 +415,8 @@ test('à 390 px, l’adresse invitée reste lisible à côté de ses actions', a
   await aSignedInAccount(page, 's16-etroit')
   await page.goto(publicPath(settingsPath('organization')))
   await submitCreation(page, 'Studio Étroit', aSlug())
+  await expect(page).toHaveURL(urlOf(settingsPath('organization')))
+  await openMembers(page)
 
   // Deux invitations : une adresse longue, et une courte qui doit tenir en
   // entier. Deux lignes, parce que c'est le cas où les confondre coûte cher.
@@ -410,7 +432,7 @@ test('à 390 px, l’adresse invitée reste lisible à côté de ses actions', a
       .getByRole('form', { name: text('organizations.invitations.title') })
       .getByRole('button', { name: text('organizations.invitations.submit') })
       .click()
-    await expect(page).toHaveURL(urlOf(settingsPath('organization')))
+    await expect(page).toHaveURL(urlOf(settingsPath('members')))
   }
 
   const longLabel = page.getByText(long, { exact: true })
@@ -454,6 +476,8 @@ test('un lien d’invitation ouvert sans session propose de se connecter', async
   await aSignedInAccount(page, 's16-anon-founder')
   await page.goto(publicPath(settingsPath('organization')))
   await submitCreation(page, 'Studio Anonyme', aSlug())
+  await expect(page).toHaveURL(urlOf(settingsPath('organization')))
+  await openMembers(page)
 
   const invited = `s16-nouveau-${randomUUID()}@example.test`
   const sentAfter = Date.now()
@@ -466,7 +490,7 @@ test('un lien d’invitation ouvert sans session propose de se connecter', async
     .getByRole('form', { name: text('organizations.invitations.title') })
     .getByRole('button', { name: text('organizations.invitations.submit') })
     .click()
-  await expect(page).toHaveURL(urlOf(settingsPath('organization')))
+  await expect(page).toHaveURL(urlOf(settingsPath('members')))
 
   const invitationLink = await linkSentTo(invited, { since: sentAfter })
 
@@ -562,6 +586,7 @@ test('affiche le refus de plafond sur une invitation vivante', async ({ page, br
   await page.goto(publicPath(settingsPath('organization')))
   await submitCreation(page, 'Studio Plafonné', aSlug())
   await expect(page).toHaveURL(urlOf(settingsPath('organization')))
+  await openMembers(page)
 
   const guestContext = await browser.newContext({ locale: 'fr-FR' })
   const guest = await guestContext.newPage()
@@ -576,7 +601,7 @@ test('affiche le refus de plafond sur une invitation vivante', async ({ page, br
     .getByRole('form', { name: text('organizations.invitations.title') })
     .getByRole('button', { name: text('organizations.invitations.submit') })
     .click()
-  await expect(page).toHaveURL(urlOf(settingsPath('organization')))
+  await expect(page).toHaveURL(urlOf(settingsPath('members')))
 
   const invitationLink = await linkSentTo(guestEmail, { since: sentAfter })
 

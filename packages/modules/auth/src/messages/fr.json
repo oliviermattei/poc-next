@@ -1,5 +1,6 @@
 {
-  "navigation.account": "Mon compte",
+  "navigation.profile": "Profil",
+  "navigation.security": "Sécurité",
   "signIn.title": "Se connecter",
   "signUp.title": "Créer un compte",
   "error.invalidCredentials": "Identifiants invalides.",

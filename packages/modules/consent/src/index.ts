@@ -78,4 +78,8 @@ export {
 
 export { consentRoutePath } from './presentation/consent-routes'
 
-export { CONSENT_SCREEN_PATH, CONSENT_SCREEN_SEGMENT } from './presentation/consent-paths'
+export {
+  CONSENT_SCREEN_PATH,
+  CONSENT_SCREEN_SEGMENT,
+  CONSENT_SETTINGS_SCREEN_PATH,
+} from './presentation/consent-paths'

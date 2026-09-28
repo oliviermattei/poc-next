@@ -5,12 +5,16 @@ import { CONSENT_SCREEN_SEGMENT } from '@repo/module-consent'
 import {
   allows,
   EMPTY_ORGANIZATIONS_VIEW,
+  INVITATION_REFUSALS,
   ORGANIZATION_ACTION,
+  ORGANIZATION_REFUSALS,
   INVITATION_SCREEN_PATH,
+  MEMBERS_SCREEN_PATH,
   organizationRoutePath,
   organizationsModule,
   ORGANIZATIONS_SCREEN_PATH,
   provideOrganizations,
+  refusalMessageKey,
   requireOrganizationsService,
   type InvitationPreview,
   type OrganizationsService,
@@ -19,6 +23,7 @@ import {
 } from '@repo/module-organizations'
 
 import { purgeModules } from '@repo/core'
+import { z } from 'zod'
 
 import { resolveAuthConfig } from './auth-config'
 import { localeRouting } from './locale-routing'
@@ -468,5 +473,24 @@ export async function dataOwnerOf(session: ModuleSession | null): Promise<Module
   })
 }
 
+/**
+ * Le motif de refus rapporté par la redirection d'une route du module, **en clé
+ * de catalogue** — ou `null`.
+ *
+ * Zod à **chaque** frontière (`docs/security.md` §4), y compris un paramètre
+ * d'URL : un code inconnu — donc sans traduction — ferait tomber l'écran en 500
+ * puisque aucune clé absente ne se replie (s09). L'énumération vient du module,
+ * elle n'est pas recopiée. Écrite une fois depuis s62b : les deux rubriques
+ * Organisation et Membres la lisent, et une copie par écran finirait par ne
+ * plus reconnaître les mêmes motifs.
+ */
+const REFUSAL = z.enum([...ORGANIZATION_REFUSALS, ...INVITATION_REFUSALS])
+
+export const organizationRefusalKey = (value: string | string[] | undefined): string | null => {
+  const parsed = REFUSAL.safeParse(value)
+
+  return parsed.success ? refusalMessageKey(parsed.data) : null
+}
+
 /** Ce que les écrans ont le droit de connaître du module : ses chemins. */
-export { INVITATION_SCREEN_PATH, ORGANIZATIONS_SCREEN_PATH, organizationRoutePath }
+export { INVITATION_SCREEN_PATH, MEMBERS_SCREEN_PATH, ORGANIZATIONS_SCREEN_PATH, organizationRoutePath }

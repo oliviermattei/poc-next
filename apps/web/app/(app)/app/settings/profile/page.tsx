@@ -1,4 +1,3 @@
-import { ConsentSettingsCard } from '@repo/module-consent/presentation'
 import {
   Alert,
   Badge,
@@ -7,35 +6,35 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-  PageHeader,
+  Separator,
 } from '@repo/ui'
 import { redirect } from 'next/navigation'
 
 import {
-  ACCOUNT_SCREEN_PATH,
   authRoutePath,
   currentDataExportRequests,
-  currentPasskeys,
-  currentSessions,
-  currentSignInMethods,
   currentViewer,
+  PROFILE_SCREEN_PATH,
 } from '../../../../../lib/auth'
-import { consent } from '../../../../../lib/consent'
 import { appIntl } from '../../../../../lib/i18n'
 import { AVATAR_CONTENT_TYPES, fileUrl, storage, storageRoutePath } from '../../../../../lib/storage'
-import { SignOutButton } from '../../../../sign-out-button'
 import { AccountForm } from './account-form'
 import { AvatarForm } from './avatar-form'
-import { ConnectionList, type ConnectionRow } from './connection-list'
 import { DataExportCard } from './data-export-card'
 import { DeleteAccountCard } from './delete-account-card'
-import { PasskeyCard, type PasskeyRow } from './passkey-card'
 import { dataExportStateOf } from './rgpd-outcomes'
-import { SessionList, type SessionRow } from './session-list'
-import { TwoFactorBadge, TwoFactorCard } from './two-factor-card'
 
 /**
- * Les paramètres du compte.
+ * **La rubrique Profil** des réglages (s62b) : ce que les autres voient de vous
+ * — avatar, nom, email —, et en bas vos données : l'export, puis la
+ * suppression du compte. Mot de passe, connexions, passkeys, second facteur et
+ * sessions sont dans la rubrique Sécurité ; les cookies dans la leur. Les
+ * cartes sont celles de l'ancien écran Compte (s62a), **déplacées** : aucune
+ * n'est réécrite, et `tests/rendered-text.test.ts` retrouve chacune sous une
+ * rubrique.
+ *
+ * Le titre de la page est celui de la zone (« Réglages », le seul `h1`, rendu
+ * par le cadre) ; la rubrique ouvre par un `h2`.
  *
  * **Aucune règle n'est réécrite ici.** Chaque formulaire poste vers la route du
  * module livrée par s07 ou s08 : le mot de passe courant est exigé par le
@@ -63,23 +62,7 @@ const dateFormatFor = (locale: string): Intl.DateTimeFormat =>
     timeZone: 'UTC',
   })
 
-/**
- * L'appareil d'une session, lu dans son agent utilisateur.
- *
- * Volontairement grossier : la chaîne complète est illisible, et une
- * bibliothèque d'analyse d'agent utilisateur serait une dépendance de plus pour
- * une ligne de texte. Ce qui compte est de distinguer deux sessions, pas de
- * nommer une version de navigateur.
- */
-const deviceOf = (userAgent: string | null, unknown: string): string => {
-  if (userAgent === null || userAgent.trim() === '') {
-    return unknown
-  }
-
-  return userAgent.length > 60 ? `${userAgent.slice(0, 60)}…` : userAgent
-}
-
-export default async function AccountPage() {
+export default async function ProfilePage() {
   const { session, account } = await currentViewer()
   const { locale, t, path } = await appIntl()
 
@@ -88,7 +71,7 @@ export default async function AccountPage() {
     // dans la forme publique de sa locale, une seule fois. Y mettre le chemin
     // déjà préfixé le ferait préfixer deux fois — et surtout, la règle
     // `safeRedirectPath` du module juge un chemin interne, pas une URL de langue.
-    redirect(`${path('/sign-in')}?next=${encodeURIComponent(ACCOUNT_SCREEN_PATH)}`)
+    redirect(`${path('/sign-in')}?next=${encodeURIComponent(PROFILE_SCREEN_PATH)}`)
   }
 
   // Module de stockage coupé : `avatarOf` rend `null` **sans toucher la base**,
@@ -96,39 +79,15 @@ export default async function AccountPage() {
   // `available` est une donnée, comme `sections.length` l'est pour la racine.
   const avatar = await storage.avatarOf(account.userId)
   const dateFormat = dateFormatFor(locale)
-  // Les dates sont formatées **par le serveur**, dans la locale servie : les
-  // formater dans le composant client les rendrait dans le fuseau du
-  // navigateur, ce que React signale comme un écart d'hydratation.
-  const connections: readonly ConnectionRow[] = (await currentSignInMethods()).map((method) => ({
-    id: method.id,
-    providerId: method.providerId,
-    addedAt: dateFormat.format(method.createdAt),
-    removable: method.removable,
-  }))
-  const passkeys: readonly PasskeyRow[] = (await currentPasskeys()).map((passkey) => ({
-    id: passkey.id,
-    name: passkey.name,
-    addedAt: dateFormat.format(passkey.createdAt),
-    removable: passkey.removable,
-  }))
   // **L'état des demandes d'export, tel que le serveur le rend** — jamais leur
   // jeton : la trace ne porte que l'instant, l'état et l'échéance (s34b).
   const dataExport = dataExportStateOf(await currentDataExportRequests())
-  const sessions: readonly SessionRow[] = (await currentSessions()).map((active) => ({
-    id: active.id,
-    createdAt: dateFormat.format(active.createdAt),
-    device: deviceOf(active.userAgent, t('app.account.sessions.unknownDevice')),
-    ipAddress: active.ipAddress,
-    current: active.current,
-  }))
-
   return (
     <>
-      <PageHeader
-        title={t('app.account.title')}
-        description={t('app.account.description')}
-        actions={<SignOutButton action={authRoutePath('signOut')} destination={path('/')} />}
-      />
+      <div className="min-w-0 space-y-1">
+        <h2 className="text-2xl font-semibold tracking-tight">{t('app.settings.profile.title')}</h2>
+        <p className="text-sm text-muted-foreground">{t('app.settings.profile.description')}</p>
+      </div>
 
       {storage.available ? (
         <Card>
@@ -206,117 +165,15 @@ export default async function AccountPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('app.account.password.title')}</CardTitle>
-          <CardDescription>{t('app.account.password.description')}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <AccountForm
-            action={authRoutePath('changePassword')}
-            fields={[
-              {
-                name: 'currentPassword',
-                labelKey: 'app.account.password.currentLabel',
-                type: 'password',
-                autoComplete: 'current-password',
-              },
-              {
-                name: 'newPassword',
-                labelKey: 'app.account.password.newLabel',
-                type: 'password',
-                autoComplete: 'new-password',
-              },
-            ]}
-            submitLabelKey="app.account.password.submit"
-            successMessageKey="app.account.password.done"
-          />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('app.account.connections.title')}</CardTitle>
-          <CardDescription>{t('app.account.connections.description')}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ConnectionList
-            connections={connections}
-            action={authRoutePath('unlinkProvider')}
-          />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('app.account.passkeys.title')}</CardTitle>
-          <CardDescription>{t('app.account.passkeys.description')}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {/*
-            La liste vient du **serveur** ; le bouton d'enregistrement, lui,
-            n'existe que dans un navigateur qui sait faire du WebAuthn — une
-            cérémonie ne peut pas naître d'une soumission de formulaire. Voir
-            `passkey-card.tsx`.
-          */}
-          <PasskeyCard
-            passkeys={passkeys}
-            optionsAction={authRoutePath('passkeyRegisterOptions')}
-            registerAction={authRoutePath('passkeyRegister')}
-            renameAction={authRoutePath('passkeyRename')}
-            revokeAction={authRoutePath('passkeyRevoke')}
-          />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('app.account.twoFactor.title')}</CardTitle>
-          <CardDescription className="flex flex-wrap items-center gap-2">
-            <span>{t('app.account.twoFactor.description')}</span>
-            <TwoFactorBadge enabled={account.twoFactorEnabled} />
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {/*
-            L'état vient du **serveur**, jamais du navigateur : c'est la même
-            lecture que celle qui décide, côté routes, si le second facteur
-            s'applique. Masquer un bouton n'a jamais été une permission
-            (`docs/security.md` §3) — les routes refusent de toute façon.
-          */}
-          <TwoFactorCard
-            enabled={account.twoFactorEnabled}
-            enableAction={authRoutePath('twoFactorEnable')}
-            verifyAction={authRoutePath('twoFactorVerify')}
-            regenerateAction={authRoutePath('twoFactorRegenerate')}
-            disableAction={authRoutePath('twoFactorDisable')}
-          />
-        </CardContent>
-      </Card>
-
       {/*
-        **Le second point d'accès au consentement** (finding F57). Il est rendu
-        quel que soit l'état du module `marketing` : sur une installation qui
-        coupe le site public tout en gardant un script d'analyse, le lien du
-        pied de page n'existe pas, et cette carte est alors le seul moyen de
-        retirer son consentement. `consent.available` est une **donnée**, pas un
-        identifiant de module écrit dans un écran.
+        **Vos données** (s62b) : l'export et la suppression restent sous une
+        rubrique listée, jamais sur une page à part — séparés des cartes du
+        profil par un `Separator`, la suppression en dernier.
       */}
-      {consent.available ? <ConsentSettingsCard intl={{ t, path }} /> : null}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('app.account.sessions.title')}</CardTitle>
-          <CardDescription>{t('app.account.sessions.description')}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <SessionList
-            sessions={sessions}
-            action={authRoutePath('revokeSession')}
-            signInHref={path('/sign-in')}
-          />
-        </CardContent>
-      </Card>
+      <div className="flex flex-col gap-2">
+        <Separator />
+        <p className="text-sm text-muted-foreground">{t('app.settings.profile.data')}</p>
+      </div>
 
       {/*
         **Le droit à la portabilité** (s35), enfin joignable depuis

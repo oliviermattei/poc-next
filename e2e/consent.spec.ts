@@ -153,12 +153,12 @@ test('le retrait depuis les paramètres de compte empêche le chargement suivant
   await expect(preferences(page).getByRole('checkbox', { name: /Publicité/ })).toBeChecked()
 
   const afterConsent = recordProbeRequests(page)
-  await page.goto(publicPath(settingsPath('account')))
+  await page.goto(publicPath(settingsPath('cookies')))
   await expectProbesExecuted(page, ['demo-advertising', 'demo-analytics'])
   expect([...afterConsent].sort()).toEqual(['demo-advertising', 'demo-analytics'])
 
-  // Le point d'accès des paramètres de compte, suivi comme un utilisateur le
-  // suivrait — pas une URL écrite à la main.
+  // Le point d'accès des réglages — la rubrique Cookies depuis s62b —, suivi
+  // comme un utilisateur le suivrait, pas une URL écrite à la main.
   //
   // `clickOnce` et non un clic nu : mesuré à un cœur, ce clic partait sur un
   // document que React n'avait pas encore repris, et la mise en page bougeait
@@ -178,7 +178,7 @@ test('le retrait depuis les paramètres de compte empêche le chargement suivant
   await expect(preferences(page).getByRole('checkbox', { name: /Publicité/ })).not.toBeChecked()
 
   const afterWithdrawal = recordProbeRequests(page)
-  await page.goto(publicPath(settingsPath('account')))
+  await page.goto(publicPath(settingsPath('cookies')))
 
   // Le retrait empêche l'injection **au chargement suivant** : c'est le
   // critère 4 de la story, et il ne se mesure qu'après une navigation.
