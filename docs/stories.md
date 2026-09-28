@@ -2021,3 +2021,29 @@ s60-console
 ### Agentic notes
 Piste mesurée à confirmer en research : un `not-found.tsx` par dossier de zone, qui rend `NotFoundScreen` **sans** shell (le layout de la zone le fournit), et `app/not-found.tsx` qui garde l'`AppShell` pour les URL sans route. Un `notFound()` levé par le layout de la console remonte à la frontière du parent (la racine), pas à celle de `(console)` : c'est ce qui garde le critère 3.
 `tests/zones.test.ts` dérive les pages du disque : un `not-found.tsx` de zone n'est pas une page, mais la research vérifie que la dérivation l'ignore.
+
+---
+
+## Story s67-suppression-en-attente — Fermer un compte dès la demande de suppression
+**As a** User **I want** que mon compte ne soit plus utilisable dès que je demande sa suppression **so that** personne — ni moi, ni quelqu'un qui aurait mon mot de passe — ne puisse y entrer pendant que la purge attend son tour.
+
+> **Ajoutée le 28/09, sur deux constats de la revue de s61** (`docs/reviews/s61-site-et-application.md`, passage 2). s61 révoque désormais toutes les sessions à la demande de suppression (`requestAccountDeletion`, `packages/modules/auth/src/application/auth-use-cases.ts`). Restent : (1) **aucun marqueur « suppression en attente »** n'existe (aucun `pendingDeletion`/`deleted_at` dans `packages/modules/auth/src`) — la ligne `auth_user` vit jusqu'au passage de la purge (s34, tâche de fond), donc toute méthode de connexion rouvre le compte entre la demande et la purge ; sous Inngest ce délai n'est pas borné ; (2) la révocation à la demande **met fin aux emprunts de session** portés par ou sur ce compte sans le journaliser, alors que `packages/modules/admin/AGENTS.md` tient la liste des fins d'emprunt et que chacune est journalisée (s37b1).
+
+### Complexity
+3
+
+### Acceptance criteria
+- [ ] Une demande de suppression acceptée (202) marque le compte **en attente de suppression** dans le socle, dans la même opération que la mise en file de la purge ; une émission refusée ne marque rien et ne ferme aucune session (un test le prouve en faisant refuser l'émission)
+- [ ] Un compte en attente de suppression est **refusé à la connexion** par chaque méthode (mot de passe, lien magique, OAuth, passkey, deuxième facteur) avec **le même message et le même temps** qu'un compte inconnu (`docs/security.md` §3)
+- [ ] Aucune session ne peut être créée pour un compte en attente, même par un chemin qui ne passe pas par le crochet de la bibliothèque (la garde vit dans l'écriture de session, comme celle du bannissement — s37b1, C1)
+- [ ] La purge efface le compte marqué comme aujourd'hui ; rejouée, elle n'a pas d'effet supplémentaire
+- [ ] Une demande de suppression qui met fin à un emprunt de session **le journalise** comme les autres fins (les deux comptes nommés), et `packages/modules/admin/AGENTS.md` compte cette fin ; l'événement `auth.account_deletion_requested` porte le nombre de sessions fermées
+- [ ] Migration rétrocompatible : ajouter la colonne avant de la lire ; la version encore en ligne l'ignore sans erreur
+
+### Dependencies
+s34-account-deletion, s37b1-decompte-et-impersonation, s61-site-et-application
+
+### Agentic notes
+L'état « banni » vit déjà dans le socle (ADR 058) et sa garde est portée par l'écriture de session (`insert … select … from auth_user where banned = false`, voir `packages/modules/admin/AGENTS.md`). « En attente de suppression » est un état du même genre : même lieu, même forme de garde, pour qu'aucun chemin de session n'y échappe.
+Le refus à la connexion doit être **indiscernable** d'un compte inconnu, en message et en temps : un message dédié (« compte en cours de suppression ») serait un oracle d'existence.
+Sous `JOBS_LOCAL_RUNNER=1`, la purge s'exécute tout de suite et la fenêtre est nulle : les tests doivent utiliser le double d'enregistrement des tâches (`recordingJobs`, déjà dans `tests/account-deletion.test.ts`) pour tenir la purge en attente.
