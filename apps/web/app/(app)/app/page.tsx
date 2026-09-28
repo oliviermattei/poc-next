@@ -2,7 +2,7 @@ import { Button, EmptyState, PageHeader } from '@repo/ui'
 import { LayoutDashboardIcon } from 'lucide-react'
 import { redirect } from 'next/navigation'
 
-import { currentViewer, DEFAULT_SIGNED_IN_PATH } from '../../../lib/auth'
+import { ACCOUNT_SCREEN_PATH, currentViewer, DEFAULT_SIGNED_IN_PATH } from '../../../lib/auth'
 import { appIntl } from '../../../lib/i18n'
 import { onboarding, ONBOARDING_SCREEN_PATH } from '../../../lib/onboarding'
 
@@ -53,7 +53,7 @@ export default async function ApplicationHomePage() {
         description={t('app.dashboard.empty.description')}
         action={
           <Button asChild>
-            <a href={path('/account')}>{t('app.dashboard.empty.action')}</a>
+            <a href={path(ACCOUNT_SCREEN_PATH)}>{t('app.dashboard.empty.action')}</a>
           </Button>
         }
       />

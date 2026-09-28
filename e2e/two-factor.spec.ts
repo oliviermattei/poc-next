@@ -5,7 +5,7 @@ import { expect, test, type Page } from '@playwright/test'
 
 import { aSignedInAccount, PASSWORD, signIn } from './support/account'
 import { clickOnce } from './support/interaction'
-import { urlOf } from './support/locale'
+import { settingsPath, urlOf } from './support/locale'
 
 /**
  * Le second facteur, dans un vrai navigateur (s13).
@@ -163,7 +163,7 @@ const anonymousAgain = async (page: Page): Promise<void> => {
 test('activation, connexion par code, puis connexion par code de secours', async ({ page }) => {
   const email = await aSignedInAccount(page, 's13-e2e')
 
-  await page.goto('/account')
+  await page.goto(settingsPath('account'))
   await expect(page.getByText('Désactivée', { exact: true })).toBeVisible()
 
   // --- Activation -------------------------------------------------------

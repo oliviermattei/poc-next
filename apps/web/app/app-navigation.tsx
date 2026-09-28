@@ -68,6 +68,25 @@ export function SiteNavigation({ items, label }: NavigationProps) {
   )
 }
 
+/**
+ * **La sous-navigation de la zone Réglages** (s62a), à côté du contenu.
+ *
+ * Le même `SidebarNav` que la barre latérale, à une autre place — `Tabs` n'est
+ * pas copié dans `packages/ui` (lacune écrite au design system). Une seule
+ * différence, et elle est de comportement : l'entrée courante se reconnaît
+ * **par préfixe**, pour qu'une sous-page future d'une rubrique la garde
+ * marquée. La plus longue gagne, si bien que deux rubriques emboîtées ne se
+ * disputent pas la marque.
+ */
+export function SettingsNavigation({ items, label }: NavigationProps) {
+  const pathname = usePathname()
+  const current = items
+    .filter((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))
+    .sort((left, right) => right.href.length - left.href.length)[0]
+
+  return <SidebarNav items={items} label={label} currentPath={current?.href} />
+}
+
 export function DesktopNavigation({ items, label }: NavigationProps) {
   return <SidebarNav items={items} label={label} currentPath={usePathname()} />
 }

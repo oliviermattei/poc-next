@@ -1,7 +1,13 @@
 import { DEFAULT_SIGNED_IN_PATH, LOCAL_OAUTH_SLOT_PARAM } from '@repo/module-auth'
 import { expect, test } from '@playwright/test'
 
-import { publicPath, signedInLanding, signInRedirectedFrom, urlOf } from './support/locale'
+import {
+  publicPath,
+  settingsPath,
+  signedInLanding,
+  signInRedirectedFrom,
+  urlOf,
+} from './support/locale'
 
 /**
  * La connexion par fournisseur externe, dans un vrai navigateur (s12).
@@ -156,7 +162,7 @@ test('le retour venu d’un autre site atterrit connecté', async ({ page, conte
   await expect(page).toHaveURL(urlOf(signedInLanding()))
   await expect(page.getByRole('button', { name: /Mon compte|Compte/ })).toBeVisible()
 
-  await page.goto('/account')
+  await page.goto(settingsPath('account'))
   // `exact` depuis s34b : la zone dangereuse de l'écran porte le titre
   // « Supprimer mon compte », qu'une correspondance partielle désigne aussi.
   await expect(page.getByRole('heading', { name: 'Mon compte', exact: true })).toBeVisible()

@@ -35,6 +35,7 @@ import {
   revenueSnapshotOf,
   type RevenueSnapshot,
 } from '../domain/revenue'
+import { BILLING_SCREEN_PATH } from '../domain/screen-path'
 import { billableSeats, exceedsSeatLimit, offerSeatLimit, offerSyncsSeats } from '../domain/seats'
 import {
   entitledOfferIds,
@@ -613,7 +614,7 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
     generateGuestScopeId,
   } = dependencies
 
-  const returnUrl = (query: string): string => `${appUrl}/billing${query}`
+  const returnUrl = (query: string): string => `${appUrl}${BILLING_SCREEN_PATH}${query}`
 
   /**
    * **Ramène la quantité du fournisseur au nombre de membres**, ou laisse

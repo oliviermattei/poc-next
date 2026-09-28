@@ -23,7 +23,7 @@ import {
   type AuthService,
   type ConfigureAuthOptions,
 } from '@repo/module-auth'
-import { AUTH_MODELS, SIGN_UP_EVENT } from '@repo/module-auth'
+import { ACCOUNT_SCREEN_PATH, AUTH_MODELS, SIGN_UP_EVENT } from '@repo/module-auth'
 import { getAuthTables } from 'better-auth'
 import { appLocales } from '../config/i18n'
 import { magicLink } from 'better-auth/plugins/magic-link'
@@ -1677,9 +1677,12 @@ describe.skipIf(!databaseReachable)('connexion par un fournisseur externe', () =
 
   it('respecte une destination interne demandée', async () => {
     const email = anOAuthEmail()
-    const { back } = await signInWith({ email, emailVerified: true }, { next: '/account' })
+    const { back } = await signInWith(
+      { email, emailVerified: true },
+      { next: ACCOUNT_SCREEN_PATH },
+    )
 
-    expect(back.headers.get('location')).toContain(encodeURIComponent('/account'))
+    expect(back.headers.get('location')).toContain(encodeURIComponent(ACCOUNT_SCREEN_PATH))
   }, 30_000)
 
   it('ne transmet pas le corps du client à la bibliothèque : un `idToken` n’ouvre rien', async () => {

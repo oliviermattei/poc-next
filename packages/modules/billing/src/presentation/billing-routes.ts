@@ -4,6 +4,7 @@ import { z } from 'zod'
 import type { BillingUseCases } from '../application/billing-use-cases'
 import { checkoutClientOf } from '../domain/checkout-throttle'
 import { BILLING_KEYS } from '../domain/message-keys'
+import { BILLING_SCREEN_PATH } from '../domain/screen-path'
 
 /**
  * Les trois routes du module, **énumérées une par une**, avec leur niveau de
@@ -36,8 +37,8 @@ const PATHS = {
 export const billingRoutePath = (path: keyof typeof PATHS): string =>
   `${MODULE_ROUTE_PREFIX}${PATHS[path]}`
 
-/** L'écran servi par l'application. Le module en connaît le chemin, pas le rendu. */
-export const BILLING_SCREEN_PATH = '/billing'
+/** L'écran servi par l'application — la constante vit dans le `domain` (s62a). */
+export { BILLING_SCREEN_PATH }
 
 /**
  * L'écran **public** de tarifs (s22), servi par l'application lui aussi.
@@ -307,6 +308,9 @@ export const billingNavigation: readonly NavigationEntry[] = [
     labelKey: 'navigation.billing',
     order: 40,
     protection: { level: 'authenticated' },
+    // La sous-navigation des réglages (s62a) : la barre latérale reste celle
+    // du produit construit.
+    surface: 'settings',
   },
   {
     /**

@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test'
 
 import { aSignedInAccount, PASSWORD, signIn, signOut } from './support/account'
 import { clickOnce } from './support/interaction'
-import { urlOf } from './support/locale'
+import { settingsPath, urlOf } from './support/locale'
 
 /**
  * Les passkeys, dans un vrai navigateur (s14).
@@ -80,7 +80,7 @@ test('enregistrement, connexion sans mot de passe, renommage puis révocation', 
 
   const email = await aSignedInAccount(page, 's14-e2e')
 
-  await page.goto('/account')
+  await page.goto(settingsPath('account'))
 
   // --- Aucune passkey : l'état vide, avec l'action qui en sort -----------
   await expect(page.getByText('Aucune passkey enregistrée')).toBeVisible()
@@ -113,7 +113,7 @@ test('enregistrement, connexion sans mot de passe, renommage puis révocation', 
   })
 
   // La session est bien celle du compte : l'écran de compte le sert.
-  await page.goto('/account')
+  await page.goto(settingsPath('account'))
   // `exact` depuis s34b : le libellé de confirmation de suppression cite la
   // même adresse (« Saisissez … pour confirmer »), donc deux nœuds la portent.
   await expect(page.getByText(email, { exact: true })).toBeVisible()
@@ -157,7 +157,7 @@ test('sans WebAuthn, l’option disparaît et les autres moyens de connexion res
     const email = await aSignedInAccount(page, 's14-e2e-sans-webauthn')
 
     // Les paramètres : la carte reste, la liste aussi, le bouton non.
-    await page.goto('/account')
+    await page.goto(settingsPath('account'))
     await expect(page.getByText('Aucune passkey enregistrée')).toBeVisible()
 
     // **Le témoin d'hydratation, et il n'est pas décoratif.** Sans lui,
@@ -216,7 +216,7 @@ test('une cérémonie d’enrôlement annulée le dit, et n’écrit rien', asyn
       }
     })
 
-    await page.goto('/account')
+    await page.goto(settingsPath('account'))
     await expect(page.getByText('Aucune passkey enregistrée')).toBeVisible()
 
     // Le critère 5 de la story, dans ses deux moitiés.

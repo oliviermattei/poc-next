@@ -2,7 +2,7 @@ import { Badge, Button, LocaleSwitcher, Sidebar, SidebarBrand, ThemeToggle } fro
 import { BellIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 
-import { authRoutePath, currentViewer, DEFAULT_SIGNED_IN_PATH } from '../lib/auth'
+import { ACCOUNT_SCREEN_PATH, authRoutePath, currentViewer, DEFAULT_SIGNED_IN_PATH } from '../lib/auth'
 import { currentConsent } from '../lib/consent'
 import { appIntl } from '../lib/i18n'
 import { localeRouting } from '../lib/locale-routing'
@@ -165,7 +165,7 @@ export async function AppShell({
               <AccountMenu
                 email={account.email}
                 name={account.name}
-                accountHref={path('/account')}
+                accountHref={path(ACCOUNT_SCREEN_PATH)}
                 signOutAction={authRoutePath('signOut')}
                 avatarUrl={avatar === null ? null : fileUrl(avatar.fileId, avatar.version)}
               />

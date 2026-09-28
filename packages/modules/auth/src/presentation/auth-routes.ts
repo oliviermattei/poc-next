@@ -32,7 +32,7 @@ import {
   DATA_EXPORT_DOWNLOAD_PATH,
   dataExportRequestBodySchema,
 } from '../domain/data-export'
-import { DEFAULT_SIGNED_IN_PATH, safeRedirectPath } from '../domain/redirect'
+import { ACCOUNT_SCREEN_PATH, DEFAULT_SIGNED_IN_PATH, safeRedirectPath } from '../domain/redirect'
 import { TWO_FACTOR_CHALLENGE_COOKIES } from '../domain/two-factor'
 import {
   TWO_FACTOR_REFUSAL_STATUS,
@@ -1852,7 +1852,8 @@ async function actorOf(response: Response): Promise<{ userId: string } | null> {
 /**
  * La navigation du module.
  *
- * Une entrée, « Mon compte », qui ne s'affiche que pour une session. C'est
+ * Une entrée, « Mon compte », qui ne s'affiche que pour une session — dans la
+ * sous-navigation des réglages depuis s62a, plus dans la barre latérale. C'est
  * `visibleNavigation` qui décide, avec le prédicat qui décide aussi du sort des
  * routes — le composant de navigation n'a aucune condition.
  *
@@ -1863,9 +1864,11 @@ async function actorOf(response: Response): Promise<{ userId: string } | null> {
 export const authNavigation: readonly NavigationEntry[] = [
   {
     id: 'account',
-    href: '/account',
+    href: ACCOUNT_SCREEN_PATH,
     labelKey: 'navigation.account',
     order: 2,
     protection: { level: 'authenticated' },
+    // La sous-navigation des réglages (s62a, ADR 075), plus la barre latérale.
+    surface: 'settings',
   },
 ]

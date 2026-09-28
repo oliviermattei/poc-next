@@ -62,8 +62,13 @@ const PATHS = {
 export const organizationRoutePath = (path: keyof typeof PATHS): string =>
   `${MODULE_ROUTE_PREFIX}${PATHS[path]}`
 
-/** L'écran du module. Constante : c'est ce qui rend la redirection sûre. */
-export const ORGANIZATIONS_SCREEN_PATH = '/organizations'
+/**
+ * L'écran du module. Constante : c'est ce qui rend la redirection sûre.
+ *
+ * Dans la zone Réglages depuis s62a (ADR 075) ; l'ancien `/organizations`
+ * répond 308 vers lui, par la table de `apps/web/lib/legacy-paths.ts`.
+ */
+export const ORGANIZATIONS_SCREEN_PATH = '/app/settings/organization'
 
 /**
  * **L'écran d'administration des organisations** (s37b2).
@@ -289,6 +294,9 @@ export const organizationsNavigation: readonly NavigationEntry[] = [
     labelKey: 'navigation.organizations',
     order: 20,
     protection: { level: 'authenticated' },
+    // La sous-navigation des réglages (s62a) : la barre latérale reste celle
+    // du produit construit.
+    surface: 'settings',
   },
   {
     /**

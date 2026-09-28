@@ -72,7 +72,11 @@ module (`packages/modules/<module>/src/domain`).
   exportent déjà, et relie une entrée à sa lecture par son **adresse** : aucun
   identifiant de module n'y est écrit, une tuile disparaît avec son entrée),
   `lib/footer.ts` (les liens de pied de page, dérivés du registre — s31 ; il ne
-  nomme aucun module, il importe le type de lien du site public), `lib/guest-account.ts`, `lib/module-services.ts`,
+  nomme aucun module, il importe le type de lien du site public), `lib/guest-account.ts`,
+  `lib/legacy-paths.ts` (la **table des anciens chemins d'écran** — s62a,
+  ADR 075 ; il importe des modules les constantes de chemin de leurs écrans, et
+  ne regarde l'état d'un module que par la navigation du registre),
+  `lib/module-services.ts`,
   `lib/module-content.ts` et `lib/public-urls.ts` (la syndication, s53 — le
   second ne nomme aucun module, il n'en **parle** que dans sa règle),
   `lib/rate-limit.ts` (le seau de limitation de débit, s28) et `lib/seat-sync.ts`.
@@ -96,7 +100,7 @@ module (`packages/modules/<module>/src/domain`).
   requête qui n'est qu'une préférence d'affichage (`?offer=` des tarifs, s22),
   le motif de refus rapporté par une redirection de route (`?error=` des
   organisations) et **le corps d'une réponse que le navigateur va rendre**
-  (`app/(app)/account/rgpd-outcomes.ts`, s34b : la liste d'organisations d'un 409
+  (`app/(app)/app/settings/account/rgpd-outcomes.ts`, s34b : la liste d'organisations d'un 409
   s'affiche, donc elle se valide).
   **Aucune liste ne fait foi ici, et aucun « à ce jour » n'est écrit** : rien ne
   dérive les points d'appel de `zod`, contrairement à la liste des fichiers de
@@ -113,13 +117,13 @@ module (`packages/modules/<module>/src/domain`).
 - `lucide-react` pour les icônes : un seul jeu dans tout le produit, 16 px dans
   l'application. Ce n'est pas le socle de composants — celui-là ne sort pas de
   `packages/ui` ;
-- `uqr` dans **`app/(app)/account/two-factor-qr.tsx` uniquement** : il rend la
+- `uqr` dans **`app/(app)/app/settings/account/two-factor-qr.tsx` uniquement** : il rend la
   **matrice** d'un QR code, pas une image. C'est ce qui permet de composer le
   `<svg>` en JSX — donc sans `dangerouslySetInnerHTML` (`docs/security.md` §4)
   et sans style en ligne, que la politique livrée par s45 refuse. Le secret
   TOTP ne quitte pas le processus : ni URL d'image, ni service tiers, ni appel
   réseau ;
-- `@simplewebauthn/browser` dans **`app/(app)/account/passkey-card.tsx` et
+- `@simplewebauthn/browser` dans **`app/(app)/app/settings/account/passkey-card.tsx` et
   `app/(auth)/sign-in/passkey-button.tsx` uniquement** (s14) : ce sont les deux seuls
   endroits où le navigateur doit appeler `navigator.credentials`. Le paquet
   n'apporte que trois choses, et chacune est une raison de ne pas la réécrire —
@@ -258,7 +262,7 @@ Next ne met pas dans l'URL, et chacun rend **son** gabarit (s61) :
 |---|---|---|
 | `app/(site)/` | le site public (accueil, contenus, tarifs, pages légales) | le **gabarit Site** (`SiteTemplate`, `app/(site)/site-header.tsx`) : l'en-tête du site — marque, entrées de la surface `site`, langue, thème, bouton de gabarit —, **sans** barre latérale ni pied de page |
 | `app/(auth)/` | l'authentification, avant qu'une session existe | le **gabarit Hors zone** : une barre minimale (marque, langue, thème), l'écran centré ; ni navigation, ni bouton |
-| `app/(app)/` | le produit, derrière une session — dont `/app`, le tableau de bord | le **gabarit Application**, l'`AppShell` : barre latérale de la surface `app`, barre du haut, menu de compte ; sa marque mène à `/app` |
+| `app/(app)/` | le produit, derrière une session — dont `/app`, le tableau de bord, et `/app/settings/*`, la zone Réglages (s62a) | le **gabarit Application**, l'`AppShell` : barre latérale de la surface `app`, barre du haut, menu de compte (qui mène à `/app/settings/account`) ; sa marque mène à `/app` |
 | `app/(console)/` | la console du superadmin (`/console`, ADR 070) | `console-shell.tsx`, **après** sa garde |
 
 **Ce que les trois premiers ont en commun vit dans un seul composant**,
@@ -311,6 +315,34 @@ son `?next=` filtré par `safeRedirectPath`, sinon vers `/app`.
 `tests/auth.test.ts` refuse un repli écrit en littéral dans les fichiers qui en
 portaient un.
 
+**La zone Réglages** (s62a, ADR 075) : `app/(app)/app/settings/layout.tsx`,
+rendu **dans** le gabarit Application. Il ajoute le titre de la zone et sa
+sous-navigation, dérivée par `shellNavigation(…, 'settings')` — la surface
+`settings` que déclarent le compte (`ACCOUNT_SCREEN_PATH`, module `auth`),
+l'organisation (`ORGANIZATIONS_SCREEN_PATH`) et la facturation
+(`BILLING_SCREEN_PATH`). La barre latérale ne rend plus que la surface `app` :
+elle est celle du produit construit. L'entrée courante de la sous-navigation se
+reconnaît **par préfixe** (`SettingsNavigation`, `app/app-navigation.tsx`), la
+plus longue gagnant. Les écrans déplacés gardent leurs gardes (connexion, 404
+module coupé) ; le cadre n'en porte aucune. `e2e/settings.spec.ts` mesure la
+sous-navigation rendue et la barre latérale vidée ; `tests/rendered-text.test.ts`
+entoure chaque écran de réglages de ce cadre, dans le gabarit Application.
+
+**Les anciens chemins d'écran répondent 308** par une **table unique**,
+`lib/legacy-paths.ts`, lue par `proxy.ts` sur le chemin **interne** et **avant**
+la redirection de langue : `/account?x=1` part en un seul saut vers
+`/fr/app/settings/account?x=1`, `/fr/organizations` vers
+`/fr/app/settings/organization`. La cible est une constante de la table, jamais
+une valeur de la requête (`docs/security.md` §4) ; une entrée dont l'écran n'est
+pas annoncé par la navigation du registre (module coupé) ne redirige pas, et
+l'ancien chemin répond 404. **Pas de `redirects()` dans `next.config.ts`**
+(ADR 075). Déplacer un écran, c'est une ligne dans la table et son ancien
+chemin dans `tests/fixtures/legacy-screen-paths.json` : `tests/legacy-paths.test.ts`
+exige que chaque chemin de cet inventaire soit servi ou redirigé, et refuse un
+ancien chemin écrit en littéral ailleurs que dans la table — dans `apps/web` et
+les modules `auth`, `organizations`, `billing`. Les segments redirigés restent
+réservés aux organisations (`APPLICATION_SEGMENTS`, `lib/organizations.ts`).
+
 L'`AppShell` résout l'appelant une seule fois (`currentViewer`) et en tire deux
 choses : les entrées de navigation et le menu de compte. Un visiteur anonyme n'a
 pas de menu de compte parce qu'il n'est **pas rendu**, jamais parce qu'il serait
@@ -324,7 +356,7 @@ chargement ; l'étendre à l'arbre masquerait de vrais écarts.
 
 ## Les formulaires
 
-Trois composants, `app/auth-form.tsx`, `app/(app)/account/account-form.tsx` et
+Trois composants, `app/auth-form.tsx`, `app/(app)/app/settings/account/account-form.tsx` et
 `app/public-form.tsx` (s11), et deux règles que tout écran hérite d'eux :
 
 - **`method="post"` sur le `<form>`, toujours.** Sans `method`, le repli du
@@ -983,7 +1015,7 @@ Un fichier, sur le modèle exact du site public :
   une valeur dont la **forme est la même dans les deux états** : un drapeau
   `available`, une vue à deux champs, une organisation active qui vaut `null`.
   Module coupé, ses deux lectures n'ouvrent **aucune connexion** ;
-- `app/(app)/organizations/page.tsx` **lit** cette valeur sans jamais nommer de
+- `app/(app)/app/settings/organization/page.tsx` **lit** cette valeur sans jamais nommer de
   module : `available` est une **donnée**, comme `sections.length` l'est pour la
   racine. Module coupé, l'écran répond 404 — le même arbitrage que
   `legal/[document]` ;
@@ -1110,7 +1142,7 @@ photo du compte lui survive.
 
 Deux surfaces en héritent : le menu de compte du shell et la carte « Photo de
 profil » de `/account`. Le composant qui téléverse
-(`app/(app)/account/avatar-form.tsx`) vit ici et non dans le module, pour la raison
+(`app/(app)/app/settings/account/avatar-form.tsx`) vit ici et non dans le module, pour la raison
 déjà donnée à `app/public-form.tsx` : il appelle `fetch`, et `eslint.config.ts`
 refuse un appel réseau dans un module hors de sa porte bornée.
 ## Le montage de la facturation (s19)

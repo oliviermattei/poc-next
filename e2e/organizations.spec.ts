@@ -7,7 +7,7 @@ import { flatMessagesFor } from '../apps/web/lib/messages'
 import { organizations } from '../apps/web/lib/organizations'
 import { defaultLocale } from '../config/i18n'
 import { aSignedInAccount, linkSentTo, signIn, signUp } from './support/account'
-import { publicPath, signedInLanding, urlOf } from './support/locale'
+import { publicPath, settingsPath, signedInLanding, urlOf } from './support/locale'
 
 /**
  * Les organisations, dans un vrai navigateur.
@@ -66,7 +66,7 @@ test('module coupé, l’écran des organisations n’existe pas', async ({ page
 
   await aSignedInAccount(page, 's15-off')
 
-  const response = await page.goto(publicPath('/organizations'))
+  const response = await page.goto(publicPath(settingsPath('organization')))
 
   expect(response?.status()).toBe(404)
 })
@@ -79,7 +79,7 @@ test('crée une organisation, la renomme, et la retrouve à la session suivante'
 
   const email = await aSignedInAccount(page, 's15')
 
-  await page.goto(publicPath('/organizations'))
+  await page.goto(publicPath(settingsPath('organization')))
 
   // L'état vide dit ce qu'il faut faire : un tableau vide sans action est un
   // écran cassé (`docs/design-system.md`).
@@ -87,7 +87,7 @@ test('crée une organisation, la renomme, et la retrouve à la session suivante'
 
   await submitCreation(page, 'Studio Martin', aSlug())
 
-  await expect(page).toHaveURL(urlOf('/organizations'))
+  await expect(page).toHaveURL(urlOf(settingsPath('organization')))
   // Le déclencheur du sélecteur porte le nom de l'organisation courante.
   await expect(page.getByRole('button', { name: 'Studio Martin' })).toBeVisible()
   // Le créateur en est **propriétaire** (critère 4), et le rôle est traduit.
@@ -122,7 +122,7 @@ test('crée une organisation, la renomme, et la retrouve à la session suivante'
   // La connexion navigue : attendre son atterrissage avant de demander l'écran
   // suivant, sans quoi la seconde navigation annule la première.
   await expect(reopened).toHaveURL(urlOf(DEFAULT_SIGNED_IN_PATH))
-  await reopened.goto(publicPath('/organizations'))
+  await reopened.goto(publicPath(settingsPath('organization')))
 
   await expect(reopened.getByRole('button', { name: 'Atelier Nord' })).toBeVisible()
 
@@ -133,11 +133,11 @@ test('bascule d’organisation, et refuse celle d’un autre compte', async ({ p
   test.skip(!mounted, 'Le module est coupé dans cette configuration.')
 
   await aSignedInAccount(page, 's15-switch')
-  await page.goto(publicPath('/organizations'))
+  await page.goto(publicPath(settingsPath('organization')))
 
   for (const name of ['Première', 'Seconde']) {
     await submitCreation(page, name, aSlug())
-    await expect(page).toHaveURL(urlOf('/organizations'))
+    await expect(page).toHaveURL(urlOf(settingsPath('organization')))
   }
 
   // La bascule est une **soumission**, pas un lien : basculer change un état
@@ -156,7 +156,7 @@ test('bascule d’organisation, et refuse celle d’un autre compte', async ({ p
 
   await option.click()
 
-  await expect(page).toHaveURL(urlOf('/organizations'))
+  await expect(page).toHaveURL(urlOf(settingsPath('organization')))
   await expect(page.getByRole('button', { name: 'Première' })).toBeVisible()
 
   // L'identifiant de l'organisation courante, tel que l'écran le pose dans son
@@ -207,9 +207,9 @@ test('invite quelqu’un, il accepte, puis il est retiré', async ({ page, brows
   test.skip(!mounted, 'Le module est coupé dans cette configuration.')
 
   await aSignedInAccount(page, 's16-founder')
-  await page.goto(publicPath('/organizations'))
+  await page.goto(publicPath(settingsPath('organization')))
   await submitCreation(page, 'Studio Invité', aSlug())
-  await expect(page).toHaveURL(urlOf('/organizations'))
+  await expect(page).toHaveURL(urlOf(settingsPath('organization')))
 
   // L'invité a **déjà** un compte : c'est la moitié « utilisateur existant » du
   // critère 2. L'autre moitié — l'inscription enchaînée — est couverte par le
@@ -230,7 +230,7 @@ test('invite quelqu’un, il accepte, puis il est retiré', async ({ page, brows
     .click()
 
   // L'invitation apparaît dans la liste en attente (critère 1).
-  await expect(page).toHaveURL(urlOf('/organizations'))
+  await expect(page).toHaveURL(urlOf(settingsPath('organization')))
   await expect(page.getByText(guestEmail, { exact: true })).toBeVisible()
   await expect(
     page.getByText(text('organizations.invitations.status.pending')),
@@ -246,7 +246,7 @@ test('invite quelqu’un, il accepte, puis il est retiré', async ({ page, brows
   await guest.goto(invitationLink)
   await guest.getByRole('button', { name: text('organizations.accept.submit') }).click()
 
-  await expect(guest).toHaveURL(urlOf('/organizations'))
+  await expect(guest).toHaveURL(urlOf(settingsPath('organization')))
   await expect(guest.getByRole('button', { name: 'Studio Invité' })).toBeVisible()
 
   // Le même lien, rejoué : refus explicite, et aucune seconde appartenance.
@@ -270,10 +270,10 @@ test('invite quelqu’un, il accepte, puis il est retiré', async ({ page, brows
 
   // Le retrait, et la perte d'accès **immédiate** pour la même session.
   await page.getByRole('button', { name: `Retirer ${guestEmail}` }).click()
-  await expect(page).toHaveURL(urlOf('/organizations'))
+  await expect(page).toHaveURL(urlOf(settingsPath('organization')))
   await expect(page.getByText(guestEmail, { exact: true })).toBeHidden()
 
-  await guest.goto(publicPath('/organizations'))
+  await guest.goto(publicPath(settingsPath('organization')))
   await expect(guest.getByRole('button', { name: 'Studio Invité' })).toBeHidden()
   await expect(guest.getByText(text('organizations.empty.title'))).toBeVisible()
 
@@ -297,9 +297,9 @@ test('promeut un membre, puis le rétrograde : l’écran et la route suivent', 
   test.skip(!mounted, 'Le module est coupé dans cette configuration.')
 
   await aSignedInAccount(page, 's17-owner')
-  await page.goto(publicPath('/organizations'))
+  await page.goto(publicPath(settingsPath('organization')))
   await submitCreation(page, 'Studio Rôles', aSlug())
-  await expect(page).toHaveURL(urlOf('/organizations'))
+  await expect(page).toHaveURL(urlOf(settingsPath('organization')))
 
   const memberContext = await browser.newContext({ locale: 'fr-FR' })
   const member = await memberContext.newPage()
@@ -315,11 +315,11 @@ test('promeut un membre, puis le rétrograde : l’écran et la route suivent', 
     .getByRole('form', { name: text('organizations.invitations.title') })
     .getByRole('button', { name: text('organizations.invitations.submit') })
     .click()
-  await expect(page).toHaveURL(urlOf('/organizations'))
+  await expect(page).toHaveURL(urlOf(settingsPath('organization')))
 
   await member.goto(await linkSentTo(memberEmail, { since: sentAfter }))
   await member.getByRole('button', { name: text('organizations.accept.submit') }).click()
-  await expect(member).toHaveURL(urlOf('/organizations'))
+  await expect(member).toHaveURL(urlOf(settingsPath('organization')))
 
   // **Un simple membre ne voit ni la carte d'invitation, ni les paramètres.**
   await expect(
@@ -337,7 +337,7 @@ test('promeut un membre, puis le rétrograde : l’écran et la route suivent', 
   await page
     .getByRole('button', { name: `Nommer ${memberEmail} administrateur` })
     .click()
-  await expect(page).toHaveURL(urlOf('/organizations'))
+  await expect(page).toHaveURL(urlOf(settingsPath('organization')))
 
   // **Sans reconnexion** : le même contexte, le même cookie, un simple
   // rechargement — et la carte d'invitation est là.
@@ -355,7 +355,7 @@ test('promeut un membre, puis le rétrograde : l’écran et la route suivent', 
 
   // Rétrogradé, toujours sans reconnexion.
   await page.getByRole('button', { name: `Ramener ${memberEmail} au rang de membre` }).click()
-  await expect(page).toHaveURL(urlOf('/organizations'))
+  await expect(page).toHaveURL(urlOf(settingsPath('organization')))
 
   await member.reload()
   await expect(
@@ -393,7 +393,7 @@ test('à 390 px, l’adresse invitée reste lisible à côté de ses actions', a
 
   await page.setViewportSize({ width: 390, height: 844 })
   await aSignedInAccount(page, 's16-etroit')
-  await page.goto(publicPath('/organizations'))
+  await page.goto(publicPath(settingsPath('organization')))
   await submitCreation(page, 'Studio Étroit', aSlug())
 
   // Deux invitations : une adresse longue, et une courte qui doit tenir en
@@ -410,7 +410,7 @@ test('à 390 px, l’adresse invitée reste lisible à côté de ses actions', a
       .getByRole('form', { name: text('organizations.invitations.title') })
       .getByRole('button', { name: text('organizations.invitations.submit') })
       .click()
-    await expect(page).toHaveURL(urlOf('/organizations'))
+    await expect(page).toHaveURL(urlOf(settingsPath('organization')))
   }
 
   const longLabel = page.getByText(long, { exact: true })
@@ -452,7 +452,7 @@ test('un lien d’invitation ouvert sans session propose de se connecter', async
   test.skip(!mounted, 'Le module est coupé dans cette configuration.')
 
   await aSignedInAccount(page, 's16-anon-founder')
-  await page.goto(publicPath('/organizations'))
+  await page.goto(publicPath(settingsPath('organization')))
   await submitCreation(page, 'Studio Anonyme', aSlug())
 
   const invited = `s16-nouveau-${randomUUID()}@example.test`
@@ -466,7 +466,7 @@ test('un lien d’invitation ouvert sans session propose de se connecter', async
     .getByRole('form', { name: text('organizations.invitations.title') })
     .getByRole('button', { name: text('organizations.invitations.submit') })
     .click()
-  await expect(page).toHaveURL(urlOf('/organizations'))
+  await expect(page).toHaveURL(urlOf(settingsPath('organization')))
 
   const invitationLink = await linkSentTo(invited, { since: sentAfter })
 
@@ -509,11 +509,11 @@ test('bascule d’organisation sans JavaScript', async ({ page, browser }) => {
   test.skip(!mounted, 'Le module est coupé dans cette configuration.')
 
   await aSignedInAccount(page, 's15-nojs')
-  await page.goto(publicPath('/organizations'))
+  await page.goto(publicPath(settingsPath('organization')))
 
   for (const name of ['Alpha', 'Bêta']) {
     await submitCreation(page, name, aSlug())
-    await expect(page).toHaveURL(urlOf('/organizations'))
+    await expect(page).toHaveURL(urlOf(settingsPath('organization')))
   }
 
   // La session est reprise telle quelle ; seul le script est coupé.
@@ -524,7 +524,7 @@ test('bascule d’organisation sans JavaScript', async ({ page, browser }) => {
   })
   const silent = await withoutScript.newPage()
 
-  await silent.goto(publicPath('/organizations'))
+  await silent.goto(publicPath(settingsPath('organization')))
 
   // Le déclencheur porte l'organisation courante, et il ne s'ouvrira pas.
   await expect(silent.getByRole('button', { name: 'Bêta' })).toBeVisible()
@@ -533,7 +533,7 @@ test('bascule d’organisation sans JavaScript', async ({ page, browser }) => {
   // de menu : sans script, il n'y a pas de menu.
   await silent.getByRole('button', { name: 'Alpha' }).click()
 
-  await expect(silent).toHaveURL(urlOf('/organizations'))
+  await expect(silent).toHaveURL(urlOf(settingsPath('organization')))
   await expect(silent.getByRole('button', { name: 'Alpha' })).toBeVisible()
 
   await withoutScript.close()
@@ -559,9 +559,9 @@ test('affiche le refus de plafond sur une invitation vivante', async ({ page, br
   test.skip(!mounted, 'Le module est coupé dans cette configuration.')
 
   await aSignedInAccount(page, 's47-founder')
-  await page.goto(publicPath('/organizations'))
+  await page.goto(publicPath(settingsPath('organization')))
   await submitCreation(page, 'Studio Plafonné', aSlug())
-  await expect(page).toHaveURL(urlOf('/organizations'))
+  await expect(page).toHaveURL(urlOf(settingsPath('organization')))
 
   const guestContext = await browser.newContext({ locale: 'fr-FR' })
   const guest = await guestContext.newPage()
@@ -576,7 +576,7 @@ test('affiche le refus de plafond sur une invitation vivante', async ({ page, br
     .getByRole('form', { name: text('organizations.invitations.title') })
     .getByRole('button', { name: text('organizations.invitations.submit') })
     .click()
-  await expect(page).toHaveURL(urlOf('/organizations'))
+  await expect(page).toHaveURL(urlOf(settingsPath('organization')))
 
   const invitationLink = await linkSentTo(guestEmail, { since: sentAfter })
 

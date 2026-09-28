@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { retryAfterMinutes } from '../../refusal-message'
+import { retryAfterMinutes } from '../../../../refusal-message'
 
 /**
  * **Ce que l'écran fait des réponses des deux droits RGPD** (s34b) — et rien

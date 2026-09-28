@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl'
 import { useRouter } from 'next/navigation'
 import { useRef, useState, type ChangeEvent } from 'react'
 
-import { useHydrated } from '../../use-hydrated'
+import { useHydrated } from '../../../../use-hydrated'
 
 /**
  * La photo de profil : la choisir, la remplacer, la retirer.

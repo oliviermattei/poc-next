@@ -1,0 +1,4 @@
+{
+  "$comment": "Inventaire figé des écrans de la zone Application à s61 (dev 4fcf61f, `apps/web/app/(app)/*/page.tsx`). Ne se dérive pas : c'est ce qui a été publié. Chaque chemin doit rester servi ou redirigé (ADR 075, `tests/legacy-paths.test.ts`).",
+  "paths": ["/account", "/app", "/billing", "/notifications", "/onboarding", "/organizations", "/premium"]
+}

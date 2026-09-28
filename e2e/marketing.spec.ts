@@ -7,7 +7,7 @@ import { marketingSite } from '../apps/web/lib/marketing'
 import { flatMessagesFor } from '../apps/web/lib/messages'
 import { publicUrls, servedPath } from '../apps/web/lib/public-urls'
 import { defaultLocale } from '../config/i18n'
-import { publicPath, sitePage, urlOf } from './support/locale'
+import { publicPath, settingsPath, sitePage, urlOf } from './support/locale'
 
 /**
  * Le site public, dans un vrai navigateur.
@@ -95,7 +95,7 @@ const text = (key: string): string => {
  * `tests/marketing.test.ts`, qui les balaie sur le disque ; ici, trois témoins
  * sur le fichier réellement servi.
  */
-const PRIVATE_PATHS = ['/account', '/sign-in', '/reset-password?token=jeton-de-reinitialisation']
+const PRIVATE_PATHS = [settingsPath('account'), '/sign-in', '/reset-password?token=jeton-de-reinitialisation']
 
 test('le plan de site référence exactement les pages publiques', async ({ request }) => {
   const response = await request.get('/sitemap.xml')

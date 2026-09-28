@@ -1,5 +1,6 @@
 import { loadRootEnv } from '@repo/config/server'
 import { robotsAllows, type RobotsPolicy } from '@repo/core'
+import { ACCOUNT_SCREEN_PATH } from '@repo/module-auth'
 import { describe, expect, it, vi } from 'vitest'
 
 import { appLocales } from '../config/i18n'
@@ -171,7 +172,7 @@ describe('tout est activé : le blog est indexable', () => {
     const policy = policyOf(await servedFor(['marketing', 'blog']))
 
     for (const url of [
-      '/fr/account',
+      `/fr${ACCOUNT_SCREEN_PATH}`,
       '/fr/sign-in',
       '/fr/reset-password?token=jeton-de-reinitialisation',
       // Un article qui n'existe pas : le motif est **ancré**, il n'ouvre pas
