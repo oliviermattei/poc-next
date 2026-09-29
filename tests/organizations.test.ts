@@ -408,11 +408,13 @@ describe.runIf(databaseReachable)('le périmètre organisationnel', () => {
 
       expect(response.status).toBe(303)
 
-      const location = new URL(response.headers.get('location') ?? '')
+      const location = response.headers.get('location') ?? ''
 
-      expect(location.origin).toBe(new URL(APP_URL).origin)
+      // ADR 080 : un chemin **relatif**, que le navigateur résout contre
+      // l'hôte qu'il a demandé — jamais une origine, ni `//ailleurs`.
+      expect(location).toMatch(/^\/(?!\/)/)
 
-      return location.pathname
+      return location.split('?')[0] ?? ''
     }
 
     expect(await returned('/app/demo')).toBe('/app/demo')
@@ -526,7 +528,7 @@ describe.runIf(databaseReachable)('la création d’une organisation', () => {
     // 303 vers l'écran, sans motif d'erreur : c'est ce que le navigateur suit
     // après une soumission native.
     expect(response.status).toBe(303)
-    expect(response.headers.get('location')).toBe(`${APP_URL}${ORGANIZATIONS_SCREEN_PATH}`)
+    expect(response.headers.get('location')).toBe(`${ORGANIZATIONS_SCREEN_PATH}`)
     expect((await service.useCases.viewOrganizations(founder.userId)).memberships).toHaveLength(1)
   })
 
@@ -539,7 +541,7 @@ describe.runIf(databaseReachable)('la création d’une organisation', () => {
     const refused = await call('create', { session: second, body: { name: 'Copie', slug } })
 
     expect(refused.headers.get('location')).toBe(
-      `${APP_URL}${ORGANIZATIONS_SCREEN_PATH}?error=slug_unavailable`,
+      `${ORGANIZATIONS_SCREEN_PATH}?error=slug_unavailable`,
     )
     expect(await countRows('organization', 'slug', slug)).toBe(1)
     expect((await service.useCases.viewOrganizations(second.userId)).memberships).toEqual([])
@@ -557,7 +559,7 @@ describe.runIf(databaseReachable)('la création d’une organisation', () => {
     })
 
     expect(refused.headers.get('location')).toBe(
-      `${APP_URL}${ORGANIZATIONS_SCREEN_PATH}?error=slug_unavailable`,
+      `${ORGANIZATIONS_SCREEN_PATH}?error=slug_unavailable`,
     )
     expect(await countRows('organization', 'slug', 'account')).toBe(0)
   })
@@ -568,7 +570,7 @@ describe.runIf(databaseReachable)('la création d’une organisation', () => {
 
     const refused = await call('create', { session: account, body: { name: '  ', slug } })
 
-    expect(refused.headers.get('location')).toBe(`${APP_URL}${ORGANIZATIONS_SCREEN_PATH}?error=invalid_name`)
+    expect(refused.headers.get('location')).toBe(`${ORGANIZATIONS_SCREEN_PATH}?error=invalid_name`)
     expect(await countRows('organization', 'slug', slug)).toBe(0)
   })
 })
@@ -743,7 +745,7 @@ describe.runIf(databaseReachable)('l’émission d’une invitation', () => {
     })
 
     expect(response.status).toBe(303)
-    expect(response.headers.get('location')).toBe(`${APP_URL}${MEMBERS_SCREEN_PATH}`)
+    expect(response.headers.get('location')).toBe(`${MEMBERS_SCREEN_PATH}`)
 
     // L'email part au destinataire, avec le template **qualifié par le module**.
     const sent = outbox.sent.at(-1)
@@ -821,7 +823,7 @@ describe.runIf(databaseReachable)('l’émission d’une invitation', () => {
       body: { organizationId, email: email.toUpperCase() },
     })
 
-    expect(refused.headers.get('location')).toBe(`${APP_URL}${MEMBERS_SCREEN_PATH}?error=already_member`)
+    expect(refused.headers.get('location')).toBe(`${MEMBERS_SCREEN_PATH}?error=already_member`)
     expect(await countRows('organization_invitation', 'organization_id', organizationId)).toBe(0)
   })
 
@@ -836,7 +838,7 @@ describe.runIf(databaseReachable)('l’émission d’une invitation', () => {
       body: { organizationId, email: guest },
     })
 
-    expect(refused.headers.get('location')).toBe(`${APP_URL}${MEMBERS_SCREEN_PATH}?error=already_invited`)
+    expect(refused.headers.get('location')).toBe(`${MEMBERS_SCREEN_PATH}?error=already_invited`)
     expect(await countRows('organization_invitation', 'email', guest)).toBe(1)
   })
 
@@ -850,7 +852,7 @@ describe.runIf(databaseReachable)('l’émission d’une invitation', () => {
       body: { organizationId, email: 'pas-une-adresse' },
     })
 
-    expect(refused.headers.get('location')).toBe(`${APP_URL}${MEMBERS_SCREEN_PATH}?error=invalid_email`)
+    expect(refused.headers.get('location')).toBe(`${MEMBERS_SCREEN_PATH}?error=invalid_email`)
     expect(await countRows('organization_invitation', 'organization_id', organizationId)).toBe(0)
     expect(outbox.sent.length).toBe(before)
   })
@@ -865,7 +867,7 @@ describe.runIf(databaseReachable)('l’émission d’une invitation', () => {
         body: { organizationId, email: anUnknownEmail() },
       })
 
-      expect(accepted.headers.get('location')).toBe(`${APP_URL}${MEMBERS_SCREEN_PATH}`)
+      expect(accepted.headers.get('location')).toBe(`${MEMBERS_SCREEN_PATH}`)
     }
 
     const refused = await call('invite', {
@@ -873,7 +875,7 @@ describe.runIf(databaseReachable)('l’émission d’une invitation', () => {
       body: { organizationId, email: anUnknownEmail() },
     })
 
-    expect(refused.headers.get('location')).toBe(`${APP_URL}${MEMBERS_SCREEN_PATH}?error=invitation_quota`)
+    expect(refused.headers.get('location')).toBe(`${MEMBERS_SCREEN_PATH}?error=invitation_quota`)
     expect(await countRows('organization_invitation', 'organization_id', organizationId)).toBe(
       INVITATION_QUOTA_PER_WINDOW,
     )
@@ -903,7 +905,7 @@ describe.runIf(databaseReachable)('l’émission d’une invitation', () => {
       })
 
       expect(refused.headers.get('location')).toBe(
-        `${APP_URL}${MEMBERS_SCREEN_PATH}?error=invitation_quota`,
+        `${MEMBERS_SCREEN_PATH}?error=invitation_quota`,
       )
 
       // Une heure plus tard, les vingt émissions sont sorties de la fenêtre.
@@ -914,7 +916,7 @@ describe.runIf(databaseReachable)('l’émission d’une invitation', () => {
         body: { organizationId, email: anUnknownEmail() },
       })
 
-      expect(accepted.headers.get('location')).toBe(`${APP_URL}${MEMBERS_SCREEN_PATH}`)
+      expect(accepted.headers.get('location')).toBe(`${MEMBERS_SCREEN_PATH}`)
       expect(await countRows('organization_invitation', 'organization_id', organizationId)).toBe(
         INVITATION_QUOTA_PER_WINDOW + 1,
       )
@@ -939,7 +941,7 @@ describe.runIf(databaseReachable)('l’émission d’une invitation', () => {
         body: { organizationId, email: guest },
       })
 
-      expect(response.headers.get('location')).toBe(`${APP_URL}${MEMBERS_SCREEN_PATH}?error=email_failed`)
+      expect(response.headers.get('location')).toBe(`${MEMBERS_SCREEN_PATH}?error=email_failed`)
     } finally {
       deliveryFails = false
     }
@@ -986,7 +988,7 @@ describe.runIf(databaseReachable)('l’acceptation d’une invitation', () => {
     const accepted = await call('acceptInvitation', { session: guest, body: { token } })
 
     expect(accepted.status).toBe(303)
-    expect(accepted.headers.get('location')).toBe(`${APP_URL}${ORGANIZATIONS_SCREEN_PATH}`)
+    expect(accepted.headers.get('location')).toBe(`${ORGANIZATIONS_SCREEN_PATH}`)
 
     const view = await service.useCases.viewOrganizations(guest.userId)
 
@@ -1081,7 +1083,7 @@ describe.runIf(databaseReachable)('l’acceptation d’une invitation', () => {
     expect(emissions).toEqual([])
 
     expect(replayed.headers.get('location')).toBe(
-      `${APP_URL}/invitations/accept?token=${token}&error=invitation_accepted`,
+      `/invitations/accept?token=${token}&error=invitation_accepted`,
     )
     expect(
       await countRows('organization_member', 'organization_id', organizationId),
@@ -1184,7 +1186,7 @@ describe.runIf(databaseReachable)('la révocation et le renvoi', () => {
       body: { organizationId, invitationId: invitation?.id ?? '' },
     })
 
-    expect(resent.headers.get('location')).toBe(`${APP_URL}${MEMBERS_SCREEN_PATH}`)
+    expect(resent.headers.get('location')).toBe(`${MEMBERS_SCREEN_PATH}`)
 
     const secondToken = tokenOf(lastInvitationLink())
 
@@ -1209,7 +1211,7 @@ describe.runIf(databaseReachable)('la révocation et le renvoi', () => {
       body: { token: secondToken },
     })
 
-    expect(withNewLink.headers.get('location')).toBe(`${APP_URL}${ORGANIZATIONS_SCREEN_PATH}`)
+    expect(withNewLink.headers.get('location')).toBe(`${ORGANIZATIONS_SCREEN_PATH}`)
   })
 
   it('compte le renvoi dans le quota d’émission de l’organisation', async () => {
@@ -1231,7 +1233,7 @@ describe.runIf(databaseReachable)('la révocation et le renvoi', () => {
         body: { organizationId, invitationId: invitation?.id ?? '' },
       })
 
-      expect(resent.headers.get('location')).toBe(`${APP_URL}${MEMBERS_SCREEN_PATH}`)
+      expect(resent.headers.get('location')).toBe(`${MEMBERS_SCREEN_PATH}`)
     }
 
     const [invitation] = await invitationsOf(founder)
@@ -1242,7 +1244,7 @@ describe.runIf(databaseReachable)('la révocation et le renvoi', () => {
       body: { organizationId, invitationId: invitation?.id ?? '' },
     })
 
-    expect(refused.headers.get('location')).toBe(`${APP_URL}${MEMBERS_SCREEN_PATH}?error=invitation_quota`)
+    expect(refused.headers.get('location')).toBe(`${MEMBERS_SCREEN_PATH}?error=invitation_quota`)
     // Le refus n'atteint pas le port d'envoi : c'est l'email que le quota borne.
     expect(outbox.sent.length).toBe(sentBefore)
   })
@@ -1266,7 +1268,7 @@ describe.runIf(databaseReachable)('la révocation et le renvoi', () => {
     })
 
     expect(replayed.headers.get('location')).toBe(
-      `${APP_URL}${MEMBERS_SCREEN_PATH}?error=invitation_unknown`,
+      `${MEMBERS_SCREEN_PATH}?error=invitation_unknown`,
     )
     expect(await countRows('organization_invitation', 'id', invitationId)).toBe(1)
   })
@@ -1291,7 +1293,7 @@ describe.runIf(databaseReachable)('la révocation et le renvoi', () => {
     })
 
     expect(refused.headers.get('location')).toBe(
-      `${APP_URL}${MEMBERS_SCREEN_PATH}?error=invitation_unknown`,
+      `${MEMBERS_SCREEN_PATH}?error=invitation_unknown`,
     )
     expect(await invitationsOf(founder)).toHaveLength(1)
 
@@ -1332,7 +1334,7 @@ describe.runIf(databaseReachable)('la révocation et le renvoi', () => {
     })
 
     expect(refused.headers.get('location')).toBe(
-      `${APP_URL}${MEMBERS_SCREEN_PATH}?error=invitation_unknown`,
+      `${MEMBERS_SCREEN_PATH}?error=invitation_unknown`,
     )
     // **Aucun email n'est parti** : le refus n'atteint pas le port d'envoi.
     expect(outbox.sent.length).toBe(sentBefore)
@@ -1344,7 +1346,7 @@ describe.runIf(databaseReachable)('la révocation et le renvoi', () => {
       body: { token: tokenOf(link) },
     })
 
-    expect(accepted.headers.get('location')).toBe(`${APP_URL}${ORGANIZATIONS_SCREEN_PATH}`)
+    expect(accepted.headers.get('location')).toBe(`${ORGANIZATIONS_SCREEN_PATH}`)
   })
 })
 
@@ -1383,7 +1385,7 @@ describe.runIf(databaseReachable)('le retrait d’un membre', () => {
       body: { organizationId, userId: member.userId },
     })
 
-    expect(removed.headers.get('location')).toBe(`${APP_URL}${MEMBERS_SCREEN_PATH}`)
+    expect(removed.headers.get('location')).toBe(`${MEMBERS_SCREEN_PATH}`)
     expect(await service.useCases.activeOrganizationId(member.userId)).toBeNull()
     expect((await service.useCases.viewOrganizations(member.userId)).memberships).toEqual([])
 
@@ -1404,7 +1406,7 @@ describe.runIf(databaseReachable)('le retrait d’un membre', () => {
       body: { organizationId, userId: member.userId },
     })
 
-    expect(left.headers.get('location')).toBe(`${APP_URL}${MEMBERS_SCREEN_PATH}`)
+    expect(left.headers.get('location')).toBe(`${MEMBERS_SCREEN_PATH}`)
     expect(await countRows('organization_member', 'organization_id', organizationId)).toBe(1)
   })
 
@@ -1428,7 +1430,7 @@ describe.runIf(databaseReachable)('le retrait d’un membre', () => {
       body: { organizationId, userId: founder.userId },
     })
 
-    expect(refusedBySelf.headers.get('location')).toBe(`${APP_URL}${MEMBERS_SCREEN_PATH}?error=last_owner`)
+    expect(refusedBySelf.headers.get('location')).toBe(`${MEMBERS_SCREEN_PATH}?error=last_owner`)
     expect(await countRows('organization_member', 'user_id', founder.userId)).toBe(1)
   })
 
@@ -1497,7 +1499,7 @@ describe.runIf(databaseReachable)('le retrait d’un membre', () => {
       body: { organizationId, userId: stranger.userId },
     })
 
-    expect(refused.headers.get('location')).toBe(`${APP_URL}${MEMBERS_SCREEN_PATH}?error=not_a_member`)
+    expect(refused.headers.get('location')).toBe(`${MEMBERS_SCREEN_PATH}?error=not_a_member`)
   })
 
   it('refuse de retirer un membre d’une autre organisation', async () => {
@@ -1516,7 +1518,7 @@ describe.runIf(databaseReachable)('le retrait d’un membre', () => {
       body: { organizationId: otherOrganizationId, userId: member.userId },
     })
 
-    expect(refused.headers.get('location')).toBe(`${APP_URL}${MEMBERS_SCREEN_PATH}?error=not_a_member`)
+    expect(refused.headers.get('location')).toBe(`${MEMBERS_SCREEN_PATH}?error=not_a_member`)
     expect(await countRows('organization_member', 'organization_id', organizationId)).toBe(2)
   })
 
@@ -1687,7 +1689,7 @@ describe.runIf(databaseReachable)('le refus d’un rôle insuffisant', () => {
       body: { organizationId, userId: other.userId },
     })
 
-    expect(left.headers.get('location')).toBe(`${APP_URL}${MEMBERS_SCREEN_PATH}`)
+    expect(left.headers.get('location')).toBe(`${MEMBERS_SCREEN_PATH}`)
     expect(await countRows('organization_member', 'organization_id', organizationId)).toBe(1)
   })
 
@@ -1707,14 +1709,14 @@ describe.runIf(databaseReachable)('le refus d’un rôle insuffisant', () => {
       body: { organizationId, email: anUnknownEmail() },
     })
 
-    expect(invited.headers.get('location')).toBe(`${APP_URL}${MEMBERS_SCREEN_PATH}`)
+    expect(invited.headers.get('location')).toBe(`${MEMBERS_SCREEN_PATH}`)
 
     const removed = await call('removeMember', {
       session: admin,
       body: { organizationId, userId: newcomer.userId },
     })
 
-    expect(removed.headers.get('location')).toBe(`${APP_URL}${MEMBERS_SCREEN_PATH}`)
+    expect(removed.headers.get('location')).toBe(`${MEMBERS_SCREEN_PATH}`)
     expect(await countRows('organization_member', 'user_id', newcomer.userId)).toBe(0)
     expect(await countRows('organization_member', 'user_id', owner.userId)).toBe(1)
   })
@@ -1784,7 +1786,7 @@ describe.runIf(databaseReachable)('le changement de rôle', () => {
       body: { organizationId, userId: other.userId, role: 'admin' },
     })
 
-    expect(promoted.headers.get('location')).toBe(`${APP_URL}${MEMBERS_SCREEN_PATH}`)
+    expect(promoted.headers.get('location')).toBe(`${MEMBERS_SCREEN_PATH}`)
     expect(await roleOf(owner, other.userId)).toBe('admin')
 
     // Rejouable : le même ordre, le même état, aucune ligne de plus
@@ -1794,7 +1796,7 @@ describe.runIf(databaseReachable)('le changement de rôle', () => {
       body: { organizationId, userId: other.userId, role: 'admin' },
     })
 
-    expect(replayed.headers.get('location')).toBe(`${APP_URL}${MEMBERS_SCREEN_PATH}`)
+    expect(replayed.headers.get('location')).toBe(`${MEMBERS_SCREEN_PATH}`)
     expect(await countRows('organization_member', 'user_id', other.userId)).toBe(1)
 
     const demoted = await call('setMemberRole', {
@@ -1802,7 +1804,7 @@ describe.runIf(databaseReachable)('le changement de rôle', () => {
       body: { organizationId, userId: other.userId, role: 'member' },
     })
 
-    expect(demoted.headers.get('location')).toBe(`${APP_URL}${MEMBERS_SCREEN_PATH}`)
+    expect(demoted.headers.get('location')).toBe(`${MEMBERS_SCREEN_PATH}`)
     expect(await roleOf(owner, other.userId)).toBe('member')
   })
 
@@ -1817,7 +1819,7 @@ describe.runIf(databaseReachable)('le changement de rôle', () => {
       body: { organizationId, userId: other.userId, role: 'owner' },
     })
 
-    expect(transferred.headers.get('location')).toBe(`${APP_URL}${MEMBERS_SCREEN_PATH}`)
+    expect(transferred.headers.get('location')).toBe(`${MEMBERS_SCREEN_PATH}`)
     // Lu par l'**ancien** propriétaire : c'est lui dont l'organisation est
     // courante, et il voit sa propre destitution.
     expect(await roleOf(owner, other.userId)).toBe('owner')
@@ -1841,7 +1843,7 @@ describe.runIf(databaseReachable)('le changement de rôle', () => {
       body: { organizationId, userId: other.userId, role: 'superadmin' },
     })
 
-    expect(refused.headers.get('location')).toBe(`${APP_URL}${MEMBERS_SCREEN_PATH}?error=invalid_role`)
+    expect(refused.headers.get('location')).toBe(`${MEMBERS_SCREEN_PATH}?error=invalid_role`)
     expect(await roleOf(owner, other.userId)).toBe('member')
   })
 
@@ -1856,7 +1858,7 @@ describe.runIf(databaseReachable)('le changement de rôle', () => {
       body: { organizationId, userId: owner.userId, role: 'admin' },
     })
 
-    expect(refused.headers.get('location')).toBe(`${APP_URL}${MEMBERS_SCREEN_PATH}?error=last_owner`)
+    expect(refused.headers.get('location')).toBe(`${MEMBERS_SCREEN_PATH}?error=last_owner`)
     expect(await roleOf(owner, owner.userId)).toBe('owner')
   })
 
@@ -1868,7 +1870,7 @@ describe.runIf(databaseReachable)('le changement de rôle', () => {
       body: { organizationId, userId: owner.userId, role: 'member' },
     })
 
-    expect(demoted.headers.get('location')).toBe(`${APP_URL}${MEMBERS_SCREEN_PATH}`)
+    expect(demoted.headers.get('location')).toBe(`${MEMBERS_SCREEN_PATH}`)
     expect(await roleOf(owner, owner.userId)).toBe('member')
     expect(await roleOf(owner, other.userId)).toBe('owner')
   })
@@ -1984,7 +1986,7 @@ describe.runIf(databaseReachable)('le changement de rôle', () => {
       body: { organizationId, email: anUnknownEmail() },
     })
 
-    expect(promoted.headers.get('location')).toBe(`${APP_URL}${MEMBERS_SCREEN_PATH}`)
+    expect(promoted.headers.get('location')).toBe(`${MEMBERS_SCREEN_PATH}`)
 
     await call('setMemberRole', {
       session: owner,
@@ -2091,7 +2093,7 @@ describe.runIf(databaseReachable)('le changement de rôle', () => {
       body: { organizationId: otherOrganizationId, userId: other.userId, role: 'admin' },
     })
 
-    expect(refused.headers.get('location')).toBe(`${APP_URL}${MEMBERS_SCREEN_PATH}?error=not_a_member`)
+    expect(refused.headers.get('location')).toBe(`${MEMBERS_SCREEN_PATH}?error=not_a_member`)
 
     const disguised = await call('setMemberRole', {
       session: elsewhere,

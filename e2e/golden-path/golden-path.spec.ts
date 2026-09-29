@@ -1,6 +1,6 @@
 import { MODULE_ROUTE_PREFIX } from '@repo/core'
 import { createDatabaseClient } from '@repo/db'
-import { billingWebhookEvent, PRICING_SCREEN_PATH } from '@repo/module-billing'
+import { BILLING_SCREEN_PATH, billingWebhookEvent, PRICING_SCREEN_PATH } from '@repo/module-billing'
 import { DEFAULT_SIGNED_IN_PATH } from '@repo/module-auth'
 import { demoEnabledModule, DEMO_PREMIUM_SCREEN_PATH } from '@repo/module-demo-enabled'
 import { ONBOARDING_SCREEN_PATH } from '@repo/module-onboarding'
@@ -8,7 +8,13 @@ import { expect, test, type Page } from '@playwright/test'
 
 import { billing } from '../../apps/web/lib/billing'
 import { organizations } from '../../apps/web/lib/organizations'
-import { resolveGoldenPathRegime, verifyEventIdMark } from '../../scripts/golden-path-regime'
+import { appBaseUrl, siteBaseUrl } from '../../playwright.config'
+import {
+  hostsReport,
+  resolveGoldenPathHosts,
+  resolveGoldenPathRegime,
+  verifyEventIdMark,
+} from '../../scripts/golden-path-regime'
 import {
   clearRemainingOnboardingSteps,
   linkSentTo,
@@ -21,6 +27,7 @@ import {
   publicPath,
   settingsPath,
   signedInLanding,
+  signInRedirectedFrom,
   urlOf,
 } from '../support/locale'
 import { humanDuration, measuredStep, totalOf, type StepMeasurement } from '../support/steps'
@@ -84,6 +91,33 @@ import { humanDuration, measuredStep, totalOf, type StepMeasurement } from '../s
  * est dérivée de la configuration, et le journal dit lequel des deux régimes a
  * été mesuré.
  */
+
+/**
+ * **Le mode d'hôtes** (s64b2) : `GOLDEN_PATH_HOSTS=split` joue le site sur
+ * `site.localhost` et l'application sur `app.site.localhost` (`APP_HOST`). Les
+ * parcours partent toujours du site — `baseURL` —, si bien que chaque écran
+ * d'application ou de connexion y passe par le 308 de s64b1.
+ *
+ * Les pas qui **mesurent** ces redirections ne sont joués qu'en mode split : à
+ * un seul hôte, le parcours reste celui d'avant.
+ */
+const HOSTS = resolveGoldenPathHosts(process.env)
+const SPLIT = HOSTS === 'split'
+const SITE_ORIGIN = siteBaseUrl(HOSTS)
+const APP_ORIGIN = appBaseUrl(HOSTS)
+
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/**
+ * **L'hôte où la page a atterri**, par une expression ancrée sur l'origine —
+ * `urlOf` ne l'est pas, et accepte les deux hôtes.
+ */
+const expectOnOrigin = async (page: Page, origin: string): Promise<void> => {
+  await expect(page).toHaveURL(new RegExp(`^${escapeRegExp(origin)}/`))
+}
+
+/** L'offre unique du catalogue livré, reposée par le lien « Déjà client ? ». */
+const ONE_TIME_OFFER = 'lifetime'
 
 /** Les mesures d'étape de l'exécution, journalisées à la fin de chaque parcours. */
 const measured: StepMeasurement[] = []
@@ -175,7 +209,9 @@ const expectFeatureGranted = async (page: Page): Promise<void> => {
   await page.goto(DEMO_PREMIUM_SCREEN_PATH)
   await expect(page.getByText('Accès ouvert')).toBeVisible()
 
-  const served = await page.request.get(`${MODULE_ROUTE_PREFIX}${PREMIUM_ROUTE}`)
+  // Sur l'origine de l'application, qui porte le cookie de session : le site
+  // sert aussi l'API, mais sans la session (s64b2).
+  const served = await page.request.get(`${APP_ORIGIN}${MODULE_ROUTE_PREFIX}${PREMIUM_ROUTE}`)
 
   expect(served.status(), 'la route réservée doit être servie une fois le droit acquis').toBe(200)
 }
@@ -185,7 +221,7 @@ const expectFeatureLocked = async (page: Page): Promise<void> => {
   await page.goto(DEMO_PREMIUM_SCREEN_PATH)
   await expect(page.getByText('Réservé aux offres payantes')).toBeVisible()
 
-  const refused = await page.request.get(`${MODULE_ROUTE_PREFIX}${PREMIUM_ROUTE}`)
+  const refused = await page.request.get(`${APP_ORIGIN}${MODULE_ROUTE_PREFIX}${PREMIUM_ROUTE}`)
 
   expect(refused.status(), 'la route réservée doit refuser sans le droit').toBe(403)
 }
@@ -222,6 +258,7 @@ test.beforeAll(() => {
       ? '  parcours d’intégration : traversé par le fondateur (module activé)'
       : '  parcours d’intégration : absent (module coupé), chaque étape va droit à son écran',
   )
+  console.log(`  ${hostsReport(HOSTS)}`)
 })
 
 test.afterAll(() => {
@@ -248,6 +285,12 @@ test('un clone mène à un premier paiement, et le paiement ouvre la fonctionnal
 }) => {
   await step('inscription', async () => {
     await signUp(page, FOUNDER)
+
+    if (SPLIT) {
+      // Demandée au site, l'inscription (Hors zone) est servie par
+      // l'application : le 308 de s64b1, mesuré au navigateur.
+      await expectOnOrigin(page, APP_ORIGIN)
+    }
   })
 
   await step('vérification de l’adresse email', async () => {
@@ -356,14 +399,47 @@ test('un achat unique ouvre la même fonctionnalité qu’un abonnement', async 
   await step('inscription de l’acheteur', async () => {
     await signUp(page, BUYER)
     await page.goto(await linkSentTo(BUYER))
+
+    if (SPLIT) {
+      // La connexion se fait au pas suivant, depuis le site.
+      return
+    }
+
     await signIn(page, BUYER)
     // L'atterrissage est dérivé : ce parcours ne traverse pas l'intégration —
     // son sujet est la forme du paiement, et il va droit aux offres.
     await expect(page).toHaveURL(urlOf(signedInLanding()))
   })
 
+  if (SPLIT) {
+    /**
+     * **Le chemin d'un compte existant entre les deux hôtes** (s64b2). Le site
+     * ne voit pas la session de l'application : son lien « Déjà client ? »
+     * mène à l'écran de facturation, par le 308 du site vers l'application,
+     * puis par la connexion, qui garde l'offre dans son retour.
+     */
+    await step('offre choisie sur le site, connexion comprise', async () => {
+      const resumed = `${BILLING_SCREEN_PATH}?offer=${ONE_TIME_OFFER}`
+
+      await page.goto(`${publicPath(PRICING_SCREEN_PATH)}?offer=${ONE_TIME_OFFER}`)
+      await expectOnOrigin(page, SITE_ORIGIN)
+
+      await page.getByRole('link', { name: 'Choisissez votre offre depuis votre espace' }).click()
+      await expect(page).toHaveURL(signInRedirectedFrom(resumed))
+      await expectOnOrigin(page, APP_ORIGIN)
+
+      await signIn(page, BUYER)
+      await expect(page).toHaveURL(urlOf(settingsPath('billing'), `?offer=${ONE_TIME_OFFER}`))
+      await expectOnOrigin(page, APP_ORIGIN)
+      // L'offre reposée reprend le focus ; l'achat reste un geste.
+      await expect(page.getByRole('button', { name: 'Acheter' })).toBeFocused()
+    })
+  }
+
   await step('achat unique', async () => {
-    await page.goto(settingsPath('billing'))
+    if (!SPLIT) {
+      await page.goto(settingsPath('billing'))
+    }
 
     const buy = page.getByRole('button', { name: 'Acheter' })
 
@@ -410,6 +486,12 @@ test('un paiement sans compte mène, par l’email reçu, à la fonctionnalité 
     guestEmail = `${sessionId}@guest.local`
 
     await page.waitForURL(/\/pricing\?checkout=success/)
+
+    if (SPLIT) {
+      // Le retour d'un paiement invité revient **sur le site**, en un saut,
+      // avec sa requête (s64b2).
+      await expectOnOrigin(page, SITE_ORIGIN)
+    }
   })
 
   await step('ouverture du compte par le lien reçu', async () => {

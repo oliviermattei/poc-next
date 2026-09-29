@@ -13,6 +13,8 @@
   "pricing.noscript": "Enable JavaScript to subscribe: checkout opens at our payment provider.",
   "pricing.return.success": "Back from checkout. This page does not read your payment status: if the payment went through, an email is on its way to the address you provided, and it holds the link that opens your account.",
   "pricing.return.cancelled": "You left checkout. If no payment went through, nothing was charged and no account was created.",
+  "pricing.existingCustomer.prompt": "Already a customer?",
+  "pricing.existingCustomer.link": "Choose your plan from your account",
   "title": "Billing",
   "description": "Manage your subscription, payment method and invoices.",
   "subscription.title": "Your subscription",

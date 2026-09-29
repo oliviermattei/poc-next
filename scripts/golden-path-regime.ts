@@ -51,11 +51,11 @@ export type GoldenPathRegime =
   | { readonly kind: 'live'; readonly apiKey: string; readonly priceId: string }
 
 /**
- * Ce que la règle lit de l'environnement — **cinq variables, nommées**.
+ * Ce que les règles lisent de l'environnement — **six variables, nommées**.
  *
  * Un index libre (`Record<string, string | undefined>`) est admis pour que
- * `process.env` passe tel quel : la règle ne lit rien d'autre que ces
- * cinq-là, et l'énumération ci-dessus est ce qui le dit.
+ * `process.env` passe tel quel : les règles ne lisent rien d'autre que ces
+ * six-là, et l'énumération ci-dessus est ce qui le dit.
  */
 export interface RegimeEnvironment {
   readonly GOLDEN_PATH_PAYMENTS?: string | undefined
@@ -63,6 +63,8 @@ export interface RegimeEnvironment {
   readonly STRIPE_SECRET_KEY?: string | undefined
   readonly STRIPE_LIVE_PRICE_ID?: string | undefined
   readonly PAYMENTS_RECORDED_EVENTS?: string | undefined
+  /** s64b2 — le mode d'hôtes, lu par `resolveGoldenPathHosts`. */
+  readonly GOLDEN_PATH_HOSTS?: string | undefined
   readonly [other: string]: string | undefined
 }
 
@@ -154,6 +156,49 @@ export const resolveGoldenPathRegime = (env: RegimeEnvironment): GoldenPathRegim
 
   return { kind: 'live', apiKey, priceId }
 }
+
+/**
+ * **Les hôtes du parcours doré** (s64b2) : un seul, ou le site et
+ * l'application sur deux hôtes (`APP_HOST`).
+ *
+ * | `GOLDEN_PATH_HOSTS` | site | application |
+ * |---|---|---|
+ * | absente ou vide | `localhost` | `localhost` |
+ * | `split` | `site.localhost` | `app.site.localhost` |
+ *
+ * **Le site n'est jamais sur `localhost` en mode `split`** : Next relativise un
+ * `Location` dont l'origine est celle d'écoute (research de s64b, fait 3), et le
+ * 308 de l'application vers le site deviendrait un chemin relatif qui boucle.
+ *
+ * Une valeur inconnue est **refusée en la nommant**, jamais lue comme « un
+ * hôte » : une faute de frappe mesurerait sinon l'hôte unique en annonçant le
+ * contraire.
+ */
+export type GoldenPathHosts = 'single' | 'split'
+
+export const resolveGoldenPathHosts = (env: RegimeEnvironment): GoldenPathHosts => {
+  const requested = declared(env.GOLDEN_PATH_HOSTS)
+
+  if (requested === undefined) {
+    return 'single'
+  }
+
+  if (requested !== 'split') {
+    throw new Error(
+      `GOLDEN_PATH_HOSTS=${requested} n’est pas un mode connu : posez \`split\` pour jouer le ` +
+        'parcours avec le site et l’application sur deux hôtes (site.localhost / ' +
+        'app.site.localhost), ou laissez-la vide pour un seul hôte.',
+    )
+  }
+
+  return 'split'
+}
+
+/** La ligne de journal du mode d'hôtes, à côté du régime de paiement. */
+export const hostsReport = (hosts: GoldenPathHosts): string =>
+  hosts === 'split'
+    ? 'Parcours doré — hôtes : deux (site.localhost / app.site.localhost, APP_HOST posée).'
+    : 'Parcours doré — hôtes : un seul (localhost, sans APP_HOST).'
 
 /**
  * **Le dossier d'enregistrements que le serveur doit recevoir**, selon le

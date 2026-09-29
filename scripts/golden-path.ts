@@ -28,6 +28,8 @@ import {
   durationsReport,
   FAILURE_TRACES_DIRECTORY,
   freshDatabaseUrl,
+  hostsReport,
+  resolveGoldenPathHosts,
   resolveGoldenPathRegime,
   type GoldenPathRegime,
 } from './golden-path-regime'
@@ -113,6 +115,13 @@ const main = async (): Promise<void> => {
   const regime = resolveGoldenPathRegime(process.env)
 
   console.log(`Parcours doré — régime de paiement : ${regime.kind}.`)
+
+  if (regime.kind !== 'live') {
+    // s64b2 — refusé ici, **avant** tout clone, s'il est inconnu ; la
+    // configuration du parcours le relit dans le clone, qui hérite de cet
+    // environnement.
+    console.log(hostsReport(resolveGoldenPathHosts(process.env)))
+  }
 
   if (regime.kind === 'live') {
     await captureAgainstRealKeys(regime)

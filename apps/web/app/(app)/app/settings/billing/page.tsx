@@ -1,4 +1,4 @@
-import { BILLING_KEYS, billingRoutePath } from '@repo/module-billing'
+import { BILLING_KEYS, billingRoutePath, selectedOfferOf } from '@repo/module-billing'
 import { BillingScreen } from '@repo/module-billing/presentation'
 import { notFound, redirect } from 'next/navigation'
 import { z } from 'zod'
@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { BillingAction } from '../../../../billing-actions'
 import { currentViewer } from '../../../../../lib/auth'
 import { billing, BILLING_SCREEN_PATH } from '../../../../../lib/billing'
+import { billingCatalogue } from '../../../../../lib/billing-catalogue'
 import { appIntl } from '../../../../../lib/i18n'
 
 /**
@@ -53,13 +54,25 @@ export default async function BillingPage({
 
   const { session } = await currentViewer()
   const { t, path, locale } = await appIntl()
+  const parameters = (await searchParams) ?? {}
+  // **L'offre choisie ailleurs, reposée ici** (s64b2, ADR 045) : depuis le lien
+  // « Déjà client ? » du site, ou au retour de la connexion. Validée contre le
+  // catalogue par la règle du domaine — jamais interpolée telle que reçue. Elle
+  // ne fait que rendre le focus à son bouton : l'achat reste un geste.
+  const selectedOfferId = selectedOfferOf(parameters['offer'], billingCatalogue())
 
   if (session === null) {
-    redirect(`${path('/sign-in')}?next=${encodeURIComponent(BILLING_SCREEN_PATH)}`)
+    // Le retour garde l'offre : sans elle, la personne venue du site pour
+    // acheter retrouverait un écran où rien ne dit ce qu'elle avait choisi.
+    const back =
+      selectedOfferId === null
+        ? BILLING_SCREEN_PATH
+        : `${BILLING_SCREEN_PATH}?offer=${encodeURIComponent(selectedOfferId)}`
+
+    redirect(`${path('/sign-in')}?next=${encodeURIComponent(back)}`)
   }
 
   const view = await billing.view(session, locale)
-  const parameters = (await searchParams) ?? {}
 
   const dateFormatter = new Intl.DateTimeFormat(locale, {
     dateStyle: 'long',
@@ -91,6 +104,7 @@ export default async function BillingPage({
             labelKey={offer.mode === 'one_time' ? BILLING_KEYS.purchase : BILLING_KEYS.subscribe}
             offerId={offer.id}
             locale={locale}
+            focusOnReady={offer.id === selectedOfferId}
           />,
         ]),
       )}

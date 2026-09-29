@@ -133,6 +133,15 @@ const submittedBody = async (request: Request): Promise<unknown> => {
 }
 
 /**
+ * **Un `Location` relatif** (ADR 080) : un chemin de ce module, plus les
+ * paramètres qu'il pose lui-même. Jamais une URL résolue contre
+ * `request.url`, qui porterait l'hôte d'écoute du serveur au lieu de celui que
+ * le navigateur a demandé.
+ */
+const relativeLocation = (path: string, params?: Record<string, string>): string =>
+  params === undefined ? path : `${path}?${new URLSearchParams(params).toString()}`
+
+/**
  * La réponse d'une soumission : un retour à la **rubrique de l'action**, avec
  * le motif du refus quand il y en a un.
  *
@@ -146,7 +155,6 @@ const submittedBody = async (request: Request): Promise<unknown> => {
  * n'en vient pas.
  */
 const backToScreen = (
-  request: Request,
   outcome: OrganizationOutcome,
   screen: OrganizationScreenPath,
   /**
@@ -164,15 +172,15 @@ const backToScreen = (
     return forbidden()
   }
 
-  const destination = new URL(outcome.status === 'refused' ? screen : returnPath, request.url)
-
-  if (outcome.status === 'refused') {
-    destination.searchParams.set('error', outcome.refusal)
-  }
+  const destination =
+    outcome.status === 'refused'
+      ? relativeLocation(screen, { error: outcome.refusal })
+      : relativeLocation(returnPath)
 
   // 303 et non 302 : la méthode devient un GET, donc un rechargement de l'écran
-  // ne renvoie pas le formulaire.
-  return new Response(null, { status: 303, headers: { location: destination.toString() } })
+  // ne renvoie pas le formulaire. **Relatif** (ADR 080) : le navigateur le
+  // résout contre l'hôte qu'il a demandé, pas contre l'hôte d'écoute.
+  return new Response(null, { status: 303, headers: { location: destination } })
 }
 
 /**
@@ -185,7 +193,6 @@ const backToScreen = (
  * mains de l'appelant, et il n'ouvre rien de plus qu'avant.
  */
 const backToInvitation = (
-  request: Request,
   token: string,
   outcome: OrganizationOutcome,
 ): Response => {
@@ -197,17 +204,12 @@ const backToInvitation = (
     return forbidden()
   }
 
-  const destination = new URL(
-    outcome.status === 'ok' ? ORGANIZATIONS_SCREEN_PATH : INVITATION_SCREEN_PATH,
-    request.url,
-  )
+  const destination =
+    outcome.status === 'refused'
+      ? relativeLocation(INVITATION_SCREEN_PATH, { token, error: outcome.refusal })
+      : relativeLocation(outcome.status === 'ok' ? ORGANIZATIONS_SCREEN_PATH : INVITATION_SCREEN_PATH)
 
-  if (outcome.status === 'refused') {
-    destination.searchParams.set('token', token)
-    destination.searchParams.set('error', outcome.refusal)
-  }
-
-  return new Response(null, { status: 303, headers: { location: destination.toString() } })
+  return new Response(null, { status: 303, headers: { location: destination } })
 }
 
 /**
@@ -280,7 +282,7 @@ export function createOrganizationRoutes(
         body,
       })
 
-      return backToScreen(request, outcome, screen, returnTo?.(body) ?? screen)
+      return backToScreen(outcome, screen, returnTo?.(body) ?? screen)
     },
   })
 
@@ -309,7 +311,7 @@ export function createOrganizationRoutes(
           ? String((body as { token: unknown }).token)
           : ''
 
-      return backToInvitation(request, token, outcome)
+      return backToInvitation(token, outcome)
     },
   }
 

@@ -1063,6 +1063,7 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
     policy,
     useCases,
     oauthProviders,
+    appUrl: options.appUrl,
 
     handle: (request) => auth.handler(request),
 

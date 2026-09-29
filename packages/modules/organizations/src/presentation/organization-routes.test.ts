@@ -115,9 +115,7 @@ describe('le retour 303 de chaque action', () => {
       session,
     )
 
-    expect(new URL(response.headers.get('location') ?? '').pathname).toBe(
-      ORGANIZATIONS_SCREEN_PATH,
-    )
+    expect(response.headers.get('location')).toBe(ORGANIZATIONS_SCREEN_PATH)
   })
 })
 
@@ -143,11 +141,9 @@ describe('le champ `next` hors du succès de `switch`', () => {
       post(path, 'organizationId=org_1&next=%2Fapp%2Fdemo'),
       session,
     )
-    const location = new URL(response.headers.get('location') ?? '')
-
     expect(response.status).toBe(303)
-    expect(location.pathname).toBe(ORGANIZATIONS_SCREEN_PATH)
-    expect(location.searchParams.get('error')).toBe('invalid_name')
+    // ADR 080 : un chemin relatif, jamais l'hôte d'écoute de `request.url`.
+    expect(response.headers.get('location')).toBe(`${ORGANIZATIONS_SCREEN_PATH}?error=invalid_name`)
   })
 
   it('une autre route du module ignore `next`', async () => {
@@ -157,8 +153,6 @@ describe('le champ `next` hors du succès de `switch`', () => {
       session,
     )
 
-    expect(new URL(response.headers.get('location') ?? '').pathname).toBe(
-      ORGANIZATIONS_SCREEN_PATH,
-    )
+    expect(response.headers.get('location')).toBe(ORGANIZATIONS_SCREEN_PATH)
   })
 })

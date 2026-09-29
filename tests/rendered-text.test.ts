@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { NextIntlClientProvider } from 'next-intl'
 import { createElement, isValidElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { defaultLocale } from '../config/i18n'
 
@@ -786,6 +786,21 @@ const offenders = (found: readonly Verdict[], rules: AcceptanceRules): readonly 
     .map(({ where, value }) => `${where} : « ${value} »`)
 
 describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => {
+  // s64b2 : la page de tarifs lit les deux origines de la configuration, donc
+  // l'environnement validé. Le job de CI pose `DATABASE_URL` (la même valeur)
+  // mais ni `AUTH_SECRET` ni `APP_URL`, et `APP_HOST` est fixée vide plutôt que
+  // laissée au `.env` du poste.
+  beforeAll(() => {
+    vi.stubEnv('DATABASE_URL', 'postgres://postgres:postgres@localhost:5432/app')
+    vi.stubEnv('AUTH_SECRET', 'x'.repeat(40))
+    vi.stubEnv('APP_URL', 'http://localhost:3000')
+    vi.stubEnv('APP_HOST', '')
+  })
+
+  afterAll(() => {
+    vi.unstubAllEnvs()
+  })
+
   // Ce cas rend **tous** les écrans de l'application en une fois. Le budget par
   // défaut de Vitest (5 s) n'a rien à voir avec ce qu'il vérifie — il ne mesure
   // aucune propriété de vitesse — et il a rougi trois fois sous charge, à
@@ -1607,6 +1622,36 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         screenData: cataloguePrices,
         render: async () =>
           (await import('../apps/web/app/(site)/pricing/page')).default({ searchParams: noParams }),
+      },
+      {
+        // s64b2. Le troisième rendu du même fichier : site et application sur
+        // deux hôtes. Il porte la ligne « Déjà client ? » et son lien, qu'aucun
+        // autre rendu ne montre.
+        id: 'tarifs, site et application sur deux hôtes',
+        file: '(site)/pricing/page.tsx',
+        viewer: ANONYMOUS,
+        refuses: billingMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        technicalProps: [
+          'mode',
+          'interval',
+          'highlightedOfferId',
+          'selectedOfferId',
+          'labelKey',
+          'offerId',
+          'locale',
+        ],
+        screenData: cataloguePrices,
+        render: async () => {
+          vi.stubEnv('APP_HOST', 'app.localhost')
+
+          try {
+            return await (await import('../apps/web/app/(site)/pricing/page')).default({
+              searchParams: noParams,
+            })
+          } finally {
+            vi.stubEnv('APP_HOST', '')
+          }
+        },
       },
       {
         // s40. L'écran du parcours d'intégration. Il refuse quand le module
