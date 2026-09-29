@@ -3,6 +3,10 @@
 > One story = one shippable slice, written to be executed by an agent.
 > Id format: `s<number>-<short-slug>` — reused in every pipeline file and in the branch name.
 
+<!-- Markers the pipeline reads, as the first quote line of a story:
+     > **SPLIT** into <ids> …        (DÉCOUPÉE) — parts take the number plus a letter, then a digit
+     > **DEFERRED** …                (OPTIONNELLE — reportée) — never picked by /ks-batch next -->
+
 ## Story <id> — <title>
 **As a** <user> **I want** <action> **so that** <benefit>.
 

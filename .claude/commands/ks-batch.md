@@ -48,8 +48,9 @@ resumes where it stopped** — no state file, nothing to restore.
 1. `AGENTS.local.md` carries `Max parallel`, the four `Budget …` settings, `Exclusive paths`,
    `Union paths` and `Worktree ports`. Missing → STOP: "Run /ks-setup."
 2. Framing exists: `docs/prd.md`, `docs/stories.md`, `docs/architecture.md`.
-3. Resolve the ids. `next <n>`: the first `n` stories of `docs/stories.md` not shipped, in file
-   order. `K deps <ids…>`: a story whose unmet dependency is not in the batch leaves it — say
+3. Resolve the ids. `next <n>`: `K next <n>` — in file order, not shipped, not split (a split
+   story is built through its parts), not deferred by the product owner. Nothing left → STOP and
+   say so. `K deps <ids…>`: a story whose unmet dependency is not in the batch leaves it — say
    which, and why. The batch is the stories that remain.
 4. `K budget`. `hold` → STOP now and say when it lifts (`resumeAt`).
 

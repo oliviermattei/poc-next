@@ -56,3 +56,7 @@ implementer runs, 49 reviews) and the git history of `docs/stories.md`.
   target) — addressed.
 - **`CLAUDE.md` imports `AGENTS.local.md`** — without a reinstall, the project conventions
   moved there never reached an agent.
+- **Split and deferred stories** — `ks.mjs` reads the `DÉCOUPÉE`/`SPLIT` and
+  `OPTIONNELLE`/`DEFERRED` markers: a split parent is shipped once its parts are (s65 would
+  otherwise have waited forever on s64), and `ks.mjs next` never offers either. Found by running
+  `deps` over the 82 stories of this project.

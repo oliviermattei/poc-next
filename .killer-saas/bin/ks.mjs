@@ -4,7 +4,8 @@
 // because with `Merge mode: pr` merges happen on the remote and the local branch lags.
 //
 //   budget                      session budget → how many subagents may run at once
-//   deps <id>...                unmet dependencies (a dependency is met once shipped)
+//   next <n>                    the next n stories to build (not shipped, not split, not deferred)
+//   deps <id>...                unmet dependencies (a dependency is met once shipped; a split story once its parts are)
 //   conflicts <id>... [--running=<id,…>]   what may be planned and executed now without collisions;
 //                               --running names the stories whose implementer the conductor launched
 //   stale <id>...               what moved on the target since each plan's `base:`
@@ -88,13 +89,30 @@ function parseStories(text) {
     const id = s.match(/^(s\d+[a-z0-9]*(?:-[a-z0-9]+)*)/)?.[1]
     if (!id) continue
     const deps = s.match(/^### Dependencies\s*\n([\s\S]*?)(?=^###|^---|(?![\s\S]))/m)?.[1] ?? ''
-    stories.set(id, { id, text: s.trim(), rawDeps: deps.match(/\bs\d+[a-z0-9]*(?:-[a-z0-9]+)*/g) ?? [] })
+    // A split story keeps its entry, marked as such; its parts take its number plus a letter.
+    // Uppercase marker only: "Découpée de s34" / "Split from s34" names a part, not a split parent.
+    const split = /^>\s*\*\*(?:DÉCOUPÉE|SPLIT)(?![ \t]+(?:de|from)\b)/m.test(s)
+    // Deferred by the product owner: never picked by `next`, never counted as work left.
+    const deferred = /^>\s*\*\*(?:OPTIONNELLE|DEFERRED|REPORTÉE)\b/m.test(s)
+    stories.set(id, { id, text: s.trim(), split, deferred, rawDeps: deps.match(/\bs\d+[a-z0-9]*(?:-[a-z0-9]+)*/g) ?? [] })
   }
   return stories
 }
 const resolveIds = (ids) => ids.map((t) => readStories().resolve(t) ?? die(`unknown story "${t}" — not in docs/stories.md`))
-// Shipped = its review is on the target and its last verdict says yes (reviews reach it only through a merge).
+const shortId = (id) => id.split('-')[0]
+// The parts of a split story: every story whose number is the parent's followed by a letter.
+function parts(id) {
+  // s64 → s64a, s64b…; s64b → s64b1, s64b2 (a letter after a digit, a digit after a letter).
+  const re = new RegExp(`^${shortId(id)}${/\d$/.test(shortId(id)) ? '[a-z]' : '\\d'}`)
+  return [...readStories().stories.keys()].filter((k) => k !== id && re.test(shortId(k)))
+}
+// Shipped = its review is on the target and its last verdict says yes (reviews reach it only through
+// a merge). A split story is shipped once every part that is not itself split is.
 function shipped(id) {
+  if (readStories().stories.get(id)?.split) {
+    const leaves = parts(id).filter((p) => !readStories().stories.get(p)?.split)
+    return leaves.length > 0 && leaves.every(shipped)
+  }
   const text = tryGit('show', `${targetRef()}:docs/reviews/${id}.md`)
   const verdicts = text ? [...text.matchAll(/^Ship allowed:\s*(\w+)/gm)] : []
   return verdicts.length > 0 && verdicts.at(-1)[1] === 'yes'
@@ -201,10 +219,22 @@ if (cmd === 'budget') {
   process.exit(0)
 }
 
+if (cmd === 'next') {
+  // The next n stories to build: in file order, not shipped, not split, not deferred.
+  const n = Number(args[0] ?? 1)
+  const { stories } = readStories()
+  const picked = [...stories.values()].filter((st) => !st.split && !st.deferred && !shipped(st.id)).slice(0, n)
+  out({ target: targetRef(), next: picked.map((st) => ({ id: st.id, unmet: unmetDeps(st.id) })) })
+  process.exit(picked.length ? 0 : 1)
+}
+
 if (cmd === 'deps') {
   const ids = resolveIds(args)
   const res = {}
-  for (const id of ids) res[id] = { deps: readStories().stories.get(id).deps, unmet: unmetDeps(id) }
+  for (const id of ids) {
+    const st = readStories().stories.get(id)
+    res[id] = { deps: st.deps, unmet: unmetDeps(id), shipped: shipped(id), split: st.split || undefined, deferred: st.deferred || undefined, parts: st.split ? parts(id) : undefined }
+  }
   out({ target: targetRef(), stories: res })
   process.exit(Object.values(res).some((r) => r.unmet.length) ? 1 : 0)
 }
@@ -233,7 +263,8 @@ if (cmd === 'conflicts') {
       effective,
     }
   }
-  const live = ids.filter((id) => !info[id].shipped)
+  const splitIds = ids.filter((id) => readStories().stories.get(id)?.split)
+  const live = ids.filter((id) => !info[id].shipped && !splitIds.includes(id))
   const pairs = []
   for (let i = 0; i < live.length; i++) for (let j = i + 1; j < live.length; j++) {
     const a = live[i], b = live[j], A = info[a], B = info[b]
@@ -256,11 +287,13 @@ if (cmd === 'conflicts') {
   }
   // Planning reads the code: a story whose dependency is not shipped would plan against code that lacks it.
   const planNow = live.filter((id) => !info[id].planned && !info[id].unmet.length)
-  const waiting = Object.fromEntries(live.filter((id) => !executeNow.includes(id) && !planNow.includes(id) && !info[id].started)
+  const waitingEntries = (live.filter((id) => !executeNow.includes(id) && !planNow.includes(id) && !info[id].started)
     .map((id) => [id, info[id].unmet.length ? `dependencies: ${info[id].unmet.join(', ')}`
       : !info[id].planned ? 'not planned' : !info[id].planValidated ? 'plan not validated'
       : `conflicts with ${pairs.filter((p) => p.a === id || p.b === id).map((p) => `${p.a === id ? p.b : p.a} (${p.reason})`).join(', ')}`]))
+  const waiting = Object.fromEntries(waitingEntries)
   for (const s of Object.values(info)) delete s.effective
+  for (const id of splitIds) if (!info[id].shipped) waiting[id] = `split into ${parts(id).join(', ')} — work on the parts`
   out({ target: targetRef(), stories: info, pairs, planNow, executeNow, waiting })
   process.exit(0)
 }
@@ -373,4 +406,4 @@ if (cmd === 'verif-current') {
   process.exit(current ? 0 : 1)
 }
 
-die('usage: ks.mjs <budget|deps|conflicts|stale|footprint-check|next-adr|slot|verif-current> …')
+die('usage: ks.mjs <budget|next|deps|conflicts|stale|footprint-check|next-adr|slot|verif-current> …')
