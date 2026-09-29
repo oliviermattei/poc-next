@@ -320,13 +320,52 @@ test('un clone mène à un premier paiement, et le paiement ouvre la fonctionnal
       expect((await namesFor(APP_ORIGIN)).some((name) => name.includes('session_token'))).toBe(true)
       expect((await namesFor(SITE_ORIGIN)).filter(authCookie)).toEqual([])
 
-      await page.goto(publicPath(PRICING_SCREEN_PATH))
-      await expectOnOrigin(page, SITE_ORIGIN)
+      /**
+       * **Un choix d'avant `APP_HOST`, resté propre à l'hôte du site** (#72) :
+       * « tout accepter », posé **avant** le refus — l'ordre de création réel.
+       * Le refus fait ensuite sur l'application part sur le domaine parent ; le
+       * site reçoit alors les deux copies, et c'est le refus, le plus récent,
+       * qui doit faire foi : aucun script non essentiel ne s'exécute, et la
+       * copie d'hôte est effacée à la première réponse.
+       */
+      await page.context().addCookies([
+        {
+          name: 'app_consent',
+          value: 'v=1&analytics=1&advertising=1',
+          url: SITE_ORIGIN,
+          httpOnly: true,
+          secure: true,
+          sameSite: 'Lax',
+        },
+      ])
 
       const banner = page.getByRole('region', { name: 'Consentement aux cookies' })
 
+      await page.goto(`${APP_ORIGIN}${DEFAULT_SIGNED_IN_PATH}`)
+      await expectOnOrigin(page, APP_ORIGIN)
       await banner.getByRole('button', { name: 'Tout refuser' }).click()
       await expect(banner).toHaveCount(0)
+
+      const probes: string[] = []
+
+      page.on('request', (request) => {
+        if (new URL(request.url()).pathname.startsWith('/api/consent-probe/')) {
+          probes.push(request.url())
+        }
+      })
+
+      await page.goto(publicPath(PRICING_SCREEN_PATH))
+      await expectOnOrigin(page, SITE_ORIGIN)
+      await expect(banner).toHaveCount(0)
+      await page.waitForLoadState('load')
+      // Le refus n'est pas masqué par l'ancien « tout accepter » : aucun script
+      // non essentiel n'est demandé, aucun ne s'exécute.
+      expect(probes).toEqual([])
+      expect(
+        await page.evaluate(
+          () => (globalThis as { __consentProbe?: string[] }).__consentProbe ?? [],
+        ),
+      ).toEqual([])
 
       const parentDomain = `.${new URL(SITE_ORIGIN).hostname}`
 
