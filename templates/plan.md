@@ -1,5 +1,8 @@
 ---
 validated: no
+base: <target-branch commit the facts were verified against>
+footprint:
+  - <every path the implementation touches: a file, or a directory ending in />
 ---
 # Plan — Story <id>
 
@@ -25,7 +28,8 @@ Research: `docs/research/<id>.md` — read it first; this plan does not repeat i
  hesitated. It starts the reviewer's attention; it never bounds it.>
 
 ## Files touched
-<anticipated list>
+<anticipated list — the frontmatter `footprint:` is its machine-readable copy. When in doubt,
+ widen it: an incomplete footprint is what lets two parallel stories collide.>
 
 ## Test strategy
 <what to test, at what level>

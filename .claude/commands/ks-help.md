@@ -33,6 +33,14 @@ puis le ship. Rien n'est relâché — worktree, plan validé, preuve par neutra
 Pour une complexité ≤ `Flow threshold`. Migration, écran vraiment nouveau, autorisation,
 contrat d'API ou dépendance ajoutée → escalade vers le pipeline complet, même en cours de route.
 
+## Plusieurs stories à la fois
+/ks-batch <ids…> | next <n> — plans en parallèle, exécution par vagues sans chevauchement
+(`ks.mjs conflicts` : empreinte des plans, dépendances, chemins exclusifs), ships en file
+unique, et chaque merge fait rafraîchir les stories devenues périmées (`ks.mjs stale`). Le
+nombre d'agents simultanés suit le budget de la session (`ks.mjs budget`) : série au-delà de
+50 %, pause au-delà de 85 %, accélération quand le reset approche avec du budget inutilisé.
+Relancer la même commande reprend là où elle s'est arrêtée.
+
 ## Orchestrateur
 /ks-orchestrator <story> — enchaîne les 6 temps du cycle en une commande. Avec
 `Story track: auto`, il choisit lui-même entre /ks-flow et le pipeline complet selon la

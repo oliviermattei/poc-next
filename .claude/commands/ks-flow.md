@@ -73,7 +73,8 @@ scope and establish the facts **before** writing a single task:
 1. **Verify the story's PREMISE, not just that the things it names exist.** Open the code
    and check each assertion: exact name, signature, location, AND behaviour on the story's
    own case. A function that exists and throws on that case invalidates the premise — say
-   it first, and repair the story rather than patching around it.
+   it first, and propose the repair under "Story amendments proposed" rather than patching around
+   it — never edit `docs/stories.md` from the worktree (AGENTS.md, "What is a story").
 2. Locate the files actually involved and their current state; note the existing tests, the
    dependencies between modules, the traps left by previous stories.
 3. Write what you could not settle under "Open questions". An honest unknown beats a
@@ -90,8 +91,12 @@ scope and establish the facts **before** writing a single task:
    that wants more says why. Where the tests go is settled in the `testing-doctrine` skill.
 6. Past roughly six tasks, the story is not small: say so and suggest `/ks-orchestrator <id>`
    rather than growing a short-track plan into a long one.
-7. Write `docs/plans/<id>.md`, frontmatter `validated: no` and `track: flow`. **Cap it at
+7. Write `docs/plans/<id>.md`, frontmatter `validated: no`, `track: flow`, `base:` and `footprint:` (as /ks-plan step 5). **Cap it at
    ~150 lines.**
+
+**Amendments.** If the plan proposes "Story amendments proposed", apply them as AGENTS.md, "What is a
+story", says — base directory, target branch, pushed — then set the plan's `base:` to the
+amendment commit. Never from the worktree.
 
 **CHECKPOINT — per `Plan validation`.** `human`: present the summary (verified facts, tasks,
 files touched, test strategy) and ask via AskUserQuestion: "Validate this plan?" — options:
@@ -122,8 +127,8 @@ Invoke the Agent tool:
 - subagent_type: reviewer
 - description: Anti-hallucination review of story <id>
 - working directory: the same absolute worktree.
-- prompt: Review story <id>. Your agent definition and the preloaded `review-antihallu` skill
-  are your contract. Judge `git diff <default-branch>...feature/<id>`, and only that diff.
+- prompt: Review story <id>, mode `<full|closure>` — picked exactly as /ks-review, "Pick the
+  mode". Your agent definition and the preloaded `review-antihallu` skill are your contract. Judge `git diff <default-branch>...feature/<id>`, and only that diff.
   This is a `flow` plan: its "Verified facts" section is the research, and a diff
   contradicting one is a finding. Fill the checklist from templates/review-checklist.md and
   end with the exact `Max severity:` and `Ship allowed:` lines.
@@ -134,7 +139,7 @@ do not infer a severity.
 
 **Gate.** `Ship allowed: no` → back to Phase 3 in fix mode, per AGENTS.md, "Gate": only a
 critical, or a review that could not complete, reopens a loop, and never more than two. Still
-blocked after two → stop, report every open finding, and say plainly that a story needing more
+blocked after two → stop, report every open critical, and say plainly that a story needing more
 than two loops on this track was mis-tracked.
 
 ## Phase 5 — Ship

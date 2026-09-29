@@ -1,6 +1,9 @@
 ---
 validated: no
 track: flow
+base: <target-branch commit the facts were verified against>
+footprint:
+  - <every path the implementation touches: a file, or a directory ending in />
 ---
 # Plan — Story <id> (flow)
 
@@ -19,7 +22,7 @@ read it afterwards and pay for its length.
  checked: exact name, signature, location, AND behaviour on the story's own case. A
  function that exists and throws on that case invalidates the premise — say it here, at
  the top: a false premise is the most valuable thing this section can hold, and it gets
- repaired in the story, not patched in a task.
+ repaired in the story — through "Story amendments proposed" below — not patched in a task.
 
  Then the rest, one line each: the files really involved and their current state, the APIs
  with their exact signatures, the existing tests that will run, the name collisions, the
@@ -27,6 +30,10 @@ read it afterwards and pay for its length.
 
  **Every fact carries its `path:line`.** A fact without one is a guess wearing a fact's
  clothes, and it is exactly what the review exists to catch.>
+
+## Story amendments proposed
+<none — or, per amendment: story id, criterion, the change, why. Applied on the target branch
+ by the conductor at the plan checkpoint, never edited from the worktree.>
 
 ## Open questions
 <What could not be settled, honestly. An honest unknown beats a plausible guess.>
@@ -49,7 +56,7 @@ read it afterwards and pay for its length.
  what each should be compared against. It starts the reviewer's attention; it never bounds it.>
 
 ## Files touched
-<anticipated list>
+<anticipated list — the frontmatter `footprint:` is its machine-readable copy.>
 
 ## Test strategy
 <What to test, at what level. `Test budget` from AGENTS.local.md. Each behaviour, business

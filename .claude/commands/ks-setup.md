@@ -58,9 +58,9 @@ as its placeholder — `/ks-architect` fills it from the boilerplate.
 
 Commit it on the default branch (`chore: project settings`). It is a project file, not a story file.
 
-### Step 4 — Rebuild AGENTS.md
-Run `./install.sh --target <the targets this project uses>` so the rules and the settings are
-assembled into `AGENTS.md`. If `install.sh` is not in the project, say so: the settings are
-written, the assembled file is one install away.
+### Step 4 — Make it load
+Check that `CLAUDE.md` imports both files (`@AGENTS.md` and `@AGENTS.local.md`, one per line);
+add the missing import. Never run `install.sh` here: this project maintains its copy of the
+method by hand (AGENTS.md, "Changing the method").
 
 End with: "Settings written to AGENTS.local.md. Next step: /ks-prd <target SaaS>"

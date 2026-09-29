@@ -9,7 +9,9 @@ An agentic-ready story is an end-to-end shippable slice an agent can implement w
 Principles:
 - One story = one shippable piece of value, not a technical layer. Avoid "create the table", prefer "submit a testimonial".
 - Verifiable acceptance criteria: each one must be able to become a test. "The form works" is not a criterion; "submitting a valid form shows a confirmation and persists the entry" is.
-- Agentic notes: the files involved, the constraints, the known traps — the context a human would infer but an agent must read.
+- Agentic notes: the constraints, the known risks, the target's equivalent screen — the context a human would infer but an agent must read. **Never file paths, line numbers, function names or implementation choices**: they go stale at the next merge, and every stories review then re-checks them against moved code. The research finds the files; the story says what must be true.
+- Product decisions and contracts between stories do belong here ("this story amends s61 criterion 4"): they are the WHAT, and the stories review is the only place that sees them side by side.
+- Size: ~20 lines per story, criteria included. A story that needs more is carrying a design — split it, or move the HOW to its research.
 - Explicit dependencies: order the stories so that none assumes work not yet done.
 - Size: implementable in one Research → Design → Plan → Execute → Review → Ship cycle. If the plan would exceed roughly ten tasks, the story is too big: split it.
 - Complexity score: rate each story 1-5 (same scale as the PRD perimeter). A 4 must call out its risk in the agentic notes; a 5 never stays one story — split it before it reaches /ks-plan.

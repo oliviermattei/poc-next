@@ -1,7 +1,14 @@
 # Research — Story <id>
 
-> Vérifiée contre la branche par défaut au commit `<sha>`, en lecture seule.
-> <Ce que la recherche a exécuté, s'il y a lieu — sinon : aucune base, aucun conteneur.>
+> Verified against the target branch at commit `<sha>`, read-only.
+> <What the research ran, if anything — otherwise: no database, no container.>
+
+## Premise
+<holds / FALSE — and why, with file:line. A false premise is the most valuable line of this file.>
+
+## Story amendments proposed
+<none — or, per amendment: story id, criterion, the change, why. Applied on the target branch
+ by the conductor, never edited here.>
 
 ## The five structuring facts
 <the five facts that change what gets built. One line each, with file:line.
@@ -34,4 +41,3 @@
 <required when the verdict is 5, optional otherwise: two or three stories, the cut line,
  and what each one closes on its own.>
 
-<< IP Mike: exploration method, what a good research always verifies. >>
