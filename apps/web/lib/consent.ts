@@ -180,6 +180,21 @@ export const acceptedOrigins = (env: Env): readonly string[] => {
   return [...new Set([new URL(siteUrl).origin, new URL(appUrl).origin])]
 }
 
+/**
+ * **Le domaine du cookie de consentement** (s64c) : avec `APP_HOST`, l'hôte
+ * d'`APP_URL`, sans port — le site et l'application le partagent, si bien
+ * qu'un choix fait sur l'un vaut sur l'autre. Sans `APP_HOST`, `null` : le
+ * cookie reste propre à l'hôte, octet pour octet comme avant.
+ *
+ * Calculé depuis la configuration, jamais depuis un en-tête de la requête.
+ */
+export const consentCookieDomain = (env: Env): string | null => {
+  const { siteUrl, appUrl } = resolveAuthConfig(env)
+  const site = new URL(siteUrl)
+
+  return new URL(appUrl).host === site.host ? null : site.hostname
+}
+
 export const consent: ConsentFeature = {
   available: mounted,
   get scripts() {
@@ -193,6 +208,7 @@ export const consent: ConsentFeature = {
       provideConsent(() => ({
         scripts: declaredScripts(),
         acceptedOrigins: acceptedOrigins(getEnv()),
+        cookieDomain: consentCookieDomain(getEnv()),
       }))
     }
   },

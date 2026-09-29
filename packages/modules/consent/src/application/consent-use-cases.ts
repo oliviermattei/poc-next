@@ -1,4 +1,5 @@
 import {
+  consentHostCopyClearance,
   consentSetCookie,
   decodeConsentCookie,
 } from '../domain/consent-cookie'
@@ -29,12 +30,22 @@ export interface ConsentDependencies {
    * une garde sans origine n'aurait rien à comparer.
    */
   readonly acceptedOrigins: readonly string[]
+  /**
+   * Le domaine parent du cookie, ou `null` pour un cookie propre à l'hôte
+   * (s64c). Obligatoire, pour la même raison que `acceptedOrigins`.
+   */
+  readonly cookieDomain: string | null
 }
 
-/** Ce qu'une décision enregistrée produit : un en-tête, et rien d'autre. */
+/**
+ * Ce qu'une décision enregistrée produit : des en-têtes `Set-Cookie`, et rien
+ * d'autre — le choix, puis, avec un domaine parent, l'effacement de la copie
+ * propre à l'hôte. **Dans cet ordre** : l'effacement ne vise que la copie sans
+ * `Domain`, il ne touche pas au choix qui le précède.
+ */
 export interface RecordedConsent {
   readonly state: ConsentState
-  readonly setCookie: string
+  readonly setCookies: readonly string[]
 }
 
 export interface ConsentUseCases {
@@ -64,7 +75,13 @@ export function createConsentUseCases(dependencies: ConsentDependencies): Consen
 
       return {
         state: resolveConsentState(dependencies.scripts, decisions),
-        setCookie: consentSetCookie(decisions),
+        setCookies:
+          dependencies.cookieDomain === null
+            ? [consentSetCookie(decisions, { domain: null })]
+            : [
+                consentSetCookie(decisions, { domain: dependencies.cookieDomain }),
+                consentHostCopyClearance(),
+              ],
       }
     },
   }

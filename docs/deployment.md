@@ -17,6 +17,7 @@ ailleurs :
 | Sonde de l'image | **exercé** | conteneur lancé avec `PORT=8080` : `healthy`. La sonde figée sur `3000` y répond « connection refused » |
 | Recette Coolify | **guide livré, exécution non faite** | le déploiement réel sur l'instance du propriétaire est un geste humain ; la trace (URL, date, version) est à consigner dans `docs/reviews/s27-deployment.md` |
 | Recette Vercel | **guide livré, exécution non faite** | aucun compte, aucun jeton et aucune configuration Vercel dans cet environnement |
+| Deux hôtes (`APP_HOST`) | **mesuré en local, recette de production non faite** | `GOLDEN_PATH_HOSTS=split pnpm test:golden-path` (session propre à l'application, consentement sur le parent, au navigateur) ; la recette à deux vrais noms et TLS, plus bas, est un geste humain dont la trace se consigne dans l'issue qui la suit |
 
 Mesuré avec Docker 29.7.2 et Docker Compose v5.4.0.
 
@@ -291,6 +292,119 @@ exercé pendant s28 — `x-forwarded-for` était toujours absent ou écrit par l
 test. Confirmer au premier déploiement que le relais **écrase** l'en-tête est une
 recette manuelle.
 
+## Deux hôtes : le site et l'application (s64, ADR 078-081)
+
+Sans `APP_HOST`, un seul hôte sert tout — c'est l'état livré, et rien de ce qui
+suit ne s'applique. Avec, le site (`APP_URL`) et l'application (`APP_HOST`)
+sont deux hôtes d'une même image, et le proxy de Next aiguille chaque zone vers
+le sien.
+
+| Configuration | `APP_URL` | `APP_HOST` | Ce que voit le visiteur |
+|---|---|---|---|
+| Un hôte | `https://exemple.com` | vide | tout sur `exemple.com` |
+| Deux hôtes | `https://exemple.com` | `app.exemple.com` | le site sur `exemple.com`, la connexion, l'application et la console sur `app.exemple.com` |
+
+**`APP_URL` est l'apex, jamais `www`.** `APP_HOST` doit être un sous-domaine de
+l'hôte d'`APP_URL` (refusé au démarrage sinon), et les cookies partagés vivent
+sur cet hôte-là : `Domain=www.exemple.com` n'atteint pas `app.exemple.com`. Un
+site servi sur `www` doit donc passer à l'apex **avant** de poser `APP_HOST`, et
+ce passage a un coût : l'identifiant des passkeys (`rpID`) est l'hôte
+d'`APP_URL` (ADR 078) — le changer invalide **toutes** les passkeys
+enregistrées, que chaque utilisateur devra réenregistrer. `www` peut rester en
+redirection vers l'apex, au proxy amont.
+
+### Le proxy amont doit transmettre `Host`
+
+L'aiguillage lit l'en-tête **`Host` et lui seul** (ADR 081) : `x-forwarded-host`
+est ignoré, parce que Next conserve celui qu'envoie le client, qui choisirait
+alors la branche — et un cache partagé, qui indexe par `Host`, mémoriserait la
+mauvaise réponse (#67). Un proxy qui réécrit `Host` vers l'adresse interne
+(`localhost:3000`) donne un hôte inconnu : **rien n'est aiguillé** — dégradé,
+jamais cassé, mais la console reste alors servie sur le site.
+
+- **nginx** : `proxy_set_header Host $host;` — le défaut de `proxy_pass` est
+  l'hôte de l'amont, pas celui du client.
+- **Traefik** (Coolify) : `passHostHeader` est vrai par défaut ; ne pas le couper.
+- **Caddy** : `reverse_proxy` transmet `Host` tel quel par défaut ; ne pas
+  ajouter de `header_up Host {upstream_hostport}`.
+- **Vercel** : rien à faire.
+
+**Et `x-forwarded-host` est retiré ou écrasé par le proxy amont**, même si
+l'application ne le lit plus : une autre couche placée devant — un cache, un
+second relais — pourrait le lire. nginx : `proxy_set_header X-Forwarded-Host $host;` ;
+Traefik et Caddy l'écrivent eux-mêmes depuis l'hôte reçu.
+
+Les 308 d'aiguillage portent `Cache-Control: no-store` : une configuration
+d'hôtes changée n'est figée ni dans un navigateur ni dans un cache.
+
+### Les rappels OAuth visent l'application
+
+L'authentification est servie par l'application : l'URL de rappel à déclarer
+chez chaque fournisseur est sur **l'origine de l'application** —
+`https://<APP_HOST>/api/modules/auth/callback/<fournisseur>` avec deux hôtes,
+`<APP_URL>/api/modules/auth/callback/<fournisseur>` avec un seul. Déclarer
+l'URL du site donne une erreur `redirect_uri_mismatch` chez le fournisseur.
+
+### Les cookies
+
+| Cookie | Où il vit, avec `APP_HOST` | Pourquoi |
+|---|---|---|
+| session, défi du second facteur, emprunt | **l'hôte de l'application seul** (aucun `Domain`) | le site ne sert pas l'authentification ; une session visible du site n'y servirait à rien et y serait exposée |
+| `app_consent` (consentement) | le domaine parent, `Domain=<hôte d'APP_URL>` | un choix fait sur le site vaut dans l'application : sans quoi la bannière réapparaîtrait en changeant d'hôte |
+| `app_locale` (langue) | le domaine parent | même raison, pour la langue |
+
+**Le parent fait foi.** Un visiteur venu avant `APP_HOST` garde une copie propre
+à l'hôte, sans `Domain`. Toute écriture partant désormais sur le parent, celui-ci
+est toujours le plus récent, et le navigateur l'envoie en dernier — la valeur
+que Next retient. L'ancienne copie est **effacée** (`Max-Age=0`, sans `Domain`,
+ce qui n'atteint pas le parent) à la première écriture, ou dès que l'en-tête
+`Cookie` porte deux fois le même nom. Aucune valeur de consentement n'est
+ré-émise pour la migrer : sa durée n'est jamais prolongée au-delà du choix du
+visiteur.
+
+Sans `APP_HOST`, aucun `Domain` n'est posé : les en-têtes sont ceux d'avant,
+octet pour octet.
+
+### La recette manuelle à deux hôtes
+
+À jouer par un humain : elle exige deux noms résolus et TLS (les cookies sont
+`Secure`, et la politique de production pose `upgrade-insecure-requests`).
+Aucun agent ne l'a jouée ; `pnpm test:golden-path` en mode split en mesure
+l'essentiel sur `*.localhost`, en HTTP et en développement.
+
+1. **Deux noms locaux.** Dans `/etc/hosts` : `127.0.0.1 exemple.test` et
+   `127.0.0.1 app.exemple.test`.
+2. **TLS local par Caddy** (`caddy trust` installe son autorité locale) — un
+   `Caddyfile` :
+
+   ```
+   exemple.test, app.exemple.test {
+     tls internal
+     reverse_proxy localhost:3000
+   }
+   ```
+
+3. **L'image**, construite et démarrée comme plus haut, avec
+   `APP_URL=https://exemple.test`, `APP_HOST=app.exemple.test`,
+   `NODE_ENV=production` et le reste de la checklist (`EMAIL_LOCAL_CAPTURE=1`
+   convient). `sudo caddy run` dans le dossier du `Caddyfile`.
+4. **Le parcours**, dans un navigateur à profil neuf :
+   - `https://exemple.test/` : la bannière de consentement apparaît ; « Tout
+     refuser ». Outils de développement → Application → Cookies :
+     `app_consent` a le domaine `.exemple.test` ;
+   - « Se connecter » : l'URL passe à `https://app.exemple.test/…` (308) ;
+     inscription, lien de vérification lu dans `.mail/`, connexion ;
+   - sur `app.exemple.test`, la bannière **n'apparaît pas**, et le cookie de
+     session (`__Secure-better-auth.session_token`) a le domaine
+     `app.exemple.test`, sans point ;
+   - revenir sur `https://exemple.test/` : la liste des cookies n'y contient
+     **aucun** cookie de session ;
+   - changer de langue sur le site, puis ouvrir l'application : la langue suit ;
+   - `https://exemple.test/console` répond 404.
+5. **La trace à consigner** dans l'issue qui suit la recette : date, version
+   (`git rev-parse HEAD`), navigateur et version, et pour chaque point ci-dessus
+   « constaté » ou ce qui a été vu à la place.
+
 ## Les variables de l’application
 
 **Cette liste est comparée au schéma par `tests/deployment.test.ts`, dans les
@@ -307,7 +421,7 @@ besoin que de `DATABASE_URL`.
 | `DATABASE_URL` | **oui** | la connexion PostgreSQL, seule variable exigée du conteneur de migration |
 | `AUTH_SECRET` | **oui** | la signature des sessions et des jetons, 32 caractères minimum, une valeur propre **par déploiement** (`openssl rand -base64 32`) |
 | `APP_URL` | **oui** | l'URL publique : les liens envoyés par email et les origines de confiance. Jamais déduite de l'en-tête `Host` |
-| `APP_HOST` | non — **pas encore supportée en production** (tranche s64c : cookies) | l'hôte de l'application, un nom d'hôte seul, sous-domaine de l'hôte d'`APP_URL` (`app.exemple.com` sous `https://exemple.com`), refusé au démarrage sinon. Posée, les liens qui ouvrent une session visent cet hôte ; `APP_URL` reste le site et l'identifiant des passkeys (ADR 078). Le proxy aiguille chaque zone vers son hôte (308, ou 404 pour la console sur le site) : l'hôte demandé est lu dans `x-forwarded-host`, sinon `host` — **pour aiguiller seulement**, toute cible étant construite depuis `APP_URL` et `APP_HOST` (ADR 079) ; un hôte ni du site ni de l'application n'est pas aiguillé. Le site ne voyant pas la session, `/pricing` y propose un lien « Déjà client ? » vers l'écran de facturation de l'application (l'offre choisie en `?offer=`), et le retour d'un paiement invité revient sur `/pricing` **du site** (s64b2). Vide : rien ne change |
+| `APP_HOST` | non | l'hôte de l'application, un nom d'hôte seul, sous-domaine de l'hôte d'`APP_URL` (`app.exemple.com` sous `https://exemple.com`), refusé au démarrage sinon — la section « Deux hôtes » ci-dessus dit tout ce qu'elle change. Posée, les liens qui ouvrent une session visent cet hôte ; `APP_URL` reste le site et l'identifiant des passkeys (ADR 078). Le proxy aiguille chaque zone vers son hôte (308, ou 404 pour la console sur le site) : l'hôte demandé est lu dans `Host` seul — **pour aiguiller seulement**, toute cible étant construite depuis `APP_URL` et `APP_HOST` (ADR 079, 081) ; un hôte ni du site ni de l'application n'est pas aiguillé. La session reste sur l'application, le consentement et la langue passent sur le domaine parent. Le site ne voyant pas la session, `/pricing` y propose un lien « Déjà client ? » vers l'écran de facturation de l'application (l'offre choisie en `?offer=`), et le retour d'un paiement invité revient sur `/pricing` **du site** (s64b2). Vide : rien ne change |
 | `EMAIL_FROM` | oui avec `RESEND_API_KEY` | l'expéditeur des emails, sur un domaine vérifié portant SPF, DKIM et DMARC |
 | `RESEND_API_KEY` | l'une des deux | la clé du fournisseur d'emails : les emails partent réellement |
 | `EMAIL_LOCAL_CAPTURE` | l'une des deux | `1` écrit les emails dans `.mail/` au lieu de les envoyer. **Aucun email ne part** : à ne poser en production que sur un déploiement de démonstration |
@@ -330,9 +444,9 @@ besoin que de `DATABASE_URL`.
 | `STORAGE_S3_SECRET_ACCESS_KEY` | idem | le secret d'accès |
 | `STORAGE_S3_ENDPOINT` | non | le point de terminaison hors AWS (`https://<compte>.r2.cloudflarestorage.com`) |
 | `STORAGE_LOCAL_DIRECTORY` | alternative au seau | le stockage sur disque. **Refusée au démarrage sous `NODE_ENV=production`** : le disque disparaît au redéploiement, les avatars avec lui |
-| `GOOGLE_CLIENT_ID` | non, mais par paire | la connexion Google. Rappel à déclarer : `<APP_URL>/api/modules/auth/callback/google` |
+| `GOOGLE_CLIENT_ID` | non, mais par paire | la connexion Google. Rappel à déclarer, sur l'origine de l'application : `https://<APP_HOST>/api/modules/auth/callback/google`, ou `<APP_URL>/api/modules/auth/callback/google` sans `APP_HOST` |
 | `GOOGLE_CLIENT_SECRET` | avec l'identifiant | idem |
-| `GITHUB_CLIENT_ID` | non, mais par paire | la connexion GitHub. Rappel : `<APP_URL>/api/modules/auth/callback/github` |
+| `GITHUB_CLIENT_ID` | non, mais par paire | la connexion GitHub. Rappel : `https://<APP_HOST>/api/modules/auth/callback/github`, ou `<APP_URL>/…` sans `APP_HOST` |
 | `GITHUB_CLIENT_SECRET` | avec l'identifiant | idem |
 | `OAUTH_LOCAL_PROVIDER` | **non** | le fournisseur de développement, qui ouvre une session **sans mot de passe**. Refusé au démarrage sous `NODE_ENV=production` |
 | `I18N_MISSING_KEY_PROBE` | **non** | une sonde de diagnostic, posée par `playwright.config.ts` seulement |

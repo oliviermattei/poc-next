@@ -93,6 +93,17 @@ export function decodeConsentCookie(value: string | null | undefined): ConsentDe
   )
 }
 
+/** Où le cookie de consentement est posé. */
+export interface ConsentCookieScope {
+  /**
+   * Le domaine parent, partagé par le site et l'application (s64c) — l'hôte
+   * d'`APP_URL`, sans port —, ou `null` : le cookie reste **propre à l'hôte**
+   * qui l'a reçu, comme avant `APP_HOST`. Obligatoire : l'appelant décide, le
+   * module ne devine pas.
+   */
+  readonly domain: string | null
+}
+
 /**
  * L'en-tête `Set-Cookie` du choix, construit ici et nulle part ailleurs.
  *
@@ -100,14 +111,33 @@ export function decodeConsentCookie(value: string | null | undefined): ConsentDe
  * le cookie doit accompagner une navigation venue d'un lien externe — sinon un
  * visiteur qui arrive par un moteur de recherche revoit la bannière qu'il a
  * déjà refusée.
+ *
+ * Avec un domaine parent, le même choix vaut sur le site **et** sur
+ * l'application : sans lui, la bannière réapparaîtrait en passant de l'un à
+ * l'autre.
  */
-export function consentSetCookie(decisions: ConsentDecisions): string {
+export function consentSetCookie(decisions: ConsentDecisions, scope: ConsentCookieScope): string {
   return [
     `${CONSENT_COOKIE}=${encodeConsentCookie(decisions)}`,
+    ...(scope.domain === null ? [] : [`Domain=${scope.domain}`]),
     'Path=/',
     `Max-Age=${CONSENT_COOKIE_MAX_AGE}`,
     'HttpOnly',
     'Secure',
     'SameSite=Lax',
   ].join('; ')
+}
+
+/**
+ * **L'effacement de la copie propre à l'hôte** (s64c) : un cookie écrit avant
+ * `APP_HOST`, sans `Domain`, survivrait à côté de celui du parent.
+ *
+ * **Sans `Domain`, et c'est tout le point** : avec, il effacerait le parent —
+ * donc le choix qu'on vient d'enregistrer. Un `Set-Cookie` sans `Domain` ne
+ * vise que le cookie propre à l'hôte qui répond.
+ */
+export function consentHostCopyClearance(): string {
+  return [`${CONSENT_COOKIE}=`, 'Path=/', 'Max-Age=0', 'HttpOnly', 'Secure', 'SameSite=Lax'].join(
+    '; ',
+  )
 }

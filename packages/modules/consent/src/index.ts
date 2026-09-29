@@ -28,7 +28,9 @@ export {
 export {
   CONSENT_COOKIE,
   CONSENT_COOKIE_MAX_AGE,
+  consentHostCopyClearance,
   consentSetCookie,
+  type ConsentCookieScope,
   decodeConsentCookie,
   encodeConsentCookie,
 } from './domain/consent-cookie'

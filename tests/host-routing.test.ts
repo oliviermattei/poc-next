@@ -3,10 +3,11 @@ import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { BILLING_SCREEN_PATH } from '@repo/module-billing'
+import { CONSENT_COOKIE } from '@repo/module-consent'
 import { NextRequest } from 'next/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { localeRouting } from '../apps/web/lib/locale-routing'
+import { LOCALE_COOKIE, localeRouting } from '../apps/web/lib/locale-routing'
 import { proxy } from '../apps/web/proxy'
 
 /**
@@ -92,8 +93,16 @@ describe('avec APP_HOST', () => {
     ],
     ['site : auth en POST introuvable', SITE_HOST, 'POST', '/api/modules/auth/sign-in/email', 404, null],
     [
-      'x-forwarded-host hostile : il choisit la branche, la configuration construit la cible',
-      { host: 'evil.test:8080', 'x-forwarded-host': 'EXEMPLE.com, evil.test' },
+      'x-forwarded-host ignoré : seul Host choisit la branche (ADR 081, #67)',
+      { host: 'app.exemple.com', 'x-forwarded-host': 'exemple.com' },
+      'GET',
+      P('/sign-in'),
+      200,
+      null,
+    ],
+    [
+      'Host en majuscules : la branche est choisie, la configuration construit la cible',
+      { host: 'EXEMPLE.com' },
       'GET',
       P('/sign-in'),
       308,
@@ -106,6 +115,13 @@ describe('avec APP_HOST', () => {
 
     expect(response.status).toBe(status)
     expect(response.headers.get('location')).toBe(location)
+  })
+
+  it('interdit la mise en cache des redirections d’aiguillage (ADR 081)', () => {
+    const routed = proxied(P('/sign-in'), SITE_HOST)
+
+    expect(routed.status).toBe(308)
+    expect(routed.headers.get('cache-control')).toBe('no-store')
   })
 
   it('pose la même politique de sécurité du contenu sur une réponse aiguillée et une réponse servie', () => {
@@ -123,9 +139,86 @@ describe('avec APP_HOST', () => {
   })
 })
 
+/**
+ * **Les cookies partagés** (s64c) : avec `APP_HOST`, la langue et le
+ * consentement vivent sur le domaine parent, et la copie d'avant, propre à
+ * l'hôte, est effacée — sans `Domain`, sinon c'est le parent qui partirait.
+ */
+describe('les cookies partagés, avec APP_HOST', () => {
+  beforeEach(() => {
+    vi.stubEnv('APP_URL', `${SITE}:8443`)
+    vi.stubEnv('APP_HOST', 'app.exemple.com')
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  const EN = localeRouting.publicPath('/pricing', 'en')
+  const clearanceOf = (name: string): RegExp => new RegExp(`^${name}=; Path=/; Max-Age=0;`)
+
+  it('pose la langue sur le domaine parent, puis efface la copie d’hôte', () => {
+    const cookies = proxied(EN, { host: 'exemple.com:8443' }).headers.getSetCookie()
+    const [written, cleared, ...rest] = cookies
+
+    expect(rest, cookies.join('\n')).toEqual([])
+    // L'hôte d'`APP_URL`, sans port.
+    expect(written).toMatch(new RegExp(`^${LOCALE_COOKIE}=en;.*Domain=exemple\\.com(;|$)`, 'i'))
+    expect(cleared).toMatch(clearanceOf(LOCALE_COOKIE))
+    expect(cleared).not.toMatch(/Domain=/i)
+  })
+
+  it('efface la copie d’hôte d’un cookie que l’en-tête porte deux fois, sans ré-émettre sa valeur', () => {
+    const cookies = proxied(P('/pricing'), {
+      ...SITE_HOST,
+      cookie: `${CONSENT_COOKIE}=v=1&analytics=0; ${LOCALE_COOKIE}=${LOCALE}; ${CONSENT_COOKIE}=v=1&analytics=1`,
+    }).headers.getSetCookie()
+
+    expect(cookies).toHaveLength(1)
+    expect(cookies[0]).toMatch(clearanceOf(CONSENT_COOKIE))
+    expect(cookies[0]).not.toMatch(/Domain=/i)
+  })
+
+  it('n’efface rien sans doublon', () => {
+    const response = proxied(P('/pricing'), {
+      ...SITE_HOST,
+      cookie: `${CONSENT_COOKIE}=v=1&analytics=1; ${LOCALE_COOKIE}=${LOCALE}`,
+    })
+
+    expect(response.status).toBe(200)
+    expect(response.headers.getSetCookie()).toEqual([])
+  })
+
+  it('retient la dernière occurrence d’un doublon : celle du parent, la plus récente', () => {
+    const response = proxied('/pricing', {
+      ...SITE_HOST,
+      cookie: `${LOCALE_COOKIE}=fr; ${LOCALE_COOKIE}=en`,
+    })
+
+    expect(new URL(response.headers.get('location')!).pathname).toBe(EN)
+    expect(response.headers.getSetCookie()).toEqual([
+      expect.stringMatching(clearanceOf(LOCALE_COOKIE)),
+    ])
+  })
+})
+
 describe('sans APP_HOST', () => {
   afterEach(() => {
     vi.unstubAllEnvs()
+  })
+
+  it('pose la langue sans domaine et n’efface rien, même sur un doublon', () => {
+    vi.stubEnv('APP_URL', SITE)
+    vi.stubEnv('APP_HOST', '')
+
+    const cookies = proxied(localeRouting.publicPath('/pricing', 'en'), {
+      ...SITE_HOST,
+      cookie: `${CONSENT_COOKIE}=v=1; ${CONSENT_COOKIE}=v=1`,
+    }).headers.getSetCookie()
+
+    expect(cookies).toHaveLength(1)
+    expect(cookies[0]).toMatch(new RegExp(`^${LOCALE_COOKIE}=en;`))
+    expect(cookies[0]).not.toMatch(/Domain=/i)
   })
 
   it('n’aiguille rien : la console est servie sur l’hôte du site', () => {

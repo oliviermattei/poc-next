@@ -827,6 +827,55 @@ describe.skipIf(!databaseReachable)('durcissement de la session', () => {
     expect(attributes).toContain('samesite=strict')
   }, 30_000)
 
+  it('garde la session et le défi du second facteur propres à l’hôte : aucun Domain (s64c)', async () => {
+    // Avec `APP_HOST`, un `Domain` porterait la session de l'application
+    // jusqu'au site. Seuls la langue et le consentement vont sur le parent.
+    const { email } = await aVerifiedAccount()
+    const opened = await signIn(email)
+    const enrolled = await anAccountWithTwoFactor()
+
+    await withinStablePeriod()
+
+    const challenged = await signIn(enrolled.email)
+    const emitted = [...opened.headers.getSetCookie(), ...challenged.headers.getSetCookie()]
+
+    // Les gardes contre le vide : une session ouverte, un défi posé.
+    expect(sessionCookie(opened)).not.toBeNull()
+    expect(emitted.some((header) => header.includes('two_factor='))).toBe(true)
+
+    for (const header of emitted) {
+      expect(header, header).not.toMatch(/;\s*Domain=/i)
+    }
+  }, 60_000)
+
+  it('écrit l’email dans la langue de la dernière occurrence du cookie de langue (s64c)', async () => {
+    // Une copie d'avant `APP_HOST`, propre à l'hôte, part **avant** celle du
+    // domaine parent, la plus récente. C'est la lecture de `lib/auth.ts` qui
+    // est mesurée, branchée comme `appAuth()` la branche.
+    const { readRequestLocale } = await import('../apps/web/lib/auth')
+    const { localeRouting } = await import('../apps/web/lib/locale-routing')
+    const { email } = await aVerifiedAccount()
+
+    service = configureService({
+      locales: localeRouting.locales,
+      defaultLocale: 'fr',
+      readRequestLocale,
+    })
+
+    try {
+      await call('/sign-in/magic-link', { body: { email }, cookie: 'app_locale=fr; app_locale=en' })
+      await settled()
+
+      const magicLinks = mailer.sent.filter(
+        (sent) => sent.to === email && sent.template === 'auth.magic-link',
+      )
+
+      expect(magicLinks.map((sent) => sent.locale)).toEqual(['en'])
+    } finally {
+      service = configureService()
+    }
+  }, 30_000)
+
   it('régénère l’identifiant de session à la connexion', async () => {
     const { email } = await aVerifiedAccount()
     const first = sessionCookie(await signIn(email))
