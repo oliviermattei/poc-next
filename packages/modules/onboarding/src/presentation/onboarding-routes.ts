@@ -80,11 +80,15 @@ const submittedBody = async (request: Request): Promise<unknown> => {
     .catch(() => null)
 }
 
-/** Le retour à l'écran après une écriture. 303 : un rechargement ne repostera pas. */
-const backToScreen = (request: Request): Response =>
+/**
+ * Le retour à l'écran après une écriture. 303 : un rechargement ne repostera
+ * pas. **Relatif** (ADR 080) : le navigateur le résout contre l'hôte qu'il a
+ * demandé, jamais contre l'hôte d'écoute que porte `request.url`.
+ */
+const backToScreen = (): Response =>
   new Response(null, {
     status: 303,
-    headers: { location: new URL(ONBOARDING_SCREEN_PATH, request.url).toString() },
+    headers: { location: ONBOARDING_SCREEN_PATH },
   })
 
 export interface OnboardingRouteService {
@@ -123,7 +127,7 @@ export function createOnboardingRoutes(
         return Response.json({ error: outcome.refusal }, { status: 400 })
       }
 
-      return backToScreen(request)
+      return backToScreen()
     },
   })
 

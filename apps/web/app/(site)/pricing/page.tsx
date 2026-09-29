@@ -1,12 +1,14 @@
+import { getEnv } from '@repo/config'
 import {
   BILLING_KEYS,
+  BILLING_SCREEN_PATH,
   billingRoutePath,
   formatOfferPrice,
   highlightedOfferId,
   selectedOfferOf,
 } from '@repo/module-billing'
 import { PricingTable } from '@repo/module-billing/presentation'
-import { Alert } from '@repo/ui'
+import { Alert, cn } from '@repo/ui'
 import { notFound } from 'next/navigation'
 import { z } from 'zod'
 
@@ -14,6 +16,7 @@ import { BillingAction } from '../../billing-actions'
 import { billing } from '../../../lib/billing'
 import { billingCatalogue } from '../../../lib/billing-catalogue'
 import { currentViewer } from '../../../lib/auth'
+import { resolveAuthConfig } from '../../../lib/auth-config'
 import { appIntl } from '../../../lib/i18n'
 
 /**
@@ -66,6 +69,12 @@ const returnOutcomeOf = (value: string | string[] | undefined): 'success' | 'can
   return parsed.success ? parsed.data : null
 }
 
+/** Le lien texte du site, celui des écrans d'authentification. */
+const LINK_CLASSNAME = cn(
+  'rounded-sm underline underline-offset-4',
+  'hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring',
+)
+
 export default async function PricingPage({
   searchParams,
 }: {
@@ -77,7 +86,7 @@ export default async function PricingPage({
 
   const catalogue = billingCatalogue()
   const { session } = await currentViewer()
-  const { t, locale } = await appIntl()
+  const { t, path, locale } = await appIntl()
   const parameters = (await searchParams) ?? {}
   const selectedOfferId = selectedOfferOf(parameters['offer'], catalogue)
   const highlighted = highlightedOfferId(catalogue)
@@ -86,6 +95,18 @@ export default async function PricingPage({
   // rendu est exactement la forme que le balayage de textes en dur de
   // `tests/i18n.test.ts` existe pour attraper, et il a raison de s'en méfier.
   const paid = returned === 'success'
+  // **Le chemin d'un compte existant** (s64b2) : avec `APP_HOST`, la session vit
+  // sur l'hôte de l'application et cette page ne la voit jamais — ses boutons
+  // prennent toujours le chemin invité. Le lien mène à l'écran de facturation,
+  // que le proxy envoie à l'application (s64b1), l'offre reposée en poche.
+  // Les deux origines viennent de la configuration, jamais d'un en-tête.
+  const { siteUrl, appUrl } = resolveAuthConfig(getEnv())
+  const existingCustomerHref =
+    siteUrl === appUrl
+      ? null
+      : selectedOfferId === null
+        ? path(BILLING_SCREEN_PATH)
+        : `${path(BILLING_SCREEN_PATH)}?offer=${encodeURIComponent(selectedOfferId)}`
 
   const table = (
     <PricingTable
@@ -157,8 +178,23 @@ export default async function PricingPage({
     />
   )
 
+  const offers =
+    existingCustomerHref === null ? (
+      table
+    ) : (
+      <div className="space-y-6">
+        {table}
+        <p className="flex flex-wrap justify-center gap-x-1 text-center text-sm text-muted-foreground">
+          <span>{t(BILLING_KEYS.pricing.existingCustomerPrompt)}</span>
+          <a className={cn(LINK_CLASSNAME, 'font-medium')} href={existingCustomerHref}>
+            {t(BILLING_KEYS.pricing.existingCustomerLink)}
+          </a>
+        </p>
+      </div>
+    )
+
   if (returned === null) {
-    return table
+    return offers
   }
 
   return (
@@ -172,7 +208,7 @@ export default async function PricingPage({
       <Alert variant={paid ? 'info' : 'warning'} role="status">
         {t(paid ? BILLING_KEYS.pricing.returnSuccess : BILLING_KEYS.pricing.returnCancelled)}
       </Alert>
-      {table}
+      {offers}
     </div>
   )
 }

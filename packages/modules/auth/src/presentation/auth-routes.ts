@@ -396,11 +396,13 @@ const isTwoFactorChallenge = async (response: Response): Promise<boolean> => {
  * d'être effacée, perdre l'un ou l'autre rendrait la vérification impossible —
  * et la destination devient l'écran de vérification. La destination d'origine
  * y est reportée en `?next=`, **filtrée deux fois** : une fois ici contre
- * l'origine de la requête, une fois par l'écran (`docs/security.md` §4). Une
- * destination hors du site ne repart donc pas d'ici.
+ * l'origine **configurée** de l'application — jamais `request.url`, qui porte
+ * l'hôte d'écoute du serveur (ADR 080) —, une fois par l'écran
+ * (`docs/security.md` §4). Une destination hors du site ne repart donc pas
+ * d'ici.
  */
-const twoFactorChallengeRedirect = (request: Request, response: Response): Response => {
-  const origin = new URL(request.url).origin
+const twoFactorChallengeRedirect = (appUrl: string, response: Response): Response => {
+  const origin = new URL(appUrl).origin
   const location = response.headers.get('location') ?? ''
   // `new URL` plutôt que `URL.parse` : ce dernier n'existe qu'à partir de
   // Node 22, et le dépôt déclare `>=20.10.0`. Une destination illisible n'est
@@ -633,7 +635,7 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
         // Même règle que le magic link : le fournisseur atteste l'adresse, il
         // n'atteste pas le second facteur (revue s13, C2).
         if (await isTwoFactorChallenge(response)) {
-          return twoFactorChallengeRedirect(request, response)
+          return twoFactorChallengeRedirect(auth.appUrl, response)
         }
 
         // Le retour du fournisseur est **une connexion** : §7 la veut
@@ -969,7 +971,7 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
         // de vérification au lieu de sa destination. Le journal de ce cas est
         // écrit là où le compte est encore connu — `infrastructure/`.
         if (await isTwoFactorChallenge(response)) {
-          return twoFactorChallengeRedirect(request, response)
+          return twoFactorChallengeRedirect(auth.appUrl, response)
         }
 
         // Le lien **ouvre une session** : §7 ne fait pas d'exception pour un

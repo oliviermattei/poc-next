@@ -141,6 +141,13 @@ export const BILLING_KEYS = {
      */
     returnSuccess: billingKey('pricing.return.success'),
     returnCancelled: billingKey('pricing.return.cancelled'),
+    /**
+     * **Le chemin d'un compte existant** (s64b2), rendu seulement quand le site
+     * et l'application ont des origines distinctes : le site ne voit alors pas
+     * la session, et l'offre se choisit depuis l'écran de facturation.
+     */
+    existingCustomerPrompt: billingKey('pricing.existingCustomer.prompt'),
+    existingCustomerLink: billingKey('pricing.existingCustomer.link'),
   },
   refusal: {
     forbidden: billingKey('refusal.forbidden'),

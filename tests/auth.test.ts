@@ -250,6 +250,12 @@ interface CallOptions {
    * en-tête — donc dans une valeur que l'appelant écrit.
    */
   readonly origin?: string
+  /**
+   * L'origine **de la requête** (`request.url`), par défaut celle de
+   * l'application. s64b2 (ADR 080) : Next y met l'hôte d'écoute du serveur —
+   * `0.0.0.0:3000` dans l'image —, jamais l'hôte demandé.
+   */
+  readonly listen?: string
 }
 
 /** Une requête telle que l'application la sert : par le répartiteur du registre. */
@@ -269,7 +275,7 @@ const call = async (path: string, options: CallOptions = {}): Promise<Response> 
 
   return await dispatchAllowingRateLimit(
     registry,
-    new Request(`${APP_URL}${AUTH_PREFIX}${path}`, {
+    new Request(`${options.listen ?? APP_URL}${AUTH_PREFIX}${path}`, {
       method: options.method ?? (options.body === undefined ? 'GET' : 'POST'),
       headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
@@ -2703,6 +2709,22 @@ describe.skipIf(!databaseReachable)('second facteur — connexion', () => {
     // réussie, aucune session n'existe (`docs/security.md` §7).
     expect(logs.map((record) => record.event)).toEqual(['auth.two_factor_challenged'])
     expect(logs[0]?.actor).toBe(enrolled.userId)
+  }, 60_000)
+
+  it('garde la destination interne du défi quand la requête porte l’hôte d’écoute du serveur', async () => {
+    // s64b2 (ADR 080, #69) : le filtre du `next` compare à l'origine
+    // **configurée**. Comparé à `request.url` — `0.0.0.0:3000` dans l'image —,
+    // toute destination retombait sur le tableau de bord.
+    const enrolled = await anAccountWithTwoFactor()
+
+    await call('/sign-in/magic-link', {
+      body: { email: enrolled.email, callbackURL: ACCOUNT_SCREEN_PATH },
+    })
+
+    const link = await call(pathOf(lastLink('magic-link')), { listen: 'http://0.0.0.0:3000' })
+
+    expect(link.headers.get('location')).toContain('/two-factor')
+    expect(link.headers.get('location')).toContain(`next=${encodeURIComponent(ACCOUNT_SCREEN_PATH)}`)
   }, 60_000)
 
   it('arrête aussi le magic link : une voie sans mot de passe ne saute pas le second facteur', async () => {

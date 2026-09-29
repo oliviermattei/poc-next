@@ -52,6 +52,8 @@ export interface ConfigureBillingOptions {
   readonly catalogue: BillingCatalogue
   /** L'URL publique, jamais déduite d'un en-tête `Host`. */
   readonly appUrl: string
+  /** L'URL du site, où revient un paiement invité (s64b2). `appUrl` par défaut. */
+  readonly siteUrl?: string
   readonly ownerOf: ScopeResolver
   readonly canManage: BillingPermission
   readonly seatsOf: SeatCounter
@@ -149,6 +151,7 @@ const build = (options: ConfigureBillingOptions): BillingService => ({
     payments: options.payments,
     catalogue: options.catalogue,
     appUrl: options.appUrl,
+    ...(options.siteUrl === undefined ? {} : { siteUrl: options.siteUrl }),
     ownerOf: options.ownerOf,
     canManage: options.canManage,
     seatsOf: options.seatsOf,

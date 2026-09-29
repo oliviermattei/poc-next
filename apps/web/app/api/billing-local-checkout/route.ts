@@ -77,6 +77,14 @@ const deliverAll = async (
   }
 }
 
+/**
+ * Le retour de la page hébergée simulée, **relatif** (ADR 080) :
+ * `Response.redirect` exige une URL absolue, et la seule à portée serait
+ * `request.url`, qui porte l'hôte d'écoute du serveur.
+ */
+const seeOther = (location: string): Response =>
+  new Response(null, { status: 303, headers: { location } })
+
 export async function GET(request: Request): Promise<Response> {
   const local = billing.localCheckout()
 
@@ -138,7 +146,10 @@ export async function GET(request: Request): Promise<Response> {
 
     await deliverAll(guestDeliveries, request)
 
-    return Response.redirect(new URL('/pricing?checkout=success', request.url), 303)
+    // **Relatif** (ADR 080) : servie par l'application, la page hébergée
+    // simulée renverrait sinon vers l'hôte d'écoute. Le site reprend
+    // `/pricing` par le 308 de s64b1 quand `APP_HOST` est posée.
+    return seeOther('/pricing?checkout=success')
   }
 
   const deliveries = local.completeCheckout(parsed.data, billingScopeReference(scope))
@@ -147,5 +158,5 @@ export async function GET(request: Request): Promise<Response> {
 
   const outcome = deliveries.length === 0 ? 'cancelled' : 'success'
 
-  return Response.redirect(new URL(`${BILLING_SCREEN_PATH}?checkout=${outcome}`, request.url), 303)
+  return seeOther(`${BILLING_SCREEN_PATH}?checkout=${outcome}`)
 }

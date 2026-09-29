@@ -89,7 +89,6 @@ const submittedBody = async (request: Request): Promise<unknown> => {
 
 /** Le retour à l'écran après une écriture. 303 : un rechargement ne repostera pas. */
 const backToScreen = (
-  request: Request,
   /**
    * L'écran du formulaire — une constante, jamais un paramètre : le centre,
    * ou la rubrique des préférences depuis s62c.
@@ -98,7 +97,9 @@ const backToScreen = (
 ): Response =>
   new Response(null, {
     status: 303,
-    headers: { location: new URL(screen, request.url).toString() },
+    // **Relatif** (ADR 080) : résolu par le navigateur contre l'hôte qu'il a
+    // demandé, jamais contre l'hôte d'écoute que porte `request.url`.
+    headers: { location: screen },
   })
 
 /**
@@ -196,7 +197,7 @@ export function createNotificationRoutes(
         body.data.id,
       )
 
-      return outcome === 'not_found' ? notFound() : backToScreen(request)
+      return outcome === 'not_found' ? notFound() : backToScreen()
     },
   }
 
@@ -204,7 +205,7 @@ export function createNotificationRoutes(
     method: 'POST',
     path: PATHS.readAll,
     protection: { level: 'authenticated' },
-    handler: async (request, context) => {
+    handler: async (_request, context) => {
       if (context.session === null) {
         return notFound()
       }
@@ -213,7 +214,7 @@ export function createNotificationRoutes(
 
       await current.useCases.markAllRead(await current.scopeOf(context.session.userId))
 
-      return backToScreen(request)
+      return backToScreen()
     },
   }
 
@@ -271,7 +272,7 @@ export function createNotificationRoutes(
       // le formulaire.
       return outcome === 'unknown_channel'
         ? invalidRequest()
-        : backToScreen(request, NOTIFICATIONS_SETTINGS_SCREEN_PATH)
+        : backToScreen(NOTIFICATIONS_SETTINGS_SCREEN_PATH)
     },
   }
 

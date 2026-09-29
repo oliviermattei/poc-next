@@ -689,9 +689,8 @@ describe.skipIf(!databaseReachable)('les préférences, respectées à l’émis
 
       expect(response.status).toBe(303)
       // s62c : le formulaire vit dans la rubrique des réglages, et y revient.
-      expect(new URL(response.headers.get('location') ?? '').pathname).toBe(
-        NOTIFICATIONS_SETTINGS_SCREEN_PATH,
-      )
+      // ADR 080 : un `Location` relatif, résolu contre l'hôte demandé.
+      expect(response.headers.get('location')).toBe(NOTIFICATIONS_SETTINGS_SCREEN_PATH)
     }
 
     const outcome = await emitterFor(registry)({

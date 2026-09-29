@@ -13,6 +13,7 @@ import {
   FAILURE_TRACES_DIRECTORY,
   freshDatabaseUrl,
   recordedEventsDirectoryFor,
+  resolveGoldenPathHosts,
   resolveGoldenPathRegime,
   verifyEventIdMark,
 } from '../scripts/golden-path-regime'
@@ -335,6 +336,36 @@ describe('l’environnement des serveurs de parcours', () => {
     // en avait aucun avant. La suite avait changé de source d'événements sans
     // que rien ne le dise. Vide vaut absente pour `resolveBillingConfig`.
     expect(webServerEnv().PAYMENTS_RECORDED_EVENTS).toBe('')
+  })
+})
+
+/**
+ * **Le parcours doré à deux hôtes** (s64b2) : demandé, jamais hérité.
+ */
+describe('le mode d’hôtes du parcours doré', () => {
+  it('joue un seul hôte par défaut, deux sur demande, et refuse une valeur inconnue en la nommant', () => {
+    expect(resolveGoldenPathHosts({})).toBe('single')
+    expect(resolveGoldenPathHosts({ GOLDEN_PATH_HOSTS: '' })).toBe('single')
+    expect(resolveGoldenPathHosts({ GOLDEN_PATH_HOSTS: 'split' })).toBe('split')
+    expect(() => resolveGoldenPathHosts({ GOLDEN_PATH_HOSTS: 'splt' })).toThrow(
+      /GOLDEN_PATH_HOSTS=splt/,
+    )
+  })
+
+  it('met le site hors de l’origine d’écoute en mode split, et laisse `pnpm test:e2e` inchangé', async () => {
+    const { BASE_URL, webServerEnv } = await import('../playwright.config')
+    const split = webServerEnv('split')
+
+    // Le site hors de `localhost` : Next relativiserait sinon le 308 de
+    // l'application vers lui (research de s64b, fait 3).
+    expect(new URL(split.APP_URL ?? '').hostname).toBe('site.localhost')
+    expect(split.APP_HOST).toBe('app.site.localhost')
+    // Un seul hôte demandé : `APP_HOST` est posée vide, pas laissée à l'ambiance.
+    expect(webServerEnv('single').APP_HOST).toBe('')
+    // La suite principale ne connaît pas le mode : rien de neuf dans son
+    // environnement.
+    expect(webServerEnv().APP_URL).toBe(BASE_URL)
+    expect(Object.keys(webServerEnv())).not.toContain('APP_HOST')
   })
 })
 

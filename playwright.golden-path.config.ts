@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
-import { BASE_URL, GOLDEN_PATH_DIRECTORY, webServerEnv } from './playwright.config'
-import { recordedEventsDirectoryFor } from './scripts/golden-path-regime'
+import { BASE_URL, GOLDEN_PATH_DIRECTORY, siteBaseUrl, webServerEnv } from './playwright.config'
+import { recordedEventsDirectoryFor, resolveGoldenPathHosts } from './scripts/golden-path-regime'
 
 /**
  * **Le parcours doré** (s25) — une configuration à part, et c'est une décision.
@@ -34,8 +34,9 @@ import { recordedEventsDirectoryFor } from './scripts/golden-path-regime'
  * **Le régime de paiement, posé sur le serveur** (ADR 048) — et il est posé
  * **toujours**, y compris vide.
  *
- * Unique lecture d'environnement de ce fichier, et elle ne décrit pas
- * l'application : c'est `scripts/golden-path.ts` qui pose la valeur, après
+ * L'une des deux lectures d'environnement de ce fichier (l'autre est le mode
+ * d'hôtes, plus bas), et elle ne décrit pas l'application : c'est
+ * `scripts/golden-path.ts` qui pose la valeur, après
  * avoir vérifié que **tous** les enregistrements attendus sont là.
  *
  * **Elle est dérivée du régime demandé, jamais de la variable brute.**
@@ -61,6 +62,14 @@ const recordedEventsEnv = (): Record<string, string> => ({
   PAYMENTS_RECORDED_EVENTS: recordedEventsDirectoryFor(process.env),
 })
 
+/**
+ * **Le mode d'hôtes** (s64b2) : un seul par défaut, le site et l'application
+ * sur deux hôtes avec `GOLDEN_PATH_HOSTS=split`. Une valeur inconnue est
+ * refusée en la nommant. Le serveur écoute toujours sur `BASE_URL` — c'est lui
+ * que `webServer.url` interroge ; les parcours, eux, partent du **site**.
+ */
+const HOSTS = resolveGoldenPathHosts(process.env)
+
 export default defineConfig({
   testDir: GOLDEN_PATH_DIRECTORY,
   fullyParallel: false,
@@ -78,7 +87,7 @@ export default defineConfig({
   // dépassée, ce qu'un délai global ne peut pas faire.
   timeout: 300_000,
   use: {
-    baseURL: BASE_URL,
+    baseURL: siteBaseUrl(HOSTS),
     locale: 'fr-FR',
     trace: 'retain-on-failure',
   },
@@ -90,7 +99,7 @@ export default defineConfig({
     // recopié : deux copies divergeraient au premier drapeau ajouté, et le
     // parcours doré mesurerait alors une application que personne d'autre
     // n'exécute.
-    env: { ...webServerEnv(), ...recordedEventsEnv() },
+    env: { ...webServerEnv(HOSTS), ...recordedEventsEnv() },
     url: BASE_URL,
     reuseExistingServer: false,
     timeout: 180_000,

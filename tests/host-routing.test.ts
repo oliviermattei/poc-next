@@ -1,3 +1,7 @@
+import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { join, relative } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 import { BILLING_SCREEN_PATH } from '@repo/module-billing'
 import { NextRequest } from 'next/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -132,5 +136,66 @@ describe('sans APP_HOST', () => {
 
     expect(response.status).toBe(200)
     expect(response.headers.get('location')).toBeNull()
+  })
+})
+
+/**
+ * **Une redirection émise par une route est relative** (s64b2, ADR 080, #69).
+ *
+ * `request.url` porte l'hôte d'**écoute** du serveur — `0.0.0.0:3000` dans
+ * l'image —, et Next ne relativise que les `Location` du proxy. Un
+ * `new URL(chemin, request.url)` envoyait donc le navigateur ailleurs que sur
+ * l'hôte demandé, et CSP `form-action 'self'` bloquait le formulaire natif.
+ *
+ * Balayé : les routes des modules (`packages/modules/*\/src/presentation`) et
+ * celles de l'application (`apps/web/app/api`). `Response.redirect` est écarté
+ * avec : il exige une URL absolue, donc une origine, et la seule à portée d'une
+ * route est celle-là.
+ */
+describe('les redirections des routes', () => {
+  const ROOT = fileURLToPath(new URL('..', import.meta.url))
+
+  const sources = (directory: string): string[] =>
+    readdirSync(directory).flatMap((entry) => {
+      const path = join(directory, entry)
+
+      if (statSync(path).isDirectory()) {
+        return sources(path)
+      }
+
+      return /\.tsx?$/.test(entry) && !/\.test\.tsx?$/.test(entry) ? [path] : []
+    })
+
+  const MODULES = join(ROOT, 'packages/modules')
+  const swept = [
+    ...readdirSync(MODULES)
+      .map((module) => join(MODULES, module, 'src/presentation'))
+      .filter((directory) => {
+        try {
+          return statSync(directory).isDirectory()
+        } catch {
+          return false
+        }
+      })
+      .flatMap(sources),
+    ...sources(join(ROOT, 'apps/web/app/api')),
+  ]
+
+  it('ne bâtit aucun Location sur `request.url`', () => {
+    // Plancher anti-balayage-vide : une arborescence déplacée rendrait le cas
+    // vert sans rien lire. Mesuré à l'écriture : bien au-delà de vingt fichiers.
+    expect(swept.length).toBeGreaterThan(20)
+
+    const offenders = swept.flatMap((file) => {
+      const text = readFileSync(file, 'utf8')
+      const found = [
+        ...text.matchAll(/new URL\([^;]*?,\s*request\.url\s*\)/gs),
+        ...text.matchAll(/Response\.redirect\(/g),
+      ]
+
+      return found.map((match) => `${relative(ROOT, file)} : ${match[0].replace(/\s+/g, ' ')}`)
+    })
+
+    expect(offenders).toEqual([])
   })
 })
