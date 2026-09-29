@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
+import type { GoldenPathHosts } from './scripts/golden-path-regime'
+
 /**
  * Parcours navigateur. Deux exécuteurs, deux périmètres, aucun recouvrement :
  * Vitest pour les unités et le câblage (`pnpm test`), Playwright pour ce qui
@@ -25,6 +27,28 @@ const PORT = Number(process.env.E2E_PORT ?? 3100)
 // les requêtes de ressources internes venant d'une origine qu'il ne reconnaît
 // pas, et noie la sortie d'avertissements.
 export const BASE_URL = `http://localhost:${PORT}`
+
+/**
+ * **Les deux hôtes du parcours doré joué avec `APP_HOST`** (s64b2), servis par
+ * le même serveur que `BASE_URL`.
+ *
+ * Le site est `site.localhost`, **jamais `localhost`** : Next relativise un
+ * `Location` dont l'origine est celle d'écoute (research de s64b, fait 3), si
+ * bien que le 308 de l'application vers un site sur `localhost` deviendrait un
+ * chemin relatif qui boucle. Chromium et Node résolvent `*.localhost` sur la
+ * boucle locale. Cette suite-ci ne les emploie pas : ils n'existent que pour
+ * `playwright.golden-path.config.ts`, sur demande (`GOLDEN_PATH_HOSTS=split`).
+ */
+export const SPLIT_SITE_HOST = 'site.localhost'
+export const SPLIT_APP_HOST = `app.${SPLIT_SITE_HOST}`
+
+/** L'origine du site pour un mode d'hôtes : `BASE_URL` pour un seul. */
+export const siteBaseUrl = (hosts: GoldenPathHosts): string =>
+  hosts === 'split' ? `http://${SPLIT_SITE_HOST}:${PORT}` : BASE_URL
+
+/** L'origine de l'application pour un mode d'hôtes : `BASE_URL` pour un seul. */
+export const appBaseUrl = (hosts: GoldenPathHosts): string =>
+  hosts === 'split' ? `http://${SPLIT_APP_HOST}:${PORT}` : BASE_URL
 
 /**
  * **Le dossier du parcours doré** (s25), exclu de cette suite et servi par
@@ -90,7 +114,17 @@ export const TRACES_OUTPUT_DIRECTORY = 'test-results'
  */
 export const E2E_SUPERADMIN_EMAIL = 'superadmin-e2e@example.test'
 
-export const webServerEnv = (): Record<string, string> => ({
+/**
+ * Les deux variables d'un mode d'hôtes — **posées dans les deux cas** : un
+ * `APP_HOST` laissé à l'ambiance serait fusionné par Playwright dans
+ * l'environnement du serveur, et un parcours annoncé à un hôte en jouerait deux.
+ */
+const hostsEnv = (hosts: GoldenPathHosts): Record<string, string> =>
+  hosts === 'split'
+    ? { APP_URL: siteBaseUrl(hosts), APP_HOST: SPLIT_APP_HOST }
+    : { APP_URL: BASE_URL, APP_HOST: '' }
+
+const webServerBaseEnv = (): Record<string, string> => ({
   // L'authentification exige un secret de signature et l'URL publique de
   // l'application. Elles sont posées **ici**, et pas laissées au `.env` du
   // poste : les liens envoyés par email doivent pointer sur le serveur que
@@ -188,6 +222,16 @@ export const webServerEnv = (): Record<string, string> => ({
   INNGEST_EVENT_KEY: '',
   INNGEST_SIGNING_KEY: '',
   INNGEST_BASE_URL: '',
+})
+
+/**
+ * `hosts` n'est donné que par le parcours doré (s64b2). **Sans argument, rien
+ * ne change** : `pnpm test:e2e` ne lit pas `GOLDEN_PATH_HOSTS` et reçoit
+ * exactement l'environnement d'avant.
+ */
+export const webServerEnv = (hosts?: GoldenPathHosts): Record<string, string> => ({
+  ...webServerBaseEnv(),
+  ...(hosts === undefined ? {} : hostsEnv(hosts)),
 })
 
 export default defineConfig({

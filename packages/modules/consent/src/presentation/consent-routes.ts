@@ -94,7 +94,7 @@ export function createConsentRoutes(
           !isSameSiteSubmission({
             origin: request.headers.get('origin'),
             referer: request.headers.get('referer'),
-            requestUrl: request.url,
+            acceptedOrigins: service().useCases.acceptedOrigins,
           })
         ) {
           return refuse(403)
@@ -111,18 +111,20 @@ export function createConsentRoutes(
           categories: parsed.data.categories,
         }
 
-        const { setCookie } = service().useCases.record(submission)
+        const { setCookies } = service().useCases.record(submission)
 
-        return new Response(null, {
-          status: 303,
-          headers: {
-            // Le retour est la page d'où le visiteur vient, **réduite à un
-            // chemin** : une redirection pilotée par un en-tête que l'appelant
-            // contrôle ne doit jamais pouvoir sortir du site.
-            location: safeReturnPath(request.headers.get('referer'), '/'),
-            'set-cookie': setCookie,
-          },
-        })
+        // Le retour est la page d'où le visiteur vient, **réduite à un
+        // chemin** : une redirection pilotée par un en-tête que l'appelant
+        // contrôle ne doit jamais pouvoir sortir du site.
+        const headers = new Headers({ location: safeReturnPath(request.headers.get('referer'), '/') })
+
+        // `append`, jamais un littéral d'objet : un en-tête `set-cookie` par
+        // cookie, le choix puis l'effacement de la copie d'hôte (s64c).
+        for (const setCookie of setCookies) {
+          headers.append('set-cookie', setCookie)
+        }
+
+        return new Response(null, { status: 303, headers })
       },
     },
   ]

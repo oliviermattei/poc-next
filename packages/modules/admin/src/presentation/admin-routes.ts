@@ -135,21 +135,16 @@ const submittedBody = async (request: Request): Promise<unknown> =>
 /**
  * Un retour à l'écran, **vers une constante de ce module**.
  *
- * L'origine vient de la requête entrante, le chemin est écrit ici : aucune
- * redirection n'est pilotée par une valeur reçue (`docs/security.md` §4). 303 et
- * non 302 : la méthode devient un `GET`, donc un rechargement ne renvoie pas le
- * formulaire.
+ * Le chemin est écrit ici : aucune redirection n'est pilotée par une valeur
+ * reçue (`docs/security.md` §4). **Relatif** (ADR 080) : le navigateur le
+ * résout contre l'hôte qu'il a demandé — `request.url` porterait l'hôte
+ * d'écoute du serveur. 303 et non 302 : la méthode devient un `GET`, donc un
+ * rechargement ne renvoie pas le formulaire.
  */
-const seeOther = (request: Request, path: string, setCookie?: string): Response =>
+const seeOther = (path: string, setCookie?: string): Response =>
   new Response(null, {
     status: 303,
-    headers:
-      setCookie === undefined
-        ? { location: new URL(path, request.url).toString() }
-        : {
-            location: new URL(path, request.url).toString(),
-            'set-cookie': setCookie,
-          },
+    headers: setCookie === undefined ? { location: path } : { location: path, 'set-cookie': setCookie },
   })
 
 const badRequest = (reason: string): Response =>
@@ -354,7 +349,7 @@ export function createAdminRoutes(service: () => AdminService): readonly ModuleR
         // de la rendre à son propre compte. La session neuve part dans le
         // cookie de la redirection, comme dans celui de la réponse JSON.
         return isFormSubmission(request)
-          ? seeOther(request, '/', outcome.setCookie)
+          ? seeOther('/', outcome.setCookie)
           : withSession(outcome.setCookie, { stopped: true })
       },
     },
@@ -417,7 +412,7 @@ export function createAdminRoutes(service: () => AdminService): readonly ModuleR
           }
 
           return isFormSubmission(request)
-            ? seeOther(request, `${ADMIN_USERS_SCREEN_PATH}/${target.userId}`)
+            ? seeOther(`${ADMIN_USERS_SCREEN_PATH}/${target.userId}`)
             : Response.json({ revoked: true })
         }),
     },
@@ -501,7 +496,7 @@ export function createAdminRoutes(service: () => AdminService): readonly ModuleR
             }
 
             return isFormSubmission(request)
-              ? seeOther(request, `${ADMIN_USERS_SCREEN_PATH}/${target.userId}`)
+              ? seeOther(`${ADMIN_USERS_SCREEN_PATH}/${target.userId}`)
               : Response.json({ sent: true })
           }),
         ),

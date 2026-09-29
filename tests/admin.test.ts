@@ -1841,7 +1841,8 @@ describe.runIf(databaseReachable)('les deux gestes du back-office', () => {
     )
 
     expect(submitted.status).toBe(303)
-    expect(submitted.headers.get('location')).toContain(`${ADMIN_USERS_SCREEN_PATH}/${target.userId}`)
+    // ADR 080 : un `Location` relatif, résolu contre l'hôte demandé.
+    expect(submitted.headers.get('location')).toBe(`${ADMIN_USERS_SCREEN_PATH}/${target.userId}`)
     await expect(auth.resolveSession(requestWith(target.cookie))).resolves.toBeNull()
   })
 

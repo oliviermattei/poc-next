@@ -1,4 +1,4 @@
-import type { Env } from '@repo/config'
+import { applicationOrigin, type Env } from '@repo/config'
 
 /**
  * **La règle qui exige une authentification configurée**, isolée de ce qui la
@@ -13,7 +13,20 @@ import type { Env } from '@repo/config'
  */
 export interface AuthConfig {
   readonly secret: string
+  /**
+   * **L'origine de l'application** : ce qui construit toute URL qui ouvre ou
+   * consomme une session (s64a, ADR 078). Sans `APP_HOST`, la chaîne d'`APP_URL`
+   * **telle quelle** — jamais re-sérialisée, qui ajouterait une barre finale à
+   * chaque lien. Avec, le schéma et le port d'`APP_URL` sur l'hôte d'`APP_HOST`.
+   */
   readonly appUrl: string
+  /** L'URL du site : `APP_URL`, telle quelle, avec ou sans `APP_HOST`. */
+  readonly siteUrl: string
+  /**
+   * Le `rpID` des passkeys : **toujours l'hôte d'`APP_URL`**. Le déplacer vers
+   * l'hôte de l'application invaliderait toutes les passkeys enregistrées.
+   */
+  readonly passkeyRpId: string
 }
 
 /** Une variable déclarée vide vaut absente, ici comme dans `parseEnv`. */
@@ -37,5 +50,16 @@ export function resolveAuthConfig(env: Env): AuthConfig {
     )
   }
 
-  return { secret, appUrl }
+  const site = new URL(appUrl)
+  const appHost = declared(env.APP_HOST)
+
+  return {
+    secret,
+    // Construite depuis la configuration, jamais depuis l'en-tête `Host`. La
+    // forme d'`APP_HOST` et sa relation à `APP_URL` sont jugées par le schéma ;
+    // le calcul est celui qu'emprunte aussi l'aiguillage du proxy (ADR 079).
+    appUrl: appHost === undefined ? appUrl : applicationOrigin(appUrl, appHost),
+    siteUrl: appUrl,
+    passkeyRpId: site.hostname,
+  }
 }

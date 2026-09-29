@@ -10,7 +10,7 @@
   "screen.deletedActor": "Deleted account",
   "screen.read": "Read",
   "screen.empty.title": "No notifications",
-  "screen.empty.description": "Anything that concerns you will show up here. Set below how you want to be told.",
+  "screen.empty.description": "Anything that concerns you will show up here. Choose how you want to be told in your settings.",
   "screen.empty.action": "Set my preferences",
   "screen.pagination.label": "Notification pages",
   "screen.pagination.previous": "Previous page",

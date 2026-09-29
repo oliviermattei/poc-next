@@ -25,6 +25,7 @@ import {
   authModule,
   authUser,
   configureAuth,
+  createBetterAuthService,
   safeRedirectPath,
   type AuthService,
 } from '@repo/module-auth'
@@ -79,11 +80,12 @@ import { BillingScreen } from '@repo/module-billing/presentation'
 import { demoEnabledModule } from '@repo/module-demo-enabled'
 import { eq, sql } from 'drizzle-orm'
 import { NextIntlClientProvider } from 'next-intl'
-import { createElement, type ReactNode } from 'react'
+import { createElement, type ReactElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import Stripe from 'stripe'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { resolveAuthConfig } from '../apps/web/lib/auth-config'
 import { billing as appBilling, guestFallbackUrl } from '../apps/web/lib/billing'
 import { LOCAL_WEBHOOK_SECRET, resolveBillingConfig } from '../apps/web/lib/billing-config'
 import { billingPermissionOf } from '../apps/web/lib/billing-permission'
@@ -96,6 +98,7 @@ import { localeRouting } from '../apps/web/lib/locale-routing'
 import { billingOffers } from '../config/billing'
 import { appLocales, defaultLocale } from '../config/i18n'
 import { databaseUrl, isDatabaseReachable } from './fixtures/database'
+import { FIXTURE_BILLING_NONE } from './fixtures/screen-viewer'
 import type { RateLimiter } from '@repo/ports'
 
 import { createMemoryRateLimiter, dispatchAllowingRateLimit } from './fixtures/rate-limit'
@@ -721,6 +724,8 @@ beforeAll(async () => {
     // est acceptée sans être lue — le choix des destinataires est éprouvé dans
     // `tests/organizations.test.ts`, au producteur.
     notify: () => Promise.resolve({ ok: true }),
+    // s62c (ADR 076) : le vrai filtre, comme au point de composition.
+    safeReturnPath: safeRedirectPath,
   })
 
   configureBilling(suiteBilling())
@@ -2062,6 +2067,99 @@ describe.runIf(compositionMeasurable)('le point de composition de l’applicatio
     // Ce que le **réseau** a vu partir : l'adresse est celle du compte appelant,
     // résolue par `lib/auth` à partir de son seul identifiant.
     expect(new URLSearchParams(calls[0]?.body ?? '').get('email')).toBe(email)
+  })
+
+  it('fait revenir du checkout et du portail sur l’origine de l’application quand APP_HOST est posée', async () => {
+    // s64a (ADR 078) : **aucune origine donnée au module** — c'est le point de
+    // composition qui la résout, depuis l'environnement déclaré ici.
+    vi.stubEnv('APP_HOST', 'app.localhost')
+
+    try {
+      resetBillingService()
+      appBilling.prepare({ db: connection.db, payments })
+
+      const { other } = await anOrganizationWithRole('owner')
+
+      responses = [
+        () => json({ id: 'cus_s64a_composition', object: 'customer' }),
+        () =>
+          json({
+            id: 'cs_s64a_composition',
+            object: 'checkout.session',
+            url: 'https://checkout.stripe.com/c/pay/cs_s64a_composition',
+            customer: 'cus_s64a_composition',
+          }),
+        () =>
+          json({
+            id: 'bps_s64a_composition',
+            object: 'billing_portal.session',
+            url: 'https://billing.stripe.com/p/session/s64a',
+          }),
+      ]
+
+      expect((await call('checkout', { session: other, body: { offerId: SHIPPED_OFFER } })).status).toBe(200)
+      expect((await call('portal', { session: other })).status).toBe(200)
+
+      const checkoutBody = new URLSearchParams(
+        calls.find((recorded) => recorded.url.includes('/checkout/sessions'))?.body ?? '',
+      )
+      const portalBody = new URLSearchParams(
+        calls.find((recorded) => recorded.url.includes('/billing_portal/sessions'))?.body ?? '',
+      )
+      const emitted = {
+        success: checkoutBody.get('success_url') ?? '',
+        cancel: checkoutBody.get('cancel_url') ?? '',
+        portal: portalBody.get('return_url') ?? '',
+      }
+
+      for (const [journey, url] of Object.entries(emitted)) {
+        expect(url.startsWith('http://app.localhost:3000/'), `${journey} : ${url}`).toBe(true)
+      }
+    } finally {
+      vi.stubEnv('APP_HOST', '')
+    }
+  })
+
+  it('fait revenir un paiement invité sur la page de tarifs du site quand APP_HOST est posée', async () => {
+    // s64b2 : la page de tarifs n'est servie que par le site. Le point de
+    // composition donne son origine au module ; un retour sur l'application y
+    // repartirait par un second saut.
+    vi.stubEnv('APP_HOST', 'app.localhost')
+
+    try {
+      resetBillingService()
+      appBilling.prepare({ db: connection.db, payments })
+
+      responses = [
+        () => json({ id: 'cus_s64b2_guest', object: 'customer' }),
+        () =>
+          json({
+            id: 'cs_s64b2_guest',
+            object: 'checkout.session',
+            url: 'https://checkout.stripe.com/c/pay/cs_s64b2_guest',
+            customer: 'cus_s64b2_guest',
+          }),
+      ]
+
+      // **Un appelant propre à cette exécution** (#70) : sans lui, le cas
+      // puisait dans le seau de l'appelant anonyme, persisté en base, et
+      // rougissait en 429 dès la sixième exécution locale en dix minutes.
+      // Une adresse du bloc de documentation IPv6, tirée au hasard.
+      const client = `2001:db8::${randomUUID().slice(0, 4)}:${randomUUID().slice(0, 4)}`
+
+      expect(
+        (await call('guestCheckout', { body: { offerId: SHIPPED_OFFER }, client })).status,
+      ).toBe(200)
+
+      const checkoutBody = new URLSearchParams(
+        calls.find((recorded) => recorded.url.includes('/checkout/sessions'))?.body ?? '',
+      )
+
+      expect(checkoutBody.get('success_url')).toBe(`${APP_URL}/pricing?checkout=success`)
+      expect(checkoutBody.get('cancel_url')).toBe(`${APP_URL}/pricing?checkout=cancelled`)
+    } finally {
+      vi.stubEnv('APP_HOST', '')
+    }
   })
 
   /**
@@ -4966,6 +5064,19 @@ describe('la page publique de tarifs', () => {
     readonly digest: string | null
   }
 
+  // s64b2 : l'écran lit les deux origines de la configuration. Le job de CI ne
+  // pose ni l'une ni l'autre variable, et `APP_HOST` est fixée vide plutôt que
+  // laissée au `.env` du poste.
+  beforeEach(() => {
+    vi.stubEnv('AUTH_SECRET', 'x'.repeat(40))
+    vi.stubEnv('APP_URL', APP_URL)
+    vi.stubEnv('APP_HOST', '')
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
   const aSession = (): ModuleSession => ({ userId: 'usr_s22', roles: [] })
 
   /**
@@ -5168,6 +5279,32 @@ describe('la page publique de tarifs', () => {
 
     expect(repeated.digest).toBeNull()
     expect(occurrences(repeated.html, 'aria-current="true"')).toBe(0)
+  })
+
+  /**
+   * **Le chemin d'un compte existant, quand le site ne voit pas la session**
+   * (s64b2). Sans `APP_HOST`, les deux origines se confondent et la page ne
+   * change pas.
+   */
+  it('ne propose pas le chemin d’un compte existant quand le site et l’application partagent l’hôte', async () => {
+    const outcome = await renderPricing({ available: true, session: null, params: { offer: 'lifetime' } })
+
+    expect(outcome.digest).toBeNull()
+    expect(outcome.html).not.toContain(BILLING_KEYS.pricing.existingCustomerLink)
+  })
+
+  it('mène un compte existant à l’écran de facturation, l’offre reposée, quand APP_HOST est posée', async () => {
+    vi.stubEnv('APP_HOST', 'app.localhost')
+
+    const billingScreen = localeRouting.publicPath(BILLING_SCREEN_PATH, defaultLocale)
+    const resumed = await renderPricing({ available: true, session: null, params: { offer: 'lifetime' } })
+    const plain = await renderPricing({ available: true, session: null, params: { offer: 'inconnue' } })
+
+    expect(resumed.html).toContain(BILLING_KEYS.pricing.existingCustomerLink)
+    expect(resumed.html).toContain(`href="${billingScreen}?offer=lifetime"`)
+    // Une offre que le catalogue ne connaît pas ne voyage pas.
+    expect(plain.html).toContain(`href="${billingScreen}"`)
+    expect(plain.html).not.toContain('inconnue')
   })
 
   it('ouvre le checkout pour un visiteur connecté, sans passer par la connexion', async () => {
@@ -5659,8 +5796,10 @@ describe.runIf(databaseReachable)('la limitation de débit du checkout invité',
     const url = new URL(((await degraded.json()) as { url: string }).url, APP_URL)
 
     // La connexion, avec l'offre en poche : le visiteur peut toujours acheter.
+    // s64b2 : le retour vise l'écran de facturation — connecté, sur
+    // l'application —, jamais `/pricing`, que le site servirait sans session.
     expect(url.pathname.endsWith('/sign-in')).toBe(true)
-    expect(url.searchParams.get('next')).toBe(`${PRICING_SCREEN_PATH}?offer=pro-monthly`)
+    expect(url.searchParams.get('next')).toBe(`${BILLING_SCREEN_PATH}?offer=pro-monthly`)
 
     // **Rien n'a coûté** : aucun appel au fournisseur au-delà de l'ouverture
     // permise, et aucune ligne de plus.
@@ -6128,6 +6267,17 @@ describe.runIf(databaseReachable)('la promotion d’une ligne invitée', () => {
 })
 
 describe.runIf(databaseReachable)('la page de retour d’un paiement invité', () => {
+  // s64b2 : la page de tarifs lit les deux origines de la configuration.
+  beforeEach(() => {
+    vi.stubEnv('AUTH_SECRET', 'x'.repeat(40))
+    vi.stubEnv('APP_URL', APP_URL)
+    vi.stubEnv('APP_HOST', '')
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
   /**
    * **Aucune session n'est ouverte depuis la page de retour** (critère 7).
    *
@@ -6360,6 +6510,44 @@ describe.runIf(databaseReachable)('le lien envoyé à l’adresse du paiement', 
     ).toHaveLength(0)
   })
 
+  it('envoie le lien de définition de mot de passe sur l’origine de l’application quand APP_HOST est posée', async () => {
+    // s64a (ADR 078) : l'origine vient de la résolution, sur un environnement
+    // validé. Le service est construit **à part** — le singleton du module
+    // reste celui du bloc.
+    const { appUrl, passkeyRpId } = resolveAuthConfig(
+      parseEnv({
+        DATABASE_URL: 'postgres://user:password@localhost:5432/app',
+        AUTH_SECRET: 'x'.repeat(32),
+        APP_URL,
+        APP_HOST: 'app.localhost',
+      }),
+    )
+    const onApp = createBetterAuthService({
+      db: connection.db,
+      mailer: outbox,
+      secret: 'x'.repeat(32),
+      appUrl,
+      passkeyRpId,
+      log: () => {},
+      runInBackground: (task) => {
+        void task
+      },
+    })
+    const onAppRule = guestAccountsOf(() => Promise.resolve(onApp), {
+      appUrl,
+      generatePassword: () => `s64a-${randomUUID()}-${randomUUID()}`,
+    })
+    const email = `s19-guest-${randomUUID()}@example.test`
+    const account = await onAppRule.accountFor({ email })
+
+    await onAppRule.sendAccessLink({ account: account ?? { userId: '', created: true }, email })
+
+    const link = String(outbox.sent.at(-1)?.data['url'] ?? '')
+
+    expect(outbox.sent.map((message) => message.template)).toEqual(['auth.reset-password'])
+    expect(link.startsWith('http://app.localhost:3000/'), link).toBe(true)
+  })
+
   it('retrouve le compte qu’elle vient de créer, sans en fabriquer un second', async () => {
     const email = `s19-guest-${randomUUID()}@example.test`
     const first = await rule.accountFor({ email })
@@ -6373,6 +6561,100 @@ describe.runIf(databaseReachable)('le lien envoyé à l’adresse du paiement', 
     )
 
     expect(Number(rows.rows[0]?.count ?? 0)).toBe(1)
+  })
+})
+
+/* --------------------------------------------------------------------------
+ * **L'offre reposée sur l'écran de facturation** (s64b2).
+ *
+ * Avec `APP_HOST`, le site ne voit pas la session : un compte choisit son offre
+ * sur l'application, par `?offer=`. Ce qui se mesure ici est ce que l'écran
+ * **décide** — quel bouton reprend le focus, où repart un visiteur anonyme —,
+ * avec la vue et la session injectées ; la validation contre le catalogue est
+ * celle du domaine (`selectedOfferOf`), prouvée chez elle.
+ * -------------------------------------------------------------------------- */
+describe('l’écran de facturation et l’offre reposée', () => {
+  interface BillingScreenOutcome {
+    readonly tree: ReactElement<{ subscribeActions: Record<string, ReactElement<{ focusOnReady?: boolean }>> }> | null
+    readonly redirectedTo: string | null
+  }
+
+  const renderBillingScreen = async (input: {
+    readonly session: ModuleSession | null
+    readonly params: Record<string, string>
+  }): Promise<BillingScreenOutcome> => {
+    vi.resetModules()
+    vi.doMock('../apps/web/lib/billing', () => ({
+      billing: { available: true, view: () => Promise.resolve(FIXTURE_BILLING_NONE) },
+      BILLING_SCREEN_PATH,
+    }))
+    vi.doMock('../apps/web/lib/auth', () => ({
+      currentViewer: () => Promise.resolve({ session: input.session, account: null }),
+    }))
+    vi.doMock('../apps/web/lib/i18n', () => ({
+      appIntl: () =>
+        Promise.resolve({
+          locale: defaultLocale,
+          t: (key: string) => key,
+          path: (pathname: string) => localeRouting.publicPath(pathname, defaultLocale),
+        }),
+    }))
+
+    try {
+      const { default: BillingPage } = (await import(
+        '../apps/web/app/(app)/app/settings/billing/page'
+      )) as {
+        default: (props: {
+          searchParams?: Promise<Record<string, string | string[] | undefined>>
+        }) => Promise<BillingScreenOutcome['tree']>
+      }
+
+      return {
+        tree: await BillingPage({ searchParams: Promise.resolve(input.params) }),
+        redirectedTo: null,
+      }
+    } catch (error) {
+      const digest = (error as { digest?: unknown }).digest
+
+      if (typeof digest !== 'string' || !digest.startsWith('NEXT_REDIRECT;')) {
+        throw error
+      }
+
+      return { tree: null, redirectedTo: digest.split(';')[2] ?? '' }
+    } finally {
+      vi.doUnmock('../apps/web/lib/billing')
+      vi.doUnmock('../apps/web/lib/auth')
+      vi.doUnmock('../apps/web/lib/i18n')
+    }
+  }
+
+  /** L'offre dont le bouton reprend le focus, pour chaque offre rendue. */
+  const focusedOffers = (outcome: BillingScreenOutcome): string[] =>
+    Object.entries(outcome.tree?.props.subscribeActions ?? {})
+      .filter(([, action]) => action.props.focusOnReady === true)
+      .map(([offerId]) => offerId)
+
+  it('rend le focus au bouton de l’offre reposée, et ignore une offre inconnue', async () => {
+    const session: ModuleSession = { userId: 'usr_s64b2', roles: [] }
+    const resumed = await renderBillingScreen({ session, params: { offer: 'lifetime' } })
+
+    expect(Object.keys(resumed.tree?.props.subscribeActions ?? {})).toEqual(['pro-monthly', 'lifetime'])
+    expect(focusedOffers(resumed)).toEqual(['lifetime'])
+
+    for (const forged of ['inconnue', '../lifetime']) {
+      expect(focusedOffers(await renderBillingScreen({ session, params: { offer: forged } })), forged).toEqual([])
+    }
+  })
+
+  it('garde l’offre dans le retour de connexion d’un visiteur anonyme', async () => {
+    const outcome = await renderBillingScreen({ session: null, params: { offer: 'lifetime' } })
+    const target = new URL(outcome.redirectedTo ?? '', APP_URL)
+    const next = target.searchParams.get('next') ?? ''
+
+    expect(target.pathname).toBe(localeRouting.publicPath('/sign-in', defaultLocale))
+    expect(next).toBe(`${BILLING_SCREEN_PATH}?offer=lifetime`)
+    // Le filtre de retour de la connexion le laisse passer tel quel.
+    expect(safeRedirectPath(next, '/')).toBe(next)
   })
 })
 

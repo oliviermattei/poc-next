@@ -180,6 +180,12 @@ export interface AuthService {
   readonly oauthProviders: readonly AnyOAuthProviderId[]
   readonly useCases: AuthUseCases
   readonly policy: AuthPolicy
+  /**
+   * **L'origine configurée de l'application** (s64b2, ADR 080) : ce à quoi les
+   * routes comparent une destination, jamais à `request.url`, qui porte l'hôte
+   * d'écoute du serveur.
+   */
+  readonly appUrl: string
 }
 
 /**

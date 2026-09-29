@@ -14,6 +14,7 @@ import {
   requireNotificationsService,
   EMPTY_NOTIFICATIONS_VIEW,
   NOTIFICATIONS_SCREEN_PATH,
+  NOTIFICATIONS_SETTINGS_SCREEN_PATH,
   type NotificationScope,
   type NotificationsView,
   type NotificationTypeSummary,
@@ -50,7 +51,7 @@ import { organizations } from './organizations'
  *
  * | | module activé | module coupé |
  * |---|---|---|
- * | `/notifications` | l'écran | **404** |
+ * | `/app/notifications` (ancien `/notifications` : 308, s63) | l'écran | **404** (ancien chemin compris) |
  * | entrée de navigation | présente (authentifiée) | absente |
  * | `emitNotification` | in-app + email selon les préférences | **envoi email direct pour les types qui le veulent par défaut**, rien pour les autres |
  * | requêtes en base | celles de l'écran | **aucune** |
@@ -303,7 +304,7 @@ export const notifications: NotificationsFeature = mounted
   : ABSENT_NOTIFICATIONS
 
 /** Ce que les écrans ont le droit de connaître du module : ses chemins. */
-export { NOTIFICATIONS_SCREEN_PATH, notificationRoutePath }
+export { NOTIFICATIONS_SCREEN_PATH, NOTIFICATIONS_SETTINGS_SCREEN_PATH, notificationRoutePath }
 
 /**
  * La clé du nom accessible du badge, **réexportée d'ici**.

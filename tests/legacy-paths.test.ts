@@ -61,7 +61,7 @@ describe('l’inventaire figé de la zone Application', () => {
   it('redirige chaque entrée de la table vers un écran servi, et jamais un chemin servi', async () => {
     const served = await warmUpTargets()
 
-    for (const [legacy, target] of Object.entries(LEGACY_SCREEN_PATHS)) {
+    for (const [legacy, { target }] of Object.entries(LEGACY_SCREEN_PATHS)) {
       expect(served, `${legacy} → ${target}`).toContain(target)
       // Un ancien chemin encore servi par un fichier serait masqué par le 308.
       expect(served, legacy).not.toContain(legacy)
@@ -146,8 +146,9 @@ const legacyEntriesServedHere = (): Readonly<Record<string, string>> =>
   )
 
 describe('une entrée dont le module est coupé ne redirige pas', () => {
-  // Le socle : seuls les modules requis. Le compte reste, l'organisation et la
-  // facturation partent — leur écran répond 404, et leur ancien chemin aussi.
+  // Le socle : seuls les modules requis. Le compte reste ; l'organisation, la
+  // facturation, les notifications, l'intégration et la démonstration partent —
+  // leur écran répond 404, et leur ancien chemin aussi (ADR 077).
   const socle = buildRegistry({
     available: availableModules,
     enabled: requiredModules,
@@ -163,15 +164,28 @@ describe('une entrée dont le module est coupé ne redirige pas', () => {
       (legacy) => legacyScreenTarget(legacy, socle) === null,
     )
 
-    // Les deux moitiés, sans quoi le cas serait vert sur une table vide ou sur
-    // une fonction qui ne rend jamais rien.
-    expect(redirected).toContain('/account')
-    expect(dropped.length).toBeGreaterThan(0)
+    // **L'ensemble attendu, écrit ici** (#62). La version précédente vérifiait,
+    // pour chaque ligne abandonnée, que son module n'était pas dans le
+    // registre — la condition de la garde, reformulée : une ligne qui nommait
+    // un module existant mais faux (`/notifications` → `auth`) restait verte.
+    // Le socle ne garde que le compte ; toute autre ligne doit tomber.
+    expect([...redirected].sort()).toEqual(['/account', '/app/settings/account'])
+    expect([...dropped].sort()).toEqual([
+      '/billing',
+      '/notifications',
+      '/onboarding',
+      '/organizations',
+      '/premium',
+    ])
+  })
 
-    for (const legacy of dropped) {
-      const target = LEGACY_SCREEN_PATHS[legacy] ?? ''
+  it('nomme dans chaque ligne un module que l’annuaire connaît', () => {
+    // Une faute de frappe (`'demo'` pour `'demo-enabled'`) ne serait dans aucun
+    // registre : l'ancien chemin répondrait 404 à jamais, en silence.
+    const known = availableModules.map((module) => module.id as string)
 
-      expect(socle.navigation.map((entry) => entry.href), legacy).not.toContain(target)
+    for (const [legacy, { module }] of Object.entries(LEGACY_SCREEN_PATHS)) {
+      expect(known, legacy).toContain(module)
     }
   })
 
@@ -196,7 +210,7 @@ describe('une entrée dont le module est coupé ne redirige pas', () => {
  * par l'analyseur de TypeScript, jamais les commentaires, qui ont le droit de
  * raconter l'histoire d'un chemin.
  *
- * Balayés : `apps/web` et les trois modules qui servaient ces écrans, tests
+ * Balayés : `apps/web` et les six modules qui servent ces écrans, tests
  * exclus. Seule la table les écrit, c'est son rôle.
  */
 describe('aucun ancien chemin n’est écrit en littéral', () => {
@@ -206,6 +220,9 @@ describe('aucun ancien chemin n’est écrit en littéral', () => {
     'packages/modules/auth/src',
     'packages/modules/organizations/src',
     'packages/modules/billing/src',
+    'packages/modules/notifications/src',
+    'packages/modules/onboarding/src',
+    'packages/modules/demo-enabled/src',
   ]
   const ALLOWED = new Set(['apps/web/lib/legacy-paths.ts'])
   const LEGACY_SEGMENTS = Object.keys(LEGACY_SCREEN_PATHS).map((path) => path.slice(1))

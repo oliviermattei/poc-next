@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { NextIntlClientProvider } from 'next-intl'
 import { createElement, isValidElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { defaultLocale } from '../config/i18n'
 
@@ -181,6 +181,19 @@ vi.mock('../apps/web/lib/organizations', async (importOriginal) => {
       ...actual.organizations,
       activeOrganizationId: () => Promise.resolve(FIXTURE_ORGANIZATIONS.current.id),
       view: () => Promise.resolve(FIXTURE_ORGANIZATIONS),
+      // s62c — le sélecteur de la barre du haut : la même fixture, par nom.
+      // Module coupé, la vraie lecture — vide, sans base : le shell n'a alors
+      // rien à rendre, et le catalogue n'a pas les clés du sélecteur.
+      switcher: actual.organizations.available
+        ? () =>
+            Promise.resolve({
+              current: {
+                id: FIXTURE_ORGANIZATIONS.current.id,
+                name: FIXTURE_ORGANIZATIONS.current.name,
+              },
+              options: FIXTURE_ORGANIZATIONS.memberships.map(({ id, name }) => ({ id, name })),
+            })
+        : actual.organizations.switcher,
       invitation: () => Promise.resolve(FIXTURE_INVITATION),
     },
   }
@@ -559,6 +572,12 @@ const TECHNICAL_PROPS = new Set([
   'callbackURL',
   'className',
   'currentPath',
+  // s62c — l'identifiant de l'organisation courante et le nom du champ posté,
+  // remis au sélecteur d'organisation de la barre du **shell**, donc présents
+  // sur chaque écran. Même raison qu'`accountHref` : ce sont les props du
+  // shell. Le garde-fou de prose reste actif — `fieldName="Organisation
+  // courante"` rougirait.
+  'currentValue',
   // s36 — la destination de « personnaliser » de la bannière de consentement,
   // remise au composant du design system. Elle entre ici pour la même raison
   // qu'`accountHref` : la bannière vit dans le **shell**, donc sur chaque
@@ -566,6 +585,7 @@ const TECHNICAL_PROPS = new Set([
   // prose reste actif — `customizeHref="Personnaliser"` rougirait.
   'customizeHref',
   'destination',
+  'fieldName',
   'href',
   'hrefLang',
   'htmlFor',
@@ -766,6 +786,21 @@ const offenders = (found: readonly Verdict[], rules: AcceptanceRules): readonly 
     .map(({ where, value }) => `${where} : « ${value} »`)
 
 describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => {
+  // s64b2 : la page de tarifs lit les deux origines de la configuration, donc
+  // l'environnement validé. Le job de CI pose `DATABASE_URL` (la même valeur)
+  // mais ni `AUTH_SECRET` ni `APP_URL`, et `APP_HOST` est fixée vide plutôt que
+  // laissée au `.env` du poste.
+  beforeAll(() => {
+    vi.stubEnv('DATABASE_URL', 'postgres://postgres:postgres@localhost:5432/app')
+    vi.stubEnv('AUTH_SECRET', 'x'.repeat(40))
+    vi.stubEnv('APP_URL', 'http://localhost:3000')
+    vi.stubEnv('APP_HOST', '')
+  })
+
+  afterAll(() => {
+    vi.unstubAllEnvs()
+  })
+
   // Ce cas rend **tous** les écrans de l'application en une fois. Le budget par
   // défaut de Vitest (5 s) n'a rien à voir avec ce qu'il vérifie — il ne mesure
   // aucune propriété de vitesse — et il a rougi trois fois sous charge, à
@@ -1419,6 +1454,20 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         render: async () => (await import('../apps/web/app/(app)/app/settings/cookies/page')).default(),
       },
       {
+        // s62c — la rubrique Notifications : la carte des préférences, sortie
+        // du centre. Elle refuse quand le module n'est pas monté, et le refus
+        // attendu est **dérivé** de l'état du module.
+        id: 'réglages — notifications',
+        file: '(app)/app/settings/notifications/page.tsx',
+        viewer: SIGNED_IN,
+        refuses: notificationsMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        // Le type et le canal d'une préférence : des identifiants, jamais du
+        // texte — les mêmes que ceux que portait le centre.
+        technicalProps: ['organizationId', 'channel'],
+        render: async () =>
+          (await import('../apps/web/app/(app)/app/settings/notifications/page')).default(),
+      },
+      {
         // s19. Trois rendus du même fichier : les états que l'écran distingue
         // portent chacun des textes qu'aucun autre ne rend — l'alerte de tête,
         // « accès jusqu'au … », l'essai, l'offre retirée du catalogue.
@@ -1494,13 +1543,13 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // n'est pas un écran de facturation, c'est un écran de produit —, et le
         // droit est piloté par la fixture, non par l'état du dépôt.
         id: 'fonctionnalité réservée, sans le droit',
-        file: '(app)/premium/page.tsx',
+        file: '(app)/app/premium/page.tsx',
         viewer: SIGNED_IN,
         refuses: premiumGated ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         render: async () => {
           entitlementState.value = false
 
-          return (await import('../apps/web/app/(app)/premium/page')).default()
+          return (await import('../apps/web/app/(app)/app/premium/page')).default()
         },
       },
       {
@@ -1508,13 +1557,13 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // textes qu'aucun autre écran ne rend — le titre, le badge et la
         // description de l'accès accordé.
         id: 'fonctionnalité réservée, avec le droit',
-        file: '(app)/premium/page.tsx',
+        file: '(app)/app/premium/page.tsx',
         viewer: SIGNED_IN,
         refuses: premiumGated ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         render: async () => {
           entitlementState.value = true
 
-          return (await import('../apps/web/app/(app)/premium/page')).default()
+          return (await import('../apps/web/app/(app)/app/premium/page')).default()
         },
       },
       {
@@ -1575,11 +1624,41 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           (await import('../apps/web/app/(site)/pricing/page')).default({ searchParams: noParams }),
       },
       {
+        // s64b2. Le troisième rendu du même fichier : site et application sur
+        // deux hôtes. Il porte la ligne « Déjà client ? » et son lien, qu'aucun
+        // autre rendu ne montre.
+        id: 'tarifs, site et application sur deux hôtes',
+        file: '(site)/pricing/page.tsx',
+        viewer: ANONYMOUS,
+        refuses: billingMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
+        technicalProps: [
+          'mode',
+          'interval',
+          'highlightedOfferId',
+          'selectedOfferId',
+          'labelKey',
+          'offerId',
+          'locale',
+        ],
+        screenData: cataloguePrices,
+        render: async () => {
+          vi.stubEnv('APP_HOST', 'app.localhost')
+
+          try {
+            return await (await import('../apps/web/app/(site)/pricing/page')).default({
+              searchParams: noParams,
+            })
+          } finally {
+            vi.stubEnv('APP_HOST', '')
+          }
+        },
+      },
+      {
         // s40. L'écran du parcours d'intégration. Il refuse quand le module
         // n'est pas monté — le refus attendu est **dérivé** de l'état du
         // module, jamais concédé.
         id: 'intégration',
-        file: '(app)/onboarding/page.tsx',
+        file: '(app)/app/onboarding/page.tsx',
         viewer: SIGNED_IN,
         refuses: onboardingMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         // Les deux URL des routes du module et l'identifiant de l'étape que
@@ -1588,14 +1667,14 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // nommée `skip` portant une chaîne fait toujours rougir, et le
         // garde-fou de prose reste actif ici aussi.
         technicalProps: ['continue', 'skip', 'fields', 'state'],
-        render: async () => (await import('../apps/web/app/(app)/onboarding/page')).default(),
+        render: async () => (await import('../apps/web/app/(app)/app/onboarding/page')).default(),
       },
       {
         // s32. L'écran du centre de notifications. Il refuse quand le module
         // n'est pas monté — le refus attendu est **dérivé** de l'état du
         // module, jamais concédé.
         id: 'notifications',
-        file: '(app)/notifications/page.tsx',
+        file: '(app)/app/notifications/page.tsx',
         viewer: SIGNED_IN,
         refuses: notificationsMounted ? null : 'NEXT_HTTP_ERROR_FALLBACK;404',
         // Les trois URL des routes du module, le périmètre d'une notification
@@ -1603,7 +1682,9 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
         // identifiants, jamais du texte. Déclarés **sur cet écran** : ailleurs,
         // une prop nommée `read` portant une chaîne fait toujours rougir, et le
         // garde-fou de prose reste actif ici aussi.
-        technicalProps: ['read', 'readAll', 'setPreference', 'organizationId', 'channel'],
+        // s62c : la carte des préférences est partie dans les réglages ; l'état
+        // vide y mène par `preferencesHref`, une URL.
+        technicalProps: ['read', 'readAll', 'preferencesHref', 'organizationId', 'channel'],
         // Les numéros de page rendus par la pagination du design system : des
         // **données**, comme un prix ou un nom, et **dérivées de la fixture**
         // plutôt que recopiées — une page de plus entre ici sans que personne y
@@ -1612,7 +1693,7 @@ describe('aucun texte affiché ne vient d’ailleurs que des catalogues', () => 
           String(index + 1),
         ),
         render: async () =>
-          (await import('../apps/web/app/(app)/notifications/page')).default({
+          (await import('../apps/web/app/(app)/app/notifications/page')).default({
             searchParams: noParams,
           }),
       },

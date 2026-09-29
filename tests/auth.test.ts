@@ -31,9 +31,11 @@ import { twoFactor } from 'better-auth/plugins/two-factor'
 import { passkey } from '@better-auth/passkey'
 import { sql } from 'drizzle-orm'
 import { getTableConfig } from 'drizzle-orm/pg-core'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { SecurityEventRecord } from '@repo/module-auth'
+import { parseEnv } from '@repo/config'
+import { resolveAuthConfig } from '../apps/web/lib/auth-config'
 import { databaseUrl, isDatabaseReachable } from './fixtures/database'
 import {
   createDrizzleAuthSessionRepository,
@@ -248,6 +250,12 @@ interface CallOptions {
    * en-tête — donc dans une valeur que l'appelant écrit.
    */
   readonly origin?: string
+  /**
+   * L'origine **de la requête** (`request.url`), par défaut celle de
+   * l'application. s64b2 (ADR 080) : Next y met l'hôte d'écoute du serveur —
+   * `0.0.0.0:3000` dans l'image —, jamais l'hôte demandé.
+   */
+  readonly listen?: string
 }
 
 /** Une requête telle que l'application la sert : par le répartiteur du registre. */
@@ -267,7 +275,7 @@ const call = async (path: string, options: CallOptions = {}): Promise<Response> 
 
   return await dispatchAllowingRateLimit(
     registry,
-    new Request(`${APP_URL}${AUTH_PREFIX}${path}`, {
+    new Request(`${options.listen ?? APP_URL}${AUTH_PREFIX}${path}`, {
       method: options.method ?? (options.body === undefined ? 'GET' : 'POST'),
       headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
@@ -817,6 +825,63 @@ describe.skipIf(!databaseReachable)('durcissement de la session', () => {
     expect(attributes).toContain('httponly')
     expect(attributes).toContain('secure')
     expect(attributes).toContain('samesite=strict')
+  }, 30_000)
+
+  it('garde la session et le défi du second facteur propres à l’hôte : aucun Domain (s64c)', async () => {
+    // Avec `APP_HOST`, un `Domain` porterait la session de l'application
+    // jusqu'au site. Seuls la langue et le consentement vont sur le parent.
+    const { email } = await aVerifiedAccount()
+    const opened = await signIn(email)
+    const enrolled = await anAccountWithTwoFactor()
+
+    await withinStablePeriod()
+
+    const challenged = await signIn(enrolled.email)
+    const emitted = [...opened.headers.getSetCookie(), ...challenged.headers.getSetCookie()]
+
+    // Les gardes contre le vide : une session ouverte, un défi posé.
+    expect(sessionCookie(opened)).not.toBeNull()
+    expect(emitted.some((header) => header.includes('two_factor='))).toBe(true)
+
+    for (const header of emitted) {
+      expect(header, header).not.toMatch(/;\s*Domain=/i)
+    }
+  }, 60_000)
+
+  it('écrit l’email dans la langue de la dernière occurrence du cookie de langue (s64c)', async ({
+    skip,
+  }) => {
+    // Une copie d'avant `APP_HOST`, propre à l'hôte, part **avant** celle du
+    // domaine parent, la plus récente. C'est la lecture de `lib/auth.ts` qui
+    // est mesurée, branchée comme `appAuth()` la branche.
+    const { readRequestLocale } = await import('../apps/web/lib/auth')
+    const { localeRouting } = await import('../apps/web/lib/locale-routing')
+
+    // Une seule langue servie (module `i18n` coupé, profil minimal) : aucun
+    // cookie de langue n'est lu, il n'y a pas deux langues à départager.
+    if (localeRouting.locales.length < 2) {
+      skip()
+    }
+    const { email } = await aVerifiedAccount()
+
+    service = configureService({
+      locales: localeRouting.locales,
+      defaultLocale: 'fr',
+      readRequestLocale,
+    })
+
+    try {
+      await call('/sign-in/magic-link', { body: { email }, cookie: 'app_locale=fr; app_locale=en' })
+      await settled()
+
+      const magicLinks = mailer.sent.filter(
+        (sent) => sent.to === email && sent.template === 'auth.magic-link',
+      )
+
+      expect(magicLinks.map((sent) => sent.locale)).toEqual(['en'])
+    } finally {
+      service = configureService()
+    }
   }, 30_000)
 
   it('régénère l’identifiant de session à la connexion', async () => {
@@ -2703,6 +2768,22 @@ describe.skipIf(!databaseReachable)('second facteur — connexion', () => {
     expect(logs[0]?.actor).toBe(enrolled.userId)
   }, 60_000)
 
+  it('garde la destination interne du défi quand la requête porte l’hôte d’écoute du serveur', async () => {
+    // s64b2 (ADR 080, #69) : le filtre du `next` compare à l'origine
+    // **configurée**. Comparé à `request.url` — `0.0.0.0:3000` dans l'image —,
+    // toute destination retombait sur le tableau de bord.
+    const enrolled = await anAccountWithTwoFactor()
+
+    await call('/sign-in/magic-link', {
+      body: { email: enrolled.email, callbackURL: ACCOUNT_SCREEN_PATH },
+    })
+
+    const link = await call(pathOf(lastLink('magic-link')), { listen: 'http://0.0.0.0:3000' })
+
+    expect(link.headers.get('location')).toContain('/two-factor')
+    expect(link.headers.get('location')).toContain(`next=${encodeURIComponent(ACCOUNT_SCREEN_PATH)}`)
+  }, 60_000)
+
   it('arrête aussi le magic link : une voie sans mot de passe ne saute pas le second facteur', async () => {
     const enrolled = await anAccountWithTwoFactor()
 
@@ -3847,7 +3928,7 @@ describe('la destination par défaut, dans les fichiers qui la replient', () => 
     'apps/web/app/(auth)/sign-in/page.tsx',
     'apps/web/app/(auth)/two-factor/page.tsx',
     'apps/web/app/(auth)/oauth/return/page.tsx',
-    'apps/web/app/(app)/onboarding/page.tsx',
+    'apps/web/app/(app)/app/onboarding/page.tsx',
   ] as const
 
   /** Un repli en littéral : `safeRedirectPath(…, '/…')`, sur une ou plusieurs lignes. */
@@ -3970,4 +4051,135 @@ describe.skipIf(!databaseReachable)('compte en attente de suppression — les au
     await expect(refused.json()).resolves.toEqual(await unknown.json())
     expect(await openedSession(refused)).toBeNull()
   }, 90_000)
+})
+
+/* -------------------------------------------------------------------------- *
+ * Deux origines (s64a, ADR 078) : `APP_URL` reste le site, `APP_HOST` nomme
+ * l'application. Chaque service de ce bloc est construit depuis un
+ * environnement **validé** et résolu par `resolveAuthConfig` — jamais depuis
+ * une URL écrite dans le cas.
+ * -------------------------------------------------------------------------- */
+
+const APP_HOST = 'app.localhost'
+const APP_ORIGIN = 'http://app.localhost:3000'
+
+const twoOrigins = resolveAuthConfig(
+  parseEnv({
+    DATABASE_URL: 'postgres://user:password@localhost:5432/app',
+    AUTH_SECRET: TEST_SECRET,
+    APP_URL,
+    APP_HOST,
+  }),
+)
+
+describe.skipIf(!databaseReachable)('deux origines — le point de composition', () => {
+  it('garde le rpID du site et n’accepte la cérémonie que depuis l’application (#64)', async () => {
+    // **Le vrai `appAuth()`**, construit sur l'environnement déclaré ici en
+    // entier : ce cas mesure ce que `lib/auth.ts` passe au module, pas
+    // seulement ce que le module sait faire. Les origines de confiance de
+    // Better Auth ne s'observent pas sous Vitest (`isTest()` y désarme la
+    // vérification d'origine) ; la cérémonie passkey, elle, compare toujours,
+    // et contre **la même liste** (`better-auth-service.ts`, `trustedOrigins`) :
+    // l'origine du site remise dans la composition la ferait passer ici.
+    vi.stubEnv('DATABASE_URL', databaseUrl)
+    vi.stubEnv('AUTH_SECRET', TEST_SECRET)
+    vi.stubEnv('APP_URL', APP_URL)
+    vi.stubEnv('APP_HOST', APP_HOST)
+    vi.stubEnv('RESEND_API_KEY', '')
+    vi.stubEnv('EMAIL_FROM', '')
+    vi.stubEnv('EMAIL_LOCAL_CAPTURE', '1')
+    vi.stubEnv('GOOGLE_CLIENT_ID', '')
+    vi.stubEnv('GOOGLE_CLIENT_SECRET', '')
+    vi.stubEnv('GITHUB_CLIENT_ID', '')
+    vi.stubEnv('GITHUB_CLIENT_SECRET', '')
+    vi.stubEnv('OAUTH_LOCAL_PROVIDER', '')
+    vi.stubEnv('POSTHOG_KEY', '')
+    vi.stubEnv('POSTHOG_HOST', '')
+
+    try {
+      // Le compte est créé par le service de la suite, dont le mailer est
+      // lisible : c'est la cérémonie qui est mesurée ici, pas l'inscription —
+      // et `after`, que `appAuth` donne à l'envoi différé, n'existe pas hors
+      // d'une requête Next.
+      const { email } = await aVerifiedAccount()
+      const { appAuth } = await import('../apps/web/lib/auth')
+
+      // `appAuth` pose le service du module : le répartiteur de la suite le
+      // sert désormais, et `openedSession` le lit.
+      service = appAuth()
+
+      const cookie = sessionCookie(await signIn(email))?.value ?? ''
+      // L'authentificateur scelle le `rpID` du **site** : un `rpID` déplacé
+      // vers l'application refuse l'enrôlement. L'enrôlement, lui, a lieu
+      // depuis l'application, où l'écran de sécurité est servi.
+      const authenticator = createVirtualAuthenticator({ rpId: RP_ID, origin: APP_ORIGIN })
+
+      expect((await registerPasskey({ cookie, authenticator })).status).toBe(200)
+
+      const signedIn = await signInWithPasskey(authenticator, { origin: APP_ORIGIN })
+
+      expect(signedIn.status).toBe(200)
+      expect(await openedSession(signedIn)).not.toBeNull()
+
+      // s64b1 : le site ne sert plus l'authentification, son origine n'est
+      // plus de confiance — refusée comme une origine étrangère.
+      for (const origin of [APP_URL, 'https://evil.test']) {
+        expect((await signInWithPasskey(authenticator, { origin })).status, origin).toBe(401)
+      }
+    } finally {
+      vi.unstubAllEnvs()
+      service = configureService()
+    }
+  }, 90_000)
+})
+
+describe.skipIf(!databaseReachable)('deux origines — un lien par parcours', () => {
+  beforeAll(() => {
+    service = configureService({
+      appUrl: twoOrigins.appUrl,
+      passkeyRpId: twoOrigins.passkeyRpId,
+      additionalTrustedOrigins: [new URL(twoOrigins.siteUrl).origin],
+      oauth: { providers: [GITHUB_CREDENTIALS] },
+    })
+  })
+
+  afterAll(() => {
+    service = configureService()
+  })
+
+  it('émet chaque URL de session sur l’origine de l’application', async () => {
+    const email = anEmail()
+
+    await call('/sign-up/email', { body: { email, password: PASSWORD } })
+
+    const verification = lastLink('verify-email')
+
+    expect((await call(pathOf(verification))).status).toBe(302)
+
+    await call('/sign-in/magic-link', { body: { email } })
+    await call('/request-password-reset', { body: { email } })
+    await settled()
+
+    const cookie = sessionCookie(await signIn(email))?.value
+
+    expect((await call('/change-email', { body: { email: anEmail() }, cookie })).status).toBe(200)
+
+    providerNetwork = githubNetwork({ email: anOAuthEmail(), emailVerified: true })
+
+    const social = await startSocial({ provider: 'github' })
+
+    const emitted = {
+      verification,
+      magicLink: lastLink('magic-link'),
+      reset: lastLink('reset-password'),
+      changeEmail: lastLink('verify-email'),
+      oauthCallback: social.authorizeUrl.searchParams.get('redirect_uri') ?? '',
+    }
+
+    expect(emitted.changeEmail).not.toBe(verification)
+
+    for (const [journey, url] of Object.entries(emitted)) {
+      expect(url.startsWith(`${APP_ORIGIN}/`), `${journey} : ${url}`).toBe(true)
+    }
+  }, 60_000)
 })

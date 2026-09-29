@@ -81,10 +81,15 @@ export {
  * `localeRouting.resolve` qui décide, la même fonction que l'écran : deux
  * lectures divergeraient, et l'email partirait dans une autre langue que la
  * page qui l'a demandé.
+ *
+ * **La dernière occurrence du cookie**, comme le parseur de Next (s64c) : une
+ * copie d'avant `APP_HOST`, propre à l'hôte, peut survivre à côté de celle du
+ * domaine parent, et le navigateur envoie la plus récente — celle du parent —
+ * en dernier. Lire la première, c'était lire l'ancienne langue.
  */
-const readRequestLocale = (request: Request): string => {
+export const readRequestLocale = (request: Request): string => {
   const cookie = request.headers.get('cookie') ?? ''
-  const match = new RegExp(`(?:^|;\\s*)${LOCALE_COOKIE}=([^;]*)`).exec(cookie)
+  const match = [...cookie.matchAll(new RegExp(`(?:^|;\\s*)${LOCALE_COOKIE}=([^;]*)`, 'g'))].at(-1)
 
   return localeRouting.resolve({
     pathname: '/',
@@ -161,13 +166,19 @@ let service: AuthService | null = null
 export function appAuth(options: AppAuthOptions = {}): AuthService {
   if (service === null) {
     const env = options.env ?? getEnv()
-    const { secret, appUrl } = resolveAuthConfig(env)
+    const { secret, appUrl, passkeyRpId } = resolveAuthConfig(env)
 
     service = configureAuth({
       db: getDatabase().db,
       mailer: createAppMailer(),
       secret,
       appUrl,
+      // s64a (ADR 078) : le `rpID` reste l'hôte du site. L'origine du site
+      // n'est plus de confiance (s64b1, #64, ADR 079) : avec `APP_HOST`, le
+      // proxy sert les écrans d'authentification et `/api/modules/auth/*` sur
+      // la seule application, et le site n'en reçoit plus un POST. Seule
+      // `appUrl` l'est donc — sans `APP_HOST`, c'est l'origine d'`APP_URL`.
+      passkeyRpId,
       // Les fournisseurs externes, **décidés par la configuration** et jamais
       // par le module : il ne lit aucune variable d'environnement, et une paire
       // incomplète a déjà arrêté le démarrage en nommant la variable absente.

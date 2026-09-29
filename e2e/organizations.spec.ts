@@ -62,6 +62,12 @@ const openMembers = async (page: Page): Promise<void> => {
   await page.goto(publicPath(settingsPath('members')))
 }
 
+/**
+ * **La barre du haut** (s62c) : le sélecteur d'organisation y vit, sur tout
+ * écran de l'application. La rubrique Organisation n'en porte plus un second.
+ */
+const topBar = (page: Page) => page.getByRole('banner')
+
 const submitCreation = async (page: Page, name: string, slug: string): Promise<void> => {
   const form = createForm(page)
 
@@ -133,7 +139,7 @@ test('crée une organisation, la renomme, et la retrouve à la session suivante'
   await expect(reopened).toHaveURL(urlOf(DEFAULT_SIGNED_IN_PATH))
   await reopened.goto(publicPath(settingsPath('organization')))
 
-  await expect(reopened.getByRole('button', { name: 'Atelier Nord' })).toBeVisible()
+  await expect(topBar(reopened).getByRole('button', { name: 'Atelier Nord' })).toBeVisible()
 
   await second.close()
 })
@@ -159,14 +165,15 @@ test('bascule d’organisation, et refuse celle d’un autre compte', async ({ p
   // rien —, donc il est rejouable, et c'est la seule raison pour laquelle
   // `toPass` est employé ici (`playwright.config.ts`, `retries: 0`).
   await expect(async () => {
-    await page.getByRole('button', { name: 'Seconde' }).click()
+    await topBar(page).getByRole('button', { name: 'Seconde' }).click()
     await expect(option).toBeVisible({ timeout: 1_000 })
   }).toPass({ timeout: 15_000 })
 
   await option.click()
 
+  // L'écran courant (s62c, critère 2) : ici, la rubrique Organisation.
   await expect(page).toHaveURL(urlOf(settingsPath('organization')))
-  await expect(page.getByRole('button', { name: 'Première' })).toBeVisible()
+  await expect(topBar(page).getByRole('button', { name: 'Première' })).toBeVisible()
 
   // L'identifiant de l'organisation courante, tel que l'écran le pose dans son
   // formulaire de paramètres : c'est lui qu'un autre compte va tenter.
@@ -551,16 +558,50 @@ test('bascule d’organisation sans JavaScript', async ({ page, browser }) => {
   await silent.goto(publicPath(settingsPath('organization')))
 
   // Le déclencheur porte l'organisation courante, et il ne s'ouvrira pas.
-  await expect(silent.getByRole('button', { name: 'Bêta' })).toBeVisible()
+  await expect(topBar(silent).getByRole('button', { name: 'Bêta' })).toBeVisible()
 
   // L'option, elle, est un bouton de soumission du formulaire — pas un élément
   // de menu : sans script, il n'y a pas de menu.
-  await silent.getByRole('button', { name: 'Alpha' }).click()
+  await topBar(silent).getByRole('button', { name: 'Alpha' }).click()
 
+  // Le champ `next` est rendu par le serveur : sans script aussi, le retour est
+  // l'écran courant (s62c).
   await expect(silent).toHaveURL(urlOf(settingsPath('organization')))
-  await expect(silent.getByRole('button', { name: 'Alpha' })).toBeVisible()
+  await expect(topBar(silent).getByRole('button', { name: 'Alpha' })).toBeVisible()
 
   await withoutScript.close()
+})
+
+/**
+ * **Changer d'organisation ramène sur l'écran courant** (s62c, critère 2).
+ *
+ * Depuis le tableau de bord, et non depuis la rubrique Organisation : c'est ce
+ * qui distingue le retour sur l'écran courant de l'ancienne constante.
+ */
+test('change d’organisation depuis le tableau de bord, et y reste', async ({ page }) => {
+  test.skip(!mounted, 'Le module est coupé dans cette configuration.')
+
+  await aSignedInAccount(page, 's62c-retour')
+  await page.goto(publicPath(settingsPath('organization')))
+
+  for (const name of ['Nord', 'Sud']) {
+    await submitCreation(page, name, aSlug())
+    await expect(page).toHaveURL(urlOf(settingsPath('organization')))
+  }
+
+  await page.goto(publicPath(DEFAULT_SIGNED_IN_PATH))
+
+  const option = page.getByRole('menuitem', { name: 'Nord' })
+
+  await expect(async () => {
+    await topBar(page).getByRole('button', { name: 'Sud' }).click()
+    await expect(option).toBeVisible({ timeout: 1_000 })
+  }).toPass({ timeout: 15_000 })
+
+  await option.click()
+
+  await expect(page).toHaveURL(urlOf(DEFAULT_SIGNED_IN_PATH))
+  await expect(topBar(page).getByRole('button', { name: 'Nord' })).toBeVisible()
 })
 
 /**

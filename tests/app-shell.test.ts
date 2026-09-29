@@ -13,6 +13,7 @@ import { BILLING_SCREEN_PATH } from '@repo/module-billing'
 import { CONSENT_SETTINGS_SCREEN_PATH } from '@repo/module-consent'
 import { demoEnabledModule } from '@repo/module-demo-enabled'
 import { i18nModule, localePrefixRouting } from '@repo/module-i18n'
+import { NOTIFICATIONS_SETTINGS_SCREEN_PATH } from '@repo/module-notifications'
 import { MEMBERS_SCREEN_PATH, ORGANIZATIONS_SCREEN_PATH } from '@repo/module-organizations'
 import { describe, expect, it } from 'vitest'
 
@@ -197,12 +198,14 @@ describe('les surfaces du site et de l’application', () => {
  * coupent deux de ces trois modules.
  */
 describe('la surface des réglages', () => {
-  // L'ordre du design de s62b : Profil, Sécurité, Organisation, Membres,
-  // Facturation, Cookies. Des **chemins** — les constantes des modules —,
-  // jamais des identifiants de module.
+  // L'ordre du design de s62b, complété en s62c : Profil, Sécurité,
+  // Notifications, Organisation, Membres, Facturation, Cookies. Des
+  // **chemins** — les constantes des modules —, jamais des identifiants de
+  // module.
   const SETTINGS_SCREENS = [
     PROFILE_SCREEN_PATH,
     SECURITY_SCREEN_PATH,
+    NOTIFICATIONS_SETTINGS_SCREEN_PATH,
     ORGANIZATIONS_SCREEN_PATH,
     MEMBERS_SCREEN_PATH,
     BILLING_SCREEN_PATH,
@@ -229,7 +232,7 @@ describe('la surface des réglages', () => {
     return [...found]
   }
 
-  it('déclare les six rubriques dans la surface `settings`, dans l’ordre du design', async () => {
+  it('déclare les sept rubriques dans la surface `settings`, dans l’ordre du design', async () => {
     const { availableModules, requiredModules } = await import('../config/features')
     const everything = buildRegistry({
       available: [...availableModules],

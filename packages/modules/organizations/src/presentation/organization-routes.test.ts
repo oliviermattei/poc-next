@@ -40,6 +40,19 @@ const EXPECTED: Readonly<Record<string, string>> = {
   [organizationRoutePath('setMemberRole')]: MEMBERS_SCREEN_PATH,
 }
 
+/**
+ * **Un filtre qui laisse tout passer**, délibérément (s62c, ADR 076).
+ *
+ * Ce fichier ne peut pas importer le vrai (`@repo/module-auth`, frontière de
+ * `docs/security.md` §7), et il n'en a pas besoin : les cas d'ici prouvent que
+ * la route **ne lit pas** `next` là où elle ne doit pas — un refus, une autre
+ * route. Avec un filtre permissif, une route qui le lirait quand même rougit.
+ * Les chemins que le filtre refuse sont joués contre le vrai, dans
+ * `tests/organizations.test.ts`.
+ */
+const letEverythingThrough = (candidate: string | null | undefined, fallback: string): string =>
+  candidate ?? fallback
+
 /** Des cas d'usage qui répondent tous `outcome`, quelle que soit l'action. */
 const answering = (outcome: OrganizationOutcome) => {
   const useCases = new Proxy(
@@ -47,14 +60,14 @@ const answering = (outcome: OrganizationOutcome) => {
     { get: () => () => Promise.resolve(outcome) },
   ) as OrganizationsUseCases
 
-  return createOrganizationRoutes(() => ({ useCases }))
+  return createOrganizationRoutes(() => ({ useCases, safeReturnPath: letEverythingThrough }))
 }
 
-const post = (path: string): Request =>
+const post = (path: string, body = 'organizationId=org_1'): Request =>
   new Request(`https://app.example.test${path}`, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: 'organizationId=org_1',
+    body,
   })
 
 const session = { session: { userId: 'usr_1', roles: [] as readonly string[] } }
@@ -102,8 +115,44 @@ describe('le retour 303 de chaque action', () => {
       session,
     )
 
-    expect(new URL(response.headers.get('location') ?? '').pathname).toBe(
-      ORGANIZATIONS_SCREEN_PATH,
+    expect(response.headers.get('location')).toBe(ORGANIZATIONS_SCREEN_PATH)
+  })
+})
+
+/**
+ * **Le retour reçu ne sert qu'au succès de `switch`** (s62c, ADR 076). Le filtre
+ * est ici permissif : ce qui est prouvé, c'est que la route ne lui demande rien
+ * ailleurs.
+ */
+describe('le champ `next` hors du succès de `switch`', () => {
+  const routeOf = (outcome: OrganizationOutcome, path: string) => {
+    const route = answering(outcome).find(
+      (candidate) => `${MODULE_ROUTE_PREFIX}${candidate.path}` === path,
     )
+
+    expect(route, path).toBeDefined()
+
+    return route!
+  }
+
+  it('un refus de `switch` revient sur la rubrique, avec son motif', async () => {
+    const path = organizationRoutePath('switch')
+    const response = await routeOf({ status: 'refused', refusal: 'invalid_name' }, path).handler(
+      post(path, 'organizationId=org_1&next=%2Fapp%2Fdemo'),
+      session,
+    )
+    expect(response.status).toBe(303)
+    // ADR 080 : un chemin relatif, jamais l'hôte d'écoute de `request.url`.
+    expect(response.headers.get('location')).toBe(`${ORGANIZATIONS_SCREEN_PATH}?error=invalid_name`)
+  })
+
+  it('une autre route du module ignore `next`', async () => {
+    const path = organizationRoutePath('update')
+    const response = await routeOf({ status: 'ok', organizationId: 'org_1' }, path).handler(
+      post(path, 'organizationId=org_1&name=Nord&next=%2Fapp%2Fdemo'),
+      session,
+    )
+
+    expect(response.headers.get('location')).toBe(ORGANIZATIONS_SCREEN_PATH)
   })
 })

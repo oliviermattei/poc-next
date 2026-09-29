@@ -11,7 +11,7 @@ import {
 } from '@repo/ui'
 import { MenuIcon } from 'lucide-react'
 import { usePathname } from 'next/navigation'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 
 /**
  * La navigation, rendue deux fois pour deux tailles d'écran — **jamais deux
@@ -95,6 +95,8 @@ export interface MobileNavigationProps extends NavigationProps {
   readonly openLabel: string
   readonly closeLabel: string
   readonly title: string
+  /** Ce qui précède les entrées dans le panneau — le sélecteur d'organisation (s62c). */
+  readonly header?: ReactNode
 }
 
 export function MobileNavigation({
@@ -103,6 +105,7 @@ export function MobileNavigation({
   openLabel,
   closeLabel,
   title,
+  header,
 }: MobileNavigationProps) {
   const [open, setOpen] = useState(false)
   const pathname = usePathname()
@@ -118,6 +121,7 @@ export function MobileNavigation({
           Radix avertit en console tant qu'on ne le dit pas explicitement. */}
       <SheetContent side="left" aria-describedby={undefined} closeLabel={closeLabel}>
         <SheetTitle>{title}</SheetTitle>
+        {header === undefined || header === null ? null : <div className="min-w-0">{header}</div>}
         <SidebarNav
           items={items}
           label={label}

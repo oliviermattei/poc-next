@@ -26,7 +26,10 @@ import {
  */
 
 const MAIL_DIRECTORY = fileURLToPath(new URL('../../apps/web/.mail', import.meta.url))
-const LINK_PATTERN = /http:\/\/localhost:\d+\/[^\s"<]+/g
+// `localhost` ou l'un de ses sous-domaines : le parcours doré joué à deux hôtes
+// (s64b2) reçoit ses liens sur `app.site.localhost`, l'origine de
+// l'application.
+const LINK_PATTERN = /http:\/\/(?:[a-z0-9-]+\.)*localhost:\d+\/[^\s"<]+/g
 
 export const PASSWORD = 'mot-de-passe-de-test-e2e'
 

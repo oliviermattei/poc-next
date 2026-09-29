@@ -282,6 +282,12 @@ export interface BillingDependencies {
   readonly catalogue: BillingCatalogue
   /** L'URL publique de l'application. Jamais déduite d'un en-tête `Host`. */
   readonly appUrl: string
+  /**
+   * **L'URL du site** (s64b2), où revient un paiement invité : la page publique
+   * de tarifs y est servie. Facultative, `appUrl` par défaut — les deux se
+   * confondent sans `APP_HOST`. Jamais déduite d'un en-tête `Host`.
+   */
+  readonly siteUrl?: string
   readonly ownerOf: ScopeResolver
   readonly canManage: BillingPermission
   readonly seatsOf: SeatCounter
@@ -601,6 +607,7 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
     payments,
     catalogue,
     appUrl,
+    siteUrl = appUrl,
     ownerOf,
     canManage,
     seatsOf,
@@ -763,8 +770,12 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
    * par le lien reçu — c'est la discipline que s19 a posée pour `/billing`
    * (« un `?checkout=success` forgé n'affiche qu'un bandeau »), étendue au
    * parcours invité (critère 7).
+   *
+   * **Sur l'origine du site** (s64b2) : avec `APP_HOST`, la page de tarifs n'est
+   * servie que par le site, et un retour sur l'application y repartirait par un
+   * second saut.
    */
-  const guestReturnUrl = (query: string): string => `${appUrl}/pricing${query}`
+  const guestReturnUrl = (query: string): string => `${siteUrl}/pricing${query}`
 
   /**
    * **La promotion d'une ligne invitée**, décidée avant d'ouvrir la

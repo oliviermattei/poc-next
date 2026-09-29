@@ -4,7 +4,6 @@ import { resolveLocale, type ModuleScope, type ModuleSession } from '@repo/core'
 import { getDatabase } from '@repo/db'
 import {
   BILLING_SCREEN_PATH,
-  PRICING_SCREEN_PATH,
   billingModule,
   billingRoutePath,
   EMPTY_BILLING_VIEW,
@@ -283,6 +282,10 @@ const provide = (runtime: BillingRuntime = {}): void => {
     // `config/billing.ts`.
     catalogue: billingCatalogue(),
     appUrl: runtime.appUrl ?? resolveAuthConfig(getEnv()).appUrl,
+    // s64b2 : le retour d'un paiement invité vise la page de tarifs **du
+    // site**. Une origine donnée par l'appelant vaut pour les deux — c'est
+    // l'usage des parcours qui composent hors de Next, sans `APP_HOST`.
+    ...(runtime.appUrl === undefined ? { siteUrl: resolveAuthConfig(getEnv()).siteUrl } : {}),
     // **La fonction unique** qui dit à qui appartient une donnée
     // (`docs/architecture.md`, `docs/security.md` §3). Le module ne sait pas si
     // les organisations existent, et c'est ce qui lui évite une variante.
@@ -316,8 +319,15 @@ const provide = (runtime: BillingRuntime = {}): void => {
  * La connexion, avec l'offre en poche : c'est exactement le déclencheur
  * anonyme d'avant s24 (`git show dev:apps/web/app/pricing/page.tsx`), et c'est
  * ce qui distingue une dégradation d'un refus — le canal de vente reste
- * ouvert, le visiteur revient sur `/pricing` avec sa carte reposée (ADR 045),
- * et le chemin authentifié n'a rien vu passer.
+ * ouvert, le visiteur revient avec son offre reposée (ADR 045), et le chemin
+ * authentifié n'a rien vu passer.
+ *
+ * **Le retour vise l'écran de facturation, pas `/pricing`** (s64b2) : la
+ * personne sera connectée, et la connexion vit sur l'application. Avec
+ * `APP_HOST`, `/pricing` repartirait vers le site, qui ne voit pas la session —
+ * donc de nouveau vers le chemin invité. Sans `APP_HOST`, un compte connecté
+ * n'a pas davantage à faire sur la page publique : l'écran de facturation
+ * rend le focus au bouton de l'offre.
  *
  * La destination est décidée **ici** et pas dans le module : `billing` ne
  * connaît pas `auth`, ne déclare aucun `requires` (ADR 034) et ignore
@@ -343,7 +353,7 @@ export const guestFallbackUrl = ({
   // Écrit **sur une ligne** : le balayage de textes en dur de
   // `tests/i18n.test.ts` lit un gabarit coupé en deux comme une chaîne
   // affichée, et il a raison de se méfier des gabarits.
-  const back = `${PRICING_SCREEN_PATH}?offer=${encodeURIComponent(offerId)}`
+  const back = `${BILLING_SCREEN_PATH}?offer=${encodeURIComponent(offerId)}`
 
   return `${localeRouting.publicPath('/sign-in', chosen)}?next=${encodeURIComponent(back)}`
 }

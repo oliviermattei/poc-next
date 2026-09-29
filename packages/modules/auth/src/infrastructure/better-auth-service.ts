@@ -103,6 +103,21 @@ export interface ConfigureAuthOptions {
   readonly secret: string
   /** URL publique de l'application : ce qui rend les liens d'email absolus. */
   readonly appUrl: string
+  /**
+   * **Le `rpID` des passkeys**, quand il n'est pas l'hôte d'`appUrl` (s64a,
+   * ADR 078).
+   *
+   * L'application peut être servie sur un sous-domaine du site ; le `rpID`
+   * reste alors l'hôte du site, sans quoi toutes les passkeys déjà
+   * enregistrées seraient invalidées. Absent : l'hôte d'`appUrl`, comme avant.
+   */
+  readonly passkeyRpId?: string
+  /**
+   * **Des origines de confiance en plus d'`appUrl`** (s64a, ADR 078) — pour
+   * Better Auth et pour la cérémonie passkey. Reçues de la configuration,
+   * jamais d'un en-tête. Absentes : `appUrl` seule, comme avant.
+   */
+  readonly additionalTrustedOrigins?: readonly string[]
   readonly policy?: AuthPolicy
   /**
    * Les locales que le projet **sert**, et celle qui décide par défaut.
@@ -603,6 +618,16 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
       ]
     : []
 
+  /**
+   * Les origines de confiance : `appUrl`, plus celles que la composition
+   * ajoute. Sans ajout, la forme d'avant s64a — une seule chaîne pour la
+   * cérémonie passkey —, à l'octet près.
+   */
+  const trustedOrigins = [
+    options.appUrl,
+    ...(options.additionalTrustedOrigins ?? []).filter((origin) => origin !== options.appUrl),
+  ]
+
   const auth = betterAuth({
     appName: 'killer-saas',
     secret: options.secret,
@@ -610,7 +635,7 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
     // Le module est monté par le registre, pas par un fichier de route à lui :
     // son chemin de base est celui du répartiteur.
     basePath: `${MODULE_ROUTE_PREFIX}/auth`,
-    trustedOrigins: [options.appUrl],
+    trustedOrigins,
     // Aucun appel sortant : ce dépôt n'envoie pas de télémétrie, et le §5 du
     // socle interdit qu'un secret y transite. Le désactiver explicitement vaut
     // mieux qu'hériter d'un défaut.
@@ -972,7 +997,9 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
        *   liens envoyés par email et les URI de rappel OAuth. Ce qui **mord**
        *   est la vérification elle-même — une assertion dont le `rpIdHash` est
        *   celui d'un autre domaine est refusée, et `tests/auth.test.ts` le
-       *   mesure ;
+       *   mesure. **Depuis s64a**, `passkeyRpId` le fixe quand l'application
+       *   est servie sur un sous-domaine du site : il reste l'hôte du site, et
+       *   `origin` porte alors les deux origines (ADR 078) ;
        * - `schema.passkey.modelName` — la table du module.
        *
        * **Changer l'hôte d'`APP_URL` invalide toutes les passkeys déjà
@@ -996,9 +1023,9 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
        * porte bornée du module (`oauth-outbound.ts`) n'a rien à couvrir ici.
        */
       passkey({
-        rpID: new URL(options.appUrl).hostname,
+        rpID: options.passkeyRpId ?? new URL(options.appUrl).hostname,
         rpName: 'killer-saas',
-        origin: options.appUrl,
+        origin: trustedOrigins.length === 1 ? options.appUrl : trustedOrigins,
         schema: { passkey: AUTH_MODELS.passkey },
       }),
       ...localOAuthPlugins,
@@ -1036,6 +1063,7 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
     policy,
     useCases,
     oauthProviders,
+    appUrl: options.appUrl,
 
     handle: (request) => auth.handler(request),
 

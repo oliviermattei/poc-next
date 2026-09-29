@@ -13,6 +13,8 @@
   "pricing.noscript": "Activez JavaScript pour souscrire : le paiement s’ouvre chez notre prestataire.",
   "pricing.return.success": "Retour du tunnel de paiement. Cette page ne lit pas l’état de votre paiement : s’il a abouti, un email part à l’adresse indiquée, et il contient le lien qui ouvre votre compte.",
   "pricing.return.cancelled": "Tunnel de paiement quitté. Si aucun paiement n’a abouti, rien n’a été prélevé et aucun compte n’a été créé.",
+  "pricing.existingCustomer.prompt": "Déjà client ?",
+  "pricing.existingCustomer.link": "Choisissez votre offre depuis votre espace",
   "title": "Facturation",
   "description": "Gérez votre abonnement, votre moyen de paiement et vos factures.",
   "subscription.title": "Votre abonnement",

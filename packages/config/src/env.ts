@@ -16,6 +16,48 @@ import { z } from 'zod'
 const EMAIL_FROM_PATTERN = /^(?:[^\s<>@]+@[^\s<>@]+\.[A-Za-z]{2,}|.+<[^\s<>@]+@[^\s<>@]+\.[A-Za-z]{2,}>)$/
 
 /**
+ * Un nom d'hôte en minuscules : des étiquettes de 1 à 63 caractères, lettres,
+ * chiffres et tirets, jamais un tiret en bord. Ni schéma, ni port, ni chemin.
+ */
+const HOSTNAME_PATTERN = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/
+
+/**
+ * Ce qui rend `APP_HOST` inacceptable à côté d'`APP_URL`, ou `null` (s64a,
+ * ADR 078).
+ *
+ * **Sous-domaine** veut dire « se termine par `.` suivi de l'hôte d'`APP_URL`,
+ * et lui est différent » : un simple suffixe laisserait passer
+ * `evilexemple.com` pour un sous-domaine d'`exemple.com`. Un chemin dans
+ * `APP_URL` est refusé : l'origine de l'application n'en porterait pas, et les
+ * liens de session et du site divergeraient en silence.
+ */
+const appHostProblem = (appHost: string | undefined, appUrl: string | undefined): string | null => {
+  if (appHost === undefined) {
+    return null
+  }
+
+  if (!HOSTNAME_PATTERN.test(appHost)) {
+    return 'must be a lowercase host name, without scheme, port or path (app.example.com)'
+  }
+
+  if (appUrl === undefined || !URL.canParse(appUrl)) {
+    return 'requires a valid APP_URL, whose host it must be a subdomain of'
+  }
+
+  const site = new URL(appUrl)
+
+  if (site.pathname !== '/') {
+    return 'cannot be set while APP_URL carries a path: APP_URL must be an origin'
+  }
+
+  if (!appHost.endsWith(`.${site.hostname}`)) {
+    return `must be a subdomain of the APP_URL host (${site.hostname})`
+  }
+
+  return null
+}
+
+/**
  * Les clés du contrat, déclarées littéralement.
  *
  * Extraites dans une constante — et non écrites en ligne dans `z.object` —
@@ -155,6 +197,18 @@ const envShape = {
       message: 'must be an absolute http(s) URL (https://app.example.com)',
     })
     .optional(),
+  /**
+   * **L'hôte de l'application** (s64a, ADR 078), facultatif.
+   *
+   * Un nom d'hôte seul — ni schéma, ni port, ni chemin —, sous-domaine de
+   * l'hôte d'`APP_URL` : `app.exemple.com` sous `https://exemple.com`. Absente,
+   * rien ne change et `APP_URL` sert tout. Posée, les URL qui ouvrent ou
+   * consomment une session visent l'application (schéma et port d'`APP_URL`,
+   * cet hôte), `APP_URL` reste l'origine du site et le `rpID` des passkeys.
+   * Elle n'est jamais déduite de l'en-tête `Host`, pour la raison d'`APP_URL`.
+   * Les règles croisées sont dans le `superRefine` ci-dessous.
+   */
+  APP_HOST: z.string().min(1).optional(),
   /**
    * Identifiants des fournisseurs OAuth (s12), **optionnels par paire**.
    *
@@ -420,6 +474,15 @@ const envShape = {
 
 export const envSchema = z.object(envShape).superRefine((value, ctx) => {
   const captureEnabled = value.EMAIL_LOCAL_CAPTURE === EMAIL_LOCAL_CAPTURE_ENABLED
+
+  // L'hôte de l'application (s64a, ADR 078) : chaque refus **nomme
+  // `APP_HOST`**, même quand la cause est la forme d'`APP_URL` — c'est la
+  // variable ajoutée qui rend la combinaison invalide.
+  const appHostIssue = appHostProblem(value.APP_HOST, value.APP_URL)
+
+  if (appHostIssue !== null) {
+    ctx.addIssue({ code: 'custom', path: ['APP_HOST'], message: appHostIssue })
+  }
 
   // Règle croisée : une clé sans expéditeur part avec un `from` vide, et
   // l'échec n'apparaît qu'au premier email refusé par le fournisseur.
@@ -769,6 +832,68 @@ export function getNodeEnv(source: EnvSource = process.env): Env['NODE_ENV'] {
   const parsed = envShape.NODE_ENV.safeParse(source.NODE_ENV ?? undefined)
 
   return parsed.success ? parsed.data : 'development'
+}
+
+/**
+ * **L'origine de l'application** construite depuis `APP_URL` et `APP_HOST`
+ * (s64a, ADR 078) : le schéma et le port d'`APP_URL`, l'hôte d'`APP_HOST`.
+ *
+ * Le **seul** calcul de cette origine : `resolveAuthConfig`
+ * (`apps/web/lib/auth-config.ts`) et `getHostRouting` ci-dessous l'appellent
+ * tous les deux (s64b1, ADR 079). Deux écritures auraient pu diverger — et
+ * c'est la même origine qui construit les liens de session et qui aiguille.
+ */
+export function applicationOrigin(appUrl: string, appHost: string): string {
+  const site = new URL(appUrl)
+
+  return `${site.protocol}//${appHost}${site.port === '' ? '' : `:${site.port}`}`
+}
+
+/** Les deux origines entre lesquelles le proxy aiguille (s64b1, ADR 079). */
+export interface HostRouting {
+  /** L'origine d'`APP_URL`. */
+  readonly siteOrigin: string
+  /** L'origine de l'application, par `applicationOrigin`. */
+  readonly appOrigin: string
+}
+
+/** Une variable déclarée vide vaut absente, ici comme dans `parseEnv`. */
+const declaredValue = (value: string | undefined): string | undefined => {
+  const trimmed = value?.trim()
+
+  return trimmed === undefined || trimmed === '' ? undefined : trimmed
+}
+
+/**
+ * **Les origines du routage par hôte**, sans juger le reste de l'environnement
+ * — le patron de `getNodeEnv`, et pour la même raison : le proxy est appelé à
+ * chaque requête, et `getEnv` lèverait sur une base absente.
+ *
+ * Ne lève **jamais**. Rend `null` quand `APP_HOST` est absente — rien n'est
+ * aiguillé, c'est le comportement d'avant — **ou invalide** : le démarrage
+ * l'a déjà refusée en la nommant (`parseEnv`, `assertStartupEnv`), et ce repli
+ * ne sert qu'un processus qui n'a pas démarré par là (une suite de tests).
+ *
+ * Les origines viennent **de la configuration** et de rien d'autre : l'hôte de
+ * la requête choisit une branche, il ne construit aucune URL (ADR 079).
+ */
+export function getHostRouting(source: EnvSource = process.env): HostRouting | null {
+  const appUrl = declaredValue(source.APP_URL)
+  const appHost = declaredValue(source.APP_HOST)
+
+  if (
+    appUrl === undefined ||
+    appHost === undefined ||
+    !envShape.APP_URL.safeParse(appUrl).success ||
+    appHostProblem(appHost, appUrl) !== null
+  ) {
+    return null
+  }
+
+  return {
+    siteOrigin: new URL(appUrl).origin,
+    appOrigin: applicationOrigin(appUrl, appHost),
+  }
 }
 
 /**

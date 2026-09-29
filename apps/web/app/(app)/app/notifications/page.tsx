@@ -2,13 +2,14 @@ import { NotificationsScreen } from '@repo/module-notifications/presentation'
 import { notFound, redirect } from 'next/navigation'
 import { z } from 'zod'
 
-import { currentViewer } from '../../../lib/auth'
-import { appIntl } from '../../../lib/i18n'
+import { currentViewer } from '../../../../lib/auth'
+import { appIntl } from '../../../../lib/i18n'
 import {
   notificationRoutePath,
   notifications,
   NOTIFICATIONS_SCREEN_PATH,
-} from '../../../lib/notifications'
+  NOTIFICATIONS_SETTINGS_SCREEN_PATH,
+} from '../../../../lib/notifications'
 
 /**
  * L'écran du centre de notifications.
@@ -76,9 +77,10 @@ export default async function NotificationsPage({
       actions={{
         read: notificationRoutePath('read'),
         readAll: notificationRoutePath('readAll'),
-        setPreference: notificationRoutePath('setPreference'),
       }}
       hrefForPage={(page) => `${path(NOTIFICATIONS_SCREEN_PATH)}?page=${page}`}
+      // Les préférences vivent dans les réglages depuis s62c : l'état vide y mène.
+      preferencesHref={path(NOTIFICATIONS_SETTINGS_SCREEN_PATH)}
     />
   )
 }

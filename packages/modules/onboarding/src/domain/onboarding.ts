@@ -22,7 +22,7 @@ export const ONBOARDING_MODULE_ID = 'onboarding'
  * paramètre d'URL (`docs/security.md` §4), et le docblock d'`apps/web/app/page.tsx`
  * pose déjà la règle.
  */
-export const ONBOARDING_SCREEN_PATH = '/onboarding'
+export const ONBOARDING_SCREEN_PATH = '/app/onboarding'
 
 /**
  * Les champs qu'une étape peut recueillir.

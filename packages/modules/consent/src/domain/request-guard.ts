@@ -15,8 +15,13 @@ export interface SubmissionOrigin {
   /** En-tête `Origin` de la requête. Tout navigateur l'envoie sur un `POST`. */
   readonly origin: string | null
   readonly referer: string | null
-  /** L'URL de la requête telle que le serveur la voit. */
-  readonly requestUrl: string
+  /**
+   * Les origines **configurées** de ce déploiement — le site et l'application
+   * (s64b1, ADR 079). Jamais l'URL de la requête : derrière un serveur qui
+   * écoute sur `0.0.0.0`, elle porte l'hôte d'écoute, et chaque soumission
+   * légitime était refusée (#66).
+   */
+  readonly acceptedOrigins: readonly string[]
 }
 
 /**
@@ -27,10 +32,12 @@ export interface SubmissionOrigin {
  * `SameSite=Lax`, ce qui l'empêche d'être **lu** ailleurs mais pas d'être
  * **écrit** par une requête venue d'ailleurs.
  *
- * La comparaison porte sur l'**hôte**, pas sur le schéma : derrière une
- * terminaison TLS, le navigateur a vu `https://` là où `request.url` porte
- * `http://`, et comparer les schémas refuserait toutes les soumissions en
- * production.
+ * La comparaison porte sur l'**hôte**, pas sur le schéma, et l'hôte déclaré
+ * doit être celui d'une **origine acceptée** — une origine configurée, jamais
+ * l'hôte de la requête (ADR 079) : `request.url` porte l'hôte d'écoute du
+ * serveur, pas celui que le navigateur a demandé. Le schéma reste ignoré, comme
+ * avant : une configuration en `http://` derrière une terminaison TLS ne doit
+ * pas refuser toutes les soumissions.
  *
  * **Absent et opaque sont deux cas différents, et le code les sépare.**
  *
@@ -52,8 +59,12 @@ export interface SubmissionOrigin {
  * `Referer`. Un `Origin` opaque n'est pas rattrapé par un `Referer` de bonne
  * mine — les deux sont écrits par le même appelant.
  */
-export function isSameSiteSubmission({ origin, referer, requestUrl }: SubmissionOrigin): boolean {
-  const expected = hostOf(requestUrl)
+export function isSameSiteSubmission({
+  origin,
+  referer,
+  acceptedOrigins,
+}: SubmissionOrigin): boolean {
+  const expected = acceptedOrigins.map(hostOf).filter((host) => host !== null)
 
   for (const declared of [origin, referer]) {
     if (isAbsent(declared)) {
@@ -62,7 +73,7 @@ export function isSameSiteSubmission({ origin, referer, requestUrl }: Submission
 
     const host = hostOf(declared)
 
-    return host !== null && expected !== null && host === expected
+    return host !== null && expected.includes(host)
   }
 
   return true

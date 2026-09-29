@@ -37,6 +37,7 @@ export {
 } from './infrastructure/organizations-runtime'
 export type { OrganizationsDatabase } from './infrastructure/drizzle-organization-repositories'
 export {
+  EMPTY_ORGANIZATION_SWITCHER,
   EMPTY_ORGANIZATIONS_VIEW,
   type InvitationPreview,
   type OrganizationInvitationView,
@@ -45,6 +46,7 @@ export {
   type OrganizationsUseCases,
   type OrganizationsView,
   type OrganizationSummary,
+  type OrganizationSwitcherView,
 } from './application/organization-use-cases'
 export {
   authorizeOrganization,
