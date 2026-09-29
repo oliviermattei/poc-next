@@ -55,7 +55,7 @@ const wt = (id) => join(worktreeRoot(), id)
 // ---------- paths and globs ----------
 const literalPrefix = (p) => p.split(/[*?[{]/)[0]
 const globRe = (g) => new RegExp('^' + g.replace(/^\.\//, '').replace(/[.+^$()|\\]/g, '\\$&')
-  .replace(/\*\*\/?/g, '\u0000').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]').replace(/\u0000/g, '(.*/)?') + (g.endsWith('/') ? '.*' : '(/.*)?') + '$')
+  .replace(/\*\*\/?/g, '\uE000').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]').replace(/\uE000/g, '(.*/)?') + (g.endsWith('/') ? '.*' : '(/.*)?') + '$')
 const matchesAny = (path, globs) => globs.some((g) => globRe(g).test(path))
 // Two entries overlap when one's literal prefix contains the other's. Deliberately wide:
 // a false conflict costs a wave, a missed one costs a broken merge.
@@ -66,7 +66,7 @@ function overlaps(a, b) {
 }
 // A footprint entry as a human may write it → a repository path, or null when it is not one.
 function normalize(entry) {
-  let p = entry.replace(/\s+#.*$/, '').replace(/[`"']/g, '').trim().replace(/:\d+(-\d+)?$/, '').replace(/^\.?\//, '')
+  const p = entry.replace(/\s+#.*$/, '').replace(/[`"']/g, '').trim().replace(/:\d+(-\d+)?$/, '').replace(/^\.?\//, '')
   if (!p || /[\s<>]/.test(p)) return null
   return p
 }
