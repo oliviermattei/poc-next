@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { BILLING_SCREEN_PATH } from '@repo/module-billing'
+import { ACCOUNT_SCREEN_PATH } from '@repo/module-auth'
 import { CONSENT_COOKIE } from '@repo/module-consent'
 import { NextRequest } from 'next/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -27,6 +27,13 @@ const LISTEN = 'http://0.0.0.0:3000'
 /** La langue que le proxy retient en `accept-language: fr`, sans cookie. */
 const LOCALE = localeRouting.resolve({ pathname: '/', cookieLocale: null, acceptLanguage: 'fr' })
 const P = (path: string): string => localeRouting.publicPath(path, LOCALE)
+
+/**
+ * **Une seule langue servie, pas de cookie de langue** : le module `i18n` coupé
+ * (`pnpm test:minimal-profile`), le proxy ne pose jamais `app_locale`, et les
+ * cas qui le mesurent n'ont rien à mesurer. Même garde que `tests/i18n.test.ts`.
+ */
+const SINGLE_LOCALE = localeRouting.locales.length < 2
 
 const proxied = (
   path: string,
@@ -77,9 +84,12 @@ describe('avec APP_HOST', () => {
       'site : un ancien chemin en un seul saut, vers sa cible finale',
       SITE_HOST,
       'GET',
-      `${P('/billing')}?a=1`,
+      // `/account` et non `/billing` : le module `auth` est requis, donc
+      // présent dans tous les profils. `pnpm test:minimal-profile` coupe la
+      // facturation, et son ancien chemin n'a alors plus de cible.
+      `${P('/account')}?a=1`,
       308,
-      `${APP}${P(BILLING_SCREEN_PATH)}?a=1`,
+      `${APP}${P(ACCOUNT_SCREEN_PATH)}?a=1`,
     ],
     ['site : Hors zone redirigée', SITE_HOST, 'GET', P('/sign-in'), 308, `${APP}${P('/sign-in')}`],
     ['site : console introuvable', SITE_HOST, 'GET', P('/console'), 404, null],
@@ -157,7 +167,7 @@ describe('les cookies partagés, avec APP_HOST', () => {
   const EN = localeRouting.publicPath('/pricing', 'en')
   const clearanceOf = (name: string): RegExp => new RegExp(`^${name}=; Path=/; Max-Age=0;`)
 
-  it('pose la langue sur le domaine parent, puis efface la copie d’hôte', () => {
+  it.skipIf(SINGLE_LOCALE)('pose la langue sur le domaine parent, puis efface la copie d’hôte', () => {
     const cookies = proxied(EN, { host: 'exemple.com:8443' }).headers.getSetCookie()
     const [written, cleared, ...rest] = cookies
 
@@ -189,7 +199,7 @@ describe('les cookies partagés, avec APP_HOST', () => {
     expect(response.headers.getSetCookie()).toEqual([])
   })
 
-  it('retient la dernière occurrence d’un doublon : celle du parent, la plus récente', () => {
+  it.skipIf(SINGLE_LOCALE)('retient la dernière occurrence d’un doublon : celle du parent, la plus récente', () => {
     const response = proxied('/pricing', {
       ...SITE_HOST,
       cookie: `${LOCALE_COOKIE}=fr; ${LOCALE_COOKIE}=en`,
@@ -207,7 +217,7 @@ describe('sans APP_HOST', () => {
     vi.unstubAllEnvs()
   })
 
-  it('pose la langue sans domaine et n’efface rien, même sur un doublon', () => {
+  it.skipIf(SINGLE_LOCALE)('pose la langue sans domaine et n’efface rien, même sur un doublon', () => {
     vi.stubEnv('APP_URL', SITE)
     vi.stubEnv('APP_HOST', '')
 

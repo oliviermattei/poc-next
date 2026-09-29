@@ -848,12 +848,20 @@ describe.skipIf(!databaseReachable)('durcissement de la session', () => {
     }
   }, 60_000)
 
-  it('écrit l’email dans la langue de la dernière occurrence du cookie de langue (s64c)', async () => {
+  it('écrit l’email dans la langue de la dernière occurrence du cookie de langue (s64c)', async ({
+    skip,
+  }) => {
     // Une copie d'avant `APP_HOST`, propre à l'hôte, part **avant** celle du
     // domaine parent, la plus récente. C'est la lecture de `lib/auth.ts` qui
     // est mesurée, branchée comme `appAuth()` la branche.
     const { readRequestLocale } = await import('../apps/web/lib/auth')
     const { localeRouting } = await import('../apps/web/lib/locale-routing')
+
+    // Une seule langue servie (module `i18n` coupé, profil minimal) : aucun
+    // cookie de langue n'est lu, il n'y a pas deux langues à départager.
+    if (localeRouting.locales.length < 2) {
+      skip()
+    }
     const { email } = await aVerifiedAccount()
 
     service = configureService({
