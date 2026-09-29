@@ -164,14 +164,19 @@ describe('une entrée dont le module est coupé ne redirige pas', () => {
       (legacy) => legacyScreenTarget(legacy, socle) === null,
     )
 
-    // Les deux moitiés, sans quoi le cas serait vert sur une table vide ou sur
-    // une fonction qui ne rend jamais rien.
-    expect(redirected).toContain('/account')
-    expect(dropped.length).toBeGreaterThan(0)
-
-    for (const legacy of dropped) {
-      expect(socle.moduleIds, legacy).not.toContain(LEGACY_SCREEN_PATHS[legacy]?.module)
-    }
+    // **L'ensemble attendu, écrit ici** (#62). La version précédente vérifiait,
+    // pour chaque ligne abandonnée, que son module n'était pas dans le
+    // registre — la condition de la garde, reformulée : une ligne qui nommait
+    // un module existant mais faux (`/notifications` → `auth`) restait verte.
+    // Le socle ne garde que le compte ; toute autre ligne doit tomber.
+    expect([...redirected].sort()).toEqual(['/account', '/app/settings/account'])
+    expect([...dropped].sort()).toEqual([
+      '/billing',
+      '/notifications',
+      '/onboarding',
+      '/organizations',
+      '/premium',
+    ])
   })
 
   it('nomme dans chaque ligne un module que l’annuaire connaît', () => {

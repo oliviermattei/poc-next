@@ -2141,7 +2141,15 @@ describe.runIf(compositionMeasurable)('le point de composition de l’applicatio
           }),
       ]
 
-      expect((await call('guestCheckout', { body: { offerId: SHIPPED_OFFER } })).status).toBe(200)
+      // **Un appelant propre à cette exécution** (#70) : sans lui, le cas
+      // puisait dans le seau de l'appelant anonyme, persisté en base, et
+      // rougissait en 429 dès la sixième exécution locale en dix minutes.
+      // Une adresse du bloc de documentation IPv6, tirée au hasard.
+      const client = `2001:db8::${randomUUID().slice(0, 4)}:${randomUUID().slice(0, 4)}`
+
+      expect(
+        (await call('guestCheckout', { body: { offerId: SHIPPED_OFFER }, client })).status,
+      ).toBe(200)
 
       const checkoutBody = new URLSearchParams(
         calls.find((recorded) => recorded.url.includes('/checkout/sessions'))?.body ?? '',
