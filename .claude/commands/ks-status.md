@@ -22,7 +22,8 @@ Derive the state from the files — never guess. Bash is for read-only git queri
    - ship state: branch merged into the target branch → shipped; else an open PR exists → "PR open — merge pending"; else —.
    - blocked: a story whose Dependencies (docs/stories.md) aren't all shipped is blocked — its next command is "blocked by <ids>", never a pipeline step.
 3. Start with a one-line summary: X shipped / Y in flight / Z not started. Then print a compact table: story (complexity) | research | design | plan | review | ship | next. The next command follows the pipeline: research → design (UI) → plan → validate the plan (rerun /ks-plan) → execute → review (a `no` verdict → /ks-execute fix mode) → ship — or "merge pending" while the PR awaits a human merge. One exception at the start: for a story not yet begun, whose complexity is at or below `Flow threshold` and whose `Story track` is not `full`, the next command is `/ks-flow <id>` rather than `/ks-research <id>`. Keep shipped stories to one line each.
-4. Decisions: if docs/decisions/ exists, mention the ADR count and the latest one.
+4. Decisions: if docs/decisions/ exists, mention the ADR count and the latest one (`node .killer-saas/bin/ks.mjs next-adr` gives the next free number, worktrees included).
+5. In flight: for the stories with a worktree and no merge yet, run `node .killer-saas/bin/ks.mjs conflicts <ids>` and `ks.mjs stale <ids>`, and show on two lines what may start now (`planNow`, `executeNow`), what waits and why (`waiting`), and the stale ones. Then `ks.mjs budget` on one line.
 
 If AGENTS.local.md doesn't exist, the project hasn't been set up: point to /ks-setup. If it exists but docs/ doesn't, point to /ks-prd.
 

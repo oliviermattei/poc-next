@@ -17,7 +17,7 @@ The target SaaS is a living spec: for each story, the agentic notes may point to
 
 Proceed as follows:
 1. Break the need into stories: each one an end-to-end shippable slice, testable. Give each story an id: `s<number>-<short-slug>` (e.g. s01-submit-testimonial) — this id names every pipeline file and the story branch, so keep it short and stable.
-2. For each story, write verifiable acceptance criteria (each one must be able to become a test), the agentic notes useful for execution, and a complexity score (1-5, same scale as the PRD perimeter) — a 5 gets split now, not at planning.
+2. For each story, write verifiable acceptance criteria (each one must be able to become a test), the agentic notes useful for execution, and a complexity score (1-5, same scale as the PRD perimeter) — a 5 gets split now, not at planning. A story states WHAT: no file path, no line number, no implementation choice (AGENTS.md, "What is a story").
 3. Order the stories by dependency: no story may assume work not yet done.
 4. Write the result to `docs/stories.md` and commit it on the default branch (docs: stories).
 

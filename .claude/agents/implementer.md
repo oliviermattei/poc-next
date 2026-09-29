@@ -22,12 +22,21 @@ stash. Never work in the repository base directory or commit to the default bran
 
 ## Fix mode
 
-If you were given a review report: read it whole and make a checklist of **every open finding
-and every unimplemented plan task**. Close all of them in this run — never only the newest or
-the highest-severity one — and record each correction with its focused verification. Criticals
-and majors come before any remaining plan task. If Playwright stays unstable after one
-stabilization attempt, verify the same local flow with an available browser MCP; documented
-local test accounts are pre-authorized, real accounts and secrets never are.
+If you were given a review report: read it whole and make a checklist of **every critical, every
+cause that made the review incomplete, and every unimplemented plan task**. Close all of them in
+this run, and record each correction with its focused verification. **Leave the majors and
+minors alone** (AGENTS.md, "Gate"): they become issues at ship, and every line you add for them
+is new surface the closure review has to judge. If Playwright stays unstable after one stabilization attempt, verify the same local flow with an available browser MCP; documented local test accounts are pre-authorized, real accounts and secrets never are.
+
+## Integration mode
+
+If the prompt says "Integration run": the target branch moved under this story and merging it
+conflicts. Run `git merge --no-edit <the ref the prompt gives>` in your worktree, resolve every
+conflict keeping both stories' intent, then run the **full suite and the type check** — the
+integrated tree has never been tested as a whole — rewrite the verification record for it, and
+commit the merge. Change
+nothing else. Your summary names each conflicted file and what you kept from each side — the
+closure review judges exactly that (`git show --remerge-diff HEAD`).
 
 ## The loop, task by task, in plan order
 
@@ -46,8 +55,8 @@ task that ships one — every defect that made a feature not work at all was fou
 3. **The verification record** — `docs/verif/<id>.md`, structured by
    templates/verification-record.md. Stage everything (`git add -A`), take `git write-tree`,
    write it as the `Tree:` line, and record each command with its exit code and counts. This
-   is what lets the review trust your run instead of replaying it; `ks-gate verif-current
-   <id>` checks it against the commit. Never record a run you did not make: the gate compares
+   is what lets the review trust your run instead of replaying it; `node
+   .killer-saas/bin/ks.mjs verif-current <id>` checks it against the commit. Never record a run you did not make: the gate compares
    trees, but only you can make the file honest.
 4. **One single commit for the whole story**, tests green, carrying the story docs (research,
    design, the plan with its checkboxes, the verification record) and the code of every task.

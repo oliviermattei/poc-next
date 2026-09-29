@@ -52,8 +52,10 @@ invariant shipped with no net at all.
    roughly ten tasks, the story is too big: say so and suggest a split instead
    of a bloated plan.
 4. If planning forces a structural choice (library, pattern, data model) with rejected alternatives, record it as an ADR in `docs/decisions/` (@templates/adr.md) — it will travel with the story branch.
-5. Write the plan to `docs/plans/<id>.md`, frontmatter `validated: no`.
-6. Validation, per `Plan validation` in AGENTS.local.md (missing file or setting → STOP: "No project settings. Run /ks-setup."):
+5. Write the plan to `docs/plans/<id>.md`, frontmatter `validated: no`, `base:` (the commit the facts were verified against: the sha in the research header when the research is a separate file, since that is when the code was read; your own `git rev-parse <target>` otherwise) and `footprint:` (every path the tasks touch — `ks.mjs conflicts` decides what may run beside this story from it, so widen it when in doubt, never leave it empty). An ADR takes its number from `node .killer-saas/bin/ks.mjs next-adr`, and its file is written at once.
+6. If the research proposes "Story amendments proposed": apply them as AGENTS.md, "What is a story", says — base directory, target branch, pushed —
+then set the plan's `base:` to the amendment commit. Never from the worktree.
+7. Validation, per `Plan validation` in AGENTS.local.md (missing file or setting → STOP: "No project settings. Run /ks-setup."):
    - `human` — checkpoint (AskUserQuestion): "Validate this plan?" — options: Validate / I'll review it first. On Validate, set `validated: yes` in the plan's frontmatter.
    - `autonomous` — no checkpoint: re-read the plan against the story's acceptance criteria, then set `validated: yes` yourself. State plainly that nobody else looked at it.
    /ks-execute refuses an unvalidated plan either way.

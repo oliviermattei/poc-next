@@ -20,8 +20,14 @@ If the file is missing or the command fails, STOP immediately: "Ship blocked —
 
 Then proceed:
 1. Read `Merge mode`, `Target branch`, `Ship confirmation`, the stages (`Full suite`, `E2E stage`, `E2E scope`, `Build stage`) and the project commands from AGENTS.local.md. Missing file or missing setting → STOP: "No project settings. Run /ks-setup." Never assume a mode — every step below branches on them.
-2. Without switching branches, commit docs/reviews/<id>.md on the already verified feature branch if not already committed (the PR must carry its review). Then run the **exit gate — the one place the expensive checks run in the whole cycle**, per the stages in AGENTS.local.md, using the project's own commands quoted verbatim:
-   - **Unit suite.** `Full suite: execute-end` (the default) → it already ran in Execute, and docs/verif/<id>.md proves it for this exact tree: check `ks-gate verif-current <id>` instead of re-running, and run `<Test>` only if that check fails. `ship` or `both` → run `<Test>` in full here.
+2. Without switching branches, commit docs/reviews/<id>.md on the already verified feature branch if not already committed (the PR must carry its review).
+
+   **Integrate first.** `git fetch`, then: if `origin/<target>` (or `<target>` without a remote) moved since the story last took it (`git merge-base --is-ancestor origin/<target> HEAD` fails), run `git merge --no-edit origin/<target>` in the worktree — the squash makes this merge commit invisible on the target. A conflict → `git merge --abort`, STOP, and hand the story to the `implementer` with "Integration run: merge origin/<target>" (its definition, "Integration mode"), then `/ks-review <id>` — it picks the integration closure review — then `/ks-ship <id>` again. A clean merge still changes the tree: the verification record no longer describes it, so **the unit suite and the type check below both run on the integrated code** — new information, not a repeat.
+
+   **ADR numbers.** For each `docs/decisions/NNN-*.md` the branch adds, if the target already holds another file with the same `NNN`, renumber it on the branch with `node .killer-saas/bin/ks.mjs next-adr`, and update the references to it in `docs/` and in code comments. Two stories in flight must never land the same number.
+
+   Then run the **exit gate — the one place the expensive checks run in the whole cycle**, per the stages in AGENTS.local.md, using the project's own commands quoted verbatim:
+   - **Unit suite.** `Full suite: execute-end` (the default) → it already ran in Execute, and docs/verif/<id>.md proves it for this exact tree: check `node .killer-saas/bin/ks.mjs verif-current <id>` instead of re-running, and run `<Test>` only if that check fails — and then `<Typecheck>` too: the suite does not type-check, and a type break between two stories only appears on the integrated tree. `ship` or `both` → run `<Test>` in full here, and `<Typecheck>` too when the integration merge changed the tree.
    - **End-to-end.** `E2E stage: ship` → run `<E2E>` once, at `E2E scope`, on every browser the project configures. This is the cycle's only end-to-end run; nothing upstream is allowed to have made it.
    - **Production build.** `Build stage: ship` → run `<Build>`. `ship-if-route` → run it only when the story's diff moved a route, a manifest or the file-based routing — the one rupture a type check cannot see; otherwise skip it and say so.
    - **`ci` for any of them** → do not run it here: read the branch's checks (`gh pr checks`) and stop unless they are green.
@@ -55,5 +61,8 @@ Never clean up on the promise of a merge — only on proof:
    considers unmerged, which is every squashed branch. The safety therefore
    rests entirely on step 1 — never remove the worktree or branch without the
    `MERGED` proof.
+
+4. **Open majors become issues** (`Issue tracker` in AGENTS.local.md; `—` → list them in the final message instead). One issue per major still open in docs/reviews/<id>.md: title `<id>: <finding in a few words>`, body the finding line, its file:line and a link to the review in the merged PR. Search first (`gh issue list --search "<id>: in:title"`) and never open a duplicate. A major that lives only in a merged report is never fixed.
+5. **Stories in flight.** If other story worktrees exist, run `node .killer-saas/bin/ks.mjs stale <their ids>` and name the ones this merge made stale: they refresh their research before their next phase (`/ks-batch` does it; by hand, rerun `/ks-research <id>`).
 
 The content is in the default branch, the audit trail is in the merged PR: the branch has no further use.

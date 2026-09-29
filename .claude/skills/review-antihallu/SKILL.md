@@ -11,8 +11,8 @@ fresh context spots it better than the agent that wrote the code.
 
 **1. Establish what already passed, before running anything.** The implementer wrote
 `docs/verif/<id>.md`: the commands it ran, their exit codes, and the `Tree:` they covered.
-Check it with `ks-gate verif-current <id>` — or `git diff --quiet <Tree> HEAD -- .
-':(exclude)docs'` where the hook isn't installed.
+Check it with `node .killer-saas/bin/ks.mjs verif-current <id>` — it compares the `Tree:` with
+`HEAD` outside `docs/`, and checks the status line and every exit code.
 
 - **Current** (exit 0, `Verification status: complete`, every recorded exit code 0) → the
   suite and the type check are proven for this exact code. Do not re-run them; say in the
@@ -66,8 +66,9 @@ codes, edge conditions — but were never checked against reality.
 
 ## Severity scale
 
-- **critical** — ships a bug, a security hole, an invented API, or breaks existing behavior.
-  Blocks the ship.
+- **critical** — ships a bug on an acceptance criterion, a security hole, lost or corrupted
+  data, an invented API, or breaks existing behavior — **and you can write its failure
+  scenario**: this input or state, this wrong outcome. Blocks the ship.
 - **major** — real defect or rule violation, but scoped and not silently corrupting anything.
   Ship allowed, fix next cycle.
 - **minor** — style, naming, small cleanups.

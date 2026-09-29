@@ -25,6 +25,14 @@ Why it runs here: a defect in `docs/stories.md` costs a markdown edit now, and c
 - **major** — a real defect in one story: technical layer, untestable criteria, an unsplit 5, duplicated id, two stories overlapping.
 - **minor** — wording, id style, a missing agentic note, a 4 whose risk isn't spelled out.
 
+## Convergence
+
+A review that finds something new every time it re-reads the same text is sampling, not
+converging. So: the scope is what changed and its neighbours (the prompt gives it), findings
+keep stable ids across rounds, and `Stories ready: yes` ends the review — its majors and
+minors are fixed in one pass that nobody re-reviews. Only a critical earns another round, and
+that round checks the fix.
+
 ## What this review is NOT
 
 Not an implementation review. How a story will be built belongs to `/ks-research` and `/ks-plan`. Judge the breakdown, not the future code — and never rewrite the stories: report, the human fixes.

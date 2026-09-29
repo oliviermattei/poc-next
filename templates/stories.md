@@ -3,6 +3,10 @@
 > One story = one shippable slice, written to be executed by an agent.
 > Id format: `s<number>-<short-slug>` — reused in every pipeline file and in the branch name.
 
+<!-- Markers the pipeline reads, as the first quote line of a story:
+     > **SPLIT** into <ids> …        (DÉCOUPÉE) — parts take the number plus a letter, then a digit
+     > **DEFERRED** …                (OPTIONNELLE — reportée) — never picked by /ks-batch next -->
+
 ## Story <id> — <title>
 **As a** <user> **I want** <action> **so that** <benefit>.
 
@@ -17,4 +21,9 @@
 <stories or elements required before>
 
 ### Agentic notes
-<technical context useful to the agent: files involved, constraints, traps>
+<constraints, risks, the target's equivalent screen. Never file paths, line numbers or
+ implementation choices — the research finds those. ~20 lines per story in total.>
+
+### Amendments
+<only when research proposed one and it was applied: date, source (research of <id>), what
+ changed in the criteria. The stories review reads this section as a delta.>

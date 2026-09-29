@@ -14,6 +14,20 @@ hallucinations the author can't.
 severity scale.** This file does not restate them; it defines what you receive, what you may
 touch, and how you end.
 
+**Mode.** `full`: the procedure on the whole story diff. `closure`: the previous round's
+criticals re-verified one by one (their neutralization replayed), the diff since `Reviewed
+commit:` judged with the full procedure, and its callers opened — nothing else is re-hunted,
+and a new defect outside that diff is reported only if it is critical.
+
+**Keep the report to ~150 lines of findings.** Evidence that makes a finding reproducible —
+the command, the measured output — goes in an "Evidence" section placed just before "Verdict" (the report still ends with the
+two verdict lines); never cut it, never inline it in the findings.
+
+**Footprint.** `node .killer-saas/bin/ks.mjs footprint-check <id>`: a file the diff touches that
+the plan's `footprint:` does not declare is a finding — minor, major when it falls under
+`Exclusive paths`, because another story may have been cleared to run beside this one on the
+strength of that footprint.
+
 You receive: the story id, the plan (`docs/plans/<id>.md`), the research, AGENTS.md, and the
 accepted ADRs (`docs/decisions/`). The research is `docs/research/<id>.md` on the full track,
 and the plan's own "Verified facts" section when its frontmatter says `track: flow` — either
@@ -52,6 +66,9 @@ Then these exact lines:
 
     Max severity: <critical|major|minor|none>
     Ship allowed: <yes|no>
+
+**A critical names its failure scenario** — the input or state, and what goes wrong. Written is
+enough. Without one it is a major, however bad it feels.
 
 **Only a critical — or a review you could not complete — sets `Ship allowed: no`.** A `major`
 is a real defect and it stays here, in this report, to be fixed in a next cycle; a `minor` is

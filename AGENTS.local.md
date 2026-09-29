@@ -1,16 +1,11 @@
 # killer-boilerplate — settings and conventions
 
-**This file is yours. `install.sh` never overwrites it, and `/ks-setup` is its only creator.**
-`AGENTS.md` belongs to the method and is rebuilt on every update — write nothing there.
+**This file is yours.** `AGENTS.md` holds the method's rules; this file holds what is specific
+to the project. `CLAUDE.md` imports both, so every agent loads both — no reinstall needed.
 
 Every value below is read by the pipeline commands. One setting per line, `Name: value`, nothing
 else on the line: a command reads the value as everything after the colon, trimmed. Change any of
-them at any time.
-
-**After changing anything here, rerun `install.sh`** — it reassembles `AGENTS.md` from the method's
-rules plus this file, and `AGENTS.md` is what an agent loads automatically. Settings are also read
-straight from here, so those take effect immediately; the conventions at the bottom only reach an
-agent through `AGENTS.md`, and stay stale until you reinstall.
+them at any time; they take effect at the next command.
 
 ## Pipeline settings
 
@@ -33,6 +28,14 @@ E2E browsers:      —
 Build stage:       ship-if-route
 Issue tracker:     github
 Worktree root:     .worktrees/
+Max parallel:      3
+Budget serial at:  50
+Budget hold at:    85
+Budget weekly hold at: 90
+Budget boost window: 120
+Exclusive paths:   packages/core/, packages/db/, generated/schema/, pnpm-lock.yaml
+Union paths:       docs/, AGENTS.md, **/AGENTS.md, .claude/, .killer-saas/, templates/
+Worktree ports:    POSTGRES_PORT=5432, E2E_PORT=3100
 ```
 
 | Setting | Accepted values |
@@ -50,6 +53,14 @@ Worktree root:     .worktrees/
 | E2E scope | how far the end-to-end suite goes; `nominal` is one happy path |
 | E2E browsers | browsers for the story cycle, e.g. `chromium`; `—` means the project's own default. Ship always runs them all |
 | Build stage | when the production build runs: `ship-if-route` (only when a route or manifest moved) · `ship` · `review` · `ci` · `—` |
+| Max parallel | the most subagents `/ks-batch` runs at once, whatever the budget allows |
+| Budget serial at | 5-hour session usage (%) above which `/ks-batch` runs one story at a time — unless the reset is within `Budget boost window` |
+| Budget hold at | session usage (%) at which `/ks-batch` starts nothing new: running phases finish, the batch resumes after the reset |
+| Budget weekly hold at | weekly usage (%) at which `/ks-batch` starts nothing new |
+| Budget boost window | minutes before the session reset during which unused budget is spent: up to `Max parallel` lanes |
+| Exclusive paths | comma-separated paths or globs; a story whose footprint touches one executes alone (shared contract, schema, lockfile) |
+| Union paths | paths whose conflicts are merged by hand and never serialize stories (docs, agent notes, the method's own files) |
+| Worktree ports | `VAR=base` pairs; each worktree gets `base + slot`, and the URLs that point at `base` follow. `—` when the project runs no local service |
 
 ## Project commands
 

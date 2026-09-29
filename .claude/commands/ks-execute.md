@@ -13,7 +13,7 @@ Target story: $ARGUMENTS
 
 ## Execution contract (non-negotiable)
 You MUST complete this command by delegating to the `implementer` subagent. You are FORBIDDEN from:
-- Writing or modifying code yourself — you don't have the Write/Edit/Bash tools, on purpose.
+- Writing or modifying code yourself — you don't have the Write/Edit tools, on purpose; Bash is for git and `ks.mjs` checks only.
 - Starting the implementation without a validated plan in docs/plans/<id>.md.
 - Running a story from the repository base directory, whatever its complexity.
 - Creating or checking out the story branch in the repository base directory.
@@ -28,8 +28,9 @@ If you can't invoke the Agent tool, stop and report the error. Don't improvise.
 2. Resolve `<repository-base>/.worktrees/<id>` and verify its branch is exactly `feature/<id>`. Missing worktree, wrong branch, detached HEAD or the repository base directory itself → STOP and run `/ks-research <id>` to bootstrap the feature workspace. Never improvise another branch or path.
 3. From that worktree, read docs/plans/<id>.md. If it doesn't exist, STOP: ask for /ks-plan <id> first. Go no further.
 4. Check the plan's frontmatter: it must contain `validated: yes`. Otherwise STOP: "Plan not validated. Review it, then rerun /ks-plan <id> to validate."
-5. Read docs/reviews/<id>.md from the worktree if it exists. If it contains `Ship allowed: no`, this is a FIX run: the review findings come first.
-6. Read AGENTS.local.md: the project commands (`Test`, `Typecheck`, `E2E`, `Build`), `Test budget`, and the stages (`Full suite`, `E2E stage`, `Build stage`). Missing file → STOP: "No project settings. Run /ks-setup." A command left at `—` is one the implementer must not invent: pass it along as unavailable.
+5. Read docs/reviews/<id>.md from the worktree if it exists. If its **last** `^Ship allowed:` line says `no`, this is a FIX run: its criticals come first, and only its criticals (AGENTS.md, "Gate").
+6. **Freshness — first execution only, so never on a FIX run** (a fix run works on code already written, and integration happens at ship). `node .killer-saas/bin/ks.mjs stale <id>`: exit 1 means files under the plan's footprint changed on the target branch since its `base:` — the research no longer describes the code. STOP: "Research of <id> is stale (<files>). Refresh it — /ks-batch does it, or rerun /ks-research <id> — then /ks-plan <id>." Exit 0 → continue. Exit 2 is a settings error: STOP and show it.
+7. Read AGENTS.local.md: the project commands (`Test`, `Typecheck`, `E2E`, `Build`), `Test budget`, and the stages (`Full suite`, `E2E stage`, `Build stage`). Missing file → STOP: "No project settings. Run /ks-setup." A command left at `—` is one the implementer must not invent: pass it along as unavailable.
 
 ### Step 2 — Delegate
 Invoke the Agent tool:

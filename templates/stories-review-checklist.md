@@ -2,6 +2,13 @@
 
 > Fresh-context review of `docs/stories.md` against `docs/prd.md`. Each issue classified: critical / major / minor.
 
+Reviewed at: <commit of docs/stories.md reviewed>
+Mode: <full | delta | closure> — scope: <all | story ids | finding ids>
+
+## Previous findings
+| id | severity | status (open / closed / obsolete) |
+|---|---|---|
+
 ## Perimeter coverage
 | PRD feature (core loop) | Covered by | OK? |
 |---|---|---|
@@ -25,7 +32,7 @@
 - [ ] No overlap or duplication between stories
 
 ## Findings
-<one line per issue: severity — story id (or "coverage") — what's wrong>
+<one line per new issue, numbering continued from the previous report: id — severity — story id (or "coverage") — what's wrong>
 
 ## Verdict
 Max severity: <critical | major | minor | none>

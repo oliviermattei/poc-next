@@ -1,11 +1,9 @@
 # killer-saas — Repo rules
 
-**This file belongs to the method and is rebuilt on every `install.sh` run — anything written
-here is lost.** What is specific to this project — settings, project commands, conventions —
-lives in `AGENTS.local.md`, which the installer never overwrites and appends below these
-rules. `/ks-setup` creates it. **After editing it by hand, rerun `install.sh`**: pipeline
-settings are read straight from it and take effect at once, conventions only reach an agent
-through this assembled file.
+**This file holds the method's rules.** What is specific to this project — settings, project
+commands, conventions — lives in `AGENTS.local.md`. `CLAUDE.md` imports both, so every agent
+loads both. This copy of the method is maintained here, not reinstalled: every local change
+to it is listed in `.killer-saas/LOCAL-CHANGES.md`, the list to propose upstream.
 
 **A rule here applies to every project. A value that varies is read from `AGENTS.local.md`** —
 never decided by the agent, never defaulted when missing. Read it there, not in the prose
@@ -58,11 +56,22 @@ the same ship. Nothing is relaxed: dedicated worktree, validated plan, neutraliz
 `Ship allowed` gate, test budget.
 
 Utilities: `/ks-orchestrator` (the whole cycle, with the two human checkpoints),
-`/ks-status` (state derived from the files), `/ks-help`.
+**`/ks-batch`** (several stories at once), `/ks-status` (state derived from the files),
+`/ks-help`.
 
 **Run the commands. Never hand-roll the agent call.** They carry what the pipeline has
 learned — fix mode, the subagent definitions, the gates. A briefing written by hand replaces
-all of it with an opinion. Parallel stories are several commands, never several prompts.
+all of it with an opinion: measured on this project, hand-written prompts ("implement in
+TDD", "run the suite yourself") ran the end-to-end suite eight times per implementation.
+
+**Parallel stories go through `/ks-batch`, never through several orchestrators side by side.**
+Plans run in parallel — they only write `docs/` in their own worktree — once a story's
+dependencies are shipped. A story starts executing only when `ks.mjs conflicts` clears it:
+every dependency shipped, and no story it shares a footprint with, or that touches
+`Exclusive paths`, in flight — **a started story holds its files until it ships**, not until it
+finishes. Ships are a serial queue that frees on a proven merge, and each merge sends the
+stories not yet executing through `ks.mjs stale`. How many run at once follows the session budget
+(`ks.mjs budget`), never a guess.
 
 One feature = one cycle = one branch = one PR. `Story track` in `AGENTS.local.md` picks the
 track: `full`, `flow`, or `auto` (`flow` at or below `Flow threshold`, `full` above it).
@@ -85,11 +94,16 @@ stays in its worktree from the first phase to the last, whatever its complexity.
 or check out a feature branch in the repository base directory.
 
 **The method says where the work happens, not how the workspace is built.** The entry command
-— `/ks-research` or `/ks-flow` — creates or verifies the worktree, through a
-`worktree-manager` subagent when the environment provides one, otherwise with plain
-`git worktree add`. Either way it imports the untracked `.env*` files and installs
-dependencies there, and **never runs a baseline test suite**: the default branch's state is
-not this story's problem.
+— `/ks-research`, `/ks-flow` or `/ks-batch` — creates or verifies the worktree with
+`git fetch` then `git worktree add -b feature/<id> <dir> origin/<target>` (the remote target, not
+the local branch: with `Merge mode: pr` the local one lags, and the research would read old code), imports the untracked `.env*` files, gives it its own ports
+(`node .killer-saas/bin/ks.mjs slot <id> --write`: every port of `Worktree ports`, and the
+URLs that point at them, shifted by the worktree's slot — two worktrees never share a
+database or a server), and installs dependencies there. It **never runs a baseline test
+suite**: the default branch's state is not this story's problem.
+
+Anything a test or a script writes outside the worktree — a fixed `/tmp` path, a fixed port —
+is shared with every other worktree, and is a defect of that script.
 
 Every later phase resolves the absolute path and verifies the exact branch. Missing worktree,
 wrong branch, detached HEAD or a second branch name is a hard stop — never `git switch`,
@@ -109,6 +123,20 @@ work nobody scoped, and `/ks-status` then counts it as product left to build. **
 finding stays in its review report** unless a human decides otherwise: it is already traced
 there, with its `file:line`.
 
+**A story states WHAT, never HOW.** Product decisions and contracts between stories belong in
+it ("with `APP_HOST`, the site no longer sees the session"). File paths, line numbers, function
+names and implementation choices do not: they go stale as soon as another story merges, and
+every story review then spends its round re-checking them against moved code. They belong in
+the research, which is verified against a commit.
+
+**`docs/stories.md` changes only on the target branch.** Research and planning never edit it:
+they propose amendments ("Story amendments proposed", at the top of the research), and the
+conductor applies them in the repository base directory: `git pull --ff-only` on the target
+branch, the change in the story's `### Amendments` section, one commit
+(`docs(stories): amendments from <id>`), **pushed** — the pipeline reads `origin/<target>`,
+and an amendment that stays local reaches no PR and no freshness check. A protected target
+branch → a docs-only PR instead. The next stories review reads amendments as a delta.
+
 ## Story ids and branches
 - Every story has an id: `s<number>-<short-slug>` (e.g. `s01-submit-testimonial`). It is assigned in docs/stories.md and reused verbatim everywhere: `docs/research/<id>.md`, `docs/plans/<id>.md`, `docs/reviews/<id>.md`, branch `feature/<id>`.
 - All work on a story happens on `feature/<id>`, branched from the default branch. Never commit story work to the default branch.
@@ -118,9 +146,12 @@ there, with its `file:line`.
 ## Gate (mechanical)
 - The review report `docs/reviews/<id>.md` must end with the exact lines `Max severity: <critical|major|minor|none>` and `Ship allowed: <yes|no>`. A single critical = no.
 - `/ks-ship` refuses to run unless that file exists and contains the line `Ship allowed: yes`. No file, no line, or `no` → ship blocked. No exceptions.
-- **Only a critical blocks.** A `major` is a real defect — traced in the report, fixed in a next cycle; a `minor` is style. Neither reopens a fix loop: a loop is a full implementation pass plus a full review pass, and spending one on naming costs half a story and closes no defect.
-- After a blocked review, `/ks-execute` runs in fix mode: the review findings are fed to the implementer and fixed before anything else. Two loops at most.
-- Before the story commit the implementer writes `docs/verif/<id>.md` (@templates/verification-record.md): the commands it ran, their exit codes, and the `Tree:` those runs covered. `ks-gate verif-current <id>` answers one question mechanically — does that record still describe the committed code, same tree outside `docs/`? With `Verification mode: record`, the review takes a current record as proof and does not re-run the suite or the type check. Missing, incomplete or stale → the reviewer runs them itself. An absent record is never a pass.
+- **Only a critical blocks.** A `major` is a real defect — traced in the report, fixed in a next cycle; a `minor` is style. Neither reopens a fix loop: a loop is a full implementation pass plus a full review pass, and spending one on naming costs half a story and closes no defect. Measured on this project: of 24 fix passes, about 16 followed a review that had already passed.
+- **A critical names its failure scenario**: the input or state, and what goes wrong — a criterion violated, a security hole, data lost or corrupted, existing behavior broken. Written is enough; it need not be executed. No scenario, no critical: it is a major.
+- After a blocked review, `/ks-execute` runs in fix mode: **the criticals only** — plus whatever made the review incomplete. Majors and minors are not touched: every line a fix adds is new surface for the next review. Two loops at most.
+- **The review after a fix is a closure review**, not a new hunt: each critical re-verified (with its neutralization), the fix diff since `Reviewed commit:` judged in full, and its callers opened. A new finding outside that diff is recorded, and blocks only if it is critical. Stories touching authentication, authorization, tenant scope or security headers get a full second review instead — on this project a full second pass found a real 2FA bypass the first one missed.
+- **Open majors become issues at ship**, in `Issue tracker` — one issue per major, linking the review. A major that lives only in a merged report is never fixed.
+- Before the story commit the implementer writes `docs/verif/<id>.md` (@templates/verification-record.md): the commands it ran, their exit codes, and the `Tree:` those runs covered. `node .killer-saas/bin/ks.mjs verif-current <id>` answers one question mechanically — does that record still describe the committed code, same tree outside `docs/`? With `Verification mode: record`, the review takes a current record as proof and does not re-run the suite or the type check. Missing, incomplete or stale → the reviewer runs them itself. An absent record is never a pass.
 - A plan executes only if its frontmatter says `validated: yes` — set by the human validation checkpoint (/ks-plan or the orchestrator), never by the file merely existing. /ks-execute is fail-closed on it.
 
 ## Ship strategy
@@ -158,7 +189,8 @@ All pipeline data lives in markdown files under docs/, versioned by git. No data
 - Document size — research ~200 lines, plan ~250, review ~150. Every downstream agent reads these files and pays for their length. Cap the prose, never the decision tables: what carries decisions stays whole.
 - Task progress — the checkboxes in docs/plans/<id>.md: the implementer ticks each task as it lands, and they travel in the story's commit. The plan file is the live progress tracker, never a commit trigger.
 - Commits — **one commit per story**, not one per plan task. A second commit only for something you would want to revert on its own (typically a migration). The branch's commits are squashed at merge, so the default branch gets one commit per story.
-- Decisions — docs/decisions/NNN-<slug>.md (MADR format, @templates/adr.md): one file per structural decision, with the considered options and why they were rejected. Immutable: a change means a new ADR superseding the old one. Framing decisions commit on the default branch; story decisions travel with feature/<id>.
+- Decisions — docs/decisions/NNN-<slug>.md (MADR format, @templates/adr.md): one file per structural decision, with the considered options and why they were rejected. Immutable: a change means a new ADR superseding the old one. Framing decisions commit on the default branch; story decisions travel with feature/<id>. **The number comes from `ks.mjs next-adr`**, which reads the target branch and every worktree, and the file is written at once — two stories in flight never take the same number.
+- Plan frontmatter — `validated`, plus `base:` (the target commit the facts were verified against) and `footprint:` (every path the implementation will touch). `ks.mjs stale` and `ks.mjs conflicts` read them; a plan without a footprint runs alone.
 
 ## Testing
 
@@ -180,11 +212,12 @@ the `implementer` and the `reviewer`.
 ## Technical conventions
 In `AGENTS.local.md`, under "Project conventions" — filled by `/ks-architect` from the boilerplate.
 
-## Never edit an installed file
-A command, an agent or a skill under `.claude/` or `.codex/` is **replaced without warning** on
-the next `install.sh`. Anything edited there is lost, silently. What is specific to this project
-becomes a setting read from `AGENTS.local.md`; what is a genuine improvement goes upstream into
-the method's `src/`. Run `install.sh --check` to list what has drifted before updating.
+## Changing the method
+The commands, agents and skills under `.claude/` are this project's copy of the method, and
+they are edited here — **no `install.sh` is run on this repository**: it would silently
+overwrite them. What is specific to the project stays a setting in `AGENTS.local.md`. Every
+change to the method's own files gets one line in `.killer-saas/LOCAL-CHANGES.md` — what, and
+the evidence that motivated it — so it can be proposed upstream.
 
 ## Definition of Done (per feature)
 - Single PR, structured description, readable diff
