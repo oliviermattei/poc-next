@@ -305,6 +305,47 @@ test('un clone mène à un premier paiement, et le paiement ouvre la fonctionnal
     await expect(page).toHaveURL(urlOf(signedInLanding()))
   })
 
+  if (SPLIT) {
+    /**
+     * **Les cookies, mesurés au navigateur** (s64c) : la session reste propre
+     * à l'hôte de l'application — le site ne la voit pas —, et le choix de
+     * consentement vit sur le domaine parent, visible des deux hôtes.
+     */
+    await step('session propre à l’application, consentement partagé', async () => {
+      const namesFor = async (origin: string): Promise<string[]> =>
+        (await page.context().cookies(origin)).map((cookie) => cookie.name)
+      const authCookie = (name: string): boolean =>
+        name.includes('session_token') || name.includes('two_factor')
+
+      expect((await namesFor(APP_ORIGIN)).some((name) => name.includes('session_token'))).toBe(true)
+      expect((await namesFor(SITE_ORIGIN)).filter(authCookie)).toEqual([])
+
+      await page.goto(publicPath(PRICING_SCREEN_PATH))
+      await expectOnOrigin(page, SITE_ORIGIN)
+
+      const banner = page.getByRole('region', { name: 'Consentement aux cookies' })
+
+      await banner.getByRole('button', { name: 'Tout refuser' }).click()
+      await expect(banner).toHaveCount(0)
+
+      const parentDomain = `.${new URL(SITE_ORIGIN).hostname}`
+
+      for (const origin of [SITE_ORIGIN, APP_ORIGIN]) {
+        const consents = (await page.context().cookies(origin)).filter(
+          (cookie) => cookie.name === 'app_consent',
+        )
+
+        // Une seule copie, sur le parent : une copie d'hôte restée à côté
+        // serait un doublon que le proxy aurait dû effacer.
+        expect(consents.map((cookie) => cookie.domain), origin).toEqual([parentDomain])
+      }
+
+      await page.goto(`${APP_ORIGIN}${DEFAULT_SIGNED_IN_PATH}`)
+      await expectOnOrigin(page, APP_ORIGIN)
+      await expect(banner).toHaveCount(0)
+    })
+  }
+
   if (COURSE_ON_THE_WAY) {
     await step('parcours d’intégration : l’étape de profil', async () => {
       await expect(page.getByRole('heading', { name: 'Bienvenue' })).toBeVisible()

@@ -8,6 +8,7 @@ import {
 } from './consent-category'
 import {
   CONSENT_COOKIE,
+  consentHostCopyClearance,
   consentSetCookie,
   decodeConsentCookie,
   encodeConsentCookie,
@@ -157,7 +158,7 @@ describe('le cookie de consentement', () => {
   it('part avec les trois attributs du socle et une durée bornée', () => {
     // `docs/security.md` §1 ne fait pas d'exception pour un cookie sans
     // privilège : rien côté client ne lit celui-ci, c'est le serveur qui écrit.
-    const header = consentSetCookie({ analytics: true })
+    const header = consentSetCookie({ analytics: true }, { domain: null })
 
     expect(header.startsWith(`${CONSENT_COOKIE}=`)).toBe(true)
     expect(header).toMatch(/;\s*HttpOnly/i)
@@ -165,6 +166,28 @@ describe('le cookie de consentement', () => {
     expect(header).toMatch(/;\s*SameSite=Lax/i)
     expect(header).toMatch(/;\s*Path=\//i)
     expect(header).toMatch(/;\s*Max-Age=\d+/i)
+  })
+
+  it('se pose sur le domaine parent quand il y en a un, et nulle part sinon (s64c)', () => {
+    expect(consentSetCookie({ analytics: true }, { domain: 'exemple.com' })).toMatch(
+      /;\s*Domain=exemple\.com(;|$)/i,
+    )
+    // Sans domaine parent, l'en-tête d'avant `APP_HOST`, octet pour octet.
+    expect(consentSetCookie({ analytics: true }, { domain: null })).not.toMatch(/Domain=/i)
+  })
+
+  it('efface la copie propre à l’hôte sans toucher au parent (s64c)', () => {
+    // Avec `Domain`, l'effacement viserait le cookie du parent — le choix
+    // qu'on vient d'enregistrer. Sans, il ne vise que la copie de l'hôte.
+    const clearance = consentHostCopyClearance()
+
+    expect(clearance.startsWith(`${CONSENT_COOKIE}=;`)).toBe(true)
+    expect(clearance).not.toMatch(/Domain=/i)
+    expect(clearance).toMatch(/;\s*Path=\/(;|$)/i)
+    expect(clearance).toMatch(/;\s*Max-Age=0(;|$)/i)
+    expect(clearance).toMatch(/;\s*HttpOnly/i)
+    expect(clearance).toMatch(/;\s*Secure/i)
+    expect(clearance).toMatch(/;\s*SameSite=Lax/i)
   })
 })
 

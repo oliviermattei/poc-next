@@ -37,7 +37,7 @@ Le PRD n'a pas changé : le tableau « Replicated » compte toujours 24 lignes.
 
 ## Périmètre
 - [x] Rien ne revient du cimetière. s60 lit des données existantes (ce n'est pas un journal d'audit). s64 et s65 n'ajoutent ni provider, ni table, ni `eject`.
-- [~] Débordement : les hôtes dédiés (s64, s65) ne figurent toujours dans aucune ligne du PRD. `docs/prd.md` ne contient ni `APP_HOST` ni « sous-domaine ». F88 reste ouvert, délibérément.
+- [x] Débordement : les hôtes dédiés figuraient dans aucune ligne du PRD (F88). **Fermé par s64c** : la ligne « Déploiement » de `docs/prd.md` porte l'hôte d'application optionnel (`APP_HOST`), décision du porteur du 27/09, stories s64a-s64c ; s65 y reste reportée.
 
 ## Qualité des stories
 - [x] Chaque story est une tranche livrable de bout en bout. Aucune couche technique n'est déguisée en story dans s60–s65.
@@ -90,7 +90,8 @@ Le PRD n'a pas changé : le tableau « Replicated » compte toujours 24 lignes.
 | F100 | **Résolu** : `console` est écrit dans `APPLICATION_SEGMENTS`, `admin` en est retiré (note de s60). |
 | F101 | **Partiellement résolu.** Corrigés : libellé de s42, dépendances s42, s14 et s46 ajoutées à s61, amendements s61 → s10 et s65 → s64 déclarés. Restent le libellé de s37c et s59 absent des dépendances de s64 (F112). |
 | F102 | **Traité sur le fond** : c5 décrit le jeton de transfert, c6 l'origine de la passkey, et la story est cotée 5. Remplacé par F105 : un 5 doit être découpé. |
-| F88, F74 | **Toujours ouverts**, délibérément (décisions du PRD). |
+| F88 | **Fermé par s64c** : l'hôte d'application est consigné à la ligne « Déploiement » du PRD. |
+| F74 | **Toujours ouvert**, délibérément (décision du PRD). |
 
 ## Constats
 

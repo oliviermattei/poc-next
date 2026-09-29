@@ -969,6 +969,7 @@ const moduleRouteSetCookies = async (): Promise<readonly string[]> => {
   configureConsent({
     scripts: FIXTURE_CONSENT_SCRIPTS,
     acceptedOrigins: ['https://example.test'],
+    cookieDomain: null,
   })
 
   try {
