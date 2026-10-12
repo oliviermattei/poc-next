@@ -1,8 +1,71 @@
 ---
 title: "Analytics"
-description: "La mesure d’audience, après consentement."
+description: "La mesure d’audience PostHog, après consentement, et la remontée d’erreurs vers Sentry."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+## En une phrase
 
-Cette page est en cours de rédaction : son contenu arrive dans un prochain ticket.
+Le module `analytics` mesure l’audience de votre SaaS avec PostHog — seulement après l’accord du visiteur — et remonte les erreurs du serveur et du navigateur vers Sentry.
+
+## Ce qu’il fait
+
+| | Avec la configuration | Sans |
+|---|---|---|
+| **Pages vues** | envoyées à PostHog, une fois la « Mesure d’audience » acceptée dans la [bannière de consentement](/fr/fonctionnalites/cookies-et-consentement) | rien n’est envoyé |
+| **Inscriptions** | un événement `auth.signed_up` part du serveur à chaque nouveau compte, avec le seul identifiant du compte (ni adresse, ni nom) | rien n’est envoyé |
+| **Erreurs du serveur** | envoyées à Sentry | rien n’est envoyé |
+| **Erreurs du navigateur** | envoyées à Sentry, via `/api/modules/analytics/client-error`, y compris avant toute connexion | rien n’est envoyé |
+
+Ces deux services sont facultatifs : **sans clé, l’application tourne normalement et n’émet aucun appel réseau** d’analyse. Il n’y a pas de mode local à activer.
+
+Vos clients ne voient rien de ce module, sauf la bannière de consentement quand PostHog est configuré.
+
+## Activer ou couper
+
+```bash
+pnpm ks toggle analytics
+```
+
+Le module dépend de `consent` : l’activer sans lui est refusé en le nommant (ajoutez `--with-requires` pour activer les deux). Il n’a pas de table.
+
+Module coupé, **même si les clés sont renseignées** : aucun script de mesure, plus de bannière de consentement (il n’y a plus rien à accepter), les routes du module répondent 404, et ni PostHog ni Sentry ne reçoivent quoi que ce soit.
+
+## Configurer
+
+Toutes les valeurs vont dans `.env` en local, et dans les variables de votre hébergeur en production.
+
+**PostHog** (mesure d’audience) :
+
+1. Renseignez `POSTHOG_KEY` (la clé de projet) et `POSTHOG_HOST` (l’origine de votre région, sans barre finale : `https://eu.i.posthog.com` ou `https://us.i.posthog.com`). L’une sans l’autre empêche le démarrage en nommant celle qui manque.
+2. Ajoutez la même origine dans `config/security.ts`, dans les **deux** listes `connect` et `img` :
+
+   ```ts
+   connect: ['https://eu.i.posthog.com'],
+   img: ['https://eu.i.posthog.com'],
+   ```
+
+   Sans cela, l’application refuse de démarrer en nommant l’origine et les directives manquantes — sinon le navigateur bloquerait chaque mesure sans rien dire.
+
+**Sentry** (erreurs) :
+
+1. Renseignez `SENTRY_DSN`.
+2. En production, renseignez `SENTRY_RELEASE` (le nom de la version déployée) pour que les traces soient lisibles une fois les cartes source envoyées.
+
+Le pas à pas de chaque compte est sur les pages [PostHog](/fr/services/posthog) et [Sentry](/fr/services/sentry).
+
+## Vérifier que ça marche
+
+1. Avec PostHog configuré, relancez `pnpm dev` et ouvrez http://localhost:3000 dans une fenêtre de navigation privée. La bannière de consentement doit apparaître.
+2. Cliquez « Tout accepter », puis changez de page.
+3. Dans PostHog, ouvrez la vue des événements en direct de votre projet : vous devez y voir les pages vues.
+4. Créez un compte sur `/sign-up` : un événement `auth.signed_up` doit apparaître.
+5. Ouvrez http://localhost:3000/api/modules/analytics/script.js : vous devez obtenir un script. Une réponse `analytics_provider_not_configured` signifie que `POSTHOG_KEY` ou `POSTHOG_HOST` n’est pas lue.
+
+<Callout title="Ce qui n’est pas inclus">
+- **Un seul fournisseur par usage** : PostHog pour la mesure, Sentry pour les erreurs. Aucun autre outil n’est branché.
+- **Pas de tableau de bord dans votre SaaS** : les chiffres se lisent chez PostHog.
+- **Pas d’autres événements métier** que l’inscription : à vous d’en ajouter.
+- **Pas d’enregistrement de sessions** ni de cartes de chaleur.
+- **Limite connue** : l’origine PostHog se déclare dans `config/security.ts`, un fichier du code — une image déjà construite ne peut pas la recevoir par une simple variable ([#144](https://github.com/oliviermattei/poc-next/issues/144)).
+- **Limite connue** : l’envoi vers Sentry n’a jamais été éprouvé contre un vrai compte par une commande du dépôt ([#149](https://github.com/oliviermattei/poc-next/issues/149)).
+</Callout>
