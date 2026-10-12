@@ -3,6 +3,110 @@ title: "Stripe"
 description: "Le paiement : les clés, le webhook et le mode local."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+## À quoi il sert
 
-Cette page est en cours de rédaction : son contenu arrive dans un prochain ticket.
+Stripe encaisse les paiements de vos clients : abonnements (avec période d’essai), achat unique, paiement sans compte et portail client. Il est utilisé par le module `billing` (voir [Facturation](/fr/fonctionnalites/facturation)). Si vous ne vendez rien, coupez ce module : vous n’aurez rien à configurer ici.
+
+Stripe parle à votre application de deux façons :
+
+- **votre serveur appelle Stripe** avec la clé secrète, pour ouvrir une page de paiement ou le portail client ;
+- **Stripe appelle votre serveur** par un **webhook**, pour lui dire qu’un paiement a réussi, qu’un abonnement a changé ou qu’un remboursement a eu lieu. C’est ce webhook qui met à jour les abonnements dans votre base.
+
+## Sans compte : le paiement simulé
+
+`.env.example` livre `PAYMENTS_LOCAL_MODE=1`. Dans ce mode, la page de paiement est servie par l’application elle-même, rien ne part vers Stripe, et les événements du webhook sont fabriqués et signés localement. Vous pouvez dérouler tout le parcours d’achat sans compte Stripe.
+
+Ce mode **accorde un abonnement complet sans paiement** à qui clique. C’est pourquoi il est **refusé au démarrage** quand `NODE_ENV=production`, avec un message qui nomme `PAYMENTS_LOCAL_MODE`.
+
+## Créer le compte et récupérer les clés
+
+Travaillez d’abord en **mode test** de Stripe : aucune carte n’y est débitée.
+
+1. **Créez un compte** sur stripe.com et restez en mode test.
+2. **Créez vos produits et leurs prix** dans le catalogue de produits du tableau de bord : un prix récurrent (mensuel, annuel) pour chaque abonnement, un prix ponctuel pour un achat unique. Chaque prix a un identifiant qui commence par `price_`.
+3. **Reportez ces identifiants** dans `config/billing.ts`, champ `priceId` de chaque offre. Les offres livrées (`pro-monthly`, `pro-yearly`, `lifetime`) portent des identifiants d’exemple qui n’existent pas chez Stripe. Le détail des offres est sur la page [Offres et prix](/fr/configurer/offres-et-prix).
+4. **Copiez la clé secrète** depuis la page des clés API du tableau de bord. En mode test, elle commence par `sk_test_`.
+5. **Activez le portail client** : enregistrez une configuration du portail client dans les réglages de facturation de Stripe. Sans elle, Stripe refuse d’ouvrir le portail.
+
+## Déclarer le webhook
+
+L’adresse que Stripe doit appeler est :
+
+```bash
+<APP_URL>/api/modules/billing/webhook
+```
+
+où `<APP_URL>` est l’adresse publique de votre application (par exemple `https://exemple.com/api/modules/billing/webhook`).
+
+1. **Dans le tableau de bord**, ajoutez un point de terminaison de webhook (une destination d’événements) avec cette adresse.
+2. **Sélectionnez les événements** que l’application traite :
+
+   ```bash
+   checkout.session.completed
+   checkout.session.async_payment_succeeded
+   charge.refunded
+   customer.subscription.created
+   customer.subscription.updated
+   customer.subscription.deleted
+   customer.subscription.paused
+   customer.subscription.resumed
+   customer.subscription.pending_update_applied
+   customer.subscription.pending_update_expired
+   invoice.payment_failed
+   ```
+
+   Un autre événement envoyé par erreur n’est pas un problème : il est enregistré et ignoré.
+3. **Copiez le secret de signature** du point de terminaison. Il commence par `whsec_`.
+
+**En local**, Stripe ne peut pas joindre `localhost`. Utilisez l’outil en ligne de commande de Stripe (Stripe CLI), qui relaie les événements vers votre poste :
+
+```bash
+stripe listen --forward-to localhost:3000/api/modules/billing/webhook
+```
+
+Il affiche un secret de signature `whsec_…` : c’est celui-là qu’il faut mettre dans `.env` tant que vous testez en local.
+
+## Brancher
+
+1. Dans `.env` (en local) ou dans les variables de votre hébergeur (en production), renseignez les deux variables et **retirez** le mode local :
+
+   ```bash
+   # PAYMENTS_LOCAL_MODE=1
+   STRIPE_SECRET_KEY=sk_test_…
+   STRIPE_WEBHOOK_SECRET=whsec_…
+   ```
+
+2. Redémarrez l’application.
+
+Les deux variables vont ensemble : l’une sans l’autre arrête le démarrage en nommant l’absente. Une clé **et** `PAYMENTS_LOCAL_MODE=1` en même temps l’arrêtent aussi : il faut choisir.
+
+Rien à déclarer dans `config/security.ts` : la page de paiement et le portail s’ouvrent par une redirection vers Stripe, pas dans votre page.
+
+## Vérifier
+
+1. Ouvrez `/pricing`, choisissez une offre et cliquez sur le bouton de souscription.
+2. Vous devez arriver sur la page de paiement de Stripe. Payez avec une carte de test Stripe (en mode test, la documentation de Stripe donne des numéros de carte de test).
+3. Revenez dans l’application : l’écran `/app/settings/billing` doit afficher l’abonnement.
+4. Dans le tableau de bord de Stripe, la liste des livraisons du webhook doit montrer des réponses `200`.
+
+Si l’abonnement n’apparaît pas, regardez d’abord les livraisons du webhook : une réponse `400` signale presque toujours un secret de signature qui ne correspond pas.
+
+Pour recoller l’état des abonnements avec Stripe après un incident, lancez `pnpm billing:reconcile`. Une lecture de Stripe en échec n’efface jamais rien.
+
+## Couper
+
+- Sans clé et sans mode local, le module `billing` activé **refuse le démarrage** en nommant les trois variables.
+- Pour ne rien vendre, coupez le module : `pnpm ks toggle billing`. Voir [Facturation](/fr/fonctionnalites/facturation).
+
+## Passer en production
+
+Refaites les mêmes étapes en mode réel de Stripe : clé secrète réelle, produits et prix réels (leurs identifiants diffèrent de ceux du mode test, donc `config/billing.ts` change), webhook réel avec son propre secret.
+
+<Callout type="warn" title="Ce qui n’est pas inclus">
+- Aucun autre moyen de paiement que Stripe, et pas de facturation à l’usage.
+- Les champs `amount` et `currency` de `config/billing.ts` ne servent qu’à l’affichage : ce qui est facturé est le prix chez Stripe. Rien ne vérifie qu’ils concordent ([issue #103](https://github.com/oliviermattei/poc-next/issues/103)).
+- Aucune offre au siège n’est livrée dans `config/billing.ts` ([issue #102](https://github.com/oliviermattei/poc-next/issues/102)).
+- Le tunnel de paiement exige JavaScript dans le navigateur.
+- Sans proxy de confiance devant l’application, une inondation de requêtes anonymes peut faire refuser temporairement (429) des livraisons de Stripe, que Stripe rejoue ensuite ([issue #78](https://github.com/oliviermattei/poc-next/issues/78)).
+- La taille du corps du webhook n’est pas plafonnée ([issue #86](https://github.com/oliviermattei/poc-next/issues/86)).
+</Callout>

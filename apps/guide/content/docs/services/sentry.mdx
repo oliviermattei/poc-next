@@ -3,6 +3,90 @@ title: "Sentry"
 description: "Le suivi des erreurs et l’envoi des cartes source."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+## À quoi il sert
 
-Cette page est en cours de rédaction : son contenu arrive dans un prochain ticket.
+Sentry reçoit les erreurs non gérées de votre SaaS, côté serveur comme côté navigateur, pour que vous les voyiez avant que vos clients vous les signalent. Il est porté par le module `analytics` (voir [Analytics](/fr/fonctionnalites/analytics)).
+
+Les erreurs du navigateur passent d’abord par votre application (route `/api/modules/analytics/client-error`), qui les transmet à Sentry : le navigateur ne parle jamais directement à Sentry, donc **rien à déclarer** dans `config/security.ts`.
+
+Deux variables pour l’application : `SENTRY_DSN` (l’adresse d’envoi de votre projet) et `SENTRY_RELEASE` (le nom de la version déployée). Quatre de plus pour l’envoi des cartes source, uniquement sur la machine qui les envoie.
+
+## Sans compte : rien n’est remonté
+
+Sentry n’a **pas de mode local** : sans `SENTRY_DSN`, l’état livré, aucune erreur n’est remontée, aucun appel ne part, et l’application fonctionne normalement. Les erreurs restent écrites dans le journal du serveur, comme toujours.
+
+## Créer le compte et récupérer le DSN
+
+1. **Créez un compte** sur sentry.io et une organisation.
+2. **Créez un projet** pour votre application.
+3. **Copiez le DSN** du projet, depuis ses réglages (la page des clés client). Il a la forme :
+
+   ```bash
+   https://<clé publique>@<hôte>/<numéro du projet>
+   ```
+
+   Le DSN n’est pas un secret : sa clé publique est faite pour être embarquée.
+
+## Brancher
+
+1. Dans `.env` (en local) ou dans les variables de votre hébergeur (en production), renseignez :
+
+   ```bash
+   SENTRY_DSN=https://…@….ingest.sentry.io/123456
+   SENTRY_RELEASE=app@1.2.3
+   ```
+
+   `SENTRY_RELEASE` est un nom de version de votre choix ; changez-le à chaque déploiement. Il est écrit dans chaque erreur remontée.
+2. Redémarrez l’application.
+
+Un `SENTRY_DSN` qui n’a pas la forme d’un DSN arrête le démarrage en le nommant.
+
+## Les cartes source : des erreurs lisibles
+
+Le code envoyé au navigateur est minifié : sans **cartes source**, une erreur du navigateur arrive chez Sentry illisible. Le build les génère ; il faut ensuite les **envoyer** à Sentry sous le même nom de version que les erreurs, puis les **retirer** de ce que le site sert publiquement (une carte source, c’est votre code source). La commande `pnpm sourcemaps:release` fait les deux, dans cet ordre.
+
+1. **Créez un jeton d’authentification** dans les réglages de votre organisation Sentry, avec le droit d’envoyer des versions. Ce jeton **est** un secret : il ne va jamais dans le dépôt, ni dans une image Docker, ni dans les variables de l’application.
+2. **Notez** l’identifiant (« slug ») de votre organisation et celui de votre projet.
+3. **Lancez l’envoi** depuis la machine qui a construit l’application, avec la **même** valeur de `SENTRY_RELEASE` que celle de l’application déployée.
+
+   Si vous construisez et servez sur la même machine (`pnpm build` puis `pnpm start`) :
+
+   ```bash
+   SKIP_ENV_VALIDATION=1 pnpm build
+   SENTRY_ORG=… SENTRY_PROJECT=… SENTRY_AUTH_TOKEN=… SENTRY_RELEASE=app@1.2.3 \
+     pnpm sourcemaps:release
+   ```
+
+   Si vous déployez une **image Docker**, l’image refait son propre build : il faut envoyer les cartes de **ce** build-là, pas celles de votre poste. Extrayez-les de l’étape `builder` de l’image, puis envoyez-les :
+
+   ```bash
+   docker build -t killer-saas .
+   docker build --target builder -t killer-saas-maps .
+   docker create --name killer-saas-maps-tmp killer-saas-maps
+   docker cp killer-saas-maps-tmp:/repo/apps/web/.next ./.sourcemaps
+   docker rm killer-saas-maps-tmp
+   SOURCEMAPS_NEXT_DIR=./.sourcemaps SENTRY_ORG=… SENTRY_PROJECT=… \
+     SENTRY_AUTH_TOKEN=… SENTRY_RELEASE=app@1.2.3 pnpm sourcemaps:release
+   ```
+
+   L’image servie, elle, a déjà retiré ses cartes source du dossier public : elle n’embarque jamais votre code source, même si vous n’envoyez rien.
+
+La commande **refuse** de tourner sans `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` et `SENTRY_RELEASE`, en nommant ce qui manque. Elle envoie à `https://sentry.io` ; la variable `SENTRY_UPLOAD_HOST` permet de viser une autre adresse. Un fichier déjà envoyé n’est pas une erreur : relancer la commande ne change rien.
+
+## Vérifier
+
+1. Provoquez une erreur dans l’application (par exemple une page qui lève une exception, dans une branche de test).
+2. Dans Sentry, l’erreur doit apparaître dans la liste des problèmes, avec la version `SENTRY_RELEASE`.
+3. Ouvrez une erreur venue du navigateur : sa trace doit montrer vos noms de fichiers et de fonctions, pas du code minifié. Si elle est minifiée, vérifiez que la valeur de `SENTRY_RELEASE` est identique dans l’application et dans l’envoi.
+
+## Couper
+
+- Retirez `SENTRY_DSN` : l’application tourne, aucune erreur n’est remontée.
+- Ou coupez le module : `pnpm ks toggle analytics`. Cela coupe aussi [PostHog](/fr/services/posthog), porté par le même module.
+
+<Callout type="warn" title="Ce qui n’est pas inclus">
+- Aucun autre outil de suivi d’erreurs que Sentry.
+- Le boilerplate n’utilise pas le kit officiel de Sentry : il envoie les erreurs lui-même. Il n’y a donc ni traces de performance, ni fil d’Ariane des requêtes.
+- La route qui reçoit les erreurs du navigateur est publique (pour attraper les erreurs d’avant la connexion) : un tiers peut y consommer une partie de votre quota Sentry, dans la limite de la limitation de débit.
+- `pnpm sourcemaps:release` n’a jamais été exécuté contre un vrai compte, et aucune recette d’envoi réel n’existe pour Sentry ([issue #149](https://github.com/oliviermattei/poc-next/issues/149)). Vérifiez vous-même, une fois, qu’une trace est lisible.
+</Callout>
