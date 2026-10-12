@@ -3,6 +3,145 @@ title: "Work with an AI assistant"
 description: "The agent instructions, the skills and the MCP server of the repository."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+This repository is written to be changed with the help of an AI coding assistant, such as Claude Code. The assistant finds instructions, a vocabulary and commands in it that tell it what to do, and above all what not to do. This page explains what it reads, how to hand it a task, and how to connect the project’s MCP server.
 
-This page is being written: its content arrives in an upcoming ticket.
+## What your assistant reads
+
+You have nothing to copy for it: these files are in the repository, and most coding assistants read them on their own.
+
+| File | What it tells the assistant |
+|---|---|
+| `AGENTS.md` | the entry point: in which order to read the documents, where things are, which rules to follow, how to work |
+| `CLAUDE.md` | the file Claude Code reads at startup; it only imports `AGENTS.md` |
+| `GLOSSARY.md` | the project’s vocabulary: project owner, client, Guide, product documentation, and the words to avoid |
+| `CODING_STANDARDS.md` | the rules for writing code: modules, layers, security, reliability, tests; a code review judges every change against this file |
+| `docs/commands.md` | each `pnpm` command, what it checks and what makes it fail |
+| `docs/prd.md` | what the product is, and its **graveyard**: what it deliberately does not do. Bringing it back is a scope breach |
+| `packages/<package>/AGENTS.md` | the rules of a package: what it may import, what it must never contain, where its tests live |
+
+One rule matters for you: **when a document contradicts the code, the code is the reference**, unless a decision written in `docs/adr/` says otherwise.
+
+## Hand a task to the assistant
+
+<Steps>
+<Step>
+
+### Give the Guide to the assistant
+
+The whole Guide fits in one file, `http://localhost:3200/en/llms-full.txt` while `pnpm dev` or `pnpm guide:dev` runs. Give it to your assistant when your question is about configuration or deployment: it will answer from the real documentation rather than from memory.
+
+</Step>
+<Step>
+
+### Describe what you want, not how to do it
+
+Say what your clients should be able to do, and let the assistant find where the code must change. For example: “I want my clients to be able to export their invoices as PDF. Read `AGENTS.md`, then suggest a plan before writing any code.”
+
+Your product must live in a **module**. The assistant creates the skeleton of a new module with the command made for it, never by hand:
+
+```bash
+pnpm ks scaffold <module-name>
+```
+
+This command refuses to run if the repository holds changes not yet saved in Git ([issue #153](https://github.com/oliviermattei/poc-next/issues/153)): save your work in progress (`git commit`) before running it.
+
+</Step>
+<Step>
+
+### Have the work checked
+
+Before accepting a change, ask the assistant to run the everyday checks, and check that they finish without errors:
+
+```bash
+pnpm typecheck
+pnpm lint
+pnpm test
+```
+
+The detail of these commands, and of the longer ones to run before going to production, is in [Commands](/en/reference/commandes).
+
+</Step>
+<Step>
+
+### Keep the Guide up to date
+
+`CODING_STANDARDS.md` sets a rule: **the Guide follows the code**. When the assistant changes a module, a `config/` file, an environment variable, a service or a command, it updates the matching Guide pages (`apps/guide/content/docs`), in French and in English, in the same change. Remind it if you do not see it do so.
+
+</Step>
+</Steps>
+
+## Skills
+
+A **skill** is a package of instructions that you install in your assistant, and that it follows when you call it by name. `AGENTS.md` describes the project’s workflow, which relies on Matt Pocock’s engineering skills:
+
+1. `/grill-with-docs`: the assistant asks you questions until the need is clear;
+2. `/to-spec`: it writes the specification;
+3. `/to-tickets`: it splits it into tickets;
+4. `/implement` or `/implement-spec`: it carries out one ticket, or the whole specification;
+5. `/code-review`: it reviews the change against `CODING_STANDARDS.md`;
+6. a pull request to the `dev` branch, merged as a single commit.
+
+These skills are **not shipped in the repository**: install them in your assistant by following their own documentation. Without them, the assistant can still work: ask it to follow `AGENTS.md`.
+
+Tickets live in GitHub issues, which the assistant reads and creates with the `gh` command-line tool. `AGENTS.md` (“Issue tracker” section) and `docs/agents/issue-tracker.md` name the boilerplate’s original repository: replace that name with **your** repository’s, so that your tickets land with you.
+
+## The MCP server
+
+The `mcp-server` module lets your assistant manage modules through dedicated tools, rather than by typing commands. **MCP** (Model Context Protocol) is the standard protocol through which an AI assistant calls external tools. The server exposes three tools, which do exactly what the `pnpm ks` commands do:
+
+| Tool | Equivalent | What it does |
+|---|---|---|
+| `list_modules` | `pnpm ks list` | lists the modules, their state, their dependencies and the core |
+| `toggle_module` | `pnpm ks toggle <module>` | enables or disables a module |
+| `scaffold_module` | `pnpm ks scaffold <module>` | creates the skeleton of a new module |
+
+<Steps>
+<Step>
+
+### Check that the module is enabled
+
+The `mcp-server` module is enabled in the shipped configuration. Check it:
+
+```bash
+pnpm ks list
+```
+
+You should see `mcp-server` among the enabled modules. If it is disabled, the server refuses to start.
+
+</Step>
+<Step>
+
+### Declare the server in your assistant
+
+The file `packages/modules/mcp-server/mcp-client.example.json` gives the declaration to copy:
+
+```json
+{
+  "mcpServers": {
+    "killer-boilerplate": {
+      "command": "node",
+      "args": ["./packages/modules/mcp-server/bin/mcp-server.mjs"]
+    }
+  }
+}
+```
+
+Copy this block into your assistant’s MCP configuration. With Claude Code, it can go in a `.mcp.json` file at the root of the repository. The path is relative to the root of the repository: if your assistant starts the server from another folder, replace it with the full path of the `mcp-server.mjs` file.
+
+</Step>
+<Step>
+
+### Check
+
+Restart your assistant, then ask it: “List the project’s modules with the `list_modules` tool.” You should get the same list as `pnpm ks list`.
+
+</Step>
+</Steps>
+
+The two tools that change the repository, `toggle_module` and `scaffold_module`, **refuse to work on a repository that holds unsaved changes**: that way, you can always undo what the assistant has just done. Save your work (`git commit`) before asking it to enable, disable or create a module. More details: [MCP server](/en/fonctionnalites/serveur-mcp).
+
+<Callout type="warn" title="What is not included">
+- **The skills**: they are installed in your assistant, they are not in the repository.
+- **An AI assistant inside your SaaS**: the MCP server is for you, to evolve the repository. No module offers AI to your clients: that is a choice written in the graveyard of the PRD (see [What the boilerplate does not do](/en/reference/ce-que-le-boilerplate-ne-fait-pas)).
+- **Other MCP tools**: the server can only list, enable, disable and create modules. It reads neither your database nor your `.env` file.
+</Callout>
