@@ -387,6 +387,123 @@ describe('ADR (docs/adr)', () => {
   })
 })
 
+/**
+ * Les emplacements de l'ancienne méthode, retirés du dépôt (ADR 082). Un
+ * renvoi vers l'un d'eux pointe vers le vide : la raison qu'il portait doit
+ * être écrite sur place, ou renvoyée vers une ADR ou une issue.
+ *
+ * Chaque motif refuse un caractère de chemin juste avant lui, si bien que
+ * `packages/foo/templates/` ou `user-stories.md` ne sont pas lus comme le
+ * dossier ou le fichier de la méthode. Le CLI de modules du produit
+ * (`pnpm ks`, `ks scaffold`, `packages/cli`) n'est visé par aucun.
+ */
+const REMOVED_LOCATIONS: readonly { name: string; pattern: RegExp }[] = [
+  {
+    name: 'un artefact du pipeline',
+    pattern: /(?<![\w-])docs\/(?:research|plans|reviews|verif|designs)\b/,
+  },
+  { name: 'l’ancien dossier des ADR', pattern: /(?<![\w-])docs\/decisions\b/ },
+  { name: 'le fichier des stories', pattern: /(?<![\w.-])stories\.md\b/ },
+  { name: 'le fichier d’état', pattern: /(?<![\w.-])STATE\.md\b/ },
+  { name: 'le journal de la méthode', pattern: /killer-saas-feedback\b/ },
+  { name: 'le fichier de réglages de la méthode', pattern: /\bAGENTS\.local\.md\b/ },
+  { name: 'le dossier de la méthode', pattern: /\.killer-saas\// },
+  { name: 'les gabarits de la méthode', pattern: /(?<![\w./-])templates\// },
+  { name: 'une commande de la méthode', pattern: /(?<![\w.-])\/ks-[a-z]/ },
+]
+
+/** Les emplacements retirés qu'une ligne cite, nommés. */
+export const removedLocationsCitedIn = (line: string): string[] =>
+  REMOVED_LOCATIONS.filter(({ pattern }) => pattern.test(line)).map(({ name }) => name)
+
+/**
+ * Seule exemption durable : l'état des lieux figé, qui cite ces emplacements
+ * volontairement, par des liens fixés à un commit. Ce fichier-ci porte les
+ * motifs et leurs cas, il ne renvoie à rien.
+ */
+const CITES_REMOVED_LOCATIONS_ON_PURPOSE = [
+  'docs/agents/etat-des-lieux.md',
+  'tests/agents-md.test.ts',
+]
+
+/**
+ * Les fichiers de la méthode encore suivis, que leur suppression (#191) fera
+ * disparaître : ils se citent entre eux. Cette liste part avec eux.
+ */
+const PENDING_REMOVAL = [
+  '.claude/commands/',
+  '.claude/agents/',
+  '.claude/skills/',
+  '.claude/.ks-manifest',
+  '.claude/.ks-version',
+  '.killer-saas/',
+  'templates/',
+  'docs/research/',
+  'docs/plans/',
+  'docs/reviews/',
+  'docs/verif/',
+  'docs/designs/',
+  'docs/stories.md',
+  'docs/STATE.md',
+  'docs/killer-saas-feedback.md',
+]
+
+describe('aucun renvoi vers un emplacement retiré de la méthode (ADR 082)', () => {
+  it('aucun fichier suivi ne cite un emplacement retiré', () => {
+    const scanned = trackedTextFiles().filter(
+      ({ path }) =>
+        !CITES_REMOVED_LOCATIONS_ON_PURPOSE.includes(path) &&
+        !PENDING_REMOVAL.some((removed) => path.startsWith(removed)),
+    )
+
+    // Le plancher refuse un balayage vide : le dépôt suit des centaines de
+    // fichiers hors de la méthode.
+    expect(scanned.length).toBeGreaterThanOrEqual(500)
+
+    const offending = scanned.flatMap(({ path, content }) =>
+      content
+        .split('\n')
+        .flatMap((line, index) =>
+          removedLocationsCitedIn(line).map((name) => `${path}:${index + 1} cite ${name}`),
+        ),
+    )
+    expect(offending, `renvois vers un emplacement retiré :\n${offending.join('\n')}`).toEqual([])
+  })
+
+  it('reconnaît chaque emplacement retiré', () => {
+    for (const line of [
+      'voir `docs/plans/s26.md`',
+      'relevé dans `docs/reviews/`',
+      '`docs/research/s45-security-headers.md` §2.1',
+      '`docs/designs/s29-blog-mdx.md`',
+      '`docs/verif/s01.md`',
+      '`docs/decisions/018-cles-etrangeres.md`',
+      '`docs/stories.md`, critère 2',
+      'le mode d’échec n°9 de `STATE.md`',
+      'le journal `docs/killer-saas-feedback.md`',
+      'lit `AGENTS.local.md`',
+      '`.killer-saas/bin/ks.mjs`',
+      'les gabarits de `templates/`',
+      'capturé par `/ks-design-system`',
+    ]) {
+      expect(removedLocationsCitedIn(line), line).not.toEqual([])
+    }
+  })
+
+  it('ne lit ni le CLI du produit ni un dossier homonyme comme la méthode', () => {
+    for (const line of [
+      '`pnpm ks list`, `npx ks toggle`',
+      '`ks scaffold` dans `packages/cli/src/index.ts`',
+      'les gabarits `packages/modules/email/src/templates/`',
+      '`docs/design-system.md`, `docs/adr/0082-killer-saas.md`',
+      'le fichier `user-stories.md`',
+      'le nom de produit `killer-saas-web:ci`',
+    ]) {
+      expect(removedLocationsCitedIn(line), line).toEqual([])
+    }
+  })
+})
+
 describe('point d’entrée des agents', () => {
   it('`CLAUDE.md` importe `AGENTS.md`, et lui seul', () => {
     expect(read('CLAUDE.md').trim()).toBe('@AGENTS.md')

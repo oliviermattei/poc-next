@@ -15,7 +15,7 @@ shadcn/ui n'est pas une dépendance mais un ensemble de composants copiés dans 
 ## Considered options
 - Nuxt 4 / Vue — rejeté : le PRD nomme Next.js, et l'écosystème SaaS (exemples, intégrations, acheteurs potentiels) est massivement React.
 - Remix / React Router 7 — rejeté : aucune des cibles ne l'utilise, et l'avantage technique ne compense pas la perte de familiarité pour un produit dont la valeur est d'être immédiatement reconnaissable.
-- Une bibliothèque de composants packagée (MUI, Mantine, Chakra) — rejeté : le code n'appartient pas au projet, la personnalisation passe par des thèmes, et le design system de `/ks-design-system` deviendrait un jeu de surcharges plutôt qu'un ensemble de composants possédés.
+- Une bibliothèque de composants packagée (MUI, Mantine, Chakra) — rejeté : le code n'appartient pas au projet, la personnalisation passe par des thèmes, et le design system du projet (`docs/design-system.md`) deviendrait un jeu de surcharges plutôt qu'un ensemble de composants possédés.
 
 ## Consequences
 Facilité : écosystème le plus fourni, composants modifiables, alignement avec les quatre cibles.

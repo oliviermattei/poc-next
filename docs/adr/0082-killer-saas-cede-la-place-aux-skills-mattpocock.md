@@ -6,8 +6,8 @@
 
 ## Context
 Le boilerplate a été construit avec une méthode maison, killer-saas : des
-commandes `/ks-*`, quatre sous-agents, six skills, des gabarits, un binaire
-(`.killer-saas/bin/ks.mjs`), et un pipeline en six phases par story
+commandes slash préfixées `ks`, quatre sous-agents, six skills, des gabarits,
+un binaire, et un pipeline en six phases par story
 (recherche → maquette → plan → exécution → revue → livraison) qui écrivait un
 fichier par phase sous `docs/`. Il a livré l'essentiel du produit, mais le
 propriétaire du projet n'en est pas satisfait : la gestion de projet est
@@ -26,7 +26,7 @@ L'état des lieux du 12/10/2026 (`docs/agents/etat-des-lieux.md`) l'a mesuré :
 - **La méthode bloque son remplaçant.** Sa règle absolue, « aucun code hors
   pipeline », fait refuser à un agent un ticket qui ne passe pas par elle.
 - **Les ADR sont invisibles pour les autres outils**, rangées dans
-  `docs/decisions/NNN-slug.md` quand les skills d'ingénierie lisent
+  un dossier à part au format `NNN-slug.md`, quand les skills d'ingénierie lisent
   `docs/adr/NNNN-slug.md`.
 
 ## Decision
@@ -54,7 +54,8 @@ Ce qui appartient au projet reste, sans perte :
 
 Ce qui part : les commandes, agents, skills, gabarits et le binaire de la
 méthode ; tous les artefacts du pipeline (recherches, plans, revues, fiches de
-vérification, maquettes, `stories.md`, `STATE.md`, le journal de la méthode) ;
+vérification, maquettes, le fichier des stories, le fichier d'état, le journal
+de la méthode) ;
 la règle absolue et le mode Quick Fix ; les identifiants de story et les
 branches par story ; la porte `Ship allowed` ; le budget de tests chiffré ; la
 machinerie de lots, de budget et de conflits, et les ports par worktree ; la
@@ -87,4 +88,5 @@ leurs liens figés à un commit.
 
 À surveiller : les pointeurs vers les fichiers supprimés. `tests/agents-md.test.ts`
 vérifie que chaque fichier de `docs/adr/` suit `NNNN-slug.md` et que chaque
-« ADR NNN » citée dans un fichier suivi a son fichier.
+« ADR NNN » citée dans un fichier suivi a son fichier, et qu'aucun fichier
+suivi ne cite un emplacement retiré de la méthode.

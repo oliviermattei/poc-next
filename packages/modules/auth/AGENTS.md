@@ -252,8 +252,8 @@ celui de la confirmation d'enrôlement — n'a *aucun* compteur (`beginAttempt` 
 rend deux fonctions vides). Le gain y est nul aujourd'hui, puisqu'il faut déjà
 une session ; s28 ne doit pas pour autant croire les deux branches couvertes.
 La limitation **partagée entre instances** de `docs/security.md` §7 reste s28,
-que `docs/stories.md` désigne nommément : « aucun compteur local n'est écrit
-ici ».
+que le critère de la story désignait nommément : « aucun compteur local n'est
+écrit ici ».
 
 **Rien de la bibliothèque ne sort tel quel.** Ses cinq codes d'erreur
 (`INVALID_CODE`, `TOTP_NOT_ENABLED`, `INVALID_TWO_FACTOR_COOKIE`,
@@ -286,7 +286,7 @@ C'est le principal argument pour ne pas réécrire la désactivation, et c'est c
 qui décide de la preuve exigée : `disableTwoFactor` appelle `validatePassword`
 avant tout (`shouldRequirePassword` rend `true` dès qu'`allowPasswordless`
 n'est pas posé), sans crochet pour y substituer une autre preuve. **Le critère 5
-de `docs/stories.md` a donc été amendé** : il disait « un code valide **ou** le
+de la story a donc été amendé** : il disait « un code valide **ou** le
 mot de passe courant », il dit désormais « le mot de passe courant ». Ce n'est
 pas une renonciation — le mot de passe est la plus forte des deux preuves, et
 l'invariant qui compte est tenu : un vol de session ne retire pas le second

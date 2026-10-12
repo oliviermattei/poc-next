@@ -14,8 +14,7 @@ import { encode } from 'uqr'
  * - **le secret ne sort pas** : il n'y a ni URL d'image, ni service tiers, ni
  *   requête réseau. La matrice est calculée là où l'URI se trouve déjà.
  *
- * `docs/designs/s13-two-factor.md` signale ce composant comme un **design
- * system gap** : `docs/design-system.md` ne couvre ni le QR ni la valeur à
+ * Ce composant est un **manque du design system** : `docs/design-system.md` ne couvre ni le QR ni la valeur à
  * recopier. Il vit donc dans l'écran, pas dans `packages/ui` — un besoin non
  * couvert se signale, il ne se comble pas sur place.
  *
@@ -37,8 +36,7 @@ import { encode } from 'uqr'
  * est une donnée, comme le serait un code-barres. Le cadre, lui, reste
  * thémable : la bordure est le token `border`.
  *
- * `docs/designs/s13-two-factor.md` le consigne comme partie du design system
- * gap : le jour où s14 demande la même chose, c'est un composé à nommer dans
+ * Ces deux couleurs font partie du même manque : le jour où s14 demande la même chose, c'est un composé à nommer dans
  * `docs/design-system.md`, avec cette exception écrite.
  */
 

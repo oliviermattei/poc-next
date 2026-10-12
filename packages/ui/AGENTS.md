@@ -26,8 +26,8 @@ chaque emplacement a désormais ses cas, et neutraliser l'un d'eux fait rougir
 
 **Non balayé, et connu** : un spécificateur reconstruit à l'exécution
 (`import('@radix' + '-ui/…')`), les fichiers du harnais de test (`tests/`,
-`e2e/`, `packages/*/src/**/*.test.ts`) — exception nommée —, et `templates/`
-comme `docs/`, qui ne portent aucune source aujourd'hui. Mesuré une écriture à
+`e2e/`, `packages/*/src/**/*.test.ts`) — exception nommée —, et `docs/`, qui
+ne porte aucune source aujourd'hui. Mesuré une écriture à
 la fois contre la configuration réelle, le 31 août 2026.
 
 ## Aucun texte, jamais
@@ -244,8 +244,8 @@ change.
 
 **Ni ellipse, ni saut à la première ou à la dernière page** : `docs/design-system.md`
 ne décrit aucune des deux formes, et les inventer ici serait décider du design
-system dans un commit de fonctionnalité. Le manque est signalé dans
-`docs/designs/s37b2-back-office-lecture.md`.
+system dans un commit de fonctionnalité. C'est un manque du design system,
+signalé ici.
 
 La règle est éprouvée par `tests/design-system.test.ts` (« la fenêtre de
 pagination »), et ce n'est pas une exception à « pas de test de rendu par
@@ -287,9 +287,8 @@ reprend les classes d'`Input` à la hauteur près (`min-h-24`, `resize-y` — un
 redimensionnement horizontal déborde la carte sous 400 px). **`Form`,
 `FormField` et `FormMessage` restent non construits** alors que le document les
 annonce : les formulaires de s07, s15 et s11 composent tous `Label`, `Input` et
-`Alert` à la main. C'est un *design system gap* ouvert, signalé dans
-`docs/designs/s11-public-forms.md` et dans `docs/STATE.md`, pas une primitive à
-inventer dans un commit de fonctionnalité.
+`Alert` à la main. C'est un *design system gap* ouvert, suivi dans l'issue #152, pas une
+primitive à inventer dans un commit de fonctionnalité.
 
 `OrgSwitcher` est arrivé avec **s15**, que le document lui attribue nommément.
 Il reprend `LocaleSwitcher` à une différence près, et elle est tranchée : les
@@ -334,8 +333,8 @@ FAQ marketing (que le document lui attribue explicitement), le second est
 l'enveloppe des sections pilotées par `config/marketing.ts`. **Aucun composant
 de pied de page n'a été ajouté** : le document n'en décrit pas, et le pied de
 page du site public est composé de `Separator`, de liens et de tokens dans la
-couche `presentation` du module `marketing`. Le manque est signalé comme
-*design system gap* dans `docs/designs/s10-marketing-site.md`, pas comblé ici.
+couche `presentation` du module `marketing`. C'est un *design system gap*,
+signalé et pas comblé ici.
 
 ## Sur quoi repose l'accessibilité, faute de `jsx-a11y`
 

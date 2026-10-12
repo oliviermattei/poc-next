@@ -25,7 +25,7 @@ import { useHydrated } from './use-hydrated'
  * WebKit : il faudrait déclarer deux origines tierces dans `config/security.ts`.
  * Une navigation de premier niveau pilotée par `window.location.assign` n'est
  * bornée par aucune directive livrée. La politique reste `default-src 'self'`
- * sans une seule source tierce — voir `docs/research/s19-subscribe-stripe.md` §7.
+ * sans une seule source tierce.
  *
  * **`method="post"` en toutes lettres et bouton désactivé jusqu'à
  * l'hydratation**, comme partout : un `<form>` sans `method` est un `GET` vers

@@ -320,7 +320,7 @@ export const INTERMITTENT_CASES: readonly IntermittentCase[] = [
     id: 'auth/sessions-au-changement-d-email',
     file: 'tests/auth.test.ts',
     witness: 'révoque les autres sessions au changement d’email, une fois la nouvelle adresse confirmée',
-    regime: 'inconnu — aucun relevé dans `docs/stories.md`, `docs/STATE.md`, `docs/reviews/` ni la recherche',
+    regime: 'inconnu — aucun relevé dans les documents de la story (issue #169)',
     cause:
       '**Non établie, et le symptôme lui-même est introuvable.** Le plan le nomme ' +
       '`tests/auth.test.ts:765`, ligne qui porte `expect(Number(rows?.count ?? -1)).toBe(0)`. ' +

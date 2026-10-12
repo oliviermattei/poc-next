@@ -2,7 +2,7 @@ import type { twoFactor } from 'better-auth/plugins/two-factor'
 
 /**
  * **Le second facteur sur les trois voies d'entrée**, et pas seulement sur le
- * mot de passe (correctif C2 de `docs/reviews/s13-two-factor.md`).
+ * mot de passe (correctif d'un défaut relevé en s13).
  *
  * ## Ce qui n'allait pas
  *

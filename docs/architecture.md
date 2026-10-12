@@ -1,6 +1,6 @@
 # Architecture — killer-boilerplate
 
-> Décidée sur documents : le dépôt ne contient aucun code applicatif. Le squelette est produit par s01 et s02 à travers le pipeline, pas avant. Chaque décision structurante ci-dessous est adossée à un ADR dans `docs/adr/`.
+> Chaque décision structurante ci-dessous est adossée à un ADR dans `docs/adr/`.
 
 ## Stack
 
@@ -53,8 +53,8 @@ packages/
     auth/ organizations/ billing/ storage/ i18n/ marketing/ blog/ docs/ changelog/
     notifications/ jobs/ gdpr/ admin/ onboarding/ waitlist/ feedback/ roadmap/ …
 tooling/                   Configurations partagées : eslint, typescript, tailwind, vitest
-docs/                      PRD, stories, architecture, design system, décisions, recherches,
-                           plans, revues
+docs/                      PRD, architecture, design system, ADR (`docs/adr/`), socles
+                           sécurité et fiabilité, déploiement, commandes
 Dockerfile                 Image de production, trois étapes (build, migrations, exécution)
 docker-compose.prod.yml    Pile de production : base, migrations, application
 .dockerignore              Ce qui n'entre jamais dans le contexte de build, `.env` en tête
@@ -144,7 +144,7 @@ Toutes les clés sont obligatoires dès le premier module, quitte à être vides
   **Deux listes sont dérivées de `.github/workflows/ci.yml`, aucune n'est recopiée** : les modules coupés, lus dans l'étape gardée par `matrix.modules == 'socle'`, et les **étapes `run:` du job gardé**. Chacune de ces étapes est **soit rejouée, soit exclue avec sa raison écrite** ; une étape que la répartition ne classe pas fait échouer la commande en la nommant, si bien qu'un job qui gagne une étape force une décision au lieu d'hériter du silence. La commande **journalise ce qu'elle exclut et pourquoi**, à côté de ses durées — l'idiome du parcours doré, et la raison pour laquelle aucune liste d'étapes n'est recopiée ici : elle vieillirait à côté du code.
 
   Comme la recette du profil minimal, elle travaille **dans une copie** et le vérifie : couper un module réécrit `config/features.ts` et `generated/`, tous suivis par git. Ce qu'elle ne prouve pas : elle tourne sur le poste et non sur un runner Ubuntu, et elle ne provisionne pas le navigateur des parcours.
-- **Commits** : un commit par story, message impératif en français, portant la recherche, le design et le plan de la story.
+- **Commits** : message impératif en français ; une PR vers `dev`, fusionnée en squash.
 
 ## Data model
 
@@ -232,13 +232,13 @@ s'exécute dans la requête appelante sans reprise, et le démarrage le journali
 
 ## Design / UX
 
-Le design system global est capturé dans `docs/design-system.md` par `/ks-design-system`, à partir de `packages/ui`. Les écrans de chaque story dérivent de ce système ; inventer un composant ou un token hors système est interdit, un besoin non couvert se signale comme « design system gap ».
+Le design system global est décrit dans `docs/design-system.md`, à partir de `packages/ui`. Chaque écran dérive de ce système ; inventer un composant ou un token hors système est interdit, un besoin non couvert se signale comme « design system gap ».
 
 Écrans structurants, par ordre d'apparition : écrans d'authentification (s07), shell de tableau de bord avec navigation issue des modules actifs (s08), paramètres de compte (s08) et d'organisation (s15), page d'accueil sectionnée (s10), page de tarifs dérivée de `config/billing.ts` (s22), back-office superadmin (s37), devenu en s60 la **console** : servie sous `/console` avec un tableau de bord, dans son propre shell, sa surface de navigation renommée `console` (ADR 070) — les écrans étant rangés par zone dans quatre dossiers de routes, `(site)`, `(auth)`, `(app)` et `(console)`, sans changement d'URL (ADR 071). **Depuis s61 (ADR 073), chaque zone a son gabarit** : le site un en-tête — les entrées de la surface de navigation `site` (accueil, blog, docs, tarifs) et un bouton de gabarit « Se connecter » / « Ouvrir l'application », seule entrée écrite à la main —, l'authentification une barre minimale, l'application la barre latérale de la surface `app`. `/` sert toujours le site ; le tableau de bord est sur `/app`, destination par défaut de chaque ouverture de session (`DEFAULT_SIGNED_IN_PATH`, module `auth`). **Depuis s62a (ADR 075), les réglages ont leur zone** : rangés en rubriques depuis s62b — Profil, Sécurité, Notifications (s62c), Organisation, Membres, Facturation, Cookies sous `/app/settings/{profile,security,notifications,organization,members,billing,cookies}` (`ACCOUNT_SCREEN_PATH` = Profil, `SECURITY_SCREEN_PATH`, `NOTIFICATIONS_SETTINGS_SCREEN_PATH`, `ORGANIZATIONS_SCREEN_PATH`, `MEMBERS_SCREEN_PATH`, `BILLING_SCREEN_PATH`, `CONSENT_SETTINGS_SCREEN_PATH`) ; `/app/settings/account` et `/account` répondent 308 vers Profil, dans le gabarit Application, avec une sous-navigation qui rend la cinquième surface de navigation, `settings` ; la barre latérale ne porte plus que les pages du produit construit — le centre de notifications n'y a plus d'entrée depuis s62c, la cloche y mène. **Depuis s62c, la barre du haut de l'application** porte le sélecteur d'organisation (absent sans `organizations` ou sans appartenance ; dans le panneau de navigation sous `md`), la cloche (absente sans `notifications`) et le menu de compte ; changer d'organisation revient à l'écran courant par un champ `next` que la route `switch` seule filtre par `safeRedirectPath`, injecté au module (ADR 076). Les anciens chemins répondent **308** par une **table unique** (`apps/web/lib/legacy-paths.ts`), lue par `apps/web/proxy.ts` sur le chemin interne, avant la redirection de langue, cible re-préfixée et requête conservée ; chaque ligne nomme le module qui sert son écran, et une entrée dont le module est coupé ne redirige pas (ADR 077, qui amende l'ADR 075). **Depuis s63, tout écran de l'application vit sous `/app`** : le centre de notifications (`/app/notifications`), le parcours d'intégration (`/app/onboarding`) et la fonctionnalité réservée (`/app/premium`) y ont rejoint le tableau de bord et les réglages, leurs anciens chemins répondant 308 ; `/` reste le site, `/console` le back-office, `/api` inchangé. `tests/zones.test.ts` refuse une page de `(app)` hors de `app/`, et une entrée de navigation protégée d'un module, hors console et API, qui ne mènerait pas sous `/app`. Chaque déplacement d'écran ajoute une ligne à la table et à la fixture figée des anciens chemins (`tests/fixtures/legacy-screen-paths.json`).
 
 ## Socles transverses
 
-Trois référentiels s'appliquent à **toute** story, au même titre que la règle de dépendance des couches. Ils ne sont pas des phases : ce sont des contraintes permanentes, opposables en revue, et chacun de leurs contrôles nomme la vérification qui échoue s'il est violé.
+Trois référentiels s'appliquent à **tout** changement, au même titre que la règle de dépendance des couches. Ce sont des contraintes permanentes, opposables en revue, et chacun de leurs contrôles nomme la vérification qui échoue s'il est violé.
 
 | Socle | Référentiel | ADR | Portée |
 |---|---|---|---|
@@ -246,7 +246,7 @@ Trois référentiels s'appliquent à **toute** story, au même titre que la règ
 | Fiabilité | `docs/reliability.md` | 014 | Idempotence, dégradation, délais et reprises, migrations rétrocompatibles, observabilité |
 | Dépôt orienté agents | `CODING_STANDARDS.md` + `AGENTS.md` par package | 013 | Règles localisées, contraintes exécutables, génération plutôt que devinette |
 
-Le plan d'une story nomme les sections applicables ; la revue les vérifie en mutant le code, pas en lisant les intentions. Un manquement est un finding **critical**, au même rang qu'une régression fonctionnelle.
+La revue les vérifie en mutant le code, pas en lisant les intentions. Un manquement bloque la fusion, au même rang qu'une régression fonctionnelle.
 
 Conséquence directe sur le contrat de module : une route déclarée par un module indique son niveau de protection (publique, authentifiée, réservée à un rôle, réservée à une offre payante — ADR 043). Sans cela, le §3 du socle de sécurité serait invérifiable autrement que par relecture.
 
@@ -268,4 +268,4 @@ Conséquence directe sur le contrat de module : une route déclarée par un modu
 - **`e2e/modules.spec.ts` n'est pas agnostique à la configuration** : le fichier échoue quand les deux modules de démonstration sont activés (`expect(disabledModules.length).toBeGreaterThan(0)`). La suite Vitest, elle, est agnostique depuis le correctif F7 de s04. **À traiter avant s26** : une recette de modularité qui doit exclure un fichier de test ou tolérer des rouges connus cesse de prouver quoi que ce soit.
 - **Trou d'accessibilité assumé depuis s02** : `eslint-config-next` a dû être abandonné (il tire `eslint-plugin-react@7.37.5`, qui appelle une API supprimée par ESLint 10 et interrompt le lint). Remplacé par `@next/eslint-plugin-next` et `eslint-plugin-react-hooks`. **`jsx-a11y` n'est donc plus couvert.** Vérifié en s08 : aucune version compatible ESLint 10 n'existe (dernière publication 6.10.2, octobre 2024, pair plafonné à `^9`). L'accessibilité repose donc sur les primitives Radix, sur des assertions de rôle et de navigation au clavier dans les parcours, et sur la vérification visuelle tracée en revue — c'est écrit dans `packages/ui/AGENTS.md`. À rétablir dès qu'une version compatible paraît.
 - **ADR 006 n'est enforcé qu'à moitié** : la règle de dépendance entre couches l'est, la **pureté du `domain`** (aucun framework, aucun ORM, aucun SDK) ne l'est pas encore. Le mécanisme réel est `boundaries/dependencies` avec un sélecteur `to: { module: { origin, source } }` **et `checkAllOrigins: true`** — sans cette option, qui vaut `false` par défaut, les dépendances externes ne sont jamais examinées et la règle est inerte (mesuré en s03 dans `dist/Rules/Dependencies.js`). `boundaries/external` est déprécié ; la liste de refus est tranchée en s03, avec le premier module réel.
-- **Deux points restent ouverts et devront être tranchés en Research** : l'accès au consentement quand le module marketing est coupé (finding F57), et le découpage éventuel de s37, la plus grosse story restante.
+- **Deux points restent ouverts et devront être tranchés** : l'accès au consentement quand le module marketing est coupé (finding F57), et le découpage éventuel de s37, la plus grosse story restante.

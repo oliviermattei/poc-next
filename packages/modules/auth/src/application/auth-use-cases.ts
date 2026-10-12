@@ -550,7 +550,7 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
         to,
         template: `auth.${AUTH_EMAIL_TEMPLATES.verification}`,
         // La **seule** règle de langue : celle du destinataire quand elle est
-        // connue, celle du site sinon (`docs/stories.md`, critères 5 et 6).
+        // connue, celle du site sinon.
         locale: emailLocaleFor(knownLocale),
         data: { url },
       })
@@ -614,7 +614,7 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
         to,
         template: `auth.${AUTH_EMAIL_TEMPLATES.magicLink}`,
         // La **seule** règle de langue : celle du destinataire quand elle est
-        // connue, celle du site sinon (`docs/stories.md`, critères 5 et 6).
+        // connue, celle du site sinon.
         locale: emailLocaleFor(knownLocale),
         data: { url },
       })
@@ -644,7 +644,7 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
         to,
         template: `auth.${AUTH_EMAIL_TEMPLATES.passwordReset}`,
         // La **seule** règle de langue : celle du destinataire quand elle est
-        // connue, celle du site sinon (`docs/stories.md`, critères 5 et 6).
+        // connue, celle du site sinon.
         locale: emailLocaleFor(knownLocale),
         data: { url },
       })
@@ -726,7 +726,7 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
         to: newEmail,
         template: `auth.${AUTH_EMAIL_TEMPLATES.verification}`,
         // La **seule** règle de langue : celle du destinataire quand elle est
-        // connue, celle du site sinon (`docs/stories.md`, critères 5 et 6).
+        // connue, celle du site sinon.
         locale: emailLocaleFor(knownLocale),
         data: { url },
       })

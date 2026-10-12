@@ -14,8 +14,8 @@ import type { MarketingIntl } from './marketing-intl'
  * marketing, et disparaît avec elles.
  *
  * Aucun composant `Footer` n'existe au design system : celui-ci est **composé**
- * d'un `Separator`, de liens et de tokens sémantiques. Le manque est signalé
- * dans `docs/designs/s10-marketing-site.md` ; il n'est pas comblé par une
+ * d'un `Separator`, de liens et de tokens sémantiques. C'est un manque du
+ * design system ; il n'est pas comblé par une
  * primitive maison dans `packages/ui`.
  *
  * `aria-label` traduit, et obligatoire : deux régions de navigation anonymes

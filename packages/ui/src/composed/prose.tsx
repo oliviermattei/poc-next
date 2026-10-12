@@ -163,7 +163,7 @@ export const proseComponents = createProseComponents()
  * 448 px à 1440 — plus étroit sur l'écran le plus large, parce que la coquille
  * borne à `max-w-4xl` et que la grille à trois colonnes s'y partage. Les 672 px
  * de `max-w-2xl` n'y sont donc jamais atteints. Sur un article de blog, en une
- * colonne, ils le sont. Le détail et la décision de ne pas élargir la coquille
- * sont dans `docs/designs/s30-docs-site.md` § Manques du design system.
+ * colonne, ils le sont. Le résultat est jugé lisible : élargir la coquille est
+ * un choix de design system, pas une correction de ce composant.
  */
 export const PROSE_CLASSNAME = cn('max-w-2xl space-y-4')

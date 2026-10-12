@@ -268,8 +268,7 @@ que ce second chemin, lui, ne la relisait pas : `findActiveOrganizationId` lisai
 éprouvée par mutation. Le jeu de droits attaché à un identifiant de session est
 donc identique avant et après une bascule ; la rotation d'identifiant que
 `docs/security.md` §2 impose à l'élévation de privilège n'a pas d'objet ici — et
-l'obtenir demanderait un point d'entrée dans le module `auth`, qui n'existe pas
-(`docs/research/s15-organizations.md` §3).
+l'obtenir demanderait un point d'entrée dans le module `auth`, qui n'existe pas.
 
 **s17 l'a réattaquée une troisième fois, dans le sens montant.** Promouvoir
 quelqu'un `admin` ou `owner` **augmente** son pouvoir : c'est le cas typique de

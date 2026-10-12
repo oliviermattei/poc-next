@@ -947,10 +947,9 @@ describe.skipIf(!databaseReachable)('durcissement de la session', () => {
    * **Cité par le plan de s52 comme intermittent (`tests/auth.test.ts:765`), et
    * cause non établie — le symptôme lui-même n'a pas été retrouvé.** La ligne
    * en question porte l'assertion sur le nombre de sessions restantes. Aucun
-   * relevé de ce rouge dans `docs/stories.md`, `docs/STATE.md`, `docs/reviews/`
-   * ni la recherche de la story, et zéro rouge sur les exécutions complètes de
+   * relevé de ce rouge dans les documents de la story, et zéro rouge sur les exécutions complètes de
    * `pnpm test` de cette branche. Nommé pour que le prochain agent sache qu'il
-   * a été cherché, pas pour affirmer qu'il existe.
+   * a été cherché, pas pour affirmer qu'il existe. Suivi dans l'issue #169.
    */
   it('révoque les autres sessions au changement d’email, une fois la nouvelle adresse confirmée', async () => {
     const { email, userId } = await aVerifiedAccount()
@@ -2201,7 +2200,7 @@ describe.skipIf(!databaseReachable)('connexion par un fournisseur externe', () =
       // chemin, `/callback/invente` n'en a pas. Information publique dans un
       // boilerplate ; la fermer demanderait de construire les rappels depuis
       // les fournisseurs configurés, ce que le montage du registre ne permet
-      // pas aujourd'hui (voir `docs/reviews/s12-oauth-signin.md`).
+      // pas aujourd'hui.
       expect(callback.status).toBe(configured.status)
       expect(callback.headers.get('location')).toBe(configured.headers.get('location'))
 
@@ -3340,8 +3339,8 @@ describe.skipIf(!databaseReachable)('second facteur — aucune énumération', (
  * par le greffon, avec ses vraies vérifications. La doublure remplace
  * l'authentificateur, jamais le vérificateur.
  *
- * Ce qu'elle ne prouve pas est écrit dans `docs/research/s14-passkeys.md` §4 :
- * rien de ce qu'un **navigateur** accepte de produire. C'est
+ * Ce qu'elle ne prouve pas : rien de ce qu'un **navigateur** accepte de
+ * produire. C'est
  * `e2e/passkeys.spec.ts` qui s'en charge.
  * ------------------------------------------------------------------------- */
 

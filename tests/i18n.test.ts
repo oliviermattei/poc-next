@@ -226,8 +226,8 @@ const neutralise = (source: string): string => {
  * La revue de s09 a mesuré que la première version n'extrayait que les
  * littéraux entre apostrophes ou guillemets et les nœuds de texte JSX sans
  * accolade : un littéral gabarit (`` `Bonjour ${nom}` ``) et une phrase
- * concaténée passaient au vert. C'est le mode d'échec n°4 du catalogue de
- * `docs/STATE.md` — « garde textuelle contournée par un accent grave ».
+ * concaténée passaient au vert. C'est un mode d'échec déjà rencontré dans le
+ * dépôt : « garde textuelle contournée par un accent grave ».
  * ------------------------------------------------------------------------- */
 
 /** Un littéral entre apostrophes ou guillemets. */
@@ -456,8 +456,8 @@ const hardcodedIn = (source: string): readonly string[] => {
  * pré-contrôle rapide, et parce qu'il voit ce qu'un rendu ne voit pas : le
  * texte écrit dans une branche non prise et dans une surface flottante fermée —
  * c'est ainsi que le « Fermer » de `packages/ui/src/components/sheet.tsx` a été
- * trouvé. Ce qui lui échappe, la seconde revue de s09 l'a mesuré (chapitre
- * « C1 — le filet élargi », `docs/reviews/s09-i18n.md`) : un mot unique sans
+ * trouvé. Ce qui lui échappe, la seconde revue de s09 l'a mesuré (constat
+ * « C1 — le filet élargi ») : un mot unique sans
  * accent rangé dans un conteneur non affiché — variable, littéral d'objet,
  * tableau —, et la concaténation de fragments d'un seul mot sans espace
  * mitoyenne. C'est exactement pour cela que `tests/rendered-text.test.ts` prend

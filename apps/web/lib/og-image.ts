@@ -3,8 +3,8 @@
  *
  * Un fichier statique unique, servi par l'application (`apps/web/public`), et
  * non un gabarit rendu à la requête : le design system n'a **ni gabarit
- * d'image sociale, ni dimensions, ni jetons applicables** — c'est le manque
- * n°2 de `docs/designs/s29-blog-mdx.md`, et un manque se signale plutôt que se
+ * d'image sociale, ni dimensions, ni jetons applicables** — c'est un manque
+ * du design system (issue #152), et un manque se signale plutôt que se
  * comble en passant. La décision complète, ses options rejetées et ce que le
  * système ne couvre toujours pas vivent dans `scripts/og-image.ts`, qui produit
  * le fichier depuis les jetons du dépôt, et dans l'ADR 054.

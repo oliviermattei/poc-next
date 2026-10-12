@@ -96,7 +96,7 @@ export const organizationMember = pgTable(
  * livraison de s15, et la revue l'a mesuré — une sélection survivait au retrait
  * du membre et `dataOwnerOf` rendait encore l'organisation quittée. Il n'y a
  * donc pas d'élévation de privilège à cet endroit (`docs/security.md` §2 ;
- * ADR 025 ; `docs/research/s15-organizations.md` §3).
+ * ADR 025).
  *
  * **Ce que cette table ne garantit pas** : la sélection a le compte pour clé
  * primaire, donc une seule organisation active par compte. Deux onglets sur

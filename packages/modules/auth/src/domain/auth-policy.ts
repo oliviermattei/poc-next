@@ -2,7 +2,7 @@
  * La politique d'authentification : **de la configuration, pas des constantes
  * en dur**.
  *
- * `docs/stories.md` le nomme comme le piège de la story — « longueur minimale
+ * C'était le piège nommé de la story (s07) — « longueur minimale
  * de mot de passe et durées de validité des liens sont de la configuration ».
  * Elles vivent donc dans un objet unique, injecté au point de composition
  * (`apps/web/lib/auth.ts`), que le propriétaire du projet lit et modifie d'un

@@ -21,7 +21,7 @@ import { grantsOwnership } from './permissions'
  * Le rôle d'une personne invitée : **simple membre, toujours**.
  *
  * Choisir le rôle à l'invitation est une permission, donc s17
- * (`docs/stories.md` : « un admin peut inviter et retirer des members »). Ce
+ * (son critère : « un admin peut inviter et retirer des members »). Ce
  * n'est pas un oubli de s16 : c'est une constante, et le jour où s17 la rendra
  * variable, ce sera par une règle de permission, pas par un champ de
  * formulaire libre.

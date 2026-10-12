@@ -358,7 +358,7 @@ describe('un module ne dépend pas du package de base de données', () => {
  * (`import('@radix' + '-ui/…')`), les fichiers du harnais de test (`tests/`,
  * `e2e/`, `packages/*\/src/**\/*.test.ts`) — exception nommée, où
  * `no-restricted-imports` est éteint et qu'aucune portée `no-restricted-syntax`
- * ne vise —, et `templates/` comme `docs/`, qui ne portent aucune source
+ * ne vise —, et `docs/`, qui ne porte aucune source
  * aujourd'hui. `generated/` y figurait aussi jusqu'à la seconde passe de revue :
  * il est désormais dans la portée. Mesuré une écriture à la fois contre la
  * configuration réelle, le 31 août 2026.

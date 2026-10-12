@@ -902,8 +902,8 @@ installation « site public coupé, blog activé » **réaffiche** la ligne
 produit par `scripts/og-image.ts` depuis les jetons de `packages/ui/src/styles.css`
 et la police du design system. Ce n'est pas un gabarit rendu à la requête :
 `next/og` n'existe nulle part ici et le design system n'a **ni gabarit d'image
-sociale, ni dimensions, ni marges de sécurité** — c'est le manque n°2 de
-`docs/designs/s29-blog-mdx.md`, **signalé et toujours pas comblé**. Deux
+sociale, ni dimensions, ni marges de sécurité** — c'est un manque du
+design system, **signalé et toujours pas comblé** (issue #152). Deux
 conséquences : `Dockerfile` recopie `apps/web/public` (la sortie autonome ne
 trace pas ce dossier, `tests/deployment.test.ts` le garde), et `app/layout.tsx`
 pose `metadataBase` depuis `APP_URL` — sans elle, Next rend les URL de
@@ -1204,8 +1204,7 @@ montage à part** :
   aucun plafond, aucun écran n'en interpole, et le message qui *nomme* la limite
   (`organizations.error.seat_limit_reached`) n'est rendu par aucun parcours — le
   propriétaire n'apprend donc pas qu'on a été refusé à sa porte. Le canal
-  manquant est `s32-notifications-inapp` ; le détail est dans
-  `docs/plans/s47-seat-limit.md`. Il est séparé pour la raison qui a sorti la
+  manquant est `s32-notifications-inapp`. Il est séparé pour la raison qui a sorti la
   permission — écrite dans `lib/organizations.ts`, la règle n'aurait été
   neutralisable par aucun cas. Son **fil**, lui, est mesuré à part :
   `tests/billing.test.ts` prend le `seatSync` que `lib/organizations.ts` donne
@@ -1314,8 +1313,7 @@ tierces dans `config/security.ts`. `app/billing-actions.tsx` navigue donc par
 écrite plutôt que découverte** : le tunnel de paiement ne fonctionne pas sans
 JavaScript — le bouton reste éteint et un `<noscript>` le dit. Une story qui
 voudrait un formulaire natif vers le fournisseur devra déclarer ces origines,
-avec la justification écrite qu'exige `docs/security.md` §1 — voir
-`docs/research/s19-subscribe-stripe.md` §7.
+avec la justification écrite qu'exige `docs/security.md` §1.
 
 ## Le paiement d'un visiteur sans compte (s24)
 

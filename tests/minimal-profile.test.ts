@@ -668,7 +668,7 @@ describe('l’arbre de travail, avant et après la recette', () => {
   it('accepte un arbre inchangé, sale ou propre', () => {
     expect(() => assertWorkingTreeUnchanged([], [])).not.toThrow()
     expect(() =>
-      assertWorkingTreeUnchanged(['?? docs/plans/s26.md'], ['?? docs/plans/s26.md']),
+      assertWorkingTreeUnchanged(['?? notes/brouillon.md'], ['?? notes/brouillon.md']),
     ).not.toThrow()
   })
 

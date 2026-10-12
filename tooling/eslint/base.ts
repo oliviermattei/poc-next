@@ -69,7 +69,7 @@ export const baseConfig = tseslint.config(
  * et c'est `tests/lint-rules.test.ts` qui l'analyse, avec sa propre
  * configuration. Sans cette exclusion, `pnpm lint` échouerait en permanence.
  *
- * `.claude/worktrees/**` : les worktrees des voies parallèles vivent **dans**
+ * `.claude/worktrees/**` : les worktrees des agents parallèles vivent **dans**
  * le dépôt. Sans cette ligne, `pnpm lint` juge le travail en cours d'une autre
  * branche et échoue en nommant un fichier absent de la sienne — mesuré à la
  * fusion de s14, sur une variable inutilisée d'un test que s18 était en train

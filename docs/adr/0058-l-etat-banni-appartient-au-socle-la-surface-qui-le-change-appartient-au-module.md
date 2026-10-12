@@ -13,7 +13,7 @@ La story demande deux choses qui, prises telles quelles, se contredisent :
 - **critère 14** : « module `admin` non activé : aucune route de back-office,
   aucun rôle de superadmin ».
 
-`docs/research/s37-admin-users.md` (fait 4) en tire le point dur : « le
+La recherche de s37 en tirait le point dur : « le
 bannissement appartiendrait au module `admin` ; la connexion appartient à
 `auth`, qui est du **socle** ». Il faudrait alors que le chemin de connexion
 consulte quelque chose qui **peut ne pas être là** — un module optionnel greffé

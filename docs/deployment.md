@@ -15,7 +15,7 @@ ailleurs :
 | Checklist des variables | **gardée par un test** | `tests/deployment.test.ts`, dérivée d'`ENV_KEYS` |
 | Construction d'image en CI | **en place** | job `image` de `.github/workflows/ci.yml` : validation de la pile, `runner` **et** `migrator` construits, image démarrée sans variables ; `actionlint` vert |
 | Sonde de l'image | **exercé** | conteneur lancé avec `PORT=8080` : `healthy`. La sonde figée sur `3000` y répond « connection refused » |
-| Recette Coolify | **guide livré, exécution non faite** | le déploiement réel sur l'instance du propriétaire est un geste humain ; la trace (URL, date, version) est à consigner dans `docs/reviews/s27-deployment.md` |
+| Recette Coolify | **guide livré, exécution non faite** | le déploiement réel sur l'instance du propriétaire est un geste humain ; la trace (URL, date, version) se consigne dans l'issue #145 |
 | Recette Vercel | **guide livré, exécution non faite** | aucun compte, aucun jeton et aucune configuration Vercel dans cet environnement |
 | Deux hôtes (`APP_HOST`) | **mesuré en local, recette de production non faite** | `GOLDEN_PATH_HOSTS=split pnpm test:golden-path` (session propre à l'application, consentement sur le parent, au navigateur) ; la recette à deux vrais noms et TLS, plus bas, est un geste humain dont la trace se consigne dans l'issue qui la suit |
 
@@ -565,8 +565,7 @@ pas faite — `pnpm sourcemaps:release` n'a jamais tourné, faute de
 **Non exécuté.** Le mécanisme est livré et éprouvé localement ; le déploiement
 réel sur l'instance du propriétaire crée un projet, une base et une application
 sur son infrastructure — c'est un geste humain. La trace (URL déployée, date,
-version) se consigne dans `docs/reviews/s27-deployment.md`, comme le critère 5
-l'exige.
+version) se consigne dans l'issue #145, comme le critère 5 de s27 l'exigeait.
 
 Coolify sait déployer ce dépôt de deux façons. **La seconde est celle que ce
 dépôt privilégie** : elle réutilise la pile éprouvée ci-dessus.
@@ -627,8 +626,8 @@ ressource base, ressource application, variables, sonde — ne change pas.
 ## Guide Vercel
 
 **Non exécuté.** Aucun compte, aucun jeton et aucune configuration Vercel dans
-cet environnement. Le guide est livré ; sa recette reste à faire, et sa trace à
-consigner dans la revue.
+cet environnement. Le guide est livré ; sa recette reste à faire, et sa trace se
+consigne dans l'issue #145.
 
 1. *Import Project*, dépôt Git, **Root Directory** = `apps/web`.
 2. Vercel détecte Next et le monorepo pnpm. **Ne pas** poser `output:

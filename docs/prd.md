@@ -84,7 +84,7 @@ Scale: 1 trivial CRUD · 2 form + persistence + list · 3 business logic / sever
 ### The angle (done differently / better)
 1. **Des modules réellement autonomes, pas des flags d'UI.** MakerKit masque avec des booléens d'environnement en laissant les tables `organizations`, `members` et `invitations` dans tous les projets, y compris solo. Supastarter configure sans découper. Ici, un module désactivé ne pose ni table, ni route, ni entrée de nav, ni webhook. Un projet solo n'a aucune trace du multi-tenant.
 2. **Un CLI de toggle réversible.** `npx ks toggle <module>` édite la config typée et déclenche la migration correspondante, à tout moment de la vie du projet — pas seulement au scaffolding, contrairement aux générateurs à la create-t3-app.
-3. **Traçabilité du pipeline killer-saas.** Chaque module arrive avec sa recherche, son plan, ses tests et sa revue versionnés dans `docs/`. Un boilerplate acheté livre du code sans le raisonnement ; ici on hérite des deux, ce qui rend la reprise et la modification possibles.
+3. **Le raisonnement versionné avec le code.** Chaque décision structurante a son ADR dans `docs/adr/`, avec les options écartées et pourquoi, et chaque paquet son `AGENTS.md`. Un boilerplate acheté livre du code sans le raisonnement ; ici on hérite des deux, ce qui rend la reprise et la modification possibles.
 
 4. **Conformité et robustesse par défaut.** Aucun des quatre ne livre de rate limiting, de captcha, d'export de données ni de bannière de consentement — un SaaS européen doit tout ajouter à la main dès son premier utilisateur. Ici c'est dans le socle.
 
@@ -94,12 +94,11 @@ Scale: 1 trivial CRUD · 2 form + persistence + list · 3 business logic / sever
 - **Politique d'adapters** : chaque module pluggable (mail, storage, analytics, monitoring, jobs, paiement) expose une interface typée avec **une seule implémentation livrée et testée**. Ajouter un provider revient à écrire une classe, sans toucher au domaine.
 - **Bundle de providers par défaut** : Resend (mail), S3 / Cloudflare R2 (storage), Sentry (erreurs), PostHog (analytics), Inngest (jobs), Stripe (paiement), Vercel comme cible de déploiement de référence, Docker et Coolify documentés. Choix fait pour la vitesse de mise en service et les offres gratuites ; la dépendance à six SaaS tiers est assumée et isolée derrière les adapters.
 - **Modularité dès la première story.** Si le premier module triche sur la règle (schéma, routes, nav, webhooks, traductions à l'intérieur du module), le système entier s'écroule. C'est le risque principal du projet.
-- **Pipeline killer-saas obligatoire** : aucune ligne de code avant un plan validé, aucun ship avant une revue passée.
 - **Contrainte de commercialisation ultérieure** : aucune donnée ni convention personnelle en dur, toute configuration par `.env` ou `config/`.
 - **Pas de contrainte de délai.** L'ordre de livraison est décidé techniquement.
 
 ## Success criteria
-1. **Chrono clone → premier paiement.** Depuis `git clone` : compte créé, organisation créée, abonnement Stripe encaissé en mode test, en **moins de 30 minutes**, sans écrire une ligne de code applicatif. Mesure de recette du repo, rejouée à chaque story.
+1. **Chrono clone → premier paiement.** Depuis `git clone` : compte créé, organisation créée, abonnement Stripe encaissé en mode test, en **moins de 30 minutes**, sans écrire une ligne de code applicatif. Mesure de recette du repo, rejouée par `pnpm test:golden-path`.
 2. **Un projet réel en production.** Un SaaS d'Olivier tourne en prod sur le boilerplate, avec au moins un paiement Stripe encaissé en live. Validation finale.
 3. **Parité sur le périmètre.** Chaque feature du tableau « Replicated » est implémentée, couverte par des tests, et pilotable depuis `config/features.ts`.
 4. **Preuve de modularité.** Sur un projet généré avec multi-tenant, seat billing et i18n désactivés : l'application démarre, la suite de tests passe, et il ne reste **aucune route morte, aucune entrée de nav orpheline, aucune table inutilisée** en base.

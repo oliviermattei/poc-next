@@ -197,7 +197,7 @@ test('tout `<style>` injecté par une bibliothèque porte le nonce de la requêt
       // La surcouche de développement de Next pose ses propres feuilles —
       // `@font-face` de sa police, styles de son panneau d'erreurs — et elle
       // n'existe pas en production : mesuré, le HTML de `next start` ne contient
-      // aucun `<style>` (`docs/research/s45-security-headers.md` §2.1). Les
+      // aucun `<style>` (mesuré en s45). Les
       // juger ici ferait rougir ce cas pour du code que le produit n'embarque
       // pas. Ce sont les seules exclusions, et elles se reconnaissent au
       // préfixe que Next donne à tout ce qui lui appartient.

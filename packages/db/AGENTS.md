@@ -115,8 +115,7 @@ base neuve : `pnpm test:golden-path`, `pnpm test:minimal-profile`,
 Le comptage est **dérivé d'`information_schema`**, jamais d'une liste de tables,
 et le schéma `drizzle` en est exclu : ses journaux de migration porteraient des
 lignes sur une base migrée mais non semée, et le plancher les prendrait pour des
-données. Le **nombre** de tables n'est écrit nulle part à côté du code : il est
-daté dans `docs/research/s58-donnees-de-demonstration.md`, et la commande
+données. Le **nombre** de tables n'est écrit nulle part à côté du code : la commande
 l'imprime. Ce qu'aucun plancher ne peut être : « la base a gagné des lignes » à
 chaque exécution — un seed rejoué n'en ajoute aucune, par construction.
 

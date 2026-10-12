@@ -599,7 +599,7 @@ describe('empreinte d’un code de secours', () => {
   })
 
   it('hache la saisie **sans condition** : une empreinte soumise comme code est hachée à son tour', () => {
-    // Le constat C1 de `docs/reviews/s13-two-factor.md` : la fonction
+    // Défaut corrigé en s13 : la fonction
     // reconnaissait une empreinte et la rendait inchangée, si bien qu'une
     // valeur lue en base et postée sur la route valait le code lui-même. Ce
     // qui vient du monde extérieur n'a pas le droit de se reconnaître.

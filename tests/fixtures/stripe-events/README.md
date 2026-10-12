@@ -103,8 +103,8 @@ avec sa date.
 **Ce que la capture ne fait pas** : elle n'exécute pas le scénario du parcours
 doré contre Stripe. `GOLDEN_PATH_PAYMENTS=live` éprouve les clés et capture les
 formes ; il ne clone rien, ne crée aucune base et n'ouvre aucun navigateur. Le
-critère 7 de la story demandait davantage, et l'écart est écrit dans
-`docs/plans/s25-golden-path-e2e.md` plutôt que masqué.
+critère 7 de la story (s25) demandait davantage, et l'écart est suivi dans
+l'issue #107 plutôt que masqué.
 
 Le régime `live` est **refusé en CI** et refuse une clé qui n'est pas
 `sk_test_…` : aucun paiement n'est encaissé par ce harnais.

@@ -23,9 +23,9 @@ const repoPath = (name: string): string => fileURLToPath(new URL(`../${name}`, i
  *
  * | Document | Ce qu'il écrit | Ce que la liste porte |
  * |---|---|---|
- * | `docs/stories.md`, critère 2 | « les trois passent dix fois de suite » | trois, puis huit, puis treize |
- * | `docs/research/s52-*.md` | « sept cas sur quatre fichiers » | huit cas sur **cinq** fichiers |
- * | `docs/plans/s52-*.md` | « onze cas » | treize, une fois `tests/auth.test.ts` compté |
+ * | le critère 2 de la story | « les trois passent dix fois de suite » | trois, puis huit, puis treize |
+ * | sa recherche | « sept cas sur quatre fichiers » | huit cas sur **cinq** fichiers |
+ * | son plan | « onze cas » | treize, une fois `tests/auth.test.ts` compté |
  *
  * D'où cette liste : un seul endroit, et le critère se lit sur elle. Ce fichier
  * ne compte rien non plus — il vérifie un **plancher** (la liste n'est pas

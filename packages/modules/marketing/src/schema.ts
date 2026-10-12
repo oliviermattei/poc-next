@@ -74,8 +74,8 @@ export const publicSubscription = pgTable(
  * quand un en-tête en donne une — n'entre jamais en clair dans cette table.
  * C'est pour cela qu'elle n'est pas déclarée comme catégorie de données au
  * contrat : aucune requête de ce module ne peut relier une de ces lignes à un
- * compte. La question reste discutable, et elle est écrite comme telle dans
- * `docs/research/s11-public-forms.md` §6.4.
+ * compte. La question reste discutable, et elle tombe avec la table, dont la
+ * suppression est suivie dans l'issue #105.
  *
  * **Abandonnée par s28, et volontairement pas supprimée.** Le compteur a
  * convergé vers le port partagé (ADR 050) : **plus rien n'écrit ici**. La table

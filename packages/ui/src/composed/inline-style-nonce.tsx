@@ -11,7 +11,7 @@ import { setNonce } from 'get-nonce'
  * l'ouverture**. Sous une politique de sécurité du contenu stricte, cet élément
  * est refusé s'il ne porte pas le nonce de la requête — mesuré : le fond de page
  * continue de défiler derrière le panneau mobile ouvert, et la console signale
- * une violation `style-src-elem` (`docs/research/s45-security-headers.md` §2.2).
+ * une violation `style-src-elem` (mesuré en s45).
  *
  * `setNonce` est l'API que `react-style-singleton` publie pour cela, et la seule
  * qui ne dépende pas d'un identifiant de bundler : la lecture par défaut passe

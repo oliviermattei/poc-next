@@ -1,4 +1,4 @@
-# Prise en main — du clone au ship
+# Prise en main — du clone à la production
 
 > Document d'accueil. Il s'adresse à quelqu'un qui vient d'obtenir ce dépôt et
 > qui veut mettre **son** SaaS en production. Il ne remplace pas les documents
@@ -252,27 +252,18 @@ Un module qui expose des composants les sort par un **second point d'entrée**
 (`@repo/module-<nom>/presentation`) : le baril principal ne réexporte jamais de
 `.tsx`, sans quoi `pnpm typecheck` casse sur `@repo/db`.
 
-### Le pipeline
+### La façon de travailler
 
-Aucune ligne de code n'est écrite hors du pipeline killer-saas (`AGENTS.md`) :
-
-```
-/ks-research → /ks-design → /ks-plan → /ks-execute → /ks-review → /ks-ship
-```
-
-Une story = une branche `feature/<story-id>` = une PR. `/ks-ship` refuse de
-tourner si `docs/reviews/<id>.md` ne finit pas par `Ship allowed: yes`.
-`/ks-status` dit où vous en êtes ; `/ks-help` imprime la carte.
-
-L'exception, annoncée explicitement : le **Quick Fix** — une couleur, un espace,
-une chaîne de texte. Sur `dev`, diff minimal, vérification proportionnée.
+La chaîne de travail — spec, tickets, implémentation, revue, PR vers `dev` —
+est décrite dans `AGENTS.md`, section « Agent skills ». Une revue juge le code
+contre `CODING_STANDARDS.md`.
 
 ---
 
 ## 7. Étape 6 — Vérifier
 
 Le tableau complet, avec ce qui fait échouer chaque commande, est dans
-`AGENTS.md`. Les six du quotidien :
+`docs/commands.md`. Les six du quotidien :
 
 ```bash
 pnpm typecheck        # racine, tests/ et chaque package
@@ -283,7 +274,7 @@ pnpm build            # compile
 pnpm run audit        # vulnérabilités « élevé » + exceptions datées
 ```
 
-Les recettes, plus lentes, à jouer avant un ship :
+Les recettes, plus lentes, à jouer avant une mise en production :
 
 ```bash
 pnpm test:golden-path      # clone → premier paiement, sur une base créée pour l'exécution
@@ -325,7 +316,7 @@ URL de rappel chez vos fournisseurs OAuth.
 
 ---
 
-## 9. Après le ship — l'exploitation
+## 9. Après la mise en production — l'exploitation
 
 | Besoin | Où |
 |---|---|
@@ -353,8 +344,9 @@ MinIO, Umami…) · tout l'appareil commercial.
 Trois choses de plus, qui ne sont pas au cimetière mais **ne sont pas livrées** :
 
 - le **widget de feedback** (`s43`) et la **roadmap publique avec votes**
-  (`s44`) : la recherche est faite (`docs/research/`), rien n'est implémenté ;
-- le **premier déploiement hors de ce poste** (`s59`) : ni plan ni revue ;
+  (`s44`) : rien n'est implémenté, la reprise est suivie dans les issues #179
+  et #180 ;
+- le **premier déploiement hors de ce poste** (`s59`) : suivi dans l'issue #145 ;
 - le **captcha** : déclaré et gardé, mais **aucun fournisseur n'est livré** ;
 - la **réconciliation objets/lignes du stockage** : la commande n'existe pas
   encore (voir `packages/modules/storage/AGENTS.md`).
@@ -372,11 +364,10 @@ PostHog.
 | Question | Document |
 |---|---|
 | Qu'est-ce qu'on construit, et qu'est-ce qu'on refuse ? | `docs/prd.md` |
-| Quelles fonctionnalités, avec quels critères ? | `docs/stories.md` |
 | Comment c'est fait techniquement ? | `docs/architecture.md` |
 | Pourquoi ce choix plutôt qu'un autre ? | `docs/adr/` |
-| Quelles règles ne se négocient pas ? | `AGENTS.md`, `docs/security.md`, `docs/reliability.md` |
-| À quoi ça ressemble ? | `docs/design-system.md`, `docs/designs/<story>.md` |
+| Quelles règles ne se négocient pas ? | `CODING_STANDARDS.md`, `docs/security.md`, `docs/reliability.md` |
+| À quoi ça ressemble ? | `docs/design-system.md` |
 | Comment on met en production ? | `docs/deployment.md` |
-| Où en est le projet ? | `docs/STATE.md`, `/ks-status` |
+| Où en est le projet ? | les issues GitHub (`gh issue list`) |
 | Ce que le package peut importer et ne doit pas contenir | l'`AGENTS.md` **de ce package** |

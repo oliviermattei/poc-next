@@ -610,8 +610,7 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
    * montage : `authModule.routes` est matérialisé à l'import de
    * `config/features.ts`, donc par `pnpm ks`, `pnpm db:generate` et le
    * processus Playwright, dont aucun n'a l'environnement validé de
-   * l'application. La démonstration est dans
-   * `docs/reviews/s12-oauth-signin.md`.
+   * l'application.
    *
    * Ce n'est pas ce que le plan annonçait — il prévoyait un 404 identique à un
    * chemin non déclaré. La mesure a tranché : `e2e/modules.spec.ts` exige
@@ -1438,7 +1437,7 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
         // `allowPasswordless` n'est pas posé), et aucun crochet n'y substitue
         // une autre preuve. La reproduire ici voudrait dire réécrire la
         // rotation de session hors de la bibliothèque — précisément ce que la
-        // frontière du module lui confie. Voir `docs/plans/s13-two-factor.md`.
+        // frontière du module lui confie.
         if (typeof body?.password !== 'string' || body.password === '') {
           return badRequest('mot de passe courant manquant')
         }
