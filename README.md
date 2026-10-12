@@ -48,7 +48,7 @@ qui sort verte sans rien semer est ce que cette recette a corrigé.
 
 ### Voir le back-office
 
-Le back-office (`/admin/users`) répond 404 à tout le monde tant qu'aucun
+Le back-office (`/console`) répond 404 à tout le monde tant qu'aucun
 superadmin n'existe. Le premier se désigne par une variable, et seulement tant
 qu'il n'y en a aucun :
 
@@ -57,7 +57,7 @@ qu'il n'y en a aucun :
 SUPERADMIN_EMAIL=ada@demonstration.invalid
 ```
 
-Redémarrez `pnpm dev`, reconnectez-vous, et l'entrée « Administration » apparaît
+Redémarrez `pnpm dev`, reconnectez-vous, et l'entrée « Console » apparaît
 dans la navigation.
 
 ### Ce que la démonstration ne montre pas

@@ -21,19 +21,20 @@ dans **une seule application Next** (`apps/web`), pas dans quatre déploiements.
 | Surface | Adresse | Qui y entre | D'où elle vient |
 |---|---|---|---|
 | **Site public** (landing, pricing, blog, docs, changelog, légal, contact, newsletter, liste d'attente) | `/`, `/pricing`, `/blog`, `/docs`, `/changelog`, `/legal/*`, `/contact`, `/waitlist` | tout le monde | modules `marketing`, `billing`, `blog`, `docs`, `changelog` |
-| **Application connectée** (le SaaS lui-même) | `/` une fois connecté, plus `/account`, `/organizations`, `/notifications`, `/billing`, `/premium` | un compte | modules `auth`, `organizations`, `notifications`, `billing`, `storage` |
-| **Administration de l'organisation** (le client gère ses propres utilisateurs) | `/organizations` | un membre, selon son rôle | module `organizations` |
-| **Back-office de l'éditeur** (vous) | `/admin/users`, `/admin/organizations`, `/admin/revenue`, `/admin/subscriptions` | un **superadmin** de plateforme | modules `admin`, `billing`, `organizations`, `marketing` |
+| **Application connectée** (le SaaS lui-même) | `/app` (tableau de bord), `/app/settings/*` (profil, sécurité, organisation, membres, facturation, notifications, cookies), `/app/notifications`, `/app/premium` | un compte | modules `auth`, `organizations`, `notifications`, `billing`, `storage` |
+| **Administration de l'organisation** (le client gère ses propres utilisateurs) | `/app/settings/organization`, `/app/settings/members` | un membre, selon son rôle | module `organizations` |
+| **Back-office de l'éditeur** (vous) | `/console`, `/console/users`, `/console/organizations`, `/console/revenue`, `/console/subscriptions` | un **superadmin** de plateforme | modules `admin`, `billing`, `organizations`, `marketing` |
 
-La racine `/` est **une seule page à quatre sorties** (`apps/web/app/page.tsx`) :
-parcours d'intégration en cours → redirection vers lui ; compte connecté →
-tableau de bord ; visiteur anonyme et site public activé → l'accueil marketing ;
-visiteur anonyme et module `marketing` coupé → redirection vers `/sign-in`.
+La racine `/` sert **toujours le site public**, connecté ou non
+(`apps/web/app/(site)/page.tsx`). Site public coupé, elle redirige le visiteur
+anonyme vers `/sign-in` et le compte connecté vers `/app`. Le tableau de bord
+est `/app` (`apps/web/app/(app)/app/page.tsx`), destination par défaut après
+toute connexion ; il renvoie vers le parcours d'intégration s'il est en cours.
 Aucune de ces branches ne nomme un module : elles se départagent sur des
 données.
 
 **Le tableau de bord connecté est volontairement vide** — un `EmptyState` qui
-renvoie vers `/account`. C'est là que **votre** produit se branche. Le
+renvoie vers `/app/settings/profile`. C'est là que **votre** produit se branche. Le
 boilerplate livre tout ce qui entoure le produit, jamais le produit.
 
 ### La navigation est dérivée, jamais écrite
@@ -84,7 +85,7 @@ en service. Il est rejouable et imprime son comptage (« *n* avant, *n* après �
 
 ### Ouvrir le back-office
 
-`/admin/users` répond **404 à tout le monde** tant qu'aucun superadmin n'existe.
+`/console` répond **404 à tout le monde** tant qu'aucun superadmin n'existe.
 Le premier se désigne par une variable, et seulement tant qu'il n'y en a aucun :
 
 ```bash
@@ -117,23 +118,23 @@ surfaces et vous évite de chercher plus tard.
    apparaît si des scripts non essentiels sont déclarés.
 2. **L'inscription** — `/sign-up`, puis l'email de vérification : ouvrez le
    fichier écrit dans `apps/web/.mail/`. Essayez aussi `/forgot-password`.
-3. **L'application connectée** — `/` (tableau de bord vide), `/notifications`.
-4. **Les réglages du compte** — `/account` : nom, email, mot de passe, avatar
+3. **L'application connectée** — `/app` (tableau de bord vide), `/app/notifications`.
+4. **Les réglages du compte** — `/app/settings/profile` et `/app/settings/security` : nom, email, mot de passe, avatar
    (stockage), sessions actives, méthodes de connexion (OAuth, passkeys),
    double authentification, préférences de consentement, **export de ses
    données** et **suppression de compte** (le pack RGPD).
-5. **L'organisation** — `/organizations` : créer, renommer, changer
+5. **L'organisation** — `/app/settings/organization` et `/app/settings/members` : créer, renommer, changer
    d'organisation, inviter un membre, relancer ou révoquer une invitation,
    retirer un membre, changer un rôle, transférer la propriété, supprimer
    l'organisation. C'est le « panneau d'administration du client ».
-6. **Le paiement** — `/pricing` → tunnel simulé → `/billing` (portail). Testez
-   aussi `/premium` : une fonctionnalité réservée par `config/gating.ts`.
-7. **Le back-office** — `/admin/users` (liste, détail, bannir/débannir,
+6. **Le paiement** — `/pricing` → tunnel simulé → `/app/settings/billing` (portail). Testez
+   aussi `/app/premium` : une fonctionnalité réservée par `config/gating.ts`.
+7. **Le back-office** — `/console/users` (liste, détail, bannir/débannir,
    révoquer une session, envoyer une réinitialisation de mot de passe, promouvoir
    ou révoquer un superadmin, **emprunter la session** d'un client pour
-   l'assister), `/admin/organizations`, `/admin/revenue` (récurrent estimé et
+   l'assister), `/console/organizations`, `/console/revenue` (récurrent estimé et
    ponctuel constaté, par devise, avec les états d'abonnement),
-   `/admin/subscriptions` (inscriptions publiques : newsletter et liste
+   `/console/subscriptions` (inscriptions publiques : newsletter et liste
    d'attente, exportables en CSV).
 
 ---
@@ -173,7 +174,7 @@ pilotables depuis un agent.
 
 ### 4.2 `.env` — les secrets et les branchements
 
-37 variables, toutes validées **au démarrage** par Zod : une variable absente ou
+34 variables, toutes validées **au démarrage** par Zod : une variable absente ou
 malformée arrête le processus **en la nommant**. Il n'y a aucun `process.env`
 hors du module de configuration.
 
@@ -328,10 +329,10 @@ URL de rappel chez vos fournisseurs OAuth.
 
 | Besoin | Où |
 |---|---|
-| Voir le revenu, les états d'abonnement | `/admin/revenue` |
-| Consulter comptes et organisations, assister un client | `/admin/users`, `/admin/organizations` (emprunt de session, journalisé aux deux bouts) |
-| Bannir, révoquer une session, réinitialiser un mot de passe | `/admin/users/<id>` |
-| Récupérer les inscriptions newsletter / liste d'attente | `/admin/subscriptions` (export CSV) |
+| Voir le revenu, les états d'abonnement | `/console/revenue` |
+| Consulter comptes et organisations, assister un client | `/console/users`, `/console/organizations` (emprunt de session, journalisé aux deux bouts) |
+| Bannir, révoquer une session, réinitialiser un mot de passe | `/console/users/<id>` |
+| Récupérer les inscriptions newsletter / liste d'attente | `/console/subscriptions` (export CSV) |
 | Recoller l'état d'abonnement avec Stripe | `pnpm billing:reconcile` (statut : Stripe fait foi ; sièges : le nombre de membres fait foi) |
 | Vérifier que l'app est vivante | `GET /api/health` (touche la vraie dépendance) |
 | Erreurs, usages | Sentry et PostHog — **hors de l'application** |
