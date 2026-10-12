@@ -3,14 +3,42 @@ title: "Bienvenue"
 description: "Ce que fait le boilerplate, les services qu’il prend en charge, et où trouver comment activer chacun."
 ---
 
-Ce Guide s’adresse à vous, propriétaire du projet : il explique ce que le boilerplate fait, comment le configurer, activer ou couper chaque fonctionnalité, brancher chaque service et mettre votre SaaS en production.
+Ce Guide s’adresse à vous, **propriétaire du projet** : vous avez le boilerplate entre les mains et vous voulez en faire votre SaaS. Il explique ce que le boilerplate fait, comment l’installer, le configurer, activer ou couper chaque fonctionnalité, brancher chaque service et le mettre en production.
 
-Il ne remplace pas la [documentation produit](/fr/fonctionnalites/documentation-produit), celle que vous écrivez pour vos clients.
+Dans ce Guide, un **client** est une personne qui utilise votre SaaS une fois qu’il est en ligne.
 
-Pour commencer, suivez [Installer le projet](/fr/demarrer/installer).
+<Callout type="info" title="Le Guide n’est pas la documentation produit">
+Le Guide est écrit pour vous. La [documentation produit](/fr/fonctionnalites/documentation-produit), servie sous `/docs` par votre application, est celle que **vous** écrivez pour vos clients. Les deux ne se mélangent pas : rien de ce Guide n’apparaît dans votre application.
+</Callout>
+
+## Par où commencer
+
+Si vous découvrez le projet, suivez ces quatre pages dans l’ordre. Comptez environ une demi-heure.
+
+1. [Installer le projet](/fr/demarrer/installer) : de zéro à une application qui tourne sur votre ordinateur, sans aucune clé de fournisseur.
+2. [Faire un premier tour](/fr/demarrer/premier-tour) : les comptes de démonstration, le site, l’application et la console.
+3. [Comprendre la structure du dépôt](/fr/demarrer/structure) : ce que vous modifiez, et ce que vous laissez tel quel.
+4. [Travailler avec une IA](/fr/demarrer/travailler-avec-une-ia) : ce que votre assistant doit lire avant de modifier le code.
+
+## Les parties du Guide
+
+<Cards>
+  <Card title="Démarrer" href="/fr/demarrer/installer" description="Installer, faire le tour, comprendre le dépôt, travailler avec une IA." />
+  <Card title="Fonctionnalités" href="/fr/fonctionnalites" description="Une page par module : ce que voient vos clients, comment l’activer ou le couper." />
+  <Card title="Services" href="/fr/services" description="Une page par fournisseur : créer le compte, récupérer les clés, les brancher." />
+  <Card title="Configurer" href="/fr/configurer" description="Une page par fichier de config/, et le tableau des variables d’environnement." />
+  <Card title="Déployer" href="/fr/deployer" description="Mettre votre SaaS en ligne, base de données et domaine compris." />
+  <Card title="Référence" href="/fr/reference/commandes" description="Les commandes, ce que le boilerplate ne fait pas, le dépannage." />
+</Cards>
+
+## Lire le Guide
+
+- **En local** : depuis la racine du dépôt, lancez `pnpm guide:dev`, puis ouvrez `http://localhost:3200/fr`. La commande `pnpm dev`, qui lance l’application, lance aussi le Guide, à la même adresse.
+- **En anglais** : chaque page existe dans les deux langues, aux mêmes adresses sous `/en`. Le français fait foi.
+- **Avec un assistant IA** : le Guide entier tient dans un seul fichier texte, `http://localhost:3200/llms-full.txt` (en anglais : `http://localhost:3200/en/llms-full.txt`). Donnez-le à votre assistant pour qu’il réponde à partir de la vraie documentation. L’index des pages est à `http://localhost:3200/llms.txt`.
 
 ## Ce que le boilerplate prend en charge
 
-Chaque carte mène à la page qui explique comment l’activer.
+Chaque carte mène à la page qui explique comment l’activer. Le badge dit ce que vous pouvez en attendre.
 
 <FeatureGrid lang="fr" />
