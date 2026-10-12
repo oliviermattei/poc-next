@@ -35,7 +35,7 @@
     "@mdx-js/loader": "^3.1.1",
     "@mdx-js/rollup": "^3.1.1",
     "@next/mdx": "^16.3.4",
-    "@playwright/test": "^1.62.1",
+    "@playwright/test": "^1.63.0",
     "@repo/adapter-inngest": "workspace:*",
     "@repo/adapter-posthog": "workspace:*",
     "@repo/adapter-resend": "workspace:*",
