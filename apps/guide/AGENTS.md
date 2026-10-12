@@ -19,8 +19,9 @@ build, et `tests/deployment.test.ts` le vérifie.
 - **La grille de l'accueil** : `lib/feature-grid.ts`, déclarée une seule fois et
   rendue dans les deux langues par `components/feature-grid.tsx`
   (`<FeatureGrid lang="fr" />` dans `content/docs/index.mdx`).
-- **Une page en attente** porte `PLACEHOLDER_MARKER` (`lib/placeholder.ts`) et
-  une phrase ; la rédiger, c'est retirer la marque.
+- **Aucune page n'est plus en attente** : la marque `PLACEHOLDER_MARKER`
+  (`lib/placeholder.ts`) est refusée par le test. Une page ajoutée s'écrit
+  entière, dans les deux langues.
 - **Les liens internes** s'écrivent en absolu, dans la langue de la page :
   `/fr/demarrer/installer`, `/en/demarrer/installer`.
 
@@ -54,7 +55,13 @@ build, et `tests/deployment.test.ts` le vérifie.
 
 - parité FR/EN de chaque page et de chaque `meta.json` ;
 - chaque lien interne, cartes de la grille comprises ;
-- une grille honnête (issue de chaque « Bientôt », rien du cimetière).
+- une grille honnête (issue de chaque « Bientôt », rien du cimetière) ;
+- l'exhaustivité, dérivée du code (#203) : chaque module de l'annuaire
+  (`config/features.ts`) nommé `entre accents graves` dans une page
+  française, chaque clé de `ENV_KEYS` et `BUILD_ENV_KEYS` dans
+  `configurer/variables-d-environnement.mdx`, chaque fichier de `config/` dans
+  une page française, et aucune page en attente. Ajouter un module, une
+  variable ou un fichier de configuration sans sa page fait rougir `pnpm test`.
 
 `pnpm guide:build` construit le site et échoue sur un frontmatter invalide ;
 `pnpm typecheck` et `pnpm lint` le couvrent comme le reste du dépôt.

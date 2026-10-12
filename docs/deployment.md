@@ -72,7 +72,7 @@ une édition de `config/security.ts` : l'origine du seau doit entrer dans le cha
 `connect`, sinon `connect-src 'self'` refuse le téléversement, et le démarrage
 échoue en le disant. C'est du code, pas une variable — heurté au premier
 `docker compose up` de cette story. Sans le module `storage`, la phrase est vraie
-telle quelle. Le détail est au point 1 de « Deux gestes d'exploitation » plus bas.
+telle quelle. Le détail est au point 1 de « Trois gestes d'exploitation » plus bas.
 
 ### Pourquoi `instrumentation.ts` existe
 
@@ -477,13 +477,21 @@ n'ont donc pas leur place dans le tableau ci-dessus, qui est comparé au schéma
 Ces quatre-là doivent rester cohérentes avec `DATABASE_URL`, dont l'hôte est le
 nom du service : `postgres://<user>:<mot de passe>@postgres:5432/<base>`.
 
-### Deux gestes d'exploitation que la configuration seule ne fait pas
+### Trois gestes d'exploitation que la configuration seule ne fait pas
 
 1. **Le seau de stockage exige une origine déclarée.** Le navigateur téléverse
    directement vers le seau : son origine doit entrer dans `config/security.ts`,
    champ `connect`, sinon `connect-src 'self'` refuse la requête. Le démarrage
    échoue en le disant. Mesuré au premier `docker run` de cette story.
-2. **Le seau demande une règle de cycle de vie**, et une réconciliation qui
+2. **Le seau demande une règle CORS**, posée chez le fournisseur : la méthode
+   `PUT` autorisée depuis l'origine de l'application (la valeur d'`APP_URL`,
+   plus `http://localhost:3000` pour un essai local), avec tous les en-têtes
+   demandés. C'est l'autre moitié du point 1 : la politique de sécurité du
+   contenu laisse partir la requête, la règle CORS la laisse entrer. Sans elle,
+   le navigateur bloque l'envoi et **aucun démarrage ne le refuse** — rien dans
+   l'application ne peut lire la configuration CORS d'un seau. Le Guide
+   (`apps/guide/content/docs/services/stockage-s3.mdx`) porte la procédure.
+3. **Le seau demande une règle de cycle de vie**, et une réconciliation qui
    n'existe pas encore pour le préfixe `avatars/` : `.env.example` et
    `packages/modules/storage/AGENTS.md` portent le détail.
 

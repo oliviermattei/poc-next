@@ -11,7 +11,7 @@ Two variables: `RESEND_API_KEY` (the key) and `EMAIL_FROM` (the sender).
 
 ## Without an account: local capture
 
-`.env.example` ships `EMAIL_LOCAL_CAPTURE=1`. In this mode each email is rendered and written as an HTML page in the `apps/web/.mail/` folder, and **nothing is sent**.
+`.env.example` ships `EMAIL_LOCAL_CAPTURE=1`. In this mode each email is rendered and written as an HTML page in the `apps/web/.mail/` folder, and **nothing is sent**. Unlike simulated payments, this mode is **not** refused in production: left on a deployment, no email leaves and the application does not say so ([#204](https://github.com/oliviermattei/poc-next/issues/204)).
 
 1. Start the application (`pnpm dev`) and trigger an email, for example by creating an account on `/sign-up`.
 2. Open the `apps/web/.mail/` folder: you should find one `.html` file per email.

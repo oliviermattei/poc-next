@@ -134,10 +134,11 @@ surfaces et vous évite de chercher plus tard.
    l'organisation. C'est le « panneau d'administration du client ».
 6. **Le paiement** — `/pricing` → tunnel simulé → `/app/settings/billing` (portail). Testez
    aussi `/app/premium` : une fonctionnalité réservée par `config/gating.ts`.
-7. **Le back-office** — `/console/users` (liste, détail, bannir/débannir,
-   révoquer une session, envoyer une réinitialisation de mot de passe, promouvoir
-   ou révoquer un superadmin, **emprunter la session** d'un client pour
-   l'assister), `/console/organizations`, `/console/revenue` (récurrent estimé et
+7. **Le back-office** — `/console/users` (liste, détail, révoquer une session,
+   envoyer une réinitialisation de mot de passe ; bannir, promouvoir un
+   superadmin et emprunter la session d'un client existent côté serveur mais
+   **aucun bouton de la console ne les propose encore**, issue #135),
+   `/console/organizations`, `/console/revenue` (récurrent estimé et
    ponctuel constaté, par devise, avec les états d'abonnement),
    `/console/subscriptions` (inscriptions publiques : newsletter et liste
    d'attente, exportables en CSV).
@@ -328,8 +329,8 @@ URL de rappel chez vos fournisseurs OAuth.
 | Besoin | Où |
 |---|---|
 | Voir le revenu, les états d'abonnement | `/console/revenue` |
-| Consulter comptes et organisations, assister un client | `/console/users`, `/console/organizations` (emprunt de session, journalisé aux deux bouts) |
-| Bannir, révoquer une session, réinitialiser un mot de passe | `/console/users/<id>` |
+| Consulter comptes et organisations | `/console/users`, `/console/organizations` |
+| Révoquer une session, réinitialiser un mot de passe | `/console/users/<id>` (bannir, promouvoir et emprunter une session : aucun bouton encore, issue #135) |
 | Récupérer les inscriptions newsletter / liste d'attente | `/console/subscriptions` (export CSV) |
 | Recoller l'état d'abonnement avec Stripe | `pnpm billing:reconcile` (statut : Stripe fait foi ; sièges : le nombre de membres fait foi) |
 | Vérifier que l'app est vivante | `GET /api/health` (touche la vraie dépendance) |

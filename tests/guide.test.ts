@@ -4,8 +4,11 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import { BUILD_ENV_KEYS, ENV_KEYS } from '@repo/config'
+
 import { cardHref, FEATURE_GRID } from '../apps/guide/lib/feature-grid'
 import { PLACEHOLDER_MARKER } from '../apps/guide/lib/placeholder'
+import { availableModules } from '../config/features'
 
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url))
 
@@ -142,22 +145,20 @@ describe('le Guide existe dans les deux langues, page pour page', () => {
   })
 
   /**
-   * Une page en attente se reconnaît à une seule chaîne, `PLACEHOLDER_MARKER`.
-   * Une variante écrite à la main (une espace de plus, un tiret de moins)
-   * échapperait au test qui refusera un jour les pages encore en attente.
+   * Une page en attente se reconnaît à `PLACEHOLDER_MARKER` (#203) : toutes
+   * sont rédigées, aucune ne doit plus la porter. Le mot-clé de la marque est
+   * lu sur la constante, jamais recopié — et cherché seul, pour qu'une
+   * variante écrite à la main (une espace de plus) ne passe pas entre les mailles.
    */
-  it('une page en attente porte la marque exacte, et une seule fois', () => {
-    const waiting = contentFiles()
-      .filter((file) => pageOf(file) !== null)
-      .filter((file) => read(CONTENT, file).includes('PAGE-EN-ATTENTE'))
+  it('aucune page ne porte plus la marque de page en attente', () => {
+    const keyword = /[A-Z][A-Z-]+[A-Z]/.exec(PLACEHOLDER_MARKER)?.[0] ?? ''
+    const files = contentFiles().filter((file) => pageOf(file) !== null)
 
-    // Les pages de contenu restent à rédiger quand ce cas est écrit.
-    expect(waiting.length).toBeGreaterThanOrEqual(1)
+    expect(keyword.length).toBeGreaterThanOrEqual(5)
+    expect(files.length).toBeGreaterThanOrEqual(2 * PAGE_FLOOR)
 
-    const malformed = waiting.filter(
-      (file) => read(CONTENT, file).split(PLACEHOLDER_MARKER).length !== 2,
-    )
-    expect(malformed, `marque d'attente mal écrite : ${malformed.join(', ')}`).toEqual([])
+    const waiting = files.filter((file) => read(CONTENT, file).includes(keyword))
+    expect(waiting, `pages encore en attente : ${waiting.join(', ')}`).toEqual([])
   })
 
   it('chaque page déclare un titre et une description dans chaque langue', () => {
@@ -167,6 +168,65 @@ describe('le Guide existe dans les deux langues, page pour page', () => {
       expect(frontmatter, `${file} n'a pas de titre`).toMatch(/^title: \S/m)
       expect(frontmatter, `${file} n'a pas de description`).toMatch(/^description: \S/m)
     }
+  })
+})
+
+/** Le texte de chaque page française, par chemin relatif à `CONTENT`. */
+const frenchPages = (): { file: string; text: string }[] =>
+  contentFiles()
+    .filter((file) => pageOf(file)?.lang === 'fr')
+    .map((file) => ({ file, text: read(CONTENT, file) }))
+
+/**
+ * L'exhaustivité du Guide est mesurée, pas affirmée (#203) : chaque liste est
+ * dérivée du code — registre, schéma d'environnement, dossier `config/` —,
+ * jamais recopiée, et l'échec nomme ce qui manque. Le français fait foi ; la
+ * parité des pages anglaises est tenue par les cas du premier bloc.
+ */
+describe('le Guide nomme tout ce que le code livre', () => {
+  it('chaque module de l’annuaire est nommé, `entre accents graves`, dans une page française', () => {
+    const ids = availableModules.map((module) => module.id)
+    const french = frenchPages()
+
+    // L'annuaire compte dix-neuf modules quand ce cas est écrit.
+    expect(ids.length).toBeGreaterThanOrEqual(15)
+    expect(french.length).toBeGreaterThanOrEqual(PAGE_FLOOR)
+
+    const missing = ids.filter((id) => !french.some(({ text }) => text.includes(`\`${id}\``)))
+    expect(missing, `modules qu'aucune page française ne nomme : ${missing.join(', ')}`).toEqual([])
+  })
+
+  /**
+   * Les clés du schéma d'environnement et celles de la garde de build : ce
+   * que l'application lit. La page des variables les nomme toutes, `entre
+   * accents graves`, pour qu'une variable ajoutée au schéma force sa ligne.
+   */
+  it('chaque variable lue par l’application est nommée dans la page des variables', () => {
+    const keys = [...ENV_KEYS, ...BUILD_ENV_KEYS]
+    const page = read(CONTENT, 'configurer/variables-d-environnement.mdx')
+
+    // Le schéma compte plusieurs dizaines de clés ; la garde de build, deux.
+    expect(ENV_KEYS.length).toBeGreaterThanOrEqual(30)
+    expect(BUILD_ENV_KEYS.length).toBeGreaterThanOrEqual(2)
+
+    const missing = keys.filter((key) => !page.includes(`\`${key}\``))
+    expect(missing, `variables absentes de la page des variables : ${missing.join(', ')}`).toEqual(
+      [],
+    )
+  })
+
+  /** `config/` est ce que le propriétaire édite : chacun de ses fichiers a sa page. */
+  it('chaque fichier de `config/` est nommé dans une page française', () => {
+    const files = readdirSync(join(REPO_ROOT, 'config'), { withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .map((entry) => entry.name)
+    const french = frenchPages()
+
+    // Huit fichiers quand ce cas est écrit (fonctionnalités, offres, sécurité…).
+    expect(files.length).toBeGreaterThanOrEqual(6)
+
+    const missing = files.filter((name) => !french.some(({ text }) => names(text, name)))
+    expect(missing, `fichiers de config/ qu'aucune page française ne nomme : ${missing.join(', ')}`).toEqual([])
   })
 })
 

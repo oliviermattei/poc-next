@@ -45,7 +45,7 @@ A variable set this way in the command takes precedence over the one in your `.e
 
 ### Choose your modules
 
-As everywhere in production, `PAYMENTS_LOCAL_MODE`, `STORAGE_LOCAL_DIRECTORY` and `OAUTH_LOCAL_PROVIDER` are refused. On Vercel, also avoid `JOBS_LOCAL_RUNNER`: it runs jobs in the memory of a single process, and it is reserved for single-instance deployments. Vercel starts as many instances as needed: it is not one. Use [Inngest](/en/services/inngest), or turn the `jobs` module off (`pnpm ks toggle jobs`, see [Modules](/en/configurer/modules)).
+As everywhere in production, `PAYMENTS_LOCAL_MODE`, `STORAGE_LOCAL_DIRECTORY` and `OAUTH_LOCAL_PROVIDER` are refused. On Vercel, also avoid `JOBS_LOCAL_RUNNER`: it runs jobs in the memory of a single process, and it is reserved for single-instance deployments. Vercel starts as many instances as needed: it is not one. Use [Inngest](/en/services/inngest), or turn the `jobs` module off (`pnpm ks toggle jobs`, see [Modules](/en/configurer/modules)). Neither `JOBS_LOCAL_RUNNER` nor `EMAIL_LOCAL_CAPTURE` is refused at startup for now: removing them is up to you ([#204](https://github.com/oliviermattei/poc-next/issues/204)).
 
 If you use S3 storage or PostHog, also declare their origin in `config/security.ts` (see [S3 storage](/en/services/stockage-s3) and [PostHog](/en/services/posthog)). Commit and push these changes.
 

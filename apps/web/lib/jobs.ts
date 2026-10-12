@@ -37,7 +37,7 @@ import { appRateLimiter } from './rate-limit'
  * | émission | mise en file chez le fournisseur | file en mémoire, vidée hors requête | **exécutée synchrone dans la requête** |
  * | tâches planifiées | déclenchées par le fournisseur | par la boucle locale | **ne s'exécutent pas** |
  * | déduplication | `job_run` (partagée entre instances) | en mémoire du processus | **aucune** |
- * | route de rappel | montée, gardée par la signature | 404 | **404, elle n'existe pas** |
+ * | route de rappel | montée, gardée par la signature | 503 `jobs_provider_not_configured` | **404, elle n'existe pas** |
  * | démarrage | valide les clés | valide l'opt-in | **le journalise** |
  *
  * Le repli du module coupé n'est pas un confort : l'export de ses données
@@ -271,7 +271,9 @@ export function prepareJobs(): void {
 
     if (config.kind === 'local') {
       // Aucun rappel : l'exécuteur local n'a pas de fournisseur qui appelle. La
-      // route répond 404, comme celle d'un module coupé.
+      // route existe et répond 503 `jobs_provider_not_configured`
+      // (`packages/modules/jobs/src/presentation/job-routes.ts`) — seul le
+      // module coupé la fait répondre 404.
       return { callback: null, db }
     }
 

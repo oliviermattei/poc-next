@@ -68,8 +68,8 @@ qu'il n'y en a aucun :
 SUPERADMIN_EMAIL=ada@demonstration.invalid
 ```
 
-Redémarrez `pnpm dev`, reconnectez-vous, et l'entrée « Console » apparaît
-dans la navigation.
+Redémarrez `pnpm dev`, reconnectez-vous, puis tapez l'adresse `/console` :
+aucun lien de l'application n'y mène, le back-office ne s'annonce pas.
 
 ### Ce que la démonstration ne montre pas
 

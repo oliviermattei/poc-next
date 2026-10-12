@@ -6,8 +6,8 @@
  * son corps porte cette chaîne, exactement, suivie d'une phrase qui le dit.
  * C'est un commentaire MDX : il ne s'affiche pas.
  *
- * Rédiger une page, c'est retirer la marque. La chaîne est déclarée ici une
- * seule fois, pour qu'un test puisse un jour refuser une page qui la porte
- * encore, sans la recopier.
+ * Rédiger une page, c'est retirer la marque. Toutes le sont (#203) :
+ * `tests/guide.test.ts` refuse désormais une page qui la porte, et lit la
+ * chaîne ici plutôt que de la recopier.
  */
 export const PLACEHOLDER_MARKER = '{/* PAGE-EN-ATTENTE */}'

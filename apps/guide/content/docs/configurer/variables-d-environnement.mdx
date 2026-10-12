@@ -138,7 +138,7 @@ Ces variables ne sont pas lues par l’application elle-même :
 | `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` | `pnpm sourcemaps:release` | Envoi des cartes source à Sentry. `SENTRY_AUTH_TOKEN` est un secret : il ne doit jamais être donné à l’application ni à un build d’image. |
 
 <Callout type="error" title="À ne jamais poser à la main">
-`NEXT_PHASE`, `SKIP_ENV_VALIDATION` (hors commande de build), `PAYMENTS_RECORDED_EVENTS`, `I18N_MISSING_KEY_PROBE` et `CONSENT_SCRIPT_PROBE` servent à l’outillage. Et en production, ne posez jamais `PAYMENTS_LOCAL_MODE`, `OAUTH_LOCAL_PROVIDER` ni `STORAGE_LOCAL_DIRECTORY` : l’application refuse de démarrer avec eux sous `NODE_ENV=production`, parce qu’ils donneraient un abonnement gratuit, une connexion sans mot de passe ou des fichiers perdus au redéploiement.
+`NEXT_PHASE`, `SKIP_ENV_VALIDATION` (hors commande de build), `PAYMENTS_RECORDED_EVENTS`, `I18N_MISSING_KEY_PROBE` et `CONSENT_SCRIPT_PROBE` servent à l’outillage. Et en production, ne posez jamais `PAYMENTS_LOCAL_MODE`, `OAUTH_LOCAL_PROVIDER` ni `STORAGE_LOCAL_DIRECTORY` : l’application refuse de démarrer avec eux sous `NODE_ENV=production`, parce qu’ils donneraient un abonnement gratuit, une connexion sans mot de passe ou des fichiers perdus au redéploiement. `EMAIL_LOCAL_CAPTURE` n’est **pas encore** refusé de la même façon : posé en production, aucun e-mail ne part et rien ne le signale. Retirez-le vous-même ([#204](https://github.com/oliviermattei/poc-next/issues/204)).
 </Callout>
 
 ## Vérifier votre fichier

@@ -45,7 +45,7 @@ Une variable posée ainsi dans la commande l’emporte sur celle de votre `.env`
 
 ### Choisir vos modules
 
-Comme partout en production, `PAYMENTS_LOCAL_MODE`, `STORAGE_LOCAL_DIRECTORY` et `OAUTH_LOCAL_PROVIDER` sont refusés. Sur Vercel, évitez aussi `JOBS_LOCAL_RUNNER` : il exécute les tâches dans la mémoire d’un seul processus, et il est réservé aux déploiements à une seule instance. Vercel lance autant d’instances que nécessaire : ce n’en est pas un : utilisez [Inngest](/fr/services/inngest), ou coupez le module `jobs` (`pnpm ks toggle jobs`, voir [Modules](/fr/configurer/modules)).
+Comme partout en production, `PAYMENTS_LOCAL_MODE`, `STORAGE_LOCAL_DIRECTORY` et `OAUTH_LOCAL_PROVIDER` sont refusés. Sur Vercel, évitez aussi `JOBS_LOCAL_RUNNER` : il exécute les tâches dans la mémoire d’un seul processus, et il est réservé aux déploiements à une seule instance. Vercel lance autant d’instances que nécessaire : ce n’en est pas un : utilisez [Inngest](/fr/services/inngest), ou coupez le module `jobs` (`pnpm ks toggle jobs`, voir [Modules](/fr/configurer/modules)). Ni `JOBS_LOCAL_RUNNER` ni `EMAIL_LOCAL_CAPTURE` ne sont refusés au démarrage pour l’instant : c’est à vous de les retirer ([#204](https://github.com/oliviermattei/poc-next/issues/204)).
 
 Si vous utilisez le stockage S3 ou PostHog, déclarez aussi leur origine dans `config/security.ts` (voir [Stockage S3](/fr/services/stockage-s3) et [PostHog](/fr/services/posthog)). Committez et poussez ces changements.
 

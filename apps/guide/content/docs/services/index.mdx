@@ -15,7 +15,7 @@ Trois règles valent pour tous les services.
 
 Deux services font exception à la règle 3 : **PostHog** et **Sentry**. Sans clé, ils **dégradent** au lieu de refuser : rien n’est mesuré, aucune erreur n’est remontée, et l’application fonctionne normalement. Ils n’ont donc pas de mode local.
 
-Trois modes locaux sont en plus **refusés au démarrage en production** (`NODE_ENV=production`), parce qu’ils seraient dangereux : le paiement simulé (`PAYMENTS_LOCAL_MODE`), le fournisseur de connexion de développement (`OAUTH_LOCAL_PROVIDER`) et le stockage sur disque (`STORAGE_LOCAL_DIRECTORY`).
+Trois modes locaux sont en plus **refusés au démarrage en production** (`NODE_ENV=production`), parce qu’ils seraient dangereux : le paiement simulé (`PAYMENTS_LOCAL_MODE`), le fournisseur de connexion de développement (`OAUTH_LOCAL_PROVIDER`) et le stockage sur disque (`STORAGE_LOCAL_DIRECTORY`). Deux ne le sont **pas encore** : `EMAIL_LOCAL_CAPTURE` (aucun e-mail ne part, et rien ne le signale) et `JOBS_LOCAL_RUNNER` (une file en mémoire, à réserver à une seule instance). Retirez-les vous-même avant de déployer ; l’issue [#204](https://github.com/oliviermattei/poc-next/issues/204) suit le sujet.
 
 ## Où mettre les variables
 

@@ -138,7 +138,7 @@ These variables are not read by the application itself:
 | `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` | `pnpm sourcemaps:release` | Uploading source maps to Sentry. `SENTRY_AUTH_TOKEN` is a secret: never give it to the application or to an image build. |
 
 <Callout type="error" title="Never set these by hand">
-`NEXT_PHASE`, `SKIP_ENV_VALIDATION` (outside the build command), `PAYMENTS_RECORDED_EVENTS`, `I18N_MISSING_KEY_PROBE` and `CONSENT_SCRIPT_PROBE` belong to the tooling. And in production, never set `PAYMENTS_LOCAL_MODE`, `OAUTH_LOCAL_PROVIDER` or `STORAGE_LOCAL_DIRECTORY`: the application refuses to start with them under `NODE_ENV=production`, because they would grant a free subscription, a password-less sign-in or files lost on redeploy.
+`NEXT_PHASE`, `SKIP_ENV_VALIDATION` (outside the build command), `PAYMENTS_RECORDED_EVENTS`, `I18N_MISSING_KEY_PROBE` and `CONSENT_SCRIPT_PROBE` belong to the tooling. And in production, never set `PAYMENTS_LOCAL_MODE`, `OAUTH_LOCAL_PROVIDER` or `STORAGE_LOCAL_DIRECTORY`: the application refuses to start with them under `NODE_ENV=production`, because they would grant a free subscription, a password-less sign-in or files lost on redeploy. `EMAIL_LOCAL_CAPTURE` is **not yet** refused the same way: set in production, no email leaves and nothing says so. Remove it yourself ([#204](https://github.com/oliviermattei/poc-next/issues/204)).
 </Callout>
 
 ## Check your file

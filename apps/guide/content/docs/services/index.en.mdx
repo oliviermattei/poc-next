@@ -15,7 +15,7 @@ Three rules apply to every service.
 
 Two services are exceptions to rule 3: **PostHog** and **Sentry**. Without a key they **degrade** instead of refusing: nothing is measured, no error is reported, and the application works normally. So they have no local mode.
 
-Three local modes are also **refused at startup in production** (`NODE_ENV=production`), because they would be dangerous: simulated payments (`PAYMENTS_LOCAL_MODE`), the development sign-in provider (`OAUTH_LOCAL_PROVIDER`) and disk storage (`STORAGE_LOCAL_DIRECTORY`).
+Three local modes are also **refused at startup in production** (`NODE_ENV=production`), because they would be dangerous: simulated payments (`PAYMENTS_LOCAL_MODE`), the development sign-in provider (`OAUTH_LOCAL_PROVIDER`) and disk storage (`STORAGE_LOCAL_DIRECTORY`). Two are **not yet** refused: `EMAIL_LOCAL_CAPTURE` (no email leaves, and nothing says so) and `JOBS_LOCAL_RUNNER` (an in-memory queue, to keep for a single instance). Remove them yourself before deploying; issue [#204](https://github.com/oliviermattei/poc-next/issues/204) tracks it.
 
 ## Where to put the variables
 
