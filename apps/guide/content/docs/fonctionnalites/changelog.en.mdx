@@ -1,8 +1,66 @@
 ---
 title: "Changelog"
-description: "Your product’s release notes."
+description: "A “What's new” page grouped by version, with its RSS feed."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+## In one sentence
 
-This page is being written: its content arrives in an upcoming ticket.
+The `changelog` module publishes your release notes on a “What's new” page, grouped by version from newest to oldest, with an RSS feed.
+
+## What your customers see
+
+| Screen | Address | What it does |
+|---|---|---|
+| What's new | `/changelog` | every entry in the page's language, grouped by version, on a single page |
+| RSS feed | `/api/modules/changelog/feed.xml` | one feed per language (`?locale=en` for English) |
+
+A “What's new” link appears in the site footer. When the `i18n` (languages) module is enabled, the address is prefixed with the language (`/en/changelog`).
+
+An entry only appears in the language it is written in.
+
+## Enable or disable
+
+```bash
+pnpm ks toggle changelog
+```
+
+The module depends on no other (not even the blog) and has no table. Disabled, the page and the feed answer 404 and the footer link disappears.
+
+## Write an entry
+
+Entries live in `content/changelog/<language>/<slug>.mdx`. Examples are shipped: replace them.
+
+1. Create `content/changelog/fr/export-csv.mdx` (lowercase letters, digits and hyphens).
+2. Paste this header, then the text of the entry:
+
+   ```mdx
+   ---
+   version: "1.2"
+   date: 2026-10-13
+   category: added
+   title: CSV export
+   description: You can export your data in one click.
+   ---
+
+   The details of the change.
+   ```
+
+   - `version`: numbers separated by dots (`1`, `1.2`, `1.2.3`). **Put it in quotes**, otherwise `1.0` would be read as a number. Versions are sorted numerically: `10.0` does come after `9.0`.
+   - `category`: one of the four values `added`, `changed`, `fixed`, `removed` — shown translated on screen.
+   - `date`: `YYYY-MM-DD`.
+3. For English, create the same name under `content/changelog/en/`.
+4. Entries are read at startup: restart `pnpm dev`.
+
+## Check that it works
+
+1. Open http://localhost:3000/changelog: your entry should appear under its version.
+2. At the bottom of a site page, the “What's new” link should lead to that page.
+3. Open http://localhost:3000/api/modules/changelog/feed.xml: your entry's title should be in it.
+4. Run `pnpm build`: an invalid header makes the build fail and names the file.
+
+<Callout title="What is not included">
+- **No automatic generation** from your commits or releases: each entry is written by hand.
+- **No address per entry**: everything is on a single page.
+- **No notification** to your customers when an entry is published.
+- **No category** other than the four provided.
+</Callout>

@@ -1,8 +1,60 @@
 ---
-title: "File storage"
-description: "File uploads, such as the avatar."
+title: "Storage"
+description: "File uploads, today the profile picture, on disk locally or in an S3 bucket."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+## In one sentence
 
-This page is being written: its content arrives in an upcoming ticket.
+The `storage` module lets your customers upload a profile picture, stored on disk in development and in an S3-compatible bucket in production.
+
+## What your customers see
+
+- **A “Profile picture” card** in Settings → Profile (`/app/settings/profile`): choose an image, replace it, remove it.
+- **Their picture in the account menu** of the application, instead of their initials.
+
+Accepted formats: PNG, JPEG and WebP, up to 2 MB. The real content of the file is checked after upload: an SVG, a GIF or a PDF renamed to `.png` is refused.
+
+The file goes straight from the browser to storage, without passing through your server; it is then served by your application. Replacing the picture erases the old one. Deleting an account also erases its file, and the customer's data export includes it.
+
+## Enable or disable
+
+```bash
+pnpm ks toggle storage
+```
+
+The module depends on `auth` (always enabled). It owns one table, `storage_file`.
+
+Module disabled: no variable to set, the “Profile picture” card disappears, and initials replace the picture everywhere, without error.
+
+## Configure
+
+You have to pick one of two modes; with neither, the application refuses to start and names them, and both together are refused.
+
+| Mode | Variables | For whom |
+|---|---|---|
+| **On disk** | `STORAGE_LOCAL_DIRECTORY=.storage` (the value shipped in `.env.example`) | development: files go to `apps/web/.storage/`, ignored by git |
+| **S3 bucket** | `STORAGE_S3_BUCKET`, `STORAGE_S3_REGION`, `STORAGE_S3_ACCESS_KEY_ID`, `STORAGE_S3_SECRET_ACCESS_KEY`, plus `STORAGE_S3_ENDPOINT` outside AWS (Cloudflare R2, MinIO, DigitalOcean Spaces) | production |
+
+On-disk mode is **refused in production** (`NODE_ENV=production`): a server's disk disappears on redeployment, and the pictures with it.
+
+With a bucket, two more steps:
+
+1. **Declare the bucket's origin** in `config/security.ts`, `connect` list (for example `https://s3.eu-west-3.amazonaws.com`, or the address of `STORAGE_S3_ENDPOINT`). Without it, the application refuses to start, naming the expected origin.
+2. **Set a 24-hour expiration rule** on the bucket's `pending/` prefix, which collects uploads that were never confirmed.
+
+The full step-by-step is on the [S3 storage](/en/services/stockage-s3) page.
+
+## Check that it works
+
+1. Keep `STORAGE_LOCAL_DIRECTORY=.storage` in `.env` and run `pnpm dev`.
+2. Sign in and open Settings → Profile. You should see the “Profile picture” card.
+3. Choose a PNG or JPEG image under 2 MB. It should appear on the card and in the account menu.
+4. A file appears in `apps/web/.storage/`.
+5. Try an SVG file: it should be refused with a message.
+
+<Callout title="What is not included">
+- **Only the profile picture** uses storage. No attachments, no gallery, no organisation picture ([#143](https://github.com/oliviermattei/poc-next/issues/143)).
+- **No resizing** or cropping of images.
+- **Known limit**: if saving to the database fails right after the upload, a file can stay in the bucket attached to nobody, and no command finds it yet ([#142](https://github.com/oliviermattei/poc-next/issues/142)).
+- **Known limit**: the bucket's origin is declared in `config/security.ts`, a code file — an image that is already built cannot receive it through a plain variable ([#144](https://github.com/oliviermattei/poc-next/issues/144)).
+</Callout>

@@ -3,6 +3,110 @@ title: "Les modules"
 description: "Ce qu’est un module, comment l’activer ou le couper, et ce qui en dépend."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+## En une phrase
 
-Cette page est en cours de rédaction : son contenu arrive dans un prochain ticket.
+Chaque fonctionnalité du boilerplate est un **module** : un paquet rangé dans `packages/modules/<id>`, que vous activez ou coupez d’une seule commande, sans toucher au reste du code.
+
+La liste des modules activés vit dans un seul fichier, `config/features.ts`, à la ligne `enabledModules`. C’est la commande `pnpm ks` qui l’édite pour vous.
+
+## Les modules livrés
+
+| Identifiant | Ce qu’il apporte à vos clients | A besoin de | Page |
+|---|---|---|---|
+| `auth` | comptes, connexion, double authentification, passkeys, export et suppression du compte | — (**socle, non coupable**) | [Authentification](/fr/fonctionnalites/authentification) |
+| `rate-limit` | la protection contre les envois en rafale | — (**socle, non coupable**) | [Limitation de débit](/fr/fonctionnalites/limitation-de-debit) |
+| `organizations` | les espaces d’équipe, les invitations, les rôles | `auth` | [Organisations](/fr/fonctionnalites/organisations) |
+| `billing` | les abonnements et achats Stripe, la page des tarifs | — | [Facturation](/fr/fonctionnalites/facturation) |
+| `admin` | la console du superadmin | `auth` | [Console](/fr/fonctionnalites/console) |
+| `marketing` | l’accueil, les pages légales, le contact, la newsletter, la liste d’attente | — | [Site public](/fr/fonctionnalites/site-public) |
+| `blog` | le blog | — | [Blog](/fr/fonctionnalites/blog) |
+| `docs` | la documentation produit pour vos clients, sous `/docs` | — | [Documentation produit](/fr/fonctionnalites/documentation-produit) |
+| `changelog` | la page des nouveautés | — | [Changelog](/fr/fonctionnalites/changelog) |
+| `i18n` | le choix de la langue | — | [Langues](/fr/fonctionnalites/langues) |
+| `consent` | la bannière de cookies | — | [Cookies et consentement](/fr/fonctionnalites/cookies-et-consentement) |
+| `analytics` | la mesure d’audience et le suivi d’erreurs | `consent` | [Analytics](/fr/fonctionnalites/analytics) |
+| `notifications` | le centre de notifications et les préférences | `auth` | [Notifications](/fr/fonctionnalites/notifications) |
+| `jobs` | les tâches de fond | — | [Tâches de fond](/fr/fonctionnalites/taches-de-fond) |
+| `storage` | la photo de profil (téléversement de fichiers) | `auth` | [Stockage](/fr/fonctionnalites/stockage) |
+| `onboarding` | le parcours de bienvenue après l’inscription | `auth` | [Onboarding](/fr/fonctionnalites/onboarding) |
+| `mcp-server` | le serveur MCP, pour qu’une IA pilote les modules | — | [Serveur MCP](/fr/fonctionnalites/serveur-mcp) |
+| `demo-enabled` | un module d’exemple, activé | — | [Module de démonstration](/fr/fonctionnalites/module-de-demonstration) |
+| `demo-disabled` | un module d’exemple, **coupé** à la livraison | `demo-enabled` | [Module de démonstration](/fr/fonctionnalites/module-de-demonstration) |
+
+Tous sont activés à la livraison, sauf `demo-disabled`.
+
+## Voir l’état de vos modules
+
+1. Ouvrez un terminal à la racine du projet.
+2. Lancez :
+
+   ```bash
+   pnpm ks list
+   ```
+
+3. Vous devez voir une ligne par module : `●` et « activé », ou `○` et « désactivé ». La ligne dit aussi ce que le module **requiert**, ce qui le **requiert**, et `socle : non désactivable` pour `auth` et `rate-limit`.
+
+Pour une sortie lisible par une machine (utile si une IA vous aide), ajoutez `--json` : `pnpm ks list --json`.
+
+## Couper un module
+
+1. Lancez, en remplaçant `blog` par l’identifiant voulu :
+
+   ```bash
+   pnpm ks toggle blog
+   ```
+
+2. Vous devez lire « Module « blog » désactivé. Ses tables et ses données sont conservées ». La commande a modifié `config/features.ts` et régénéré les fichiers de `generated/schema/`.
+3. Arrêtez puis relancez l’application (`pnpm dev`) pour qu’elle relise la configuration.
+4. Vérifiez : `pnpm ks list` affiche le module en `○ désactivé`, et ses pages répondent maintenant « page introuvable » (404).
+
+La commande **refuse** de couper un module dont un autre module activé a besoin : elle nomme alors le module en cause. Coupez d’abord celui qui en dépend.
+
+## Activer un module
+
+1. Lancez la même commande sur un module coupé :
+
+   ```bash
+   pnpm ks toggle demo-disabled
+   ```
+
+2. S’il lui manque un module requis, la commande vous le propose dans un terminal interactif. Hors terminal interactif (par exemple lancée par une IA), elle refuse en nommant le module manquant ; relancez-la avec `--with-requires` pour activer aussi les requis :
+
+   ```bash
+   pnpm ks toggle demo-disabled --with-requires
+   ```
+
+3. Si le module crée des tables, la commande **génère** ses migrations et vous demande « Appliquer les migrations maintenant ? ». Répondez oui seulement si votre base tourne. Sinon, vous lisez « Migrations non appliquées » : lancez plus tard
+
+   ```bash
+   pnpm db:migrate
+   ```
+
+   Hors terminal interactif, ajoutez `--apply-migrations` pour autoriser l’application des migrations.
+4. Relancez `pnpm dev`. Les pages et les entrées de menu du module apparaissent.
+
+## Le socle : deux modules qu’on ne coupe pas
+
+`auth` et `rate-limit` forment le **socle** (liste `requiredModules` de `config/features.ts`). Sans comptes, il n’y a pas de SaaS ; sans limitation de débit, la connexion et l’inscription seraient exposées. `pnpm ks toggle auth` s’arrête avant d’écrire quoi que ce soit, en nommant le module.
+
+## Ce que veut dire « coupé »
+
+- **Aucune trace côté clients** : aucune page, aucune route d’API (elles répondent 404), aucune entrée de menu, et sur une base neuve, aucune de ses tables n’est créée.
+- **Vos données sont gardées** : un module activé puis coupé conserve ses tables et leur contenu. En le réactivant, vous les retrouvez intactes.
+- **Il n’existe aucune commande pour effacer ces tables.** C’est voulu : supprimer du code et des données sans retour possible est exclu du périmètre (voir [Ce que le boilerplate ne fait pas](/fr/reference/ce-que-le-boilerplate-ne-fait-pas)).
+
+Certains modules changent le comportement d’un autre quand ils sont coupés : par exemple, sans `jobs`, les tâches de fond s’exécutent directement dans la requête. Chaque page de module le précise.
+
+## Bientôt : le widget de retour
+
+Un **widget de retour** (vos clients vous envoient un avis depuis l’application) est prévu mais pas encore livré. Il est suivi par l’issue [#179](https://github.com/oliviermattei/poc-next/issues/179).
+
+<Callout type="info" title="Ce qui n’est pas inclus">
+- Aucune commande ne supprime un module, son code ou ses tables.
+- `pnpm ks toggle` ne touche jamais votre base sans votre accord (réponse « oui » ou `--apply-migrations`).
+- Quand un module est retiré de la liste, le commentaire écrit à côté de son nom dans `config/features.ts` part avec lui, et la liste est remise dans l’ordre de l’annuaire. La commande vous le signale.
+- Créer **votre** module se fait avec `pnpm ks scaffold <id>`, qui génère un squelette mais ne l’active pas : voir [Travailler avec une IA](/fr/demarrer/travailler-avec-une-ia).
+- La liste exacte de ce qui est « socle » est encore en discussion (le module `consent`, par exemple, reste coupable) : issue [#184](https://github.com/oliviermattei/poc-next/issues/184).
+</Callout>
+
+Pour aller plus loin : [Configurer les modules](/fr/configurer/modules) explique `config/features.ts` et `config/profiles.ts`.

@@ -1,8 +1,94 @@
 ---
 title: "Facturation"
-description: "Abonnements, achat unique, essai, sièges, paiement sans compte et portail client avec Stripe."
+description: "Abonnements, achats uniques, essais, sièges et paiement sans compte, avec Stripe."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+## En une phrase
 
-Cette page est en cours de rédaction : son contenu arrive dans un prochain ticket.
+Le module `billing` permet à vos clients de payer : abonnement mensuel ou annuel, achat unique, période d’essai, facturation au nombre de membres, paiement sans compte, et gestion de leur moyen de paiement dans le portail Stripe.
+
+## Ce que voient vos clients
+
+| Écran | Adresse | Ce qu’on y fait |
+|---|---|---|
+| Tarifs | `/pricing` | comparer les offres, avec ou sans compte, et souscrire |
+| Réglages › Facturation | `/app/settings/billing` | voir l’état de l’abonnement, « Souscrire » ou « Acheter » une offre, « Gérer la facturation » (moyen de paiement, factures et changement d’offre, dans le portail Stripe), voir « Vos achats » |
+| Fonctionnalité réservée | `/app/premium` | l’exemple livré d’une page réservée aux offres payantes : elle invite à souscrire ceux qui n’y ont pas droit |
+
+Quand le module `i18n` est activé, chaque adresse est précédée de la langue (`/fr/…`, `/en/…`).
+
+Ce que vos clients peuvent vivre :
+
+- **États d’un abonnement** affichés à l’écran : « Aucun abonnement », « Période d’essai », « Abonnement actif », « Abonnement résilié » (accès gardé jusqu’à la fin de la période payée), « Paiement échoué », « Abonnement expiré ».
+- **Essai** : une offre peut déclarer des jours d’essai (14 sur les offres livrées). Un essai n’est accordé qu’une fois. Trois jours avant la fin, le client reçoit la notification « Fin d’essai proche », dans l’application et par e-mail.
+- **Achat unique** : il n’expire pas et ne se rachète pas (« Déjà acheté »).
+- **Qui paie** : quand une organisation est choisie, c’est elle qui est abonnée, et seuls ses propriétaires et administrateurs gèrent la facturation. Sans organisation, c’est le compte.
+- **Paiement sans compte** : un visiteur peut souscrire depuis `/pricing` sans être connecté. Après le paiement, il reçoit un e-mail : un lien pour choisir son mot de passe si aucun compte n’existait à cette adresse, ou un lien de connexion si le compte existait déjà.
+- **Plafond de membres** : une offre peut limiter le nombre de membres d’une organisation ; au-delà, une invitation acceptée est refusée, sans retirer personne.
+
+### Les offres livrées
+
+Les offres sont déclarées dans `config/billing.ts`. Celles livrées sont des **exemples** :
+
+| Identifiant | Type | Prix affiché | Essai |
+|---|---|---|---|
+| `pro-monthly` | abonnement mensuel | 29 € par mois | 14 jours |
+| `pro-yearly` | abonnement annuel | 290 € par an | 14 jours |
+| `lifetime` | achat unique | 490 € | — |
+
+Le prix affiché vient de `amount` et `currency` ; **ce qui est réellement prélevé est le prix Stripe désigné par `priceId`**. Remplacez les `priceId` livrés (`price_pro_monthly`…) par ceux de votre compte Stripe : voir [Offres et prix](/fr/configurer/offres-et-prix).
+
+## Activer ou couper
+
+```bash
+pnpm ks toggle billing
+```
+
+- Le module ne dépend d’aucun autre.
+- **Coupé** : `/pricing` et Réglages › Facturation répondent 404, aucune variable de paiement n’est exigée au démarrage, l’étape « Votre offre » disparaît du parcours de bienvenue, l’écran des revenus de la console répond 404, et **toutes les fonctionnalités réservées sont ouvertes à tout compte** (il n’y a plus d’offre pour les réserver). Les tables déjà créées sont conservées.
+
+## Configurer
+
+| Quoi | Où |
+|---|---|
+| Les offres, leurs prix, l’essai, les sièges | `config/billing.ts` — [Offres et prix](/fr/configurer/offres-et-prix) |
+| Les pages réservées à une offre | `config/gating.ts` — [Fonctionnalités réservées](/fr/configurer/fonctionnalites-reservees) |
+| Le texte de la relance d’essai | `config/notifications.ts` — [Notifications](/fr/configurer/notifications) |
+| Le fournisseur de paiement | variables d’environnement ci-dessous — [Stripe](/fr/services/stripe) |
+
+Il faut **choisir l’un des deux modes**, sinon l’application refuse de démarrer en nommant les variables :
+
+- **Simulation locale** : `PAYMENTS_LOCAL_MODE=1` (valeur de `.env.example`). Le paiement est simulé par l’application, rien ne part chez Stripe. Elle accorde un abonnement **sans paiement** : elle est **refusée en production**.
+- **Stripe** : `STRIPE_SECRET_KEY` et `STRIPE_WEBHOOK_SECRET`, et retirez `PAYMENTS_LOCAL_MODE`. L’adresse du webhook à déclarer chez Stripe est `<APP_URL>/api/modules/billing/webhook`.
+
+Une offre mal écrite dans `config/billing.ts` arrête le démarrage en la nommant.
+
+Pour remettre l’état des abonnements d’accord avec Stripe (par exemple après une panne de webhook), lancez :
+
+```bash
+pnpm billing:reconcile
+```
+
+Elle ne réécrit rien si tout est déjà à jour, et n’efface jamais un abonnement sur une simple panne de Stripe.
+
+## Vérifier que ça marche
+
+En simulation locale (`PAYMENTS_LOCAL_MODE=1`) :
+
+1. Créez un nouveau compte et connectez-vous (les comptes de démonstration ont déjà un abonnement).
+2. Ouvrez `http://localhost:3000/fr/pricing`. Vous devez voir les trois offres.
+3. Cliquez « Souscrire » sur « Pro mensuel ». Le navigateur passe par la page de paiement simulée, puis revient.
+4. Ouvrez `/fr/app/settings/billing`. L’abonnement doit apparaître (« Période d’essai » ou « Abonnement actif »), avec l’offre « Pro mensuel ».
+5. Ouvrez `/fr/app/premium` : vous devez voir la fonctionnalité réservée, et non plus l’invitation à souscrire.
+
+Pour vérifier avec de vraies clés de test Stripe, suivez [Stripe](/fr/services/stripe).
+
+<Callout type="info" title="Ce qui n’est pas inclus">
+- **Un seul fournisseur : Stripe.** Les autres prestataires de paiement sont exclus du périmètre, tout comme la **facturation à l’usage** (voir [Ce que le boilerplate ne fait pas](/fr/reference/ce-que-le-boilerplate-ne-fait-pas)).
+- **Le paiement exige JavaScript** dans le navigateur du client ; sans lui, le bouton reste éteint et un message le dit.
+- **Pas d’offre au siège livrée** dans `config/billing.ts` (toutes sont `perSeat: false`), ni de choix du proratage Stripe ([#102](https://github.com/oliviermattei/poc-next/issues/102)).
+- **Rien ne vérifie** que `amount` et `currency` correspondent au prix Stripe de chaque `priceId` ([#103](https://github.com/oliviermattei/poc-next/issues/103)).
+- La page `/pricing` n’est pas encore déclarée aux moteurs de recherche ([#104](https://github.com/oliviermattei/poc-next/issues/104)).
+- **Le parcours n’a pas encore été joué de bout en bout avec de vraies clés Stripe** (achat unique, remboursements, essai, sièges, portail) : [#106](https://github.com/oliviermattei/poc-next/issues/106), [#107](https://github.com/oliviermattei/poc-next/issues/107).
+- Quand un client supprime son compte, le nombre de sièges de ses organisations n’est corrigé chez Stripe qu’au prochain `pnpm billing:reconcile` ([#100](https://github.com/oliviermattei/poc-next/issues/100)).
+</Callout>

@@ -1,8 +1,58 @@
 ---
 title: "Languages"
-description: "The site and the application in French and English."
+description: "The language prefix in addresses and the language switcher."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+## In one sentence
 
-This page is being written: its content arrives in an upcoming ticket.
+The `i18n` module lets your customers choose their language: every address carries its language (`/fr/…`, `/en/…`) and a switcher appears in the headers.
+
+## What your customers see
+
+- **Prefixed addresses**: `/fr/blog`, `/en/blog`. An address without a prefix (`/blog`) redirects to the right language.
+- **A language switcher** in the header of the site, the sign-in screens, the application and the console.
+- **The right language from the first visit**, chosen in this order:
+  1. the address prefix — a shared link opens in its language;
+  2. the customer's last choice, kept for a year in the `app_locale` cookie;
+  3. their browser's language;
+  4. the site's default language.
+
+The project ships in **French and English**, French being the default language (`config/i18n.ts`). Every screen and email text exists in both languages.
+
+## Enable or disable
+
+```bash
+pnpm ks toggle i18n
+```
+
+The module depends on no other and has no table.
+
+| | Module enabled | Module disabled |
+|---|---|---|
+| Addresses | prefixed: `/fr/contact` | no prefix: `/contact` |
+| Languages served | all those in `config/i18n.ts` | only `defaultLocale` |
+| Switcher | shown | absent |
+| Articles, documentation pages, release notes written in another language | served | ignored |
+
+Disabling the module deletes no translation: you can enable it again later without half-translated screens.
+
+## Configure
+
+- **The project's languages and the default language**: `config/i18n.ts` (`appLocales` and `defaultLocale`).
+- **The texts**: the `messages/fr.json` and `messages/en.json` catalogues of the application and of each module.
+
+Adding a language, or changing the default language, is detailed in [Configure languages](/en/configurer/langues). A text key missing in one language is never silently replaced: the screen fails, and `pnpm test` catches it first.
+
+## Check that it works
+
+1. Run `pnpm dev` and open http://localhost:3000. You should be redirected to `/fr` (or `/en` if your browser is in English).
+2. In the header, pick the other language with the switcher. You should land on the home page in that language, for example `/en`.
+3. Close the tab, then reopen http://localhost:3000: you should get the language you chose.
+
+<Callout title="What is not included">
+- **Only French and English** are shipped; any other language means translating every catalogue.
+- **No automatic translation** of texts or content.
+- **The switcher takes you to the home page** of the chosen language, not to the current page ([#129](https://github.com/oliviermattei/poc-next/issues/129)).
+- **Emails sent outside a visit** (scheduled tasks) go out in the site's default language: an account's preferred language is not stored yet ([#128](https://github.com/oliviermattei/poc-next/issues/128)).
+- **No language per domain** (a `.fr` domain, a `.com` domain): the language is read from the path.
+</Callout>

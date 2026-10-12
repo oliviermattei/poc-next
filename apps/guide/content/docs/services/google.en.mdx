@@ -3,6 +3,69 @@ title: "Google"
 description: "Sign-in with a Google account."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+## What it is for
 
-This page is being written: its content arrives in an upcoming ticket.
+Google lets your customers create an account and sign in with their Google account, through a “Continue with Google” button on `/sign-in` and `/sign-up`. It is carried by the `auth` module, which is part of the core (see [Authentication](/en/fonctionnalites/authentification)). A customer’s connections are listed on the `/app/settings/security` screen.
+
+Two variables: `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. Without them, the button does not appear and the application starts normally.
+
+## Without an account: the local provider
+
+To try provider sign-in without any key, set `OAUTH_LOCAL_PROVIDER=1` in `.env`. A “Continue with Local provider” button appears; it opens a session on the test address `local@example.test`, with no password and no network. It does not borrow the identity of any real provider.
+
+This provider opens a session **without a password** for whoever clicks: it is **refused at startup** when `NODE_ENV=production`, and also refused if set at the same time as a Google or GitHub key.
+
+## The callback address
+
+After sign-in, Google sends your customer back to this address, which must be declared at Google exactly:
+
+```bash
+<APP_URL>/api/modules/auth/callback/google
+```
+
+For example `http://localhost:3000/api/modules/auth/callback/google` locally, and `https://example.com/api/modules/auth/callback/google` in production. If you split the site and the application across two hosts (`APP_HOST`), the address is on the application’s host: `https://<APP_HOST>/api/modules/auth/callback/google`. See [Domain and two hosts](/en/deployer/domaine-et-deux-hotes).
+
+## Create the credentials
+
+Everything happens in the Google Cloud console.
+
+1. **Create a project** (or pick one).
+2. **Configure the OAuth consent screen**: your application’s name, a contact address and, if asked, your domain. This is what your customers will see when signing in.
+3. **Create an OAuth client ID** of type “Web application”.
+4. Under **Authorized redirect URIs**, add the callback address above — one line for local, one for production.
+5. **Copy the client ID and client secret** that Google shows.
+
+## Connect
+
+1. In `.env` (locally) or in your host’s variables (in production), fill in both values, and remove `OAUTH_LOCAL_PROVIDER` if it is set:
+
+   ```bash
+   GOOGLE_CLIENT_ID=….apps.googleusercontent.com
+   GOOGLE_CLIENT_SECRET=…
+   ```
+
+2. Restart the application.
+
+The two variables go together: one without the other stops startup and names the missing one. Nothing to declare in `config/security.ts`: sign-in goes through a redirect to Google.
+
+## Verify
+
+1. Open `/sign-in`: the “Continue with Google” button should appear.
+2. Click it and sign in with a Google account.
+3. You should come back signed in to the application, and the Google account should be listed on `/app/settings/security`.
+
+If Google shows a `redirect_uri_mismatch` error, the declared callback address does not exactly match the application’s (protocol, host, port, path).
+
+## What to know about existing accounts
+
+A Google sign-in joins an existing account only if the address is **attested twice**: by Google, and by the local account, whose address must have been verified. A customer who signed up with a password and never verified their address is therefore refused Google sign-in, with a general message that does not say why. They just need to verify their address, or reset their password. This is what stops someone from preparing an account at another person’s address to take it over later.
+
+## Turn off
+
+Remove `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`: the button disappears, and the Google callback address is no longer reachable.
+
+<Callout type="warn" title="What is not included">
+- Only Google and GitHub are offered: no Apple, Microsoft or other provider.
+- Google sign-in has never been tested end to end with a real account by the repository ([issue #174](https://github.com/oliviermattei/poc-next/issues/174)): run the check above before opening it to your customers.
+- Starting the sign-in does not yet check the `Origin` header ([issue #82](https://github.com/oliviermattei/poc-next/issues/82)).
+</Callout>

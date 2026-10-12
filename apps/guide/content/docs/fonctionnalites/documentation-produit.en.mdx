@@ -1,8 +1,81 @@
 ---
 title: "Product documentation"
-description: "Your clients’ documentation, served under /docs, not to be confused with this Guide."
+description: "The documentation you write for your customers, served under /docs — separate from this Guide."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+## In one sentence
 
-This page is being written: its content arrives in an upcoming ticket.
+The `docs` module publishes, under `/docs` on your site, the documentation that **you** write for **your customers**: MDX pages organised in sections, with a table of contents and a search.
+
+<Callout type="info" title="Not to be confused with this Guide">
+This Guide is for you, the project owner, and is never published with your application. The product documentation is part of your SaaS: it explains **your** product to **your** customers.
+</Callout>
+
+## What your customers see
+
+| Screen | Address | What it does |
+|---|---|---|
+| Documentation home | `/docs` | redirects to the first page of the first section |
+| A page | `/docs/<section>/<page>` | the page, with the section navigation, a table of contents of its headings and a search |
+
+A “Documentation” entry appears in the site header, and every page goes into `sitemap.xml`. When the `i18n` (languages) module is enabled, addresses are prefixed with the language (`/fr/docs`, `/en/docs`).
+
+**An untranslated page is still served**: in the site's default language (French, set by `defaultLocale` in `config/i18n.ts`), preceded by a notice saying so. Documentation in the wrong language beats a missing page.
+
+The search runs in the browser, with no external service.
+
+## Enable or disable
+
+```bash
+pnpm ks toggle docs
+```
+
+The module depends on no other and has no table. Disabled, `/docs` and its pages answer 404 and the “Documentation” entry disappears.
+
+## Write your pages
+
+Pages live in `content/docs/<language>/<section>/<page>.mdx`, at the root of the repository. **The shipped content describes the boilerplate itself** (install, configure, modules): it is an example — replace it with your product's documentation.
+
+1. Create a section folder, for example `content/docs/fr/premiers-pas/`.
+2. In that folder, create `section.json`:
+
+   ```json
+   { "title": "Premiers pas", "order": 1 }
+   ```
+
+   `order` sorts the sections (smallest first). A section without this file is refused.
+3. Create a page `content/docs/fr/premiers-pas/creer-un-compte.mdx`:
+
+   ```mdx
+   ---
+   title: Créer un compte
+   description: Les trois étapes pour commencer.
+   order: 1
+   ---
+
+   ## Première étape
+
+   Votre texte.
+   ```
+
+   All three fields are required; `order` sorts the pages within their section. The `##` and `###` headings make up the table of contents.
+4. To link to another documentation page, write a regular Markdown link whose address carries no language: `/docs/premiers-pas/creer-un-compte`.
+
+5. To translate, recreate the same path under `content/docs/en/`, with a translated `section.json`.
+6. Pages are read at startup: restart `pnpm dev`.
+
+What makes the build (`pnpm build`) fail, naming the file: an invalid or incomplete header, a section without `section.json` in the default language, a page that exists only in a translation, a link to a `/docs` page that does not exist, two identical headings in the same page.
+
+## Check that it works
+
+1. Open http://localhost:3000/docs. You should land on the first page of the first section.
+2. Open your page `/docs/premiers-pas/creer-un-compte`: you should see its title, its table of contents alongside, and the section in the navigation.
+3. Type a word from your page into the search: the page should appear in the results.
+4. Run `pnpm build`: the build should succeed. If it fails, the message names the file to fix.
+
+<Callout title="What is not included">
+- **No online editor**: a page is a file in the repository, published by a deployment.
+- **No multiple versions** of the documentation (v1, v2…).
+- **No search through an external service**: the index ships with the page, capped at 64 KiB per language; beyond that, the build fails and gives the size.
+- **No area reserved for signed-in customers**: the documentation is public.
+</Callout>

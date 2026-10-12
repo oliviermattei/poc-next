@@ -1,8 +1,66 @@
 ---
 title: "Changelog"
-description: "Le journal des nouveautés de votre produit."
+description: "Une page « Nouveautés » groupée par version, avec son flux RSS."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+## En une phrase
 
-Cette page est en cours de rédaction : son contenu arrive dans un prochain ticket.
+Le module `changelog` publie vos notes de version sur une page « Nouveautés », groupées par version de la plus récente à la plus ancienne, avec un flux RSS.
+
+## Ce que voient vos clients
+
+| Écran | Adresse | Ce qu’il fait |
+|---|---|---|
+| Nouveautés | `/changelog` | toutes les entrées de la langue de la page, groupées par version, sur une seule page |
+| Flux RSS | `/api/modules/changelog/feed.xml` | un flux par langue (`?locale=en` pour l’anglais) |
+
+Un lien « Nouveautés » apparaît dans le pied de page du site. Quand le module `i18n` (langues) est activé, l’adresse est précédée de la langue (`/fr/changelog`).
+
+Une entrée n’apparaît que dans la langue où elle est écrite.
+
+## Activer ou couper
+
+```bash
+pnpm ks toggle changelog
+```
+
+Le module ne dépend d’aucun autre (pas même du blog) et n’a pas de table. Coupé, la page et le flux répondent 404 et le lien du pied de page disparaît.
+
+## Écrire une entrée
+
+Les entrées vivent dans `content/changelog/<langue>/<slug>.mdx`. Des exemples sont livrés : remplacez-les.
+
+1. Créez `content/changelog/fr/export-csv.mdx` (minuscules, chiffres et tirets).
+2. Collez cet en-tête, puis le texte de l’entrée :
+
+   ```mdx
+   ---
+   version: "1.2"
+   date: 2026-10-13
+   category: added
+   title: Export CSV
+   description: Vous pouvez exporter vos données en un clic.
+   ---
+
+   Le détail de la nouveauté.
+   ```
+
+   - `version` : des nombres séparés par des points (`1`, `1.2`, `1.2.3`). **Mettez-la entre guillemets**, sinon `1.0` serait lu comme un nombre. Les versions sont triées numériquement : `10.0` vient bien après `9.0`.
+   - `category` : l’une des quatre valeurs `added`, `changed`, `fixed`, `removed` — affichées traduites à l’écran.
+   - `date` : `AAAA-MM-JJ`.
+3. Pour l’anglais, créez le même nom sous `content/changelog/en/`.
+4. Les entrées sont lues au démarrage : relancez `pnpm dev`.
+
+## Vérifier que ça marche
+
+1. Ouvrez http://localhost:3000/changelog : votre entrée doit apparaître sous sa version.
+2. En bas d’une page du site, le lien « Nouveautés » doit mener à cette page.
+3. Ouvrez http://localhost:3000/api/modules/changelog/feed.xml : le titre de votre entrée doit y figurer.
+4. Lancez `pnpm build` : un en-tête invalide fait échouer la construction en nommant le fichier.
+
+<Callout title="Ce qui n’est pas inclus">
+- **Pas de génération automatique** depuis vos commits ou vos versions : chaque entrée s’écrit à la main.
+- **Pas d’adresse par entrée** : tout est sur une seule page.
+- **Pas de notification** à vos clients quand une entrée paraît.
+- **Pas d’autre catégorie** que les quatre prévues.
+</Callout>

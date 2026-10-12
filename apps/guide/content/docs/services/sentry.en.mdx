@@ -3,6 +3,90 @@ title: "Sentry"
 description: "Error tracking and source map upload."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+## What it is for
 
-This page is being written: its content arrives in an upcoming ticket.
+Sentry receives your SaaS’s unhandled errors, server side as well as browser side, so you see them before your customers report them. It is carried by the `analytics` module (see [Analytics](/en/fonctionnalites/analytics)).
+
+Browser errors first go through your application (route `/api/modules/analytics/client-error`), which forwards them to Sentry: the browser never talks directly to Sentry, so there is **nothing to declare** in `config/security.ts`.
+
+Two variables for the application: `SENTRY_DSN` (your project’s sending address) and `SENTRY_RELEASE` (the name of the deployed version). Four more for uploading source maps, only on the machine that uploads them.
+
+## Without an account: nothing is reported
+
+Sentry has **no local mode**: without `SENTRY_DSN`, the shipped state, no error is reported, no call is sent, and the application works normally. Errors are still written to the server log, as always.
+
+## Create the account and get the DSN
+
+1. **Create an account** on sentry.io and an organization.
+2. **Create a project** for your application.
+3. **Copy the project’s DSN** from its settings (the client keys page). It has the shape:
+
+   ```bash
+   https://<public key>@<host>/<project number>
+   ```
+
+   The DSN is not a secret: its public key is meant to be embedded.
+
+## Connect
+
+1. In `.env` (locally) or in your host’s variables (in production), fill in:
+
+   ```bash
+   SENTRY_DSN=https://…@….ingest.sentry.io/123456
+   SENTRY_RELEASE=app@1.2.3
+   ```
+
+   `SENTRY_RELEASE` is a version name of your choice; change it at every deployment. It is written into every reported error.
+2. Restart the application.
+
+A `SENTRY_DSN` that does not have the shape of a DSN stops startup and names it.
+
+## Source maps: readable errors
+
+The code sent to the browser is minified: without **source maps**, a browser error reaches Sentry unreadable. The build generates them; they must then be **uploaded** to Sentry under the same version name as the errors, then **removed** from what the site serves publicly (a source map is your source code). The `pnpm sourcemaps:release` command does both, in that order.
+
+1. **Create an auth token** in your Sentry organization’s settings, with the right to upload releases. This token **is** a secret: it never goes into the repository, a Docker image, or the application’s variables.
+2. **Note** your organization’s identifier (“slug”) and your project’s.
+3. **Run the upload** from the machine that built the application, with the **same** `SENTRY_RELEASE` value as the deployed application.
+
+   If you build and serve on the same machine (`pnpm build` then `pnpm start`):
+
+   ```bash
+   SKIP_ENV_VALIDATION=1 pnpm build
+   SENTRY_ORG=… SENTRY_PROJECT=… SENTRY_AUTH_TOKEN=… SENTRY_RELEASE=app@1.2.3 \
+     pnpm sourcemaps:release
+   ```
+
+   If you deploy a **Docker image**, the image runs its own build: you must upload the maps of **that** build, not your machine’s. Extract them from the image’s `builder` stage, then upload them:
+
+   ```bash
+   docker build -t killer-saas .
+   docker build --target builder -t killer-saas-maps .
+   docker create --name killer-saas-maps-tmp killer-saas-maps
+   docker cp killer-saas-maps-tmp:/repo/apps/web/.next ./.sourcemaps
+   docker rm killer-saas-maps-tmp
+   SOURCEMAPS_NEXT_DIR=./.sourcemaps SENTRY_ORG=… SENTRY_PROJECT=… \
+     SENTRY_AUTH_TOKEN=… SENTRY_RELEASE=app@1.2.3 pnpm sourcemaps:release
+   ```
+
+   The served image has already removed its source maps from the public folder: it never embeds your source code, even if you upload nothing.
+
+The command **refuses** to run without `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` and `SENTRY_RELEASE`, naming what is missing. It uploads to `https://sentry.io`; the `SENTRY_UPLOAD_HOST` variable lets you target another address. A file already uploaded is not an error: running the command again changes nothing.
+
+## Verify
+
+1. Trigger an error in the application (for example a page that throws an exception, on a test branch).
+2. In Sentry, the error should appear in the issues list, with the `SENTRY_RELEASE` version.
+3. Open an error coming from the browser: its trace should show your file and function names, not minified code. If it is minified, check that `SENTRY_RELEASE` is identical in the application and in the upload.
+
+## Turn off
+
+- Remove `SENTRY_DSN`: the application runs, no error is reported.
+- Or turn the module off: `pnpm ks toggle analytics`. This also turns off [PostHog](/en/services/posthog), carried by the same module.
+
+<Callout type="warn" title="What is not included">
+- No error-tracking tool other than Sentry.
+- The boilerplate does not use Sentry’s official SDK: it sends errors itself. So there are no performance traces and no request breadcrumbs.
+- The route that receives browser errors is public (to catch errors before sign-in): a third party can use up part of your Sentry quota there, within the limits of rate limiting.
+- `pnpm sourcemaps:release` has never been run against a real account, and no live sending recipe exists for Sentry ([issue #149](https://github.com/oliviermattei/poc-next/issues/149)). Check once yourself that a trace is readable.
+</Callout>

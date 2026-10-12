@@ -1,8 +1,80 @@
 ---
 title: "Serveur MCP"
-description: "Piloter les modules du projet depuis un assistant IA."
+description: "Laisser votre assistant IA lister, activer, couper et créer des modules du projet."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+## En une phrase
 
-Cette page est en cours de rédaction : son contenu arrive dans un prochain ticket.
+Le module `mcp-server` donne à votre assistant IA (Claude ou tout client compatible MCP) trois outils pour piloter les modules de votre dépôt, exactement comme vous le feriez avec `pnpm ks`.
+
+<Callout type="info" title="Pour vous, pas pour vos clients">
+Ce serveur tourne sur votre poste, lancé par votre assistant IA. Il n’est ni exposé sur internet, ni déployé avec votre SaaS : vos clients ne le voient jamais.
+</Callout>
+
+## Les trois outils
+
+| Outil | Équivalent | Ce qu’il fait |
+|---|---|---|
+| `list_modules` | `pnpm ks list` | liste les modules, leur état, ce dont ils dépendent et ceux qui ne peuvent pas être coupés |
+| `toggle_module` | `pnpm ks toggle <module>` | active ou coupe un module dans `config/features.ts`, régénère le schéma et peut appliquer les migrations |
+| `scaffold_module` | `pnpm ks scaffold <module>` | crée le squelette d’un nouveau module dans `packages/modules/<module>` |
+
+Les deux outils qui écrivent **refusent de travailler sur un dépôt qui a des modifications non commitées** : vous pouvez ainsi toujours annuler ce que l’assistant a fait. Ils refusent aussi, en le nommant, un module inconnu, une dépendance manquante ou un module encore requis par un autre. Aucun outil ne reçoit de chemin de fichier ni ne renvoie le contenu de `.env`.
+
+Ce que sont les modules, et ce qu’activer ou couper l’un d’eux produit : [Fonctionnalités](/fr/fonctionnalites).
+
+## Activer ou couper
+
+```bash
+pnpm ks toggle mcp-server
+```
+
+Le module ne dépend d’aucun autre, n’a ni table ni route. Coupé, le serveur refuse de démarrer et affiche :
+
+```text
+Module mcp-server désactivé dans config/features.ts : le serveur MCP ne démarre pas. Activez-le avec « pnpm ks toggle mcp-server ».
+```
+
+## Brancher votre assistant
+
+Le serveur se lance avec cette commande, **depuis la racine du dépôt** — c’est votre assistant qui la lance, pas vous :
+
+```bash
+node ./packages/modules/mcp-server/bin/mcp-server.mjs
+```
+
+1. Ouvrez le fichier d’exemple `packages/modules/mcp-server/mcp-client.example.json`. Il contient :
+
+   ```json
+   {
+     "mcpServers": {
+       "killer-boilerplate": {
+         "command": "node",
+         "args": ["./packages/modules/mcp-server/bin/mcp-server.mjs"]
+       }
+     }
+   }
+   ```
+
+2. Copiez ce bloc dans la configuration MCP de votre client. Avec Claude Code, enregistrez-le dans un fichier `.mcp.json` à la racine du dépôt.
+3. Si votre client ne se lance pas depuis la racine du dépôt, remplacez le chemin relatif par le chemin complet du fichier `mcp-server.mjs`.
+4. Redémarrez votre client pour qu’il charge le serveur.
+
+La mise en place de votre assistant (règles du dépôt, compétences) est décrite dans [Travailler avec une IA](/fr/demarrer/travailler-avec-une-ia).
+
+## Vérifier que ça marche
+
+1. Demandez à votre assistant : « Liste les modules du projet avec l’outil list_modules ».
+2. Vous devez obtenir la même liste que dans votre terminal avec :
+
+   ```bash
+   pnpm ks list
+   ```
+
+3. Avec une modification non commitée dans le dépôt, demandez-lui de couper le module `blog` : il doit recevoir un refus qui parle de modifications non commitées, et `config/features.ts` ne doit pas changer.
+
+<Callout title="Ce qui n’est pas inclus">
+- **Seulement ces trois outils** : pas d’accès à la base, aux journaux, au déploiement ni aux fichiers du dépôt en dehors de ce que fait `pnpm ks`.
+- **Pas de serveur distant** : il ne parle qu’en local, avec le client qui l’a lancé.
+- **Pas d’assistant IA dans votre SaaS** : cela fait partie de ce que le boilerplate ne fait volontairement pas.
+</Callout>
