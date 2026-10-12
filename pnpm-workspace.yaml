@@ -22,3 +22,16 @@ packages:
 # montée de version le réintroduit par transitivité.
 onlyBuiltDependencies:
   - esbuild
+
+# Versions imposées à une dépendance transitive (`pnpm run audit`, issue #77).
+# Une ligne n'entre ici que quand le parent **épingle** la version vulnérable,
+# si bien qu'aucun rafraîchissement du lockfile ne peut l'en sortir ; chaque
+# ligne est portée par son parent et sort de la liste dès qu'il livre le correctif.
+#
+# - `handlebars` : `eslint-plugin-boundaries@7.2.0` (dernière version publiée)
+#   et sa dépendance `@boundaries/elements@3.1.1` l'épinglent tous deux à
+#   `4.7.9`, visée par GHSA-8r5x-fm3f-whwj et GHSA-p8wg-vrv2-v86f (critiques) et
+#   GHSA-xw65-4hp5-5hc7. `4.7.10` est le correctif, même mineure. Le sélecteur
+#   porte sur la plage vulnérable, pas sur un parent : il couvre les deux.
+overrides:
+  "handlebars@<4.7.10": 4.7.10
