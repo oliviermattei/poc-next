@@ -1,0 +1,73 @@
+---
+title: "GitHub"
+description: "Sign-in with a GitHub account."
+---
+
+## What it is for
+
+GitHub lets your customers create an account and sign in with their GitHub account, through a “Continue with GitHub” button on `/sign-in` and `/sign-up`. It is carried by the `auth` module, which is part of the core (see [Authentication](/en/fonctionnalites/authentification)). A customer’s connections are listed on the `/app/settings/security` screen.
+
+Two variables: `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`. Without them, the button does not appear and the application starts normally.
+
+## Without an account: the local provider
+
+To try provider sign-in without any key, set `OAUTH_LOCAL_PROVIDER=1` in `.env`. A “Continue with Local provider” button appears; it opens a session on the test address `local@example.test`, with no password and no network.
+
+This provider opens a session **without a password** for whoever clicks: it is **refused at startup** when `NODE_ENV=production`, and also refused if set at the same time as a GitHub or Google key. Details are on the [Google](/en/services/google) page.
+
+## The callback address
+
+After sign-in, GitHub sends your customer back to this address, which must be declared at GitHub:
+
+```bash
+<APP_URL>/api/modules/auth/callback/github
+```
+
+For example `http://localhost:3000/api/modules/auth/callback/github` locally, and `https://example.com/api/modules/auth/callback/github` in production. With two hosts (`APP_HOST`), the address is on the application’s host: `https://<APP_HOST>/api/modules/auth/callback/github`. See [Domain and two hosts](/en/deployer/domaine-et-deux-hotes).
+
+## Create the OAuth application
+
+1. On GitHub, open your account’s (or your organization’s) **developer settings** and create a new **OAuth App**.
+2. Fill in:
+   - the **application name**, which your customers will see;
+   - the **Homepage URL**: the value of `APP_URL`;
+   - the **Authorization callback URL**: the callback address above.
+3. Save. GitHub shows the **Client ID**.
+4. **Generate a client secret** and copy it right away: GitHub does not show it again.
+
+A GitHub OAuth App accepts only one callback address: create **one for your local machine** and **one for production**, each with its own credentials.
+
+## Connect
+
+1. In `.env` (locally) or in your host’s variables (in production), fill in both values, and remove `OAUTH_LOCAL_PROVIDER` if it is set:
+
+   ```bash
+   GITHUB_CLIENT_ID=…
+   GITHUB_CLIENT_SECRET=…
+   ```
+
+2. Restart the application.
+
+The two variables go together: one without the other stops startup and names the missing one. Nothing to declare in `config/security.ts`: sign-in goes through a redirect to GitHub.
+
+## Verify
+
+1. Open `/sign-in`: the “Continue with GitHub” button should appear.
+2. Click it and authorize the application at GitHub.
+3. You should come back signed in to the application, and the GitHub account should be listed on `/app/settings/security`.
+
+If GitHub reports that the callback address does not match, compare it character by character with the application’s (protocol, host, port, path).
+
+## What to know about addresses
+
+The application uses the GitHub account’s email address (the primary address if the profile does not show one) and **refuses sign-in if GitHub does not mark it as verified**. And, as with Google, a GitHub sign-in joins an existing account only if that account has itself verified its address: otherwise sign-in is refused with a general message, and the customer must first verify their address or reset their password.
+
+## Turn off
+
+Remove `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`: the button disappears, and the GitHub callback address is no longer reachable.
+
+<Callout type="warn" title="What is not included">
+- Only GitHub and Google are offered: no Apple, Microsoft or other provider.
+- GitHub sign-in has never been tested end to end with a real account by the repository ([issue #174](https://github.com/oliviermattei/poc-next/issues/174)): run the check above before opening it to your customers.
+- Starting the sign-in does not yet check the `Origin` header ([issue #82](https://github.com/oliviermattei/poc-next/issues/82)).
+</Callout>

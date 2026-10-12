@@ -10,7 +10,7 @@
     "build": {
       "dependsOn": ["^build"],
       "env": ["NODE_ENV", "DATABASE_URL"],
-      "outputs": [".next/**", "!.next/cache/**", "dist/**"]
+      "outputs": [".next/**", "!.next/cache/**", "dist/**", "out/**"]
     },
     "typecheck": {
       "dependsOn": ["^typecheck"]

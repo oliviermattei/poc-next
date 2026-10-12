@@ -1,0 +1,66 @@
+---
+title: "Fonctionnalités réservées"
+description: "Réserver une fonctionnalité à une offre payante, dans config/gating.ts."
+---
+
+Une **fonctionnalité réservée** n’est accessible qu’aux clients qui détiennent l’une des offres que vous désignez. Le lien entre une fonctionnalité et ses offres s’écrit dans `config/gating.ts`, et nulle part ailleurs : aucun écran ni aucune route n’a de logique d’accès à écrire.
+
+## Ce que contient le fichier livré
+
+Une seule ligne, qui sert d’exemple et prouve que le mécanisme fonctionne :
+
+```ts
+export const featureGates = [
+  {
+    id: DEMO_PREMIUM_FEATURE, // 'premium-report', fourni par le module demo-enabled
+    offers: ['pro-monthly', 'pro-yearly', 'lifetime'],
+  },
+]
+```
+
+Elle réserve le « rapport détaillé » du module de démonstration aux trois offres livrées. L’écran correspondant est `/app/premium`.
+
+## Les trois règles
+
+1. **L’identifiant vient du module qui réserve la fonctionnalité.** Une route ou une entrée de menu d’un module déclare la fonctionnalité qu’elle exige ; vous, vous déclarez ici quelles offres l’ouvrent. Si une route exige une fonctionnalité absente de ce fichier, **le démarrage refuse** : sinon elle serait refusée à tout le monde, en silence.
+2. **`offers` est un « ou »** : détenir **une** des offres listées suffit. Il n’y a pas de niveaux ordonnés.
+3. **Module `billing` coupé, tout est accordé.** Un projet qui ne vend rien ne réserve rien : toutes les fonctionnalités déclarées ici deviennent accessibles, et aucune invitation à souscrire n’apparaît.
+
+Le démarrage refuse aussi une offre inconnue : chaque nom de `offers` doit exister dans [`config/billing.ts`](/fr/configurer/offres-et-prix) (quand le module `billing` est activé).
+
+## Changer les offres qui ouvrent une fonctionnalité
+
+<Steps>
+<Step>
+
+Dans `config/gating.ts`, modifiez la liste `offers`. Par exemple, pour réserver le rapport à l’abonnement annuel et à la licence à vie :
+
+```ts
+offers: ['pro-yearly', 'lifetime'],
+```
+
+</Step>
+<Step>
+
+Redémarrez (`Ctrl + C`, puis `pnpm dev`). Une offre mal orthographiée arrête le démarrage en la nommant.
+
+</Step>
+<Step>
+
+**Vérifiez** avec un compte sans abonnement : ouvrez `http://localhost:3000/fr/app/premium`. **Vous devez voir** une invitation à souscrire, pas le contenu. Souscrivez ensuite une offre listée (en mode local, le paiement est simulé) : la même page affiche alors la fonctionnalité.
+
+</Step>
+</Steps>
+
+## Ce que voient vos clients
+
+- **Un écran réservé invite, il ne se cache pas** : sans le droit, le client voit l’écran avec une invitation à souscrire, pour qu’il sache que la fonctionnalité existe.
+- **Une route d’API réservée répond 403** à qui n’a pas le droit. La vérification est faite côté serveur.
+
+## Réserver une fonctionnalité à vous
+
+Réserver un **nouvel** écran ou une nouvelle route demande d’écrire du code dans un module (la route déclare la fonctionnalité qu’elle exige), puis d’ajouter ici une ligne `{ id: '<identifiant>', offers: [...] }`. Le module de démonstration est l’exemple à suivre : voir [Module de démonstration](/fr/fonctionnalites/module-de-demonstration). Si vous coupez `demo-enabled`, remplacez sa ligne par les vôtres.
+
+<Callout type="info" title="Ce qui n’est pas inclus">
+Pas de quotas ni de limites de volume (« 10 projets sur l’offre de base ») : le réservé porte sur la **possession d’une offre**, jamais sur une quantité consommée — c’est la brique de la facturation à l’usage, exclue volontairement. Pas de niveaux hiérarchiques d’offres non plus : chaque fonctionnalité liste explicitement les offres qui l’ouvrent.
+</Callout>

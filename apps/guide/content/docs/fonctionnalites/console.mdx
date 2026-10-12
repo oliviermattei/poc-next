@@ -1,0 +1,84 @@
+---
+title: "Console superadmin"
+description: "Le back-office de la plateforme : comptes, organisations, revenus, inscriptions."
+---
+
+## En une phrase
+
+Le module `admin` vous donne, à vous et aux personnes que vous désignez **superadmin**, une console pour voir et administrer toute la plateforme : les comptes, les organisations, les revenus et les inscriptions reçues par le site public.
+
+La console n’est pas visible par vos clients : elle répond « page introuvable » (404) à toute personne qui n’est pas superadmin, visiteur anonyme compris, et aucun lien du produit n’y mène.
+
+## Ce que vous y voyez
+
+Quand le module `i18n` est activé, chaque adresse est précédée de la langue (`/fr/console`, `/en/console`).
+
+| Écran | Adresse | Contenu |
+|---|---|---|
+| Tableau de bord | `/console` | une tuile par écran : comptes inscrits, organisations, revenu récurrent estimé, inscriptions reçues |
+| Comptes | `/console/users` | tous les comptes, avec recherche, date d’inscription, état (« Actif », « Banni », « Non vérifié ») et droits |
+| Détail d’un compte | `/console/users/<id>` | ses organisations et son rôle dans chacune, ses sessions actives (bouton « Révoquer »), et le bouton « Envoyer une réinitialisation de mot de passe » |
+| Organisations | `/console/organizations` | toutes les organisations, leur effectif, leur offre et leur abonnement (si le module `organizations` est activé) |
+| Détail d’une organisation | `/console/organizations/<id>` | ses membres et leur rôle, son offre et son abonnement |
+| Revenus | `/console/revenue` | le revenu mensuel récurrent **estimé**, les achats uniques **constatés** sur la période choisie (30 jours, 12 mois, depuis le début), les abonnements par état (si le module `billing` est activé) |
+| Inscriptions | `/console/subscriptions` | les inscriptions reçues par les formulaires publics (newsletter, liste d’attente), filtrables par source, avec le bouton « Exporter en CSV » (si le module `marketing` est activé) |
+
+Le revenu récurrent est **estimé** : la base ne stocke pas le montant des abonnements, il est calculé à partir des prix déclarés dans `config/billing.ts`. L’écran le dit à côté du chiffre.
+
+### Bannir, promouvoir, emprunter une session
+
+Ces trois actions existent côté serveur, **mais aucun bouton ne les propose encore dans la console** (issue [#135](https://github.com/oliviermattei/poc-next/issues/135)) :
+
+- **bannir / débannir un compte** : un compte banni ne peut plus se connecter, et il voit le même refus qu’un compte inconnu ;
+- **nommer ou révoquer un superadmin** : le dernier superadmin ne peut être ni révoqué ni banni ;
+- **emprunter la session d’un client** (impersonation) pour voir le produit à sa place : un bandeau « Session empruntée » s’affiche alors sur chaque page, avec le bouton « Rendre la main ». Une session empruntée expire au bout d’une heure, et son début comme sa fin sont journalisés.
+
+<Callout type="warn" title="Le rôle de superadmin vaut tous les comptes">
+Emprunter une session ne demande pas le second facteur du compte emprunté. Un superadmin peut donc entrer chez n’importe quel client, même protégé par la double authentification. Protégez les comptes superadmin en priorité (mot de passe fort, double authentification).
+</Callout>
+
+## Devenir le premier superadmin
+
+1. Inscrivez-vous dans l’application avec l’adresse qui doit administrer, et vérifiez-la (voir [Authentification](/fr/fonctionnalites/authentification)).
+2. Dans le fichier `.env` à la racine du projet (ou dans les variables de votre hébergeur en production), renseignez cette adresse :
+
+   ```bash
+   SUPERADMIN_EMAIL=vous@exemple.com
+   ```
+
+3. Arrêtez puis relancez l’application (`pnpm dev`).
+4. Connectez-vous avec ce compte et ouvrez `http://localhost:3000/fr/console`. Vous devez voir le « Tableau de bord » de la console.
+
+`SUPERADMIN_EMAIL` ne désigne **que le premier** superadmin : dès qu’il en existe un capable de se connecter, la base fait foi et changer la variable ne nomme personne. Laissée vide, l’application démarre quand même, avec un avertissement qui nomme la variable, et la console répond 404 à tout le monde.
+
+## Activer ou couper
+
+```bash
+pnpm ks toggle admin
+```
+
+- Le module a besoin de `auth` (toujours activé).
+- **Coupé** : toute la console répond 404, le rôle de superadmin n’existe plus, et plus personne ne peut bannir. Un compte déjà banni **reste banni**. Une session empruntée en cours ne peut plus être rendue à la main : elle expire d’elle-même (le bandeau le dit).
+- Les écrans Organisations, Revenus et Inscriptions disparaissent aussi quand leur module (`organizations`, `billing`, `marketing`) est coupé.
+
+## Configurer
+
+| Quoi | Où |
+|---|---|
+| Le premier superadmin | `SUPERADMIN_EMAIL` — [Variables d’environnement](/fr/configurer/variables-d-environnement) |
+| Les prix qui servent à estimer le revenu | `config/billing.ts` — [Offres et prix](/fr/configurer/offres-et-prix) |
+
+## Vérifier que ça marche
+
+1. Connecté en superadmin, ouvrez `/fr/console/users` : vous devez voir votre compte, avec « Superadministrateur » dans la colonne des droits.
+2. Ouvrez votre compte et vérifiez que votre session actuelle apparaît dans « Sessions actives ».
+3. Dans une fenêtre de navigation privée, connectez-vous avec un compte ordinaire et ouvrez `/fr/console` : vous devez voir « page introuvable ».
+
+<Callout type="info" title="Ce qui n’est pas inclus">
+- **Pas de bouton** pour bannir, promouvoir ou emprunter une session ([#135](https://github.com/oliviermattei/poc-next/issues/135)).
+- **Pas d’historique ni de graphique** : le tableau de bord montre l’état d’aujourd’hui ([#181](https://github.com/oliviermattei/poc-next/issues/181)), et le revenu récurrent ne dépend pas de la période choisie ([#109](https://github.com/oliviermattei/poc-next/issues/109)).
+- **Pas de demande de confirmation** avant une action irréversible : le bouton nomme l’effet ([#152](https://github.com/oliviermattei/poc-next/issues/152)).
+- Les **messages de contact** ne sont pas listés dans « Inscriptions » : ils sont envoyés par e-mail.
+- L’export CSV des inscriptions n’a pas de plafond de taille ([#91](https://github.com/oliviermattei/poc-next/issues/91)).
+- La console n’a pas son propre sous-domaine ([#183](https://github.com/oliviermattei/poc-next/issues/183)), et son adresse d’inscriptions dit encore « subscriptions » ([#182](https://github.com/oliviermattei/poc-next/issues/182)).
+</Callout>

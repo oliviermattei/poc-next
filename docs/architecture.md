@@ -29,6 +29,7 @@
 apps/
   web/                     Application Next.js — rendu, layouts, montage du répartiteur de modules
     app/api/[[...route]]/  Route handler attrape-tout : point de montage unique de l'API
+  guide/                   Le Guide du propriétaire du projet — site Fumadocs statique, hors image (ADR 083)
 config/                    Configuration éditée par le propriétaire du projet
   features.ts              Modules activés (typé, validé au démarrage)
   billing.ts               Offres : mode, prix, intervalle, essai, siège

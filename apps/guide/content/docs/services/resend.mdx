@@ -1,0 +1,95 @@
+---
+title: "Resend"
+description: "L’envoi des e-mails : la clé, l’expéditeur et la capture locale."
+---
+
+## À quoi il sert
+
+Resend envoie les e-mails de votre SaaS : vérification d’adresse, bienvenue, lien magique, réinitialisation du mot de passe, invitations, export des données, confirmations de newsletter et de liste d’attente, messages de contact. Les gabarits sont écrits avec React Email. Contrairement aux autres services, l’envoi d’e-mails n’appartient pas à un module que l’on peut couper : **toute application qui démarre** doit avoir soit Resend, soit la capture locale.
+
+Deux variables : `RESEND_API_KEY` (la clé) et `EMAIL_FROM` (l’expéditeur).
+
+## Sans compte : la capture locale
+
+`.env.example` livre `EMAIL_LOCAL_CAPTURE=1`. Dans ce mode, chaque e-mail est rendu et écrit comme une page HTML dans le dossier `apps/web/.mail/`, et **rien ne part**. Ce mode n’est **pas** refusé en production, contrairement au paiement simulé : oublié sur un déploiement, aucun e-mail ne part et l’application ne le signale pas ([#204](https://github.com/oliviermattei/poc-next/issues/204)).
+
+1. Lancez l’application (`pnpm dev`) et déclenchez un e-mail, par exemple en créant un compte sur `/sign-up`.
+2. Ouvrez le dossier `apps/web/.mail/` : vous devez y trouver un fichier `.html` par e-mail.
+3. Ouvrez-le dans votre navigateur pour lire l’e-mail et cliquer sur ses liens.
+
+Ce mode n’est **pas** refusé en production, mais aucun e-mail n’y part : ne le gardez que pour un déploiement de démonstration.
+
+## Créer le compte et récupérer la clé
+
+1. **Créez un compte** sur resend.com.
+2. **Ajoutez votre domaine d’envoi**, celui qui apparaîtra dans l’adresse de l’expéditeur (par exemple `exemple.com`, ou un sous-domaine comme `send.exemple.com`). Resend vous donne alors les enregistrements DNS à poser.
+3. **Posez les enregistrements DNS** chez le gestionnaire de votre nom de domaine (voir la section suivante), puis attendez que Resend affiche le domaine comme vérifié.
+4. **Créez une clé API** dans la page des clés API de Resend. Elle commence par `re_`. Copiez-la tout de suite.
+
+## La délivrabilité : SPF, DKIM et DMARC
+
+Un domaine d’envoi sans authentification voit ses e-mails classés en indésirables ou refusés **sans qu’aucune erreur n’apparaisse** : Resend a accepté l’envoi, c’est le destinataire qui l’a écarté. Vos clients ne reçoivent pas leur e-mail de vérification et croient le produit cassé. Posez ces trois enregistrements `TXT` **avant** le premier envoi réel. Les valeurs exactes sont celles que Resend vous donne ; les exemples ci-dessous montrent seulement leur forme.
+
+| Enregistrement | Rôle | Forme |
+|---|---|---|
+| SPF | liste les serveurs autorisés à envoyer pour votre domaine | `send.exemple.com.  TXT  "v=spf1 include:amazonses.com ~all"` |
+| DKIM | signe chaque message pour prouver qu’il n’a pas été modifié | `resend._domainkey.exemple.com.  TXT  "v=DKIM1; k=rsa; p=MIGfMA0…"` |
+| DMARC | dit quoi faire des messages qui échouent, et où envoyer les rapports | `_dmarc.exemple.com.  TXT  "v=DMARC1; p=none; rua=mailto:dmarc@exemple.com; pct=100; adkim=s; aspf=s"` |
+
+Trois conseils :
+
+- **SPF** : commencez par `~all` (souple). Passez à `-all` (strict) seulement quand vous connaissez tous les outils qui envoient pour votre domaine (facturation, support, campagnes), sinon leurs e-mails disparaissent.
+- **DKIM** : la clé publique est longue ; si votre hébergeur DNS la coupe en plusieurs morceaux entre guillemets, n’ajoutez pas d’espace entre eux.
+- **DMARC** : progressez dans cet ordre, en lisant les rapports entre chaque étape : `p=none` (observer), puis `p=quarantine` (indésirables), puis `p=reject`.
+
+Vérifiez que les enregistrements sont publiés :
+
+```bash
+dig +short TXT send.exemple.com
+dig +short TXT resend._domainkey.exemple.com
+dig +short TXT _dmarc.exemple.com
+```
+
+Chaque commande doit afficher l’enregistrement correspondant. Un domaine non vérifié fait échouer l’envoi, et l’application ne le rejoue pas : la requête est fautive, la rejouer ne la corrigerait pas.
+
+## Brancher
+
+1. Dans `.env` (en local) ou dans les variables de votre hébergeur (en production), renseignez la clé et l’expéditeur, et **retirez** la capture locale :
+
+   ```bash
+   # EMAIL_LOCAL_CAPTURE=1
+   RESEND_API_KEY=re_…
+   EMAIL_FROM=Mon SaaS <bonjour@exemple.com>
+   ```
+
+   `EMAIL_FROM` s’écrit `adresse` ou `Nom <adresse>`, et l’adresse doit être sur le domaine vérifié.
+2. Redémarrez l’application.
+
+Une clé sans `EMAIL_FROM` arrête le démarrage en le nommant. Une clé **et** `EMAIL_LOCAL_CAPTURE=1` en même temps l’arrêtent aussi : il faut choisir.
+
+Rien à déclarer dans `config/security.ts` : c’est votre serveur qui appelle Resend.
+
+## Vérifier
+
+1. Créez un compte sur `/sign-up` avec une adresse que vous lisez.
+2. Vous devez recevoir l’e-mail de vérification.
+3. Dans l’e-mail reçu, affichez l’en-tête complet (« afficher l’original » dans la plupart des messageries) : les résultats `spf`, `dkim` et `dmarc` doivent tous valoir `pass`. Un envoi accepté par Resend n’est pas forcément un envoi délivré.
+
+Vous pouvez aussi lancer la recette d’envoi réel du dépôt, qui envoie un vrai message :
+
+```bash
+RESEND_LIVE_TEST=1 RESEND_API_KEY=re_… \
+EMAIL_FROM='Mon SaaS <envoi@exemple.com>' EMAIL_LIVE_TO=vous@exemple.com \
+  pnpm vitest run packages/adapters/resend/src/resend-live.test.ts
+```
+
+## Couper
+
+Impossible : sans clé et sans `EMAIL_LOCAL_CAPTURE=1`, l’application **refuse de démarrer** en nommant les deux variables. Seule la commande `pnpm db:migrate`, qui n’envoie rien, s’en passe.
+
+Les textes, le gabarit et l’expéditeur des e-mails se règlent sur la page [E-mails](/fr/configurer/e-mails).
+
+<Callout type="warn" title="Ce qui n’est pas inclus">
+- Aucun autre fournisseur que Resend, et pas d’envoi SMTP.
+- Le boilerplate ne pose pas vos enregistrements DNS : c’est un geste à faire chez votre gestionnaire de domaine.
+</Callout>

@@ -1,0 +1,93 @@
+---
+title: "Stockage S3"
+description: "Amazon S3 et les fournisseurs compatibles : le seau, les clés et le mode local."
+---
+
+## À quoi il sert
+
+Le stockage garde les fichiers envoyés par vos clients — aujourd’hui, leur **photo de profil** (avatar), sur l’écran `/app/settings/profile`. Il est utilisé par le module `storage` (voir [Stockage](/fr/fonctionnalites/stockage)). Si vous coupez ce module, vous n’avez rien à configurer ici, et l’avatar retombe sur les initiales.
+
+Le fonctionnement compte pour la configuration : **le navigateur de votre client envoie le fichier directement au seau**, par une adresse signée que le serveur lui donne. La lecture, elle, passe par votre application. Il y a donc deux choses à autoriser côté navigateur : l’origine du seau dans votre politique de sécurité, et votre application dans les règles CORS du seau.
+
+Le boilerplate parle le protocole S3. **Amazon S3** est le fournisseur intégré ; **Cloudflare R2**, **MinIO** et **DigitalOcean Spaces** sont **compatibles** : ils parlent le même protocole, mais nous ne les avons pas testés nous-mêmes.
+
+## Sans compte : le stockage sur disque
+
+`.env.example` livre `STORAGE_LOCAL_DIRECTORY=.storage`. Les fichiers sont écrits dans ce dossier, ignoré par git, et l’envoi reste sur votre propre application.
+
+Ce mode est **refusé au démarrage** quand `NODE_ENV=production`, avec un message qui nomme `STORAGE_LOCAL_DIRECTORY` : le disque d’un serveur de production disparaît au redéploiement, et les avatars avec lui.
+
+## Créer le seau et récupérer les clés
+
+1. **Créez un seau** (« bucket ») chez votre fournisseur. Laissez-le **privé** : l’application sert elle-même les fichiers.
+2. **Créez une clé d’accès** limitée à ce seau, avec le droit de lire, écrire et supprimer des objets. Vous obtenez un identifiant de clé et un secret ; copiez le secret tout de suite.
+3. **Notez la région et, hors AWS, le point de terminaison** du seau, d’après ce tableau :
+
+| Fournisseur | `STORAGE_S3_REGION` | `STORAGE_S3_ENDPOINT` | Origine à déclarer |
+|---|---|---|---|
+| Amazon S3 | la région du seau, par exemple `eu-west-3` | laisser vide | `https://s3.eu-west-3.amazonaws.com` |
+| Cloudflare R2 | `auto` | `https://<compte>.r2.cloudflarestorage.com` | la même adresse que le point de terminaison |
+| DigitalOcean Spaces | la région, par exemple `fra1` | `https://fra1.digitaloceanspaces.com` | la même adresse que le point de terminaison |
+| MinIO | celle de votre serveur MinIO, souvent `us-east-1` | l’adresse de votre serveur MinIO | la même adresse que le point de terminaison |
+
+L’origine est calculée par l’application : celle du point de terminaison s’il y en a un, sinon `https://s3.<region>.amazonaws.com`. Le message de refus au démarrage vous la donne de toute façon, prête à copier.
+
+4. **Ajoutez une règle CORS au seau**, dans sa configuration chez le fournisseur : autorisez la méthode `PUT` depuis l’origine de votre application (la valeur de `APP_URL`, par exemple `https://exemple.com`, et `http://localhost:3000` pour tester en local), avec tous les en-têtes demandés. Sans cette règle, le navigateur bloque l’envoi. Le boilerplate ne pose pas cette règle à votre place.
+5. **Ajoutez une règle de cycle de vie** qui supprime les objets du préfixe `pending/` après 24 heures. Un client qui envoie un fichier sans jamais confirmer laisse un objet sous ce préfixe ; rien de servi n’y vit, donc cette règle est sans risque. **Ne mettez pas** de règle d’âge sur `avatars/` : elle effacerait les vrais avatars.
+
+## Brancher
+
+1. **Déclarez l’origine du seau** dans `config/security.ts`, champ `connect` :
+
+   ```ts
+   export const contentSecurityPolicySources: ContentSecurityPolicySources = {
+     script: [],
+     style: [],
+     connect: ['https://s3.eu-west-3.amazonaws.com'],
+     img: [],
+     font: [],
+     frame: [],
+     formAction: [],
+   }
+   ```
+
+   Sans barre oblique finale. Voir [Sécurité](/fr/configurer/securite).
+2. Dans `.env` (en local) ou dans les variables de votre hébergeur (en production), renseignez les variables du seau et **retirez** le stockage sur disque :
+
+   ```bash
+   # STORAGE_LOCAL_DIRECTORY=.storage
+   STORAGE_S3_BUCKET=mon-seau
+   STORAGE_S3_REGION=eu-west-3
+   STORAGE_S3_ACCESS_KEY_ID=…
+   STORAGE_S3_SECRET_ACCESS_KEY=…
+   STORAGE_S3_ENDPOINT=
+   ```
+
+3. Redémarrez l’application.
+
+Ce que le démarrage refuse, chaque fois en nommant la variable :
+
+- une partie seulement des quatre variables `STORAGE_S3_BUCKET`, `STORAGE_S3_REGION`, `STORAGE_S3_ACCESS_KEY_ID`, `STORAGE_S3_SECRET_ACCESS_KEY` ;
+- le seau **et** `STORAGE_LOCAL_DIRECTORY` en même temps ;
+- un `STORAGE_S3_ENDPOINT` qui n’est pas une adresse complète ;
+- un seau dont l’origine n’est pas déclarée dans `config/security.ts`.
+
+## Vérifier
+
+1. Connectez-vous, ouvrez `/app/settings/profile` et envoyez une image PNG, JPEG ou WebP de moins de 2 Mo.
+2. Votre avatar doit s’afficher.
+3. Dans la console de votre fournisseur, vous devez voir un objet sous le préfixe `avatars/`.
+
+Si l’envoi échoue, ouvrez les outils de développement du navigateur (onglet Console) : une erreur CORS signale une règle CORS manquante sur le seau, une erreur de politique de sécurité (« Content Security Policy ») signale une origine absente de `config/security.ts`.
+
+## Couper
+
+- Module `storage` activé, sans seau et sans stockage sur disque : l’application **refuse de démarrer** en nommant les variables.
+- Pour ne pas stocker de fichiers, coupez le module : `pnpm ks toggle storage`.
+
+<Callout type="warn" title="Ce qui n’est pas inclus">
+- L’origine du seau se déclare dans `config/security.ts`, pas par une variable : une image Docker ne démarre pas sur ses seules variables d’environnement ([issue #144](https://github.com/oliviermattei/poc-next/issues/144)).
+- Aucune commande ne réconcilie les objets du seau avec la base : une confirmation interrompue peut laisser sous `avatars/` un objet que rien ne nomme ([issue #142](https://github.com/oliviermattei/poc-next/issues/142)).
+- Aucun envoi réel vers un seau n’est joué par les tests du dépôt : la vérification ci-dessus est à faire vous-même.
+- Seul l’avatar utilise le stockage : il n’y a pas de gestionnaire de fichiers pour vos clients.
+</Callout>

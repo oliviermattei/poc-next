@@ -1,0 +1,86 @@
+---
+title: "PostHog"
+description: "La mesure d’audience : la clé, l’hôte et la politique de sécurité."
+---
+
+## À quoi il sert
+
+PostHog mesure l’audience de votre SaaS : pages vues et événements. Il est utilisé par le module `analytics` (voir [Analytics](/fr/fonctionnalites/analytics)), qui dépend lui-même du module `consent` : **rien n’est mesuré avant que le visiteur ait accepté** la catégorie « analytics » dans la bannière de cookies (voir [Cookies et consentement](/fr/fonctionnalites/cookies-et-consentement)).
+
+Deux variables : `POSTHOG_KEY` (la clé de projet) et `POSTHOG_HOST` (l’origine du fournisseur, qui dit dans quelle région vos données atterrissent).
+
+## Sans compte : rien n’est mesuré
+
+PostHog n’a **pas de mode local**, et ce n’est pas un oubli : sans clé, l’état livré, l’application fonctionne normalement et **n’émet aucun appel** vers un service de mesure. Il n’y a rien à simuler.
+
+Tant qu’aucune clé n’est configurée, aucun script de mesure n’est déclaré : la bannière de cookies n’a rien à proposer pour cette catégorie.
+
+## Créer le compte et récupérer la clé
+
+1. **Créez un compte** sur posthog.com, en choisissant la région de vos données (Europe ou États-Unis).
+2. **Créez un projet**, puis copiez sa **clé de projet** depuis les réglages du projet. Elle commence par `phc_`.
+3. **Notez l’hôte de votre région**, sans barre oblique finale :
+   - Europe : `https://eu.i.posthog.com`
+   - États-Unis : `https://us.i.posthog.com`
+
+## Brancher
+
+1. **Déclarez l’hôte** dans `config/security.ts`, dans les champs `connect` **et** `img`, en recopiant **exactement** la valeur de `POSTHOG_HOST` :
+
+   ```ts
+   export const contentSecurityPolicySources: ContentSecurityPolicySources = {
+     script: [],
+     style: [],
+     connect: ['https://eu.i.posthog.com'],
+     img: ['https://eu.i.posthog.com'],
+     font: [],
+     frame: [],
+     formAction: [],
+   }
+   ```
+
+   Les deux champs sont nécessaires : `connect` pour les envois, `img` parce que PostHog se rabat sur une image quand l’envoi normal échoue. Voir [Sécurité](/fr/configurer/securite).
+2. Dans `.env` (en local) ou dans les variables de votre hébergeur (en production), renseignez :
+
+   ```bash
+   POSTHOG_KEY=phc_…
+   POSTHOG_HOST=https://eu.i.posthog.com
+   ```
+
+3. Redémarrez l’application.
+
+Ce que le démarrage refuse, en le nommant :
+
+- `POSTHOG_KEY` sans `POSTHOG_HOST`, ou l’inverse : la région n’est jamais devinée ;
+- un `POSTHOG_HOST` qui n’est pas une origine `http(s)` sans barre oblique finale ;
+- un hôte absent de `connect` ou de `img` dans `config/security.ts` : sinon le navigateur bloquerait chaque envoi, et le produit aurait l’air de mesurer sans rien mesurer.
+
+## Vérifier
+
+1. Ouvrez votre site dans une fenêtre de navigation privée.
+2. La bannière de cookies doit apparaître. Acceptez la mesure d’audience.
+3. Naviguez sur quelques pages.
+4. Dans PostHog, la vue des événements en direct doit afficher vos pages vues.
+
+Si vous refusez la mesure dans la bannière, aucun événement ne doit arriver.
+
+Le dépôt fournit aussi une recette d’envoi réel, qui vérifie que PostHog accepte ce que l’application envoie :
+
+```bash
+POSTHOG_LIVE_TEST=1 \
+  POSTHOG_KEY=phc_… \
+  POSTHOG_HOST=https://eu.i.posthog.com \
+  pnpm vitest run packages/adapters/posthog/src/posthog-live.test.ts
+```
+
+## Couper
+
+- Retirez `POSTHOG_KEY` et `POSTHOG_HOST` : l’application tourne, rien n’est mesuré, aucun appel ne part.
+- Ou coupez le module : `pnpm ks toggle analytics`. Cela coupe aussi [Sentry](/fr/services/sentry), porté par le même module.
+
+<Callout type="warn" title="Ce qui n’est pas inclus">
+- Aucun autre outil de mesure que PostHog.
+- L’application n’envoie que le **chemin** de la page, jamais l’adresse complète, et filtre les champs sensibles avant l’envoi : certaines analyses de PostHog fondées sur l’URL complète n’auront donc pas cette information.
+- L’hôte se déclare dans `config/security.ts`, pas par une variable : une image Docker ne démarre pas sur ses seules variables d’environnement ([issue #144](https://github.com/oliviermattei/poc-next/issues/144)).
+- Un navigateur trop ancien pour comprendre la politique de sécurité moderne ne chargera pas le script : il ne sera pas mesuré, et le produit fonctionne quand même.
+</Callout>

@@ -1,0 +1,16 @@
+{
+  "title": "Configure",
+  "pages": [
+    "index",
+    "variables-d-environnement",
+    "modules",
+    "offres-et-prix",
+    "fonctionnalites-reservees",
+    "site-et-pages-legales",
+    "langues",
+    "notifications",
+    "securite",
+    "apparence",
+    "e-mails"
+  ]
+}

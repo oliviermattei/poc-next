@@ -1,0 +1,44 @@
+---
+title: "Welcome"
+description: "What the boilerplate does, the services it supports, and where to find how to enable each one."
+---
+
+This Guide is for you, the **project owner**: you have the boilerplate in hand and you want to turn it into your SaaS. It explains what the boilerplate does, how to install it, configure it, enable or disable each feature, connect each service and take it to production.
+
+In this Guide, a **client** is a person who uses your SaaS once it is online.
+
+<Callout type="info" title="The Guide is not the product documentation">
+The Guide is written for you. The [product documentation](/en/fonctionnalites/documentation-produit), served under `/docs` by your application, is the one **you** write for your clients. The two never mix: nothing in this Guide appears in your application.
+</Callout>
+
+## Where to begin
+
+If the project is new to you, follow these four pages in order. Allow about half an hour.
+
+1. [Install the project](/en/demarrer/installer): from nothing to an application running on your computer, without any provider key.
+2. [Take a first tour](/en/demarrer/premier-tour): the demo accounts, the site, the application and the console.
+3. [Understand the repository layout](/en/demarrer/structure): what you edit, and what you leave as it is.
+4. [Work with an AI assistant](/en/demarrer/travailler-avec-une-ia): what your assistant must read before changing the code.
+
+## The parts of the Guide
+
+<Cards>
+  <Card title="Get started" href="/en/demarrer/installer" description="Install, take the tour, understand the repository, work with an AI." />
+  <Card title="Features" href="/en/fonctionnalites" description="One page per module: what your clients see, how to enable or disable it." />
+  <Card title="Services" href="/en/services" description="One page per provider: create the account, get the keys, connect them." />
+  <Card title="Configure" href="/en/configurer" description="One page per file in config/, and the table of environment variables." />
+  <Card title="Deploy" href="/en/deployer" description="Put your SaaS online, database and domain included." />
+  <Card title="Reference" href="/en/reference/commandes" description="The commands, what the boilerplate does not do, troubleshooting." />
+</Cards>
+
+## Reading the Guide
+
+- **Locally**: from the root of the repository, run `pnpm guide:dev`, then open `http://localhost:3200/en`. The `pnpm dev` command, which starts the application, also starts the Guide, at the same address.
+- **In French**: every page exists in both languages, at the same addresses under `/fr`. The French version is the reference.
+- **With an AI assistant**: the whole Guide fits in a single text file, `http://localhost:3200/en/llms-full.txt` (in French: `http://localhost:3200/llms-full.txt`). Give it to your assistant so it answers from the Guide. The index of the pages is at `http://localhost:3200/llms.txt`.
+
+## What the boilerplate supports
+
+Each card leads to the page that explains how to enable it. The badge tells you what to expect from it.
+
+<FeatureGrid lang="en" />

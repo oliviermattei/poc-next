@@ -1,0 +1,88 @@
+---
+title: "Emails"
+description: "The email template, copy and sender."
+---
+
+Your application sends **transactional emails**: address verification, password reset, invitation, data export… This page says who sends them, what they look like and where to change their copy. To connect the sending provider, see [Resend](/en/services/resend).
+
+## Sent or captured: the choice in `.env`
+
+| Setting | What happens |
+|---|---|
+| `EMAIL_LOCAL_CAPTURE=1` (shipped) | **nothing is sent**: each email is written as an HTML file in `apps/web/.mail/` |
+| `RESEND_API_KEY` + `EMAIL_FROM` | emails are really sent, through Resend |
+| both, or neither | the application **refuses to start** and names the variables |
+
+## The sender
+
+`EMAIL_FROM` is the sender of **all** emails. Two forms:
+
+```bash
+EMAIL_FROM=hello@example.com
+EMAIL_FROM=My SaaS <hello@example.com>
+```
+
+The second is recommended: the name (`My SaaS`) is what your clients see in their inbox. The address’s domain must be **verified with Resend** and carry the SPF, DKIM and DMARC DNS records, otherwise your emails end up in spam with no visible error: see [Resend](/en/services/resend).
+
+## The template
+
+All emails share **a single template** (`packages/emails/src/transactional-email.ts`): a white background, the system font, a 600-pixel column, and the email’s text. **No logo, no button, no footer**: links (verification, reset) appear in plain text in the body. Changing the layout is a code change.
+
+## The copy
+
+Each email has a subject and a body **in each language**, declared by the module that sends it:
+
+| Module | File | Email |
+|---|---|---|
+| `auth` | `packages/modules/auth/src/emails/verification.ts` | address verification |
+| `auth` | `packages/modules/auth/src/emails/password-reset.ts` | password reset |
+| `auth` | `packages/modules/auth/src/emails/magic-link.ts` | sign-in link |
+| `auth` | `packages/modules/auth/src/emails/data-export.ts` | data export ready |
+| `auth` | `packages/modules/auth/src/emails/account-deleted.ts` | account deleted |
+| `auth` | `packages/modules/auth/src/emails/account-deletion-blocked.ts` | account deletion blocked |
+| `organizations` | `packages/modules/organizations/src/emails/invitation.ts` | invitation to an organization |
+| `marketing` | `packages/modules/marketing/src/emails/contact-message.ts` | contact form message (to you) |
+| `marketing` | `packages/modules/marketing/src/emails/newsletter-confirmation.ts` | newsletter sign-up confirmation |
+| `marketing` | `packages/modules/marketing/src/emails/waitlist-confirmation.ts` | waitlist sign-up confirmation |
+| `demo-enabled` | `packages/modules/demo-enabled/src/emails/welcome.ts` | welcome email of the demonstration module |
+| — | `config/notifications.ts` | notification emails (see [Notifications](/en/configurer/notifications)) |
+
+A disabled module does not send its emails.
+
+### Change a text, step by step
+
+<Steps>
+<Step>
+
+Open the email’s file, for example `packages/modules/auth/src/emails/verification.ts`. You will find an `fr` block and an `en` block, each with `subject` and `body`.
+
+</Step>
+<Step>
+
+Edit the text **in both languages**. Keep the words in braces, such as `{url}`: they are the placeholders the application fills (here, the verification link). If an expected piece of data is missing, the email **is not sent**, rather than going out with `{url}` written literally.
+
+</Step>
+<Step>
+
+Restart (`Ctrl + C`, then `pnpm dev`), then trigger the email: for verification, sign up an account at `http://localhost:3000/en/sign-up`; for the reset, use `/en/forgot-password`.
+
+</Step>
+<Step>
+
+**Check** in `apps/web/.mail/`: open the latest `.html` file in your browser. **You should see** a banner “Capture locale — aucun email n'a été envoyé.” (local capture, no email was sent) with the recipient, the subject and the template, then the email as it would be sent, with your new text.
+
+</Step>
+<Step>
+
+Run `pnpm test`: among other things, it checks that each email exists in each application language.
+
+</Step>
+</Steps>
+
+## An email’s language
+
+An email triggered by a client is sent in the language they are using the site in. A recipient about whom nothing is known (an invitation to an address without an account) receives it in the site’s default language (`defaultLocale`, see [Languages and copy](/en/configurer/langues)).
+
+<Callout type="info" title="What is not included">
+No sending through SMTP or any provider other than Resend (excluded on purpose), no bulk campaign or newsletter sending, no open or click tracking, no visual email editor. An account’s preferred language is not stored for emails sent outside a request ([issue #128](https://github.com/oliviermattei/poc-next/issues/128)).
+</Callout>

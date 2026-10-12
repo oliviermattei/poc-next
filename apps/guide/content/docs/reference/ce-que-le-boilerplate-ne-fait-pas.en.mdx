@@ -1,0 +1,99 @@
+---
+title: "What the boilerplate does not do"
+description: "The deliberate exclusions, and why."
+---
+
+Some features have been **deliberately left out** of the boilerplate. They are not oversights, and they are not "planned for later": each has its reason, written below. If your product needs one, it is up to you to add it.
+
+This list comes from the project’s framing document, `docs/prd.md`.
+
+## The exclusions
+
+### No command to permanently delete a module
+
+**What is missing**: a command that would erase a turned-off module’s code, dependencies and tables.
+
+**Why**: turning a module off is enough to make it disappear from your SaaS (no route, no screen, no menu entry), while **keeping its data**. A permanent deletion is irreversible: it may be reconsidered later, and since modules are independent, adding it will not require a redesign.
+
+**Instead**: `pnpm ks toggle <module>` to turn it off. See [Modules](/en/configurer/modules).
+
+### No AI feature for your customers
+
+**What is missing**: a conversational assistant (chatbot), connectors to language models, answers displayed as they are generated, usage quotas per offer.
+
+**Why**: it is rarely reusable from one product to the next, and most competing boilerplates that advertise "AI" actually mean tools for coding assistants, not a feature for customers.
+
+**Instead**: the boilerplate is made to be **changed with an AI**: instructions for agents, MCP server, the `pnpm ks` command. See [Working with an AI](/en/demarrer/travailler-avec-une-ia).
+
+### No payment provider other than Stripe
+
+**What is missing**: LemonSqueezy, Polar, Creem, Dodo.
+
+**Why**: each payment provider doubles the webhooks to maintain and test. The payment interface exists; a single implementation ships: Stripe.
+
+**Instead**: [Stripe](/en/services/stripe).
+
+### No usage-based billing
+
+**What is missing**: billing according to measured consumption (number of calls, documents…).
+
+**Why**: the usage meter is out of scope. **Per-seat billing** (by number of members), on the other hand, is in scope. See [Billing](/en/fonctionnalites/facturation).
+
+### No real-time notifications
+
+**What is missing**: notifications pushed instantly into the open page (websockets, Supabase Realtime).
+
+**Why**: it is heavy infrastructure, which even the competitors that offer it turn off by default.
+
+**Instead**: a notification centre in the application, and emails. See [Notifications](/en/fonctionnalites/notifications).
+
+### A single technical stack
+
+**What is missing**: a variant with Prisma instead of Drizzle, a Nuxt or Vue variant, a Bun + Elysia variant.
+
+**Why**: a single, assumed stack (Next, React, Drizzle, PostgreSQL) is a stack that can be tested thoroughly.
+
+### No database other than PostgreSQL
+
+**What is missing**: MySQL, SQLite, MongoDB…
+
+**Why**: same reason. On the other hand, any **PostgreSQL** 16 or later host will do. See [PostgreSQL](/en/services/postgresql).
+
+### No mobile app
+
+**What is missing**: an iOS or Android app (Expo).
+
+**Why**: out of scope. Your SaaS is a web application.
+
+### No audit log
+
+**What is missing**: a history of "who did what" in an organization.
+
+**Why**: it is expected in business SaaS, but it requires every module to write to it. None of the competing boilerplates studied provides it. It will be taken up when a real project asks for it.
+
+### No API keys or webhooks for your customers
+
+**What is missing**: letting your customers call your SaaS through an API with their own keys, or receive webhooks from you.
+
+**Why**: it is a feature of **your product**, not of the base common to every SaaS.
+
+### A single provider per service
+
+**What is missing**: a second implementation for the same service: sending email over SMTP, Umami instead of PostHog, BullMQ or trigger.dev instead of Inngest, a dedicated MinIO implementation…
+
+**Why**: each service has an interface, and a single implementation shipped and tested. Adding a provider is a few hours’ work: write a new implementation of the interface, without touching the rest.
+
+**Good to know**: a service that speaks the **same protocol** as the shipped provider can work without adding anything. That is the case for S3-compatible storage (Cloudflare R2, MinIO, DigitalOcean Spaces), which goes through the S3 implementation. They are marked **Compatible** on the home page: they are not tested by the project. See [S3 storage](/en/services/stockage-s3).
+
+### None of the boilerplate’s own commercial apparatus
+
+**What is missing**: a site selling the boilerplate, licence management, customer access to the repository, a support service, numbered public releases, a community, a Figma mock-up of the components.
+
+**Why**: the boilerplate was first built for internal use. The repository contains the product, not what is needed to sell it.
+
+## What is not an exclusion
+
+Do not confuse these exclusions with:
+
+- **What is planned but not delivered yet**, marked **Coming soon** on the home page: a captcha provider ([#151](https://github.com/oliviermattei/poc-next/issues/151)), a feedback widget ([#179](https://github.com/oliviermattei/poc-next/issues/179)) and a public roadmap ([#180](https://github.com/oliviermattei/poc-next/issues/180)).
+- **The known limits** of what is delivered: they are stated on each page concerned, with their GitHub issue. For example, the first real deployment remains to be done ([#145](https://github.com/oliviermattei/poc-next/issues/145)).

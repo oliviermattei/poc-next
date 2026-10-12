@@ -1,0 +1,234 @@
+---
+title: "Troubleshooting"
+description: "Common startup errors, and how to fix them."
+---
+
+This page starts from **what you see**: a message in the terminal, a page that won’t open. Search for the start of the message with the Guide’s search, or browse the sections.
+
+The application’s own messages are partly in French. They are quoted here exactly as printed, with their meaning.
+
+<Callout type="idea" title="With an AI assistant">
+Copy the message **in full** to your assistant, with the command you ran, and ask it to read this page. The application’s messages always name the variable or file at fault.
+</Callout>
+
+## Reading a startup refusal
+
+Before serving a single request, the application checks its configuration. If something is missing, it **refuses to start and says why**. It is not an outage: it is the signal that a variable needs fixing.
+
+- **Locally**, the message is shown in the `pnpm dev` terminal.
+- **In production**, it starts with `Démarrage refusé :` ("Startup refused"), then the process stops (exit code 1). Read it in the container’s or platform’s logs.
+
+A missing or malformed variable gives a list of this kind, one line per variable:
+
+```
+Invalid environment variables:
+  - DATABASE_URL: Invalid input: expected string, received undefined
+```
+
+The name before the colon is the variable to fix in your `.env` (locally) or in your host’s variables (in production). The role of each one: [Environment variables](/en/configurer/variables-d-environnement).
+
+<Callout type="info" title="The terminal wins over the .env file">
+A variable already defined in your terminal (by an `export`, or by your shell profile) **takes precedence** over the value in the `.env` file. If fixing `.env` has no effect, check with `echo $VARIABLE_NAME`, and open a new terminal if needed.
+</Callout>
+
+## The check’s messages, one by one
+
+### The database
+
+```
+DATABASE_URL: Invalid input: expected string, received undefined
+DATABASE_URL: must be a PostgreSQL connection string (postgres://…)
+```
+
+`DATABASE_URL` is missing, or does not start with `postgres://` or `postgresql://`. Locally, if you don’t have a `.env` yet:
+
+```bash
+cp .env.example .env
+```
+
+### Authentication
+
+```
+Authentification non configurée : renseignez AUTH_SECRET (32 caractères au minimum, …) et APP_URL (l’URL publique de l’application, …)
+```
+
+"Authentication not configured": set both. If the message starts with `AUTH_SECRET: Too small`, the secret is shorter than 32 characters: generate one with `openssl rand -base64 32`. If it is `APP_URL: must be an absolute http(s) URL`, write the full address, for example `https://example.com`.
+
+### Emails
+
+```
+Aucun mailer configuré : renseignez RESEND_API_KEY (avec EMAIL_FROM) pour envoyer, ou EMAIL_LOCAL_CAPTURE=1 pour capturer les emails dans « … » sans rien envoyer.
+```
+
+"No mailer configured". Locally, set `EMAIL_LOCAL_CAPTURE=1`. In production, set `RESEND_API_KEY` and `EMAIL_FROM` ([Resend](/en/services/resend)). Variants:
+
+- `EMAIL_FROM: is required when RESEND_API_KEY is set`: the key is there, the sender is missing.
+- `EMAIL_LOCAL_CAPTURE: cannot be enabled while RESEND_API_KEY is set: choose one`: remove one of the two.
+
+### Payment (`billing` module)
+
+```
+Le module de facturation est activé mais aucun fournisseur de paiement n’est configuré : renseignez STRIPE_SECRET_KEY et STRIPE_WEBHOOK_SECRET pour encaisser, ou PAYMENTS_LOCAL_MODE=1 pour simuler les paiements en local sans rien encaisser. …
+```
+
+"The billing module is enabled but no payment provider is configured". Three answers: connect [Stripe](/en/services/stripe), set `PAYMENTS_LOCAL_MODE=1` (locally only), or turn the module off with `pnpm ks toggle billing`. Variants:
+
+- `PAYMENTS_LOCAL_MODE=1 est posé avec NODE_ENV=production : …`: the simulation would grant a subscription without payment. Remove `PAYMENTS_LOCAL_MODE` and set the Stripe keys.
+- `PAYMENTS_LOCAL_MODE=1 est posé en même temps qu’une clé Stripe : choisissez l’un des deux.`: local mode and a Stripe key at the same time; choose one.
+- `STRIPE_WEBHOOK_SECRET: is required when STRIPE_SECRET_KEY is set`, or the reverse: set both.
+- `PAYMENTS_RECORDED_EVENTS est posé sans PAYMENTS_LOCAL_MODE=1 : …`: this variable is for tests only. Empty it.
+
+### Storage (`storage` module)
+
+```
+Module « storage » activé mais aucun stockage configuré : renseignez STORAGE_S3_BUCKET, STORAGE_S3_REGION, STORAGE_S3_ACCESS_KEY_ID et STORAGE_S3_SECRET_ACCESS_KEY (plus STORAGE_S3_ENDPOINT hors AWS) pour un seau réel, ou STORAGE_LOCAL_DIRECTORY=… pour écrire sur le disque sans aucune clé. Sinon, coupez le module : `pnpm ks toggle storage`.
+```
+
+"Storage module enabled but no storage configured". Locally, `STORAGE_LOCAL_DIRECTORY=.storage` (the `.env.example` value). In production, an [S3](/en/services/stockage-s3) bucket. Variants:
+
+- `STORAGE_LOCAL_DIRECTORY est posé avec NODE_ENV=production : …`: the disk disappears on redeploy. Configure a bucket.
+- `Le seau « … » est configuré, mais son origine … n’est pas déclarée dans config/security.ts, champ connect. …`: the bucket’s origin is not declared. Add the origin shown to the `connect` field of `config/security.ts`, then redeploy. Doing it through a variable is tracked in [#144](https://github.com/oliviermattei/poc-next/issues/144).
+- `STORAGE_S3_ENDPOINT n’est pas une URL absolue : …`: write the full address, for example `https://<account>.r2.cloudflarestorage.com`.
+
+### Background jobs (`jobs` module)
+
+```
+Aucun exécuteur de tâches configuré : renseignez INNGEST_EVENT_KEY (avec INNGEST_SIGNING_KEY) pour mettre en file chez le fournisseur, ou JOBS_LOCAL_RUNNER=1 pour exécuter en mémoire, sans service externe.
+```
+
+"No job runner configured". Locally, `JOBS_LOCAL_RUNNER=1`. In production, [Inngest](/en/services/inngest), or `JOBS_LOCAL_RUNNER=1` on a single instance. If both are set: `JOBS_LOCAL_RUNNER: cannot be enabled while INNGEST_EVENT_KEY or INNGEST_SIGNING_KEY is set: choose one`.
+
+The `[jobs.disabled] Le module « jobs » est coupé : …` message is not an error: it reminds you that, with the module off, scheduled jobs do not run.
+
+### Analytics (`analytics` module)
+
+```
+L’analytique est configurée sur …, mais cette origine n’est déclarée ni dans … de config/security.ts. …
+```
+
+"Analytics is configured on …, but this origin is not declared in config/security.ts". Add the value of `POSTHOG_HOST` to the `connect` and `img` fields of `config/security.ts`, or remove `POSTHOG_KEY`. See [PostHog](/en/services/posthog). If it is `POSTHOG_HOST: is required when POSTHOG_KEY is set` (or the reverse), set both.
+
+### Google or GitHub sign-in
+
+- `Fournisseur « google » à moitié configuré : GOOGLE_CLIENT_SECRET est requis dès que GOOGLE_CLIENT_ID est renseigné. …` (or `github`): the provider is half configured. Set both variables of the pair, or neither.
+- `OAUTH_LOCAL_PROVIDER=1 est posé avec NODE_ENV=production : …`: this development provider opens a session without a password. Remove it.
+- `OAUTH_LOCAL_PROVIDER=1 et des identifiants de fournisseur sont configurés en même temps : choisissez l’un des deux. …`: choose one of the two.
+
+### Two hosts
+
+A message starting with `APP_HOST:` concerns two-host mode. The four cases are explained in [Domain and two hosts](/en/deployer/domaine-et-deux-hotes). If you don’t want two hosts, leave `APP_HOST` empty.
+
+### A warning, not an error: the console
+
+```
+SUPERADMIN_EMAIL n’est pas renseignée : aucun superadmin ne peut être désigné, et le back-office répond 404 à tout le monde. …
+```
+
+"SUPERADMIN_EMAIL is not set: no superadmin can be designated, and the back office answers 404 to everyone". The application starts anyway. To open `/console`, set `SUPERADMIN_EMAIL` to your account’s address, then restart. See [Superadmin console](/en/fonctionnalites/console).
+
+## Docker and the database
+
+### Docker is not running
+
+`docker compose up -d` answers with a message like `Cannot connect to the Docker daemon … Is the docker daemon running?`.
+
+1. Start Docker Desktop (or your system’s Docker service).
+2. Wait until it is ready, then check with `docker info`: the command must print information, without error.
+3. Run `docker compose up -d` again.
+
+### Port 5432 is already taken
+
+`docker compose up -d` fails with a message mentioning port `5432` (for example `port is already allocated`): another PostgreSQL database is already running on your machine.
+
+1. Stop the other database, **or** choose another port in your `.env`:
+
+   ```bash
+   POSTGRES_PORT=5433
+   DATABASE_URL=postgres://postgres:postgres@localhost:5433/app
+   ```
+
+2. Run `docker compose up -d` again, then `pnpm db:migrate`.
+
+The port in `DATABASE_URL` must always be the one in `POSTGRES_PORT`.
+
+### The database does not answer
+
+`pnpm db:migrate` or `pnpm db:seed` fails with a message containing `ECONNREFUSED`, or `/api/health` answers `{"status":"error","database":"unreachable"}` (code 503).
+
+1. Check that the database is running: `docker compose ps` must show `postgres` in the `Up` state (and `healthy`).
+2. Otherwise, `docker compose up -d`, wait a few seconds, then try again.
+3. Check that `DATABASE_URL` points to the right host and port.
+
+The application starts even if the database is off: only the shape of `DATABASE_URL` is checked at startup. `/api/health` is what tells you whether the database answers.
+
+### The database is not migrated
+
+A page crashes, and the terminal shows a PostgreSQL error like `relation "…" does not exist`: an expected table does not exist yet.
+
+```bash
+pnpm db:migrate
+```
+
+You should see `Migrations appliquées, …` ("Migrations applied") or `Rien à appliquer : …` ("Nothing to apply"). Run it again after each `git pull` and each time you turn a module on.
+
+### The seed refuses
+
+| Message | What it means | What to do |
+|---|---|---|
+| `Le seed « auth.comptes » a échoué : Le seed de démonstration refuse : la base porte … compte(s) que ce seed n’a pas créé(s). …` | the database already contains real accounts: the seed protects your data | nothing, it is deliberate. To start from scratch **locally only**, see below |
+| `Aucun module activé ne déclare de données de départ : il n’y a rien à semer. …` | no enabled module has demonstration data | nothing to do |
+| `Seed(s) sans effet sur une base vide : … ` | a module declares demonstration data but writes none | it is a defect of the named module: report it |
+| a message containing `does not exist` | the database is not migrated | `pnpm db:migrate`, then run the seed again |
+
+To start again from an empty local database (**this erases all your local data**):
+
+```bash
+docker compose down -v
+docker compose up -d
+pnpm db:migrate
+pnpm db:seed
+```
+
+Never do this in production: see [Production database](/en/deployer/base-de-donnees-en-production).
+
+## The application’s and the Guide’s ports
+
+### Port 3000 is already taken
+
+`pnpm dev` prints `Port 3000 is in use by process …, using available port 3001 instead.` and the application opens on port 3001. **Links may then break**: `APP_URL` is still `http://localhost:3000`, so email links point to the wrong place, and sign-in may be refused.
+
+1. Stop `pnpm dev` (Ctrl+C).
+2. Find what holds the port: `lsof -i :3000` (macOS, Linux).
+3. Stop that program (often an old `pnpm dev` left open), then run `pnpm dev` again.
+
+### Port 3200 is already taken
+
+The Guide does not try another port: `pnpm guide:dev` (or `pnpm dev`) fails on `Failed to start server`. Free port 3200 the same way (`lsof -i :3200`).
+
+## In production
+
+### The container stops right away
+
+Read its log (`docker compose … logs web`): the `Démarrage refusé : …` line is one of the messages above.
+
+### `service "migrate" didn't complete successfully: exit 1`
+
+A migration failed, so the application did not start. The `migrate` service’s log says which one:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml logs migrate
+```
+
+If the stack was already serving a version, see [Docker and Coolify](/en/deployer/docker-et-coolify#update-your-saas) to stop cutting the service.
+
+### `renseignez POSTGRES_USER dans .env.production`
+
+"Set POSTGRES_USER in .env.production": Docker Compose refuses to start the stack because `POSTGRES_USER` or `POSTGRES_PASSWORD` is missing. Add them to `.env.production`, and check that you pass `--env-file .env.production`.
+
+### On Vercel, nothing stops but nothing works
+
+On Vercel, a refused configuration does not stop the deployment. Open `/api/health`, then the function logs: look for `Démarrage refusé :`. See [Vercel](/en/deployer/vercel).
+
+## Still stuck?
+
+Known defects are tracked in the [project’s GitHub issues](https://github.com/oliviermattei/poc-next/issues). Search there for the words of your message before opening a new one.

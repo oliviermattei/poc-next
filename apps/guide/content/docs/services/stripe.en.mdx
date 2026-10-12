@@ -1,0 +1,112 @@
+---
+title: "Stripe"
+description: "Payments: keys, webhook and local mode."
+---
+
+## What it is for
+
+Stripe collects your customers’ payments: subscriptions (with a free trial), one-time purchase, guest checkout and customer portal. It is used by the `billing` module (see [Billing](/en/fonctionnalites/facturation)). If you do not sell anything, turn that module off: you will have nothing to configure here.
+
+Stripe talks to your application in two ways:
+
+- **your server calls Stripe** with the secret key, to open a checkout page or the customer portal;
+- **Stripe calls your server** through a **webhook**, to tell it that a payment succeeded, a subscription changed or a refund happened. This webhook is what updates subscriptions in your database.
+
+## Without an account: simulated payments
+
+`.env.example` ships `PAYMENTS_LOCAL_MODE=1`. In this mode the checkout page is served by the application itself, nothing goes to Stripe, and webhook events are built and signed locally. You can go through the whole purchase flow without a Stripe account.
+
+This mode **grants a full subscription without payment** to whoever clicks. That is why it is **refused at startup** when `NODE_ENV=production`, with a message naming `PAYMENTS_LOCAL_MODE`.
+
+## Create the account and get the keys
+
+Work in Stripe’s **test mode** first: no card is charged there.
+
+1. **Create an account** on stripe.com and stay in test mode.
+2. **Create your products and their prices** in the dashboard’s product catalog: a recurring price (monthly, yearly) for each subscription, a one-off price for a one-time purchase. Each price has an identifier starting with `price_`.
+3. **Copy these identifiers** into `config/billing.ts`, field `priceId` of each offer. The shipped offers (`pro-monthly`, `pro-yearly`, `lifetime`) carry example identifiers that do not exist at Stripe. Offers are detailed on the [Offers and prices](/en/configurer/offres-et-prix) page.
+4. **Copy the secret key** from the dashboard’s API keys page. In test mode it starts with `sk_test_`.
+5. **Enable the customer portal**: save a customer portal configuration in Stripe’s billing settings. Without it, Stripe refuses to open the portal.
+
+## Declare the webhook
+
+The address Stripe must call is:
+
+```bash
+<APP_URL>/api/modules/billing/webhook
+```
+
+where `<APP_URL>` is your application’s public address (for example `https://example.com/api/modules/billing/webhook`).
+
+1. **In the dashboard**, add a webhook endpoint (an event destination) with this address.
+2. **Select the events** the application handles:
+
+   ```bash
+   checkout.session.completed
+   checkout.session.async_payment_succeeded
+   charge.refunded
+   customer.subscription.created
+   customer.subscription.updated
+   customer.subscription.deleted
+   customer.subscription.paused
+   customer.subscription.resumed
+   customer.subscription.pending_update_applied
+   customer.subscription.pending_update_expired
+   invoice.payment_failed
+   ```
+
+   Another event sent by mistake is not a problem: it is recorded and ignored.
+3. **Copy the endpoint’s signing secret**. It starts with `whsec_`.
+
+**Locally**, Stripe cannot reach `localhost`. Use Stripe’s command-line tool (Stripe CLI), which relays events to your machine:
+
+```bash
+stripe listen --forward-to localhost:3000/api/modules/billing/webhook
+```
+
+It prints a `whsec_…` signing secret: that is the one to put in `.env` while you test locally.
+
+## Connect
+
+1. In `.env` (locally) or in your host’s variables (in production), fill in both variables and **remove** the local mode:
+
+   ```bash
+   # PAYMENTS_LOCAL_MODE=1
+   STRIPE_SECRET_KEY=sk_test_…
+   STRIPE_WEBHOOK_SECRET=whsec_…
+   ```
+
+2. Restart the application.
+
+The two variables go together: one without the other stops startup and names the missing one. A key **and** `PAYMENTS_LOCAL_MODE=1` at the same time stop it too: you must choose.
+
+Nothing to declare in `config/security.ts`: the checkout page and the portal open through a redirect to Stripe, not inside your page.
+
+## Verify
+
+1. Open `/pricing`, choose an offer and click the subscribe button.
+2. You should land on Stripe’s checkout page. Pay with a Stripe test card (in test mode, Stripe’s documentation lists test card numbers).
+3. Come back to the application: the `/app/settings/billing` screen should show the subscription.
+4. In the Stripe dashboard, the webhook’s delivery list should show `200` responses.
+
+If the subscription does not appear, check the webhook deliveries first: a `400` response almost always means a signing secret that does not match.
+
+To realign subscription state with Stripe after an incident, run `pnpm billing:reconcile`. A failed read from Stripe never erases anything.
+
+## Turn off
+
+- With neither a key nor the local mode, the enabled `billing` module **refuses startup** and names the three variables.
+- To sell nothing, turn the module off: `pnpm ks toggle billing`. See [Billing](/en/fonctionnalites/facturation).
+
+## Going to production
+
+Repeat the same steps in Stripe’s live mode: live secret key, live products and prices (their identifiers differ from test mode, so `config/billing.ts` changes), live webhook with its own secret.
+
+<Callout type="warn" title="What is not included">
+- No payment method other than Stripe, and no usage-based billing.
+- The `amount` and `currency` fields of `config/billing.ts` are for display only: what is charged is the price at Stripe. Nothing checks that they match ([issue #103](https://github.com/oliviermattei/poc-next/issues/103)).
+- No per-seat offer is shipped in `config/billing.ts` ([issue #102](https://github.com/oliviermattei/poc-next/issues/102)).
+- The checkout flow requires JavaScript in the browser.
+- Without a trusted proxy in front of the application, a flood of anonymous requests can temporarily refuse (429) Stripe deliveries, which Stripe then retries ([issue #78](https://github.com/oliviermattei/poc-next/issues/78)).
+- The webhook body size is not capped ([issue #86](https://github.com/oliviermattei/poc-next/issues/86)).
+</Callout>

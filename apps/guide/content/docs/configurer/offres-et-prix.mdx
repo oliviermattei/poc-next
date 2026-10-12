@@ -1,0 +1,115 @@
+---
+title: "Offres et prix"
+description: "Vos offres et leurs prix, dans config/billing.ts."
+---
+
+Vos offres sont déclarées **une seule fois**, dans `config/billing.ts`. La page publique de tarifs (`/pricing`), le paiement et l’écran de facturation de vos clients (`/app/settings/billing`) lisent tous cette liste.
+
+Cette page suppose le module `billing` activé (voir [Modules et profils](/fr/configurer/modules)). Pour le fonctionnement côté clients, voir [Facturation](/fr/fonctionnalites/facturation) ; pour brancher Stripe, voir [Stripe](/fr/services/stripe).
+
+## Les offres livrées
+
+| Identifiant | Mode | Prix affiché | Essai |
+|---|---|---|---|
+| `pro-monthly` | abonnement mensuel | 29,00 € | 14 jours |
+| `pro-yearly` | abonnement annuel | 290,00 € | 14 jours |
+| `lifetime` | achat unique | 490,00 € | — |
+
+Ce sont des **exemples** : leurs `priceId` (`price_pro_monthly`…) n’existent dans aucun compte Stripe. En mode local (`PAYMENTS_LOCAL_MODE=1`), ils ne sont envoyés nulle part ; avec une vraie clé Stripe, remplacez-les par les vôtres.
+
+## Les champs d’une offre
+
+| Champ | Ce qu’il dit | Valeurs acceptées |
+|---|---|---|
+| `id` | identifiant stable de l’offre ; c’est la seule chose que le navigateur envoie | minuscules, chiffres et tirets (`pro-monthly`) |
+| `mode` | abonnement ou achat unique | `'subscription'` ou `'one_time'` |
+| `priceId` | identifiant du prix **chez Stripe** : c’est lui qui est facturé | `price_…`, copié depuis Stripe |
+| `amount` | montant **affiché**, en centimes | entier ≥ 0 : `2900` = 29,00 € |
+| `currency` | devise **affichée** | code ISO à trois lettres, en minuscules : `'eur'`, `'usd'` |
+| `interval` | périodicité d’un abonnement | `'month'` ou `'year'` ; `null` pour un achat unique |
+| `trialDays` | durée de l’essai gratuit | entier > 0, ou `null` ; toujours `null` pour un achat unique |
+| `perSeat` | facturation au siège : la quantité suit le nombre de membres de l’organisation | `true` ou `false` ; sans effet sur un achat unique |
+| `seatLimit` | plafond de membres de l’organisation | entier > 0, ou `null` (illimité) ; absent ou `null` pour un achat unique |
+
+<Callout type="warn" title="Le prix affiché n’est pas le prix facturé">
+Ce qui est facturé est le prix Stripe désigné par `priceId`. `amount` et `currency` ne servent qu’à l’affichage, et rien ne vérifie aujourd’hui qu’ils correspondent au prix Stripe ([issue #103](https://github.com/oliviermattei/poc-next/issues/103)). Recopiez-les à la main, à l’identique.
+</Callout>
+
+## Ajouter ou modifier une offre
+
+<Steps>
+<Step>
+
+**Créez le prix dans Stripe** (produit, montant, devise, périodicité) et copiez son identifiant `price_…`. Le détail est dans [Stripe](/fr/services/stripe). En mode local, vous pouvez sauter cette étape et inventer un identifiant.
+
+</Step>
+<Step>
+
+**Ajoutez l’offre à la liste** `billingOffers` de `config/billing.ts`, par exemple :
+
+```ts
+{
+  id: 'team-monthly',
+  mode: 'subscription',
+  priceId: 'price_1AbCdEf…',
+  amount: 4900,
+  currency: 'eur',
+  interval: 'month',
+  trialDays: null,
+  perSeat: false,
+  seatLimit: 5,
+},
+```
+
+L’ordre de la liste est l’ordre d’affichage.
+
+</Step>
+<Step>
+
+**Donnez-lui un nom et une description, dans chaque langue.** Ouvrez `packages/modules/billing/src/messages/fr.json` et ajoutez :
+
+```json
+"offer.team-monthly.name": "Équipe",
+"offer.team-monthly.description": "Jusqu’à cinq membres, facturé chaque mois.",
+```
+
+Faites de même dans `packages/modules/billing/src/messages/en.json`. Sans ces textes, `pnpm test` échoue en nommant l’offre et la langue.
+
+</Step>
+<Step>
+
+**Redémarrez** (`Ctrl + C`, puis `pnpm dev`). Une offre mal formée arrête le démarrage avec un message qui nomme l’offre **et** le champ, par exemple :
+
+```text
+config/billing.ts : offre « team-monthly » invalide :
+  - interval: is required for a subscription offer
+```
+
+</Step>
+<Step>
+
+**Vérifiez** sur `http://localhost:3000/fr/pricing`. **Vous devez voir** la nouvelle offre, avec son nom, son prix et, le cas échéant, le badge d’essai.
+
+</Step>
+<Step>
+
+**Lancez les tests** : `pnpm test`.
+
+</Step>
+</Steps>
+
+Le démarrage refuse aussi deux offres de même `id` ou de même `priceId`.
+
+## Retirer une offre
+
+Supprimez son entrée de la liste (et, de préférence, ses textes). Elle disparaît de la page de tarifs. Un client déjà abonné à une offre retirée garde son abonnement chez Stripe, mais son écran de facturation affiche « Offre retirée du catalogue ». Si vous ne voulez plus vendre à l’unité, retirez simplement l’offre `lifetime`.
+
+## Le plafond de membres (`seatLimit`)
+
+- Il **ne retire jamais personne** : abaissé sous l’effectif d’une organisation, il laisse tout le monde en place et refuse seulement les ajouts suivants.
+- Il s’applique quand une invitation est **acceptée**, pas quand elle est envoyée : plusieurs invitations en attente peuvent ensemble dépasser le plafond, et les dernières acceptées sont refusées.
+- Il ne dépend pas de `perSeat` : « jusqu’à cinq membres, prix fixe » est un usage normal.
+
+<Callout type="info" title="Ce qui n’est pas inclus">
+Pas de facturation à l’usage (au volume consommé), et pas d’autre fournisseur de paiement que Stripe : les deux sont exclus volontairement. Aucune offre au siège n’est livrée en exemple ([issue #102](https://github.com/oliviermattei/poc-next/issues/102)). Le paiement exige JavaScript dans le navigateur du client. Quand un plafond de membres refuse une invitation, le propriétaire de l’organisation n’en est pas prévenu ([issue #93](https://github.com/oliviermattei/poc-next/issues/93)).
+</Callout>

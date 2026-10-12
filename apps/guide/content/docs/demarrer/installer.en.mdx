@@ -1,0 +1,203 @@
+---
+title: "Install the project"
+description: "Prerequisites, clone, .env file, database and first run."
+---
+
+At the end of this page, the application runs on your computer, with demo data. You need **no account with any provider** (Stripe, Resend…): every essential service has a local mode, already enabled in the example file.
+
+Allow about ten minutes, plus download time.
+
+## What you need
+
+| Tool | Version | What it is for |
+|---|---|---|
+| **Node.js** | 22 recommended (`.nvmrc` file), 20.10 at least | runs the application and the scripts |
+| **pnpm** | 10 | installs the dependencies and runs the project commands |
+| **Docker** | a recent version, with `docker compose` | runs the PostgreSQL database without installing it on your machine |
+| **Git** | any recent version | fetches the repository |
+
+You do **not** need to install PostgreSQL: Docker takes care of it.
+
+Docker runs software in “containers”, isolated from the rest of your machine. On Mac and Windows, it comes with the Docker Desktop application, which must be **open** for the `docker` commands to work.
+
+## Install, step by step
+
+Every command is typed in a terminal. From step 3 on, they are typed **at the root of the repository** (the folder that contains `package.json`).
+
+<Steps>
+<Step>
+
+### Check the prerequisites
+
+```bash
+node --version
+pnpm --version
+docker --version
+docker compose version
+```
+
+You should see a version number for each one: `v22.…` (or at least `v20.10`) for Node, `10.…` for pnpm.
+
+If `pnpm` is not found, enable it with the tool that ships with Node, then run `pnpm --version` again:
+
+```bash
+corepack enable
+```
+
+</Step>
+<Step>
+
+### Fetch the repository
+
+Replace the address with your repository’s, then go into the created folder:
+
+```bash
+git clone <your-repository-address> my-saas
+cd my-saas
+```
+
+With `ls`, you should see the files `package.json`, `.env.example` (a hidden file: `ls -a`) and `docker-compose.yml`.
+
+</Step>
+<Step>
+
+### Create your `.env` file
+
+```bash
+cp .env.example .env
+```
+
+The `.env` file holds the **environment variables**: the settings that change from one machine to another (database address, provider keys, secrets). It is the only `.env` of the repository, at the root. It is never sent to Git (`.gitignore` excludes it): never copy a real key into `.env.example`.
+
+The example file is ready for local use. The local modes are already enabled in it:
+
+| Variable | What it does locally |
+|---|---|
+| `EMAIL_LOCAL_CAPTURE=1` | emails are not sent: they are written as `.html` files in `apps/web/.mail/` |
+| `PAYMENTS_LOCAL_MODE=1` | payment is simulated, without Stripe |
+| `STORAGE_LOCAL_DIRECTORY=.storage` | uploaded files (avatars) are written to disk |
+| `JOBS_LOCAL_RUNNER=1` | scheduled tasks run in memory, without Inngest |
+
+You should see the `.env` file with `ls -a`. You have nothing to change in it for now.
+
+</Step>
+<Step>
+
+### Start the database
+
+```bash
+docker compose up -d
+```
+
+The first time, Docker downloads PostgreSQL 16, then starts it in the background on port `5432`. Check that it is ready:
+
+```bash
+docker compose ps
+```
+
+You should see the `postgres` service with a status `Up` followed by `(healthy)`. If it shows `(health: starting)`, wait a few seconds and run the command again.
+
+</Step>
+<Step>
+
+### Install the dependencies
+
+```bash
+pnpm install
+```
+
+The command ends without an error. The first time, it can take several minutes.
+
+</Step>
+<Step>
+
+### Create the tables
+
+```bash
+pnpm db:migrate
+```
+
+A **migration** is a script that creates or changes the tables of the database. Each enabled feature brings its own. You should see a line starting with `Migrations appliquées, dans l’ordre du graphe :` (“migrations applied, in graph order”), followed by the list of modules.
+
+Running the command again does nothing more: it then answers `Rien à appliquer : aucune migration en attente pour les modules activés` (“nothing to apply”).
+
+</Step>
+<Step>
+
+### Add the demo data
+
+```bash
+pnpm db:seed
+```
+
+You should see `Seeds exécutés :` (“seeds run”) followed by a list, then a line `Lignes du schéma public : … avant, … après` (rows before, rows after). This command creates two accounts, an organization, a subscription and a few demo notifications. You will use them in the [first tour](/en/demarrer/premier-tour).
+
+</Step>
+<Step>
+
+### Start the application
+
+```bash
+pnpm dev
+```
+
+This command starts two sites, and stays open while they run:
+
+- the **application**, on `http://localhost:3000`;
+- this **Guide**, on `http://localhost:3200`.
+
+To check that the application reaches its database, open `http://localhost:3000/api/health` in your browser. You should see:
+
+```json
+{"status":"ok","database":"connected"}
+```
+
+Then open `http://localhost:3000`: you should see the home page of the site.
+
+In the terminal, a warning says that `SUPERADMIN_EMAIL` is not set. That is expected: you will set it during the [first tour](/en/demarrer/premier-tour) to open the console.
+
+</Step>
+</Steps>
+
+## Stop and start again
+
+- To stop the application: <kbd>Ctrl</kbd> + <kbd>C</kbd> in the terminal running `pnpm dev`.
+- To stop the database: `docker compose down`. Your data is kept.
+- To resume later: `docker compose up -d`, then `pnpm dev`. No need to run the installation, the migrations or the seed again.
+
+## If something gets stuck
+
+**Startup stops and names a variable.** Every variable is checked at startup, and the message names the one that is missing or malformed. Compare your `.env` with `.env.example`, and see the [table of environment variables](/en/configurer/variables-d-environnement).
+
+**Port 5432 is already taken** (another PostgreSQL runs on your machine). In `.env`, pick another port and carry it into the database address:
+
+```bash
+POSTGRES_PORT=5433
+DATABASE_URL=postgres://postgres:postgres@localhost:5433/app
+```
+
+Then run `docker compose up -d` again, and resume at the “Create the tables” step.
+
+**Port 3000 is already taken.** Free it before running `pnpm dev`: the application builds its links (emails, redirects) from `APP_URL`, which is `http://localhost:3000`.
+
+**`pnpm db:migrate` cannot connect.** Check that Docker is open and that `docker compose ps` shows `(healthy)`.
+
+**`pnpm db:seed` refuses.** The seed refuses any database that holds an account it did not create itself: that is what keeps it away from a database in service. If you signed up before running the seed, and **only on your local database**, you can start from scratch. Beware: the first command erases all the data of the local database.
+
+```bash
+docker compose down -v
+docker compose up -d
+pnpm db:migrate
+pnpm db:seed
+```
+
+Other cases are covered in [Troubleshooting](/en/reference/depannage).
+
+<Callout type="warn" title="What is not included">
+- **No email is sent**: emails are written in `apps/web/.mail/`. To send real emails, see [Resend](/en/services/resend).
+- **No payment takes place**: the checkout is simulated, and the demo subscription does not exist at Stripe. To get paid, see [Stripe](/en/services/stripe).
+- **The blog, the product documentation and the changelog are not created by the seed**: their content ships as MDX files in `content/`.
+- **This installation is made for your computer**, not for production: local modes are refused or discouraged online. See [Deploy](/en/deployer).
+</Callout>
+
+Next step: [take a first tour](/en/demarrer/premier-tour).

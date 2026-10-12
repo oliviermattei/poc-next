@@ -1,0 +1,69 @@
+---
+title: "Limitation de débit"
+description: "Le compteur qui freine les essais en rafale sur la connexion, l’inscription et les formulaires publics."
+---
+
+## En une phrase
+
+Le module `rate-limit` compte les requêtes reçues par les points d’entrée sensibles (connexion, inscription, réinitialisation de mot de passe, formulaires publics, paiement…) et refuse poliment celles qui dépassent un seuil, pour protéger vos clients contre le vol de compte par essais répétés et votre produit contre les abus.
+
+## Ce que voient vos clients
+
+Rien, tant qu’ils restent sous les seuils. Au-delà, le formulaire affiche par exemple « Trop de tentatives. Réessayez dans 3 minutes. ». L’attente affichée vient de la réponse du serveur (une réponse HTTP 429 avec l’en-tête `Retry-After`), arrondie à la minute supérieure.
+
+Comment ça marche, en bref :
+
+- **Chaque seuil compte sur une fenêtre** de temps (par exemple 5 minutes pour la connexion, 1 heure pour l’inscription).
+- **Deux compteurs par point d’entrée** : un par **appelant** (son adresse IP), large, et un par **compte visé** (l’adresse e-mail saisie), serré. C’est le second qui arrête une attaque répartie sur des milliers d’adresses IP.
+- **Le compteur est stocké dans votre base PostgreSQL** (table `rate_limit_window`) : il est partagé par toutes les instances de l’application.
+- **Si la base ne répond pas, la limitation refuse** au lieu de laisser passer.
+- **Toute route publique** des modules est couverte automatiquement, avec la politique `default` si elle n’en nomme pas d’autre. Les routes réservées aux comptes connectés le sont quand elles déclarent une politique (export de données, téléversement…).
+
+## Activer ou couper
+
+`rate-limit` fait partie du **socle** : il ne peut pas être coupé, et `pnpm ks toggle rate-limit` refuse. **Aucune variable d’environnement ne désactive la limitation**, et un seuil à zéro est refusé au démarrage plutôt que lu comme « pas de limite ».
+
+## Configurer
+
+Les seuils se règlent dans `config/security.ts`, objet `rateLimitPolicies`. Chaque politique a trois valeurs :
+
+| Champ | Sens |
+|---|---|
+| `windowSeconds` | la durée de la fenêtre, en secondes |
+| `maxPerClient` | le nombre de passages tolérés par appelant dans la fenêtre |
+| `maxPerSubject` | le nombre de passages tolérés par compte visé, toutes origines confondues ; `null` quand la route ne vise aucun compte |
+
+Valeurs livrées pour les plus courantes :
+
+| Politique | Fenêtre | Par appelant | Par compte visé |
+|---|---|---|---|
+| `signIn` (connexion) | 5 min | 300 | 20 |
+| `signUp` (inscription) | 1 h | 120 | 5 |
+| `passwordReset`, `magicLink` | 1 h | 120 | 5 |
+| `twoFactor` (code de double authentification) | 5 min | 60 | 4 |
+| `invitation` | 1 h | 120 | 5 |
+| `publicForm` (contact, newsletter, liste d’attente) | 10 min | 60 | — |
+| `dataExport` (export des données) | 1 h | 20 | — |
+| `webhook` (Stripe, etc.) | 1 min | 600 | — |
+| `default` (toute autre route publique) | 1 min | 120 | — |
+
+La liste complète, avec la raison de chaque valeur, est dans les commentaires de `config/security.ts`. Pour remonter un seuil, modifiez seulement le nombre, puis relancez l’application. La page [Sécurité](/fr/configurer/securite) détaille ce fichier.
+
+<Callout type="warn" title="Derrière un proxy, l’adresse IP doit être fiable">
+Le compteur par appelant lit l’en-tête `x-forwarded-for`, que n’importe qui peut écrire. En production, placez l’application derrière un proxy inverse qui **écrase** cet en-tête. Sans cela, tous les visiteurs partagent un seul compteur par appelant (voir [Docker et Coolify](/fr/deployer/docker-et-coolify)). Le compteur par compte visé, lui, ne dépend d’aucun en-tête.
+</Callout>
+
+## Vérifier que ça marche
+
+1. Ouvrez `http://localhost:3000/fr/sign-in`.
+2. Saisissez une même adresse et un mauvais mot de passe 21 fois de suite (le seuil par compte visé est de 20 par tranche de 5 minutes).
+3. Au 21ᵉ essai, vous devez voir « Trop de tentatives. Réessayez dans … minutes. » au lieu du refus habituel.
+
+Pour vider les compteurs en local, attendez la fin de la fenêtre : une tâche planifiée efface les fenêtres closes toutes les 10 minutes, et chaque passage nettoie aussi au passage.
+
+<Callout type="info" title="Ce qui n’est pas inclus">
+- **Pas de captcha** : il est déclaré dans `config/security.ts` (`captcha`, désactivé) mais aucun fournisseur n’est livré ([#151](https://github.com/oliviermattei/poc-next/issues/151)).
+- **Les routes servies hors des modules ne sont pas limitées** : la sonde de santé `/api/health`, le collecteur de rapports `/api/csp-report`, et trois routes de test qui répondent 404 en production.
+- **Pas de réglage du nombre de proxys de confiance** : l’appelant est lu sur le premier maillon de `x-forwarded-for` ([#78](https://github.com/oliviermattei/poc-next/issues/78)).
+- Certains formulaires de l’application n’affichent pas encore le message d’attente correctement ([#110](https://github.com/oliviermattei/poc-next/issues/110)).
+</Callout>

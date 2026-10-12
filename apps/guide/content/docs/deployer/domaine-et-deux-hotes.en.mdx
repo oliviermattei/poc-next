@@ -1,0 +1,164 @@
+---
+title: "Domain and two hosts"
+description: "Connect your domain and, if you wish, split the site and the application."
+---
+
+By default, **a single domain name serves everything**: the public site, sign-in, the application and the console. It is the simplest, and what we recommend to start. If you wish, you can later serve the site on `example.com` and the application on `app.example.com`, with the same image.
+
+## One host (default)
+
+<Steps>
+<Step>
+
+### Point the domain at your host
+
+At your domain registrar, point `example.com` at your server or at Vercel, as your host instructs. Your relay (or Vercel) must serve this domain over **HTTPS**.
+
+</Step>
+<Step>
+
+### Set `APP_URL`
+
+```bash
+APP_URL=https://example.com
+```
+
+`APP_URL` is the public address of your SaaS. It builds the links sent by email (verification, reset, invitations) and decides which origins are trusted. It is **never** inferred from the request: a mistake here gives links that lead nowhere. It must start with `https://` in production.
+
+</Step>
+<Step>
+
+### Choose the apex right now
+
+Prefer `https://example.com` to `https://www.example.com`. Your customers’ passkeys are bound to the host of `APP_URL`: **changing this host later invalidates every registered passkey**, and each customer will have to create theirs again. And if you ever move to two hosts, `APP_URL` must be the apex. You can keep `www` as a mere redirect to the apex, set in your relay.
+
+</Step>
+<Step>
+
+### Declare the callback addresses at your providers
+
+Each provider that calls your SaaS must know its address:
+
+| Provider | Address to declare |
+|---|---|
+| [Stripe](/en/services/stripe) (webhook) | `https://example.com/api/modules/billing/webhook` |
+| [Inngest](/en/services/inngest) | `https://example.com/api/modules/jobs/inngest` |
+| [Google](/en/services/google) | `https://example.com/api/modules/auth/callback/google` |
+| [GitHub](/en/services/github) | `https://example.com/api/modules/auth/callback/github` |
+
+</Step>
+<Step>
+
+### Check
+
+Open `https://example.com/api/health`: you should see `{"status":"ok","database":"connected"}`. Create an account with a real email address: the link you receive must start with `https://example.com/`.
+
+</Step>
+</Steps>
+
+## Two hosts: the site and the application
+
+<Callout type="warn" title="Tested locally only">
+Two-host mode is measured automatically, but only locally (on `*.localhost`, over HTTP). It has never been run with two real domain names and HTTPS: this manual check is tracked in [#73](https://github.com/oliviermattei/poc-next/issues/73). If you turn it on, follow the check at the end of this section, step by step.
+</Callout>
+
+| Configuration | `APP_URL` | `APP_HOST` | What the visitor sees |
+|---|---|---|---|
+| One host | `https://example.com` | empty | everything on `example.com` |
+| Two hosts | `https://example.com` | `app.example.com` | the site on `example.com`; sign-in, the application and the console on `app.example.com` |
+
+What changes with `APP_HOST`:
+
+- An application or sign-in page requested on the site is **redirected** (code 308) to `app.example.com`. The console requested on the site answers **404**.
+- Your customers’ **session** lives only on `app.example.com`: the site does not see it. On the site’s pricing page, an "Already a customer?" link therefore leads to the application’s billing screen.
+- The **cookie** choice and the **language** are shared between the two hosts: a choice made on the site applies in the application.
+- The rest of the API, including the Stripe webhook, answers on both hosts: the addresses `https://example.com/api/modules/billing/webhook` and `…/jobs/inngest` remain valid.
+
+<Steps>
+<Step>
+
+### Move the site to the apex
+
+If your site is currently served on `www.example.com`, move it to `example.com` **before** anything else, knowing that this invalidates existing passkeys (see above).
+
+</Step>
+<Step>
+
+### Create the subdomain
+
+Point `app.example.com` at the same host as `example.com`, also served over HTTPS.
+
+</Step>
+<Step>
+
+### Set `APP_HOST`
+
+```bash
+APP_URL=https://example.com
+APP_HOST=app.example.com
+```
+
+`APP_HOST` is a **host name alone**: no `https://`, no port, no path, in lower case. It must be a subdomain of the host of `APP_URL`, and `APP_URL` must not carry a path. Otherwise, startup is refused with one of these messages:
+
+```
+APP_HOST: must be a lowercase host name, without scheme, port or path (app.example.com)
+APP_HOST: must be a subdomain of the APP_URL host (example.com)
+APP_HOST: cannot be set while APP_URL carries a path: APP_URL must be an origin
+APP_HOST: requires a valid APP_URL, whose host it must be a subdomain of
+```
+
+</Step>
+<Step>
+
+### Set the relay to forward `Host`
+
+The application chooses between the site and the application by reading the `Host` header, and it alone. Your relay must forward it as the visitor sent it, and overwrite `X-Forwarded-Host`:
+
+- **nginx**: `proxy_set_header Host $host;` and `proxy_set_header X-Forwarded-Host $host;` (by default, nginx sends the upstream’s host);
+- **Traefik** (Coolify): `passHostHeader` is true by default, do not turn it off;
+- **Caddy**: `reverse_proxy` forwards `Host` by default; do not add `header_up Host {upstream_hostport}`;
+- **Vercel**: nothing to do.
+
+If the relay replaces `Host` with the internal address (`localhost:3000`), nothing is redirected: the application works, but the console stays served on the site.
+
+</Step>
+<Step>
+
+### Move the sign-in callbacks to the application
+
+Sign-in is served by the application. At Google and GitHub, the callback address becomes:
+
+```
+https://app.example.com/api/modules/auth/callback/google
+https://app.example.com/api/modules/auth/callback/github
+```
+
+With the site’s address, the provider answers `redirect_uri_mismatch`.
+
+</Step>
+<Step>
+
+### Redeploy and check
+
+Redeploy, then, in a private browsing window:
+
+1. Open `https://example.com/`. If a cookie banner appears, click the button that refuses everything.
+2. Click the sign-in link: the address must change to `https://app.example.com/…`.
+3. Create an account and sign in. On `app.example.com`, the banner must **not** reappear.
+4. In the browser’s developer tools (*Application* tab, then *Cookies*), the session cookie `__Secure-better-auth.session_token` must belong to `app.example.com`, and `app_consent` to `.example.com`.
+5. Go back to `https://example.com/`: no session cookie must appear there.
+6. Change the language on the site, then open the application: the language must follow.
+7. Open `https://example.com/console`: the page must answer 404.
+
+Record what you observed in [#73](https://github.com/oliviermattei/poc-next/issues/73): it is the first trace of a real two-host deployment.
+
+</Step>
+</Steps>
+
+## What is not included
+
+<Callout type="info" title="What is not included">
+- **The redirect from `www` to the apex**: it is set in your relay or at your host.
+- **The console on its own subdomain** (for example `admin.example.com`): it does not exist; the idea is tracked in [#183](https://github.com/oliviermattei/poc-next/issues/183).
+- Known limit: with `APP_HOST`, an `APP_URL` carrying a query, a fragment or an IP address is not yet refused at startup ([#87](https://github.com/oliviermattei/poc-next/issues/87)). Write `APP_URL` as `https://example.com`, with nothing after it.
+</Callout>

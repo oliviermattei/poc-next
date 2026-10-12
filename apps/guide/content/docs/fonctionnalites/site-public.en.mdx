@@ -1,0 +1,72 @@
+---
+title: "Public site"
+description: "The sectioned home page, legal pages, contact form, newsletter and waitlist."
+---
+
+## In one sentence
+
+The `marketing` module gives your SaaS a storefront: a home page made of sections, two legal pages, a contact form, a newsletter sign-up and a waitlist — no account needed for your visitors.
+
+## What your customers see
+
+| Screen | Address | What it does |
+|---|---|---|
+| Home | `/` | the sections of `config/marketing.ts`, in file order: hero, features, testimonials, FAQ, newsletter, call to action |
+| Privacy policy | `/legal/privacy` | legal page, linked from the footer |
+| Terms of use | `/legal/terms` | legal page, linked from the footer |
+| Contact us | `/contact` | name, address and message form; linked from the footer |
+| Waitlist | `/waitlist` | sign-up form; **no link leads to it** in the navigation — add one yourself if you want it |
+
+When the `i18n` (languages) module is enabled, every address is prefixed with the language: `/fr/contact`, `/en/contact`.
+
+The footer shows the legal pages, the contact page, and the links other modules declare (“Cookies”, “What's new”). The header shows “Home” and the entries of the other site modules (Blog, Documentation…).
+
+What each form produces:
+
+- **contact**: the message is saved in the database, then emailed to the `contactRecipient` address of `config/marketing.ts`;
+- **newsletter** and **waitlist**: the address is saved and a confirmation email is sent to the visitor. An address that is already signed up creates no duplicate, and the visitor sees exactly the same response in every case — nobody can find out who is already on the list.
+
+Sign-ups can be browsed in the [console](/en/fonctionnalites/console), “Subscriptions” section (`/console/subscriptions`), with an “Export as CSV” button.
+
+## Enable or disable
+
+The module is called `marketing`. It depends on no other module.
+
+```bash
+pnpm ks toggle marketing
+```
+
+Module disabled: no public page is served (404), and `/` redirects an anonymous visitor to sign-in, a signed-in customer to their `/app` dashboard.
+
+## Configure
+
+1. **Home page and legal page content**: `config/marketing.ts` declares the sections and their order; the texts live in `packages/modules/marketing/src/messages/fr.json` and `en.json`. Everything is detailed in [Site and legal pages](/en/configurer/site-et-pages-legales).
+2. **The address that receives contact messages**: replace `contactRecipient: 'bonjour@exemple.test'` in the `forms` block of `config/marketing.ts` with your own address. A malformed address prevents the application from starting, and names it.
+3. **Sending emails** goes through Resend in production, or local capture in development: see [Resend](/en/services/resend).
+4. **The anti-abuse thresholds** of the forms are in the same `forms` block: `rateLimit: { windowSeconds: 600, maxPerClient: 5, maxPerForm: 200 }`. Beyond `maxPerClient` submissions in ten minutes, a visitor is refused; beyond `maxPerForm` for the whole form, submissions are still saved but emails are no longer sent.
+
+<Callout type="warn" title="The shipped legal pages and testimonials are templates">
+Their text starts with “Template to adapt”. Rewrite them before going live: a privacy policy that looks complete, or customer reviews that look real, put your liability on the line.
+</Callout>
+
+## Check that it works
+
+1. Start the application with `pnpm dev` and open http://localhost:3000. You should see the home page and its sections.
+2. In the footer, click “Contact us”, fill in the form and send it. You should see a confirmation message.
+3. With `EMAIL_LOCAL_CAPTURE=1` (the value shipped in `.env.example`), open the `apps/web/.mail/` folder: you should find the email addressed to `contactRecipient`.
+4. Sign an address up in the newsletter section of the home page. A confirmation email for that address should appear in `apps/web/.mail/`.
+5. Open http://localhost:3000/waitlist and sign an address up: same result.
+6. Signed in with the superadmin account, open `/console/subscriptions`: you should see both sign-ups, with their source (`newsletter` or `waitlist`).
+
+## Coming soon
+
+**Public roadmap** — a page where your customers see what is coming and vote: planned but not delivered yet, tracked in [#180](https://github.com/oliviermattei/poc-next/issues/180).
+
+<Callout title="What is not included">
+- **No newsletter sending**: the module collects addresses, it does not send campaigns. Export the list as CSV to the tool of your choice.
+- **No unsubscribe link** in the confirmation emails: the text invites the reader to reply to the email to be removed.
+- **No captcha**: the setting exists in `config/security.ts`, but no provider is plugged in ([#151](https://github.com/oliviermattei/poc-next/issues/151)). The forms are protected by an invisible honeypot field and by rate limiting.
+- **No screen to read contact messages**: they arrive by email.
+- **Known limit**: rate limiting identifies the visitor by the `x-forwarded-for` header, which a caller can forge if no proxy rewrites it ([#78](https://github.com/oliviermattei/poc-next/issues/78)).
+- The console screen lists sign-ups, but its address says `subscriptions`, the same word as paid subscriptions ([#182](https://github.com/oliviermattei/poc-next/issues/182)).
+</Callout>

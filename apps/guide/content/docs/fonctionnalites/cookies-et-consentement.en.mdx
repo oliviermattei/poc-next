@@ -1,0 +1,57 @@
+---
+title: "Cookies and consent"
+description: "The consent banner and the preferences screen, so that no third-party service loads without agreement."
+---
+
+## In one sentence
+
+The `consent` module stops your SaaS from loading a third-party service that sets cookies (audience measurement, for example) until the visitor has accepted it, and lets them change their mind at any time.
+
+## What your customers see
+
+- **A banner** “Non-essential cookies”, with three buttons: “Accept all”, “Refuse all”, “Customise my choices”. It only appears **when there is something to accept**.
+- **A preferences screen** at the `/cookies` address, one box per purpose: “Audience measurement” and “Advertising”. Only the purposes your site actually uses appear there.
+- **Two ways back to it**: the “Cookies” link in the site footer, and the “Cookies” section of the Settings (`/app/settings/cookies`) for a signed-in customer — this second way exists even if you disable the public site.
+
+Everything works without JavaScript: refusing cookies depends on no script.
+
+**Nothing loads by default.** A purpose the visitor has not decided on authorises nothing. The choice is kept for six months in the `app_consent` cookie, on the visitor's device; it is never stored in the database. Strictly necessary cookies (session, language, this choice itself) are not subject to the choice.
+
+### When does the banner appear?
+
+In the shipped project, a single third-party service goes through this consent: the PostHog audience measurement of the [Analytics](/en/fonctionnalites/analytics) module. So the banner appears when:
+
+1. the `analytics` module is enabled, **and**
+2. `POSTHOG_KEY` and `POSTHOG_HOST` are set.
+
+Otherwise there is nothing to accept: no banner, no cookie, and `/cookies` shows “No non-essential cookies”. This is the shipped state.
+
+## Enable or disable
+
+```bash
+pnpm ks toggle consent
+```
+
+The `analytics` module depends on `consent`: as long as it is enabled, disabling `consent` is refused, naming it. Disable `analytics` first.
+
+Module disabled: `/cookies` answers 404, no banner, no non-essential script loaded, no consent cookie set.
+
+## Configure
+
+There is nothing to configure for consent itself. The texts of the banner and of the screen are in `packages/modules/consent/src/messages/fr.json` and `en.json`.
+
+If you add a third-party service that sets cookies yourself, it must be declared in the list of non-essential scripts in `apps/web/lib/consent.ts`, with its purpose (`analytics` or `advertising`): this list is what makes the banner appear and holds the script back until agreement. Its network addresses are also declared in `config/security.ts` (see [Security](/en/configurer/securite)).
+
+## Check that it works
+
+1. Set up audience measurement as described on the [PostHog](/en/services/posthog) page, then restart `pnpm dev`.
+2. Open http://localhost:3000 in a private browsing window. You should see the banner at the bottom of the page.
+3. Click “Refuse all”. The banner should disappear, and no call to the PostHog host should show up in the network tab of the browser's developer tools.
+4. Click the “Cookies” link in the footer: “Audience measurement” should show “Refused”. Tick it and save: it should switch to “Accepted”.
+
+<Callout title="What is not included">
+- **No server-side consent register**: the choice lives in the visitor's browser, and nothing keeps a record of who accepted what.
+- **No purposes** other than “Audience measurement” and “Advertising”.
+- **No advertising service is shipped**: the “Advertising” purpose only appears if you declare such a script.
+- **No external consent management provider**: everything is in the product.
+</Callout>

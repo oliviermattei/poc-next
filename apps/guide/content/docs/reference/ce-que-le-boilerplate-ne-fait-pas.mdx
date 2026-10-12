@@ -1,0 +1,99 @@
+---
+title: "Ce que le boilerplate ne fait pas"
+description: "Les exclusions délibérées, et pourquoi."
+---
+
+Certaines fonctionnalités ont été **volontairement écartées** du boilerplate. Ce ne sont pas des oublis, et elles ne sont pas « prévues pour plus tard » : chacune a sa raison, écrite ci-dessous. Si votre produit en a besoin, c’est à vous de l’ajouter.
+
+Cette liste vient du document de cadrage du projet, `docs/prd.md`.
+
+## Les exclusions
+
+### Pas de commande pour supprimer définitivement un module
+
+**Ce qui manque** : une commande qui effacerait le code, les dépendances et les tables d’un module coupé.
+
+**Pourquoi** : couper un module suffit à le faire disparaître de votre SaaS (aucune route, aucun écran, aucune entrée de menu), tout en **gardant ses données**. Une suppression définitive est irréversible : elle pourra être reconsidérée plus tard, et les modules étant indépendants, l’ajouter ne demandera pas de refonte.
+
+**À la place** : `pnpm ks toggle <module>` pour couper. Voir [Modules](/fr/configurer/modules).
+
+### Pas de fonctionnalité d’IA pour vos clients
+
+**Ce qui manque** : un assistant conversationnel (chatbot), des connecteurs vers des modèles de langage, des réponses affichées au fil de l’eau, des quotas d’usage par offre.
+
+**Pourquoi** : c’est rarement réutilisable d’un produit à l’autre, et la plupart des boilerplates concurrents qui annoncent de « l’IA » parlent en réalité d’outils pour les assistants de code, pas d’une fonctionnalité pour les clients.
+
+**À la place** : le boilerplate est fait pour être **modifié avec une IA** : consignes pour les agents, serveur MCP, commande `pnpm ks`. Voir [Travailler avec une IA](/fr/demarrer/travailler-avec-une-ia).
+
+### Pas d’autre moyen de paiement que Stripe
+
+**Ce qui manque** : LemonSqueezy, Polar, Creem, Dodo.
+
+**Pourquoi** : chaque fournisseur de paiement double les webhooks à maintenir et à tester. L’interface de paiement existe ; une seule implémentation est livrée : Stripe.
+
+**À la place** : [Stripe](/fr/services/stripe).
+
+### Pas de facturation à l’usage
+
+**Ce qui manque** : facturer selon une consommation mesurée (nombre d’appels, de documents…).
+
+**Pourquoi** : le compteur d’usage est hors périmètre. La **facturation au siège** (selon le nombre de membres), elle, fait partie du périmètre. Voir [Facturation](/fr/fonctionnalites/facturation).
+
+### Pas de notifications en temps réel
+
+**Ce qui manque** : des notifications poussées instantanément dans la page ouverte (websockets, Supabase Realtime).
+
+**Pourquoi** : c’est une infrastructure lourde, que même les concurrents qui la proposent désactivent par défaut.
+
+**À la place** : un centre de notifications dans l’application, et des e-mails. Voir [Notifications](/fr/fonctionnalites/notifications).
+
+### Une seule pile technique
+
+**Ce qui manque** : une variante avec Prisma au lieu de Drizzle, une variante Nuxt ou Vue, une variante Bun + Elysia.
+
+**Pourquoi** : une seule pile, assumée (Next, React, Drizzle, PostgreSQL), est une pile qu’on peut tester à fond.
+
+### Pas d’autre base que PostgreSQL
+
+**Ce qui manque** : MySQL, SQLite, MongoDB…
+
+**Pourquoi** : même raison. En revanche, tout hébergeur **PostgreSQL** 16 ou plus récent convient. Voir [PostgreSQL](/fr/services/postgresql).
+
+### Pas d’application mobile
+
+**Ce qui manque** : une application iOS ou Android (Expo).
+
+**Pourquoi** : hors périmètre. Votre SaaS est une application web.
+
+### Pas de journal d’audit
+
+**Ce qui manque** : un historique de « qui a fait quoi » dans une organisation.
+
+**Pourquoi** : c’est attendu dans les SaaS pour entreprises, mais cela impose que chaque module y écrive. Aucun des boilerplates concurrents étudiés ne le fournit. Il sera repris quand un projet réel le demandera.
+
+### Pas de clés d’API ni de webhooks pour vos clients
+
+**Ce qui manque** : permettre à vos clients d’appeler votre SaaS par une API avec leurs propres clés, ou de recevoir des webhooks de votre part.
+
+**Pourquoi** : c’est une fonctionnalité de **votre produit**, pas du socle commun à tous les SaaS.
+
+### Un seul fournisseur par service
+
+**Ce qui manque** : une seconde implémentation pour un même service : envoi d’e-mails par SMTP, Umami à la place de PostHog, BullMQ ou trigger.dev à la place d’Inngest, une implémentation MinIO dédiée…
+
+**Pourquoi** : chaque service a une interface, et une seule implémentation livrée et testée. Ajouter un fournisseur est un travail de quelques heures : écrire une nouvelle implémentation de l’interface, sans toucher au reste.
+
+**Bon à savoir** : un service qui parle le **même protocole** que le fournisseur livré peut marcher sans rien ajouter. C’est le cas des stockages compatibles S3 (Cloudflare R2, MinIO, DigitalOcean Spaces), qui passent par l’implémentation S3. Ils sont marqués **Compatible** sur la page d’accueil : ils ne sont pas testés par le projet. Voir [Stockage S3](/fr/services/stockage-s3).
+
+### Rien de l’appareil commercial du boilerplate lui-même
+
+**Ce qui manque** : un site de vente du boilerplate, une gestion de licences, un accès client au dépôt, un service d’assistance, des versions publiques numérotées, une communauté, une maquette Figma des composants.
+
+**Pourquoi** : le boilerplate a d’abord été construit pour un usage interne. Le dépôt contient le produit, pas de quoi le vendre.
+
+## Ce qui n’est pas une exclusion
+
+Ne confondez pas ces exclusions avec :
+
+- **Ce qui est prévu mais pas encore livré**, marqué **Bientôt** sur la page d’accueil : un fournisseur de captcha ([#151](https://github.com/oliviermattei/poc-next/issues/151)), un widget de retour ([#179](https://github.com/oliviermattei/poc-next/issues/179)) et une roadmap publique ([#180](https://github.com/oliviermattei/poc-next/issues/180)).
+- **Les limites connues** de ce qui est livré : elles sont dites sur chaque page concernée, avec leur issue GitHub. Par exemple, le premier déploiement réel reste à faire ([#145](https://github.com/oliviermattei/poc-next/issues/145)).

@@ -1,0 +1,66 @@
+---
+title: "Gated features"
+description: "Reserve a feature for a paid plan, in config/gating.ts."
+---
+
+A **gated feature** is only available to clients who hold one of the plans you name. The link between a feature and its plans is written in `config/gating.ts`, and nowhere else: no screen and no route needs any access logic.
+
+## What the shipped file contains
+
+A single line, which serves as an example and proves the mechanism works:
+
+```ts
+export const featureGates = [
+  {
+    id: DEMO_PREMIUM_FEATURE, // 'premium-report', provided by the demo-enabled module
+    offers: ['pro-monthly', 'pro-yearly', 'lifetime'],
+  },
+]
+```
+
+It reserves the demonstration module’s “detailed report” for the three shipped plans. The matching screen is `/app/premium`.
+
+## The three rules
+
+1. **The id comes from the module that gates the feature.** A module’s route or menu entry declares the feature it requires; you declare here which plans unlock it. If a route requires a feature missing from this file, **the startup refuses**: otherwise it would be refused to everyone, silently.
+2. **`offers` is an “or”**: holding **one** of the listed plans is enough. There are no ordered tiers.
+3. **`billing` module disabled, everything is granted.** A project that sells nothing reserves nothing: every feature declared here becomes available, and no invitation to subscribe appears.
+
+The startup also refuses an unknown plan: each name in `offers` must exist in [`config/billing.ts`](/en/configurer/offres-et-prix) (when the `billing` module is enabled).
+
+## Change the plans that unlock a feature
+
+<Steps>
+<Step>
+
+In `config/gating.ts`, edit the `offers` list. For example, to reserve the report for the yearly subscription and the lifetime licence:
+
+```ts
+offers: ['pro-yearly', 'lifetime'],
+```
+
+</Step>
+<Step>
+
+Restart (`Ctrl + C`, then `pnpm dev`). A misspelled plan stops the startup and names it.
+
+</Step>
+<Step>
+
+**Check** with an account without a subscription: open `http://localhost:3000/en/app/premium`. **You should see** an invitation to subscribe, not the content. Then subscribe to a listed plan (in local mode, payment is simulated): the same page now shows the feature.
+
+</Step>
+</Steps>
+
+## What your clients see
+
+- **A gated screen invites, it does not hide**: without the right, the client sees the screen with an invitation to subscribe, so they know the feature exists.
+- **A gated API route answers 403** to anyone without the right. The check is done server-side.
+
+## Gating a feature of your own
+
+Gating a **new** screen or route requires writing code in a module (the route declares the feature it requires), then adding a line `{ id: '<id>', offers: [...] }` here. The demonstration module is the example to follow: see [Demonstration module](/en/fonctionnalites/module-de-demonstration). If you disable `demo-enabled`, replace its line with yours.
+
+<Callout type="info" title="What is not included">
+No quotas or volume limits (“10 projects on the basic plan”): gating is about **holding a plan**, never about a consumed quantity — that is the building block of usage-based billing, excluded on purpose. No hierarchical plan tiers either: each feature explicitly lists the plans that unlock it.
+</Callout>

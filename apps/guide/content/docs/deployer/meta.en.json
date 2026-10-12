@@ -1,0 +1,11 @@
+{
+  "title": "Deploy",
+  "pages": [
+    "index",
+    "docker-et-coolify",
+    "vercel",
+    "base-de-donnees-en-production",
+    "domaine-et-deux-hotes",
+    "liste-de-controle"
+  ]
+}

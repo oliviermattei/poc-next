@@ -1,0 +1,79 @@
+---
+title: "Les fichiers de configuration"
+description: "Les fichiers du dossier config/ en un coup d’œil."
+---
+
+Presque tout ce qui distingue votre SaaS d’un autre projet construit sur le même boilerplate se règle à deux endroits :
+
+- le dossier **`config/`**, à la racine du dépôt : ce que votre produit fait (modules, offres, textes du site, langues, sécurité) ;
+- le fichier **`.env`**, à la racine aussi : les secrets et les branchements vers les services externes (base de données, Stripe, Resend…). Voir [Variables d’environnement](/fr/configurer/variables-d-environnement).
+
+Les fichiers de `config/` sont des fichiers TypeScript : vous les ouvrez dans votre éditeur, vous modifiez une valeur, vous enregistrez. Ils **déclarent** et n’exécutent rien : c’est l’application qui les lit et les vérifie.
+
+## Les huit fichiers de `config/`
+
+| Fichier | Ce qu’il décide | Page du Guide |
+|---|---|---|
+| `config/features.ts` | les modules disponibles et ceux qui sont **activés** | [Modules et profils](/fr/configurer/modules) |
+| `config/profiles.ts` | les profils de test qui coupent des modules (profil `minimal`) | [Modules et profils](/fr/configurer/modules) |
+| `config/billing.ts` | vos offres et leurs prix | [Offres et prix](/fr/configurer/offres-et-prix) |
+| `config/gating.ts` | les fonctionnalités réservées à une offre payante | [Fonctionnalités réservées](/fr/configurer/fonctionnalites-reservees) |
+| `config/marketing.ts` | les sections de l’accueil, les pages légales, l’adresse du formulaire de contact | [Site et pages légales](/fr/configurer/site-et-pages-legales) |
+| `config/i18n.ts` | les langues de l’application et la langue par défaut | [Langues et textes](/fr/configurer/langues) |
+| `config/notifications.ts` | les types de notification, leurs canaux et le texte de leur e-mail | [Notifications](/fr/configurer/notifications) |
+| `config/security.ts` | les sources tierces autorisées par le navigateur, les limites de débit, le captcha | [Sécurité](/fr/configurer/securite) |
+
+Deux réglages vivent hors de `config/`, parce qu’ils appartiennent au design system et aux e-mails : voir [Apparence](/fr/configurer/apparence) et [E-mails](/fr/configurer/e-mails).
+
+## Ce qui se passe quand vous vous trompez
+
+Le boilerplate préfère **refuser de démarrer** plutôt que de tourner avec une configuration fausse. Une erreur dans l’un de ces fichiers produit l’un de ces trois effets :
+
+1. **votre éditeur souligne la ligne en rouge** : par exemple un identifiant de module mal orthographié dans `config/features.ts` ne compile pas ;
+2. **`pnpm dev` s’arrête au démarrage avec un message qui nomme le fautif** : par exemple une offre sans périodicité dans `config/billing.ts`, ou une section d’accueil d’une nature inconnue ;
+3. **`pnpm test` échoue en nommant la clé manquante** : par exemple une section ajoutée à l’accueil sans son texte dans l’une des langues.
+
+Lisez le message en entier : il dit presque toujours quel fichier et quelle ligne corriger. Si vous vous faites aider par une IA, collez-lui ce message tel quel.
+
+## La routine après chaque modification
+
+<Steps>
+<Step>
+
+**Enregistrez le fichier.** Si votre éditeur souligne quelque chose en rouge, corrigez-le d’abord.
+
+</Step>
+<Step>
+
+**Redémarrez l’application.** Dans le terminal où tourne `pnpm dev`, appuyez sur `Ctrl + C`, puis relancez :
+
+```bash
+pnpm dev
+```
+
+La configuration est vérifiée au démarrage : un redémarrage garantit que votre changement est relu et validé.
+
+**Vous devez voir** la ligne `✓ Ready` de Next.js, sans message d’erreur au-dessus.
+
+</Step>
+<Step>
+
+**Ouvrez l’écran concerné** dans votre navigateur (chaque page du Guide dit lequel) et vérifiez que le changement apparaît.
+
+</Step>
+<Step>
+
+**Lancez les tests** avant de livrer :
+
+```bash
+pnpm test
+```
+
+**Vous devez voir** la suite se terminer sans échec (`failed` absent du résumé).
+
+</Step>
+</Steps>
+
+<Callout type="info" title="Ce que ce dossier ne contient pas">
+Aucun secret : les clés d’API, mots de passe et adresses de base de données vont dans `.env`, jamais dans `config/`, qui est versionné avec votre code. Et aucune logique : pour ajouter une fonctionnalité qui n’existe pas, il faut écrire un module (voir [Travailler avec une IA](/fr/demarrer/travailler-avec-une-ia)).
+</Callout>

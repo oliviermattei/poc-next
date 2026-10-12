@@ -1,0 +1,95 @@
+---
+title: "Resend"
+description: "Sending email: key, sender and local capture."
+---
+
+## What it is for
+
+Resend sends your SaaS’s emails: address verification, welcome, magic link, password reset, invitations, data export, newsletter and waitlist confirmations, contact messages. The templates are written with React Email. Unlike the other services, email sending does not belong to a module you can turn off: **every application that starts** must have either Resend or local capture.
+
+Two variables: `RESEND_API_KEY` (the key) and `EMAIL_FROM` (the sender).
+
+## Without an account: local capture
+
+`.env.example` ships `EMAIL_LOCAL_CAPTURE=1`. In this mode each email is rendered and written as an HTML page in the `apps/web/.mail/` folder, and **nothing is sent**. Unlike simulated payments, this mode is **not** refused in production: left on a deployment, no email leaves and the application does not say so ([#204](https://github.com/oliviermattei/poc-next/issues/204)).
+
+1. Start the application (`pnpm dev`) and trigger an email, for example by creating an account on `/sign-up`.
+2. Open the `apps/web/.mail/` folder: you should find one `.html` file per email.
+3. Open it in your browser to read the email and click its links.
+
+This mode is **not** refused in production, but no email is sent: keep it only for a demo deployment.
+
+## Create the account and get the key
+
+1. **Create an account** on resend.com.
+2. **Add your sending domain**, the one that will appear in the sender’s address (for example `example.com`, or a subdomain such as `send.example.com`). Resend then gives you the DNS records to add.
+3. **Add the DNS records** at your domain name registrar or DNS host (see the next section), then wait until Resend shows the domain as verified.
+4. **Create an API key** on Resend’s API keys page. It starts with `re_`. Copy it right away.
+
+## Deliverability: SPF, DKIM and DMARC
+
+A sending domain without authentication sees its emails classified as spam or rejected **without any error showing up**: Resend accepted the send, the recipient discarded it. Your customers never receive their verification email and think the product is broken. Add these three `TXT` records **before** the first real send. The exact values are the ones Resend gives you; the examples below only show their shape.
+
+| Record | Role | Shape |
+|---|---|---|
+| SPF | lists the servers allowed to send for your domain | `send.example.com.  TXT  "v=spf1 include:amazonses.com ~all"` |
+| DKIM | signs each message to prove it was not altered | `resend._domainkey.example.com.  TXT  "v=DKIM1; k=rsa; p=MIGfMA0…"` |
+| DMARC | says what to do with messages that fail, and where to send reports | `_dmarc.example.com.  TXT  "v=DMARC1; p=none; rua=mailto:dmarc@example.com; pct=100; adkim=s; aspf=s"` |
+
+Three tips:
+
+- **SPF**: start with `~all` (soft). Move to `-all` (strict) only once you know every tool that sends for your domain (billing, support, campaigns), otherwise their emails disappear.
+- **DKIM**: the public key is long; if your DNS host splits it into several quoted chunks, do not add spaces between them.
+- **DMARC**: progress in this order, reading the reports between each step: `p=none` (observe), then `p=quarantine` (spam), then `p=reject`.
+
+Check that the records are published:
+
+```bash
+dig +short TXT send.example.com
+dig +short TXT resend._domainkey.example.com
+dig +short TXT _dmarc.example.com
+```
+
+Each command should print the matching record. An unverified domain makes the send fail, and the application does not retry it: the request is wrong, retrying would not fix it.
+
+## Connect
+
+1. In `.env` (locally) or in your host’s variables (in production), fill in the key and the sender, and **remove** local capture:
+
+   ```bash
+   # EMAIL_LOCAL_CAPTURE=1
+   RESEND_API_KEY=re_…
+   EMAIL_FROM=My SaaS <hello@example.com>
+   ```
+
+   `EMAIL_FROM` is written `address` or `Name <address>`, and the address must be on the verified domain.
+2. Restart the application.
+
+A key without `EMAIL_FROM` stops startup and names it. A key **and** `EMAIL_LOCAL_CAPTURE=1` at the same time stop it too: you must choose.
+
+Nothing to declare in `config/security.ts`: your server is the one calling Resend.
+
+## Verify
+
+1. Create an account on `/sign-up` with an address you read.
+2. You should receive the verification email.
+3. In the received email, show the full header (“show original” in most mail clients): the `spf`, `dkim` and `dmarc` results should all be `pass`. A send accepted by Resend is not necessarily a delivered send.
+
+You can also run the repository’s live sending recipe, which sends a real message:
+
+```bash
+RESEND_LIVE_TEST=1 RESEND_API_KEY=re_… \
+EMAIL_FROM='My SaaS <send@example.com>' EMAIL_LIVE_TO=you@example.com \
+  pnpm vitest run packages/adapters/resend/src/resend-live.test.ts
+```
+
+## Turn off
+
+Not possible: with neither a key nor `EMAIL_LOCAL_CAPTURE=1`, the application **refuses to start** and names both variables. Only the `pnpm db:migrate` command, which sends nothing, does without it.
+
+The texts, template and sender of the emails are set on the [Emails](/en/configurer/e-mails) page.
+
+<Callout type="warn" title="What is not included">
+- No provider other than Resend, and no SMTP sending.
+- The boilerplate does not add your DNS records: that is a step to take at your domain registrar or DNS host.
+</Callout>

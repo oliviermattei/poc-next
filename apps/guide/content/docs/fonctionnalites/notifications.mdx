@@ -1,0 +1,64 @@
+---
+title: "Notifications"
+description: "Le centre de notifications de l’application et les préférences de chaque client."
+---
+
+## En une phrase
+
+Le module `notifications` donne à vos clients un **centre de notifications** dans l’application, avec un compteur de non-lues, et leur laisse choisir, type par type, s’ils sont prévenus dans l’application, par e-mail, ou les deux.
+
+## Ce que voient vos clients
+
+| Élément | Où | Ce qu’on y fait |
+|---|---|---|
+| Cloche et compteur | barre du haut de l’application | voir le nombre de notifications non lues, ouvrir le centre |
+| Centre de notifications | `/app/notifications` | lire la liste paginée, « Tout marquer comme lu », marquer une notification comme lue |
+| Réglages › Notifications | `/app/settings/notifications` | activer ou désactiver chaque canal (« Dans l’application », « Par email ») pour chaque type |
+
+Quand le module `i18n` est activé, chaque adresse est précédée de la langue (`/fr/…`, `/en/…`).
+
+### Les types livrés
+
+Les types sont déclarés dans `config/notifications.ts`. Trois sont livrés :
+
+| Type | Libellé à l’écran | Par défaut | Qui l’envoie |
+|---|---|---|---|
+| `organization.member-joined` | « Nouveau membre » | application oui, e-mail non | le module `organizations`, quand quelqu’un rejoint une organisation : chaque membre déjà présent est prévenu |
+| `billing.trial-ending` | « Fin d’essai proche » | application oui, e-mail oui | une tâche planifiée du module `billing`, trois jours avant la fin d’un essai |
+| `account.security-alert` | « Alerte de sécurité » | application oui, e-mail oui | **personne pour l’instant** : le type est prêt, mais aucun événement ne l’émet encore ([#113](https://github.com/oliviermattei/poc-next/issues/113)) |
+
+Le compteur se met à jour **quand le client change de page**, pas en temps réel.
+
+## Activer ou couper
+
+```bash
+pnpm ks toggle notifications
+```
+
+- Le module a besoin de `auth` (toujours activé).
+- **Coupé** : la cloche, le centre et la rubrique de préférences disparaissent (les adresses répondent 404). Les types déclarés dans `config/notifications.ts` **continuent d’être envoyés par e-mail** quand leur défaut dit « e-mail oui » ; les autres ne sont plus envoyés du tout. Les tables déjà créées sont conservées.
+
+## Configurer
+
+Tout se fait dans `config/notifications.ts`, détaillé dans [Configurer les notifications](/fr/configurer/notifications). Pour chaque type :
+
+- `channels` : les canaux possibles (`in_app`, `email`) ;
+- `defaults` : ce que reçoit un client qui n’a rien réglé ;
+- `email` : le sujet et le texte de l’e-mail, en français et en anglais.
+
+L’envoi des e-mails passe par Resend (ou la capture locale) : voir [Resend](/fr/services/resend). Le libellé affiché à l’écran pour chaque type vit dans `packages/modules/notifications/src/messages/fr.json` et `en.json`.
+
+## Vérifier que ça marche
+
+1. Lancez `pnpm db:seed` sur une base neuve (voir [Premier tour](/fr/demarrer/premier-tour)) : il crée des notifications de démonstration.
+2. Connectez-vous avec un compte de démonstration. La cloche de la barre du haut doit afficher un compteur.
+3. Cliquez la cloche : vous devez arriver sur le centre de notifications et voir les notifications non lues.
+4. Cliquez « Tout marquer comme lu », puis changez de page : le compteur doit disparaître.
+5. Ouvrez `/fr/app/settings/notifications` et coupez « Par email » pour « Nouveau membre » : le réglage doit rester coupé après rechargement.
+
+<Callout type="info" title="Ce qui n’est pas inclus">
+- **Pas de temps réel** : ni WebSocket ni rafraîchissement automatique. C’est un choix de périmètre (voir [Ce que le boilerplate ne fait pas](/fr/reference/ce-que-le-boilerplate-ne-fait-pas)).
+- **Pas de notification push** sur mobile, ni par SMS.
+- **Pas d’écran pour envoyer une notification à la main** : un type est émis par le code qui possède l’événement.
+- Limites connues : l’alerte de sécurité n’a pas encore d’émetteur ([#113](https://github.com/oliviermattei/poc-next/issues/113)) ; l’écran de préférences charge inutilement la liste des notifications ([#125](https://github.com/oliviermattei/poc-next/issues/125)) ; les e-mails envoyés hors d’une requête (par une tâche planifiée) ne connaissent pas la langue préférée du client ([#128](https://github.com/oliviermattei/poc-next/issues/128)).
+</Callout>

@@ -1,0 +1,58 @@
+---
+title: "Module de démonstration"
+description: "Deux modules d’exemple, demo-enabled et demo-disabled : à quoi ils servent et comment les retirer."
+---
+
+## En une phrase
+
+`demo-enabled` et `demo-disabled` n’apportent rien à vos clients : ce sont deux **modules d’exemple** qui montrent à quoi ressemble un module complet, et qui prouvent en continu qu’un module coupé ne laisse aucune trace.
+
+## Ce qu’ils montrent
+
+| Module | État livré | Ce qu’il démontre |
+|---|---|---|
+| `demo-enabled` | activé | un module complet : routes, entrées de menu, e-mail (« Bienvenue »), webhook, export et purge des données, et les quatre niveaux de protection d’une route |
+| `demo-disabled` | **coupé** | un module qui a de vraies migrations mais n’est pas activé : aucune de ses routes, entrées de menu ou tables n’existe. Il **requiert** `demo-enabled`, ce qui montre aussi la vérification des dépendances |
+
+Avec `demo-enabled` activé, la barre latérale de l’application affiche trois entrées d’exemple :
+
+| Entrée | Mène à | Protection |
+|---|---|---|
+| « Éléments de démonstration » | `/api/modules/demo-enabled/items`, une route d’API qui renvoie du JSON | publique |
+| « Rapport d’administration » | `/api/modules/demo-enabled/admin/report` | visible **seulement pour un superadmin** |
+| « Rapport détaillé » | `/app/premium`, l’écran de la fonctionnalité réservée | réservée aux offres payantes : sans offre, l’écran invite à souscrire |
+
+La fonctionnalité réservée `premium-report` est ouverte par les offres listées dans `config/gating.ts` : voir [Fonctionnalités réservées](/fr/configurer/fonctionnalites-reservees).
+
+Les éléments de démonstration sont gardés **en mémoire** : ils disparaissent à chaque redémarrage de l’application.
+
+## Activer ou couper
+
+Avant de lancer votre produit, coupez `demo-enabled` pour retirer ses entrées de menu :
+
+```bash
+pnpm ks toggle demo-enabled
+```
+
+- Les deux modules ne dépendent d’aucun autre module du produit ; `demo-disabled` requiert `demo-enabled`. Si vous avez activé `demo-disabled`, coupez-le d’abord : la commande refuse sinon, en nommant le module.
+- Pour voir la vérification des dépendances en action, essayez d’activer `demo-disabled` seul alors que `demo-enabled` est coupé : la commande refuse et propose `--with-requires`.
+
+<Callout type="warn" title="Avant de couper demo-enabled">
+`config/gating.ts` déclare la fonctionnalité `premium-report`, que `demo-enabled` fournit, et la page `/app/premium` en est l’exemple. Couper le module laisse cette déclaration en place. Avant de lancer en production, remplacez cette fonctionnalité d’exemple par la vôtre (voir [Fonctionnalités réservées](/fr/configurer/fonctionnalites-reservees)), puis relancez `pnpm dev` et vérifiez que l’application démarre.
+</Callout>
+
+## Configurer
+
+Rien à régler. Ces modules servent de **modèle** : pour écrire votre propre module, ne copiez pas leur dossier à la main, générez un squelette avec `pnpm ks scaffold <id>` (voir [Travailler avec une IA](/fr/demarrer/travailler-avec-une-ia)).
+
+## Vérifier que ça marche
+
+1. Lancez `pnpm ks list` : `demo-enabled` doit être `● activé` et `demo-disabled` `○ désactivé`.
+2. Connectez-vous à l’application : la barre latérale doit afficher « Éléments de démonstration » et « Rapport détaillé ».
+3. Ouvrez `http://localhost:3000/api/modules/demo-disabled/notes` : vous devez obtenir une réponse 404, puisque le module est coupé.
+
+<Callout type="info" title="Ce qui n’est pas inclus">
+- **Aucune valeur pour vos clients** : ces modules sont des exemples et des témoins de test, pas des fonctionnalités.
+- **Pas de stockage durable** : les éléments de démonstration vivent en mémoire.
+- Ce ne sont pas les **données de démonstration** (comptes Ada et Hedy, organisation « Atelier Démo ») créées par `pnpm db:seed` : celles-ci appartiennent aux modules `auth`, `organizations`, `billing` et `notifications` (voir [Premier tour](/fr/demarrer/premier-tour)).
+</Callout>

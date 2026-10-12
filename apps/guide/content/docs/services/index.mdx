@@ -1,0 +1,57 @@
+---
+title: "Les services"
+description: "Un service, un fournisseur, un mode local explicite : le principe et le récapitulatif."
+---
+
+Un **service** est un fournisseur externe que votre SaaS appelle : une base de données, un envoi d’e-mails, un paiement, un stockage de fichiers, des tâches de fond, une mesure d’audience, un suivi d’erreurs, une connexion par compte Google ou GitHub. Cette partie explique comment brancher chacun, pas à pas.
+
+## Le principe : un service, un fournisseur, un mode local explicite
+
+Trois règles valent pour tous les services.
+
+1. **Un seul fournisseur par service.** Le boilerplate parle à un fournisseur précis (Stripe pour le paiement, Resend pour les e-mails…). Il n’y a pas de second choix à configurer : c’est un choix assumé, qui garde le code simple.
+2. **Un mode local, que vous activez vous-même.** Pour démarrer sans aucun compte, chaque service indispensable a un mode local, armé par une variable d’environnement (par exemple `EMAIL_LOCAL_CAPTURE=1`). Le fichier `.env.example` les active déjà : un clone tourne sans aucune clé. Le mode local n’est **jamais** deviné à partir de `NODE_ENV` ni de l’absence d’une clé : c’est vous qui le choisissez.
+3. **Un choix clair, sinon l’application refuse de démarrer.** Les clés du fournisseur **et** le mode local à la fois arrêtent toujours le démarrage. **Aucun des deux** l’arrête aussi : toujours pour les e-mails, et pour le paiement, le stockage et les tâches de fond quand leur module est activé. Le message **nomme la variable** en cause. C’est volontaire : une application qui ferait semblant d’envoyer un e-mail ou d’encaisser un paiement serait pire qu’une application qui refuse de démarrer.
+
+Deux services font exception à la règle 3 : **PostHog** et **Sentry**. Sans clé, ils **dégradent** au lieu de refuser : rien n’est mesuré, aucune erreur n’est remontée, et l’application fonctionne normalement. Ils n’ont donc pas de mode local. **Google** et **GitHub** ont un mode local, mais sans clé ni mode local l’application démarre aussi : le bouton de connexion correspondant n’apparaît pas.
+
+Trois modes locaux sont en plus **refusés au démarrage en production** (`NODE_ENV=production`), parce qu’ils seraient dangereux : le paiement simulé (`PAYMENTS_LOCAL_MODE`), le fournisseur de connexion de développement (`OAUTH_LOCAL_PROVIDER`) et le stockage sur disque (`STORAGE_LOCAL_DIRECTORY`). Deux ne le sont **pas encore** : `EMAIL_LOCAL_CAPTURE` (aucun e-mail ne part, et rien ne le signale) et `JOBS_LOCAL_RUNNER` (une file en mémoire, à réserver à une seule instance). Retirez-les vous-même avant de déployer ; l’issue [#204](https://github.com/oliviermattei/poc-next/issues/204) suit le sujet.
+
+## Où mettre les variables
+
+- **En local** : dans le fichier `.env` à la racine du dépôt (copié depuis `.env.example`). Redémarrez `pnpm dev` après chaque modification.
+- **En production** : dans les variables d’environnement de votre hébergeur, jamais dans le dépôt. Voir [Déployer](/fr/deployer).
+
+La liste complète des variables, avec leur rôle et un exemple, est sur la page [Variables d’environnement](/fr/configurer/variables-d-environnement).
+
+## Le récapitulatif
+
+« Module » désigne la fonctionnalité qui utilise le service. Quand ce module est coupé (voir [Les fonctionnalités](/fr/fonctionnalites)), le service n’a plus rien à configurer.
+
+| Service | Module | Variables | Mode local | Sans clé ni mode local |
+|---|---|---|---|---|
+| [PostgreSQL](/fr/services/postgresql) | tous (la base de l’application) | `DATABASE_URL` | la base du `docker-compose.yml` | refus de démarrer |
+| [Resend](/fr/services/resend) | tous (e-mails de connexion, d’invitation, de notification) | `RESEND_API_KEY`, `EMAIL_FROM` | `EMAIL_LOCAL_CAPTURE=1` | refus de démarrer |
+| [Stripe](/fr/services/stripe) | `billing` | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | `PAYMENTS_LOCAL_MODE=1` (refusé en production) | refus de démarrer, module activé |
+| [Stockage S3](/fr/services/stockage-s3) | `storage` | `STORAGE_S3_BUCKET`, `STORAGE_S3_REGION`, `STORAGE_S3_ACCESS_KEY_ID`, `STORAGE_S3_SECRET_ACCESS_KEY`, `STORAGE_S3_ENDPOINT` | `STORAGE_LOCAL_DIRECTORY=.storage` (refusé en production) | refus de démarrer, module activé |
+| [Inngest](/fr/services/inngest) | `jobs` | `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`, `INNGEST_BASE_URL` | `JOBS_LOCAL_RUNNER=1` | refus de démarrer, module activé |
+| [PostHog](/fr/services/posthog) | `analytics` | `POSTHOG_KEY`, `POSTHOG_HOST` | aucun | dégrade : rien n’est mesuré |
+| [Sentry](/fr/services/sentry) | `analytics` | `SENTRY_DSN`, `SENTRY_RELEASE` | aucun | dégrade : aucune erreur n’est remontée |
+| [Google](/fr/services/google) | `auth` | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | `OAUTH_LOCAL_PROVIDER=1` (refusé en production) | pas de bouton Google |
+| [GitHub](/fr/services/github) | `auth` | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | `OAUTH_LOCAL_PROVIDER=1` (refusé en production) | pas de bouton GitHub |
+
+La limitation de débit n’a pas de service à elle : elle compte dans votre base PostgreSQL. Voir [Limitation de débit](/fr/fonctionnalites/limitation-de-debit).
+
+## Les origines à déclarer dans la politique de sécurité
+
+L’application envoie une politique de sécurité du contenu (CSP) qui n’autorise, par défaut, **aucune** origine tierce. Quand le **navigateur** de vos clients doit parler directement à un fournisseur, son origine doit être ajoutée dans `config/security.ts`, sinon l’application refuse de démarrer en le disant. Deux services sont concernés :
+
+- **Stockage S3** : l’origine du seau, champ `connect` ;
+- **PostHog** : la valeur de `POSTHOG_HOST`, champs `connect` et `img`.
+
+Les autres services sont appelés par le serveur, ou par une redirection (Stripe, Google, GitHub) : rien à déclarer. Le détail est sur la page [Sécurité](/fr/configurer/securite).
+
+<Callout type="warn" title="Ce qui n’est pas inclus">
+- Aucun second fournisseur par service : pas d’envoi SMTP, pas d’autre moyen de paiement que Stripe, pas d’autre outil de tâches de fond qu’Inngest. Voir [Ce que le boilerplate ne fait pas](/fr/reference/ce-que-le-boilerplate-ne-fait-pas).
+- Les origines de la politique de sécurité se déclarent dans un fichier, pas par une variable d’environnement : une image Docker avec le stockage ou PostHog ne démarre pas sur ses seules variables ([issue #144](https://github.com/oliviermattei/poc-next/issues/144)).
+</Callout>

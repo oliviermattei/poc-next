@@ -38,3 +38,10 @@ dist/
 # la commande. Versionné, il salit l'arbre après chaque build. Les deux
 # directives stables qu'il porte vivent dans `apps/web/types/next.d.ts`.
 apps/web/next-env.d.ts
+
+# Le Guide (ADR 083) : le même fichier réécrit par Next, l'export statique
+# (`out/`) que `pnpm guide:build` produit, et le dossier de travail de
+# Fumadocs MDX. Rien de tout cela n'est du code.
+apps/guide/next-env.d.ts
+apps/guide/out/
+apps/guide/.source/

@@ -1,0 +1,147 @@
+---
+title: "Travailler avec une IA"
+description: "Les consignes pour agents, les skills et le serveur MCP du dépôt."
+---
+
+Ce dépôt est écrit pour être modifié avec l’aide d’un assistant IA de code, comme Claude Code. L’assistant y trouve des consignes, un vocabulaire et des commandes qui lui disent quoi faire, et surtout quoi ne pas faire. Cette page vous explique ce qu’il lit, comment lui confier une tâche, et comment brancher le serveur MCP du projet.
+
+## Ce que votre assistant lit
+
+Vous n’avez rien à lui recopier : ces fichiers sont dans le dépôt, et la plupart des assistants de code les lisent d’eux-mêmes.
+
+| Fichier | Ce qu’il dit à l’assistant |
+|---|---|
+| `AGENTS.md` | le point d’entrée : dans quel ordre lire les documents, où sont les choses, quelles règles suivre, comment travailler |
+| `CLAUDE.md` | le fichier que Claude Code lit au démarrage ; il ne fait qu’importer `AGENTS.md` |
+| `GLOSSARY.md` | le vocabulaire du projet : propriétaire du projet, client, Guide, documentation produit, et les mots à éviter |
+| `CODING_STANDARDS.md` | les règles pour écrire du code : modules, couches, sécurité, fiabilité, tests ; une revue de code juge chaque modification contre ce fichier |
+| `docs/commands.md` | chaque commande `pnpm`, ce qu’elle vérifie et ce qui la fait échouer |
+| `docs/prd.md` | ce que le produit est, et son **cimetière** : ce qu’il ne fait volontairement pas. Le réintroduire est une sortie du périmètre |
+| `packages/<paquet>/AGENTS.md` | les règles propres à un paquet : ce qu’il peut importer, ce qu’il ne doit jamais contenir, où vivent ses tests |
+
+Une règle importante pour vous : **quand un document contredit le code, c’est le code qui fait foi**, sauf décision écrite dans `docs/adr/`.
+
+## Confier une tâche à l’assistant
+
+<Steps>
+<Step>
+
+### Donner le Guide à l’assistant
+
+Le Guide entier tient dans un fichier, `http://localhost:3200/llms-full.txt` quand `pnpm dev` ou `pnpm guide:dev` tourne. Donnez-le à votre assistant quand votre question porte sur la configuration ou le déploiement : il répondra à partir du Guide plutôt que de sa mémoire.
+
+</Step>
+<Step>
+
+### Décrire ce que vous voulez, pas comment le faire
+
+Dites ce que vos clients doivent pouvoir faire, et laissez l’assistant chercher où le code doit changer. Par exemple : « Je veux que mes clients puissent exporter leurs factures en PDF. Lis `AGENTS.md`, puis propose-moi un plan avant d’écrire du code. »
+
+Votre produit doit vivre dans un **module**. L’assistant crée le squelette d’un nouveau module avec la commande prévue pour cela, jamais à la main :
+
+```bash
+pnpm ks scaffold <nom-du-module>
+```
+
+Cette commande refuse de tourner si le dépôt contient des modifications non enregistrées dans Git ([issue #153](https://github.com/oliviermattei/poc-next/issues/153)) : enregistrez votre travail en cours (`git commit`) avant de la lancer.
+
+</Step>
+<Step>
+
+### Faire vérifier le travail
+
+Avant d’accepter une modification, demandez à l’assistant de lancer les vérifications du quotidien, et vérifiez qu’elles finissent sans erreur :
+
+```bash
+pnpm typecheck
+pnpm lint
+pnpm test
+```
+
+Le détail de ces commandes, et des plus longues à lancer avant une mise en production, est dans [Commandes](/fr/reference/commandes).
+
+</Step>
+<Step>
+
+### Garder le Guide à jour
+
+`CODING_STANDARDS.md` impose une règle : **le Guide suit le code**. Quand l’assistant change un module, un fichier de `config/`, une variable d’environnement, un service ou une commande, il met à jour les pages correspondantes du Guide (`apps/guide/content/docs`), en français et en anglais, dans la même modification. Rappelez-le-lui si vous ne le voyez pas faire.
+
+</Step>
+</Steps>
+
+## Les skills
+
+Une **skill** est un paquet d’instructions que vous installez dans votre assistant, et qu’il suit quand vous l’appelez par son nom. `AGENTS.md` décrit la chaîne de travail du projet, qui repose sur les skills d’ingénierie de Matt Pocock :
+
+1. `/grill-with-docs` : l’assistant vous pose des questions jusqu’à ce que le besoin soit clair ;
+2. `/to-spec` : il écrit la spécification ;
+3. `/to-tickets` : il la découpe en tickets ;
+4. `/implement` ou `/implement-spec` : il réalise un ticket, ou toute la spécification ;
+5. `/code-review` : il relit la modification contre `CODING_STANDARDS.md` ;
+6. une pull request vers la branche `dev`, fusionnée en un seul commit.
+
+Ces skills **ne sont pas livrées dans le dépôt** : installez-les dans votre assistant en suivant leur propre documentation. Sans elles, l’assistant peut tout de même travailler : demandez-lui de suivre `AGENTS.md`.
+
+Les tickets vivent dans les issues GitHub, que l’assistant lit et crée avec l’outil en ligne de commande `gh`. `AGENTS.md` (section « Issue tracker ») et `docs/agents/issue-tracker.md` nomment le dépôt d’origine du boilerplate : remplacez ce nom par celui de **votre** dépôt, pour que vos tickets arrivent chez vous.
+
+## Le serveur MCP
+
+Le module `mcp-server` permet à votre assistant de gérer les modules par des outils dédiés, plutôt qu’en tapant des commandes. **MCP** (Model Context Protocol) est le protocole standard par lequel un assistant IA appelle des outils externes. Le serveur expose trois outils, qui font exactement ce que font les commandes `pnpm ks` :
+
+| Outil | Équivalent | Ce qu’il fait |
+|---|---|---|
+| `list_modules` | `pnpm ks list` | liste les modules, leur état, leurs dépendances et le socle |
+| `toggle_module` | `pnpm ks toggle <module>` | active ou coupe un module |
+| `scaffold_module` | `pnpm ks scaffold <module>` | crée le squelette d’un nouveau module |
+
+<Steps>
+<Step>
+
+### Vérifier que le module est activé
+
+Le module `mcp-server` est activé dans la configuration livrée. Vérifiez-le :
+
+```bash
+pnpm ks list
+```
+
+Vous devez voir `mcp-server` parmi les modules activés. S’il est coupé, le serveur refuse de démarrer.
+
+</Step>
+<Step>
+
+### Déclarer le serveur dans votre assistant
+
+Le fichier `packages/modules/mcp-server/mcp-client.example.json` donne la déclaration à copier :
+
+```json
+{
+  "mcpServers": {
+    "killer-boilerplate": {
+      "command": "node",
+      "args": ["./packages/modules/mcp-server/bin/mcp-server.mjs"]
+    }
+  }
+}
+```
+
+Copiez ce bloc dans la configuration MCP de votre assistant. Avec Claude Code, il peut aller dans un fichier `.mcp.json` à la racine du dépôt. Le chemin est relatif à la racine du dépôt : si votre assistant lance le serveur depuis un autre dossier, remplacez-le par le chemin complet du fichier `mcp-server.mjs`.
+
+</Step>
+<Step>
+
+### Vérifier
+
+Redémarrez votre assistant, puis demandez-lui : « Liste les modules du projet avec l’outil `list_modules`. » Vous devez obtenir la même liste que `pnpm ks list`.
+
+</Step>
+</Steps>
+
+Les deux outils qui modifient le dépôt, `toggle_module` et `scaffold_module`, **refusent de travailler sur un dépôt qui contient des modifications non enregistrées** : vous pouvez ainsi toujours annuler ce que l’assistant vient de faire. Enregistrez votre travail (`git commit`) avant de lui demander d’activer, de couper ou de créer un module. Plus de détails : [Serveur MCP](/fr/fonctionnalites/serveur-mcp).
+
+<Callout type="warn" title="Ce qui n’est pas inclus">
+- **Les skills** : elles s’installent dans votre assistant, elles ne sont pas dans le dépôt.
+- **Un assistant IA dans votre SaaS** : le serveur MCP sert à vous, pour faire évoluer le dépôt. Aucun module n’offre d’IA à vos clients : c’est un choix inscrit dans le cimetière du PRD (voir [Ce que le boilerplate ne fait pas](/fr/reference/ce-que-le-boilerplate-ne-fait-pas)).
+- **D’autres outils MCP** : le serveur ne sait que lister, activer, couper et créer des modules. Il ne lit ni votre base de données ni votre fichier `.env`.
+</Callout>

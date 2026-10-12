@@ -1,0 +1,75 @@
+---
+title: "Comprendre la structure du dépôt"
+description: "Où sont les choses, ce que vous modifiez et ce que vous ne touchez pas."
+---
+
+Le dépôt contient beaucoup de dossiers, mais vous n’en modifiez que quelques-uns. Cette page vous dit lesquels, et ce qui se trouve dans les autres.
+
+## L’idée qui organise tout : les modules
+
+Votre SaaS est **une seule application** (`apps/web`), assemblée à partir de **modules**. Chaque fonctionnalité (authentification, facturation, blog, notifications…) est un module, rangé dans `packages/modules/<nom>`.
+
+- La liste des modules **activés** se trouve dans `config/features.ts`. Vous l’éditez avec la commande `pnpm ks toggle <module>`, jamais à la main : la commande régénère ce qui doit l’être et vérifie les dépendances entre modules.
+- Un module coupé ne laisse **aucune trace** : ni page, ni entrée de menu, ni table sur une base neuve. Ses données déjà écrites sont conservées.
+- Les menus ne sont écrits nulle part à la main : chaque module déclare ses entrées, et l’application affiche celles des modules activés.
+- Votre propre produit sera, lui aussi, un module.
+
+Pour voir les modules, leur état et ce dont chacun dépend :
+
+```bash
+pnpm ks list
+```
+
+Vous devez voir la liste des modules, activés ou non, avec leurs dépendances. `auth` et `rate-limit` y sont marqués comme socle : ils ne peuvent pas être coupés. Tout le détail est dans [Fonctionnalités](/fr/fonctionnalites).
+
+## La carte du dépôt
+
+| Emplacement | Ce qu’il contient | Vous le modifiez ? |
+|---|---|---|
+| `config/` | les réglages de votre SaaS, en huit fichiers (voir plus bas) | **oui**, c’est votre panneau de configuration |
+| `.env` | les secrets et les branchements aux services (base, Stripe, Resend…) | **oui** ; il ne part jamais dans Git |
+| `content/` | le blog, la documentation produit et le changelog, en fichiers MDX, rangés par langue (`fr/`, `en/`) | **oui** |
+| `apps/web/messages/` | les textes communs de l’application, en français et en anglais, dont le nom affiché du produit (clé `app.name`) | **oui** |
+| `packages/modules/<module>/src/messages/` | les textes de chaque module (`fr.json`, `en.json`) | **oui** |
+| `packages/ui/src/styles.css` | les couleurs et l’arrondi de l’interface, en thème clair et sombre | **oui**, voir [Apparence](/fr/configurer/apparence) |
+| `packages/emails/` | les gabarits des e-mails | **oui**, voir [E-mails](/fr/configurer/e-mails) |
+| `packages/modules/` | les modules livrés, et bientôt les vôtres | vos modules **oui** ; un module livré, seulement après avoir lu son `AGENTS.md` |
+| `apps/web/` | l’application Next.js : les écrans et l’assemblage des modules | rarement : votre produit va dans un module |
+| `apps/guide/` | ce Guide | **oui**, quand votre code change ce qu’il décrit |
+| `packages/core`, `packages/db`, `packages/config`, `packages/ports`, `packages/adapters`, `packages/cli` | le socle : contrat des modules, base de données, lecture des variables, branchements aux fournisseurs, commande `pnpm ks` | **non**, sauf raison précise |
+| `generated/` | des fichiers produits à partir de `config/features.ts` | **jamais** à la main |
+| `packages/modules/*/migrations/` | les migrations SQL de chaque module | **jamais** à la main : elles se génèrent avec `pnpm db:generate` |
+| `docs/` | les documents de référence techniques : architecture, sécurité, fiabilité, déploiement, commandes, décisions (`docs/adr/`) | en lecture ; à mettre à jour quand le code change |
+| `tests/`, `e2e/`, `scripts/`, `tooling/` | les tests, les recettes et l’outillage | pas pour configurer votre SaaS |
+| `docker-compose.yml` | la base PostgreSQL locale | rarement |
+| `Dockerfile`, `docker-compose.prod.yml` | l’image et la pile de production | voir [Déployer](/fr/deployer) |
+| `AGENTS.md`, `CLAUDE.md`, `CODING_STANDARDS.md`, `GLOSSARY.md` | les consignes pour un assistant IA | voir [Travailler avec une IA](/fr/demarrer/travailler-avec-une-ia) |
+| `pnpm-lock.yaml` | les versions exactes des dépendances | **jamais** à la main : `pnpm install` le met à jour |
+
+## Les huit fichiers de `config/`
+
+| Fichier | Ce qu’il décide | Page du Guide |
+|---|---|---|
+| `config/features.ts` | les modules disponibles, les modules activés, et le socle qui ne se coupe pas | [Modules](/fr/configurer/modules) |
+| `config/profiles.ts` | un profil de test où des modules sont coupés, pour vérifier que les couper ne casse rien | [Modules](/fr/configurer/modules) |
+| `config/billing.ts` | vos offres et vos prix | [Offres et prix](/fr/configurer/offres-et-prix) |
+| `config/gating.ts` | les fonctionnalités réservées à certaines offres | [Fonctionnalités réservées](/fr/configurer/fonctionnalites-reservees) |
+| `config/marketing.ts` | les sections de l’accueil, les pages légales, les formulaires du site | [Site et pages légales](/fr/configurer/site-et-pages-legales) |
+| `config/i18n.ts` | les langues servies et la langue par défaut | [Langues](/fr/configurer/langues) |
+| `config/notifications.ts` | les types de notifications et leurs canaux | [Notifications](/fr/configurer/notifications) |
+| `config/security.ts` | les sources autorisées par la politique de sécurité du contenu, les limites de débit et le captcha | [Sécurité](/fr/configurer/securite) |
+
+Les textes ne sont pas dans `config/` : ils vivent dans les fichiers `messages` cités plus haut, une copie par langue. Une vue d’ensemble est dans [Configurer](/fr/configurer).
+
+## Deux règles qui évitent les mauvaises surprises
+
+**Les variables d’environnement sont vérifiées au démarrage.** Une variable absente ou mal formée arrête l’application, avec un message qui la nomme. Le code ne lit jamais une variable ailleurs que dans `packages/config`. Le tableau complet : [Variables d’environnement](/fr/configurer/variables-d-environnement).
+
+**Ce qui est généré ne s’édite pas.** `generated/`, les migrations et `pnpm-lock.yaml` sont produits par des commandes. Une modification à la main serait écrasée à la prochaine exécution de la commande, quand elle ne fait pas échouer les tests.
+
+<Callout type="warn" title="Ce qui n’est pas inclus">
+- **Un emplacement pour votre logo** : le nom du produit est un texte (clé `app.name`), mais aucun emplacement n’est prévu pour une image de logo. Voir [Apparence](/fr/configurer/apparence).
+- **Une interface pour configurer le SaaS** : tout réglage se fait dans les fichiers du dépôt et dans `.env`, puis se déploie.
+</Callout>
+
+Étape suivante : [travailler avec une IA](/fr/demarrer/travailler-avec-une-ia).

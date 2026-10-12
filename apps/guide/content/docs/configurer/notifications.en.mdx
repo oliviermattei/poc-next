@@ -1,0 +1,86 @@
+---
+title: "Notifications"
+description: "The events that notify your clients, in config/notifications.ts."
+---
+
+A **notification** tells a client that an event concerns them: in the application (the notification centre, `/app/notifications`) and/or by email. Each notification **type** is declared once in `config/notifications.ts`. What your clients see is described in [Notifications](/en/fonctionnalites/notifications).
+
+## The shipped types
+
+| Type | When it is sent | In the app | Email by default |
+|---|---|---|---|
+| `organization.member-joined` | when someone accepts an invitation: the organization’s other members are told | yes | **no** |
+| `billing.trial-ending` | three days before a free trial ends, by a scheduled job every day at 9:00 (UTC) | yes | yes |
+| `account.security-alert` | **never, today**: the type is declared, but no code emits it ([issue #113](https://github.com/oliviermattei/poc-next/issues/113)) | yes | yes |
+
+## What a line declares
+
+```ts
+defineNotificationType({
+  id: 'billing.trial-ending',
+  channels: ['in_app', 'email'],
+  defaults: { in_app: true, email: true },
+  actors: [],
+  email: {
+    id: 'billing.trial-ending',
+    locales: {
+      fr: { subject: 'Votre essai se termine le {date}', body: '…' },
+      en: { subject: 'Your trial ends on {date}', body: '…' },
+    },
+  },
+}),
+```
+
+| Field | What it says |
+|---|---|
+| `channels` | the possible channels: `in_app` (in the application) and/or `email` |
+| `defaults` | what a client who has set nothing receives. Each client can then change their choices in `/app/settings/notifications` |
+| `actors` | the data that point to another account (for example `member`): they are stored as an id, never as an address |
+| `email` | the email’s subject and body, **in each language** of the application |
+
+Words in braces (`{date}`, `{offer}`, `{member}`, `{organization}`, `{summary}`) are filled by the code that emits the notification: keep them as they are. Missing data prevents sending rather than letting an incomplete email go out.
+
+## Change the default email or a text
+
+<Steps>
+<Step>
+
+Open `config/notifications.ts` and edit `defaults` or the texts in `email.locales`. For example, so that a member joining also sends an email by default:
+
+```ts
+defaults: { in_app: true, email: true },
+```
+
+</Step>
+<Step>
+
+The label and text shown **in the application** are in the module’s catalog: `packages/modules/notifications/src/messages/fr.json` and `en.json`, keys `type.<id>.label` and `type.<id>.body`. Edit them too if needed.
+
+</Step>
+<Step>
+
+Restart (`Ctrl + C`, then `pnpm dev`).
+
+</Step>
+<Step>
+
+**Check**: sign in, open `http://localhost:3000/en/app/settings/notifications`. **You should see** each type with its channels, set according to your new defaults for an account that has not changed anything yet. To see the email, trigger the event (for example, have a second account accept an invitation), then open the file written in `apps/web/.mail/`.
+
+</Step>
+</Steps>
+
+A new default does not apply to a client who has already made their own choice for that type and channel: their saved choice wins.
+
+## If a module is disabled
+
+- **`notifications` disabled**: no more centre or preferences. Types whose email is on by default send it **directly**; the others send nothing. That is why this file is still read when the module is disabled.
+- **`jobs` disabled**: the scheduled job that emits `billing.trial-ending` no longer runs, so that reminder is not sent.
+- **`organizations` or `billing` disabled**: their type no longer has an emitter.
+
+<Callout type="info" title="Adding a notification type">
+Declaring a line here is not enough: a module must also **emit** the notification at the right moment, which is code. Describe the event you want to an AI ([Working with an AI](/en/demarrer/travailler-avec-une-ia)), asking it to add the type here, its texts in the `notifications` module’s catalog, and the emission in the relevant module.
+</Callout>
+
+<Callout type="info" title="What is not included">
+No real time: the notification counter updates when the client changes page, not live (no websocket). No push notification, SMS or Slack. When a member cap refuses an invitation, the owner is not told ([issue #93](https://github.com/oliviermattei/poc-next/issues/93)).
+</Callout>

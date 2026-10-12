@@ -1,0 +1,79 @@
+---
+title: "Commandes"
+description: "Les commandes du projet : ce qu’elles font et quand les lancer."
+---
+
+Toutes ces commandes se lancent **à la racine du projet**, dans un terminal. Elles sont résumées ici en mots simples ; la référence technique complète, avec chaque cas d’échec, est le fichier `docs/commands.md` du dépôt.
+
+## Au quotidien
+
+| Commande | Ce qu’elle fait | Quand la lancer |
+|---|---|---|
+| `pnpm install` | installe les dépendances | après un clone, ou quand `pnpm-lock.yaml` change |
+| `pnpm dev` | lance l’application sur http://localhost:3000, et ce Guide sur http://localhost:3200/fr | pour travailler. Elle s’arrête en nommant une variable manquante ou malformée |
+| `pnpm guide:dev` | lance ce Guide seul, sur http://localhost:3200/fr | pour lire le Guide sans l’application |
+| `pnpm build` | construit l’application pour la production, et exporte le Guide | pour vérifier que tout compile. Elle n’a pas besoin de vos variables |
+| `pnpm clean` | vide les fichiers régénérables (caches, constructions, rapports de test) | quand le disque se remplit : le cache de construction ne se vide jamais seul |
+
+## Base de données
+
+| Commande | Ce qu’elle fait | Quand la lancer |
+|---|---|---|
+| `docker compose up -d` | démarre la base PostgreSQL de développement, sur le port 5432 | avant `pnpm dev`, si la base ne tourne pas |
+| `pnpm db:migrate` | applique les migrations des modules activés ; rejouée, elle ne change rien | après une installation, un `git pull`, ou l’activation d’un module |
+| `pnpm db:seed` | crée les données de démonstration (comptes, organisation, abonnement) ; rejouable sans doublon | une fois, sur votre base locale. **Jamais en production** : voir [Base de données en production](/fr/deployer/base-de-donnees-en-production) |
+| `pnpm db:generate` | génère les fichiers SQL de migration à partir du schéma des modules | après avoir modifié le schéma d’un module. Le schéma de production n’est jamais modifié autrement |
+
+## Modules
+
+| Commande | Ce qu’elle fait |
+|---|---|
+| `pnpm ks list` | liste les modules, leur état, ce dont ils dépendent, et ceux qui ne peuvent pas être coupés |
+| `pnpm ks toggle <module>` | active ou coupe un module dans `config/features.ts`. Elle refuse un module inconnu, un module dont un autre a besoin, ou un module du socle, et remet la configuration en état si elle échoue |
+| `pnpm ks scaffold <module>` | crée le squelette d’un nouveau module dans `packages/modules/<module>` |
+
+`npx ks` fonctionne aussi. Voir [Fonctionnalités](/fr/fonctionnalites) et [Modules](/fr/configurer/modules).
+
+## Vérifier le code
+
+| Commande | Ce qu’elle vérifie | Quand la lancer |
+|---|---|---|
+| `pnpm typecheck` | les types TypeScript de tout le dépôt, tests compris | avant chaque commit |
+| `pnpm lint` | les règles de style, et les frontières entre les couches d’un module | avant chaque commit |
+| `pnpm lint:fix` | idem, en corrigeant ce qui peut l’être | quand `pnpm lint` signale un problème de style |
+| `pnpm test` | les tests unitaires (Vitest) | avant chaque commit |
+| `pnpm test:e2e` | les parcours dans un vrai navigateur (Playwright) | avant une mise en ligne |
+| `pnpm run audit` | les vulnérabilités connues des dépendances | avant une mise en ligne. Écrivez bien `pnpm run audit` : `pnpm audit` seul ignore les exceptions du projet |
+
+## Les recettes complètes
+
+Ces commandes travaillent dans une **copie** du projet, avec une base créée pour l’occasion : elles ne touchent ni vos fichiers, ni votre base. Elles prennent plusieurs minutes.
+
+| Commande | Ce qu’elle prouve |
+|---|---|
+| `GOLDEN_PATH_PAYMENTS=simulated pnpm test:golden-path` | le parcours complet, du clone au premier paiement : inscription, vérification, organisation, abonnement, fonctionnalité réservée. `GOLDEN_PATH_PAYMENTS` est obligatoire : `simulated` (paiement simulé), `recorded` (événements Stripe enregistrés) ou `live` (vraies clés de test Stripe) |
+| `pnpm test:minimal-profile` | qu’avec les modules coupés par `config/profiles.ts`, aucune route, aucune entrée de menu et aucune table de ces modules ne subsiste, et que l’inscription marche toujours |
+| `pnpm test:socle` | la seconde configuration de la CI, où tous les modules facultatifs sont coupés, rejouée sur votre poste |
+| `pnpm test:contrast` | que les couleurs des composants restent lisibles (contraste suffisant), dans les deux thèmes |
+| `pnpm test:sans-env` | que les tests passent sans votre fichier `.env`, comme en CI |
+
+## Production
+
+| Commande | Ce qu’elle fait |
+|---|---|
+| `pnpm sourcemaps:release` | envoie les cartes source à Sentry, puis les retire des fichiers publics. Exige `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` et `SENTRY_RELEASE`. Voir [Sentry](/fr/services/sentry) |
+| `pnpm sourcemaps:prune` | retire les cartes source des fichiers publics, sans rien envoyer. L’image Docker le fait d’elle-même |
+| `pnpm billing:reconcile` | remet en accord l’état des abonnements avec Stripe, et la quantité de sièges facturés avec le nombre réel de membres. Elle n’efface jamais rien ; rejouée, elle ne change rien de plus |
+| `pnpm guide:build` | exporte ce Guide en site statique dans `apps/guide/out`, avec `llms.txt` et `llms-full.txt` pour votre assistant IA. Le Guide ne part jamais dans l’image de production |
+
+## Rechercher des secrets dans le dépôt
+
+Il n’y a pas de commande `pnpm` pour cela : la CI le fait. En local, avec Docker :
+
+```bash
+docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest git /repo
+```
+
+## Ce que la CI lance
+
+La liste exacte des commandes jouées à chaque envoi se lit dans `.github/workflows/ci.yml`. À ce jour, la CI échoue sur `pnpm run audit` à cause de vulnérabilités à traiter dans les dépendances ([#77](https://github.com/oliviermattei/poc-next/issues/77)).

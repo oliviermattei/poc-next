@@ -1,0 +1,134 @@
+---
+title: "Modules and profiles"
+description: "Enable or disable modules in config/features.ts and config/profiles.ts."
+---
+
+Each feature of the boilerplate is a **module**: billing, blog, organizations, notifications… A disabled module leaves **no visible trace**: no page, no route, no menu entry. What each module brings is described in [Features](/en/fonctionnalites); this page explains **how** to enable or disable them.
+
+## `config/features.ts`: two lists
+
+The file holds two lists, and the difference matters:
+
+- **`availableModules`**, the directory: the modules the repository contains. You do not touch it to enable or disable.
+- **`enabledModules`**, the configuration: the **enabled** modules. It is the only list that changes when you enable or disable.
+
+A third line, `requiredModules`, names the **core**, which cannot be disabled: `auth` (accounts) and `rate-limit` (rate limiting).
+
+## The shipped modules
+
+| Module | What it brings | Requires | Shipped state |
+|---|---|---|---|
+| `auth` | accounts, sign-in, security settings | — | enabled, **core** |
+| `rate-limit` | rate limiting of public entry points | — | enabled, **core** |
+| `organizations` | organizations, members, invitations, roles | `auth` | enabled |
+| `billing` | plans, Stripe payment, pricing page | — | enabled |
+| `admin` | superadmin console (`/console`) | `auth` | enabled |
+| `marketing` | home page, legal pages, contact, newsletter, waitlist | — | enabled |
+| `blog` | MDX blog and RSS feed | — | enabled |
+| `docs` | product documentation for your clients (`/docs`) | — | enabled |
+| `changelog` | what’s-new page and feed | — | enabled |
+| `i18n` | language prefix in URLs and language switcher | — | enabled |
+| `consent` | cookie banner and preferences | — | enabled |
+| `analytics` | PostHog measurement and Sentry error tracking | `consent` | enabled |
+| `notifications` | notification centre and preferences | `auth` | enabled |
+| `jobs` | background and scheduled jobs (Inngest) | — | enabled |
+| `storage` | file upload (profile picture) | `auth` | enabled |
+| `onboarding` | welcome journey after sign-up | `auth` | enabled |
+| `mcp-server` | MCP server to drive modules from an AI | — | enabled |
+| `demo-enabled` | demonstration module (sample gated feature) | — | enabled |
+| `demo-disabled` | demonstration module, deliberately disabled | `demo-enabled` | **disabled** |
+
+## See the state of the modules
+
+```bash
+pnpm ks list
+```
+
+**You should see** one line per module: `●` enabled or `○` disabled, then its relations. For example (the command answers in French):
+
+```text
+● analytics     activé    requiert : consent
+● auth          activé    socle : non désactivable  requis par : admin, notifications, onboarding, organizations, storage
+● billing       activé
+○ demo-disabled désactivé requiert : demo-enabled
+```
+
+`activé` means enabled, `désactivé` disabled, `requiert` requires, `requis par` required by, and `socle : non désactivable` core, cannot be disabled.
+
+## Enable or disable a module
+
+Do not edit `enabledModules` by hand: use the command, which also regenerates the derived files and restores the original configuration if anything fails.
+
+<Steps>
+<Step>
+
+**Toggle the module** (here `blog`):
+
+```bash
+pnpm ks toggle blog
+```
+
+The same command enables a disabled module and disables an enabled one.
+
+</Step>
+<Step>
+
+**Answer the questions**, if any:
+
+- when enabling a module whose requirement is disabled, the command offers: “Activer aussi …, dont … a besoin ?” (also enable …, which … needs?);
+- when enabling a module that has tables, it generates its migrations then asks: “Appliquer les migrations maintenant ?” (apply the migrations now?). Answer yes if your database is running (`docker compose up -d`). Otherwise, run `pnpm db:migrate` later.
+
+**You should see** `Module « blog » activé. Barils régénérés.` or `Module « blog » désactivé.`
+
+</Step>
+<Step>
+
+**Restart the application** (`Ctrl + C`, then `pnpm dev`).
+
+</Step>
+<Step>
+
+**Check in the browser.** After disabling `blog`, `http://localhost:3000/en/blog` must answer “page not found” and the “Blog” link must be gone from the site header. After enabling it again, both come back.
+
+</Step>
+</Steps>
+
+What the command refuses, and says so:
+
+- **disabling a core module** (`auth`, `rate-limit`);
+- **disabling a module another enabled module needs**: disable the dependent first (for example `analytics` before `consent`);
+- **an unknown id**.
+
+For use without questions (in a script, or by an AI), two options authorise it explicitly: `--with-requires` (also enable the missing requirements) and `--apply-migrations` (apply the generated migrations). `--json` gives machine-readable output.
+
+<Callout type="warn" title="A disabled module keeps its data">
+Disabling a module **deletes neither its tables nor its data**: enabling it again finds them intact. There is no command to erase them, by design.
+</Callout>
+
+## What a disabled module changes elsewhere
+
+Some modules affect others. The cases to know:
+
+- `billing` disabled: every [gated feature](/en/configurer/fonctionnalites-reservees) is granted to everyone, and no Stripe key is asked for any more.
+- `jobs` disabled: a job runs immediately, inside the request that triggers it, and **scheduled jobs no longer run** (for example the trial-ending reminder).
+- `notifications` disabled: notification types that send an email by default send it directly; the others send nothing.
+- `analytics` disabled: no more measurement script, so no more cookie banner if nothing else asks for one.
+- `marketing` disabled: the site root redirects to sign-in.
+- `storage` disabled: the profile picture falls back to initials, and no storage variable is required.
+- `i18n` disabled: the application serves the default language only, without a prefix in URLs.
+
+## `config/profiles.ts`: the test profile
+
+This file changes **nothing** in your application. It declares a **profile** (`minimal`): a list of modules to disable together, which the `pnpm test:minimal-profile` recipe plays in a **copy** of the repository to prove that a disabled module leaves no route, no menu entry and no table.
+
+The shipped profile disables `organizations`, `billing`, `i18n`, `blog`, `docs`, `admin`, `notifications`, `jobs`, `changelog`, `analytics` and `onboarding`. Disabling one more module in this profile is one line in the `cut` list. A core module or an unknown id is refused there.
+
+```bash
+pnpm test:minimal-profile
+```
+
+This recipe creates its own database: Docker must be running.
+
+<Callout type="info" title="What is not included">
+No command to clean up a disabled module’s data, and no way to enable or disable a module **without restarting**: the choice is made at startup. `pnpm ks scaffold <module>` generates a new module’s skeleton but does not add it to the directory. Two known limits of the command: it does not yet time-limit its sub-processes ([issue #154](https://github.com/oliviermattei/poc-next/issues/154)) and does not say what to rerun if it is interrupted between writing and regenerating ([issue #155](https://github.com/oliviermattei/poc-next/issues/155)).
+</Callout>

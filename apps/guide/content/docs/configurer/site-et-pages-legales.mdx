@@ -1,0 +1,118 @@
+---
+title: "Site et pages légales"
+description: "L’accueil, les textes et les pages légales, dans config/marketing.ts et les messages."
+---
+
+Le site public (accueil, pages légales, contact, newsletter, liste d’attente) est fourni par le module `marketing`. Il se règle en **deux endroits** :
+
+- **`config/marketing.ts`** déclare la **structure** : quelles sections, dans quel ordre, quels éléments, quels boutons, quelles pages légales, et l’adresse qui reçoit le formulaire de contact ;
+- **les catalogues de textes** du module, `packages/modules/marketing/src/messages/fr.json` et `en.json`, portent **la prose** de chaque section, dans chaque langue.
+
+Ce que voient vos visiteurs est décrit dans [Site public](/fr/fonctionnalites/site-public).
+
+<Callout type="warn" title="Remplacez les textes d’exemple avant la mise en ligne">
+Les témoignages livrés sont **fictifs**, et les pages légales (confidentialité, conditions d’utilisation) sont des **modèles à adapter** : leurs textes le disent eux-mêmes (« Modèle à adapter avant toute mise en ligne »). Faites relire vos pages légales par un juriste.
+</Callout>
+
+## Les sections de l’accueil
+
+**L’ordre du tableau `sections` est l’ordre de la page.** Déplacer une entrée déplace la section ; supprimer une entrée retire la section. Aucun composant n’est à modifier.
+
+L’accueil livré enchaîne : `hero`, `features`, `testimonials`, `faq`, `newsletter`, `cta`.
+
+| Nature (`kind`) | Ce qu’elle affiche | Ce qu’elle exige |
+|---|---|---|
+| `hero` | le grand titre d’ouverture | au moins un bouton (`actions`) |
+| `features` | une liste d’atouts | au moins un élément (`items`) |
+| `testimonials` | des témoignages | au moins un élément |
+| `faq` | des questions-réponses | au moins un élément |
+| `newsletter` | le formulaire d’inscription à la lettre d’information | rien de plus |
+| `cta` | un appel à l’action final | au moins un bouton |
+
+Une nature inconnue est refusée au démarrage, en la nommant. Un bouton (`href`) ne peut viser qu’un **chemin de votre site** (`/sign-up`), jamais une adresse externe ; sa variante est `'default'` (plein) ou `'outline'` (contour).
+
+### Les textes d’une section
+
+Chaque identifiant déclaré attend ses textes, sous des clés dérivées :
+
+| Déclaré dans `config/marketing.ts` | Clés attendues dans les catalogues |
+|---|---|
+| une section `<id>` | `section.<id>.title`, `section.<id>.description` |
+| un élément `<item>` | `section.<id>.item.<item>.title` et `section.<id>.item.<item>.body` |
+| un bouton `<action>` | `section.<id>.action.<action>` |
+| une page légale `<slug>` | `legal.<slug>.title`, `legal.<slug>.description`, et pour chaque section `<s>` : `legal.<slug>.section.<s>.title` et `.body` |
+
+Une clé manquante n’est jamais remplacée par un texte par défaut : `pnpm test` échoue en la nommant, pour chaque langue.
+
+## Modifier l’accueil, pas à pas
+
+Exemple : ajouter une quatrième question à la FAQ.
+
+<Steps>
+<Step>
+
+Dans `config/marketing.ts`, ajoutez l’identifiant à la section `faq` :
+
+```ts
+{ id: 'faq', kind: 'faq', items: ['stack', 'disable', 'theme', 'pricing'] },
+```
+
+</Step>
+<Step>
+
+Dans `packages/modules/marketing/src/messages/fr.json`, ajoutez les deux textes :
+
+```json
+"section.faq.item.pricing.title": "Puis-je changer d’offre ?",
+"section.faq.item.pricing.body": "Oui, à tout moment, depuis la page de facturation.",
+```
+
+Faites de même, en anglais, dans `en.json`.
+
+</Step>
+<Step>
+
+Lancez les tests du site :
+
+```bash
+pnpm vitest run tests/marketing.test.ts
+```
+
+**Vous devez voir** tous les cas réussir. Une clé oubliée est nommée avec sa langue.
+
+</Step>
+<Step>
+
+Redémarrez (`Ctrl + C`, puis `pnpm dev`) et ouvrez `http://localhost:3000/fr`. **Vous devez voir** la nouvelle question dans la FAQ.
+
+</Step>
+</Steps>
+
+Pour changer seulement un texte existant, éditez la valeur dans `fr.json` et `en.json` : rien à changer dans `config/marketing.ts`.
+
+## Les pages légales
+
+`legalDocuments` déclare deux documents, `privacy` et `terms`, servis à `/legal/privacy` et `/legal/terms` (précédés de la langue, par exemple `/fr/legal/privacy`, quand le module `i18n` est activé). Chacun est découpé en sections (`data`, `retention`, `rights` pour la confidentialité ; `object`, `account`, `liability` pour les conditions).
+
+Pour ajouter une section ou un document, ajoutez son identifiant dans `config/marketing.ts`, puis ses clés `legal.…` dans les deux catalogues, comme pour l’accueil.
+
+## Les formulaires publics
+
+Le bloc `forms` de `config/marketing.ts` :
+
+| Champ | Ce qu’il règle | Valeur livrée |
+|---|---|---|
+| `contactRecipient` | **l’adresse qui reçoit les messages du formulaire de contact** (`/contact`) | `bonjour@exemple.test` — **à remplacer** |
+| `newsletterSource` | l’étiquette des inscriptions à la lettre d’information | `newsletter` |
+| `waitlistSource` | l’étiquette des inscriptions à la liste d’attente (`/waitlist`) | `waitlist` |
+| `rateLimit.windowSeconds` | la durée de la fenêtre de comptage, en secondes | `600` |
+| `rateLimit.maxPerClient` | au-delà, un même visiteur est **refusé** pendant la fenêtre | `5` |
+| `rateLimit.maxPerForm` | au-delà, les soumissions sont **enregistrées mais aucun e-mail ne part** pendant la fenêtre | `200` |
+
+Les deux étiquettes doivent être différentes, et l’adresse doit être valide : sinon le démarrage refuse en le disant. Les inscriptions se consultent et s’exportent en CSV depuis la [console](/fr/fonctionnalites/console).
+
+Pour vérifier `contactRecipient` en local : envoyez un message depuis `/fr/contact`, puis ouvrez le dossier `apps/web/.mail/`. **Vous devez y trouver** un fichier dont l’en-tête indique « À : » votre adresse et le sujet « Nouveau message depuis le formulaire de contact ».
+
+<Callout type="info" title="Ce qui n’est pas inclus">
+Pas d’éditeur visuel : la structure se règle dans `config/marketing.ts`, les textes dans les catalogues. Pas d’envoi de campagne à la liste de la newsletter : le boilerplate collecte les inscriptions, vous les exportez. Pas de nouvelle nature de section sans code. Une roadmap publique est prévue ([issue #180](https://github.com/oliviermattei/poc-next/issues/180)). La page de tarifs n’est pas encore déclarée au plan du site pour les moteurs de recherche ([issue #104](https://github.com/oliviermattei/poc-next/issues/104)), et le contournement de la limite par visiteur sans proxy de confiance est suivi dans l’[issue #78](https://github.com/oliviermattei/poc-next/issues/78).
+</Callout>

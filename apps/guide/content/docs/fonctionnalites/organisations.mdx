@@ -1,0 +1,78 @@
+---
+title: "Organisations"
+description: "Plusieurs espaces de travail par compte, les invitations et les rôles."
+---
+
+## En une phrase
+
+Le module `organizations` permet à vos clients de travailler en équipe : chacun crée ou rejoint des **organisations**, y invite des personnes par e-mail, et chaque membre a un rôle qui décide de ce qu’il peut faire.
+
+## Ce que voient vos clients
+
+| Écran | Adresse | Ce qu’on y fait |
+|---|---|---|
+| Réglages › Organisation | `/app/settings/organization` | voir l’organisation courante, la renommer, changer son identifiant, la supprimer, en créer une nouvelle |
+| Réglages › Membres | `/app/settings/members` | voir les membres, changer leur rôle, en retirer, inviter, renvoyer ou révoquer une invitation, quitter l’organisation |
+| Changer d’organisation | barre du haut de l’application | basculer d’une organisation à l’autre |
+| Rejoindre une organisation | `/invitations/accept` | la page ouverte par le lien d’invitation : bouton « Rejoindre », ou « Se connecter » / « Créer un compte » pour un visiteur |
+
+Quand le module `i18n` est activé, chaque adresse est précédée de la langue (`/fr/…`, `/en/…`).
+
+### Les trois rôles
+
+| Action | Propriétaire | Administrateur | Membre |
+|---|---|---|---|
+| Renommer l’organisation | oui | oui | non |
+| Inviter, renvoyer ou révoquer une invitation | oui | oui | non |
+| Retirer un membre | oui | seulement un **membre** | non |
+| Gérer la facturation | oui | oui | non |
+| Changer un rôle, transférer la propriété | oui | non | non |
+| Supprimer l’organisation | oui | non | non |
+| Quitter l’organisation | oui, s’il reste un autre propriétaire | oui | oui |
+
+Règles que le module tient pour vous :
+
+- **Une organisation garde toujours au moins un propriétaire.** Nommer quelqu’un « Propriétaire » transfère la propriété : l’ancien propriétaire devient administrateur.
+- **Le lien d’invitation** est à usage unique, réservé à l’adresse invitée, et expire au bout de **sept jours**. Une organisation peut envoyer au plus **20 invitations par heure** (renvois compris).
+- **Rejoindre prévient les autres membres** par une notification « Nouveau membre » (si le module `notifications` est activé).
+- **Supprimer une organisation** demande de taper son nom ; ses données sont effacées, ses membres retirés, et son abonnement annulé chez le fournisseur de paiement.
+- **Les données des autres organisations sont invisibles** : une adresse qui vise l’organisation d’un autre répond « page introuvable » (404).
+- Les données créées dans l’application (abonnement, fichiers, notifications…) appartiennent à l’**organisation courante**, ou au compte quand aucune organisation n’est choisie.
+
+## Activer ou couper
+
+```bash
+pnpm ks toggle organizations
+```
+
+- Le module a besoin de `auth` (toujours activé).
+- **Coupé**, l’application devient mono-utilisateur : les rubriques Organisation et Membres disparaissent et répondent 404, et chaque donnée appartient directement au compte du client. Les tables déjà créées sont conservées.
+- Coupé, il n’y a plus d’étape « Votre organisation » dans le parcours de bienvenue, ni de liste des organisations dans la console.
+
+Voir [Les modules](/fr/fonctionnalites) pour le détail de la commande.
+
+## Configurer
+
+Rien à régler dans `config/` pour ce module. Il a besoin de :
+
+- l’envoi d’e-mails pour les invitations : `RESEND_API_KEY` + `EMAIL_FROM`, ou `EMAIL_LOCAL_CAPTURE=1` en local (voir [Resend](/fr/services/resend)) ;
+- `APP_URL`, qui construit le lien d’invitation (voir [Variables d’environnement](/fr/configurer/variables-d-environnement)).
+
+Si vous vendez un abonnement **plafonné en nombre de membres** (`seatLimit` dans `config/billing.ts`), l’invitation acceptée au-delà du plafond est refusée : voir [Offres et prix](/fr/configurer/offres-et-prix).
+
+## Vérifier que ça marche
+
+En local, les e-mails sont écrits dans `apps/web/.mail/` (avec `EMAIL_LOCAL_CAPTURE=1`).
+
+1. Connectez-vous et ouvrez `http://localhost:3000/fr/app/settings/organization`.
+2. Dans « Créer une organisation », saisissez un nom et un identifiant (lettres minuscules, chiffres et tirets), puis cliquez « Créer l’organisation ». Elle doit apparaître sur la page, avec vous comme propriétaire. Si elle n’est pas l’organisation courante, choisissez-la dans la barre du haut.
+3. Ouvrez `/fr/app/settings/members`, saisissez l’adresse d’un second compte de test (créez-le d’abord sur `/fr/sign-up` si besoin) dans « Invitations » et cliquez « Inviter ». L’invitation doit apparaître « En attente ».
+4. Ouvrez l’e-mail d’invitation dans `apps/web/.mail/`, copiez le lien, et ouvrez-le dans une fenêtre de navigation privée connectée avec le second compte. Cliquez « Rejoindre ».
+5. Revenez sur le premier compte : le second compte doit apparaître dans « Membres », avec le rôle « Membre ».
+
+<Callout type="info" title="Ce qui n’est pas inclus">
+- **Pas de rôle personnalisé** : les trois rôles et leurs droits sont fixés dans le code du module.
+- **Pas d’écran pour exporter les données d’une organisation entière.**
+- **Pas de commande pour réparer une organisation sans propriétaire** : les chemins du produit l’empêchent, une modification à la main de la base ne l’est pas.
+- Limites connues : le quota d’invitations peut être dépassé d’une unité sous des envois simultanés ([#118](https://github.com/oliviermattei/poc-next/issues/118)) ; la carte des invitations s’affiche même quand le rôle ne permet pas de renvoyer ou révoquer ([#119](https://github.com/oliviermattei/poc-next/issues/119)) ; l’état « aucune organisation choisie » est mal rendu ([#120](https://github.com/oliviermattei/poc-next/issues/120)) ; changer d’organisation sur petit écran demande JavaScript ([#121](https://github.com/oliviermattei/poc-next/issues/121)) ; le propriétaire n’est pas prévenu quand une invitation est refusée pour plafond de membres ([#93](https://github.com/oliviermattei/poc-next/issues/93)).
+</Callout>

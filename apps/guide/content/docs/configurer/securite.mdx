@@ -1,0 +1,123 @@
+---
+title: "Sécurité"
+description: "Les sources autorisées, les limites de débit et le captcha, dans config/security.ts."
+---
+
+`config/security.ts` règle trois choses : les **sources tierces** que le navigateur a le droit de contacter, les **limites de débit** des points d’entrée, et le **captcha**. Les protections elles-mêmes (en-têtes de sécurité, cookies, vérifications côté serveur) sont dans le code et ne se désactivent pas.
+
+## Les sources tierces autorisées
+
+Votre application envoie au navigateur une **politique de sécurité du contenu** (CSP) : la liste des origines d’où une page peut charger un script, une image, ou vers lesquelles elle peut envoyer une requête. Tout le reste est bloqué. C’est ce qui empêche un script injecté de fuir vos données.
+
+**L’état livré : aucune source tierce.** Polices, styles, icônes et images sont servis par votre propre application.
+
+```ts
+export const contentSecurityPolicySources = {
+  script: [],
+  style: [],
+  connect: [],
+  img: [],
+  font: [],
+  frame: [],
+  formAction: [],
+}
+```
+
+| Champ | Ce qu’il autorise |
+|---|---|
+| `script` | un script chargé par la page |
+| `style` | une feuille de style externe |
+| `connect` | une requête réseau émise par la page (`fetch`, envoi de mesure) |
+| `img` | une image externe, y compris un pixel de mesure |
+| `font` | une police servie par un autre domaine |
+| `frame` | un cadre intégré (widget de paiement, captcha) |
+| `formAction` | la destination d’un formulaire qui sort de votre site |
+
+C’est **le seul endroit** d’où une origine peut entrer dans la politique : un domaine écrit ailleurs dans le code fait échouer `pnpm test`.
+
+### Quand ajouter une origine
+
+Seulement quand un service que vous branchez l’exige. Le démarrage vous le dit en nommant le champ et l’origine attendus :
+
+| Service | Champs | Origine à ajouter |
+|---|---|---|
+| [Stockage S3](/fr/services/stockage-s3) (seau réel) | `connect` | celle de `STORAGE_S3_ENDPOINT`, ou `https://s3.<région>.amazonaws.com` chez AWS |
+| [PostHog](/fr/services/posthog) | `connect` **et** `img` | la valeur de `POSTHOG_HOST`, par exemple `https://eu.i.posthog.com` |
+
+<Steps>
+<Step>
+
+Ajoutez l’origine dans le ou les champs, **sans barre oblique finale**, et jamais `*` :
+
+```ts
+connect: ['https://eu.i.posthog.com'],
+img: ['https://eu.i.posthog.com'],
+```
+
+</Step>
+<Step>
+
+Redémarrez (`Ctrl + C`, puis `pnpm dev`). **Vous devez voir** `✓ Ready` : le message qui réclamait l’origine a disparu.
+
+</Step>
+<Step>
+
+**Vérifiez dans le navigateur** : ouvrez les outils de développement (F12), onglet Console, et utilisez la fonctionnalité (téléverser un avatar, accepter les cookies de mesure). **Aucune ligne** ne doit mentionner `Content Security Policy`.
+
+</Step>
+</Steps>
+
+<Callout type="warn" title="Ajouter une origine est une décision">
+Chaque origine ajoutée est un domaine tiers à qui vous faites confiance. N’en ajoutez pas « pour que ça marche » : écrivez pourquoi, dans le message de commit ou à côté de la ligne.
+</Callout>
+
+## Les limites de débit
+
+Chaque point d’entrée public est limité : au-delà d’un seuil, l’appelant reçoit une réponse « trop de requêtes » (HTTP 429) et doit attendre la fin de la fenêtre. Les seuils sont dans `rateLimitPolicies`.
+
+Chaque politique porte deux seuils, et ils ne protègent pas contre la même chose :
+
+- **`maxPerClient`** compte par **appelant** (son adresse IP). Il est volontairement large : plusieurs personnes partagent souvent une même adresse (entreprise, opérateur mobile).
+- **`maxPerSubject`** compte par **compte visé**, d’où que viennent les requêtes. C’est lui qui arrête une attaque distribuée sur un compte. `null` quand la route ne vise aucun compte.
+
+| Politique | S’applique à | Fenêtre | Par appelant | Par compte visé |
+|---|---|---|---|---|
+| `default` | toute route publique qui n’en nomme pas d’autre | 60 s | 120 | — |
+| `signIn` | connexion | 5 min | 300 | 20 |
+| `signUp` | inscription | 1 h | 120 | 5 |
+| `passwordReset` | mot de passe oublié | 1 h | 120 | 5 |
+| `magicLink` | lien de connexion par e-mail | 1 h | 120 | 5 |
+| `emailVerification` | vérification d’adresse | 1 h | 240 | — |
+| `twoFactor` | code de double authentification | 5 min | 60 | 4 |
+| `passkey` | passkeys | 5 min | 100 | — |
+| `invitation` | invitation à une organisation | 1 h | 120 | 5 |
+| `publicForm` | formulaires publics (contact, newsletter, liste d’attente) | 10 min | 60 | — |
+| `upload` | téléversement de fichiers | 10 min | 120 | — |
+| `dataExport` | export de ses données | 1 h | 20 | — |
+| `guestCheckout` | paiement sans compte | 10 min | 60 | — |
+| `webhook` | webhooks entrants (Stripe…) | 60 s | 600 | — |
+
+Pour changer un seuil : modifiez la valeur, redémarrez, c’est tout. Les valeurs livrées visent un produit qui démarre ; remontez-les si une campagne amène beaucoup de monde d’un coup.
+
+**Ce que vous ne pouvez pas faire : éteindre la limitation.** Il n’existe ni drapeau ni variable pour cela, et un seuil à zéro ou négatif est **refusé au démarrage** en nommant la politique. Les formulaires publics ont en plus leur propre réglage, dans `config/marketing.ts` (voir [Site et pages légales](/fr/configurer/site-et-pages-legales)).
+
+<Callout type="warn" title="Limite connue : l’adresse de l’appelant">
+Le seuil par appelant lit l’adresse dans l’en-tête `x-forwarded-for`, qu’un attaquant peut écrire lui-même si aucun proxy de confiance ne la réécrit devant votre application. Le seuil par compte visé, lui, n’en dépend pas. Le correctif est suivi dans l’[issue #78](https://github.com/oliviermattei/poc-next/issues/78) ; en attendant, déployez derrière un proxy qui réécrit cet en-tête (voir [Déployer](/fr/deployer)). Pour le module, voir [Limitation de débit](/fr/fonctionnalites/limitation-de-debit).
+</Callout>
+
+## Le captcha — bientôt
+
+```ts
+export const captcha = {
+  enabled: false,
+  origin: null,
+}
+```
+
+Le captcha est **déclaré mais aucun fournisseur n’est livré** : laissez `enabled: false`. Le passer à `true` n’ajoute aujourd’hui aucun widget à vos formulaires ; le démarrage vérifie seulement que `origin` est renseignée et déclarée dans les champs `frame` ou `script` ci-dessus. La livraison d’un fournisseur est **bientôt** disponible, suivie dans l’[issue #151](https://github.com/oliviermattei/poc-next/issues/151).
+
+Désactivé, il ne manque à rien : les formulaires publics fonctionnent pleinement, avec un champ piège invisible contre les robots et les limites de débit ci-dessus.
+
+<Callout type="info" title="Ce qui n’est pas inclus">
+Pas de pare-feu applicatif, pas de blocage par pays ni de liste noire d’adresses : ce sont des réglages de votre hébergeur ou de votre proxy. Pas de réglage des en-têtes de sécurité eux-mêmes : ils sont fixés par le code. Plusieurs durcissements sont en cours, listés dans le jalon « CI & sécurité » des issues, par exemple le jeton de réinitialisation de mot de passe encore stocké en clair ([issue #79](https://github.com/oliviermattei/poc-next/issues/79)).
+</Callout>

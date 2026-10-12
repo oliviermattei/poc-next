@@ -1,0 +1,84 @@
+---
+title: "Superadmin console"
+description: "The platform back office: accounts, organizations, revenue, sign-ups."
+---
+
+## In one sentence
+
+The `admin` module gives you, and the people you appoint **superadmin**, a console to see and administer the whole platform: accounts, organizations, revenue and the sign-ups received by the public site.
+
+The console is not visible to your clients: it answers "page not found" (404) to anyone who is not a superadmin, anonymous visitors included, and no link in the product leads to it.
+
+## What you see there
+
+When the `i18n` module is enabled, every address starts with the language (`/fr/console`, `/en/console`).
+
+| Screen | Address | Content |
+|---|---|---|
+| Dashboard | `/console` | one tile per screen: registered accounts, organizations, estimated recurring revenue, sign-ups received |
+| Accounts | `/console/users` | every account, with search, sign-up date, state ("Active", "Banned", "Unverified") and rights |
+| Account detail | `/console/users/<id>` | their organizations and role in each, their active sessions ("Revoke" button), and the "Send a password reset" button |
+| Organizations | `/console/organizations` | every organization, its headcount, plan and subscription (if the `organizations` module is enabled) |
+| Organization detail | `/console/organizations/<id>` | its members and their role, its plan and subscription |
+| Revenue | `/console/revenue` | the **estimated** monthly recurring revenue, the one-time purchases **recorded** over the chosen period (last 30 days, last 12 months, since the beginning), subscriptions by state (if the `billing` module is enabled) |
+| Subscriptions | `/console/subscriptions` | the sign-ups received by the public forms (newsletter, waitlist), filterable by source, with the "Export as CSV" button (if the `marketing` module is enabled) |
+
+Recurring revenue is **estimated**: the database does not store subscription amounts, so it is computed from the prices declared in `config/billing.ts`. The screen says so next to the figure.
+
+### Banning, promoting, borrowing a session
+
+These three actions exist on the server, **but no button offers them in the console yet** (issue [#135](https://github.com/oliviermattei/poc-next/issues/135)):
+
+- **ban / unban an account**: a banned account can no longer sign in, and sees the same refusal as an unknown account;
+- **appoint or revoke a superadmin**: the last superadmin can be neither revoked nor banned;
+- **borrow a client’s session** (impersonation) to see the product as they do: a "Borrowed session" banner then shows on every page, with the "Hand back" button. A borrowed session expires after one hour, and both its start and end are logged.
+
+<Callout type="warn" title="The superadmin role is worth every account">
+Borrowing a session does not ask for the second factor of the borrowed account. A superadmin can therefore enter any client’s account, even one protected by two-factor authentication. Protect superadmin accounts first (strong password, two-factor authentication).
+</Callout>
+
+## Becoming the first superadmin
+
+1. Sign up in the application with the address that will administer, and verify it (see [Authentication](/en/fonctionnalites/authentification)).
+2. In the `.env` file at the root of the project (or in your host’s variables in production), set that address:
+
+   ```bash
+   SUPERADMIN_EMAIL=you@example.com
+   ```
+
+3. Stop and restart the application (`pnpm dev`).
+4. Sign in with that account and open `http://localhost:3000/en/console`. You should see the console "Dashboard".
+
+`SUPERADMIN_EMAIL` appoints **only the first** superadmin: as soon as one exists who can sign in, the database is authoritative and changing the variable appoints nobody. Left empty, the application still starts, with a warning naming the variable, and the console answers 404 to everyone.
+
+## Enable or disable
+
+```bash
+pnpm ks toggle admin
+```
+
+- The module needs `auth` (always enabled).
+- **Disabled**: the whole console answers 404, the superadmin role no longer exists, and nobody can ban anymore. An already banned account **stays banned**. A borrowed session in progress can no longer be handed back by hand: it expires on its own (the banner says so).
+- The Organizations, Revenue and Subscriptions screens also disappear when their module (`organizations`, `billing`, `marketing`) is disabled.
+
+## Configure
+
+| What | Where |
+|---|---|
+| The first superadmin | `SUPERADMIN_EMAIL` — [Environment variables](/en/configurer/variables-d-environnement) |
+| The prices used to estimate revenue | `config/billing.ts` — [Plans and prices](/en/configurer/offres-et-prix) |
+
+## Check that it works
+
+1. Signed in as superadmin, open `/en/console/users`: you should see your account, with "Superadmin" in the rights column.
+2. Open your account and check that your current session appears under "Active sessions".
+3. In a private browsing window, sign in with an ordinary account and open `/en/console`: you should see "Page not found".
+
+<Callout type="info" title="What is not included">
+- **No button** to ban, promote or borrow a session ([#135](https://github.com/oliviermattei/poc-next/issues/135)).
+- **No history or chart**: the dashboard shows today’s state ([#181](https://github.com/oliviermattei/poc-next/issues/181)), and recurring revenue does not depend on the chosen period ([#109](https://github.com/oliviermattei/poc-next/issues/109)).
+- **No confirmation prompt** before an irreversible action: the button names its effect ([#152](https://github.com/oliviermattei/poc-next/issues/152)).
+- **Contact messages** are not listed under "Subscriptions": they are sent by email.
+- The CSV export of sign-ups has no size cap ([#91](https://github.com/oliviermattei/poc-next/issues/91)).
+- The console has no subdomain of its own ([#183](https://github.com/oliviermattei/poc-next/issues/183)), and its sign-ups address still says "subscriptions" ([#182](https://github.com/oliviermattei/poc-next/issues/182)).
+</Callout>

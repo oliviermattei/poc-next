@@ -1,0 +1,66 @@
+---
+title: "Background jobs"
+description: "Running the scheduled and deferred tasks of the other modules, locally or with Inngest."
+---
+
+## In one sentence
+
+The `jobs` module runs, outside the response time, the tasks the other modules declare: regular clean-ups, reminder emails, exporting an account's data.
+
+## What it runs
+
+Your customers do not see this module; they see its effects. The scheduled tasks declared in the shipped project (times in UTC):
+
+| Task | Module | When | What it does |
+|---|---|---|---|
+| `data-export` | `auth` | every 15 minutes, and on demand | prepares the data export a customer requests from their Settings; the 15-minute run picks up a request that was left hanging |
+| `purge-account` | `auth` | on demand (armed every night at 4:17, with no effect) | erases an account whose deletion was requested |
+| `trial-ending-reminder` | `billing` | every day at 9:00 | emails the customers whose trial is ending |
+| `impersonation-expiry` | `admin` | every hour, at minute 23 | closes expired session impersonations from the console |
+| `sweep-closed-windows` | `rate-limit` | every 10 minutes | erases stale rate-limiting counters |
+| `sweep-job-runs` | `jobs` | every day at 3:25 | erases execution records older than seven days |
+
+A task that fails on a transient error is retried, up to three attempts in total, with a growing delay. A given run only happens once, even if it is triggered twice.
+
+## Enable or disable
+
+```bash
+pnpm ks toggle jobs
+```
+
+The module depends on no other. It owns one table, `job_run`, the execution record.
+
+Module disabled:
+
+- **no variable to set**, and startup reports it in the log;
+- a task requested by a module (the data export, for example) **runs immediately**, inside the request that asks for it: the customer waits longer, but their right to an export is respected;
+- **scheduled tasks no longer run**: no more end-of-trial reminders, no more regular clean-ups.
+
+## Configure
+
+Jobs run in one of two ways, and you have to pick one: with the module enabled and neither, the application refuses to start, naming the three variables. The values go in `.env` locally, and in your host’s variables in production.
+
+| Mode | Variables | For whom |
+|---|---|---|
+| **In memory** | `JOBS_LOCAL_RUNNER=1` (the value shipped in `.env.example`) | development, with no account or service |
+| **Inngest** | `INNGEST_EVENT_KEY` and `INNGEST_SIGNING_KEY` (and `INNGEST_BASE_URL` to target an Inngest development server) | production |
+
+Both together are refused. In Inngest mode, declare the callback address `<APP_URL>/api/modules/jobs/inngest` at Inngest; it only accepts calls signed with `INNGEST_SIGNING_KEY`. The step-by-step is on the [Inngest](/en/services/inngest) page.
+
+<Callout type="warn" title="In-memory mode does not suit a production with several instances">
+Its queue disappears on every restart, and two instances would each run the same scheduled task. Switch to Inngest as soon as your application runs on more than one server.
+</Callout>
+
+## Check that it works
+
+1. Keep `JOBS_LOCAL_RUNNER=1` in `.env` and run `pnpm dev`.
+2. Sign in, open Settings → Profile, and request the export of your data under “Your data”.
+3. In the `pnpm dev` terminal, you should see a `[job.started]` line then `[job.succeeded]` for the export task. A `[job.failed]` line gives the cause.
+4. Leave it running for ten minutes: the rate-limiting clean-up task should show up in turn.
+
+<Callout title="What is not included">
+- **No job monitoring screen** in your SaaS: in Inngest mode, monitoring happens at Inngest; in local mode, in the log.
+- **No provider** other than Inngest.
+- **No scheduling in local time**: every schedule is in UTC.
+- **No purely “on demand” trigger**: an on-demand task is also armed on a schedule, where it does nothing ([#137](https://github.com/oliviermattei/poc-next/issues/137)).
+</Callout>

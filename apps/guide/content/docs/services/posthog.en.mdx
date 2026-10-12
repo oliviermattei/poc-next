@@ -1,0 +1,86 @@
+---
+title: "PostHog"
+description: "Analytics: key, host and security policy."
+---
+
+## What it is for
+
+PostHog measures your SaaS’s audience: page views and events. It is used by the `analytics` module (see [Analytics](/en/fonctionnalites/analytics)), which itself depends on the `consent` module: **nothing is measured before the visitor has accepted** the “analytics” category in the cookie banner (see [Cookies and consent](/en/fonctionnalites/cookies-et-consentement)).
+
+Two variables: `POSTHOG_KEY` (the project key) and `POSTHOG_HOST` (the provider’s origin, which decides in which region your data lands).
+
+## Without an account: nothing is measured
+
+PostHog has **no local mode**, and that is not an oversight: without a key, the shipped state, the application works normally and **sends no call** to an analytics service. There is nothing to simulate.
+
+As long as no key is configured, no analytics script is declared: the cookie banner has nothing to offer for this category.
+
+## Create the account and get the key
+
+1. **Create an account** on posthog.com, choosing your data region (Europe or United States).
+2. **Create a project**, then copy its **project key** from the project settings. It starts with `phc_`.
+3. **Note your region’s host**, without a trailing slash:
+   - Europe: `https://eu.i.posthog.com`
+   - United States: `https://us.i.posthog.com`
+
+## Connect
+
+1. **Declare the host** in `config/security.ts`, in the `connect` **and** `img` fields, copying **exactly** the value of `POSTHOG_HOST`:
+
+   ```ts
+   export const contentSecurityPolicySources: ContentSecurityPolicySources = {
+     script: [],
+     style: [],
+     connect: ['https://eu.i.posthog.com'],
+     img: ['https://eu.i.posthog.com'],
+     font: [],
+     frame: [],
+     formAction: [],
+   }
+   ```
+
+   Both fields are needed: `connect` for the sends, `img` because PostHog falls back to an image when the normal send fails. See [Security](/en/configurer/securite).
+2. In `.env` (locally) or in your host’s variables (in production), fill in:
+
+   ```bash
+   POSTHOG_KEY=phc_…
+   POSTHOG_HOST=https://eu.i.posthog.com
+   ```
+
+3. Restart the application.
+
+What startup refuses, naming it:
+
+- `POSTHOG_KEY` without `POSTHOG_HOST`, or the reverse: the region is never guessed;
+- a `POSTHOG_HOST` that is not an `http(s)` origin without a trailing slash;
+- a host missing from `connect` or `img` in `config/security.ts`: otherwise the browser would block every send, and the product would look like it measures while measuring nothing.
+
+## Verify
+
+1. Open your site in a private browsing window.
+2. The cookie banner should appear. Accept analytics.
+3. Browse a few pages.
+4. In PostHog, the live events view should show your page views.
+
+If you refuse analytics in the banner, no event should arrive.
+
+The repository also provides a live sending recipe, which checks that PostHog accepts what the application sends:
+
+```bash
+POSTHOG_LIVE_TEST=1 \
+  POSTHOG_KEY=phc_… \
+  POSTHOG_HOST=https://eu.i.posthog.com \
+  pnpm vitest run packages/adapters/posthog/src/posthog-live.test.ts
+```
+
+## Turn off
+
+- Remove `POSTHOG_KEY` and `POSTHOG_HOST`: the application runs, nothing is measured, no call is sent.
+- Or turn the module off: `pnpm ks toggle analytics`. This also turns off [Sentry](/en/services/sentry), carried by the same module.
+
+<Callout type="warn" title="What is not included">
+- No analytics tool other than PostHog.
+- The application sends only the page **path**, never the full address, and filters sensitive fields before sending: some PostHog analyses based on the full URL will therefore not have this information.
+- The host is declared in `config/security.ts`, not through a variable: a Docker image does not start on its environment variables alone ([issue #144](https://github.com/oliviermattei/poc-next/issues/144)).
+- A browser too old to understand the modern security policy will not load the script: it will not be measured, and the product still works.
+</Callout>

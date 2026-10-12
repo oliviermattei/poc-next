@@ -1,0 +1,94 @@
+---
+title: "Vue d’ensemble"
+description: "Les options d’hébergement, et ce qu’il vous faut avant de commencer."
+---
+
+Mettre votre SaaS en ligne, c’est faire tourner trois choses chez un hébergeur : **l’application** (le serveur Next de `apps/web`), **une base PostgreSQL 16 ou plus récente**, et **les migrations**, qui mettent le schéma de la base à jour avant que l’application ne reçoive du trafic.
+
+Cette partie vous guide pas à pas. Lisez cette page en entier avant de choisir.
+
+## Les trois façons de déployer
+
+| Option | Pour qui | Ce que le dépôt fournit | État |
+|---|---|---|---|
+| [Docker Compose sur votre serveur](/fr/deployer/docker-et-coolify) | vous avez un serveur (VPS) avec Docker | `Dockerfile` et `docker-compose.prod.yml` : l’application, sa base et les migrations, dans le bon ordre | construit et démarré en local par le projet |
+| [Coolify](/fr/deployer/docker-et-coolify#coolify) | vous avez une instance Coolify | la même pile Compose, que Coolify déploie | guide écrit, **jamais exécuté en réel** |
+| [Vercel](/fr/deployer/vercel) | vous ne voulez pas gérer de serveur | rien de spécifique : Vercel construit `apps/web` lui-même | guide écrit, **jamais exécuté en réel** |
+
+<Callout type="warn" title="Ce qui a été testé, et ce qui ne l’a pas été">
+L’image Docker et la pile Compose ont été construites et démarrées sur un poste de développement : sans configuration, l’image refuse de démarrer en nommant la variable manquante ; avec, `/api/health` répond « ok ». En revanche, **aucun déploiement réel n’a encore été fait** : ni sur Coolify, ni sur Vercel, ni sur un serveur public. Le premier déploiement réel est suivi dans l’issue [#145](https://github.com/oliviermattei/poc-next/issues/145). Soyez prudent, et vérifiez chaque étape.
+</Callout>
+
+## Ce qu’il vous faut avant de commencer
+
+<Steps>
+<Step>
+
+### Un hébergement
+
+Un serveur avec Docker et Docker Compose, une instance Coolify, ou un compte Vercel.
+
+</Step>
+<Step>
+
+### Un nom de domaine, servi en HTTPS
+
+Les cookies de session sont marqués `Secure` : le navigateur ne les envoie qu’en HTTPS. Le certificat est porté par le relais placé devant l’application (voir plus bas). Voir [Domaine et deux hôtes](/fr/deployer/domaine-et-deux-hotes).
+
+</Step>
+<Step>
+
+### Une base PostgreSQL 16 ou plus récente
+
+La pile Compose en crée une pour vous. Sur Vercel, il vous faut une base hébergée ailleurs (Neon, Supabase, Amazon RDS…). Voir [Base de données en production](/fr/deployer/base-de-donnees-en-production) et [PostgreSQL](/fr/services/postgresql).
+
+</Step>
+<Step>
+
+### Un compte chez chaque fournisseur dont vos modules ont besoin
+
+En local, chaque service indispensable a un **mode local** qui évite tout compte (PostHog et Sentry n’en ont pas besoin : sans clé, ils ne font rien). En production, la plupart de ces modes sont **refusés au démarrage**. Avec les modules activés par défaut, voici ce qu’il vous faut :
+
+| Module activé | Il vous faut | Mode local en production |
+|---|---|---|
+| tous (e-mails) | [Resend](/fr/services/resend) : `RESEND_API_KEY` et `EMAIL_FROM` | `EMAIL_LOCAL_CAPTURE=1` est accepté, mais **aucun e-mail ne part** : à réserver à une démonstration |
+| `billing` | [Stripe](/fr/services/stripe) : `STRIPE_SECRET_KEY` et `STRIPE_WEBHOOK_SECRET` | `PAYMENTS_LOCAL_MODE=1` est **refusé** |
+| `storage` | un seau [S3 ou compatible](/fr/services/stockage-s3), plus son origine déclarée dans `config/security.ts` | `STORAGE_LOCAL_DIRECTORY` est **refusé** |
+| `jobs` | [Inngest](/fr/services/inngest) : `INNGEST_EVENT_KEY` et `INNGEST_SIGNING_KEY` | `JOBS_LOCAL_RUNNER=1` est accepté **sur une seule instance** : la file est perdue au redémarrage |
+| `auth` (connexion Google, GitHub) | facultatif : [Google](/fr/services/google), [GitHub](/fr/services/github) | `OAUTH_LOCAL_PROVIDER` est **refusé** |
+| `analytics` | facultatif : [PostHog](/fr/services/posthog), [Sentry](/fr/services/sentry) | sans clé, rien n’est mesuré et l’application tourne |
+
+Vous ne voulez pas d’un service ? Coupez le module qui en a besoin, par exemple `pnpm ks toggle billing` (voir [Modules](/fr/configurer/modules)). C’est un changement de code : faites-le sur votre poste, puis committez-le avant de déployer.
+
+</Step>
+<Step>
+
+### La liste complète des variables
+
+Toutes les variables, leur rôle et si elles sont obligatoires : [Variables d’environnement](/fr/configurer/variables-d-environnement).
+
+</Step>
+<Step>
+
+### Un relais (proxy inverse) devant l’application
+
+L’application ne doit pas être exposée directement sur Internet. Placez devant elle un relais (Traefik, que Coolify utilise ; nginx ; Caddy) qui sert le HTTPS et **écrase** l’en-tête `x-forwarded-for`. Sans lui, la limitation de débit est contournable : elle identifie chaque visiteur par cet en-tête, que le visiteur peut écrire lui-même. Les réglages sont dans [Docker et Coolify](/fr/deployer/docker-et-coolify#le-relais-devant-lapplication). L’amélioration côté code est suivie dans [#78](https://github.com/oliviermattei/poc-next/issues/78). Sur Vercel, la plateforme réécrit l’en-tête : rien à faire.
+
+</Step>
+</Steps>
+
+## Trois règles qui valent partout
+
+1. **Une configuration incomplète empêche le démarrage, et le dit.** L’application vérifie ses variables avant de servir la moindre requête. S’il en manque une, elle s’arrête en la nommant, par exemple `Démarrage refusé : Invalid environment variables: - DATABASE_URL: …`. Ce n’est pas une panne : lisez le message, corrigez, relancez. Les messages sont expliqués dans [Dépannage](/fr/reference/depannage).
+2. **Ne posez jamais `NEXT_PHASE` ni `SKIP_ENV_VALIDATION`.** Ces deux variables désactivent la vérification de la configuration. Elles servent uniquement pendant la construction, où l’outillage les pose lui-même. Posées sur un serveur, elles feraient démarrer une application cassée sans rien dire.
+3. **Aucun secret dans l’image ni dans le dépôt.** Les fichiers `.env` sont exclus de l’image Docker. Vos secrets arrivent par les variables de l’hébergeur, au démarrage.
+
+## La suite
+
+<Cards>
+  <Card title="Docker et Coolify" href="/fr/deployer/docker-et-coolify" description="Déployer la pile sur votre serveur, avec ou sans Coolify." />
+  <Card title="Vercel" href="/fr/deployer/vercel" description="Déployer sans gérer de serveur." />
+  <Card title="Base de données en production" href="/fr/deployer/base-de-donnees-en-production" description="Migrations, sauvegardes, et pourquoi ne jamais lancer le seed." />
+  <Card title="Domaine et deux hôtes" href="/fr/deployer/domaine-et-deux-hotes" description="Brancher votre domaine, et séparer le site de l’application si vous le souhaitez." />
+  <Card title="Liste de contrôle" href="/fr/deployer/liste-de-controle" description="Tout vérifier avant d’ouvrir au public." />
+</Cards>

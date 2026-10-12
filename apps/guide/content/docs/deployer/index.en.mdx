@@ -1,0 +1,94 @@
+---
+title: "Overview"
+description: "Hosting options, and what you need before you start."
+---
+
+Putting your SaaS online means running three things at a host: **the application** (the Next server in `apps/web`), **a PostgreSQL 16 or later database**, and **the migrations**, which update the database schema before the application receives any traffic.
+
+This part walks you through it step by step. Read this page in full before you choose.
+
+## The three ways to deploy
+
+| Option | For whom | What the repository provides | Status |
+|---|---|---|---|
+| [Docker Compose on your server](/en/deployer/docker-et-coolify) | you have a server (VPS) with Docker | `Dockerfile` and `docker-compose.prod.yml`: the application, its database and the migrations, in the right order | built and started locally by the project |
+| [Coolify](/en/deployer/docker-et-coolify#coolify) | you have a Coolify instance | the same Compose stack, deployed by Coolify | guide written, **never run for real** |
+| [Vercel](/en/deployer/vercel) | you do not want to manage a server | nothing specific: Vercel builds `apps/web` itself | guide written, **never run for real** |
+
+<Callout type="warn" title="What has been tested, and what has not">
+The Docker image and the Compose stack have been built and started on a development machine: without configuration, the image refuses to start and names the missing variable; with it, `/api/health` answers "ok". However, **no real deployment has been made yet**: not on Coolify, not on Vercel, not on a public server. The first real deployment is tracked in issue [#145](https://github.com/oliviermattei/poc-next/issues/145). Be careful, and check every step.
+</Callout>
+
+## What you need before you start
+
+<Steps>
+<Step>
+
+### A host
+
+A server with Docker and Docker Compose, a Coolify instance, or a Vercel account.
+
+</Step>
+<Step>
+
+### A domain name, served over HTTPS
+
+Session cookies are marked `Secure`: the browser only sends them over HTTPS. The certificate is carried by the relay placed in front of the application (see below). See [Domain and two hosts](/en/deployer/domaine-et-deux-hotes).
+
+</Step>
+<Step>
+
+### A PostgreSQL 16 or later database
+
+The Compose stack creates one for you. On Vercel, you need a database hosted elsewhere (Neon, Supabase, Amazon RDS…). See [Production database](/en/deployer/base-de-donnees-en-production) and [PostgreSQL](/en/services/postgresql).
+
+</Step>
+<Step>
+
+### An account with each provider your modules need
+
+Locally, each essential service has a **local mode** that avoids any account (PostHog and Sentry do not need one: without a key, they do nothing). In production, most of these modes are **refused at startup**. With the modules enabled by default, here is what you need:
+
+| Enabled module | You need | Local mode in production |
+|---|---|---|
+| all (emails) | [Resend](/en/services/resend): `RESEND_API_KEY` and `EMAIL_FROM` | `EMAIL_LOCAL_CAPTURE=1` is accepted, but **no email is sent**: keep it for a demo |
+| `billing` | [Stripe](/en/services/stripe): `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` | `PAYMENTS_LOCAL_MODE=1` is **refused** |
+| `storage` | an [S3 or compatible](/en/services/stockage-s3) bucket, plus its origin declared in `config/security.ts` | `STORAGE_LOCAL_DIRECTORY` is **refused** |
+| `jobs` | [Inngest](/en/services/inngest): `INNGEST_EVENT_KEY` and `INNGEST_SIGNING_KEY` | `JOBS_LOCAL_RUNNER=1` is accepted **on a single instance**: the queue is lost on restart |
+| `auth` (Google, GitHub sign-in) | optional: [Google](/en/services/google), [GitHub](/en/services/github) | `OAUTH_LOCAL_PROVIDER` is **refused** |
+| `analytics` | optional: [PostHog](/en/services/posthog), [Sentry](/en/services/sentry) | without a key, nothing is measured and the application runs |
+
+Don’t want a service? Turn off the module that needs it, for example `pnpm ks toggle billing` (see [Modules](/en/configurer/modules)). It is a code change: make it on your machine, then commit it before deploying.
+
+</Step>
+<Step>
+
+### The full list of variables
+
+Every variable, its role and whether it is required: [Environment variables](/en/configurer/variables-d-environnement).
+
+</Step>
+<Step>
+
+### A relay (reverse proxy) in front of the application
+
+The application must not be exposed directly to the Internet. Put a relay in front of it (Traefik, which Coolify uses; nginx; Caddy) that serves HTTPS and **overwrites** the `x-forwarded-for` header. Without it, rate limiting can be bypassed: it identifies each visitor by this header, which visitors can write themselves. The settings are in [Docker and Coolify](/en/deployer/docker-et-coolify#the-relay-in-front-of-the-application). The code-side improvement is tracked in [#78](https://github.com/oliviermattei/poc-next/issues/78). On Vercel, the platform rewrites the header: nothing to do.
+
+</Step>
+</Steps>
+
+## Three rules that apply everywhere
+
+1. **An incomplete configuration prevents startup, and says so.** The application checks its variables before serving a single request. If one is missing, it stops and names it, for example `Démarrage refusé : Invalid environment variables: - DATABASE_URL: …` (the application’s own messages are partly in French: "Démarrage refusé" means "Startup refused"). It is not an outage: read the message, fix, restart. The messages are explained in [Troubleshooting](/en/reference/depannage).
+2. **Never set `NEXT_PHASE` or `SKIP_ENV_VALIDATION`.** These two variables disable the configuration check. They are only used during the build, where the tooling sets them itself. Set on a server, they would start a broken application without a word.
+3. **No secret in the image or in the repository.** `.env` files are excluded from the Docker image. Your secrets arrive through the host’s variables, at startup.
+
+## Next
+
+<Cards>
+  <Card title="Docker and Coolify" href="/en/deployer/docker-et-coolify" description="Deploy the stack on your server, with or without Coolify." />
+  <Card title="Vercel" href="/en/deployer/vercel" description="Deploy without managing a server." />
+  <Card title="Production database" href="/en/deployer/base-de-donnees-en-production" description="Migrations, backups, and why you never run the seed." />
+  <Card title="Domain and two hosts" href="/en/deployer/domaine-et-deux-hotes" description="Connect your domain, and split the site from the application if you wish." />
+  <Card title="Launch checklist" href="/en/deployer/liste-de-controle" description="Check everything before opening to the public." />
+</Cards>

@@ -1,0 +1,92 @@
+---
+title: "PostgreSQL"
+description: "The database, locally and with a compatible host."
+---
+
+## What it is for
+
+PostgreSQL is your SaaS’s database: accounts, organizations, subscriptions, notifications, and also the rate-limiting counters. **Every module** uses it, and the application does not start without it. The code reaches it through Drizzle and the standard `pg` driver: moving from a local database to a hosted one only changes the connection string.
+
+A single variable: `DATABASE_URL`, a connection string starting with `postgres://` or `postgresql://`. If it is missing or malformed, startup stops and names it.
+
+## Without an account: the local database in Docker
+
+The repository ships a `docker-compose.yml` that runs PostgreSQL 16 in a container. Nothing to install other than Docker.
+
+1. Check that `.env` contains the string shipped in `.env.example`:
+
+   ```bash
+   DATABASE_URL=postgres://postgres:postgres@localhost:5432/app
+   ```
+
+2. Start the database:
+
+   ```bash
+   docker compose up -d
+   ```
+
+3. Check that it is ready:
+
+   ```bash
+   docker compose ps
+   ```
+
+   You should see the `postgres` service with the status `healthy`.
+
+4. Create the tables, then the demo data:
+
+   ```bash
+   pnpm db:migrate
+   pnpm db:seed
+   ```
+
+   `pnpm db:migrate` can safely be run again: a second run changes nothing.
+
+The `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` and `POSTGRES_PORT` variables in `.env` are read by `docker-compose.yml` only. If you change them, change `DATABASE_URL` too so that it stays consistent.
+
+## Create the database with a host and get the URL
+
+Any **PostgreSQL 16 or newer** database works. Neon, Supabase and Amazon RDS are **compatible**: they speak the standard PostgreSQL protocol, but we have not tested them ourselves.
+
+1. **Create a database** with your host, choosing PostgreSQL 16 or newer.
+2. **Get the connection string** from the database’s connection page in your host’s console. It looks like:
+
+   ```bash
+   postgres://user:password@host.example.com:5432/database_name?sslmode=require
+   ```
+
+   If the host requires an encrypted connection, keep the `sslmode=require` parameter it gives you: the driver honors it.
+
+## Connect
+
+1. **Apply the migrations** to this database from your machine. A variable passed on the command line takes precedence over `.env`:
+
+   ```bash
+   DATABASE_URL='postgres://…' pnpm db:migrate
+   ```
+
+   You should see the command finish without error.
+2. **Connect it**: put the same value in `DATABASE_URL`, in `.env` locally or in your host’s variables in production.
+
+In production, migrations run in their own container, before traffic switches over: see [Database in production](/en/deployer/base-de-donnees-en-production).
+
+## Verify
+
+With the application running (`pnpm dev`), open the health probe:
+
+```bash
+curl http://localhost:3000/api/health
+```
+
+You should get `{"status":"ok","database":"connected"}`. If the database is unreachable, the probe answers `503` with `"database":"unreachable"`, and the cause is written to the server log.
+
+## Turn off
+
+Not possible: the database is the application’s foundation. Without `DATABASE_URL`, nothing starts. Only the `pnpm db:migrate` command is satisfied with this single variable.
+
+<Callout type="warn" title="What is not included">
+- No host is tested by us: Neon, Supabase and Amazon RDS are “compatible”, not “built in”.
+- The connection pool size is fixed at 10 per process, with no variable to change it, which can be a problem on a serverless platform ([issue #147](https://github.com/oliviermattei/poc-next/issues/147)).
+- Backups are not made by the boilerplate: they are set up with your host. See [Database in production](/en/deployer/base-de-donnees-en-production).
+- `pnpm db:seed` refuses a database holding an account it did not create itself: it never fills a database in service.
+</Callout>

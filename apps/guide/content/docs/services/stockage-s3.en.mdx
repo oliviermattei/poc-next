@@ -1,0 +1,93 @@
+---
+title: "S3 storage"
+description: "Amazon S3 and compatible providers: bucket, keys and local mode."
+---
+
+## What it is for
+
+Storage keeps the files your customers upload — today, their **profile picture** (avatar), on the `/app/settings/profile` screen. It is used by the `storage` module (see [Storage](/en/fonctionnalites/stockage)). If you turn that module off, you have nothing to configure here, and the avatar falls back to initials.
+
+How it works matters for configuration: **your customer’s browser sends the file directly to the bucket**, through a signed address the server gives it. Reading goes through your application. So two things must be allowed on the browser side: the bucket’s origin in your security policy, and your application in the bucket’s CORS rules.
+
+The boilerplate speaks the S3 protocol. **Amazon S3** is the built-in provider; **Cloudflare R2**, **MinIO** and **DigitalOcean Spaces** are **compatible**: they speak the same protocol, but we have not tested them ourselves.
+
+## Without an account: disk storage
+
+`.env.example` ships `STORAGE_LOCAL_DIRECTORY=.storage`. Files are written to this folder, ignored by git, and uploads stay on your own application.
+
+This mode is **refused at startup** when `NODE_ENV=production`, with a message naming `STORAGE_LOCAL_DIRECTORY`: a production server’s disk disappears on redeploy, and the avatars with it.
+
+## Create the bucket and get the keys
+
+1. **Create a bucket** with your provider. Keep it **private**: the application serves the files itself.
+2. **Create an access key** limited to this bucket, with the right to read, write and delete objects. You get a key identifier and a secret; copy the secret right away.
+3. **Note the region and, outside AWS, the endpoint** of the bucket, using this table:
+
+| Provider | `STORAGE_S3_REGION` | `STORAGE_S3_ENDPOINT` | Origin to declare |
+|---|---|---|---|
+| Amazon S3 | the bucket’s region, for example `eu-west-3` | leave empty | `https://s3.eu-west-3.amazonaws.com` |
+| Cloudflare R2 | `auto` | `https://<account>.r2.cloudflarestorage.com` | the same address as the endpoint |
+| DigitalOcean Spaces | the region, for example `fra1` | `https://fra1.digitaloceanspaces.com` | the same address as the endpoint |
+| MinIO | your MinIO server’s, often `us-east-1` | your MinIO server’s address | the same address as the endpoint |
+
+The origin is computed by the application: the endpoint’s if there is one, otherwise `https://s3.<region>.amazonaws.com`. The startup refusal message gives it to you anyway, ready to copy.
+
+4. **Add a CORS rule to the bucket**, in its configuration at the provider: allow the `PUT` method from your application’s origin (the value of `APP_URL`, for example `https://example.com`, and `http://localhost:3000` to test locally), with all requested headers. Without this rule, the browser blocks the upload. The boilerplate does not set this rule for you.
+5. **Add a lifecycle rule** that deletes objects under the `pending/` prefix after 24 hours. A customer who uploads a file and never confirms leaves an object under this prefix; nothing served lives there, so this rule is safe. **Do not** put an age rule on `avatars/`: it would erase real avatars.
+
+## Connect
+
+1. **Declare the bucket’s origin** in `config/security.ts`, field `connect`:
+
+   ```ts
+   export const contentSecurityPolicySources: ContentSecurityPolicySources = {
+     script: [],
+     style: [],
+     connect: ['https://s3.eu-west-3.amazonaws.com'],
+     img: [],
+     font: [],
+     frame: [],
+     formAction: [],
+   }
+   ```
+
+   No trailing slash. See [Security](/en/configurer/securite).
+2. In `.env` (locally) or in your host’s variables (in production), fill in the bucket variables and **remove** disk storage:
+
+   ```bash
+   # STORAGE_LOCAL_DIRECTORY=.storage
+   STORAGE_S3_BUCKET=my-bucket
+   STORAGE_S3_REGION=eu-west-3
+   STORAGE_S3_ACCESS_KEY_ID=…
+   STORAGE_S3_SECRET_ACCESS_KEY=…
+   STORAGE_S3_ENDPOINT=
+   ```
+
+3. Restart the application.
+
+What startup refuses, each time naming the variable:
+
+- only some of the four variables `STORAGE_S3_BUCKET`, `STORAGE_S3_REGION`, `STORAGE_S3_ACCESS_KEY_ID`, `STORAGE_S3_SECRET_ACCESS_KEY`;
+- the bucket **and** `STORAGE_LOCAL_DIRECTORY` at the same time;
+- a `STORAGE_S3_ENDPOINT` that is not a full address;
+- a bucket whose origin is not declared in `config/security.ts`.
+
+## Verify
+
+1. Sign in, open `/app/settings/profile` and upload a PNG, JPEG or WebP image under 2 MB.
+2. Your avatar should be displayed.
+3. In your provider’s console, you should see an object under the `avatars/` prefix.
+
+If the upload fails, open the browser’s developer tools (Console tab): a CORS error means a missing CORS rule on the bucket, a security-policy error (“Content Security Policy”) means an origin missing from `config/security.ts`.
+
+## Turn off
+
+- `storage` module on, with neither a bucket nor disk storage: the application **refuses to start** and names the variables.
+- To store no files, turn the module off: `pnpm ks toggle storage`.
+
+<Callout type="warn" title="What is not included">
+- The bucket’s origin is declared in `config/security.ts`, not through a variable: a Docker image does not start on its environment variables alone ([issue #144](https://github.com/oliviermattei/poc-next/issues/144)).
+- No command reconciles the bucket’s objects with the database: an interrupted confirmation can leave under `avatars/` an object that nothing names ([issue #142](https://github.com/oliviermattei/poc-next/issues/142)).
+- No real upload to a bucket is run by the repository’s tests: the check above is yours to do.
+- Only the avatar uses storage: there is no file manager for your customers.
+</Callout>

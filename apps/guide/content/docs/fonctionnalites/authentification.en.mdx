@@ -1,0 +1,76 @@
+---
+title: "Authentication"
+description: "Sign-up, sign-in, magic link, two-factor authentication, passkeys, Google and GitHub."
+---
+
+## In one sentence
+
+The `auth` module gives your clients an account: sign-up with email verification, sign-in by password, magic link, passkey, Google or GitHub, two-factor authentication, and their GDPR rights (account export and deletion).
+
+## What your clients see
+
+When the `i18n` module is enabled, every address starts with the language (`/fr/sign-in`, `/en/sign-in`).
+
+| Screen | Address | What happens there |
+|---|---|---|
+| Sign-up | `/sign-up` | create an account with an email address and a password |
+| Email verification | `/verify-email` | request the verification link again |
+| Sign-in | `/sign-in` | password, magic link ("Get a sign-in link" block), passkey ("Sign in with a passkey"), "Continue with Google / GitHub" button when configured |
+| Forgotten password | `/forgot-password` then `/reset-password` | receive a link and choose a new password |
+| Two-factor authentication | `/two-factor` | enter the six-digit code, or a backup code |
+| Settings › Profile | `/app/settings/profile` | display name, email address, picture (if the `storage` module is enabled), "Export my data", "Delete my account" |
+| Settings › Security | `/app/settings/security` | password, external sign-in, passkeys, two-factor authentication, active sessions |
+
+What the module guarantees your clients:
+
+- **The address must be verified before the first sign-in.** A verification email is sent at sign-up.
+- **Password**: at least 12 characters, at most 128.
+- **Short, single-use links**: magic link valid 10 minutes, email verification and password reset 30 minutes.
+- **Session**: 7 days, extended with use.
+- **Two-factor authentication**: authenticator app (TOTP code, QR code shown on screen) and ten backup codes, each usable once.
+- **Passkey**: it replaces the password; the option is hidden when the browser cannot handle it. A client cannot remove their last sign-in method.
+- **Data export**: the client clicks "Request the export"; the download link is sent by email (never shown on screen) and stays valid for 24 hours. The archive holds their data from every enabled module.
+- **Account deletion**: the client types their address to confirm. Deletion is final and erases their data in every enabled module. It is **refused** while they are the last owner of an organization: they must first transfer or delete it. Their sessions are closed at once; the erasure itself runs as a background job.
+- **Same message** for an unknown account and a wrong password, so nothing is revealed.
+
+## Enable or disable
+
+`auth` belongs to the **core**: it cannot be disabled. `pnpm ks toggle auth` refuses. The `organizations`, `admin`, `notifications`, `onboarding` and `storage` modules depend on it. See [Modules](/en/fonctionnalites).
+
+## Configure
+
+Environment variables (details in [Environment variables](/en/configurer/variables-d-environnement)):
+
+| Variable | Role |
+|---|---|
+| `AUTH_SECRET` | signs sessions; at least 32 characters. Generate a long random value for production |
+| `APP_URL` | the public address of the application; it builds the links sent by email and identifies passkeys |
+| `RESEND_API_KEY` + `EMAIL_FROM`, or `EMAIL_LOCAL_CAPTURE=1` | sending emails (verification, magic link, reset, export): see [Resend](/en/services/resend) |
+| `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` | the Google button: see [Google](/en/services/google) |
+| `GITHUB_CLIENT_ID` + `GITHUB_CLIENT_SECRET` | the GitHub button: see [GitHub](/en/services/github) |
+| `OAUTH_LOCAL_PROVIDER=1` | a fake provider, to test external sign-in without any key; **refused in production** |
+
+With no Google or GitHub variable at all, no button is shown and the application starts normally. An identifier without its secret, however, **stops the startup** and names the missing variable.
+
+The durations and password length above are the shipped values. They are not in `config/`: they live in the module’s code (`packages/modules/auth/src/domain/auth-policy.ts`). Attempt limits (sign-in, sign-up, reset…) are set in `config/security.ts`: see [Rate limiting](/en/fonctionnalites/limitation-de-debit).
+
+## Check that it works
+
+Locally, with `EMAIL_LOCAL_CAPTURE=1` (the `.env.example` value), emails are not sent: they are written to the `apps/web/.mail/` folder, which you open in your browser.
+
+1. Open `http://localhost:3000/en/sign-up` and create an account with a test address.
+2. You should read "Account created. Check your inbox to activate it.". Open the latest email in `apps/web/.mail/` and click the link.
+3. Sign in at `http://localhost:3000/en/sign-in`. You should land in the application, under `/en/app` (or on the welcome journey if the `onboarding` module is enabled).
+4. Open Settings › Security (`/en/app/settings/security`) and enable two-factor authentication with an app such as Google’s or Microsoft’s. Write down the backup codes.
+5. Sign out (account menu, "Sign out"), then sign in again: you should go through the "Two-step verification" screen.
+6. In Settings › Profile, click "Request the export": an email with the download link should appear in `apps/web/.mail/`.
+
+The demo accounts created by `pnpm db:seed` are described in [First tour](/en/demarrer/premier-tour).
+
+<Callout type="info" title="What is not included">
+- **No sign-in provider** other than Google and GitHub, and no enterprise sign-in (SAML, SSO).
+- **No captcha** on sign-up and sign-in: the slot exists, no provider is shipped (issue [#151](https://github.com/oliviermattei/poc-next/issues/151), see [Security](/en/configurer/securite)).
+- **No way to cancel** an account deletion once requested.
+- **No screen to export a whole organization**: the Profile screen exports the client’s account.
+- Known limits: the password reset token is stored in clear in the database ([#79](https://github.com/oliviermattei/poc-next/issues/79)); at sign-up, the email address is copied as the display name ([#114](https://github.com/oliviermattei/poc-next/issues/114)); a magic link opened from a webmail may land signed out ([#116](https://github.com/oliviermattei/poc-next/issues/116)); Google, GitHub and passkey sign-in have not yet been run in real conditions ([#174](https://github.com/oliviermattei/poc-next/issues/174)).
+</Callout>

@@ -1,0 +1,57 @@
+---
+title: "Onboarding"
+description: "Le parcours de bienvenue qu’un nouveau client traverse avant le tableau de bord."
+---
+
+## En une phrase
+
+Le module `onboarding` accueille chaque nouveau client par un court parcours (« Bienvenue ») qui l’aide à choisir son nom, créer son organisation et choisir une offre, avant d’arriver sur le tableau de bord.
+
+## Ce que voient vos clients
+
+L’écran vit à l’adresse `/app/onboarding` (précédée de la langue quand le module `i18n` est activé). Tant que le parcours n’est pas terminé, un client qui ouvre l’application (`/app`) y est renvoyé.
+
+Les étapes **dépendent des modules activés** :
+
+| Étape | Obligatoire ? | Proposée quand | Ce qu’on y fait |
+|---|---|---|---|
+| « Votre profil » | **oui** | toujours | choisir le nom sous lequel on le verra ; la photo aussi si le module `storage` est activé |
+| « Votre organisation » | non (« Passer cette étape ») | le module `organizations` est activé **et** le client n’appartient encore à aucune organisation | « Créer une organisation » |
+| « Votre offre » | non (« Passer cette étape ») | le module `billing` est activé | « Voir les offres » ; l’étape est franchie dès que le client détient une offre |
+
+Règles que le module tient :
+
+- **Une étape obligatoire ne se passe pas**, et ne se valide pas sans être remplie : le client voit « Cette étape est obligatoire : renseignez-la pour continuer. ».
+- **Un client invité dans une organisation** n’a pas l’étape « Votre organisation » : il en a déjà une.
+- **Une fois terminé, le parcours ne revient jamais**, même si vous activez plus tard un module qui ajoute une étape.
+- Un module coupé après coup retire son étape sans bloquer personne.
+
+## Activer ou couper
+
+```bash
+pnpm ks toggle onboarding
+```
+
+- Le module a besoin de `auth` (toujours activé).
+- **Coupé** : après l’inscription ou la connexion, le client arrive directement sur le tableau de bord ; `/app/onboarding` répond 404. La progression déjà enregistrée est conservée.
+
+## Configurer
+
+Rien à régler dans `config/`. Les étapes ne se déclarent pas dans un fichier de configuration : elles sont **dérivées** des modules activés par `apps/web/lib/onboarding.ts`. Pour retirer une étape, coupez le module qui la porte (voir [Les modules](/fr/fonctionnalites)). Ajouter une étape à vous demande de modifier ce fichier.
+
+Les textes de l’écran (« Bienvenue », titres et descriptions des étapes) sont dans les catalogues du module, `packages/modules/onboarding/src/messages/fr.json` et `en.json`.
+
+## Vérifier que ça marche
+
+1. Créez un nouveau compte sur `http://localhost:3000/fr/sign-up` et vérifiez l’adresse (l’e-mail est dans `apps/web/.mail/` en local).
+2. Connectez-vous. Vous devez arriver sur l’écran « Bienvenue », à l’étape « Votre profil ».
+3. Cliquez « Continuer » sans changer de nom : l’écran doit refuser avec le message d’étape obligatoire. Saisissez un nom, puis « Continuer ».
+4. Passez ou franchissez les étapes suivantes. À la fin, vous devez arriver sur le tableau de bord, sous `/fr/app`.
+5. Déconnectez-vous puis reconnectez-vous : vous devez arriver directement sur le tableau de bord.
+
+<Callout type="info" title="Ce qui n’est pas inclus">
+- **Pas d’éditeur d’étapes** : le parcours se modifie dans le code (`apps/web/lib/onboarding.ts`).
+- **Pas de visite guidée** de l’interface ni d’e-mails de bienvenue programmés.
+- **Pas de retour au parcours** une fois terminé.
+- Limite connue : sur un écran de téléphone, la bannière de cookies pourrait masquer l’alerte d’étape obligatoire ([#141](https://github.com/oliviermattei/poc-next/issues/141)).
+</Callout>

@@ -1,0 +1,184 @@
+---
+title: "Faire un premier tour"
+description: "Les comptes de démonstration, le site, l’application et la console superadmin."
+---
+
+Cette page vous fait parcourir, une fois et dans l’ordre, ce que vos clients verront et ce que vous verrez. Comptez une vingtaine de minutes. Il vous faut une application qui tourne : si ce n’est pas encore le cas, suivez d’abord [Installer le projet](/fr/demarrer/installer).
+
+Votre SaaS a trois espaces, servis par **une seule application** sur `http://localhost:3000` :
+
+| Espace | Adresse | Qui y entre |
+|---|---|---|
+| **Le site public** | `/`, `/pricing`, `/blog`… | tout le monde |
+| **L’application** | `/app` et ce qui suit | un client connecté |
+| **La console** | `/console` et ce qui suit | vous, en tant que superadmin |
+
+<Callout type="info" title="Le préfixe de langue">
+Le site est servi en français et en anglais. Quand vous tapez une adresse comme `http://localhost:3000/pricing`, vous êtes redirigé vers `http://localhost:3000/fr/pricing` (ou `/en/pricing`, selon la langue de votre navigateur). C’est normal. Dans cette page, les adresses sont écrites sans ce préfixe.
+</Callout>
+
+## Les comptes de démonstration
+
+La commande `pnpm db:seed` a créé deux comptes, déjà vérifiés : vous pouvez vous connecter tout de suite, sans e-mail à lire.
+
+| Adresse | Mot de passe | Ce que ce compte a |
+|---|---|---|
+| `ada@demonstration.invalid` | `demonstration-seulement` | propriétaire de l’organisation « Atelier Démo », un abonnement actif à l’offre `pro-monthly`, des notifications |
+| `hedy@demonstration.invalid` | `demonstration-seulement` | membre de la même organisation |
+
+Ces adresses ne peuvent recevoir aucun courrier (le domaine `.invalid` est réservé à cet usage), et leur mot de passe est public. Ils ne peuvent pas atteindre une base en service : le seed refuse de tourner dès que la base contient un compte qu’il n’a pas créé.
+
+## 1. Le site public
+
+<Steps>
+<Step>
+
+### L’accueil
+
+Ouvrez `http://localhost:3000`. Vous devez voir la page d’accueil, faite de sections : en-tête avec les boutons d’inscription et de connexion, fonctionnalités, témoignages, questions fréquentes, inscription à la newsletter, appel à l’action. Leur ordre se règle dans `config/marketing.ts` (voir [Site et pages légales](/fr/configurer/site-et-pages-legales)).
+
+</Step>
+<Step>
+
+### Les tarifs
+
+Ouvrez `/pricing`. Vous devez voir les trois offres livrées en exemple dans `config/billing.ts` : un abonnement mensuel à 29 €, un abonnement annuel à 290 € (tous deux avec 14 jours d’essai) et un achat unique à 490 €. Vous les remplacerez par les vôtres (voir [Offres et prix](/fr/configurer/offres-et-prix)).
+
+</Step>
+<Step>
+
+### Le contenu et les autres pages
+
+Ouvrez tour à tour :
+
+- `/blog`, `/docs` (la documentation produit, pour vos clients) et `/changelog` ;
+- `/legal/privacy` et `/legal/terms`, les pages légales ;
+- `/contact` et `/waitlist` (liste d’attente).
+
+Chaque adresse doit afficher sa page. Le contenu est un exemple, à remplacer par le vôtre.
+
+</Step>
+</Steps>
+
+## 2. L’application, vue par un client
+
+<Steps>
+<Step>
+
+### Se connecter
+
+Ouvrez `/sign-in` et connectez-vous avec `ada@demonstration.invalid` et le mot de passe `demonstration-seulement`. Vous arrivez sur `/app`, le tableau de bord. Si un parcours d’accueil (onboarding) reste à faire pour ce compte, l’application vous y conduit d’abord : suivez-le ou passez ses étapes facultatives.
+
+</Step>
+<Step>
+
+### Le tableau de bord
+
+Le tableau de bord affiche « Rien à afficher pour l’instant ». Il est **vide exprès** : c’est là que votre produit viendra se brancher. Le boilerplate livre tout ce qui entoure votre produit, jamais le produit lui-même.
+
+</Step>
+<Step>
+
+### Les notifications
+
+Ouvrez `/app/notifications`. Vous devez voir les notifications de démonstration du compte.
+
+</Step>
+<Step>
+
+### Les réglages
+
+Ouvrez `/app/settings/profile`. Le menu des réglages donne accès à :
+
+| Page | Adresse | Ce qu’on y fait |
+|---|---|---|
+| Profil | `/app/settings/profile` | nom, adresse e-mail, avatar, export des données, suppression du compte |
+| Sécurité | `/app/settings/security` | mot de passe, méthodes de connexion, sessions actives, double authentification, passkeys |
+| Organisation | `/app/settings/organization` | l’organisation courante, ses paramètres, en créer une, la supprimer |
+| Membres | `/app/settings/members` | les membres et les invitations |
+| Facturation | `/app/settings/billing` | l’abonnement, les offres disponibles, les achats |
+| Notifications | `/app/settings/notifications` | les préférences de notification |
+| Cookies | `/app/settings/cookies` | les choix de consentement |
+
+</Step>
+<Step>
+
+### Une fonctionnalité réservée à une offre payante
+
+Ouvrez `/app/premium`. Comme Ada a un abonnement actif, vous devez voir « Votre rapport détaillé ». Cet écran vient du module de démonstration : il montre comment réserver une fonctionnalité à certaines offres (`config/gating.ts`, voir [Fonctionnalités réservées](/fr/configurer/fonctionnalites-reservees)).
+
+</Step>
+<Step>
+
+### S’inscrire comme un nouveau client
+
+Déconnectez-vous (menu du compte, entrée « Se déconnecter »), puis ouvrez `/sign-up` et créez un compte avec une adresse de votre choix. L’application envoie un e-mail de vérification. En local, il ne part pas : il est écrit dans le dossier `apps/web/.mail/` du dépôt, sous la forme d’un fichier `.html`. Ouvrez ce fichier dans votre navigateur et cliquez sur le lien : votre compte est vérifié.
+
+Pour tester le paiement simulé, ce nouveau compte peut choisir une offre sur `/pricing` : le tunnel de paiement est simulé, aucun paiement n’a lieu.
+
+</Step>
+</Steps>
+
+## 3. La console, votre back-office
+
+La console sert à vous, l’éditeur du SaaS : consulter les comptes, les organisations, le revenu et les inscriptions. Elle répond **404 à tout le monde** tant qu’aucun superadmin n’existe. Le premier se désigne par une variable d’environnement.
+
+<Steps>
+<Step>
+
+### Désigner le premier superadmin
+
+Ouvrez votre fichier `.env`, à la racine du dépôt, et renseignez l’adresse du compte qui doit administrer la plateforme :
+
+```bash
+SUPERADMIN_EMAIL=ada@demonstration.invalid
+```
+
+Le compte doit déjà exister. Pour votre vrai SaaS, inscrivez-vous d’abord avec votre adresse, puis mettez-la ici.
+
+</Step>
+<Step>
+
+### Redémarrer l’application
+
+Les variables sont lues au démarrage. Dans le terminal de `pnpm dev`, faites <kbd>Ctrl</kbd> + <kbd>C</kbd>, puis relancez :
+
+```bash
+pnpm dev
+```
+
+L’avertissement sur `SUPERADMIN_EMAIL` ne doit plus apparaître.
+
+</Step>
+<Step>
+
+### Ouvrir la console
+
+Connecté avec le compte d’Ada, tapez l’adresse `http://localhost:3000/console` : aucun lien de l’application n’y mène. Vous devez voir la console, avec son tableau de bord et une barre latérale : **Tableau de bord**, **Comptes**, **Organisations**, **Revenus**, **Inscriptions**.
+
+Connecté avec un autre compte, la même adresse répond 404, comme une page qui n’existe pas : la console ne révèle pas son existence.
+
+</Step>
+<Step>
+
+### Faire le tour de la console
+
+- **Comptes** (`/console/users`) : la liste des comptes. Le détail d’un compte permet d’envoyer une réinitialisation de mot de passe et de révoquer une session.
+- **Organisations** (`/console/organizations`) : chaque organisation, son effectif et son abonnement.
+- **Revenus** (`/console/revenue`) : le revenu récurrent estimé et les achats uniques encaissés.
+- **Inscriptions** (`/console/subscriptions`) : les adresses laissées sur le site public (newsletter et liste d’attente).
+
+</Step>
+</Steps>
+
+Une fois le premier superadmin désigné, **c’est la base qui fait foi** : changer `SUPERADMIN_EMAIL` ne désigne plus personne d’autre.
+
+<Callout type="warn" title="Ce qui n’est pas inclus">
+- **Votre produit** : le tableau de bord de l’application est vide, à vous de le remplir (voir [Travailler avec une IA](/fr/demarrer/travailler-avec-une-ia) et [Fonctionnalités](/fr/fonctionnalites)).
+- **Bannir un compte, nommer un autre superadmin ou se connecter à la place d’un client depuis l’écran de la console** : ces actions existent côté serveur, mais l’écran ne les propose pas encore ([issue #135](https://github.com/oliviermattei/poc-next/issues/135)).
+- **Des courbes dans le tableau de bord de la console** : il affiche des totaux, sans évolution dans le temps ([issue #181](https://github.com/oliviermattei/poc-next/issues/181)).
+- **Configurer le SaaS depuis la console** : la configuration vit dans `config/` et `.env`, et change par un redéploiement.
+- **Les journaux et les statistiques d’usage** : ils se lisent chez [Sentry](/fr/services/sentry) et [PostHog](/fr/services/posthog), pas dans la console.
+</Callout>
+
+Étape suivante : [comprendre la structure du dépôt](/fr/demarrer/structure).

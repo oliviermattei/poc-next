@@ -1,0 +1,78 @@
+---
+title: "Organizations"
+description: "Several workspaces per account, invitations and roles."
+---
+
+## In one sentence
+
+The `organizations` module lets your clients work as a team: each one creates or joins **organizations**, invites people by email, and every member has a role that decides what they can do.
+
+## What your clients see
+
+| Screen | Address | What happens there |
+|---|---|---|
+| Settings › Organization | `/app/settings/organization` | see the current organization, rename it, change its identifier, delete it, create a new one |
+| Settings › Members | `/app/settings/members` | see members, change their role, remove them, invite, resend or revoke an invitation, leave the organization |
+| Switch organization | top bar of the application | move from one organization to another |
+| Join an organization | `/invitations/accept` | the page opened by the invitation link: "Join" button, or "Sign in" / "Create an account" for a visitor |
+
+When the `i18n` module is enabled, every address starts with the language (`/fr/…`, `/en/…`).
+
+### The three roles
+
+| Action | Owner | Administrator | Member |
+|---|---|---|---|
+| Rename the organization | yes | yes | no |
+| Invite, resend or revoke an invitation | yes | yes | no |
+| Remove a member | yes | only a **member** | no |
+| Manage billing | yes | yes | no |
+| Change a role, transfer ownership | yes | no | no |
+| Delete the organization | yes | no | no |
+| Leave the organization | yes, if another owner remains | yes | yes |
+
+Rules the module enforces for you:
+
+- **An organization always keeps at least one owner.** Making someone "Owner" transfers ownership: the former owner becomes administrator.
+- **The invitation link** is single-use, reserved for the invited address, and expires after **seven days**. An organization can send at most **20 invitations per hour** (resends included).
+- **Joining notifies the other members** with a "New member" notification (if the `notifications` module is enabled).
+- **Deleting an organization** requires typing its name; its data is erased, its members removed, and its subscription cancelled at the payment provider.
+- **Other organizations’ data is invisible**: an address pointing at someone else’s organization answers "page not found" (404).
+- Data created in the application (subscription, files, notifications…) belongs to the **current organization**, or to the account when no organization is chosen.
+
+## Enable or disable
+
+```bash
+pnpm ks toggle organizations
+```
+
+- The module needs `auth` (always enabled).
+- **Disabled**, the application becomes single-user: the Organization and Members sections disappear and answer 404, and every piece of data belongs directly to the client’s account. Tables already created are kept.
+- Disabled, there is no "Your organisation" step in the welcome journey anymore, nor any organization list in the console.
+
+See [Modules](/en/fonctionnalites) for details on the command.
+
+## Configure
+
+Nothing to set in `config/` for this module. It needs:
+
+- email sending for invitations: `RESEND_API_KEY` + `EMAIL_FROM`, or `EMAIL_LOCAL_CAPTURE=1` locally (see [Resend](/en/services/resend));
+- `APP_URL`, which builds the invitation link (see [Environment variables](/en/configurer/variables-d-environnement)).
+
+If you sell a subscription **capped by number of members** (`seatLimit` in `config/billing.ts`), an invitation accepted beyond the cap is refused: see [Plans and prices](/en/configurer/offres-et-prix).
+
+## Check that it works
+
+Locally, emails are written to `apps/web/.mail/` (with `EMAIL_LOCAL_CAPTURE=1`).
+
+1. Sign in and open `http://localhost:3000/en/app/settings/organization`.
+2. In "Create an organization", enter a name and an identifier (lowercase letters, digits and hyphens), then click "Create organization". It should appear on the page, with you as owner. If it is not the current organization, choose it in the top bar.
+3. Open `/en/app/settings/members`, enter the address of a second test account (create it first at `/en/sign-up` if needed) under "Invitations" and click "Invite". The invitation should appear as "Pending".
+4. Open the invitation email in `apps/web/.mail/`, copy the link, and open it in a private browsing window signed in with the second account. Click "Join".
+5. Go back to the first account: the second account should appear under "Members", with the "Member" role.
+
+<Callout type="info" title="What is not included">
+- **No custom role**: the three roles and their rights are fixed in the module’s code.
+- **No screen to export a whole organization’s data.**
+- **No command to repair an organization without an owner**: the product’s paths prevent it, a manual edit of the database does not.
+- Known limits: the invitation quota can be exceeded by one under simultaneous sends ([#118](https://github.com/oliviermattei/poc-next/issues/118)); the invitations card is shown even when the role cannot resend or revoke ([#119](https://github.com/oliviermattei/poc-next/issues/119)); the "no organization chosen" state is rendered poorly ([#120](https://github.com/oliviermattei/poc-next/issues/120)); switching organization on a small screen requires JavaScript ([#121](https://github.com/oliviermattei/poc-next/issues/121)); the owner is not told when an invitation is refused because of the member cap ([#93](https://github.com/oliviermattei/poc-next/issues/93)).
+</Callout>

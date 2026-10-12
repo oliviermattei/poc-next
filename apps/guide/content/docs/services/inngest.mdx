@@ -1,0 +1,79 @@
+---
+title: "Inngest"
+description: "Les tâches de fond : les clés et l’exécution locale."
+---
+
+## À quoi il sert
+
+Inngest exécute les **tâches de fond** de votre SaaS : ce qui ne doit pas ralentir une page (la construction d’un export de données, par exemple) et ce qui revient à heure fixe (le rappel de fin de période d’essai, l’expiration des sessions empruntées, le nettoyage des compteurs de limitation de débit…). Il est utilisé par le module `jobs` (voir [Tâches de fond](/fr/fonctionnalites/taches-de-fond)).
+
+Inngest parle à votre application dans les deux sens :
+
+- **votre serveur envoie des événements** à Inngest avec la clé d’événement (`INNGEST_EVENT_KEY`) ;
+- **Inngest appelle votre serveur** pour exécuter chaque tâche, à l’adresse `<APP_URL>/api/modules/jobs/inngest`. Ces appels sont signés, et votre serveur les vérifie avec la clé de signature (`INNGEST_SIGNING_KEY`).
+
+L’application se présente chez Inngest sous l’identifiant `killer-saas`.
+
+## Sans compte : l’exécution en mémoire
+
+`.env.example` livre `JOBS_LOCAL_RUNNER=1`. Les tâches s’exécutent dans le processus de l’application, sans clé ni service, et les tâches planifiées tournent avec le seul `pnpm dev`.
+
+Ce mode n’est pas refusé en production, mais il a deux limites :
+
+- la file est **perdue au redémarrage** du processus ;
+- avec **deux instances** de l’application, chacune exécuterait la même échéance.
+
+Ne le gardez en production que sur un déploiement à une seule instance.
+
+## Créer le compte et récupérer les clés
+
+Inngest doit pouvoir joindre votre application par Internet : ces étapes se font une fois l’application déployée sur une adresse publique.
+
+1. **Créez un compte** sur inngest.com.
+2. **Copiez la clé d’événement** (« event key ») depuis le tableau de bord.
+3. **Copiez la clé de signature** (« signing key ») depuis le tableau de bord.
+4. Branchez-les (section suivante) et redéployez l’application.
+5. **Synchronisez votre application** dans le tableau de bord d’Inngest, en lui donnant l’adresse :
+
+   ```bash
+   <APP_URL>/api/modules/jobs/inngest
+   ```
+
+   Inngest appelle cette adresse et découvre vos tâches planifiées.
+
+## Brancher
+
+1. Dans les variables de votre hébergeur (ou dans `.env`), renseignez les deux clés et **retirez** l’exécution en mémoire :
+
+   ```bash
+   # JOBS_LOCAL_RUNNER=1
+   INNGEST_EVENT_KEY=…
+   INNGEST_SIGNING_KEY=…
+   INNGEST_BASE_URL=
+   ```
+
+2. Redémarrez l’application.
+
+Les deux clés vont ensemble : l’une sans l’autre arrête le démarrage en nommant l’absente. Une clé **et** `JOBS_LOCAL_RUNNER=1` en même temps l’arrêtent aussi : il faut choisir.
+
+`INNGEST_BASE_URL` sert à viser un serveur de développement Inngest au lieu du service ; vide, l’application vise `https://inn.gs`. Laissez-la vide en production.
+
+Rien à déclarer dans `config/security.ts` : seul votre serveur parle à Inngest.
+
+## Vérifier
+
+1. Après la synchronisation, le tableau de bord d’Inngest doit lister l’application `killer-saas` et ses fonctions planifiées.
+2. À l’heure de la première échéance, la fonction doit apparaître dans l’historique des exécutions d’Inngest.
+
+Tant qu’aucun fournisseur n’est branché (exécution en mémoire), l’adresse `/api/modules/jobs/inngest` répond `503` avec `{"error":"jobs_provider_not_configured"}` : c’est normal.
+
+## Couper
+
+- Module `jobs` activé, sans clé et sans `JOBS_LOCAL_RUNNER=1` : l’application **refuse de démarrer** en nommant les trois variables.
+- Module coupé (`pnpm ks toggle jobs`) : aucune variable à renseigner. Les tâches émises s’exécutent alors **dans la requête** qui les déclenche, et les **tâches planifiées ne s’exécutent pas**. Voir [Tâches de fond](/fr/fonctionnalites/taches-de-fond).
+
+<Callout type="warn" title="Ce qui n’est pas inclus">
+- Aucun autre outil de tâches de fond qu’Inngest.
+- Les reprises sur erreur sont décidées par l’application, pas par Inngest : chaque fonction est déclarée chez Inngest sans reprise automatique.
+- Il n’existe pas de déclencheur « à la demande » d’une tâche planifiée ([issue #137](https://github.com/oliviermattei/poc-next/issues/137)).
+</Callout>

@@ -1,0 +1,122 @@
+---
+title: "Apparence"
+description: "Les couleurs, le nom du produit et le thème sombre."
+---
+
+Le boilerplate est livré **neutre** : quasi noir et blanc, une seule couleur d’identité (la « primaire »), une police (Geist). Habiller votre produit tient en trois gestes : la couleur primaire, le nom, et éventuellement le rayon des angles.
+
+## Le nom du produit
+
+Le nom affiché dans l’en-tête du site, la barre de l’application, l’écran de connexion et la console est le texte de la clé `app.name`. Il est livré à `Application`.
+
+<Steps>
+<Step>
+
+Ouvrez `apps/web/messages/fr.json` et `apps/web/messages/en.json`, et changez ces trois valeurs dans chacun :
+
+```json
+"app.name": "Mon SaaS",
+"app.metadata.title": "Mon SaaS",
+"app.metadata.description": "Une phrase qui dit ce que fait votre produit.",
+```
+
+`app.metadata.title` est le titre de l’onglet du navigateur ; `app.metadata.description` est la description lue par les moteurs de recherche et les aperçus de liens.
+
+</Step>
+<Step>
+
+Redémarrez (`Ctrl + C`, puis `pnpm dev`) et ouvrez `http://localhost:3000/fr`. **Vous devez voir** votre nom en haut à gauche et dans l’onglet du navigateur.
+
+</Step>
+<Step>
+
+Pensez aussi au nom d’expéditeur des e-mails (`EMAIL_FROM=Mon SaaS <bonjour@exemple.com>`, voir [E-mails](/fr/configurer/e-mails)) et aux textes de l’accueil (voir [Site et pages légales](/fr/configurer/site-et-pages-legales)).
+
+</Step>
+</Steps>
+
+<Callout type="warn" title="Pas d’emplacement pour un logo">
+Il n’existe **aucun emplacement prévu pour un logo** : la marque est le texte `app.name`, rendu en lettres partout où elle apparaît. Aucune icône d’onglet (favicon) n’est livrée non plus. Afficher une image à la place du nom demande de modifier le code des quatre gabarits (site, connexion, application, console) : c’est un travail de code, à confier à une IA en lui demandant de respecter `docs/design-system.md`.
+</Callout>
+
+## La couleur primaire
+
+Les couleurs sont des **jetons** (variables CSS) déclarés dans `packages/ui/src/styles.css`. Changer l’identité d’un projet revient à remplacer **deux** jetons : `--primary` (le fond des boutons principaux) et `--primary-foreground` (le texte posé dessus). Les autres couleurs vives (succès, avertissement, danger, information) portent un sens et ne servent pas à décorer.
+
+Les couleurs s’écrivent au format **OKLCH** : `oklch(clarté chroma teinte)`. La clarté va de 0 (noir) à 1 (blanc), la chroma de 0 (gris) à environ 0,37 (très saturé), la teinte en degrés (environ 250 = bleu, 150 = vert, 30 = rouge). Un convertisseur en ligne « HEX to OKLCH » vous donne la valeur de votre couleur de marque.
+
+<Steps>
+<Step>
+
+Dans `packages/ui/src/styles.css`, bloc `:root` (thème **clair**), remplacez :
+
+```css
+--primary: oklch(0.205 0 0);
+--primary-foreground: oklch(0.985 0 0);
+```
+
+par votre couleur, par exemple un bleu :
+
+```css
+--primary: oklch(0.55 0.2 260);
+--primary-foreground: oklch(0.985 0 0);
+```
+
+</Step>
+<Step>
+
+Dans le bloc `.dark` (thème **sombre**) du même fichier, faites de même. En sombre, la primaire est souvent plus claire, et son texte plus foncé :
+
+```css
+--primary: oklch(0.72 0.15 260);
+--primary-foreground: oklch(0.145 0 0);
+```
+
+Toute couleur doit être définie dans les deux thèmes.
+
+</Step>
+<Step>
+
+**Vérifiez le contraste** :
+
+```bash
+pnpm test:contrast
+```
+
+**Vous devez voir** la commande se terminer sans échec. Si une paire texte / fond passe sous le seuil de lisibilité, l’échec nomme le composant, le thème, le rapport mesuré et le seuil : éclaircissez ou foncez votre couleur, puis relancez.
+
+</Step>
+<Step>
+
+Rechargez `http://localhost:3000/fr` dans les deux thèmes (bouton de thème dans l’en-tête). **Vous devez voir** vos boutons principaux dans la nouvelle couleur.
+
+</Step>
+</Steps>
+
+Le rayon des angles se règle de la même façon avec `--radius` (livré à `0.5rem`) ; les variantes plus petites et plus grandes en dérivent.
+
+<Callout type="error" title="N’écrivez pas de couleur en dur">
+N’utilisez pas de classes de couleur Tailwind brutes (`bg-zinc-800`, `text-red-500`) dans un écran ou un module : elles cassent le thème sombre et ignorent votre primaire. Passez toujours par les jetons (`bg-primary`, `text-muted-foreground`…).
+</Callout>
+
+## Le thème sombre
+
+Le thème suit par défaut le réglage du système du visiteur. Chacun peut le changer avec le bouton de thème (Clair, Sombre, Système) ; son choix est retenu d’une visite à l’autre. Il n’y a rien à activer : il suffit que chaque couleur soit définie dans le bloc `.dark`.
+
+## L’image de partage
+
+Quand un lien vers votre site est partagé, l’aperçu affiche `apps/web/public/og-default.png` : votre titre et votre description (`app.metadata.title` et `app.metadata.description`) sur les couleurs du design system. Après avoir changé le nom ou les couleurs, régénérez-la :
+
+```bash
+npx tsx scripts/og-image.ts
+```
+
+La commande utilise le navigateur Chromium installé pour les tests. S’il manque, installez-le d’abord avec `pnpm exec playwright install chromium`. **Vous devez voir** `Image Open Graph écrite : …/og-default.png (1200×630)`.
+
+## Les polices
+
+Les polices (Geist Sans et Geist Mono) sont servies par votre application, jamais par un service externe. En changer est une modification de code (`apps/web/app/layout.tsx`). Ne chargez pas une police depuis un service comme Google Fonts : ce serait une source tierce, à déclarer dans [la sécurité](/fr/configurer/securite) et soumise au consentement des cookies.
+
+<Callout type="info" title="Ce qui n’est pas inclus">
+Pas d’emplacement de logo ni de favicon, pas d’éditeur de thème, pas de thèmes multiples au-delà de clair et sombre. Le design system n’a pas encore de gabarit d’image de partage par page, ni plusieurs composants (formulaire, étapes, confirmation d’action irréversible) : ces manques sont suivis dans l’[issue #152](https://github.com/oliviermattei/poc-next/issues/152).
+</Callout>

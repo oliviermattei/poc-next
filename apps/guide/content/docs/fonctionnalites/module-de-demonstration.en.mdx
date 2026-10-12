@@ -1,0 +1,58 @@
+---
+title: "Demo modules"
+description: "Two example modules, demo-enabled and demo-disabled: what they are for and how to remove them."
+---
+
+## In one sentence
+
+`demo-enabled` and `demo-disabled` give nothing to your clients: they are two **example modules** that show what a complete module looks like, and that continuously prove a disabled module leaves no trace.
+
+## What they show
+
+| Module | Shipped state | What it demonstrates |
+|---|---|---|
+| `demo-enabled` | enabled | a complete module: routes, menu entries, email ("Welcome"), webhook, data export and purge, and the four protection levels of a route |
+| `demo-disabled` | **disabled** | a module that has real migrations but is not enabled: none of its routes, menu entries or tables exists. It **requires** `demo-enabled`, which also shows the dependency check |
+
+With `demo-enabled` enabled, the application sidebar shows three example entries:
+
+| Entry | Leads to | Protection |
+|---|---|---|
+| "Demo items" | `/api/modules/demo-enabled/items`, an API route that returns JSON | public |
+| "Admin report" | `/api/modules/demo-enabled/admin/report` | visible **only to a superadmin** |
+| "Detailed report" | `/app/premium`, the reserved feature screen | reserved to paid plans: without a plan, the screen invites to subscribe |
+
+The reserved feature `premium-report` is unlocked by the plans listed in `config/gating.ts`: see [Reserved features](/en/configurer/fonctionnalites-reservees).
+
+Demo items are kept **in memory**: they disappear each time the application restarts.
+
+## Enable or disable
+
+Before launching your product, disable `demo-enabled` to remove its menu entries:
+
+```bash
+pnpm ks toggle demo-enabled
+```
+
+- Neither module depends on another product module; `demo-disabled` requires `demo-enabled`. If you have enabled `demo-disabled`, disable it first: otherwise the command refuses and names the module.
+- To see the dependency check in action, try enabling `demo-disabled` on its own while `demo-enabled` is disabled: the command refuses and suggests `--with-requires`.
+
+<Callout type="warn" title="Before disabling demo-enabled">
+`config/gating.ts` declares the `premium-report` feature, which `demo-enabled` provides, and the `/app/premium` page is its example. Disabling the module leaves that declaration in place. Before going to production, replace this example feature with your own (see [Reserved features](/en/configurer/fonctionnalites-reservees)), then restart `pnpm dev` and check that the application starts.
+</Callout>
+
+## Configure
+
+Nothing to set. These modules are a **model**: to write your own module, do not copy their folder by hand, generate a skeleton with `pnpm ks scaffold <id>` (see [Working with an AI](/en/demarrer/travailler-avec-une-ia)).
+
+## Check that it works
+
+1. Run `pnpm ks list`: `demo-enabled` should be `● activé` (enabled) and `demo-disabled` `○ désactivé` (disabled).
+2. Sign in to the application: the sidebar should show "Demo items" and "Detailed report".
+3. Open `http://localhost:3000/api/modules/demo-disabled/notes`: you should get a 404 response, since the module is disabled.
+
+<Callout type="info" title="What is not included">
+- **No value for your clients**: these modules are examples and test witnesses, not features.
+- **No durable storage**: demo items live in memory.
+- They are not the **demo data** (the Ada and Hedy accounts, the "Atelier Démo" organization) created by `pnpm db:seed`: that data belongs to the `auth`, `organizations`, `billing` and `notifications` modules (see [First tour](/en/demarrer/premier-tour)).
+</Callout>

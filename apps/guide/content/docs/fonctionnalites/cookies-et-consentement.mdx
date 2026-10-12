@@ -1,0 +1,57 @@
+---
+title: "Cookies et consentement"
+description: "La bannière de consentement et l’écran de préférences, pour ne charger aucun service tiers sans accord."
+---
+
+## En une phrase
+
+Le module `consent` empêche votre SaaS de charger un service tiers qui dépose des cookies (la mesure d’audience, par exemple) tant que le visiteur ne l’a pas accepté, et lui permet de changer d’avis à tout moment.
+
+## Ce que voient vos clients
+
+- **Une bannière** « Cookies non essentiels », avec trois boutons : « Tout accepter », « Tout refuser », « Personnaliser mes choix ». Elle ne s’affiche **que s’il y a quelque chose à accepter**.
+- **Un écran de préférences** à l’adresse `/cookies`, une case par finalité : « Mesure d’audience » et « Publicité ». Seules les finalités réellement utilisées par votre site y apparaissent.
+- **Deux chemins pour y revenir** : le lien « Cookies » du pied de page du site, et la rubrique « Cookies » des Réglages (`/app/settings/cookies`) pour un client connecté — ce second chemin existe même si vous coupez le site public.
+
+Tout fonctionne sans JavaScript : refuser les cookies ne dépend d’aucun script.
+
+**Rien n’est chargé par défaut.** Une finalité sur laquelle le visiteur ne s’est pas prononcé n’autorise rien. Le choix est gardé six mois dans le cookie `app_consent`, sur l’appareil du visiteur ; il n’est jamais enregistré en base. Les cookies strictement nécessaires (session, langue, ce choix lui-même) ne sont pas soumis au choix.
+
+### Quand la bannière apparaît-elle ?
+
+Dans le projet livré, un seul service tiers passe par ce consentement : la mesure d’audience PostHog du module [Analytics](/fr/fonctionnalites/analytics). La bannière apparaît donc quand :
+
+1. le module `analytics` est activé, **et**
+2. `POSTHOG_KEY` et `POSTHOG_HOST` sont renseignées.
+
+Sans cela, il n’y a rien à accepter : pas de bannière, pas de cookie, et `/cookies` affiche « Aucun cookie non essentiel ». C’est l’état livré.
+
+## Activer ou couper
+
+```bash
+pnpm ks toggle consent
+```
+
+Le module `analytics` dépend de `consent` : tant qu’il est activé, couper `consent` est refusé en le nommant. Coupez d’abord `analytics`.
+
+Module coupé : `/cookies` répond 404, aucune bannière, aucun script non essentiel chargé, aucun cookie de consentement posé.
+
+## Configurer
+
+Il n’y a rien à configurer pour le consentement lui-même. Les textes de la bannière et de l’écran sont dans `packages/modules/consent/src/messages/fr.json` et `en.json`.
+
+Si vous ajoutez vous-même un service tiers qui dépose des cookies, il doit être déclaré dans la liste des scripts non essentiels de `apps/web/lib/consent.ts`, avec sa finalité (`analytics` ou `advertising`) : c’est cette liste qui fait apparaître la bannière et qui retient le script jusqu’à l’accord. Ses adresses réseau se déclarent aussi dans `config/security.ts` (voir [Sécurité](/fr/configurer/securite)).
+
+## Vérifier que ça marche
+
+1. Configurez la mesure d’audience comme indiqué sur la page [PostHog](/fr/services/posthog), puis relancez `pnpm dev`.
+2. Ouvrez http://localhost:3000 dans une fenêtre de navigation privée. Vous devez voir la bannière en bas de page.
+3. Cliquez « Tout refuser ». La bannière doit disparaître, et aucun appel vers l’hôte PostHog ne doit apparaître dans l’onglet réseau des outils du navigateur.
+4. Cliquez le lien « Cookies » du pied de page : « Mesure d’audience » doit apparaître « Refusé ». Cochez-la et enregistrez : elle doit passer à « Accepté ».
+
+<Callout title="Ce qui n’est pas inclus">
+- **Pas de registre des consentements** côté serveur : le choix vit dans le navigateur du visiteur, et rien ne garde la trace de qui a accepté quoi.
+- **Pas d’autres finalités** que « Mesure d’audience » et « Publicité ».
+- **Aucun service publicitaire n’est livré** : la finalité « Publicité » n’apparaît que si vous déclarez un tel script.
+- **Pas de fournisseur de gestion du consentement** externe : tout est dans le produit.
+</Callout>

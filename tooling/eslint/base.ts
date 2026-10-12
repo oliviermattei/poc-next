@@ -85,6 +85,11 @@ export const ignoresConfig: Linter.Config = {
     '**/playwright-report/**',
     '**/test-results/**',
     'apps/web/next-env.d.ts',
+    // Le Guide (ADR 083) : le fichier réécrit par Next, son export statique
+    // et le dossier de travail de Fumadocs MDX, tous trois générés.
+    'apps/guide/next-env.d.ts',
+    'apps/guide/out/**',
+    'apps/guide/.source/**',
     'tests/fixtures/layers/**',
     '.claude/worktrees/**',
   ],

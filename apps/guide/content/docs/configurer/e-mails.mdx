@@ -1,0 +1,88 @@
+---
+title: "E-mails"
+description: "Le gabarit, les textes et l’expéditeur des e-mails."
+---
+
+Votre application envoie des **e-mails transactionnels** : vérification d’adresse, réinitialisation de mot de passe, invitation, export de données… Cette page dit qui les envoie, à quoi ils ressemblent et où changer leurs textes. Pour brancher le fournisseur d’envoi, voir [Resend](/fr/services/resend).
+
+## Envoyés ou capturés : le choix dans `.env`
+
+| Réglage | Ce qui se passe |
+|---|---|
+| `EMAIL_LOCAL_CAPTURE=1` (livré) | **rien ne part** : chaque e-mail est écrit en fichier HTML dans `apps/web/.mail/` |
+| `RESEND_API_KEY` + `EMAIL_FROM` | les e-mails partent réellement, par Resend |
+| les deux, ou aucun | l’application **refuse de démarrer** en nommant les variables |
+
+## L’expéditeur
+
+`EMAIL_FROM` est l’expéditeur de **tous** les e-mails. Deux formes :
+
+```bash
+EMAIL_FROM=bonjour@exemple.com
+EMAIL_FROM=Mon SaaS <bonjour@exemple.com>
+```
+
+La seconde est conseillée : le nom (`Mon SaaS`) est ce que vos clients voient dans leur boîte de réception. Le domaine de l’adresse doit être **vérifié chez Resend** et porter les enregistrements DNS SPF, DKIM et DMARC, sinon vos e-mails finissent en indésirables sans aucune erreur visible : voir [Resend](/fr/services/resend).
+
+## Le gabarit
+
+Tous les e-mails partagent **un seul gabarit** (`packages/emails/src/transactional-email.ts`) : un fond blanc, la police du système, une colonne de 600 pixels, et le texte de l’e-mail. **Pas de logo, pas de bouton, pas de pied de page** : les liens (vérification, réinitialisation) apparaissent en clair dans le texte. Changer la mise en page est une modification de code.
+
+## Les textes
+
+Chaque e-mail a un sujet et un corps **dans chaque langue**, déclarés par le module qui l’envoie :
+
+| Module | Fichier | E-mail |
+|---|---|---|
+| `auth` | `packages/modules/auth/src/emails/verification.ts` | vérification de l’adresse |
+| `auth` | `packages/modules/auth/src/emails/password-reset.ts` | réinitialisation du mot de passe |
+| `auth` | `packages/modules/auth/src/emails/magic-link.ts` | lien de connexion |
+| `auth` | `packages/modules/auth/src/emails/data-export.ts` | export de données prêt |
+| `auth` | `packages/modules/auth/src/emails/account-deleted.ts` | compte supprimé |
+| `auth` | `packages/modules/auth/src/emails/account-deletion-blocked.ts` | suppression de compte bloquée |
+| `organizations` | `packages/modules/organizations/src/emails/invitation.ts` | invitation à une organisation |
+| `marketing` | `packages/modules/marketing/src/emails/contact-message.ts` | message du formulaire de contact (vers vous) |
+| `marketing` | `packages/modules/marketing/src/emails/newsletter-confirmation.ts` | confirmation d’inscription à la newsletter |
+| `marketing` | `packages/modules/marketing/src/emails/waitlist-confirmation.ts` | confirmation d’inscription à la liste d’attente |
+| `demo-enabled` | `packages/modules/demo-enabled/src/emails/welcome.ts` | e-mail de bienvenue du module de démonstration |
+| — | `config/notifications.ts` | les e-mails de notification (voir [Notifications](/fr/configurer/notifications)) |
+
+Un module coupé n’envoie pas ses e-mails.
+
+### Modifier un texte, pas à pas
+
+<Steps>
+<Step>
+
+Ouvrez le fichier de l’e-mail, par exemple `packages/modules/auth/src/emails/verification.ts`. Vous y trouvez un bloc `fr` et un bloc `en`, chacun avec `subject` et `body`.
+
+</Step>
+<Step>
+
+Modifiez le texte **dans les deux langues**. Gardez les mots entre accolades, comme `{url}` : ce sont les emplacements que l’application remplit (ici, le lien de vérification). Si une donnée attendue manque, l’e-mail **n’est pas envoyé**, plutôt que de partir avec `{url}` écrit en toutes lettres.
+
+</Step>
+<Step>
+
+Redémarrez (`Ctrl + C`, puis `pnpm dev`), puis déclenchez l’e-mail : pour la vérification, inscrivez un compte sur `http://localhost:3000/fr/sign-up` ; pour la réinitialisation, utilisez `/fr/forgot-password`.
+
+</Step>
+<Step>
+
+**Vérifiez** dans `apps/web/.mail/` : ouvrez le dernier fichier `.html` dans votre navigateur. **Vous devez voir** un bandeau « Capture locale — aucun email n'a été envoyé. » avec le destinataire, le sujet et le modèle, puis l’e-mail tel qu’il partirait, avec votre nouveau texte.
+
+</Step>
+<Step>
+
+Lancez `pnpm test` : il vérifie notamment que chaque e-mail existe dans chaque langue de l’application.
+
+</Step>
+</Steps>
+
+## La langue d’un e-mail
+
+Un e-mail déclenché par un client part dans la langue dans laquelle il utilise le site. Un destinataire dont rien n’est connu (une invitation vers une adresse sans compte) le reçoit dans la langue par défaut du site (`defaultLocale`, voir [Langues et textes](/fr/configurer/langues)).
+
+<Callout type="info" title="Ce qui n’est pas inclus">
+Pas d’envoi par SMTP ni par un autre fournisseur que Resend (exclus volontairement), pas d’envoi de campagnes ou de lettres d’information en masse, pas de suivi d’ouverture ni de clic, pas d’éditeur visuel d’e-mail. La langue préférée d’un compte n’est pas enregistrée pour les e-mails envoyés hors d’une requête ([issue #128](https://github.com/oliviermattei/poc-next/issues/128)).
+</Callout>

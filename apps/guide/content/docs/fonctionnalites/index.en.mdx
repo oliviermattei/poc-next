@@ -1,0 +1,112 @@
+---
+title: "Modules"
+description: "What a module is, how to enable or disable it, and what depends on it."
+---
+
+## In one sentence
+
+Every feature of the boilerplate is a **module**: a package stored in `packages/modules/<id>` that you enable or disable with a single command, without touching the rest of the code.
+
+The list of enabled modules lives in a single file, `config/features.ts`, on the `enabledModules` line. The `pnpm ks` command edits it for you.
+
+## The modules shipped
+
+| Identifier | What it gives your clients | Needs | Page |
+|---|---|---|---|
+| `auth` | accounts, sign-in, two-factor authentication, passkeys, account export and deletion | — (**core, cannot be disabled**) | [Authentication](/en/fonctionnalites/authentification) |
+| `rate-limit` | protection against bursts of requests | — (**core, cannot be disabled**) | [Rate limiting](/en/fonctionnalites/limitation-de-debit) |
+| `organizations` | team workspaces, invitations, roles | `auth` | [Organizations](/en/fonctionnalites/organisations) |
+| `billing` | Stripe subscriptions and purchases, the pricing page | — | [Billing](/en/fonctionnalites/facturation) |
+| `admin` | the superadmin console | `auth` | [Console](/en/fonctionnalites/console) |
+| `marketing` | the home page, legal pages, contact, newsletter, waitlist | — | [Public site](/en/fonctionnalites/site-public) |
+| `blog` | the blog | — | [Blog](/en/fonctionnalites/blog) |
+| `docs` | the product documentation for your clients, under `/docs` | — | [Product documentation](/en/fonctionnalites/documentation-produit) |
+| `changelog` | the "what’s new" page | — | [Changelog](/en/fonctionnalites/changelog) |
+| `i18n` | the language choice | — | [Languages](/en/fonctionnalites/langues) |
+| `consent` | the cookie banner | — | [Cookies and consent](/en/fonctionnalites/cookies-et-consentement) |
+| `analytics` | audience measurement and error tracking | `consent` | [Analytics](/en/fonctionnalites/analytics) |
+| `notifications` | the notification center and preferences | `auth` | [Notifications](/en/fonctionnalites/notifications) |
+| `jobs` | background jobs | — | [Background jobs](/en/fonctionnalites/taches-de-fond) |
+| `storage` | the profile picture (file upload) | `auth` | [Storage](/en/fonctionnalites/stockage) |
+| `onboarding` | the welcome journey after sign-up | `auth` | [Onboarding](/en/fonctionnalites/onboarding) |
+| `mcp-server` | the MCP server, so an AI can drive the modules | — | [MCP server](/en/fonctionnalites/serveur-mcp) |
+| `demo-enabled` | an example module, enabled | — | [Demo modules](/en/fonctionnalites/module-de-demonstration) |
+| `demo-disabled` | an example module, **disabled** as shipped | `demo-enabled` | [Demo modules](/en/fonctionnalites/module-de-demonstration) |
+
+All of them are enabled as shipped, except `demo-disabled`.
+
+## See the state of your modules
+
+1. Open a terminal at the root of the project.
+2. Run:
+
+   ```bash
+   pnpm ks list
+   ```
+
+3. You should see one line per module: `●` and « activé » (enabled), or `○` and « désactivé » (disabled). The command speaks French. Each line also says what the module **requires** (« requiert »), what **requires it** (« requis par »), and `socle : non désactivable` (core, cannot be disabled) for `auth` and `rate-limit`.
+
+For machine-readable output (useful when an AI helps you), add `--json`: `pnpm ks list --json`.
+
+## Disable a module
+
+1. Run, replacing `blog` with the identifier you want:
+
+   ```bash
+   pnpm ks toggle blog
+   ```
+
+2. You should read « Module « blog » désactivé. Ses tables et ses données sont conservées » (module disabled, its tables and data are kept). The command changed `config/features.ts` and regenerated the files in `generated/schema/`.
+3. Stop and restart the application (`pnpm dev`) so it reads the configuration again.
+4. Check: `pnpm ks list` shows the module as `○ désactivé`, and its pages now answer "page not found" (404).
+
+The command **refuses** to disable a module that another enabled module needs: it then names the module at stake. Disable the dependent one first.
+
+## Enable a module
+
+1. Run the same command on a disabled module:
+
+   ```bash
+   pnpm ks toggle demo-disabled
+   ```
+
+2. If a required module is missing, the command offers to enable it in an interactive terminal. Outside an interactive terminal (for instance when an AI runs it), it refuses and names the missing module; run it again with `--with-requires` to enable the requirements too:
+
+   ```bash
+   pnpm ks toggle demo-disabled --with-requires
+   ```
+
+3. If the module creates tables, the command **generates** its migrations and asks « Appliquer les migrations maintenant ? » (apply the migrations now?). Answer yes only if your database is running. Otherwise you read « Migrations non appliquées » (migrations not applied): run later
+
+   ```bash
+   pnpm db:migrate
+   ```
+
+   Outside an interactive terminal, add `--apply-migrations` to allow the migrations to be applied.
+4. Restart `pnpm dev`. The module’s pages and menu entries appear.
+
+## The core: two modules you cannot disable
+
+`auth` and `rate-limit` form the **core** (the `requiredModules` list in `config/features.ts`). Without accounts there is no SaaS; without rate limiting, sign-in and sign-up would be exposed. `pnpm ks toggle auth` stops before writing anything, naming the module.
+
+## What "disabled" means
+
+- **No trace for your clients**: no page, no API route (they answer 404), no menu entry, and on a fresh database none of its tables is created.
+- **Your data is kept**: a module enabled then disabled keeps its tables and their content. Enable it again and you find them intact.
+- **There is no command to erase those tables.** This is deliberate: removing code and data with no way back is out of scope (see [What the boilerplate does not do](/en/reference/ce-que-le-boilerplate-ne-fait-pas)).
+
+Some modules change how another one behaves when they are disabled: for instance, without `jobs`, background jobs run directly inside the request. Each module page says so.
+
+## Coming soon: the feedback widget
+
+A **feedback widget** (your clients send you feedback from inside the application) is planned but not shipped yet. It is tracked by issue [#179](https://github.com/oliviermattei/poc-next/issues/179).
+
+<Callout type="info" title="What is not included">
+- No command removes a module, its code or its tables.
+- `pnpm ks toggle` never touches your database without your consent (a "yes" answer or `--apply-migrations`).
+- When a module is removed from the list, the comment written next to its name in `config/features.ts` goes with it, and the list is put back in directory order. The command tells you.
+- Creating **your own** module is done with `pnpm ks scaffold <id>`, which generates a skeleton but does not enable it: see [Working with an AI](/en/demarrer/travailler-avec-une-ia).
+- The exact list of what is "core" is still being discussed (the `consent` module, for instance, can still be disabled): issue [#184](https://github.com/oliviermattei/poc-next/issues/184).
+</Callout>
+
+To go further: [Configuring modules](/en/configurer/modules) explains `config/features.ts` and `config/profiles.ts`.

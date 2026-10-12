@@ -16,7 +16,7 @@ When a document disagrees with the code, the code is the bug — unless an ADR s
 
 ## Where things are
 
-`apps/web` (Next, mounts the API) · `config/` (what the project owner edits) · `packages/core` (module contract and registry) · `packages/db` · `packages/api` · `packages/ui` · `packages/ports` + `packages/adapters` (one implementation each) · `packages/modules/*` (one module per feature, generated with `pnpm ks`) · `packages/cli` (the `ks` module CLI) · `tooling/` · `docs/` · `Dockerfile` + `docker-compose.prod.yml` (production image and stack).
+`apps/web` (Next, mounts the API) · `apps/guide` (the Guide: a separate static Fumadocs site for the project owner, never in the production image — ADR 083) · `config/` (what the project owner edits) · `packages/core` (module contract and registry) · `packages/db` · `packages/ui` · `packages/ports` + `packages/adapters` (one implementation each) · `packages/modules/*` (one module per feature, generated with `pnpm ks`) · `packages/cli` (the `ks` module CLI) · `tooling/` · `docs/` · `Dockerfile` + `docker-compose.prod.yml` (production image and stack).
 
 ## Rules
 

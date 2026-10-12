@@ -1,0 +1,69 @@
+---
+title: "Blog"
+description: "Des articles en MDX, avec leur flux RSS."
+---
+
+## En une phrase
+
+Le module `blog` publie vos articles, écrits en fichiers MDX dans le dépôt, avec une liste paginée, un filtre par étiquette et un flux RSS.
+
+## Ce que voient vos clients
+
+| Écran | Adresse | Ce qu’il fait |
+|---|---|---|
+| Liste | `/blog` | six articles par page, du plus récent au plus ancien, filtrables par étiquette (`/blog?tag=…`) |
+| Article | `/blog/<slug>` | l’article, s’il existe dans la langue de la page ; sinon 404 |
+| Flux RSS | `/api/modules/blog/feed.xml` | un flux par langue (`?locale=en` pour l’anglais) ; il est annoncé dans la page pour les lecteurs de flux |
+
+Une entrée « Blog » apparaît dans l’en-tête du site. Les articles sont ajoutés au `sitemap.xml` et autorisés dans le `robots.txt`.
+
+Quand le module `i18n` (langues) est activé, les adresses d’écran sont précédées de la langue : `/fr/blog`, `/en/blog`.
+
+## Activer ou couper
+
+```bash
+pnpm ks toggle blog
+```
+
+Le module ne dépend d’aucun autre et n’a pas de table. Coupé, `/blog`, les articles et le flux répondent 404, et l’entrée « Blog » disparaît de l’en-tête.
+
+## Écrire un article
+
+Les articles vivent dans `content/blog/<langue>/<slug>.mdx`, à la racine du dépôt. Des exemples sont livrés : remplacez-les par les vôtres.
+
+1. Créez le fichier `content/blog/fr/mon-premier-article.mdx`. Le nom du fichier devient l’adresse : uniquement des minuscules, des chiffres et des tirets.
+2. Collez cet en-tête, puis votre texte en Markdown en dessous :
+
+   ```mdx
+   ---
+   title: Mon premier article
+   description: Une phrase qui résume l’article.
+   date: 2026-10-13
+   author: Votre nom
+   tags: [produit]
+   ---
+
+   ## Un intertitre
+
+   Votre texte.
+   ```
+
+   Les cinq champs sont obligatoires ; `date` s’écrit `AAAA-MM-JJ` et doit être une date réelle. Un sixième champ, facultatif, `image: /mon-image.png`, choisit l’image de partage sur les réseaux sociaux : c’est un chemin de votre site (le fichier va dans `apps/web/public/`). Sans lui, l’image par défaut du site est utilisée. Tout autre champ est refusé.
+3. Pour la version anglaise, créez `content/blog/en/mon-premier-article.mdx` avec le même nom. Un article sans fichier anglais n’apparaît tout simplement pas en anglais.
+4. Les articles sont lus au démarrage : relancez `pnpm dev` pour voir le nouveau.
+
+## Vérifier que ça marche
+
+1. Ouvrez http://localhost:3000/blog. Vous devez voir votre article en tête de liste.
+2. Cliquez-le : vous devez voir son titre, sa date, son auteur et son texte.
+3. Ouvrez http://localhost:3000/api/modules/blog/feed.xml : vous devez voir un document XML qui contient le titre de votre article.
+4. Lancez `pnpm build`. Un en-tête invalide fait échouer la construction en nommant le fichier fautif — c’est voulu : un article cassé ne part jamais en production.
+
+En production, un nouvel article est publié en redéployant l’application.
+
+<Callout title="Ce qui n’est pas inclus">
+- **Pas d’éditeur en ligne ni d’interface d’administration** : un article est un fichier du dépôt, publié par un déploiement.
+- **Pas de commentaires** sur les articles.
+- **Pas d’image externe** : l’image de partage doit être servie par votre site.
+- **Limite connue** : le flux RSS est vérifié par un analyseur de flux, pas par un validateur officiel ([#150](https://github.com/oliviermattei/poc-next/issues/150)).
+</Callout>

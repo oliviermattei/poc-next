@@ -160,9 +160,20 @@ describe('les tokens de `packages/ui` sont ceux du design system', () => {
       return new RegExp(`^${body}$`)
     }
 
+    /*
+     * Le Guide (ADR 083) a sa propre feuille, et elle est en **détection
+     * automatique** : `@import 'tailwindcss'` sans `source(none)`, si bien que
+     * Tailwind balaie tout le paquet depuis sa racine. Elle ne couvre que lui —
+     * et si quelqu'un lui ajoute `source(none)`, le Guide retombe dans la règle
+     * commune et rougit ici.
+     */
+    const automaticSources = (file: string, packageRoot: string): readonly string[] =>
+      /@import\s+'tailwindcss'\s*;/.test(read(`/${file}`)) ? [join(REPO_ROOT, packageRoot)] : []
+
     const patterns = [
       ...sourcePatterns('packages/ui/src/styles.css'),
       ...sourcePatterns('apps/web/app/globals.css'),
+      ...automaticSources('apps/guide/app/global.css', 'apps/guide'),
     ].map(toRegExp)
 
     // Les fichiers suivis par git, et eux seuls. Un balayage du système de

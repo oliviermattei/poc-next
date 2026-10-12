@@ -1,0 +1,75 @@
+---
+title: "Understand the repository layout"
+description: "Where things are, what you edit and what you leave alone."
+---
+
+The repository contains many folders, but you only edit a few of them. This page tells you which ones, and what lives in the others.
+
+## The idea that organizes everything: modules
+
+Your SaaS is **a single application** (`apps/web`), assembled from **modules**. Each feature (authentication, billing, blog, notifications…) is a module, stored in `packages/modules/<name>`.
+
+- The list of **enabled** modules lives in `config/features.ts`. You edit it with the `pnpm ks toggle <module>` command, never by hand: the command regenerates what must be regenerated and checks the dependencies between modules.
+- A disabled module leaves **no trace**: no page, no menu entry, no table on a fresh database. Its data already written is kept.
+- Menus are never written by hand: each module declares its entries, and the application shows those of the enabled modules.
+- Your own product will be a module too.
+
+To see the modules, their state and what each depends on:
+
+```bash
+pnpm ks list
+```
+
+You should see the list of modules, enabled or not, with their dependencies. `auth` and `rate-limit` are marked as the core there: they cannot be disabled. The full detail is in [Features](/en/fonctionnalites).
+
+## The map of the repository
+
+| Location | What it contains | Do you edit it? |
+|---|---|---|
+| `config/` | the settings of your SaaS, in eight files (see below) | **yes**, it is your configuration panel |
+| `.env` | secrets and connections to services (database, Stripe, Resend…) | **yes**; it never goes to Git |
+| `content/` | the blog, the product documentation and the changelog, as MDX files, sorted by language (`fr/`, `en/`) | **yes** |
+| `apps/web/messages/` | the shared texts of the application, in French and in English, including the product’s displayed name (key `app.name`) | **yes** |
+| `packages/modules/<module>/src/messages/` | the texts of each module (`fr.json`, `en.json`) | **yes** |
+| `packages/ui/src/styles.css` | the colors and corner radius of the interface, in light and dark themes | **yes**, see [Appearance](/en/configurer/apparence) |
+| `packages/emails/` | the email templates | **yes**, see [Emails](/en/configurer/e-mails) |
+| `packages/modules/` | the shipped modules, and soon yours | your modules **yes**; a shipped module, only after reading its `AGENTS.md` |
+| `apps/web/` | the Next.js application: the screens and the assembly of the modules | rarely: your product goes in a module |
+| `apps/guide/` | this Guide | **yes**, when your code changes what it describes |
+| `packages/core`, `packages/db`, `packages/config`, `packages/ports`, `packages/adapters`, `packages/cli` | the core: module contract, database, reading of variables, connections to providers, the `pnpm ks` command | **no**, unless you have a precise reason |
+| `generated/` | files produced from `config/features.ts` | **never** by hand |
+| `packages/modules/*/migrations/` | the SQL migrations of each module | **never** by hand: they are generated with `pnpm db:generate` |
+| `docs/` | the technical reference documents: architecture, security, reliability, deployment, commands, decisions (`docs/adr/`) | for reading; to update when the code changes |
+| `tests/`, `e2e/`, `scripts/`, `tooling/` | tests, acceptance runs and tooling | not for configuring your SaaS |
+| `docker-compose.yml` | the local PostgreSQL database | rarely |
+| `Dockerfile`, `docker-compose.prod.yml` | the production image and stack | see [Deploy](/en/deployer) |
+| `AGENTS.md`, `CLAUDE.md`, `CODING_STANDARDS.md`, `GLOSSARY.md` | the instructions for an AI assistant | see [Work with an AI assistant](/en/demarrer/travailler-avec-une-ia) |
+| `pnpm-lock.yaml` | the exact versions of the dependencies | **never** by hand: `pnpm install` updates it |
+
+## The eight files of `config/`
+
+| File | What it decides | Guide page |
+|---|---|---|
+| `config/features.ts` | the available modules, the enabled modules, and the core that cannot be disabled | [Modules](/en/configurer/modules) |
+| `config/profiles.ts` | a test profile where some modules are disabled, to check that disabling them breaks nothing | [Modules](/en/configurer/modules) |
+| `config/billing.ts` | your offers and your prices | [Offers and prices](/en/configurer/offres-et-prix) |
+| `config/gating.ts` | the features reserved for some offers | [Reserved features](/en/configurer/fonctionnalites-reservees) |
+| `config/marketing.ts` | the home page sections, the legal pages, the site’s forms | [Site and legal pages](/en/configurer/site-et-pages-legales) |
+| `config/i18n.ts` | the languages served and the default language | [Languages](/en/configurer/langues) |
+| `config/notifications.ts` | the notification types and their channels | [Notifications](/en/configurer/notifications) |
+| `config/security.ts` | the sources allowed by the content security policy, the rate limits and the captcha | [Security](/en/configurer/securite) |
+
+Texts are not in `config/`: they live in the `messages` files listed above, one copy per language. An overview is in [Configure](/en/configurer).
+
+## Two rules that avoid bad surprises
+
+**Environment variables are checked at startup.** A missing or malformed variable stops the application, with a message that names it. The code never reads a variable anywhere but in `packages/config`. The full table: [Environment variables](/en/configurer/variables-d-environnement).
+
+**What is generated is not edited.** `generated/`, the migrations and `pnpm-lock.yaml` are produced by commands. A change by hand would be overwritten the next time the command runs, if it does not make the tests fail first.
+
+<Callout type="warn" title="What is not included">
+- **A slot for your logo**: the product name is a text (key `app.name`), but no slot is provided for a logo image. See [Appearance](/en/configurer/apparence).
+- **An interface to configure the SaaS**: every setting is made in the repository’s files and in `.env`, then deployed.
+</Callout>
+
+Next step: [work with an AI assistant](/en/demarrer/travailler-avec-une-ia).
