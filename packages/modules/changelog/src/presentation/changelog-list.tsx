@@ -18,7 +18,7 @@ import type { ChangelogIntl } from './changelog-intl'
  * **L'écran ne rejoue aucun ordre.** Les entrées sont rendues dans celui que
  * `changelogReleases` a décidé — chronologique inverse, à l'intérieur d'une
  * version comme entre les versions. Une seconde clé de tri ici (par catégorie,
- * par exemple) contredirait silencieusement le domaine : la revue de s31 l'a
+ * par exemple) contredirait silencieusement le domaine : une revue l'a
  * mesuré sur la version 1.1, dont l'entrée du 18 février s'affichait au-dessus
  * de celle du 20.
  *

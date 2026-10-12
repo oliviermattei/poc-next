@@ -31,7 +31,7 @@ Mesuré avec Docker 29.7.2 et Docker Compose v5.4.0.
 > les étapes d'exécution la subissent.
 
 `apps/web/next.config.ts` et `apps/web/instrumentation.ts` valident la
-configuration au démarrage, alors qu'`AGENTS.md` exige que « le build n'ait pas
+configuration au démarrage, alors que `docs/commands.md` exige que « le build n'ait pas
 besoin des variables d'exécution ». Les deux ne tiennent ensemble que par
 l'échappatoire de `packages/config/src/env.ts` — `NEXT_PHASE` et
 `SKIP_ENV_VALIDATION`. Elle est portée par **la commande de build**, jamais par
@@ -497,7 +497,7 @@ trois échouent séparément :
 1. **générées** — `productionBrowserSourceMaps: true` dans
    `apps/web/next.config.ts` ;
 2. **envoyées**, sous le **même nom de version** que les événements, et — c'est
-   la moitié que la revue de s39 a trouvée fausse — **celles du build qui est
+   la moitié qu'une revue a trouvée fausse — **celles du build qui est
    réellement servi** ;
 3. **jamais servies**. Une carte est le code source, et `.next/static` est servi
    à qui le demande sous `/_next/static`. `pnpm sourcemaps:prune` les retire de
@@ -512,8 +512,7 @@ trois échouent séparément :
 `pnpm build`**. Les empreintes des chunks qu'elle sert ne sont donc pas celles
 d'un `pnpm build` lancé sur le poste : envoyer les cartes de l'hôte publie un
 jeu que le fournisseur ne rapprochera d'aucune trace, et l'erreur arrive
-minifiée **sans que rien ne le dise**. C'était la recette écrite ici jusqu'à la
-revue de s39.
+minifiée **sans que rien ne le dise**. C'était la recette écrite ici jusqu'à une revue.
 
 L'image porte donc deux étapes : `builder` construit et **garde** ses cartes,
 `pruned` en descend et les retire du dossier servi. C'est de `builder` qu'on
@@ -556,7 +555,7 @@ SENTRY_ORG=… SENTRY_PROJECT=… SENTRY_AUTH_TOKEN=… SENTRY_RELEASE=app@1.2.3
 
 **Ce que rien ne vérifie ici** : qu'une trace soit effectivement *lisible* dans
 l'interface du fournisseur. Aucune commande locale ne peut le voir ; c'est une
-recette humaine, à faire une fois après le premier envoi. La revue de s39 ne l'a
+recette humaine, à faire une fois après le premier envoi. Une revue ne l'a
 pas faite — `pnpm sourcemaps:release` n'a jamais tourné, faute de
 `SENTRY_AUTH_TOKEN` : seul `prune` a été exercé de bout en bout.
 

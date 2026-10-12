@@ -113,7 +113,7 @@ const UNBALANCED = -1
  * en `start`, ou `UNBALANCED`.
  *
  * **Rendre la fin du fichier faute de fermeture était un piège**, mesuré en
- * seconde revue de s09 : `cn('after:content-["("]')` faisait blanchir tout le
+ * revue : `cn('after:content-["("]')` faisait blanchir tout le
  * reste du fichier, donc le détecteur s'arrêtait de chercher en silence. Un
  * scanner qui abandonne au milieu est pire que celui qui rate une forme : il
  * rate tout ce qui suit, sans le dire. Les appelants traitent désormais ce cas
@@ -223,7 +223,7 @@ const neutralise = (source: string): string => {
 /* ------------------------------------------------------------------------- *
  * L'extraction, en quatre familles.
  *
- * La revue de s09 a mesuré que la première version n'extrayait que les
+ * Une revue a mesuré que la première version n'extrayait que les
  * littéraux entre apostrophes ou guillemets et les nœuds de texte JSX sans
  * accolade : un littéral gabarit (`` `Bonjour ${nom}` ``) et une phrase
  * concaténée passaient au vert. C'est un mode d'échec déjà rencontré dans le
@@ -456,7 +456,7 @@ const hardcodedIn = (source: string): readonly string[] => {
  * pré-contrôle rapide, et parce qu'il voit ce qu'un rendu ne voit pas : le
  * texte écrit dans une branche non prise et dans une surface flottante fermée —
  * c'est ainsi que le « Fermer » de `packages/ui/src/components/sheet.tsx` a été
- * trouvé. Ce qui lui échappe, la seconde revue de s09 l'a mesuré (constat
+ * trouvé. Ce qui lui échappe, une revue l'a mesuré (constat
  * « C1 — le filet élargi ») : un mot unique sans
  * accent rangé dans un conteneur non affiché — variable, littéral d'objet,
  * tableau —, et la concaténation de fragments d'un seul mot sans espace
@@ -708,7 +708,7 @@ describe('les catalogues sont complets dans toutes les locales du projet', () =>
 /* ------------------------------------------------------------------------- *
  * Le critère 9, éprouvé sur le comportement et non sur le texte du fichier.
  *
- * La revue de s09 a mesuré qu'une expression régulière sur la source
+ * Une revue a mesuré qu'une expression régulière sur la source
  * (`/onError:[\s\S]*?throw/`) restait verte sur les deux neutralisations : le
  * `[\s\S]*?` non gourmand se satisfaisait du `throw` du gestionnaire suivant.
  * La configuration est donc passée au vrai traducteur de `next-intl`, avec un
@@ -1054,7 +1054,7 @@ describe('aucun cookie ne part sans les attributs du socle', () => {
   it('voit aussi les cookies posés par les routes de module', async () => {
     // Le filet portait le nom du contrôle de socle et ne balayait que le proxy :
     // retirer `HttpOnly` de `consentSetCookie` ne faisait rougir que le test du
-    // module (revue de s36, constat C6). Il balaie maintenant **le registre**,
+    // module. Il balaie maintenant **le registre**,
     // et non une liste de chemins écrite à la main : une route ajoutée demain
     // entre dans le balayage sans que personne y pense.
     const cookies = await moduleRouteSetCookies()

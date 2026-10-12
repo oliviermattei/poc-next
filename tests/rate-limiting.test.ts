@@ -278,8 +278,7 @@ describe.skipIf(!databaseReachable)(
 
     it('efface le seau court dont la fenêtre est close, dans le même passage', async () => {
       // La contrepartie : le balayage doit continuer de récupérer ce qui est
-      // réellement clos, sans quoi la table ne se vide jamais (constat F1 de la
-      // revue de s11).
+      // réellement clos, sans quoi la table ne se vide jamais.
       const limiter = createDrizzleRateLimiter({ db: first.db })
 
       await limiter.consume({
@@ -505,8 +504,8 @@ describe('la récupération du magasin ne dépend d’aucun module optionnel', (
    * (`marketing`, `billing`). Coupez-les — deux configurations livrables — et
    * `rate_limit_window` n'était jamais récupérée, alors que la clé de ligne
    * dérive d'un en-tête que l'appelant écrit : n'importe quel anonyme y insérait
-   * un nombre illimité de lignes permanentes. C'est le constat F1 de la revue de
-   * s11, réintroduit sur 31 points d'entrée au lieu de 2.
+   * un nombre illimité de lignes permanentes — le défaut déjà corrigé sur 2
+   * points d'entrée, réintroduit sur 31.
    *
    * Le garde balaie donc lui-même, et il est sur le chemin de **toute** route
    * limitée : il n'y a plus de configuration où personne ne récupère.

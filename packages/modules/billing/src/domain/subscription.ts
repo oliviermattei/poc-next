@@ -182,8 +182,7 @@ export const BILLING_DISPLAY_STATES = [
 ] as const
 
 /**
- * **Une liste, dont le type est dérivé** — et non l'inverse (revue de s37b2,
- * constat F7).
+ * **Une liste, dont le type est dérivé** — et non l'inverse.
  *
  * Une union de littéraux n'existe qu'à la compilation : personne ne peut la
  * parcourir. Or ces états sortent du module par un port et deviennent des clés

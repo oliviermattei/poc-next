@@ -88,7 +88,7 @@ export interface PlatformRoleRepository {
    */
   forgetGranter(userId: string): Promise<number>
   /**
-   * **Bannit, sauf s'il s'agit du dernier superadmin** (revue de s37a, F2).
+   * **Bannit, sauf s'il s'agit du dernier superadmin**.
    *
    * Le bannissement lui-même n'appartient pas à ce module — c'est un état du
    * compte, donc du socle (ADR 058) —, mais la règle qui le refuse, si : elle
@@ -115,8 +115,7 @@ export type AccountBanOutcome =
       readonly ok: true
       readonly revokedSessions: number
       /**
-       * **Les emprunts que ce bannissement vient de terminer** (revue s37b1,
-       * C3) : ceux du compte visé, et ceux qu'il tenait chez autrui.
+       * **Les emprunts que ce bannissement vient de terminer** : ceux du compte visé, et ceux qu'il tenait chez autrui.
        *
        * Le socle les ferme — il possède les sessions — mais c'est ici qu'est le
        * journal des emprunts. Sans cette liste, une fin arriverait sans que rien
@@ -197,7 +196,7 @@ export interface AdminAccountsPort {
   /** Rend la main : la session empruntée meurt, l'emprunteur en reçoit une neuve. */
   stopImpersonation(input: { readonly request: Request }): Promise<AccountImpersonation>
   /**
-   * **Éteint les emprunts tenus par ce compte** (revue s37b1, C3).
+   * **Éteint les emprunts tenus par ce compte**.
    *
    * Appelée quand il cesse d'avoir le droit d'emprunter : le retrait du rôle.
    * Un compte qui n'administre plus ne garde pas ouverte la session d'un client.

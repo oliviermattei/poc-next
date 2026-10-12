@@ -14,12 +14,12 @@ const read = (...segments: string[]): string =>
 /**
  * Racines de packages déclarées par `pnpm-workspace.yaml`.
  *
- * Le motif accepte plusieurs segments : s03 ajoutera `packages/modules/*`, et
- * une expression limitée à un segment aurait laissé tomber cette racine en
+ * Le motif accepte plusieurs segments, comme `packages/modules/*` : une
+ * expression limitée à un segment aurait laissé tomber cette racine en
  * silence — tous les modules seraient alors passés sous le radar de ce
  * fichier, sans qu'aucune assertion ne rougisse.
  */
-export const workspaceRoots = (workspace: string): string[] => {
+const workspaceRoots = (workspace: string): string[] => {
   const packagesBlock = workspace.slice(
     workspace.indexOf('packages:'),
     workspace.indexOf('\n\n', workspace.indexOf('packages:')),
@@ -139,7 +139,7 @@ describe('AGENTS.md par package (ADR 013)', () => {
   })
 
   /**
-   * **Constat m1 de la troisième revue de s28** : le quatrième port
+   * Le quatrième port
    * (`rate-limit.ts`) est arrivé sans que la règle qui vit **à côté** de lui en
    * dise un mot — pas de section, pas de ligne dans le tableau de la forme du
    * journal, et une ligne « une panne de tiers **dégrade** » que ce port
@@ -155,7 +155,7 @@ describe('AGENTS.md par package (ADR 013)', () => {
       .filter((entry) => !entry.endsWith('.test.ts'))
     const content = read('packages/ports', 'AGENTS.md')
 
-    // Un balayage vide passerait pour une raison qui n'en est pas une (s26).
+    // Un balayage vide passerait pour une raison qui n'en est pas une.
     expect(capabilities.length).toBeGreaterThanOrEqual(4)
 
     for (const capability of capabilities) {
@@ -164,7 +164,7 @@ describe('AGENTS.md par package (ADR 013)', () => {
   })
 
   /**
-   * **Constat F4 de la revue de s29** : `apps/web/AGENTS.md` annonçait « Sept
+   * `apps/web/AGENTS.md` annonçait « Sept
    * fichiers font exception » au-dessus d'une liste qui en comptait huit — la
    * story avait ajouté le huitième sans toucher au nombre. Un décompte écrit à
    * la main périme en silence, et le lecteur suivant le lit comme vérifié.
@@ -181,7 +181,7 @@ describe('AGENTS.md par package (ADR 013)', () => {
       .filter((entry) => read('apps/web/lib', entry).includes('@repo/module-'))
     const content = read('apps/web', 'AGENTS.md')
 
-    // Un balayage vide passerait pour une raison qui n'en est pas une (s26).
+    // Un balayage vide passerait pour une raison qui n'en est pas une.
     expect(importers.length).toBeGreaterThanOrEqual(8)
 
     for (const file of importers) {
@@ -199,7 +199,7 @@ describe('AGENTS.md par package (ADR 013)', () => {
  * commande devait lui éviter. La règle est celle du bloc ci-dessus, appliquée
  * aux fichiers en mémoire — pas une seconde règle écrite pour l'occasion.
  */
-describe('le squelette de `ks scaffold` (s41)', () => {
+describe('le squelette de `ks scaffold`', () => {
   const files = scaffoldFiles('probe-module')
   const contentOf = (path: string): string => {
     const file = files.find((candidate) => candidate.path === path)
@@ -250,6 +250,7 @@ describe('Règles de jugement (CODING_STANDARDS.md)', () => {
       '## Security baseline',
       '## Reliability baseline',
       '## Agent-oriented repo',
+      '## Testing',
     ]) {
       expect(content, `CODING_STANDARDS.md n'a pas de section « ${section} »`).toContain(section)
     }
@@ -264,7 +265,7 @@ describe('Règles de jugement (CODING_STANDARDS.md)', () => {
  * `pnpm test` est contenu dans `pnpm test:e2e`, si bien qu'une ligne
  * `pnpm test` retirée serait restée couverte par sa voisine.
  */
-export const documentedScripts = (reference: string): string[] =>
+const documentedScripts = (reference: string): string[] =>
   [...reference.matchAll(/^\|\s*`pnpm (?:run )?([\w:-]+)`\s*\|/gm)].map((match) => match[1] ?? '')
 
 describe('Référence des commandes (docs/commands.md)', () => {
@@ -308,7 +309,7 @@ const ADR_DIRECTORY = 'docs/adr'
 const ADR_TEMPLATE = 'template.md'
 
 /** Le numéro d'un fichier `NNNN-slug.md`, `null` hors de ce nom. */
-export const adrNumberOf = (fileName: string): number | null => {
+const adrNumberOf = (fileName: string): number | null => {
   const match = /^(\d{4})-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/.exec(fileName)
 
   return match ? Number(match[1]) : null
@@ -319,12 +320,17 @@ const adrFiles = (): string[] =>
 
 /**
  * Les numéros cités dans un texte, sous toutes les formes en usage :
- * « ADR 069 », « ADR 69 », « ADR-0069 ». Le code et les tests citent les ADR
- * par leur numéro, jamais par leur chemin : le numéro doit donc désigner un
- * fichier, sans quoi la raison qu'il porte est perdue.
+ * « ADR 069 », « ADR 69 », « ADR-0069 », et les citations multiples
+ * « ADR 066/067 », « ADR 070 et 071 », « ADR 079, 081 », « ADRs 005 et 017 ».
+ * Le code et les tests citent les ADR par leur numéro, jamais par leur
+ * chemin : chaque numéro doit donc désigner un fichier, sans quoi la raison
+ * qu'il porte est perdue. Ne lire que le premier numéro d'une citation
+ * multiple laisserait les suivants pointer vers le vide sans rien rougir.
  */
-export const citedAdrNumbers = (text: string): number[] =>
-  [...text.matchAll(/\bADR[- ]?(\d{1,4})\b/g)].map((match) => Number(match[1]))
+const citedAdrNumbers = (text: string): number[] =>
+  [...text.matchAll(/\bADRs?[- ]?(\d{1,4}(?:\s*(?:\/|,|et|and)\s*\d{1,4}\b)*)\b/g)].flatMap(
+    (match) => [...(match[1] ?? '').matchAll(/\d+/g)].map((number) => Number(number[0])),
+  )
 
 /** Fichiers suivis par git, lus en texte : un fichier binaire ne cite rien. */
 const trackedTextFiles = (): { path: string; content: string }[] =>
@@ -348,6 +354,17 @@ describe('ADR (docs/adr)', () => {
     expect(misnamed, `hors du format NNNN-slug.md : ${misnamed.join(', ')}`).toEqual([])
   })
 
+  it('deux fichiers ne portent jamais le même numéro', () => {
+    // « ADR 069 » doit désigner une décision, et une seule : deux fichiers sous
+    // le même numéro rendraient chaque citation ambiguë, et le contrôle des
+    // citations ci-dessous resterait vert.
+    const numbers = adrFiles().map(adrNumberOf)
+    const duplicated = adrFiles().filter(
+      (name) => numbers.indexOf(adrNumberOf(name)) !== numbers.lastIndexOf(adrNumberOf(name)),
+    )
+    expect(duplicated, `numéros d'ADR en double : ${duplicated.join(', ')}`).toEqual([])
+  })
+
   it('le gabarit des nouvelles ADR est rangé avec elles', () => {
     expect(existsSync(join(REPO_ROOT, ADR_DIRECTORY, ADR_TEMPLATE))).toBe(true)
   })
@@ -362,9 +379,11 @@ describe('ADR (docs/adr)', () => {
         ),
     )
 
-    // Le plancher refuse un balayage vide : une expression qui ne lit plus
-    // rien rendrait la boucle verte sur rien.
-    expect(citations.length).toBeGreaterThanOrEqual(1)
+    // Le plancher refuse un balayage vide, et il se dérive du disque : chaque
+    // ADR se cite au moins une fois dans son propre titre (« # ADR 069 — … »),
+    // si bien qu'une expression qui ne lit plus rien, ou plus qu'une partie
+    // des citations, tombe sous le nombre de fichiers.
+    expect(citations.length).toBeGreaterThanOrEqual(adrFiles().length)
 
     const dangling = citations
       .filter(({ adr }) => !existing.has(adr))
@@ -376,6 +395,14 @@ describe('ADR (docs/adr)', () => {
     expect(citedAdrNumbers('voir ADR 069, ADR 69 et ADR-0069')).toEqual([69, 69, 69])
     expect(citedAdrNumbers('# ADR <number> — <title>')).toEqual([])
     expect(citedAdrNumbers('les ADRs et MADR')).toEqual([])
+  })
+
+  it('lit chaque numéro d’une citation multiple', () => {
+    expect(citedAdrNumbers('(ADR 066/067)')).toEqual([66, 67])
+    expect(citedAdrNumbers('ADR 070 et 071')).toEqual([70, 71])
+    expect(citedAdrNumbers('ADR 079, 081')).toEqual([79, 81])
+    expect(citedAdrNumbers('les ADRs 005 et 017')).toEqual([5, 17])
+    expect(citedAdrNumbers('ADR 018, ADR 019 et ADR-0020')).toEqual([18, 19, 20])
   })
 
   it('lit le numéro sur quatre chiffres, et rien d’autre', () => {
@@ -413,7 +440,7 @@ const REMOVED_LOCATIONS: readonly { name: string; pattern: RegExp }[] = [
 ]
 
 /** Les emplacements retirés qu'une ligne cite, nommés. */
-export const removedLocationsCitedIn = (line: string): string[] =>
+const removedLocationsCitedIn = (line: string): string[] =>
   REMOVED_LOCATIONS.filter(({ pattern }) => pattern.test(line)).map(({ name }) => name)
 
 /**
@@ -493,10 +520,9 @@ describe('point d’entrée des agents', () => {
 /**
  * Lecture des motifs de `pnpm-workspace.yaml`.
  *
- * `packages/modules/*` n'existe pas encore — s03 l'ajoutera. Une racine à
- * plusieurs segments que l'expression ne reconnaît pas ne fait rien rougir :
+ * Une racine à plusieurs segments, comme `packages/modules/*`, que l'expression ne reconnaît pas ne fait rien rougir :
  * elle disparaît, et tout le reste de ce fichier reste vert en n'examinant
- * plus rien. D'où ce cas, écrit avant la racine qu'il protège.
+ * plus rien. D'où ce cas.
  */
 describe('motifs de `pnpm-workspace.yaml`', () => {
   it('reconnaît une racine à plusieurs segments', () => {

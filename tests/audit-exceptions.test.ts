@@ -186,7 +186,7 @@ describe('fichier `.audit-exceptions.json` du dépôt', () => {
 /**
  * L'issue de `pnpm audit --json`, et pas seulement sa sortie.
  *
- * C'est le finding major de la revue de s02 : le script n'inspectait que
+ * C'est le finding d'une revue : le script n'inspectait que
  * l'échec de spawn. Or `pnpm audit` répond à une panne — pas de lockfile,
  * registre indisponible, limitation de débit — par `{"error":{…}}` et un code
  * 1. Sans `advisories`, la lecture rendait une liste vide et la commande
@@ -523,7 +523,7 @@ describe('`scripts/audit.ts` face à un `pnpm audit` en panne', () => {
  * **Le délai d'attente de l'appel** (`docs/reliability.md` §3, première puce :
  * « Tout appel réseau sortant porte un délai d'attente explicite »).
  *
- * Constat de la revue de s48 : `spawnSync` n'en posait aucun, et la recherche
+ * Constat d'une revue : `spawnSync` n'en posait aucun, et la recherche
  * avait mesuré ~4 minutes avant qu'un `ERR_SOCKET_TIMEOUT` tombe de lui-même.
  * Avec trois tentatives, cette story faisait passer le pire cas à ~12 minutes de
  * job — c'est elle qui a triplé le coût, c'est donc elle qui pose le délai.

@@ -68,8 +68,7 @@ describe('la liste des cas intermittents', () => {
   })
 
   /**
-   * **La bascule de `corrected`, rendue exécutable** (constat de la seconde
-   * revue de s34).
+   * **La bascule de `corrected`, rendue exécutable**.
    *
    * Une entrée est restée `corrected: false` en désignant le fichier même où le
    * correctif venait d'être posé, et rien n'a rougi : la liste se disait « la

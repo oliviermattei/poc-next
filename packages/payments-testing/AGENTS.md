@@ -22,7 +22,7 @@ dans le code qui les construit : `SIMULATED_EVENT_ID_PREFIX` (`evt_local_`) et
 événement, que la route de webhook écrit dans son journal d'idempotence. C'est
 ce qui permet à `pnpm test:golden-path` d'exiger un **signal positif** du régime
 qu'il a demandé, au lieu de faire confiance à la transmission d'une variable
-d'environnement (constat F1 de la revue de s25). Les deux marques doivent rester
+d'environnement. Les deux marques doivent rester
 distinctes ; `src/recorded-events.test.ts` le vérifie sur les deux producteurs.
 
 Il n'y a **pas** de doublure d'enregistrement du **réseau** ici, et c'est
@@ -133,7 +133,7 @@ remplir.
 
 **Ce qui a été prouvé par mutation**, sur `src/payments-testing.test.ts` — le
 fichier est nommé plutôt que compté : le compte écrit ici était faux dès la
-story suivante (constat F7 de la revue de s25). Faire lever le simulateur sur
+story suivante. Faire lever le simulateur sur
 une session inconnue → 1 rouge ; tirer un identifiant de client aléatoire au
 lieu de le dériver du périmètre → 1 ; **signer avec l'horloge injectée au lieu
 de l'horloge réelle → 6** ; rendre `payment_status: 'unpaid'` dans la session

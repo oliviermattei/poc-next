@@ -58,7 +58,7 @@ export interface NotificationsScreenProps {
  * La charge utile, prête à être interpolée.
  *
  * `null` vient de la lecture : c'est une référence de compte que le module n'a
- * pas su résoudre, donc un compte effacé (revue s32, R1). L'écran y met son
+ * pas su résoudre, donc un compte effacé. L'écran y met son
  * libellé plutôt qu'un identifiant technique ou un trou — la ligne appartient à
  * celui qui la lit, et elle doit rester lisible quand la personne qu'elle nomme
  * n'est plus là.

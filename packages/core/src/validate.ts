@@ -168,7 +168,7 @@ export function assertDeclarationsAreComplete(
    *
    * **Obligatoire, et non vide.** C'est ce contrôle-là qui refuse un module ne
    * livrant que `fr` alors que le projet sert `fr` et `en` — la faille mesurée
-   * en revue de s06, où la référence était le module et non l'application. Tant
+   * en revue, où la référence était le module et non l'application. Tant
    * que le paramètre était facultatif, l'oublier ramenait cette référence au
    * module, en silence : la règle redevenait « chaque module est complet selon
    * lui-même », qui est vraie par construction et ne refuse jamais rien.

@@ -20,7 +20,7 @@ import { policyMode } from '../../../lib/security-headers'
  *
  * Le mode se lit sur `NODE_ENV`, et **ce n'est pas la forme d'opt-in de la sonde
  * de s09** — celle-là est un drapeau explicite (`I18N_MISSING_KEY_PROBE=1`),
- * celle-ci une dérivation de l'environnement. La revue de s45 a corrigé la
+ * celle-ci une dérivation de l'environnement. Une revue a corrigé la
  * comparaison : elles ne se ressemblent que par le 404. La dérivation se
  * justifie autrement, et elle repose sur deux choses :
  *

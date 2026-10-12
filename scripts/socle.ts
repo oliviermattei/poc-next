@@ -40,8 +40,8 @@ import { cloneReport, cloneWorkingTree } from './working-tree'
  * plutôt qu'avant.
  *
  * `pnpm test:minimal-profile` ne la remplace pas : elle joue le profil de
- * `config/profiles.ts`, qui coupe **un autre ensemble** de modules (mesuré à la
- * recherche de s48 : deux modules d'écart avec la CI). Deux configurations
+ * `config/profiles.ts`, qui coupe **un autre ensemble** de modules (mesuré :
+ * deux modules d'écart avec la CI). Deux configurations
  * distinctes, et les confondre serait un vert qui ne dit rien.
  *
  * ## Ce qu'elle fait, dans l'ordre — celui de la CI
@@ -65,7 +65,7 @@ import { cloneReport, cloneWorkingTree } from './working-tree'
  * Chaque étape `run:` du job gardé est **soit rejouée, soit exclue avec sa
  * raison écrite** (`SOCLE_STEP_DISPOSITION`, `scripts/socle-rules.ts`), et une
  * étape que la répartition ne classe pas fait échouer la commande en la nommant.
- * C'est le correctif du constat majeur de la revue de s48 : la liste des
+ * C'est le correctif du constat d'une revue : la liste des
  * commandes était alors écrite en dur — six étapes rejouées sur les treize que
  * le job déclare aujourd'hui, cinq passées sous silence dont les parcours
  * navigateur et l'audit —, et rien ne rougissait quand le job en gagnait une.
@@ -159,7 +159,7 @@ const main = async (): Promise<void> => {
 
   // **Les étapes du job, dérivées du même fichier que les bascules.** Écrite en
   // dur, cette liste ne rougissait pas quand le job en gagnait une — la commande
-  // promettait alors plus large que sa couverture (revue de s48).
+  // promettait alors plus large que sa couverture.
   const job = socleJobPlan({
     workflow: readFileSync(WORKFLOW_PATH, 'utf8'),
     disposition: SOCLE_STEP_DISPOSITION,

@@ -13,7 +13,7 @@ import './globals.css'
  * L'écran de dernier recours : une erreur que plus aucune frontière ne rattrape.
  *
  * **Même motif que `not-found.tsx`, et même raison de sécurité.** Sans ce
- * fichier, Next sert son composant intégré — celui-là même dont la revue de s45
+ * fichier, Next sert son composant intégré — celui-là même dont une revue
  * a mesuré quatre attributs `style` et un `<style>` sans nonce sur la page 404,
  * donc deux violations de la politique livrée. La revue n'avait pas pu
  * provoquer une erreur serveur : le composant est le même, la conclusion en

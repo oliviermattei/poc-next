@@ -323,7 +323,7 @@ test.describe('le formulaire de contact sans JavaScript', () => {
 
   // L'ADR 027 assume que ces formulaires exigent JavaScript. Ce qu'elle ne dit
   // nulle part, c'est que le bouton doive rester éteint **sans un mot** — mesuré
-  // ainsi sous le build de production par la revue de s11 (constat F5).
+  // ainsi sous le build de production par une revue (constat F5).
   test.use({ javaScriptEnabled: false })
 
   test('laisse le bouton éteint, mais dit pourquoi', async ({ page }) => {

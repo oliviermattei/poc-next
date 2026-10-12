@@ -23,7 +23,7 @@ import type { FileRepository } from './ports'
  *
  * **L'ordre est le même à chaque porte** : autorisation, puis validation. Un
  * appelant sans droit reçoit 404 avant que quoi que ce soit ne soit jugé — c'est
- * la leçon du constat F5 de la revue de s17, où l'ordre inverse rendait un motif
+ * une leçon déjà apprise : l'ordre inverse rendait un motif
  * traduit à qui n'avait aucun droit.
  */
 

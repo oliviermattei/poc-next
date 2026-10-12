@@ -27,7 +27,7 @@ import { paintedRing } from './support/painted'
  * Le seuil est celui d'un **élément non textuel** : 3 : 1 (WCAG SC 1.4.11), et
  * non les 4,5 : 1 du texte. C'est la moitié du critère 3 de la story.
  *
- * **Ce que ce fichier ne prouve pas.** Qu'un anneau se *voie* : la revue de s46
+ * **Ce que ce fichier ne prouve pas.** Qu'un anneau se *voie* : une revue
  * l'a écrit, le focus ne se lit pas sur une capture, et c'est la mesure du
  * jeton qui fait foi. Il ne dit rien non plus de l'épaisseur ni du décalage de
  * l'anneau, ni des écrans qu'il ne visite pas — un seul, celui de connexion,

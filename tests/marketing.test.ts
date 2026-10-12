@@ -674,8 +674,7 @@ describe('la limitation de débit des formulaires publics', () => {
 
   it('refuse effectivement au-delà du seuil, sur chacune de ses routes', async () => {
     /**
-     * **La politique obtenue, exercée et non ré-implémentée** (réserve de la
-     * revue de s42).
+     * **La politique obtenue, exercée et non ré-implémentée**.
      *
      * Le cas ci-dessus lit la déclaration et refait le `?? 'default'` du garde
      * dans son assertion : il mord sur le contrat, mais aucune requête ne
@@ -760,7 +759,7 @@ describe('le module marketing activé', () => {
   it('mène au contact même quand aucun document légal n’est déclaré', async () => {
     // Le pied de page ne s'affichait qu'en présence d'un document légal : un
     // projet qui les retirait servait `/contact`, l'annonçait dans son plan de
-    // site, et n'y menait de nulle part (constat F9 de la revue de s11).
+    // site, et n'y menait de nulle part.
     const withoutLegal: MarketingSite = { ...shippedSite, legalDocuments: [] }
     const href = localeRouting.publicPath(CONTACT_PATH, localeRouting.defaultLocale)
 
@@ -1256,8 +1255,7 @@ describe('le rendu des pages publiques', () => {
   })
 
   /**
-   * **Le rendu d'un compte connecté, et ce qu'il coûte à la base** (revue de
-   * s37b2, constat F3).
+   * **Le rendu d'un compte connecté, et ce qu'il coûte à la base**.
    *
    * Le cas ci-dessus ne compte qu'un visiteur **anonyme** : la coquille y saute
    * l'avatar, le compteur de notifications et l'emprunt de session, si bien
@@ -2128,7 +2126,7 @@ describe('les emails du site public', () => {
  *
  * Elle n'était mesurée que par `tests/rendered-text.test.ts`, dont l'attente est
  * dérivée de la configuration : module activé — la configuration livrée — la
- * retirer ne faisait rien rougir (constat F4 de la revue de s11). Le point de
+ * retirer ne faisait rien rougir. Le point de
  * composition est donc remplacé ici pour poser l'état « site public sans
  * formulaires », quel que soit ce que `config/features.ts` dit par ailleurs.
  */

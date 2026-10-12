@@ -160,7 +160,7 @@ const redirect = (location: string): Response =>
  *
  * Le code est **ajouté à la chaîne que rend `safeRedirectPath`**, jamais
  * re-sérialisé par un `URL.pathname` : c'est cette re-sérialisation qui
- * résolvait `/.//evil.test` en `//evil.test` après le filtre (revue s67, C1).
+ * résolvait `/.//evil.test` en `//evil.test` après le filtre.
  */
 const magicLinkRefusal = (request: Request): Response => {
   const destination = safeRedirectPath(
@@ -531,7 +531,7 @@ const settleTwoFactorVerification = async (input: {
       // faisait afficher « ce code n'est pas valide » à quelqu'un qui lit le
       // bon code sur son téléphone — deuxième connexion dans les mêmes trente
       // secondes, ré-enrôlement dans la même période, horloge reculée — et lui
-      // faisait croire à une compromission (revue s13, C12/C13/C14).
+      // faisait croire à une compromission.
       //
       // Ce n'est pas un oracle pour autant : le **statut** est celui de tous
       // les refus, et on n'atteint cette ligne qu'avec un défi ouvert ou une
@@ -632,7 +632,7 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
         const response = await auth.handleOAuthCallback(request)
 
         // Même règle que le magic link : le fournisseur atteste l'adresse, il
-        // n'atteste pas le second facteur (revue s13, C2).
+        // n'atteste pas le second facteur.
         if (await isTwoFactorChallenge(response)) {
           return twoFactorChallengeRedirect(auth.appUrl, response)
         }
@@ -964,7 +964,7 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
         const auth = service()
         const response = await auth.handle(withSafeMagicLinkDestination(request))
 
-        // **Le second facteur s'applique ici aussi** (revue s13, C2). Le
+        // **Le second facteur s'applique ici aussi**. Le
         // greffon ne couvre que `/sign-in/email` ; le module étend son crochet
         // aux deux voies qui redirigent, et la personne est envoyée à l'écran
         // de vérification au lieu de sa destination. Le journal de ce cas est

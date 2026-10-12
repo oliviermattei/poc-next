@@ -15,7 +15,7 @@
  *
  * Noter que `config/profiles.ts` **ne convient pas** comme source : le profil
  * minimal de s26 et la branche « socle » de la CI ne coupent pas le même
- * ensemble (mesuré à la recherche de s48, deux modules d'écart). Ce sont deux
+ * ensemble (mesuré : deux modules d'écart). Ce sont deux
  * configurations distinctes, et les confondre rendrait la commande fausse en
  * paraissant plus simple.
  */
@@ -329,7 +329,7 @@ export const SOCLE_STEP_DISPOSITION: Readonly<Record<string, SocleDisposition>> 
 /**
  * **Chaque étape du job est exécutée, ou exclue avec sa raison écrite.**
  *
- * C'est le correctif du constat majeur de la revue de s48 : la liste des
+ * C'est le correctif du constat d'une revue : la liste des
  * bascules était dérivée du workflow, celle des commandes était écrite en dur,
  * et le job pouvait gagner une étape sans que rien ne rougisse — la commande
  * promettait alors « les commandes du job » en en rejouant six sur neuf.

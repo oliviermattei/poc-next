@@ -205,7 +205,7 @@ export const readRecordings = (directory: string): RecordingStore => {
 
 /**
  * **Les événements bruts à capturer**, tels que la procédure les produit
- * réellement (constat F5 de la revue de s25).
+ * réellement.
  *
  * `stripe listen --print-json > evenements.ndjson` écrit **un fichier** de
  * lignes JSON ; `stripe events resend` et une capture faite à la main écrivent

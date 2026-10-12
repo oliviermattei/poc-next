@@ -138,7 +138,7 @@ const envShape = {
    * Monte la **sonde de traduction manquante** (`GET /api/i18n-probe`), qui
    * demande une clé qu'aucun catalogue ne livre.
    *
-   * Elle existe parce qu'un critère de s09 — « une clé manquante n'est jamais
+   * Elle existe parce qu'une règle — « une clé manquante n'est jamais
    * remplacée par elle-même » — se prouve au bout de la chaîne ou pas du tout :
    * la revue a mesuré qu'un test de nœud sur la configuration reste vert quand
    * `apps/web/i18n/request.ts` cesse de la brancher. La sonde fait échouer la
@@ -172,7 +172,7 @@ const envShape = {
    *
    * **Optionnelle ici, obligatoire pour qui monte l'authentification** — même
    * raison que `RESEND_API_KEY` : `pnpm db:migrate` ne signe aucun cookie et
-   * doit s'exécuter avec le seul `DATABASE_URL` (revue de s06, G3).
+   * doit s'exécuter avec le seul `DATABASE_URL`.
    * L'exigence est portée par `apps/web/lib/auth-config.ts`, appliquée au
    * démarrage par `apps/web/next.config.ts`.
    *
@@ -496,8 +496,7 @@ export const envSchema = z.object(envShape).superRefine((value, ctx) => {
 
   // Ce schéma ne dit **pas** qu'il faut un mailer : il juge la forme des
   // variables, pour tout processus qui lit cet environnement. `pnpm db:migrate`
-  // n'envoie aucun email et doit s'exécuter avec le seul `DATABASE_URL` (revue
-  // de s06, G3). L'exigence « il faut un mailer » appartient à ce qui en monte
+  // n'envoie aucun email et doit s'exécuter avec le seul `DATABASE_URL`. L'exigence « il faut un mailer » appartient à ce qui en monte
   // un : `apps/web/lib/mailer-config.ts`, appliquée au démarrage de
   // l'application par `apps/web/next.config.ts`.
 
@@ -774,7 +773,7 @@ export interface AssertStartupEnvOptions {
  * Le build est exempté : `next build` s'exécute sans les variables d'exécution,
  * en CI comme en conteneur.
  *
- * Deux frontières connues, mesurées en revue de s01 (N15, N16). La première a
+ * Deux frontières connues, mesurées en revue (N15, N16). La première a
  * changé de nature en s27 (ADR 049) :
  * - **`next.config.ts` n'est pas le point de démarrage en production.** En
  *   `output: 'standalone'` comme en serverless, il n'est pas chargé au démarrage

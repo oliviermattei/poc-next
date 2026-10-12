@@ -4,7 +4,7 @@ import { NOTIFICATIONS_MODULE_ID, type NotificationChannel } from './notificatio
 
 /**
  * **Toutes** les clés de traduction du module, dérivées ici et nulle part
- * ailleurs — la discipline posée par `organizations` (revue de s15), pour les
+ * ailleurs — la discipline posée par `organizations`, pour les
  * deux mêmes raisons :
  *
  * 1. `tests/i18n.test.ts` balaie les fichiers **rendus** (`.tsx`) et exige que
@@ -55,7 +55,7 @@ export const NOTIFICATIONS_KEYS = {
   unreadOne: notificationsKey('screen.unreadOne'),
   /**
    * Le nom d'un compte **effacé**, mis à la place d'une référence que la
-   * lecture n'a pas su résoudre (revue s32, R1). La ligne de celui qui reste
+   * lecture n'a pas su résoudre. La ligne de celui qui reste
    * doit rester lisible quand la personne qu'elle nomme n'est plus là.
    */
   deletedActor: notificationsKey('screen.deletedActor'),

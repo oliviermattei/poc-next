@@ -340,7 +340,7 @@ describe('un module ne dépend pas du package de base de données', () => {
  *
  * **Chaque site de déclaration a ses cas.** En configuration plate, la garde
  * n'est pas déclarée une fois : elle est reprise par les quatre blocs qui
- * occupent `no-restricted-syntax`. La revue de s08 a mesuré que deux de ces
+ * occupent `no-restricted-syntax`. Une revue a mesuré que deux de ces
  * sites pouvaient être vidés sans qu'un seul test ne bouge — un seul chemin de
  * fichier était éprouvé. Les cas ci-dessous croisent donc les sites et les
  * écritures : `apps/**`, `packages/**`, `packages/config/src`,
@@ -390,7 +390,7 @@ describe('le socle de composants ne sort pas de packages/ui (ADR 022)', () => {
     // Le quatrième, mesuré en seconde passe : `generated/` est versionné,
     // compilé, et réécrit par `pnpm ks toggle`. « Ces fichiers ne peuvent pas
     // contenir de JSX » est exactement l'affirmation d'exhaustivité que
-    // `AGENTS.md` interdit — le gabarit de génération peut changer, la portée
+    // `CODING_STANDARDS.md` interdit — le gabarit de génération peut changer, la portée
     // du lint ne doit pas dépendre de ce qu'il produit aujourd'hui.
     ['un baril généré', 'generated/schema/probe.ts'],
   ] as const
@@ -512,7 +512,7 @@ describe('le socle de composants ne sort pas de packages/ui (ADR 022)', () => {
 })
 
 /**
- * **Un `<form>` déclare toujours sa méthode** (C1 de la revue de s08).
+ * **Un `<form>` déclare toujours sa méthode**.
  *
  * Un formulaire sans `method` est un `GET` vers l'URL courante : c'est le
  * défaut du navigateur, et il s'applique chaque fois que le gestionnaire React
@@ -792,8 +792,7 @@ describe('un module n’appelle pas le réseau à main nue', () => {
 })
 
 /**
- * **Le périmètre organisationnel, rendu exécutable** (constat F2 de la revue de
- * s15).
+ * **Le périmètre organisationnel, rendu exécutable**.
  *
  * La story affirmait que le module rend « l'oubli du périmètre impossible ».
  * La revue a mesuré le contraire : un fichier neuf posé dans
@@ -946,8 +945,7 @@ describe('une lecture du module `organizations` passe par sa porte unique', () =
 })
 
 /**
- * **`@repo/module-auth` ne s'importe que dans deux fichiers du module**
- * (revue de s16, F9).
+ * **`@repo/module-auth` ne s'importe que dans deux fichiers du module**.
  *
  * L'`AGENTS.md` du module l'écrivait déjà — `src/schema.ts` pour les clés
  * étrangères, `infrastructure/scoped-reads.ts` pour la jointure qui donne un
@@ -1015,7 +1013,7 @@ describe('le module `organizations` n’importe `@repo/module-auth` que dans deu
 })
 
 /**
- * **La matrice des rôles est écrite une fois** (revue de s17, F4).
+ * **La matrice des rôles est écrite une fois**.
  *
  * L'`AGENTS.md` du module l'écrivait — « aucune comparaison de rôle hors de
  * `domain/permissions.ts` » — et son propre commit la démentait trois fois : un

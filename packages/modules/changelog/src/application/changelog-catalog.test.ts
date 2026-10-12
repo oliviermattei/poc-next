@@ -11,7 +11,7 @@ import {
  * **La page, langue par langue** — la moitié « écran » du critère 4.
  *
  * La moitié « flux » vit dans `tests/changelog.test.ts`, où le document servi
- * est analysé. Celle-ci manquait, et la revue de s31 l'a mesuré : remplacer le
+ * est analysé. Celle-ci manquait, et une revue l'a mesuré : remplacer le
  * filtre de `changelogListView` par `catalog.entries` laissait toute la suite
  * verte, c'est-à-dire une page française qui listerait les entrées anglaises.
  *

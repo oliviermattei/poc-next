@@ -57,7 +57,8 @@ const databaseReachable = await isDatabaseReachable()
 
 /**
  * **Le harnais déclare ce dont il a besoin, jamais le `.env` d'un poste**
- * (`AGENTS.md`), et ce fichier l'a appris en cassant la CI.
+ * (`docs/commands.md`, `pnpm test:sans-env`), et ce fichier l'a appris en
+ * cassant la CI.
  *
  * Ce qu'il monte n'est pas une fonction pure : `appAuth()` et
  * `prepareModuleServices()` construisent les points de composition de
@@ -69,7 +70,7 @@ const databaseReachable = await isDatabaseReachable()
  *
  * **Chaque valeur est déclarée en entier**, y compris celles qui valent vide :
  * un cas qui n'annonce que sa propre variable ne passe que là où un fichier
- * complète les autres (précédent de `tests/admin.test.ts`, revue de s06, G1).
+ * complète les autres (précédent de `tests/admin.test.ts`).
  * `DATABASE_URL` vient de la suite, pas d'une constante — c'est la base que la
  * recette a préparée.
  *

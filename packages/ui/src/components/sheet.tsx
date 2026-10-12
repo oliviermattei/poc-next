@@ -35,7 +35,7 @@ export function SheetContent({
    * Le nom accessible du bouton de fermeture, **traduit par l'appelant**.
    *
    * Obligatoire : c'est le seul texte que cette primitive affiche, et il
-   * portait « Fermer » en dur jusqu'à la revue de s09. `packages/ui` ne connaît
+   * portait « Fermer » en dur jusqu'à une revue. `packages/ui` ne connaît
    * ni catalogue ni locale — les libellés lui arrivent en props, comme pour
    * `SidebarNav` ou `ThemeToggle`.
    */

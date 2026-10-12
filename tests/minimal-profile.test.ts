@@ -602,7 +602,7 @@ describe('le verdict de généricité, ses deux branches (critère 8)', () => {
  * silencieux — 288 cas sautés faute de base, sans un mot.
  */
 describe('les comptes de la suite sous le profil', () => {
-  // Mesuré par la recherche de s26, sur ce dépôt : profil complet 1806/8,
+  // Mesuré sur ce dépôt : profil complet 1806/8,
   // profil minimal 1803/11. Ce sont des repères, pas des seuils : les seuils
   // sont un plancher et une part, pour qu'une story qui ajoute des cas ne casse
   // pas la recette.
@@ -628,7 +628,7 @@ describe('les comptes de la suite sous le profil', () => {
   /**
    * **La panne la plus probable de la recette, et la garde qui l'attrape.**
    *
-   * Mesuré à la revue de s26 : `DATABASE_URL` sur un port mort rend 1 505 cas
+   * Mesuré à une revue : `DATABASE_URL` sur un port mort rend 1 505 cas
    * exécutés et 339 sautés sur 1 846 (plus deux échecs, retirés ici pour isoler
    * la garde qui attrape le cas même sans eux). Le plancher **laisse passer** —
    * cinq cas au-dessus —, la part de sautés refuse. Le commentaire

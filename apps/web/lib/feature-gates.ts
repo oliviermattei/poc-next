@@ -13,8 +13,7 @@ import { moduleRegistry } from './module-registry'
  * Elle est appelée à **deux** endroits, et il faut les deux :
  *
  * - `apps/web/next.config.ts`, au **démarrage** : une déclaration fausse arrête
- *   le processus avant qu'il ne serve une requête. C'est la leçon du constat F2
- *   de la revue de s19 — le catalogue d'offres n'était validé qu'à la première
+ *   le processus avant qu'il ne serve une requête. C'est la leçon du constat d'une revue — le catalogue d'offres n'était validé qu'à la première
  *   requête, et cette requête pouvait être le webhook public ;
  * - `apps/web/lib/entitlements.ts`, à chaque question posée sur un droit.
  *

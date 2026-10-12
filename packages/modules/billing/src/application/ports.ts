@@ -93,7 +93,7 @@ export interface PurchaseRecord {
  * `reconciledPurchaseStatus`, dans le `domain`, qui a besoin de l'état stocké
  * pour le faire. Porter ici un statut déjà décidé obligeait l'appelant à
  * trancher sans cet état, et c'est ce qui a fait ré-accorder un achat remboursé
- * dont la charge était introuvable (constat m1 de la revue de s20).
+ * dont la charge était introuvable.
  */
 export interface PurchaseReconcileWrite {
   readonly providerSessionId: string
@@ -508,7 +508,7 @@ export interface CheckoutThrottle {
    * `max` voyage **avec le seau**, comme chez `marketing` : cette route en a
    * deux — l'appelant et le global — et ils n'ont pas le même seuil. Le porter
    * une seule fois à la construction rendait l'un des deux faux pour qui lirait
-   * le verdict du port (constat m5 de la re-revue de s28). Ce module décide avec
+   * le verdict du port. Ce module décide avec
    * `exceedsCheckoutRateLimit` sur le compte rendu ; la valeur n'en doit pas
    * moins être juste.
    */
@@ -524,7 +524,7 @@ export interface CheckoutThrottle {
    * Le paramètre est l'**instant présent**, pas une borne : le magasin est
    * partagé depuis s28 et ses seaux n'ont pas la même durée, si bien qu'une
    * borne « efface tout ce qui précède » effaçait les seaux longs encore ouverts
-   * des autres routes (constat C1 de la revue de s28). C'est la ligne qui porte
+   * des autres routes. C'est la ligne qui porte
    * son échéance ; un instant passé ne peut que retarder la récupération.
    *
    * Sans lui, la table ne se vide jamais : un seau par identifiant d'appelant,

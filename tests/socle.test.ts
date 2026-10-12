@@ -22,8 +22,8 @@ import {
  * La matrice de `.github/workflows/ci.yml` joue deux configurations, et la
  * seconde — tout ce qui est optionnel coupé — n'était reproductible **nulle
  * part** hors du runner : `pnpm test:minimal-profile` joue le profil de
- * `config/profiles.ts`, qui ne coupe pas les mêmes modules (mesuré à la
- * recherche de s48 : les deux listes diffèrent de deux modules). La moitié rouge
+ * `config/profiles.ts`, qui ne coupe pas les mêmes modules (mesuré :
+ * les deux listes diffèrent de deux modules). La moitié rouge
  * de la matrice ne se constatait donc qu'après un push.
  *
  * `pnpm test:socle` rejoue cette configuration dans une copie. Ce qu'elle coupe
@@ -131,7 +131,7 @@ describe('les modules coupés, confrontés à l’annuaire', () => {
 /**
  * **Ce que la commande rejoue du job, et ce qu'elle en exclut.**
  *
- * Constat de la revue de s48 : la liste des **bascules** était dérivée du
+ * Constat d'une revue : la liste des **bascules** était dérivée du
  * workflow, mais la liste des **commandes** était écrite en dur dans le script —
  * si bien que le job pouvait gagner une étape sans que rien ne rougisse, et que
  * la commande promettait « les commandes du job » en en rejouant six sur les

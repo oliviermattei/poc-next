@@ -132,7 +132,7 @@ test.describe('sous 400 px', () => {
 
     // Le bouton de fermeture porte un nom accessible **traduit** : c'est le
     // seul texte que la primitive `Sheet` affiche, et il était écrit en dur en
-    // français dans `packages/ui` jusqu'à la revue de s09.
+    // français dans `packages/ui` jusqu'à une revue.
     await expect(page.getByRole('button', { name: 'Fermer la navigation' })).toBeVisible()
   })
 })
@@ -499,15 +499,14 @@ test.describe('l’atterrissage sur l’application', () => {
     const invitation = '/invitations/accept?token=x'
 
     // Les deux écrans servent chacun leur propre redirection : chacun est
-    // mesuré, un filtre contourné sur l'un seul resterait sinon vert (revue
-    // s61, M1).
+    // mesuré, un filtre contourné sur l'un seul resterait sinon vert.
     for (const screen of ['/sign-in', '/sign-up']) {
       await page.goto(`${screen}?next=${encodeURIComponent(invitation)}`)
       await expect(page).toHaveURL(urlOf('/invitations/accept', '?token=x'))
 
       // Un `next` qui sort du site retombe sur la constante — y compris déguisé
       // par un caractère de contrôle que le navigateur retire avant de lire
-      // `//evil.test` (revue s61, C1 : reproduit avec `i18n` coupé). CR et LF
+      // `//evil.test` (reproduit avec `i18n` coupé). CR et LF
       // faisaient en plus lever une 500 à l'écriture de l'en-tête `Location`.
       for (const outside of ['//evil.test', '/\t/evil.test', '/\n/evil.test', '/\r/evil.test']) {
         const response = await page.goto(`${screen}?next=${encodeURIComponent(outside)}`)

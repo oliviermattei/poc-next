@@ -152,7 +152,7 @@ export type InvitationRefusal =
  * Les motifs que l'écran des organisations sait rendre.
  *
  * **`seat_limit_reached` y figure sans qu'aucun parcours ne l'y produise
- * aujourd'hui** (constat M2 de la revue de s47), et c'est écrit ici pour que le
+ * aujourd'hui**, et c'est écrit ici pour que le
  * prochain lecteur ne le déduise pas de travers. Le motif naît à
  * `acceptInvitation`, donc pour l'**invité**, dont l'écran affiche
  * délibérément le texte vague (`acceptRefusalMessageKey`). Le message qui

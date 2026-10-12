@@ -11,7 +11,7 @@ import { getEnv, type Env } from '@repo/config'
  * raison : la **règle** — cette variable est exigée par qui en a besoin —
  * est séparée de ce qui la consomme. `APP_URL` reste optionnelle au schéma
  * d'environnement, parce que `pnpm db:migrate` n'a aucune URL publique à
- * connaître (revue de s06, G3).
+ * connaître.
  *
  * Elle n'est pas déduite de l'en-tête `Host` : un attaquant le contrôle, et un
  * plan de site qui pointerait vers son domaine ferait indexer ses pages sous

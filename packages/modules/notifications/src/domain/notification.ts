@@ -68,7 +68,7 @@ export interface NotificationScope {
    * Une liste, et pas un identifiant : la règle de visibilité n'a pas d'avis sur
    * le nombre. C'est le **point de composition** qui décide ce qu'il y met, et
    * `apps/web/lib/notifications.ts` y met aujourd'hui la seule organisation
-   * active — avec ses raisons écrites là-bas (revue s32, R2). Le module ne
+   * active — avec ses raisons écrites là-bas. Le module ne
    * promet donc pas « toutes celles dont il est membre » : il obéit à la liste
    * qu'on lui donne.
    */
@@ -137,7 +137,7 @@ export function pageOf(input: {
 
 /**
  * Ce qu'une charge utile devient une fois **lue** : les références de compte
- * remplacées par leur valeur affichable (revue s32, R1).
+ * remplacées par leur valeur affichable.
  *
  * `null` désigne un compte qui n'existe plus. C'est une valeur, pas une
  * absence : l'écran y met son propre libellé, et la ligne de celui qui reste

@@ -36,8 +36,7 @@ import type { AvailableModuleId } from './features'
  *
  * Ni l'un ni l'autre ne déclare de table ni de route : ce que la recette
  * vérifie d'eux est l'entrée de navigation — rendue nulle part, et **répondant
- * 404 sur une vraie requête HTTP**, la garde ajoutée par la troisième revue de
- * s29. C'est la seule qui morde sur un module qui n'apporte que des écrans.
+ * 404 sur une vraie requête HTTP**, la garde ajoutée par une revue. C'est la seule qui morde sur un module qui n'apporte que des écrans.
  *
  * `admin` les a rejoints en s37a, et il apporte l'inverse : quatre routes et
  * une table, aucune entrée de navigation. Le critère 14 de la story — « module

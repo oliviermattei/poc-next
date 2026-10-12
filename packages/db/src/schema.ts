@@ -5,7 +5,7 @@
  * ne connaît que la liste des modules activés.
  *
  * ---------------------------------------------------------------------------
- * CE QUE `composeSchema` FAIT, ET CE QU'ELLE NE FERA JAMAIS (finding N3, fermé en s04)
+ * CE QUE `composeSchema` FAIT, ET CE QU'ELLE NE FERA JAMAIS
  *
  * `drizzle-kit generate` ne voit *que* les exports de premier niveau du fichier
  * désigné par `schema:` : sa fonction interne `prepareFromExports` parcourt

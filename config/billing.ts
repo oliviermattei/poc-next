@@ -3,7 +3,7 @@ import type { BillingOffer } from '@repo/module-billing'
 /**
  * Les offres du projet — **le fichier que le propriétaire édite**.
  *
- * Une seule déclaration, et c'est le premier critère de s19 : la page de tarifs
+ * Une seule déclaration : la page de tarifs
  * (s22), le checkout et l'écran de facturation liront tous ce tableau. Deux
  * listes divergeraient, et la première à diverger serait celle qui encaisse.
  *

@@ -12,7 +12,8 @@ import { cn } from '../lib/cn'
  * Les classes sont **celles d'`Input`**, à la hauteur près : `min-h-24` au lieu
  * de `h-10`, parce qu'un champ multiligne n'a pas de hauteur de ligne unique.
  * `resize-y` seulement — un redimensionnement horizontal déborde la carte qui
- * le contient sous 400 px, et le débordement horizontal est un critère de s08.
+ * le contient sous 400 px, et le débordement horizontal est interdit
+ * (`docs/design-system.md`, Responsive).
  */
 export function Textarea({ className, ...props }: ComponentProps<'textarea'>) {
   return (

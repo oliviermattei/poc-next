@@ -19,7 +19,7 @@ import {
 /**
  * **La porte unique par laquelle ce module lit ses tables.**
  *
- * Elle existe à cause d'une mesure, pas d'un principe. La revue de s15 a posé
+ * Elle existe à cause d'une mesure, pas d'un principe. Une revue a posé
  * un fichier neuf dans `infrastructure/` qui lisait `organization` par un
  * identifiant venu du corps de la requête, sans aucune condition
  * d'appartenance : `pnpm typecheck`, `pnpm lint` et les 811 tests étaient
@@ -183,7 +183,7 @@ export interface ScopedReads {
    * La ligne de sélection survit au retrait d'un membre (s16), et rien ne doit
    * la nettoyer : c'est la lecture qui porte l'appartenance, comme les trois
    * routes du module. Sans la jointure, `resolveDataOwner` rendait le périmètre
-   * d'une organisation quittée — constat F1 de la revue de s15.
+   * d'une organisation quittée.
    */
   activeOrganizationIdOf(userId: string): Promise<string | null>
 

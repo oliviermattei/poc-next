@@ -22,7 +22,7 @@ dans **une seule application Next** (`apps/web`), pas dans quatre déploiements.
 |---|---|---|---|
 | **Site public** (landing, pricing, blog, docs, changelog, légal, contact, newsletter, liste d'attente) | `/`, `/pricing`, `/blog`, `/docs`, `/changelog`, `/legal/*`, `/contact`, `/waitlist` | tout le monde | modules `marketing`, `billing`, `blog`, `docs`, `changelog` |
 | **Application connectée** (le SaaS lui-même) | `/app` (tableau de bord), `/app/settings/*` (profil, sécurité, organisation, membres, facturation, notifications, cookies), `/app/notifications`, `/app/premium` | un compte | modules `auth`, `organizations`, `notifications`, `billing`, `storage` |
-| **Administration de l'organisation** (le client gère ses propres utilisateurs) | `/app/settings/organization`, `/app/settings/members` | un membre, selon son rôle | module `organizations` |
+| **Administration de l'organisation** (le client gère ses propres membres) | `/app/settings/organization`, `/app/settings/members` | un membre, selon son rôle | module `organizations` |
 | **Back-office de l'éditeur** (vous) | `/console`, `/console/users`, `/console/organizations`, `/console/revenue`, `/console/subscriptions` | un **superadmin** de plateforme | modules `admin`, `billing`, `organizations`, `marketing` |
 
 La racine `/` sert **toujours le site public**, connecté ou non
@@ -254,9 +254,11 @@ Un module qui expose des composants les sort par un **second point d'entrée**
 
 ### La façon de travailler
 
-La chaîne de travail — spec, tickets, implémentation, revue, PR vers `dev` —
-est décrite dans `AGENTS.md`, section « Agent skills ». Une revue juge le code
-contre `CODING_STANDARDS.md`.
+La chaîne de travail — `/grill-with-docs`, `/to-spec`, `/to-tickets`,
+`/implement` ou `/implement-spec`, `/code-review`, puis une PR vers `dev`
+fusionnée en squash — est décrite dans `AGENTS.md`, section « Agent skills »,
+sous-section « Workflow » ; ses raisons sont dans l'ADR 082. Une revue juge le
+code contre `CODING_STANDARDS.md`.
 
 ---
 

@@ -167,7 +167,7 @@ export const resolveGoldenPathRegime = (env: RegimeEnvironment): GoldenPathRegim
  * | `split` | `site.localhost` | `app.site.localhost` |
  *
  * **Le site n'est jamais sur `localhost` en mode `split`** : Next relativise un
- * `Location` dont l'origine est celle d'écoute (research de s64b, fait 3), et le
+ * `Location` dont l'origine est celle d'écoute, et le
  * 308 de l'application vers le site deviendrait un chemin relatif qui boucle.
  *
  * Une valeur inconnue est **refusée en la nommant**, jamais lue comme « un
@@ -224,7 +224,7 @@ export const recordedEventsDirectoryFor = (env: RegimeEnvironment): string =>
 
 /**
  * **La marque que les événements traités doivent porter**, selon le régime
- * demandé (constat F1 de la revue de s25).
+ * demandé.
  *
  * Le régime réel n'en a pas, et le refus le dit plutôt que de l'inventer :
  * **`live` n'exécute pas le scénario** — il éprouve les clés et capture des

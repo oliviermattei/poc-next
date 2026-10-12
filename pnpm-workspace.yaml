@@ -15,7 +15,7 @@ packages:
 #   ajout tiers. Dépendance de développement uniquement (Vite/Vitest et
 #   `drizzle-kit`), jamais expédiée à l'exécution.
 #
-# `unrs-resolver` figurait ici jusqu'à la revue de s02 : il n'est **plus** dans
+# `unrs-resolver` figurait ici jusqu'à une revue : il n'est **plus** dans
 # le graphe de dépendances (zéro occurrence dans `pnpm-lock.yaml`) depuis
 # l'abandon d'`eslint-config-next`. Une autorisation qui survit à sa dépendance
 # pré-approuve le script d'un paquet que personne n'a examiné, le jour où une

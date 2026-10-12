@@ -728,8 +728,7 @@ interface AcceptanceRules {
   readonly data: ReadonlySet<string>
   readonly locales: readonly string[]
   /**
-   * Les props techniques propres à **cet** écran (constat F5 de la revue de
-   * s15).
+   * Les props techniques propres à **cet** écran.
    *
    * s15 avait ajouté `create`, `switch` et `update` à la liste globale pour
    * trois URL de routes : trois noms très communs, désormais blanchis sur
@@ -2459,7 +2458,7 @@ describe('les réglages en rubriques, sans perte (s62b)', () => {
     const config = pseudoRequestConfig(defaultLocale)
 
     // L'inventaire d'avant n'est pas vide : onze cartes à Compte, six blocs à
-    // Organisation (research de s62, fait 4). Une fixture tronquée ne prouverait
+    // Organisation. Une fixture tronquée ne prouverait
     // plus « sans perte ».
     expect(inventory.screens['account']?.cards.length).toBeGreaterThanOrEqual(11)
     expect(inventory.screens['organization']?.cards.length).toBeGreaterThanOrEqual(6)

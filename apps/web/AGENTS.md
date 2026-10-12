@@ -35,7 +35,7 @@ module (`packages/modules/<module>/src/domain`).
   des adaptateurs y est écrite une fois et parcourue, et son plancher refuse
   qu'elle se vide : un second importeur de l'un **ou** de l'autre fait rougir
   `pnpm test`. La phrase disait déjà « les deux » quand le balayage ne
-  connaissait que `posthog` (constat 5 de la revue de s39) ;
+  connaissait que `posthog` ;
 - les modules du projet, **uniquement** parce que `config/features.ts` les
   référence : `@repo/module-admin`, `@repo/module-auth`, `@repo/module-billing`,
   `@repo/module-analytics`, `@repo/module-blog`, `@repo/module-changelog`,
@@ -198,7 +198,7 @@ options rejetées et l'exception qu'elle ouvre à `docs/security.md` §5 vivent 
 Le second existe parce que `output: 'standalone'` sérialise la configuration
 Next dans `server.js` : **`next.config.ts` n'est plus exécuté au démarrage du
 serveur**. La frontière était écrite dans `packages/config/src/env.ts` (constats
-N15/N16 de s01) ; elle a été mesurée en s27 — la première image démarrait avec
+N15/N16 de s01) ; elle a été mesurée — la première image démarrait avec
 un environnement **entièrement vide**, affichait `✓ Ready`, et `/api/health`
 répondait 503 pour toujours.
 
@@ -386,7 +386,7 @@ Trois composants, `app/auth-form.tsx`, `app/(app)/app/settings/profile/account-f
   compris — partent dans la chaîne de requête, donc dans le journal d'accès,
   l'historique et le `Referer` des requêtes suivantes (`docs/security.md` §5).
   Mesuré sur les deux écrans, JavaScript coupé : `/account?currentPassword=…`
-  et `/sign-in?email=…&password=…` (revue de s08, C1). `pnpm lint` refuse
+  et `/sign-in?email=…&password=…`. `pnpm lint` refuse
   désormais un `<form>` dont le `method` n'est pas écrit en toutes lettres —
   y compris étalé (`{...props}`), calculé ou `undefined`. La règle vise
   `apps/**`, `packages/**`, `tooling/**`, `config/`, `scripts/`, `generated/`
@@ -416,7 +416,7 @@ plutôt que devinées :
   trop tôt. Un en-tête absent ou illisible n'affiche **aucun** chiffre : c'est
   la formulation que `app/public-form.tsx` porte depuis s11.
 
-Le défaut que cela ferme est mesuré (constat M1 de la troisième revue de s28) :
+Le défaut que cela ferme est mesuré :
 à quatre essais par défi, le premier refus qu'un utilisateur légitime rencontre
 sur `/two-factor` est le 429, et l'écran lui répondait « Ce code n'est pas
 valide. » — sur un code **juste**. `tests/rate-limiting.test.ts` tient la
@@ -424,8 +424,7 @@ classification, `e2e/rate-limiting.spec.ts` tient ce que l'alerte affiche.
 
 **Un bouton éteint doit dire pourquoi.** Sans JavaScript, la règle ci-dessus le
 laisse éteint pour toujours : `app/public-form.tsx` porte donc un `<noscript>`
-qui l'explique, mesuré sous le build de production (constat F5 de la revue de
-s11). Un `<noscript>` ne demande ni script en ligne ni source de politique de
+qui l'explique, mesuré sous le build de production. Un `<noscript>` ne demande ni script en ligne ni source de politique de
 sécurité du contenu supplémentaire. Piège du harnais : les moteurs de **texte**
 et de **rôle** de Playwright ignorent le sous-arbre d'un `<noscript>` — mesuré,
 `getByText` y rend zéro alors que le bloc occupe 622 × 66 pixels. Il faut un
@@ -557,8 +556,7 @@ Deux choses ne sont pas là où on les chercherait, et c'est mesuré :
   clé : un écran affichant « app.account.title » ne rougirait nulle part. La
   configuration vit dans un fichier séparé de `i18n/request.ts` pour une raison
   de preuve : `tests/i18n.test.ts` la passe au vrai traducteur de `next-intl`
-  avec un catalogue amputé. La garde d'avant lisait le fichier source, et la
-  revue de s09 l'a neutralisée deux fois sans la faire rougir — une garde
+  avec un catalogue amputé. La garde d'avant lisait le fichier source, et une revue l'a neutralisée deux fois sans la faire rougir — une garde
   textuelle ne tient pas un comportement.
 
   Le **câblage** est une seconde question, et elle a son propre contrôle :
@@ -758,7 +756,7 @@ laissé sans consommateur, et `@repo/ui` n'expose plus `Skeleton` — le composa
 reviendra avec le premier écran qui peut suspendre sans avoir à refuser.
 **C'est un manque du design system à signaler, pas à combler d'office** : les
 deux exigences se contredisent sur toute route dont l'existence est décidée dans
-le corps de la page (constat F3 de la revue de s29).
+le corps de la page.
 
 **Deux commandes tiennent cette règle, une par configuration de modules**, et il
 faut les deux — une garde qui ne mord que dans une configuration est une garde
@@ -770,7 +768,7 @@ que la CI peut ne jamais exécuter :
 - module **coupé** : `e2e/minimal-profile/minimal-profile.spec.ts`, « l'écran
   d'une entrée de navigation coupée répond 404 sur HTTP » — une vraie requête
   sur chaque `href` déclaré par un module coupé. Il rougit sur la troisième
-  ligne. Ajouté par la troisième revue de s29, qui a mesuré le trou : le blog
+  ligne. Ajouté par une revue, qui a mesuré le trou : le blog
   déclare `routes: []`, donc le balayage de routes de `pnpm test:minimal-profile`
   ne le touchait pas, la garde de navigation ne vérifie que le **rendu** de
   l'entrée, et `tests/blog.test.ts` appelle la fonction de page directement — ce
@@ -864,7 +862,7 @@ lui-même « Dynamic filesystem access causes tracing of the whole project » po
 est masqué**, qu'aucun test ne surveille et qui ne deviendra porteuse que le
 jour où ce traçage large sera resserré.
 
-**Aucun `loading.tsx` non plus**, pour la raison mesurée en s29 et détaillée
+**Aucun `loading.tsx` non plus**, pour la raison mesurée et détaillée
 ci-dessus : les deux écrans de la documentation refusent (module coupé pour
 l'un, chemin inconnu pour l'autre). `tests/docs.test.ts` dérive la liste des
 `loading.tsx` de l'arbre versionné et refuse qu'il en apparaisse un — c'est la
@@ -935,7 +933,7 @@ Trois fichiers, sur le modèle du mailer et de l'i18n :
   (`dist/server/app-render/app-render.js` → `getScriptNonceFromHeader`) pour
   noncer ses propres balises — **et** sur la réponse.
 
-  Ce que la revue de s45 a corrigé, et qu'il ne faut pas relire à l'envers : sur
+  Ce qu'une revue a corrigé, et qu'il ne faut pas relire à l'envers : sur
   le runtime **Node** de Next 16.3.3, ne poser la politique que sur la réponse
   ne casse **pas** l'hydratation. `dist/server/lib/router-utils/resolve-routes.js`
   recopie chaque en-tête de réponse ordinaire du proxy sur `req.headers`, donc
@@ -971,7 +969,7 @@ lecture passe malgré tout par `@repo/config` (`getNodeEnv`), qui reste le point
 d'accès unique.
 
 Ce n'est **pas** la forme d'opt-in de la sonde de s09, qui est un drapeau
-explicite : la revue de s45 a corrigé la comparaison, elles ne se ressemblent
+explicite : une revue a corrigé la comparaison, elles ne se ressemblent
 que par le 404. Ce qui rend la dérivation sûre n'est pas non plus le repli de
 `getNodeEnv` — `development` est le plus permissif des deux modes — mais la
 validation au démarrage : un `NODE_ENV=prod` mal orthographié arrête le
@@ -1002,7 +1000,7 @@ n'importe qui, choisissait.
 
 `app/not-found.tsx` et `app/global-error.tsx` existent pour une raison de
 sécurité autant que de produit. Sans eux, Next sert ses composants intégrés, et
-la revue de s45 a mesuré sur le build de production que celui de la page 404
+une revue a mesuré sur le build de production que celui de la page 404
 émet **quatre attributs `style` et un `<style>` sans nonce** — deux violations
 sous la politique livrée, zéro sans elle, sur une page qu'un visiteur atteint.
 Une console bruyante est exactement ce qui pousse l'agent suivant à ajouter
@@ -1024,7 +1022,7 @@ Reconstruire le catalogue complet aurait fait entrer le registre de modules dans
 un bundle client, pour un écran dont l'existence signale que ce registre peut
 être ce qui a échoué.
 
-Mesuré sur le build de production, Chromium (revue de s45, section de clôture) :
+Mesuré sur le build de production, Chromium :
 `/fr/adresse-inexistante` → **0 violation**, `/fr/<page qui lève>` → 500 et
 **0 violation**, l'écran de dernier recours rendu.
 ## Le montage des organisations
@@ -1142,8 +1140,7 @@ suffit.
 
 C'était écrit dans `.env.example` et nulle part exécuté : quatre variables
 renseignées passaient `pnpm dev`, `pnpm build` et la CI, et le téléversement
-échouait **chez le navigateur du premier utilisateur**, sans trace côté serveur
-(constat F3 de la revue de s18). `lib/storage-config.ts` **lit** désormais
+échouait **chez le navigateur du premier utilisateur**, sans trace côté serveur. `lib/storage-config.ts` **lit** désormais
 `config/security.ts` — il ne le modifie pas, ce fichier appartient à s45 — et
 refuse de démarrer en nommant l'origine attendue. `tests/storage.test.ts` le
 tient dans les deux sens.
@@ -1210,7 +1207,7 @@ montage à part** :
   `tests/billing.test.ts` prend le `seatSync` que `lib/organizations.ts` donne
   réellement au module et le branche sur une facturation qui échoue. Sans ce
   cas-là, couper le fil au point de composition laissait la suite entière verte,
-  parcours Playwright compris (constat F1 de la revue de s23) ;
+  parcours Playwright compris ;
 - `lib/billing.ts` **construit** l'implémentation correspondante. C'est le seul
   fichier de l'application qui connaisse `@repo/module-billing`,
   `@repo/adapter-stripe` et `@repo/payments-testing`.
@@ -1297,8 +1294,7 @@ parce que le fichier existe sur le disque même quand le module est coupé.
 **Un bouton désactivé jusqu'à l'hydratation ne peut pas porter `autoFocus`.**
 L'attribut que React rend dans le document servi est appliqué par le navigateur à
 l'analyse : il focalise bien un `<a>`, il ne focalise **rien** d'un bouton
-désactivé, et rien ne repose le focus quand le bouton se rallume — mesuré à la
-revue de s22, `document.activeElement` restait `BODY` pendant que trois textes
+désactivé, et rien ne repose le focus quand le bouton se rallume — mesuré à une revue, `document.activeElement` restait `BODY` pendant que trois textes
 affirmaient le contraire. Tout écran qui veut donner le focus à un contrôle
 éteint par `useHydrated` passe donc par `app/use-focus-when-ready.ts`, qui le
 pose après l'hydratation. La commande qui le garde est `pnpm test:e2e` : un focus
@@ -1358,7 +1354,7 @@ Le corps est identique — un identifiant d'offre, une langue. La page ne mène
 donc plus le visiteur anonyme à la connexion : c'était le quatrième critère de
 s22, et s24 le remplace.
 
-**Sauf quand le canal anonyme est saturé** (constat F3 de la revue de s24). La
+**Sauf quand le canal anonyme est saturé**. La
 route publique porte un second seau de limitation de débit, sans clé, qui borne
 le **coût total** — chaque ouverture crée un client et une session chez le
 fournisseur, plus une ligne que rien n'effacera. Plein, il ne refuse pas : le
@@ -1394,7 +1390,7 @@ Deux fichiers, sur le modèle du catalogue et de la permission de facturation �
 - `lib/entitlements.ts` porte **la fonction unique** — `allows(session,
   feature)` et `featuresOf(session)` —, écrite dans une fabrique injectable
   (`createEntitlements`). Elle est injectable pour une raison mesurée : les deux
-  constats majeurs de la seconde revue de s19 étaient des règles enfermées dans
+  constats majeurs d'une revue étaient des règles enfermées dans
   ce dossier, qu'une mutation posée dans le module ne faisait pas rougir.
 
 | | module `billing` monté | module coupé |
@@ -1674,11 +1670,10 @@ n'a pas de notifications, donc aucune connexion n'est ouverte pour l'apprendre.
 Ce qui le tient : `tests/marketing.test.ts`, cas « ne lit aucun compteur de
 notifications pour un visiteur sans session » — il **monte le module de force**
 et vérifie qu'il l'est avant de compter, parce que la première écriture de cette
-mesure tournait sous un registre réduit et restait verte quoi que le shell écrive
-(revue s32, F2). L'avatar est lu sous la même condition, une ligne plus haut ;
+mesure tournait sous un registre réduit et restait verte quoi que le shell écrive. L'avatar est lu sous la même condition, une ligne plus haut ;
 **aucune mesure ne le tient**, et cette phrase-ci ne prétend pas le contraire.
 
-**Un seul producteur ship** (revue s32, F5, autorisé par le propriétaire) :
+**Un seul producteur ship** (autorisé par le propriétaire) :
 `organizations` prévient les membres déjà présents quand quelqu'un rejoint leur
 organisation. Le module ne connaît pas les notifications — il reçoit `notify` au
 point de composition (`lib/organizations.ts`, import différé pour ne pas fermer
@@ -1733,18 +1728,17 @@ Deux configurations, et il faut en choisir une :
 La capture locale est un **opt-in, pas un repli**. En faire la conséquence
 automatique d'une clé absente rendait `{ok:true}` sur un email que personne ne
 recevrait, en production comme ailleurs, sans qu'aucun appelant puisse le
-distinguer d'un envoi réussi (revue de s06, F3).
+distinguer d'un envoi réussi.
 
 **L'exigence est celle de cette application, pas celle du dépôt.** Le schéma de
 `@repo/config` juge la forme des variables pour tout processus qui lit cet
 environnement ; il n'impose aucun mailer, sans quoi `pnpm db:migrate` — un
-conteneur muni du seul `DATABASE_URL` — ne s'exécuterait plus (revue de s06,
-G3). C'est ce qui monte un mailer qui exige un choix : `next.config.ts` au
+conteneur muni du seul `DATABASE_URL` — ne s'exécuterait plus. C'est ce qui monte un mailer qui exige un choix : `next.config.ts` au
 démarrage, `lib/mailer.ts` au montage. Le second n'est pas redondant : `getEnv`
 ne valide rien en phase de build ni sous `SKIP_ENV_VALIDATION`, et c'est aussi
 pourquoi la règle normalise elle-même les valeurs vides — sur ces chemins, le
 `RESEND_API_KEY=` que livre `.env.example` se lisait « clé renseignée » et la
-branche fournisseur l'emportait sur la capture demandée (revue de s06, G2).
+branche fournisseur l'emportait sur la capture demandée.
 
 Le montage fixe aussi le **budget d'attente** : deux essais de 4 s, recul
 compris, pour tenir sous les dix secondes d'une fonction serverless — aux
@@ -1766,7 +1760,7 @@ traverse au moins un package.
 Next réécrit ce fichier à chaque `dev` et à chaque `build`, avec un chemin qui
 change selon la commande (`.next/dev/types/…` contre `.next/types/…`, voir
 `next/dist/lib/typescript/writeAppTypeDeclarations.js`). Versionné, il salissait
-l'arbre après chaque build — c'était le finding N5 de la revue de s01, et il
+l'arbre après chaque build — c'était le finding d'une revue, et il
 rendait impossible le critère « après `pnpm build`, `git status` reste propre ».
 
 Il est donc dans `.gitignore`. Sur un clone vierge, avant tout `dev` ou `build`,

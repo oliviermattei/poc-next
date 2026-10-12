@@ -75,7 +75,7 @@ export interface ProfileContext {
 }
 
 /**
- * Zod à la frontière, comme partout (`AGENTS.md`, « Rules that bite ») : le
+ * Zod à la frontière, comme partout (`docs/security.md` §4) : le
  * profil est un fichier que le propriétaire édite, donc une entrée.
  */
 const profileSchema = z.object({
@@ -480,7 +480,7 @@ export function readSuiteCounts(report: unknown): SuiteCounts {
  * sort en 0.
  *
  * Il n'attrape **pas** la panne la plus probable de cette recette — une base
- * injoignable. Mesuré sur ce dépôt (revue de s26) : `DATABASE_URL` sur un port
+ * injoignable. Mesuré sur ce dépôt : `DATABASE_URL` sur un port
  * mort rend 1 505 cas exécutés, soit cinq **au-dessus** de ce plancher. C'est
  * `MAX_SKIPPED_SHARE` qui refuse ce cas, avec ses 339 cas sautés, et
  * `tests/minimal-profile.test.ts` épingle exactement cette répartition — sans
@@ -610,8 +610,7 @@ export const sweepReport = (sweep: ProfileSweep): string =>
  * sous `test-results/`.
  *
  * Playwright écrit ses traces dans le clone temporaire, que la recette
- * détruit : elle les recopie donc ici avant de le supprimer. C'est le constat
- * F8 de la revue de s25, hérité plutôt que repayé — le job de CI téléversait un
+ * détruit : elle les recopie donc ici avant de le supprimer — le job de CI téléversait un
  * dossier qui n'avait jamais existé à la racine.
  *
  * Hors de `test-results/`, qui est l'`outputDir` par défaut de Playwright et

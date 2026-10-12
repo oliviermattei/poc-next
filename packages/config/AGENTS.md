@@ -31,7 +31,7 @@ variable optionnelle dans `.env.example` : déclarée, documentée, laissée vid
 `parseEnv` normalise donc les valeurs vides en absence, **à la source** et pour
 toutes les clés — sans quoi `optional()`, qui n'accepte que `undefined`,
 refuserait la chaîne vide et empêcherait de démarrer un dépôt fraîchement cloné
-dont on a suivi l'instruction de `.env.example` (revue de s06, F1). C'est
+dont on a suivi l'instruction de `.env.example`. C'est
 `tests/env-example.test.ts` qui l'attrape : il charge `.env.example` par le vrai
 chargeur et le soumet au vrai schéma. Inventorier des noms de clés ne le voyait
 pas.

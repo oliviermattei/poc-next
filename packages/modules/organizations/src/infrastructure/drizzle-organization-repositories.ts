@@ -118,7 +118,7 @@ export function createDrizzleOrganizationRepository(
    * `select`, `from` et `execute` sont refusés dans tout le module hors de
    * `scoped-reads.ts` : ce fichier ne peut plus lire une table, il ne peut que
    * déléguer à une porte dont chaque fonction exige le propriétaire. C'est le
-   * constat F2 de la revue de s15 — une garde qu'aucune commande ne tenait.
+   * constat d'une revue — une garde qu'aucune commande ne tenait.
    */
   const reads = createScopedReads(db)
 
@@ -433,7 +433,7 @@ export function createDrizzleOrganizationRepository(
         // ne désigne donc plus rien — il meurt exactement comme lorsque le
         // renvoi tournait l'empreinte en place. Le prédicat porte
         // l'organisation autorisée : l'invitation d'une autre organisation
-        // n'est jamais touchée (revue de s16, F3).
+        // n'est jamais touchée.
         const [superseded] = await transaction
           .update(organizationInvitation)
           .set({
@@ -569,8 +569,7 @@ export function createDrizzleOrganizationRepository(
       // **Le prédicat seul ne suffisait pas**, et c'est mesuré : sous
       // l'isolation par défaut de PostgreSQL, deux retraits en vol évaluent
       // chacun la sous-requête sur l'état d'avant l'autre. Dix courses sur dix
-      // laissaient l'organisation sans aucun membre, depuis une seule session
-      // (revue de s16, F1). Le verrou consultatif sérialise les retraits de
+      // laissaient l'organisation sans aucun membre, depuis une seule session. Le verrou consultatif sérialise les retraits de
       // **cette** organisation : le second réévalue son prédicat sur l'état
       // commis par le premier, et refuse. Aucune table n'est lue pour autant.
       return await db.transaction(async (transaction) => {

@@ -46,7 +46,7 @@ describe('la normalisation d’un montant en montant mensuel', () => {
    * - `pnpm test` — cette boucle : un intervalle non classé rend `NaN`, et la
    *   comparaison ci-dessous rougit en le nommant.
    *
-   * La garantie écrite ici avant la revue de s38 n'était tenue par ni l'une ni
+   * La garantie écrite ici avant une revue n'était tenue par ni l'une ni
    * l'autre : ajouter `'quarter'` laissait la suite **entière** verte, et tout
    * ce qui n'était pas annuel passait pour du mensuel.
    */

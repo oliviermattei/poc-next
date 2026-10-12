@@ -14,7 +14,7 @@ import { authDataExportRequest } from '../schema'
  * Ce fichier porte **la revendication**, c'est-à-dire le critère 7 : « une
  * demande déjà en cours n'en déclenche pas une seconde ». Ce n'est pas une
  * lecture suivie d'une écriture — deux lectures concurrentes se voient l'une
- * l'autre, et c'est ce que la revue de s34 a établi par mesure, au prix d'un
+ * l'autre, et c'est ce qu'une revue a établi par mesure, au prix d'un
  * constat critique. C'est une **transaction courte sous verrou consultatif**,
  * qui revendique ou refuse.
  */

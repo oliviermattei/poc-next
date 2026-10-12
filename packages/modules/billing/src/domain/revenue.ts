@@ -23,7 +23,7 @@ const MONTHS_PER_YEAR = 12
  * compile plus tant que personne n'a dit combien de mois il dure. Sans elle,
  * `interval === 'year' ? … : total` traitait en silence tout ce qui n'est pas
  * annuel comme mensuel : un trimestriel aurait été compté **trois fois trop
- * cher**, sans qu'aucune commande ne le voie (constat 2 de la revue de s38).
+ * cher**, sans qu'aucune commande ne le voie.
  *
  * La moitié qui tient à l'exécution est la boucle de `domain/revenue.test.ts` :
  * un intervalle non classé rend `undefined` mois, donc `NaN`, et
@@ -175,8 +175,7 @@ export interface RevenueStateCount {
  * **Les états qu'un abonnement stocké peut porter** — tous, y compris ceux que
  * personne n'a encore.
  *
- * L'écran rend cette liste **entière**, avec ses zéros (constat 3 de la revue de
- * s38) : ne rendre que les états observés faisait qu'une plateforme sans essai
+ * L'écran rend cette liste **entière**, avec ses zéros : ne rendre que les états observés faisait qu'une plateforme sans essai
  * en cours n'affichait **aucun** chiffre d'essai, et le lecteur ne pouvait pas
  * distinguer « 0 » de « non suivi » — sur un écran dont toute la thèse est de
  * dire ce que valent ses nombres. Le critère 1 de la story demande d'ailleurs

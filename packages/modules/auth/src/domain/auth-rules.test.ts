@@ -144,7 +144,7 @@ describe('destination de retour après authentification', () => {
 
   it('refuse un caractère de contrôle ou un blanc, que le navigateur retire avant de lire //', () => {
     // `/\t/evil.test` : Chromium retire la tabulation de l'en-tête `Location`
-    // et navigue vers `//evil.test` (revue s61, C1). CR et LF font en plus
+    // et navigue vers `//evil.test`. CR et LF font en plus
     // lever `ERR_INVALID_CHAR` à l'écriture de l'en-tête — une 500.
     expect(safeRedirectPath('/\t/evil.test', '/app')).toBe('/app')
     expect(safeRedirectPath('/\n/evil.test', '/app')).toBe('/app')
@@ -160,7 +160,7 @@ describe('destination de retour après authentification', () => {
     expect(safeRedirectPath('account', '/')).toBe('/')
   })
 
-  it('refuse un segment point qui, résolu, laisse une destination protocole-relative (revue s67, C1)', () => {
+  it('refuse un segment point qui, résolu, laisse une destination protocole-relative', () => {
     // Le navigateur — et `new URL` — résolvent `.`, `..` et leurs formes
     // encodées : `/.//evil.test` devient `//evil.test` une fois servi.
     for (const hostile of [
@@ -599,7 +599,7 @@ describe('empreinte d’un code de secours', () => {
   })
 
   it('hache la saisie **sans condition** : une empreinte soumise comme code est hachée à son tour', () => {
-    // Défaut corrigé en s13 : la fonction
+    // Défaut corrigé : la fonction
     // reconnaissait une empreinte et la rendait inchangée, si bien qu'une
     // valeur lue en base et postée sur la route valait le code lui-même. Ce
     // qui vient du monde extérieur n'a pas le droit de se reconnaître.

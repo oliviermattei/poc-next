@@ -47,7 +47,7 @@ export const rateLimitWindow = pgTable(
      * est close — il ne saurait que la comparer à un instant qu'on lui donne, et
      * effacerait les seaux longs **encore ouverts** des autres routes.
      *
-     * C'est exactement le défaut que la revue de s28 a mesuré (constat C1) :
+     * C'est exactement le défaut qu'une revue a mesuré (constat C1) :
      * `marketing` balayant sa fenêtre de dix minutes remettait à zéro les seaux
      * horaires de la réinitialisation de mot de passe, du magic link et de
      * l'invitation — déclenchable à distance par un POST vide, toutes les dix

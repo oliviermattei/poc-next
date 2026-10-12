@@ -9,7 +9,7 @@ import { applicationOrigin, type Env } from '@repo/config'
  *
  * L'exigence appartient à ce qui monte l'authentification, pas au schéma
  * d'environnement : `pnpm db:migrate` ne signe aucun cookie et doit s'exécuter
- * avec le seul `DATABASE_URL` (revue de s06, G3).
+ * avec le seul `DATABASE_URL`.
  */
 export interface AuthConfig {
   readonly secret: string

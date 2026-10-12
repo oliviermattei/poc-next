@@ -65,7 +65,7 @@ export function MarketingFooter({ site, intl, extraLinks = [] }: MarketingFooter
    *
    * La condition portait sur les seuls documents légaux, si bien qu'un projet
    * qui les retirait servait `/contact`, l'annonçait dans son plan de site, et
-   * n'y menait de nulle part (constat F9 de la revue de s11). Elle porte
+   * n'y menait de nulle part. Elle porte
    * désormais sur les liens eux-mêmes : le pied de page disparaît quand il n'a
    * rien à dire, pas quand une de ses deux sources est vide.
    *

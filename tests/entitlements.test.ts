@@ -12,8 +12,7 @@ import { featureGates as declared } from '../config/gating'
  * critère de la story, éprouvé au **point de composition** où il vit.
  *
  * C'est ici que le défaut habite, et la leçon est écrite dans
- * `packages/modules/billing/AGENTS.md` : les deux constats majeurs de la
- * seconde revue de s19 — la permission et l'adresse — ont été « prouvés » par
+ * `packages/modules/billing/AGENTS.md` : les deux constats majeurs d'une revue — la permission et l'adresse — ont été « prouvés » par
  * une mutation posée dans le module, laquelle laissait 1 320 cas sur 1 320 au
  * vert parce que le vrai défaut vivait dans `apps/web/lib/billing.ts`. La règle
  * est donc écrite dans une fabrique, injectable, et le fichier mesure **aussi**
@@ -139,7 +138,7 @@ describe('ce à quoi un compte a droit', () => {
  * **L'objet réellement composé**, et pas seulement la règle.
  *
  * Une fabrique éprouvée dont personne ne branche le résultat est une règle
- * morte : c'est le défaut mesuré en s09 (`buildRegistry({ locales })` oublié au
+ * morte : c'est le défaut mesuré (`buildRegistry({ locales })` oublié au
  * point de composition) et deux fois en s19.
  */
 describe('le point de composition de l’application', () => {

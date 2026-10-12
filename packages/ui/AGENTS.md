@@ -17,7 +17,7 @@ position d'annotation (`import('@radix-ui/…').P`) et le paquet unifié
 `radix-ui` — croisés avec les neuf emplacements soumis à la garde (`apps/**`,
 `packages/**`, `packages/config/src`, `packages/modules/**`, `tooling/**`,
 `config/`, `scripts/`, `generated/`, les fichiers de premier niveau), en `.ts`,
-`.tsx`, `.mts`, `.cts`, `.mjs` et `.jsx`. La revue de s08 a mesuré que deux de
+`.tsx`, `.mts`, `.cts`, `.mjs` et `.jsx`. Une revue a mesuré que deux de
 ces emplacements pouvaient être vidés sans qu'un test ne bouge, que l'écriture en
 position d'annotation passait partout, et que `generated/` — les barils produits
 par `pnpm db:generate`, versionnés et compilés — n'était dans aucune portée :
@@ -40,7 +40,7 @@ seule langue, y compris dans les projets qui n'ont pas activé le module `i18n`.
 Ce n'est pas une intention : `tests/i18n.test.ts` balaie les `.tsx` de
 `packages/ui/src` comme ceux de `apps/web/app`, et **un mot suffit** dans une
 position affichée. Le « Fermer » du bouton de fermeture de `Sheet` a vécu ici
-jusqu'à la revue de s09, invisible parce que le détecteur d'alors demandait deux
+jusqu'à une revue, invisible parce que le détecteur d'alors demandait deux
 mots ou un accent.
 
 ## Les tokens
@@ -236,7 +236,7 @@ comportement de ce package, pas une option d'appelant. Il rendait **une ancre pa
 page** — écrit pour le blog, qui en compte une poignée. Les listes de plateforme
 du back-office paginent un domaine qui autorise 10 000 pages : la même `<nav>`
 aurait porté 10 000 ancres, plusieurs centaines de kilo-octets de HTML et un
-ordre de tabulation impraticable (revue de s37b2, constat F4). `paginationWindow`
+ordre de tabulation impraticable. `paginationWindow`
 rend au plus `PAGINATION_WINDOW` pages (sept), centrées sur la page courante, et
 la fenêtre **glisse** aux extrémités plutôt que de rétrécir. En dessous de sept
 pages, le rendu est identique à celui d'avant : aucun appelant existant ne
@@ -299,8 +299,7 @@ de soumission** d'un `<form method="post">`. Basculer d'organisation change un
 qu'une porte ouverte à la requête intersite.
 
 **Le menu a besoin de JavaScript pour s'ouvrir**, et c'est structurel : Radix
-monte son contenu dans un portail à l'ouverture, qui est un état React. La revue
-de s15 a relevé qu'un visiteur sans script voyait donc ses organisations sans
+monte son contenu dans un portail à l'ouverture, qui est un état React. Une revue a relevé qu'un visiteur sans script voyait donc ses organisations sans
 pouvoir en changer. Le repli est un `<noscript>` **dans le même formulaire** :
 les mêmes options en boutons de soumission natifs, l'organisation courante
 exclue puisque le déclencheur la porte déjà — deux boutons du même nom seraient
@@ -370,7 +369,7 @@ alternatif d'une image, et tout écran qu'aucun parcours ne visite.
   fait autorité ;
 - `tests/lint-rules.test.ts` : la frontière avec Radix, et la règle qui exige un
   `method` sur tout `<form>` — elle vise aussi ce package, où vivront les
-  composants `Form` du design system (revue de s08, C1) ;
+  composants `Form` du design system ;
 - `e2e/app-shell.spec.ts` : le thème, la navigation et le rendu sous 400 px dans
   un vrai navigateur ;
 - `tests/design-system.test.ts` encore, groupe « la fenêtre de pagination » :

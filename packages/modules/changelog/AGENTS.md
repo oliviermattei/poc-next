@@ -29,7 +29,7 @@ le tri resterait verte jusqu'à la dixième version du produit.
 pas.** À l'intérieur d'une version comme entre les versions, c'est
 `changelogReleases` qui ordonne ; `ChangelogList` rend `release.entries` tel
 quel. Une seconde clé de tri à l'écran (par catégorie, par exemple) contredirait
-le domaine sans qu'aucun test du domaine ne bouge — c'est ce que la revue de s31
+le domaine sans qu'aucun test du domaine ne bouge — c'est ce qu'une revue
 a mesuré sur la version 1.1, dont l'entrée du 18 février s'affichait au-dessus de
 celle du 20. `tests/changelog.test.ts` compare désormais les ancres rendues à
 l'ordre attendu.
@@ -87,7 +87,7 @@ est une ligne dans l'énumération **et** une clé dans chaque catalogue.
 **La commande qui échoue est `pnpm test`, sur `tests/changelog.test.ts`** (« le
 catalogue de traductions du module »), qui consomme `changelogMessageKeys()`.
 **Pas `tests/i18n.test.ts`**, contrairement à ce que ce fichier a affirmé
-jusqu'à la revue de s31 : son balayage est statique et ne voit pas une clé
+jusqu'à une revue : son balayage est statique et ne voit pas une clé
 composée (`category.<id>`) — mesuré, une cinquième catégorie sans traduction y
 laissait 102 cas verts. Une garantie sans commande derrière n'est pas une règle.
 
@@ -103,5 +103,5 @@ la page et le catalogue de traductions — vit dans `tests/changelog.test.ts`.
 `tests/rendered-text.test.ts` construit son attendu en appelant
 `changelogListView` — c'est légitime pour ce qu'il fait (aucun texte affiché hors
 catalogue), et c'est précisément pourquoi il ne peut pas servir de filet au
-filtre de langue : son attente suit la mutation. La revue de s31 l'a mesuré,
+filtre de langue : son attente suit la mutation. Une revue l'a mesuré,
 2610 cas restant verts.

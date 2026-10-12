@@ -87,7 +87,7 @@ export interface StorageRouteService {
    * **une** résolution de propriétaire, et celle-ci vit dans l'application. Les
    * trois routes d'écriture passent par elle, et l'affichage aussi
    * (`avatarOfUser`) : c'est ce qui interdit à l'écran de lire un périmètre que
-   * le téléversement n'écrit pas (constat F1 de la revue de s18).
+   * le téléversement n'écrit pas.
    */
   readonly ownerOf: (userId: string) => Promise<FileOwner>
 }

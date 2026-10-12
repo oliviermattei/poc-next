@@ -53,8 +53,7 @@ export const ORGANIZATION_ACTION = {
    * qu'elle doit vivre : la matrice rôle × action s'écrit **une fois**, et ce
    * module est celui qui possède les rôles. La ranger ailleurs — dans le module
    * `billing`, ou pire dans le point de composition de l'application — la
-   * ferait exister à deux endroits, et le second serait celui qui ment (revue
-   * de s17, F4).
+   * ferait exister à deux endroits, et le second serait celui qui ment.
    *
    * Ce module n'importe pas `billing` pour autant : c'est une chaîne, pas une
    * dépendance. Le module `billing` reçoit un **prédicat** de son point de
@@ -82,7 +81,7 @@ export const ORGANIZATION_ACTION = {
    * facturation : la matrice rôle × action s'écrit **une fois**, et ce module
    * est celui qui possède les rôles. L'écrire dans le point de composition —
    * ou dans `auth`, qui sert la route — la ferait exister à deux endroits, et
-   * le second serait celui qui ment (revue de s17, F4).
+   * le second serait celui qui ment.
    *
    * `admin` ne l'a pas : l'archive contient les données de **tous** les
    * membres, y compris celles d'un `owner`, et le critère 5 dit « réservé à un
@@ -138,7 +137,7 @@ const MATRIX: Readonly<Record<OrganizationRole, readonly OrganizationAction[]>> 
     ORGANIZATION_ACTION.revokeInvitation,
     ORGANIZATION_ACTION.removeMember,
     // La facturation : un `admin` administre l'organisation, ce qui inclut ce
-    // qu'elle paie. Ce que le critère de s17 lui refuse est la distribution des
+    // qu'elle paie. Ce qui lui est refusé est la distribution des
     // rôles, pas la gestion courante.
     ORGANIZATION_ACTION.manageBilling,
   ],
@@ -155,8 +154,7 @@ const MATRIX: Readonly<Record<OrganizationRole, readonly OrganizationAction[]>> 
  * `organization_member.role` est un `text not null` **sans contrainte de
  * valeur**, et ce rôle est relu en base à chaque requête. Sans le `?? []`,
  * `MATRIX[role]` valait `undefined` et la fonction levait — un 500 au lieu d'un
- * refus, sur la fonction que s18, s19, s24, s33 et s35 appelleront (revue de
- * s17, F3). Un défaut se ferme, il ne s'ouvre pas.
+ * refus, sur la fonction que s18, s19, s24, s33 et s35 appelleront. Un défaut se ferme, il ne s'ouvre pas.
  */
 export function allows(role: OrganizationRole | null, action: OrganizationAction): boolean {
   return role === null || (MATRIX[role] ?? []).includes(action)
@@ -215,7 +213,7 @@ export function removalPermission(actor: MemberRole, target: MemberRole): boolea
  * **Un `admin` ne retire qu'un `member`** : ni un `owner`, ni un autre `admin`.
  * Le critère 3 dit « inviter et retirer des *members* », et deux administrateurs
  * qui peuvent se retirer l'un l'autre forment une prise de pouvoir latérale que
- * personne n'a décidée (revue de s17, arbitrage 2). Se retirer soi-même reste
+ * personne n'a décidée (ADR 030). Se retirer soi-même reste
  * permis — c'est le cas au-dessus, et il vient en premier.
  */
 export function unremovableRolesFor(
@@ -266,7 +264,7 @@ export function assignableRolesFor(
  * sa variante d'affichage en dépendent. Elle est ici, comme la matrice, parce
  * qu'un `role === 'owner'` écrit dans un `.tsx` ou dans les clés de traduction
  * ferait exister la règle à deux endroits — c'est ce qui s'était produit, trois
- * fois, dans le commit qui l'interdisait (revue de s17, F4). `pnpm lint` refuse
+ * fois, dans le commit qui l'interdisait. `pnpm lint` refuse
  * désormais la comparaison partout ailleurs dans le module.
  */
 export const grantsOwnership = (role: OrganizationRole): boolean => role === 'owner'

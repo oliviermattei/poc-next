@@ -16,7 +16,7 @@ import type { CheckoutThrottle } from '../application/ports'
  *
  * **Ce que ce module garde** : sa règle des deux seaux, dont le seau global qui
  * **dégrade** — au-delà du seuil, le tunnel anonyme n'est plus ouvert et le
- * visiteur repart par la connexion (constat F3 de la revue de s24). Le
+ * visiteur repart par la connexion. Le
  * répartiteur ne connaît que « autorisé » et « 429 » ; il ne sait pas exprimer
  * cette dégradation. Seul le **compteur** a convergé.
  *

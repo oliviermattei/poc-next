@@ -79,7 +79,7 @@ afterEach(() => {
 /**
  * **Le mailer est choisi par la présence d'une clé, jamais par `NODE_ENV`.**
  *
- * C'est le piège nommé par la story et déjà relevé dans la recherche de s01 :
+ * C'est un piège connu :
  * un mailer conditionné par l'environnement est intestable, et se trompera un
  * jour d'environnement — en envoyant de vrais emails depuis une suite de tests,
  * ou en écrivant sur disque en production.
@@ -132,8 +132,7 @@ describe('sélection du mailer applicatif', () => {
     // l'environnement **sans le valider** : phase de build et
     // `SKIP_ENV_VALIDATION`. `withoutBlanks` vit dans `parseEnv`, que ces
     // chemins sautent — `RESEND_API_KEY=` y vaut `''`, donc « renseignée », et
-    // la branche fournisseur l'emportait sur la capture explicitement demandée
-    // (revue de s06, G2). La décision doit être celle du schéma partout.
+    // la branche fournisseur l'emportait sur la capture explicitement demandée. La décision doit être celle du schéma partout.
     const directory = await capturedIn()
     const network = stubNetwork()
 

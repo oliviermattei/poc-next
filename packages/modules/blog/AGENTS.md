@@ -110,7 +110,7 @@ n'est pas un oubli : un squelette suppose une frontière `Suspense`, donc un
 **200** à un slug inconnu au lieu de 404 — la coquille part avant que la page
 n'ait décidé. Mesuré par `e2e/blog.spec.ts:132`, et détaillé dans
 `apps/web/AGENTS.md`. Le refus prime sur le confort ; le manque est signalé au
-design system plutôt que comblé ici (constat F3 de la revue de s29).
+design system plutôt que comblé ici.
 
 ## Tests
 

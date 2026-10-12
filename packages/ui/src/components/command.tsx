@@ -50,7 +50,7 @@ import { cn } from '../lib/cn'
  * l'ouverture, donc dans le DOM du navigateur, où React écrit par le CSSOM :
  * aucun attribut n'est analysé dans le HTML servi. `CommandDialog` est la
  * forme qui tient cette contrainte ; rendre `Command` dans le flux d'une page
- * servie la casserait. Mutation rejouée à la correction de la revue de s54 :
+ * servie la casserait. Mutation rejouée à la correction d'une revue :
  * **2 rouges sur 2 723 cas** — `tests/docs.test.ts`, qui refuse l'attribut
  * `style`, et `tests/rendered-text.test.ts`, qui voit alors passer un texte
  * composé par la palette. Le premier est le seul des deux qui juge *cet*

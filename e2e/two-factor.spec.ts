@@ -62,7 +62,7 @@ const base32Decode = (input: string): Buffer => {
  * maintenant.
  *
  * Le décalage n'est pas une commodité : **un compteur ne sert qu'une fois**
- * (garde de rejeu, revue s13 C3). Le code qui confirme l'enrôlement brûle son
+ * (garde de rejeu). Le code qui confirme l'enrôlement brûle son
  * compteur, et la connexion qui suit — quelques secondes plus tard, donc dans
  * la même période — doit présenter le suivant. La fenêtre de vérification vaut
  * ±1 période, il est donc accepté.
@@ -284,7 +284,7 @@ test('activation, connexion par code, puis connexion par code de secours', async
   // secondes, et le code que l'application d'authentification affiche encore.
   // Le code est **juste** ; ce qui le refuse est son compteur, déjà pris.
   // L'écran doit le dire — « ce code n'est pas valide » enverrait chercher une
-  // compromission qui n'existe pas (revue s13, C12/C13/C14). Le défi est
+  // compromission qui n'existe pas. Le défi est
   // consommé par cette tentative, elle vient donc en dernier.
   await page.getByLabel('Code à six chiffres').fill(signInCode)
   await press(page, 'Vérifier', async () => {

@@ -5,8 +5,7 @@ import { EMAIL_LOCAL_CAPTURE_ENABLED, type Env } from '@repo/config'
  *
  * Elle vit ici, et pas dans le schéma d'environnement, parce qu'elle ne
  * concerne que les processus qui montent un mailer : `pnpm db:migrate`
- * n'envoie aucun email et doit s'exécuter avec le seul `DATABASE_URL` (revue
- * de s06, G3). Le schéma juge la **forme** des variables, pour tout le monde ;
+ * n'envoie aucun email et doit s'exécuter avec le seul `DATABASE_URL`. Le schéma juge la **forme** des variables, pour tout le monde ;
  * l'exigence « il faut un mailer » est portée par cette fonction, appliquée à
  * deux endroits :
  *
@@ -33,7 +32,7 @@ export type MailerConfig =
  * lesquels cette garde existe. Sans cette normalisation, le `RESEND_API_KEY=`
  * vide que livre `.env.example` s'y lit « clé renseignée » : la branche
  * fournisseur l'emporterait sur la capture explicitement demandée, et la
- * décision ne serait pas celle du schéma (revue de s06, G2).
+ * décision ne serait pas celle du schéma.
  */
 const declared = (value: string | undefined): string | undefined => {
   const trimmed = value?.trim()
@@ -47,7 +46,7 @@ const declared = (value: string | undefined): string | undefined => {
  * La capture locale est un **opt-in, pas un repli** : en faire la conséquence
  * automatique d'une clé absente rendait `{ok:true}` sur un email que personne
  * ne recevrait, en production comme ailleurs, sans qu'aucun appelant puisse le
- * distinguer d'un envoi réussi (revue de s06, F3).
+ * distinguer d'un envoi réussi.
  */
 export function resolveMailerConfig(env: Env): MailerConfig {
   const apiKey = declared(env.RESEND_API_KEY)

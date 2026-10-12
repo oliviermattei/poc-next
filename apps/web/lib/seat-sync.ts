@@ -7,8 +7,7 @@ import type { SeatSync, SeatSyncVerdict } from '@repo/module-organizations'
  * l'écriture qui l'a changée soit validée** (s23, ADR 046) — la règle qui
  * décide, isolée de ce qui la construit, comme `lib/billing-permission.ts`.
  *
- * Elle est ici, et pas dans le point de composition, pour la raison que la
- * revue de s19 a mesurée deux fois : une règle écrite dans
+ * Elle est ici, et pas dans le point de composition, pour la raison qu'une revue a mesurée deux fois : une règle écrite dans
  * `lib/organizations.ts` ne peut être neutralisée par aucun test, parce que
  * rien ne peut la construire à côté. `canManage` ramené à `() => true` y
  * laissait 1 320 cas sur 1 320 au vert. Ici, `tests/billing.test.ts` la branche

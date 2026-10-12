@@ -142,7 +142,7 @@ export type PaintedRing = {
  * d'un `canvas`, c'est-à-dire du convertisseur du navigateur, et une couleur
  * qu'il ne saurait pas repeindre **arrête** la mesure.
  *
- * **Deux pièges, tous deux mesurés en s57 sur Chromium 151** :
+ * **Deux pièges, tous deux mesurés sur Chromium 151** :
  *
  * 1. `box-shadow` calculé porte **cinq** calques — Tailwind v4 empile
  *    `--tw-ring-offset-shadow`, `--tw-ring-shadow`, `--tw-shadow`… — et quatre

@@ -52,9 +52,8 @@ La règle de lint n'est **pas** élargie.
   vit aussi dans `presentation/`, et il appellerait un tiers depuis le serveur
   sans délai d'attente. Une exception par couche rend la garde fausse là où elle
   compte, pour un cas qu'elle ne visait pas. Le dépôt s'est déjà fait prendre
-  deux fois par des gardes élargies « pour faire marcher » (s07 à s09 : une
-  garde textuelle contournée par un accent grave, puis un balayage élargi au
-  lieu d'inverser le levier).
+  deux fois par des gardes élargies « pour faire marcher » (modes d'échec 4 et
+  13 de l'état du pipeline, dans l'historique git avant ADR 0082).
 - **Autoriser `fetch` quand l'URL est relative** — rejeté. Une règle de lint ne
   lit pas la valeur d'une expression : elle verrait `fetch(action)` sans savoir
   ce que vaut `action`. Une garde qui accepte ce qu'elle ne peut pas vérifier
@@ -89,7 +88,7 @@ déjà depuis s07 avec `app/auth-form.tsx`, qui poste vers les routes du module
 l'installer demande de fournir son composant côté application. La propriété est
 **obligatoire** (`newsletterForm: ReactNode`, `form: ReactNode`) et non
 facultative, précisément pour que l'oubli soit une erreur de compilation et non
-une section vide à l'exécution — c'est un mode d'échec déjà rencontré en s09 :
+une section vide à l'exécution — c'est le mode d'échec n°9 de l'état du pipeline (historique git, avant ADR 0082),
 un paramètre facultatif à repli silencieux.
 
 **Ce qu'il faut surveiller.** Trois modules à venir (s42, s43, s44) porteront des

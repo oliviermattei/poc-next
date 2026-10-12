@@ -47,8 +47,7 @@ export interface IntermittentCase {
    * Il rend la bascule de `corrected` exécutable. Sans lui, une entrée pouvait
    * rester `corrected: false` en désignant le fichier même où le correctif
    * venait d'être posé — la suite restait verte sur une entrée fausse, dans le
-   * fichier dont le préambule dit « la liste est donc la source » (constat de
-   * la seconde revue de s34).
+   * fichier dont le préambule dit « la liste est donc la source ».
    *
    * Facultatif, et ce n'est pas un assouplissement : tous les correctifs ne
    * laissent pas de trace textuelle — un délai relevé, un ordre changé. Une clé
@@ -279,7 +278,7 @@ export const INTERMITTENT_CASES: readonly IntermittentCase[] = [
     id: 'blog/slug-inconnu',
     file: 'e2e/blog.spec.ts',
     witness: 'un article qui n’existe pas répond 404, sans rien annoncer',
-    regime: 'Playwright — 1 rouge en revue de s53, vert au rejeu isolé',
+    regime: 'Playwright — 1 rouge en revue, vert au rejeu isolé',
     cause:
       '**Non établie.** `read ECONNRESET` sur un `request.get`. Même symptôme et même famille ' +
       'que `health/sonde` — deux GET simples émis par le même pool de connexions persistantes ' +
@@ -320,7 +319,7 @@ export const INTERMITTENT_CASES: readonly IntermittentCase[] = [
     id: 'auth/sessions-au-changement-d-email',
     file: 'tests/auth.test.ts',
     witness: 'révoque les autres sessions au changement d’email, une fois la nouvelle adresse confirmée',
-    regime: 'inconnu — aucun relevé dans les documents de la story (issue #169)',
+    regime: 'inconnu — aucun relevé (issue #169)',
     cause:
       '**Non établie, et le symptôme lui-même est introuvable.** Le plan le nomme ' +
       '`tests/auth.test.ts:765`, ligne qui porte `expect(Number(rows?.count ?? -1)).toBe(0)`. ' +

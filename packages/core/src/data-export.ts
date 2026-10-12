@@ -23,8 +23,8 @@ import { exportModules, type ModuleRegistry } from './registry'
  *   l'archive dit **ce qui existe**, pas ce qu'il pèse en pièces jointes ;
  * - une empreinte par fichier aurait demandé de **lire chaque objet** au moment
  *   de l'export — autant d'appels réseau sortants dans une requête — et de
- *   changer la forme de l'export d'un module existant, ce que le plan de s35
- *   exclut explicitement. Le manifeste est donc celui que `storage` rend déjà.
+ *   changer la forme de l'export d'un module existant, ce qui est exclu
+ *   explicitement. Le manifeste est donc celui que `storage` rend déjà.
  *
  * **Ce que le manifeste ne permet donc pas** (ADR 062), et il faut le lire avant
  * de s'y fier : la personne constate qu'un fichier existe, son poids et sa date,

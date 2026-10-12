@@ -53,8 +53,7 @@ const BYTE_ORDER_MARK = '﻿'
  * caractères, et non la liste de ce qu'un tableur pourrait exécuter.
  *
  * Exportée pour que son test la **dérive** au lieu de la recopier : une amorce
- * ajoutée ici entre alors dans le balayage sans qu'on y pense (revue de s37c,
- * constat 4).
+ * ajoutée ici entre alors dans le balayage sans qu'on y pense.
  */
 export const FORMULA_STARTERS = ['=', '+', '-', '@', '\t', '\r'] as const
 

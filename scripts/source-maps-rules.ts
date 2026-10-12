@@ -131,7 +131,7 @@ export function planRelease(root: string, maps: readonly string[]): SourceMapPla
  * l'image de production **rejoue son propre `pnpm build`** (`.dockerignore`
  * exclut `.next` du contexte) : ses empreintes de chunks ne sont pas celles de
  * l'hôte, et envoyer celles de l'hôte livre des traces non symbolisées sans que
- * rien ne le dise — le constat 7 de la revue de s39. La recette extrait donc
+ * rien ne le dise. La recette extrait donc
  * `.next` de l'étape `builder` de l'image et le désigne par cette variable.
  *
  * Une valeur vide vaut absente, ici comme partout ailleurs dans ce dépôt.

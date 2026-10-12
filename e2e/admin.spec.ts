@@ -517,7 +517,7 @@ test('le back-office liste les inscriptions et en sert un CSV assaini', async ({
  * et il ne le prétend pas.
  *
  * Ce qu'il porte en propre, c'est ce qu'un appel direct à la fonction de page
- * ne peut pas voir — la distinction mesurée en s29 : **le statut réellement
+ * ne peut pas voir — la distinction mesurée : **le statut réellement
  * servi**, et le fait que le refus soit décidé *avant* la session. La requête
  * est donc **anonyme**, et c'est le sujet : un refus déplacé après la
  * résolution de session redirigerait ce visiteur vers la connexion, ce qui lui
@@ -631,8 +631,7 @@ const roleRoute = moduleRegistry.routes.find(
 const roleEntry = moduleRegistry.navigation.find((entry) => entry.protection.level === 'role')
 
 /**
- * **Le témoin d'anti-vacuité de l'absence mesurée plus bas** (revue de s56,
- * constat 3).
+ * **Le témoin d'anti-vacuité de l'absence mesurée plus bas**.
  *
  * `locator.all()` **n'attend pas** : une barre latérale qui n'aurait pas encore
  * rendu — ou pas du tout — renvoie `[]`, et « l'entrée réservée n'y est pas »

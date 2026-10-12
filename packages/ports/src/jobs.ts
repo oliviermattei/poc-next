@@ -47,7 +47,7 @@
  * `data` ne porte que des **références** — un identifiant d'abonnement, une
  * date. Jamais un secret, jamais une donnée personnelle : la charge utile est
  * écrite chez le fournisseur, relue à l'exécution, et souvent journalisée en
- * chemin. C'est la règle que la revue de s32 a posée pour tout ce qui est écrit
+ * chemin. C'est la règle qu'une revue a posée pour tout ce qui est écrit
  * puis relu, et `docs/security.md` §5 pour le reste. Les valeurs sont des
  * chaînes : un type ouvert invite à y mettre un objet métier entier.
  */
@@ -110,7 +110,7 @@ export const JOBS_ERROR_CODES = [
  * de confronter les deux classements — celui du socle et celui de l'adaptateur —
  * sur tous les codes, sans en recopier aucun. Sans cette liste, le compilateur
  * force chacun à **traiter** tous les codes, et rien ne les force à **dire la
- * même chose** (constat b de la seconde revue de s33).
+ * même chose**.
  */
 export type JobsErrorCode = (typeof JOBS_ERROR_CODES)[number]
 

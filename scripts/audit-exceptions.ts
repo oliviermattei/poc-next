@@ -79,8 +79,7 @@ export const AUDIT_ATTEMPTS = 3
  * `tsx` compris), donc le délai laisse quarante fois cette marge avant de
  * conclure à une panne. Il borne surtout le pire cas : trois tentatives coupées
  * à 60 s coûtent ~3 minutes, soit **moins** que les ~4 minutes qu'un
- * `ERR_SOCKET_TIMEOUT` mettait à tomber tout seul avant la reprise (mesure de la
- * recherche de s48). La reprise ne coûte donc pas plus cher que la panne qu'elle
+ * `ERR_SOCKET_TIMEOUT` mettait à tomber tout seul avant la reprise (mesuré). La reprise ne coûte donc pas plus cher que la panne qu'elle
  * remplace — c'est ce qui rend les deux tenables ensemble.
  */
 export const AUDIT_TIMEOUT_MS = 60_000

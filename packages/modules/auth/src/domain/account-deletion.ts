@@ -45,8 +45,8 @@ export const ACCOUNT_PURGE_JOB_LOCALE = 'locale'
  * Le corps d'une demande de suppression.
  *
  * **Ce que ce schéma tient, et ce qu'aucune commande ne mesure** — la
- * distinction est demandée par `AGENTS.md` (« ne pas affirmer ce que rien ne
- * vérifie »), et elle a été relevée en revue (constat F6) :
+ * distinction est demandée par `CODING_STANDARDS.md` (« Never claim
+ * exhaustiveness ») :
  *
  * - **la forme** est tenue et mesurée : un `confirmation` qui n'est pas une
  *   chaîne n'atteint jamais la comparaison, et la route le dit par un motif à

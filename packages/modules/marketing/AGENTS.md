@@ -106,7 +106,7 @@ routes étaient les premiers points d'entrée publics. **s28 l'a absorbé** (ADR
 - la **règle de ce module reste ici**, et c'est pour cela qu'elle n'a pas été
   supprimée : ses deux seaux ne portent pas le même verdict, et celui du
   formulaire entier **dégrade** — il suspend l'envoi sortant sans refuser la
-  soumission (constat F2 de la revue de s11). Le répartiteur ne connaît que
+  soumission. Le répartiteur ne connaît que
   « autorisé » et « 429 » : il ne sait pas exprimer une dégradation.
 
 **Ce qu'il ne faut pas faire ici** : supprimer `public_form_throttle` (voir le
@@ -120,7 +120,7 @@ le même verdict.
 | Seau | Dépassé, il… | Pourquoi |
 |---|---|---|
 | par **appelant** (`<forme>:client:<condensat>`) | **refuse** — 429 | un identifiant falsifié ne nuit qu'à lui-même ; le message rendu dit « depuis cette connexion », ce qui est vrai |
-| par **formulaire** (`<forme>:all`) | **dégrade** — la soumission passe, l'**envoi sortant** est suspendu | s'il refusait, l'en-tête falsifiable deviendrait un levier : quelques centaines de requêtes fermeraient les deux formulaires à tous les visiteurs pendant la fenêtre. C'est le constat F2 de la revue de s11, et c'était le cas dans la première écriture |
+| par **formulaire** (`<forme>:all`) | **dégrade** — la soumission passe, l'**envoi sortant** est suspendu | s'il refusait, l'en-tête falsifiable deviendrait un levier : quelques centaines de requêtes fermeraient les deux formulaires à tous les visiteurs pendant la fenêtre. C'était le cas dans la première écriture |
 
 Deux conséquences à ne pas défaire :
 

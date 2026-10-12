@@ -440,8 +440,7 @@ describe('le formulaire de contact', () => {
   })
 
   it('enregistre le message **avant** de l’envoyer, et le marque remis', async () => {
-    // Un message de contact reçu puis perdu est un message perdu : jusqu'à la
-    // revue de s11, un envoi en échec rendait 502 et ne laissait rien derrière
+    // Un message de contact reçu puis perdu est un message perdu : jusqu'à une revue, un envoi en échec rendait 502 et ne laissait rien derrière
     // lui (constat F8). Il est désormais en base avant l'appel au fournisseur.
     const bench = aBench()
 

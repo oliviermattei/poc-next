@@ -11,7 +11,7 @@ import { useEffect, useRef, type RefObject } from 'react'
  * `app/billing-actions.tsx` éteint le sien jusqu'à l'hydratation
  * (`use-hydrated.ts`), donc au moment où le navigateur cherche l'élément à
  * focaliser, il n'y a rien à focaliser — et rien ne repose le focus quand le
- * bouton se rallume. Mesuré à la revue de s22 : `document.activeElement` restait
+ * bouton se rallume. Mesuré à une revue : `document.activeElement` restait
  * `BODY` alors que trois textes affirmaient le contraire.
  *
  * Ce crochet ferme exactement cette fenêtre : il pose le focus **après**

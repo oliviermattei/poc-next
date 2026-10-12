@@ -117,7 +117,7 @@ export function createPublicFormsUseCases(
    * que ce soit d'autre. Les deux seaux étaient auparavant incrémentés
    * ensemble, si bien qu'une requête déjà refusée écrivait quand même sa ligne :
    * avec un identifiant falsifiable, c'était une croissance de table offerte à
-   * quiconque sait boucler (constat F1 de la revue de s11).
+   * quiconque sait boucler.
    *
    * Le seau du formulaire, lui, ne refuse jamais : il rend `degraded`, et
    * l'appelant suspend l'envoi sortant sans fermer la porte (constat F2).
@@ -227,7 +227,7 @@ export function createPublicFormsUseCases(
        * **Le message est enregistré avant d'être envoyé.**
        *
        * L'ordre est la propriété : un envoi qui échoue laisse alors une ligne
-       * sans date de remise, au lieu du néant que la revue de s11 a constaté
+       * sans date de remise, au lieu du néant qu'une revue a constaté
        * (F8). C'est aussi ce qui rend la dégradation ci-dessous acceptable —
        * suspendre l'envoi ne perd rien.
        */

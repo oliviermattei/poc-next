@@ -47,8 +47,11 @@ Ce qui appartient au projet reste, sans perte :
 - le harnais de tests et la référence des commandes (`docs/commands.md`) ;
 - le PRD et son cimetière, l'architecture, les `AGENTS.md` de paquet ;
 - les ADR, déplacées par `git mv` dans `docs/adr/` sur quatre chiffres, sans
-  changer leur contenu ni leur numéro : « ADR 069 » désigne toujours la même
-  décision. Le gabarit MADR est rangé avec elles (`docs/adr/template.md`) ;
+  changer leur numéro ni leur contenu — à une exception près : un renvoi vers
+  un fichier ou une commande de la méthode retirée est remplacé par une
+  formulation sans chemin, qui renvoie à l'historique git ; aucune raison,
+  option, décision ni conséquence ne change. « ADR 069 » désigne toujours la
+  même décision. Le gabarit MADR est rangé avec elles (`docs/adr/template.md`) ;
 - le CLI de modules (`pnpm ks`) et le serveur MCP, qui font partie du produit
   malgré leur nom.
 

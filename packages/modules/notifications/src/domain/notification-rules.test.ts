@@ -120,7 +120,7 @@ describe('la pagination du centre (critère 1)', () => {
   })
 })
 
-describe('les références de compte d’une charge utile (revue s32, R1)', () => {
+describe('les références de compte d’une charge utile', () => {
   it('remplace la référence par le nom, et laisse le reste intact', () => {
     const resolved = resolveActorReferences(
       { member: 'usr_ada', organization: 'Acme', rank: 3 },

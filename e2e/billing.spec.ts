@@ -395,7 +395,7 @@ test.describe('la facturation', () => {
    * s22 / ADR 045 — **l'offre reposée reprend le focus**, et il n'y a qu'un
    * endroit où cela s'observe : un vrai navigateur.
    *
-   * La revue de s22 a mesuré ici un `document.activeElement` resté sur `BODY`
+   * Une revue a mesuré ici un `document.activeElement` resté sur `BODY`
    * pendant que trois textes affirmaient le contraire — l'`autoFocus` de React
    * ne pose rien sur un bouton **désactivé** (il l'est jusqu'à l'hydratation) ni
    * sur un `<a>`. Le focus est donc posé par l'écran, après l'hydratation, et ce

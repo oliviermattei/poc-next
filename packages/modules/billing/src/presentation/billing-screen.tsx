@@ -239,8 +239,8 @@ export function BillingScreen({
           </CardContent>
         )}
         {/*
-          **Le portail n'est proposé que s'il y a un abonnement** (quatrième
-          critère de s20, ADR 038 §4). Ce qu'il sert — moyen de paiement,
+          **Le portail n'est proposé que s'il y a un abonnement** (ADR 038
+          §4). Ce qu'il sert — moyen de paiement,
           changement d'offre, résiliation — n'existe pas pour un achat unique ;
           l'historique des paiements, lui, est juste en dessous et vient de
           l'application.

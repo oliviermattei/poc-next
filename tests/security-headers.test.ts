@@ -160,7 +160,7 @@ describe('les sources tierces', () => {
     // ignorée : on prouve d'abord que le fichier est réellement lu.
     //
     // Les **sept** clés de `ContentSecurityPolicySources` sont exercées, une
-    // origine sentinelle par clé — la revue de s45 a trouvé que `frame-src`
+    // origine sentinelle par clé — une revue a trouvé que `frame-src`
     // était la seule à **remplacer** `'self'` par la source déclarée au lieu de
     // l'y ajouter, et aucun cas ne le voyait : seuls `script` et `connect`
     // étaient exercés. Déclarer l'iframe d'un captcha aurait alors coupé les
@@ -494,7 +494,7 @@ describe('les en-têtes réellement servis', () => {
     //
     // Les **quatre** exclusions de l'ancien motif
     // (`'/((?!api|_next|favicon.ico|.*\\..*).*)'`) sont reprises une à une, et
-    // c'est le sens du mot « identique » : la revue de s45 a mesuré que la
+    // c'est le sens du mot « identique » : une revue a mesuré que la
     // première version, qui ne cherchait le point que sur le **dernier**
     // segment et avait laissé tomber `_next`, redirigeait désormais
     // `/v1.2/page` et `/_next/quelque-chose` — deux formes que le motif

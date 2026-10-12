@@ -134,8 +134,7 @@ export function entitledOfferIds(
  * `null` quand elle n'a pas d'opinion.
  *
  * La réconciliation relit le fournisseur, qui fait foi (ADR 034 §3). Mais faire
- * foi n'est pas tout savoir, et cette fonction existe pour deux silences que la
- * revue de s20 a relevés, chacun ayant produit une écriture fausse :
+ * foi n'est pas tout savoir, et cette fonction existe pour deux silences qu'une revue a relevés, chacun ayant produit une écriture fausse :
  *
  * 1. **une charge introuvable n'est pas une charge non remboursée** (constat
  *    m1). `listPurchases` rend `chargedAmount: null` quand aucune charge ne

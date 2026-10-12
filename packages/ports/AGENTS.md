@@ -73,7 +73,7 @@ elles doivent être lues avant d'y toucher :
 
 - **son échec ne dégrade pas, il refuse.** C'est l'exception assumée à
   `docs/reliability.md` §2, écrite ici parce que la règle la plus proche du code
-  disait l'inverse (constat m1 de la troisième revue de s28). Le motif : ce
+  disait l'inverse. Le motif : ce
   « tiers » est notre propre base, et si elle est absente la connexion ne
   fonctionne pas davantage — les sessions y vivent. Refuser ne coûte donc aucune
   disponibilité réelle, alors que laisser passer ferait disparaître la protection

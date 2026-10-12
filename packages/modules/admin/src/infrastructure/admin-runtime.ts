@@ -98,7 +98,7 @@ export function configureAdmin(options: ConfigureAdminOptions): AdminService {
  * différence n'est pas cosmétique : le répartiteur prépare les services à
  * **chaque** requête, y compris celles qu'aucune route ne satisfait.
  * Construire aussitôt ouvrirait une connexion à la base pour répondre 404 sur
- * un chemin inconnu — mesuré en s15, `tests/module-off.test.ts` échouait sur
+ * un chemin inconnu — mesuré, `tests/module-off.test.ts` échouait sur
  * exactement ce cas.
  */
 export function provideAdmin(factory: () => ConfigureAdminOptions): void {

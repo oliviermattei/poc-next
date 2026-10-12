@@ -261,7 +261,7 @@ describe('critère 6 — aucun type déclaré n’appelle le mailer directement'
     // catalogue **par défaut**, qui décide. La première écriture de ce cas
     // construisait elle-même un `createEmailRenderer(moduleRegistry.emails)` :
     // élargir le catalogue par défaut du mailer — la régression exacte que le
-    // filet prétend empêcher — la laissait verte (revue s32, F1). Le catalogue
+    // filet prétend empêcher — la laissait verte. Le catalogue
     // n'est donc plus jamais construit ici ; il est **lu** là où l'application
     // le construit.
     const type = notificationTypes.types.find((candidate) => candidate.email !== null)
@@ -391,7 +391,7 @@ let organizationsOf: (userId: string) => readonly string[] = () => []
 
 /**
  * L'annuaire des noms affichables, tel que le point de composition le donne au
- * module (revue s32, R1).
+ * module.
  *
  * Ce qui est doublé est **l'annuaire**, pas la règle : la résolution est prouvée
  * pure dans `packages/modules/notifications/src/domain/notification-rules.test.ts`.
@@ -747,7 +747,7 @@ describe.skipIf(!databaseReachable)('les préférences, respectées à l’émis
 })
 
 describe.skipIf(!databaseReachable)(
-  'ce qui est stocké ne nomme personne (revue s32, R1)',
+  'ce qui est stocké ne nomme personne',
   () => {
     it('écrit une référence, pas une adresse, et l’effacement du compte nommé laisse la ligne lisible', async () => {
       // **Le défaut que ce cas ferme.** La ligne écrite est celle des **autres**
@@ -854,7 +854,7 @@ const countingQueriesOn = (
 }
 
 describe.skipIf(!databaseReachable)(
-  'le câblage de la résolution, au point de composition (revue s32, ronde 3)',
+  'le câblage de la résolution, au point de composition',
   () => {
     it('résout un compte par son nom, ignore un compte parti, et lit la base une seule fois', async () => {
       // **Ce cas ferme trois mutations restées vertes sur 2258** (R3-1, R3-3) :
@@ -876,7 +876,7 @@ describe.skipIf(!databaseReachable)(
       // **Le cas déclare l'intégralité de ce que `appAuth()` lit**, il n'en
       // hérite rien (précédent : `tests/admin.test.ts`, « un cas qui n'annonce
       // que sa variable ne passe que sur un poste dont le `.env` complète le
-      // reste », revue de s06, G1).
+      // reste »).
       //
       // Mesuré : sans ces lignes, le cas passait ici et **rougissait sur les
       // deux branches de la matrice de CI**, où le job n'apporte que
@@ -1276,8 +1276,7 @@ describe('l’écran du centre — ce qu’il montre et ce qu’il retire', () =
 
   it('n’affiche aucune pagination quand il n’y a qu’une page', () => {
     // **Ce que ce cas mesure est le garde de l'écran**, pas la sortie du
-    // composant. Rendre `Pagination` inconditionnellement le laissait vert
-    // (revue s32, F4) : à une seule page le composant n'émet que la page 1,
+    // composant. Rendre `Pagination` inconditionnellement le laissait vert : à une seule page le composant n'émet que la page 1,
     // donc « pas de `?page=2` » restait vrai pendant qu'une barre de navigation
     // vide s'affichait. Le témoin est donc le **nom accessible** de cette
     // barre — ce que le composant rend toujours, quel que soit le nombre de
@@ -1325,7 +1324,7 @@ describe('le câblage du point de composition', () => {
     //
     // **Le cas lui-même ne dépend d'aucune base** — c'est le nettoyage qui en
     // a besoin, et rien d'autre. Le garder sous `describe.skipIf` le faisait
-    // disparaître en silence sur un exécutant sans Postgres (revue s32), c'est-
+    // disparaître en silence sur un exécutant sans Postgres, c'est-
     // à-dire là où personne ne le verrait manquer.
     resetNotificationsService()
 

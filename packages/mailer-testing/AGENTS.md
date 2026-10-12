@@ -21,8 +21,8 @@ chaque test d'envoi de la mise en page des emails, et un template cassé ferait
 rougir des suites qui ne parlent pas d'emails. Le rendu est prouvé là où il vit,
 dans `@repo/emails`.
 
-**Ces outils sont injectés, jamais sélectionnés par `NODE_ENV`.** C'est le piège
-nommé par la story et par la recherche de s01 : un mailer choisi par
+**Ces outils sont injectés, jamais sélectionnés par `NODE_ENV`.** C'est un piège
+connu : un mailer choisi par
 l'environnement est intestable et se trompera un jour d'environnement. Le choix
 se fait au point de composition (`apps/web/lib/mailer.ts`), sur la
 **configuration** — une clé d'API pour envoyer, `EMAIL_LOCAL_CAPTURE=1` pour

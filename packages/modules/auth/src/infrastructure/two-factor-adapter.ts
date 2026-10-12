@@ -68,7 +68,7 @@ import type { AuthDatabase } from './drizzle-auth-repositories'
  * ensuite en Drizzle **sans repasser** par les `transformInput` /
  * `transformOutput` de `@better-auth/core` (`db/adapter/factory.mjs:719-769`).
  * Deux effets, tous deux mesurés inoffensifs sur le paquet installé, et c'est
- * la **quatrième** hypothèse de ce fichier (revue s13, C7) :
+ * la **quatrième** hypothèse de ce fichier :
  *
  * - aucun champ `onUpdate` n'est appliqué — le schéma du greffon
  *   (`plugins/two-factor/schema.mjs`) n'en déclare aucun, donc rien ne manque ;

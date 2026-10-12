@@ -206,8 +206,7 @@ export function createInngestJobs(options: InngestJobsOptions): {
          * d'événement » ; le registre, lui, condense déjà `<tâche>:<clé>`
          * précisément pour que deux tâches choisissant la même clé ne
          * s'annulent pas. Envoyer la clé nue faisait diverger les deux
-         * ceintures, la plus lâche étant celle du fournisseur (constat F6 de la
-         * revue de s33).
+         * ceintures, la plus lâche étant celle du fournisseur.
          */
         id: `${emission.job}:${emission.key}`,
         data: { key: emission.key, data: emission.data },

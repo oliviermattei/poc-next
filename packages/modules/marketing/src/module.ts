@@ -23,9 +23,8 @@ import { marketingSchema } from './schema'
  * qu'un visiteur voit.
  *
  * Les pages légales ne sont **pas** dans la navigation : leur point d'accès
- * déclaré est le pied de page (critère 2 de s10 ; constat F57 de la revue de
- * s36). Deux points d'accès concurrents pour le même document
- * divergeraient.
+ * déclaré est le pied de page. Deux points d'accès concurrents pour le même
+ * document divergeraient.
  */
 const marketingNavigation: readonly NavigationEntry[] = [
   {
@@ -112,8 +111,7 @@ export const marketingModule = defineModule({
    * inscription, et un message de contact sans expéditeur n'a plus de réponse
    * possible — dans les deux cas il ne resterait qu'une ligne inutile.
    *
-   * `contact_message` a été déclarée ici parce qu'elle est livrée : la revue de
-   * s11 a montré qu'un message perdu en cas d'échec d'envoi était un message
+   * `contact_message` a été déclarée ici parce qu'elle est livrée : une revue a montré qu'un message perdu en cas d'échec d'envoi était un message
    * perdu (constat F8). Une donnée personnelle stockée sans purge ni export
    * n'aurait pas dû être écrite ; ces clés existent pour cela.
    *

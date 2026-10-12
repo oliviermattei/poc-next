@@ -18,7 +18,7 @@ import { expect, type Locator, type Page } from '@playwright/test'
  *   d'après regarde l'ancienne page ou la nouvelle selon le hasard ;
  * - **le second clic rejoue un geste à usage unique.** `two-factor.spec.ts:142`
  *   confirme l'enrôlement avec un code TOTP ; le compteur est **brûlé** au
- *   premier envoi (garde de rejeu, revue s13 C3). Le reclic renvoie le même
+ *   premier envoi (garde de rejeu). Le reclic renvoie le même
  *   code, que le serveur refuse — et il le refuse dans un `role="alert"`, quand
  *   l'attente cherche un `role="status"`. La boucle ne peut plus aboutir : les
  *   dix reclics suivants consomment les 30 s du test, et l'échec rapporté est

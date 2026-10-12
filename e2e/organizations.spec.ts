@@ -402,7 +402,7 @@ test('promeut un membre, puis le rétrograde : l’écran et la route suivent', 
 })
 
 /**
- * **À 390 px, on doit lire quelle invitation on révoque** (revue de s16, F5).
+ * **À 390 px, on doit lire quelle invitation on révoque**.
  *
  * La mesure de la première livraison — débordement horizontal nul — était
  * exacte, et elle reste vraie ; elle ne mesurait simplement pas la lisibilité.
@@ -522,7 +522,7 @@ test('un lien d’invitation ouvert sans session propose de se connecter', async
 })
 
 /**
- * **La bascule sans JavaScript** (arbitrage 3 de la revue de s15).
+ * **La bascule sans JavaScript**.
  *
  * Le menu du sélecteur est portalisé : Radix ne monte son contenu qu'à
  * l'ouverture, et l'ouverture est un état React. Sans script, le déclencheur

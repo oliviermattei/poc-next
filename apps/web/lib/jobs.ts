@@ -143,8 +143,7 @@ const dispatch = async (
  * Ce que ce repli ajoute, c'est qu'il **borne son coût** — une seule
  * tentative, sans reprise et sans attente : la requête d'un
  * utilisateur n'a pas à payer trois tentatives et trente secondes de recul pour
- * une tâche que le fournisseur aurait reprise hors ligne. C'est la réserve que
- * la revue de s32 a posée sur sa boucle d'émission synchrone : un repli ne doit
+ * une tâche que le fournisseur aurait reprise hors ligne. C'est la réserve qu'une revue a posée sur sa boucle d'émission synchrone : un repli ne doit
  * pas être plus coûteux que ce qu'il remplace.
  */
 const synchronousJobs: Jobs = {

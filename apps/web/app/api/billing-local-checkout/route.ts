@@ -138,8 +138,7 @@ export async function GET(request: Request): Promise<Response> {
     // **404 quand rien n'a été terminé** — session inconnue, ou session d'un
     // compte : le refus garde exactement la forme qu'il avait avant s24, et les
     // cas restent indiscernables. Une réponse qui les distinguerait dirait à un
-    // anonyme qu'une session existe pour quelqu'un d'autre (constat F7 de la
-    // revue de s19).
+    // anonyme qu'une session existe pour quelqu'un d'autre.
     if (guestDeliveries.length === 0) {
       return new Response(null, { status: 404 })
     }

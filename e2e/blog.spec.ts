@@ -133,7 +133,7 @@ test('un article rend son corps sous la politique servie, console vide', async (
 
 /**
  * **Cas intermittent de s52, cause non établie** — `read ECONNRESET` sur ce
- * `GET`, vu une fois en revue de s53, vert au rejeu isolé et au second passage
+ * `GET`, vu une fois en revue, vert au rejeu isolé et au second passage
  * complet.
  *
  * Ce qu'on en sait : `e2e/health.spec.ts` porte le **même** symptôme sous

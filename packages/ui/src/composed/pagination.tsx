@@ -46,7 +46,7 @@ const ITEM = cn(
 export const PAGINATION_WINDOW = 7
 
 /**
- * **Les pages à rendre**, bornées (revue de s37b2, constat F4).
+ * **Les pages à rendre**, bornées.
  *
  * Ce composant a été écrit pour le blog, qui compte ses pages sur une main, et
  * il rendait **une ancre par page**. Le back-office de s37b2 pagine des listes

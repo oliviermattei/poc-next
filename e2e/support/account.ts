@@ -195,7 +195,7 @@ export const signOut = async (page: Page): Promise<void> => {
  * suite qui ouvre une session** en est concerné, et ils rougissaient presque
  * tous sur la seule assertion d'atterrissage d'`aSignedInAccount`. Le nombre
  * n'est pas écrit ici, exprès : aucune commande ne le maintiendrait vrai, et
- * `AGENTS.md` demande de dériver un compte plutôt que de le taper — ce que
+ * `CODING_STANDARDS.md` demande de dériver un compte plutôt que de le taper — ce que
  * cette prose s'était déjà permis, avec deux chiffres faux dès la revue.
  *
  * Pourquoi l'état est **posé** et non parcouru. Franchir les étapes au

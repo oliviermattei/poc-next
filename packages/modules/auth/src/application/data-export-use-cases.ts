@@ -213,8 +213,8 @@ export function createDataExportUseCases(
        * son unique déclencheur est l'ordonnanceur. Module coupé — et
        * `config/profiles.ts` le coupe —, la tâche n'est jamais appelée sans
        * `requestId`, donc une archive échue restait en base indéfiniment,
-       * `status = ready`, avec la copie complète des données d'une personne. Le
-       * constat de la revue de s35, mesuré.
+       * `status = ready`, avec la copie complète des données d'une personne.
+       * Mesuré.
        *
        * Une garantie de conservation ne peut pas dépendre d'un module
        * optionnel : elle est donc accrochée au seul geste qui existe dans

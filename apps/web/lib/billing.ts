@@ -301,7 +301,7 @@ const provide = (runtime: BillingRuntime = {}): void => {
     // qui enverrait un lien de définition de mot de passe à un compte existant
     // rougit alors là où elle vivrait.
     guestAccounts,
-    // **La dégradation du canal anonyme** (constat F3 de la revue de s24) : le
+    // **La dégradation du canal anonyme** : le
     // module dit *que* le tunnel n'est pas ouvert, l'application dit *où* le
     // visiteur repart.
     guestFallbackUrl,
@@ -313,8 +313,7 @@ const provide = (runtime: BillingRuntime = {}): void => {
 }
 
 /**
- * **Où repart un visiteur quand le canal anonyme de vente est saturé**
- * (constat F3 de la revue de s24).
+ * **Où repart un visiteur quand le canal anonyme de vente est saturé**.
  *
  * La connexion, avec l'offre en poche : c'est exactement le déclencheur
  * anonyme d'avant s24 (`git show dev:apps/web/app/pricing/page.tsx`), et c'est
@@ -532,7 +531,7 @@ const remindTrialEnding = async (trial: EndingTrial): Promise<void> => {
     organizationId: null,
     data: { offer: trial.offerId ?? '—', date: trialEnd.toISOString().slice(0, 10) },
     // Ce qui est relu plus tard ne porte que des **références** : une offre du
-    // catalogue et une date, jamais une adresse (revue s32, R1).
+    // catalogue et une date, jamais une adresse.
     stored: { offer: trial.offerId ?? '—', date: trialEnd.toISOString().slice(0, 10) },
   })
 }

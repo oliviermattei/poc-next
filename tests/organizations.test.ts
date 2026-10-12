@@ -981,8 +981,7 @@ describe.runIf(databaseReachable)('l’acceptation d’une invitation', () => {
 
   it('fait de l’invité un membre, et pose l’organisation acceptée comme courante', async () => {
     // L'organisation acceptée devient **courante** : sans cela l'invité
-    // atterrirait sur « Choisir une organisation » — l'état que le constat F7 de
-    // la revue de s15 nommait déjà comme celui d'un compte invité.
+    // atterrirait sur « Choisir une organisation » — l'état que le constat d'une revue nommait déjà comme celui d'un compte invité.
     const { guest, organizationId, token } = await anInvitation()
 
     const accepted = await call('acceptInvitation', { session: guest, body: { token } })
@@ -1056,8 +1055,7 @@ describe.runIf(databaseReachable)('l’acceptation d’une invitation', () => {
         member: secondEmail,
         organization: organization?.name,
       })
-      // **Ce qui est écrit, et relu après que le compte nommé a disparu**
-      // (revue s32, R1) : une référence, jamais une adresse. La ligne appartient
+      // **Ce qui est écrit, et relu après que le compte nommé a disparu** : une référence, jamais une adresse. La ligne appartient
       // à un autre membre, donc la purge du compte arrivé ne la touche pas.
       expect(emission.stored).toEqual({
         member: second.userId,
@@ -1658,7 +1656,7 @@ describe.runIf(databaseReachable)('le refus d’un rôle insuffisant', () => {
   it('refuse un rôle que la matrice ne connaît pas, sans faillir en 500', async () => {
     // La base ne contraint pas la valeur de `organization_member.role` : une
     // ligne portant un rôle inconnu est représentable, et le rôle est relu à
-    // chaque requête. Elle doit **refuser**, pas lever (revue de s17, F3).
+    // chaque requête. Elle doit **refuser**, pas lever.
     const owner = await anAccount()
     const organizationId = await anOrganization(owner)
     const outsider = await anAccount()
@@ -1724,7 +1722,7 @@ describe.runIf(databaseReachable)('le refus d’un rôle insuffisant', () => {
   it('refuse à un administrateur de retirer un propriétaire ou un autre administrateur', async () => {
     // Critère 3 : « un admin … peut inviter et retirer des **members** », et il
     // « ne peut pas modifier un owner ». Sans cette borne, l'échelon
-    // intermédiaire destitue celui du dessus — et, jusqu'à la revue de s17,
+    // intermédiaire destitue celui du dessus — et, jusqu'à une revue,
     // **son pair** : deux administrateurs pouvaient se retirer l'un l'autre,
     // une prise de pouvoir latérale que personne n'avait décidée.
     const { owner, other: admin, organizationId } = await anOrganizationWithRole('admin')
@@ -2051,7 +2049,7 @@ describe.runIf(databaseReachable)('le changement de rôle', () => {
 
   it('refuse le droit avant de juger le corps, et journalise ce refus-là aussi', async () => {
     // **L'ordre du module, sans exception** : autorisation, puis permission,
-    // puis validation (revue de s17, F5). Valider d'abord rendait à un appelant
+    // puis validation. Valider d'abord rendait à un appelant
     // sans aucun droit un 303 vers l'écran avec un motif traduit — exactement ce
     // que l'ADR 030 rejette, « un motif traduit dans l'URL décrirait la
     // politique à qui la sonde » — et surtout : une sonde d'élévation qui envoie
@@ -2131,8 +2129,7 @@ describe.runIf(databaseReachable)('ce que l’écran voit', () => {
   })
 
   /**
-   * **Les affordances sont dérivées du rôle de l'appelant, par le serveur**
-   * (revue de s17, F1).
+   * **Les affordances sont dérivées du rôle de l'appelant, par le serveur**.
    *
    * Le cas de rendu qui porte ce nom reçoit `permissions` et `assignableRoles`
    * en **paramètres** : il éprouve le `.tsx`, jamais le calcul. Mesuré en revue :
@@ -2686,8 +2683,7 @@ describe('un module `organizations` non activé', () => {
 })
 
 /**
- * **Le sélecteur ne présente jamais un vide comme une organisation courante**
- * (constat F7 de la revue de s15).
+ * **Le sélecteur ne présente jamais un vide comme une organisation courante**.
  *
  * L'écran passait `empty.title` — « Aucune organisation » — en libellé
  * **courant** du sélecteur dès que la sélection active ne se retrouvait pas

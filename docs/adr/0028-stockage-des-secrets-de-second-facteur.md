@@ -26,7 +26,8 @@ s13 met cette ligne à l'épreuve, et elle se casse en deux :
 
 Chiffré n'est pas « en clair », mais ce n'est pas « haché » non plus : qui lit
 la base et connaît `AUTH_SECRET` retrouve dix mots de passe à usage unique
-utilisables. La story (s13) nommait d'ailleurs ce point comme **le** piège.
+utilisables. Le découpage en stories (historique git, avant ADR 0082) nomme d'ailleurs ce
+point comme **le** piège de la story.
 
 Un troisième fait, mesuré pendant l'implémentation, pèse sur la même décision :
 la consommation d'un code par la bibliothèque n'est **pas atomique** sur

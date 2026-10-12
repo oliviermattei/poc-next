@@ -45,7 +45,7 @@ export type StorageConfig =
  * lesquels cette garde existe. Sans cette normalisation, le
  * `STORAGE_S3_BUCKET=` vide que livre `.env.example` s'y lirait « seau
  * renseigné », et la branche fournisseur l'emporterait sur le stockage local
- * explicitement demandé. C'est le constat G2 de la revue de s06, transposé.
+ * explicitement demandé.
  */
 const declared = (value: string | undefined): string | undefined => {
   const trimmed = value?.trim()
@@ -91,11 +91,11 @@ const normalizedOrigin = (value: string): string => value.trim().replace(/\/+$/,
  * Le stockage sur disque est un **opt-in, pas un repli** : en faire la
  * conséquence automatique d'un seau absent ferait écrire dans un dossier
  * temporaire de production en rendant un succès que rien ne distingue d'un vrai
- * stockage — c'est la faute que la revue de s06 a corrigée sur les emails (F3),
+ * stockage — c'est la faute qu'une revue a corrigée sur les emails (F3),
  * et elle serait ici encore plus silencieuse, puisqu'un avatar téléversé
  * s'afficherait bel et bien jusqu'au prochain redémarrage.
  *
- * **Deux refus de plus, posés par la revue de s18, et chacun ferme un échec
+ * **Deux refus de plus, posés par une revue, et chacun ferme un échec
  * qu'aucune commande ne voyait :**
  *
  * 1. **un seau réel dont l'origine n'est pas déclarée dans `config/security.ts`,

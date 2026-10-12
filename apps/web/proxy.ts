@@ -323,7 +323,7 @@ export function proxy(request: NextRequest): NextResponse {
   // `headers['content-security-policy']` puis `getScriptNonceFromHeader` — pour
   // le poser sur ses propres balises.
   //
-  // Ce que la revue de s45 a **mesuré**, et qui corrige ce que cette story
+  // Ce qu'une revue a **mesuré**, et qui corrige ce que cette story
   // affirmait d'abord : sur le runtime **Node** de Next 16.3.3, retirer ces deux
   // lignes ne casse pas l'hydratation. `resolve-routes.js` (§`router-utils`)
   // recopie chaque en-tête de réponse ordinaire du proxy sur `req.headers`

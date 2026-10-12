@@ -262,8 +262,8 @@ export interface OAuthConfiguration {
   /**
    * Monte le **fournisseur de développement**, sans aucune clé.
    *
-   * C'est l'opt-in explicite du socle (`AGENTS.md` : « Every port must be
-   * usable locally with no provider key — through an explicit local mode »),
+   * C'est l'opt-in explicite du socle (`CODING_STANDARDS.md` : « Every port is
+   * usable locally with no provider key — through an explicit opt-in flag »),
    * sur le modèle d'`EMAIL_LOCAL_CAPTURE`. Il porte son propre identifiant, il
    * ouvre toujours la même adresse, et il n'emprunte l'identité d'aucun
    * fournisseur réel.
@@ -335,7 +335,7 @@ const SESSION_COOKIE_ATTRIBUTES = {
 
 /**
  * **L'emprunteur porté par la ligne de session que la bibliothèque vient de
- * lire** (revue de s37b2, F3).
+ * lire**.
  *
  * `impersonated_by` est une colonne de **ce dépôt** (ADR 064) : Better Auth ne
  * la déclare pas, et son type de session ne la connaît donc pas. Elle traverse
@@ -1102,7 +1102,7 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
     digestBackupCode: (code) => digestBackupCode(code, backupCodeHash),
 
     /**
-     * **La garde de rejeu d'un code TOTP** (revue s13, C3).
+     * **La garde de rejeu d'un code TOTP**.
      *
      * Appelée après que la bibliothèque a accepté le code : elle ne le vérifie
      * pas une seconde fois, elle lui rend son **compteur**, puis prend ce
@@ -1244,7 +1244,7 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
     },
 
     /**
-     * **La seule lecture de session de ce fichier** (revue de s37b2, F3).
+     * **La seule lecture de session de ce fichier**.
      *
      * Les deux méthodes qui suivent en sont dérivées : elles appelaient chacune
      * `getSession`, si bien qu'une coquille qui pose trois questions payait

@@ -10,7 +10,7 @@ owner, client, Guide, product documentation — in code, tests, issues and docs.
 2. `docs/prd.md` — what the product is and why, and its **graveyard**: what it deliberately does not build. The graveyard is binding: reintroducing anything it lists is a scope breach, not an improvement.
 3. `docs/architecture.md` — stack, layout, module contract.
 4. `docs/adr/` — one ADR per structural decision, with the options rejected and why.
-5. The `AGENTS.md` of the package you are editing — what it may import, what it must never contain, where its tests live.
+5. The `AGENTS.md` of the package you are editing (see `CODING_STANDARDS.md`, Agent-oriented repo).
 
 When a document disagrees with the code, the code is the bug — unless an ADR says otherwise.
 
@@ -22,20 +22,24 @@ When a document disagrees with the code, the code is the bug — unless an ADR s
 
 - **`CODING_STANDARDS.md`** — read before writing code: stack, modules and their four layers, ports, rules that bite, testing, agent-oriented repo. `/code-review` judges every change against it.
 - **`docs/commands.md`** — read before running or adding a `pnpm` script: what each one checks and what makes it fail.
-- **`docs/security.md` and `docs/reliability.md`** — the security and reliability baselines. A breach of either blocks the merge, exactly like a functional regression.
-- **`docs/design-system.md`** — read before any UI change: components and tokens come from it, and a need it does not cover is a gap to report.
+- **`docs/security.md` and `docs/reliability.md`** — the security and reliability baselines; their standing is set in `CODING_STANDARDS.md`.
+- **`docs/design-system.md`** — read before any UI change.
 - **`docs/deployment.md`** — read before touching the production image, startup or migrations.
 
 ## Agent skills
 
+### Workflow
+
+`/grill-with-docs` → `/to-spec` → `/to-tickets` → `/implement` or `/implement-spec` → `/code-review` → a pull request to `dev`, squash-merged. Why this chain replaced the previous method: ADR 082.
+
 ### Issue tracker
 
-Issues et specs sur GitHub Issues (`oliviermattei/poc-next`), via `gh`. See `docs/agents/issue-tracker.md`.
+Issues and specs live in GitHub Issues (`oliviermattei/poc-next`), through `gh`. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
-Les cinq rôles par défaut, chaque étiquette égale à son nom. See `docs/agents/triage-labels.md`.
+The five default roles, each label string equal to its name. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
-Single-context : `GLOSSARY.md` et `docs/adr/` à la racine ; règles par paquet dans `packages/*/AGENTS.md`. See `docs/agents/domain.md`.
+Single-context: `GLOSSARY.md` and `docs/adr/` at the root; per-package rules in `packages/*/AGENTS.md`. See `docs/agents/domain.md`.

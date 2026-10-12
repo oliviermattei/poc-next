@@ -215,8 +215,7 @@ describe('la forme enregistrée, rejouée avec les identifiants de l’exécutio
   })
 
   /**
-   * **La marque du rejeu** — le signal positif qu'exige le constat F1 de la
-   * revue de s25.
+   * **La marque du rejeu** — le signal positif exigé.
    *
    * Sans elle, une exécution annoncée « enregistrée » qui aurait en fait tourné
    * sur le simulateur reste verte et rien ne le dit : c'est exactement le repli
@@ -336,8 +335,7 @@ describe('la lecture du dossier d’enregistrements', () => {
 })
 
 /**
- * **La lecture des événements bruts à capturer** (constat F5 de la revue de
- * s25).
+ * **La lecture des événements bruts à capturer**.
  *
  * La procédure documentée écrit `stripe listen --print-json > fichier.ndjson`,
  * c'est-à-dire **un fichier de lignes JSON** — pas un dossier. La lecture doit

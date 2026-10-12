@@ -118,7 +118,7 @@ export const legalKeys = (document: MarketingLegalDocument): readonly string[] =
  *
  * L'ADR 027 tranche que ces formulaires exigent JavaScript ; elle ne tranche
  * pas que le bouton doive rester éteint sans un mot d'explication, et c'est
- * pourtant ce que la revue de s11 a mesuré sous le build de production
+ * pourtant ce qu'une revue a mesuré sous le build de production
  * (constat F5). Un `<noscript>` le dit, sans script en ligne ni source de
  * politique de sécurité du contenu supplémentaire.
  */

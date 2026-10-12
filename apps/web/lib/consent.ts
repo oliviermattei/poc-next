@@ -90,7 +90,7 @@ export const probeScriptOf = (id: string): NonEssentialScript | null =>
  * Une variable déclarée vide vaut absente, ici comme dans `parseEnv` : `getEnv`
  * rend la source telle quelle en phase de build et sous `SKIP_ENV_VALIDATION`,
  * et le `CONSENT_SCRIPT_PROBE=` de `.env.example` s'y lirait sinon « drapeau
- * posé » (constat G2 de la revue de s06, transposé).
+ * posé ».
  */
 export const probeEnabled = (env: Env): boolean =>
   env.CONSENT_SCRIPT_PROBE?.trim() === CONSENT_SCRIPT_PROBE_ENABLED

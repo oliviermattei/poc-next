@@ -38,7 +38,7 @@ export interface IndexableUrl {
  * **Une seule source : la quinzième clé du contrat** (ADR 054). Un module dit
  * ce qu'il publie ; personne ne le devine à sa place.
  *
- * La recherche de s53 proposait une seconde source — les **entrées de
+ * Une seconde source a été envisagée — les **entrées de
  * navigation publiques** du registre —, et elle a été mesurée avant d'être
  * écartée. Dans la configuration livrée, cinq entrées sont publiques :
  * `marketing /`, `auth /sign-in`, `blog /blog`, `billing /pricing` et
@@ -89,7 +89,7 @@ export function indexableUrls(
  *
  * La règle est celle d'`apps/web/proxy.ts`, qui l'appliquait seul : elle est
  * écrite ici depuis s53 parce qu'un second appelant en a besoin. `publicPath`,
- * lui, préfixe **sans condition** — c'est le piège relevé en revue de s29
+ * lui, préfixe **sans condition** — c'est le piège relevé en revue
  * (constat M3) : une entrée de navigation vers une route d'API produirait
  * `/fr/api/…`, une URL fausse, autorisée pour rien. Tant qu'aucun module n'en
  * déclarait, personne ne pouvait le voir ; la dérivation de `indexableUrls` en

@@ -305,7 +305,7 @@ export const CANARY_TITLE = 'le canari : le `.env` du poste est réellement illi
  * tourne **avec** le `.env` du poste, aucun cas ne rougit pour la bonne raison,
  * et la commande journalise ses fichiers balayés en ne reproduisant rien. C'est
  * le défaut de s26, s48 puis s51, une quatrième fois, et il a été mesuré ici :
- * la revue de s55 a neutralisé cette ligne, remis le défaut cible dans
+ * une revue a neutralisé cette ligne, remis le défaut cible dans
  * `tests/notifications.test.ts`, et le fichier est **passé**.
  *
  * `hiddenFilePath` ne ferme que le sens inverse — un préambule chargé sans

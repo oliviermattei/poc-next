@@ -35,7 +35,7 @@ import {
  * piège, et la moitié `method` de la règle de `s08` ne le couvre pas.
  *
  * 3. **Chaque refus garde son message.** Déjà en cours, débit dépassé,
- *    mise en file refusée : la revue de s35 avait relevé qu'aucun écran ne
+ *    mise en file refusée : une revue avait relevé qu'aucun écran ne
  *    montrait le 429, et un message générique jetterait ce que le serveur a
  *    soigneusement distingué (`rgpd-outcomes.ts`).
  */

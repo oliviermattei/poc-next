@@ -9,7 +9,7 @@ import { moduleRegistry } from './module-registry'
  * Avant cette fonction, ils étaient un **import nommé** : `consentFooterLinks`
  * apparaissait dans sept fichiers de `apps/web/app`. Ajouter les nouveautés par
  * le même chemin en aurait fait un second nom aux sept mêmes endroits, puis un
- * troisième au module suivant — le défaut que la recherche de s31 a mesuré, et
+ * troisième au module suivant — le défaut déjà mesuré sur les catégories, et
  * que s53 avait déjà corrigé un cran plus haut pour `sitemap.xml`.
  *
  * Un module qui veut un lien ici le **déclare** à son contrat

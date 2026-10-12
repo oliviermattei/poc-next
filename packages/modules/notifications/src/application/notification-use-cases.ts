@@ -36,8 +36,7 @@ export interface NotificationTypeSummary {
   readonly channels: readonly NotificationChannel[]
   readonly defaults: Readonly<Partial<Record<NotificationChannel, boolean>>>
   /**
-   * Les clés de la charge utile **stockée** qui portent une référence de compte
-   * (revue s32, R1). Résolues à la lecture, jamais à l'écriture : la ligne
+   * Les clés de la charge utile **stockée** qui portent une référence de compte. Résolues à la lecture, jamais à l'écriture : la ligne
    * survit aux gens qu'elle nomme.
    */
   readonly actors: readonly string[]
@@ -50,7 +49,7 @@ export interface NotificationView {
   readonly organizationId: string | null
   /**
    * La charge utile **résolue** : les références de compte y sont devenues des
-   * noms, et `null` désigne un compte qui n'existe plus (revue s32, R1).
+   * noms, et `null` désigne un compte qui n'existe plus.
    */
   readonly payload: ResolvedPayload
   readonly createdAt: Date
@@ -174,7 +173,7 @@ export function createNotificationUseCases(dependencies: {
   readonly preferences: PreferenceRepository
   readonly types: readonly NotificationTypeSummary[]
   /**
-   * Les noms affichables de comptes, **donnés** au module (revue s32, R1).
+   * Les noms affichables de comptes, **donnés** au module.
    *
    * Le module stocke des références et ne sait pas les résoudre : il ne connaît
    * pas la forme d'un compte, exactement comme il ne connaît pas les
@@ -236,8 +235,7 @@ export function createNotificationUseCases(dependencies: {
         preferences.listForUser(scope.userId),
       ])
 
-      // **Les références de compte sont résolues à la lecture, en une fois**
-      // (revue s32, R1). Une résolution par ligne ferait un appel de port par
+      // **Les références de compte sont résolues à la lecture, en une fois**. Une résolution par ligne ferait un appel de port par
       // ligne ; celle-ci en fait **un**, et zéro quand aucun type de la page ne
       // déclare d'acteur — ce qui est le cas de toute page sans producteur.
       //

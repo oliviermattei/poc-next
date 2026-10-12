@@ -66,7 +66,7 @@ const mounted = moduleRegistry.moduleIds.includes(adminModule.id)
  * Les lectures branchées ci-dessous parlent à la base : une panne y **lève**, et
  * la laisser remonter rendrait 500 là où le module a écrit un refus fermé —
  * la branche `{ ok: false }` de `signInBlockedAmong` et de `borrowerOf` ne
- * serait alors atteignable par rien (constat MJ4 de la revue de s37b1). Le sens
+ * serait alors atteignable par rien. Le sens
  * fermé survivrait par accident, pas par décision.
  *
  * Rien n'est journalisé ici : le point de composition ne connaît pas le journal
@@ -389,8 +389,7 @@ export const adminRevenuePort = (
     // module rend en `unavailable` et l'écran en alerte — jamais un revenu à
     // zéro, qui se lirait comme une réponse. `tests/admin.test.ts` neutralise
     // ce `readOr` et exige un rouge : sans lui, la branche `{ ok: false }` du
-    // module n'était atteignable par rien (constat MJ4 de la revue de s37b1,
-    // reconduit en s38).
+    // module n'était atteignable par rien.
     return snapshot.ok ? { ok: true, revenue: snapshot.value } : { ok: false }
   },
 })
@@ -476,7 +475,7 @@ const designatedEmailOf = (env: Env): string | null => env.SUPERADMIN_EMAIL ?? n
  *
  * Le répartiteur prépare les services à chaque requête, y compris celles
  * qu'aucune route ne satisfait : construire aussitôt ouvrirait une connexion
- * pour répondre 404 sur un chemin inconnu (mesuré en s15).
+ * pour répondre 404 sur un chemin inconnu (mesuré).
  */
 const provide = (): void => {
   provideAdmin(() => ({

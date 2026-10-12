@@ -6,7 +6,7 @@ import { index, integer, pgTable, text, timestamp, uniqueIndex } from 'drizzle-o
  * Elles n'existent que lorsque le module est activé : `pnpm db:generate` ne
  * génère que pour les modules de `config/features.ts`, et sur une base vierge
  * dont la configuration ne nomme pas ce module, aucune des deux n'est créée.
- * C'est le quatrième critère de s11, et `tests/marketing.test.ts` le vérifie en
+ * `tests/marketing.test.ts` le vérifie en
  * lisant `information_schema`, pas les fichiers de migration.
  *
  * **Aucune clé étrangère**, et c'est une propriété, pas un oubli : une

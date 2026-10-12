@@ -40,7 +40,7 @@ export const categoryLabelKey = (category: ChangelogCategory): string =>
  * **Elle est consommée**, et c'est ce qui la rend utile : `tests/changelog.test.ts`
  * (« le catalogue de traductions du module ») confronte cette liste aux
  * catalogues du module dans chaque locale du projet. Sans ce consommateur, la
- * liste était une déclaration que personne ne lisait — la revue de s31 a mesuré
+ * liste était une déclaration que personne ne lisait — une revue a mesuré
  * qu'une cinquième catégorie sans traduction ne faisait alors rougir aucune
  * commande, `tests/i18n.test.ts` compris : son balayage est statique, et une
  * clé composée (`category.<id>`) lui est invisible.

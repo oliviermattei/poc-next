@@ -70,7 +70,7 @@ Deux fichiers, **deux régimes, jamais mélangés** (`docs/architecture.md`) :
 Ce que le premier prouve tient à ce qu'il double : la sérialisation réelle de la
 requête, les en-têtes réels, le traitement réel de `{ data, error }`. Doubler
 `emails.send` par une fonction à soi n'éprouverait que cette fonction — c'est le
-piège relevé en revue de s01.
+piège relevé en revue.
 
 La recette d'envoi réel :
 
@@ -103,5 +103,5 @@ injectait une fabrique *constante* (`() => 'idem-fixe'`), cette mutation-là
 restait verte : une fabrique constante rend indiscernables « tirée une fois » et
 « tirée à chaque tentative », alors qu'en production c'est `crypto.randomUUID()`
 et que la régression réelle est un doublon chez le destinataire. Le cas injecte
-donc une fabrique **variable** et compte ses tirages (revue de s06, F2). Une
+donc une fabrique **variable** et compte ses tirages. Une
 preuve qui ne prouve pas coûte plus cher qu'une absence de preuve.

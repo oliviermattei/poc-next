@@ -82,7 +82,7 @@ const purchaseAppliesAfter = (occurredAt: Date): SQL | undefined =>
  * `billing_purchase.provider_session_id` ne porte que la dernière ouverture ;
  * `billing_purchase_session` les porte toutes. Un paiement encaissé sur une
  * session supplantée par une reprise est donc rattaché à son achat au lieu de
- * se perdre — c'est le constat C1 de la revue de s20, et c'est la raison d'être
+ * se perdre — c'est la raison d'être
  * de l'index inverse.
  *
  * **Le repli sur la colonne est transitoire, et il est obligatoire** (constat
@@ -134,7 +134,7 @@ export type BillingDatabase = Pick<
    *
    * Reprendre la signature de `PgDatabase` rendrait le type invariant sur le
    * schéma : une connexion construite avec les tables de plusieurs modules
-   * n'est pas assignable à une connexion typée sans schéma — mesuré en s15, et
+   * n'est pas assignable à une connexion typée sans schéma — mesuré, et
    * de nouveau ici. Un module n'a pas à connaître les tables des autres pour
    * recevoir une connexion.
    */
@@ -578,9 +578,8 @@ export function createDrizzleBillingRepository(db: BillingDatabase): BillingRepo
      * possible. Sans cela, un événement à demi traité serait refusé pour
      * toujours.
      *
-     * **Ce que ce `return false` n'est tenu par aucune commande** (constat F5
-     * de la revue de s24, à l'intention de la story qui reprendra le journal —
-     * s28 pour la limitation de débit, ou celle qui touchera au rejeu) : le
+     * **Ce que ce `return false` n'est tenu par aucune commande** (à l'intention de qui reprendra le journal
+     * ou touchera au rejeu) : le
      * déplacer **après** la promotion et les effets ne fait rougir aucun cas à
      * ce jour. L'inertie du rejeu ne s'écroule pas pour autant — elle est
      * portée en propre par les deux gardes de l'écriture juste en dessous

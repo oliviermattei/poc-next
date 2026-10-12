@@ -151,7 +151,7 @@ function DraftFields({
  * (`docs/design-system.md`, § Responsive) : sans eux, une adresse longue pousse
  * la carte et fait défiler la page en largeur.
  *
- * **Mais éviter le débordement ne suffit pas** (revue de s16, F5). Avec
+ * **Mais éviter le débordement ne suffit pas**. Avec
  * `flex-1` seul — donc `flex-basis: 0` —, le libellé « tient » toujours et ne
  * provoque jamais le retour à la ligne que `flex-wrap` promettait : il absorbe
  * seul toute la compression, et rendait l'adresse tronquée à **neuf pixels** à
@@ -558,7 +558,7 @@ export function OrganizationScreen({
  * La rubrique Membres **sans organisation courante** : rien à lister, et
  * l'invite mène à la rubrique Organisation — pour en créer une quand le compte
  * n'en a aucune, pour en choisir une quand il en a sans en avoir choisi
- * (constat F7 de la revue de s15 : ne pas annoncer « aucune organisation » à un
+ * (constat d'une revue : ne pas annoncer « aucune organisation » à un
  * compte qui en a).
  */
 function NoCurrentOrganization({

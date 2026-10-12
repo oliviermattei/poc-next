@@ -19,7 +19,7 @@ const NODE_BUILTINS = builtinModules.flatMap((name) => [name, `node:${name}`])
  * Un fichier qu'aucune portée ne nomme n'est pas « autorisé » : il n'est pas
  * linté du tout. Les portées divergeaient — `apps/**` en `*.{ts,tsx}`,
  * `packages/**` en `*.{ts,tsx,mts,cts}` — et un `.mts` d'application passait
- * sous toutes les gardes, mesuré en revue de s08. Une seule liste, partagée,
+ * sous toutes les gardes, mesuré en revue. Une seule liste, partagée,
  * pour que l'écart ne se recrée pas.
  *
  * Elle couvre les extensions TypeScript **et** JavaScript. Le dépôt ne compte
@@ -118,7 +118,7 @@ const COMPONENT_BASE_SYNTAX = [
 ].map((selector) => ({ selector, message: COMPONENT_BASE_RESTRICTION.message }))
 
 /**
- * **Un `<form>` déclare toujours sa méthode** (C1 de la revue de s08).
+ * **Un `<form>` déclare toujours sa méthode**.
  *
  * Un formulaire sans `method` est un `GET` vers l'URL courante : c'est le
  * défaut du navigateur, et il s'applique chaque fois que le gestionnaire React
@@ -287,7 +287,7 @@ const MODULE_DB_MESSAGE =
  * par module — `infrastructure/oauth-outbound.ts` pour `auth` —, et cette règle
  * est ce qui empêche le prochain appel sortant d'être écrit à côté. Sans elle,
  * la conformité mesurée aujourd'hui ne dirait rien de demain : c'est
- * exactement le constat qui a bloqué la revue de s12.
+ * exactement le constat qui a bloqué une revue.
  */
 const OUTBOUND_FETCH_MESSAGE =
   'Un appel réseau sortant d’un module passe par sa porte bornée (`infrastructure/oauth-outbound.ts`) : `docs/reliability.md` §3 exige un délai d’attente explicite, et des reprises en recul exponentiel avec dispersion et plafond, sur les seules erreurs transitoires. `@better-fetch/fetch` comme `fetch` n’en arment aucun par défaut.'
@@ -341,8 +341,7 @@ const moduleDatabaseBoundary: Linter.Config[] = [
 ]
 
 /**
- * **Une lecture du module `organizations` passe par sa porte unique**
- * (constat F2 de la revue de s15).
+ * **Une lecture du module `organizations` passe par sa porte unique**.
  *
  * La story affirmait rendre « l'oubli du périmètre organisationnel impossible
  * plutôt que déconseillé ». La revue a mesuré le contraire : un fichier neuf
@@ -376,7 +375,7 @@ const moduleDatabaseBoundary: Linter.Config[] = [
  * disparaît.
  */
 const SCOPED_READ_MESSAGE =
-  'Périmètre organisationnel (revue s15, F2) : une lecture du module `organizations` passe par `infrastructure/scoped-reads.ts`, dont chaque fonction exige le propriétaire en premier paramètre. Une lecture écrite ailleurs peut oublier l’appartenance — c’est exactement ce qui a été mesuré, et ce qui rendait `dataOwnerOf` capable de résoudre vers une organisation quittée.'
+  'Périmètre organisationnel : une lecture du module `organizations` passe par `infrastructure/scoped-reads.ts`, dont chaque fonction exige le propriétaire en premier paramètre. Une lecture écrite ailleurs peut oublier l’appartenance — c’est exactement ce qui a été mesuré, et ce qui rendait `dataOwnerOf` capable de résoudre vers une organisation quittée.'
 
 const scopedReadSyntax = (methods: readonly string[]) =>
   methods.flatMap((method) =>
@@ -404,7 +403,7 @@ const TRANSACTION_LOCKS_FILE =
   'packages/modules/organizations/src/infrastructure/transaction-locks.ts'
 
 /**
- * **La matrice des rôles est écrite une fois** (revue de s17, F4).
+ * **La matrice des rôles est écrite une fois**.
  *
  * L'`AGENTS.md` du module l'annonçait — « aucune comparaison de rôle hors de
  * `domain/permissions.ts` » — et le commit qui l'écrivait la démentait trois
@@ -422,7 +421,7 @@ const TRANSACTION_LOCKS_FILE =
  * module.
  */
 const ROLE_COMPARISON_MESSAGE =
-  'La matrice des rôles s’écrit une fois, dans `packages/modules/organizations/src/domain/permissions.ts` (revue de s17, F4). Une comparaison de rôle ailleurs la fait exister à deux endroits, et le second est celui qui ment : l’écran lit `view.permissions` et `members[].assignableRoles`, et une notion dérivée du rôle — « ce rôle donne la propriété », par exemple — est une fonction nommée du `domain`.'
+  'La matrice des rôles s’écrit une fois, dans `packages/modules/organizations/src/domain/permissions.ts`. Une comparaison de rôle ailleurs la fait exister à deux endroits, et le second est celui qui ment : l’écran lit `view.permissions` et `members[].assignableRoles`, et une notion dérivée du rôle — « ce rôle donne la propriété », par exemple — est une fonction nommée du `domain`.'
 
 const ROLE_COMPARISON_SYNTAX = ['owner', 'admin', 'member'].map((role) => ({
   selector: `BinaryExpression[operator=/^[!=]==?$/] > Literal[value='${role}']`,
@@ -498,8 +497,7 @@ const organizationPerimeter: Linter.Config[] = [
     },
   },
   {
-    // **La table du module `auth` ne se lit que de deux endroits** (revue de
-    // s16, F9). L'`AGENTS.md` du module l'écrivait déjà — le schéma pour les
+    // **La table du module `auth` ne se lit que de deux endroits**. L'`AGENTS.md` du module l'écrivait déjà — le schéma pour les
     // clés étrangères, la porte de lecture pour la jointure qui donne un nom
     // lisible à un membre —, mais aucune commande ne le tenait : un troisième
     // fichier qui importerait `@repo/module-auth` ne faisait rougir rien. Or
@@ -580,7 +578,7 @@ const componentBaseBoundary: Linter.Config[] = [
     // racine, et réécrits par `pnpm ks toggle`. Les mettre hors de portée
     // reviendrait à parier sur ce que le gabarit de génération produit
     // aujourd'hui — « il ne peut pas contenir de JSX » est précisément
-    // l'affirmation d'exhaustivité que le `AGENTS.md` racine interdit. Le
+    // l'affirmation d'exhaustivité que `CODING_STANDARDS.md` interdit. Le
     // gabarit change, la portée reste.
     files: [
       sources('apps'),
@@ -664,7 +662,7 @@ const config: Linter.Config[] = [
   // un fichier qu'aucune portée ne nomme n'est pas « autorisé » — il n'est pas
   // linté du tout. La portée est celle de `sources()`, partagée par toutes les
   // gardes de ce fichier : une seule liste d'extensions, pour que la divergence
-  // mesurée en revue de s08 (`apps/**` en `*.{ts,tsx}`) ne se recrée pas.
+  // mesurée en revue (`apps/**` en `*.{ts,tsx}`) ne se recrée pas.
   ...libraryConfig([sources('packages'), sources('tooling')]),
   ...nextConfig(['apps/web/**/*.ts', 'apps/web/**/*.tsx']),
   // Après `libraryConfig`, dont il reprend le motif ; avant

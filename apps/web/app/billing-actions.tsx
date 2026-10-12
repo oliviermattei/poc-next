@@ -48,8 +48,7 @@ interface BillingActionProps {
    *
    * Pas `autoFocus` : le navigateur applique l'attribut servi à l'analyse du
    * document, où ce bouton est encore **désactivé** jusqu'à l'hydratation — il
-   * ne focalise donc rien, et rien ne repose le focus au rallumage. Mesuré à la
-   * revue de s22, `document.activeElement` restait `BODY`. Le focus est posé
+   * ne focalise donc rien, et rien ne repose le focus au rallumage. Mesuré à une revue, `document.activeElement` restait `BODY`. Le focus est posé
    * par `useFocusWhenReady`, après l'hydratation, et `pnpm test:e2e` rougit s'il
    * disparaît.
    */
@@ -125,8 +124,7 @@ export function BillingAction({
       {/*
         Sans JavaScript, le bouton reste éteint : la soumission passe par
         `fetch`, et l'ADR 027 assume cette exigence. Ce qui n'était décidé nulle
-        part, c'est le **silence** — un bouton mort sans un mot (constat F5 de
-        la revue de s11). Le `<noscript>` le dit, et il ne coûte ni script en
+        part, c'est le **silence** — un bouton mort sans un mot. Le `<noscript>` le dit, et il ne coûte ni script en
         ligne ni source de politique de sécurité du contenu.
       */}
       <noscript>

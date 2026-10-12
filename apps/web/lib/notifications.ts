@@ -101,8 +101,8 @@ const provide = (): void => {
      * vide et seules les notifications de compte existent, **sans toucher la
      * base**.
      *
-     * **La restriction à l'organisation active est une décision** (revue s32,
-     * ronde 2, R2 — le commentaire promettait ici « les organisations dont il
+     * **La restriction à l'organisation active est une décision** (le
+     * commentaire promettait ici « les organisations dont il
      * est membre », ce que le code n'a jamais fait). Deux raisons :
      *
      * 1. **la cohérence du produit** — tout le reste de l'application montre
@@ -133,7 +133,7 @@ const provide = (): void => {
     scopeOf: async (userId) =>
       notificationScopeOf(userId, await organizations.activeOrganizationId(userId)),
     /**
-     * **Les noms affichables, résolus à la lecture** (revue s32, R1).
+     * **Les noms affichables, résolus à la lecture**.
      *
      * Le module stocke des références de compte parce qu'une ligne survit aux
      * gens qu'elle nomme : elle est adressée à quelqu'un d'autre, et
@@ -159,8 +159,7 @@ const provide = (): void => {
  *
  * Nommée et exportée pour être mesurable : dans la fermeture, la mutation
  * « rendre `organizationIds: []` » — qui rend invisible à tout le monde chaque
- * notification du seul producteur livré — laissait 2258 cas au vert (revue s32,
- * ronde 3, R3-2).
+ * notification du seul producteur livré — laissait 2258 cas au vert.
  */
 export const notificationScopeOf = (
   userId: string,
@@ -177,7 +176,7 @@ export const notificationScopeOf = (
  * Nommée et exportée pour la même raison : dans la fermeture, remplacer
  * `account.name` par `account.email` posait l'adresse de l'arrivant sur l'écran
  * de tous les autres membres — la moitié visible du défaut que R1 ferme — et
- * laissait la suite entièrement verte (revue s32, ronde 3, R3-1).
+ * laissait la suite entièrement verte.
  *
  * **Une seule lecture pour N identifiants** (R3-3) : `viewAccounts` passe par
  * `findByIds`, un unique `inArray`. La version précédente dépliait un

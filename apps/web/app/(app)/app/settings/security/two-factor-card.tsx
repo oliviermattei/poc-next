@@ -28,7 +28,7 @@ import { TwoFactorQr } from './two-factor-qr'
  *
  * `method="post"` est écrit en toutes lettres sur les quatre formulaires, et le
  * bouton reste désactivé jusqu'à l'hydratation : sans le premier, le repli du
- * navigateur met le mot de passe dans l'URL (mesuré en s08,
+ * navigateur met le mot de passe dans l'URL (mesuré,
  * `docs/security.md` §5) ; sans le second, une soumission qui devance React est
  * perdue en silence.
  */

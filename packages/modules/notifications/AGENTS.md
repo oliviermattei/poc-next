@@ -107,12 +107,12 @@ périmètre du `where` de `markRead` → 1 ; ignorer la préférence dans
 `allowedChannels` → 3 ; ignorer les canaux retenus à l'émission → 2.
 
 **Après revue**, trois mutations que la première livraison laissait vertes le
-sont devenues (revue s32, F1, F2 et F4) : élargir le catalogue par défaut de
+sont devenues : élargir le catalogue par défaut de
 `createAppMailer()` aux templates de notification → 1 ; faire lire `unreadCount`
 au shell pour un visiteur anonyme → 1 ; rendre `Pagination` sans condition → 1.
 Un garde vert n'est pas un code correct, c'est un filet qui n'existe pas.
 
-**Ce qui est stocké ne nomme personne** (revue s32, ronde 2, R1) : la charge
+**Ce qui est stocké ne nomme personne** : la charge
 utile d'une ligne porte des **références** de compte, jamais une adresse ni un
 nom. La raison est mécanique : une ligne est adressée à **quelqu'un d'autre**, et
 `purge({kind:'user'})` n'efface que ce qui est adressé au compte — une adresse
@@ -129,8 +129,8 @@ rendre `account.email` au lieu de `account.name` au point de composition ;
 retirer le libellé « compte supprimé » de l'écran ; déplier la lecture groupée en
 une requête par identifiant. Les trois dernières ont été ajoutées en ronde 3 —
 elles laissaient **2258 cas au vert** pendant que le tableau ci-dessus n'en
-nommait que trois, ce qui est exactement la revendication sans commande que la
-racine interdit.
+nommait que trois, ce qui est exactement la revendication sans commande que
+`CODING_STANDARDS.md` interdit.
 
 **Ce que rien ne mesure encore**, et il faut le lire : la **chaîne complète** de
 l'effacement — purger `auth`, donc retirer la ligne de `auth_user`, donc obtenir

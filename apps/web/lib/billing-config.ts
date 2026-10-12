@@ -65,7 +65,7 @@ const declared = (value: string | undefined): string | undefined => {
  * La règle est réappliquée ici et pas seulement dans le schéma parce que
  * `getEnv` ne valide rien en phase de build ni sous `SKIP_ENV_VALIDATION` : sur
  * ces chemins, le `STRIPE_SECRET_KEY=` vide que livre `.env.example` se lirait
- * « clé renseignée » (revue de s06, G2).
+ * « clé renseignée ».
  */
 export function resolveBillingConfig(env: Env): BillingConfig {
   const apiKey = declared(env.STRIPE_SECRET_KEY)

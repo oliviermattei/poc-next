@@ -44,7 +44,7 @@ export interface ConfigureNotificationsOptions {
    */
   readonly scopeOf: (userId: string) => Promise<NotificationScope>
   /**
-   * Les noms affichables de comptes, **donnés** au module (revue s32, R1).
+   * Les noms affichables de comptes, **donnés** au module.
    *
    * Même raison que `scopeOf` : le module stocke des références de compte —
    * une ligne survit aux gens qu'elle nomme — et ne connaît pas la forme d'un

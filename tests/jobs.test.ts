@@ -239,8 +239,7 @@ describe('le registre livré, du point de vue de l’ordonnanceur', () => {
  * celui du répartiteur, `@repo/adapter-inngest` le sien — un adaptateur ne
  * dépend pas du socle de modules. Le compilateur force chacun à **traiter**
  * tous les codes ; il ne les force pas à **s'accorder**, et l'`AGENTS.md` de
- * l'adaptateur affirmait pourtant qu'il le faisait (constat b de la seconde
- * revue de s33).
+ * l'adaptateur affirmait pourtant qu'il le faisait.
  *
  * La liste est **dérivée** — `JOBS_ERROR_CODES`, celle dont l'union est tirée —
  * donc un code ajouté demain entre dans cette confrontation sans que personne
@@ -309,7 +308,7 @@ describe('le module « jobs » coupé', () => {
   /**
    * **L'émission s'exécute de façon synchrone dans la requête appelante**, et le
    * repli **borne son coût** : une seule tentative, sans reprise et sans
-   * attente. La revue de s32 a relevé qu'une boucle d'émission synchrone et non
+   * attente. Une revue a relevé qu'une boucle d'émission synchrone et non
    * bornée sur un chemin de requête est un défaut ; un repli ne doit pas être
    * plus coûteux que ce qu'il remplace.
    */
@@ -358,7 +357,7 @@ describe('le module « jobs » coupé', () => {
    * la suite verte, **dans la requête de l'utilisateur**.
    *
    * Le repli ne doit pas être plus coûteux que ce qu'il remplace : c'est la
-   * réserve que la revue de s32 a posée sur sa boucle d'émission synchrone, et
+   * réserve qu'une revue a posée sur sa boucle d'émission synchrone, et
    * la tâche 8 du plan la nomme.
    */
   it('borne le repli à une seule tentative, même sur un échec transitoire', async () => {
@@ -525,7 +524,7 @@ describe('la route de rappel du fournisseur', () => {
 })
 
 /**
- * **Le câblage lui-même** — ce que la revue de s33 a trouvé removable avec une
+ * **Le câblage lui-même** — ce qu'une revue a trouvé removable avec une
  * suite verte (constat F1).
  *
  * Trois points de composition, trois mutations, 2 407 cas verts chacune :
@@ -735,10 +734,10 @@ describe('le câblage des tâches, aux points de composition', () => {
 /**
  * **Le mode local, et le refus de deviner** (critère 9).
  *
- * `AGENTS.md` : « Every port must be usable locally with no provider key —
- * through an **explicit** local mode, never inferred from `NODE_ENV`. Explicit
- * means the developer opts in and a process with neither a key nor the flag
- * refuses to start, naming the variable. »
+ * `CODING_STANDARDS.md` : « Every port is usable locally with no provider key
+ * — through an explicit opt-in flag set by whoever runs the process […], never
+ * inferred from `NODE_ENV`. » Sans clé et sans drapeau, le processus refuse de
+ * démarrer en nommant la variable (`docs/reliability.md` §2).
  */
 describe('le choix de l’exécuteur', () => {
   const env = (overrides: Record<string, string | undefined>) =>
@@ -785,7 +784,7 @@ describe('le choix de l’exécuteur', () => {
   /**
    * La valeur vide vaut absente, comme partout ailleurs : `.env.example` livre
    * `INNGEST_EVENT_KEY=`, et le lire « clé renseignée » ferait monter le
-   * fournisseur sur une chaîne vide (revue de s06, G2).
+   * fournisseur sur une chaîne vide.
    */
   it('lit une clé vide comme absente', async () => {
     const { resolveJobsConfig } = await import('../apps/web/lib/jobs-config')

@@ -150,11 +150,11 @@ export interface RateLimiter {
    *
    * Sans lui, le magasin ne se vide jamais : il y a un seau par identifiant
    * d'appelant, et cet identifiant vient d'un en-tête que le client écrit
-   * lui-même — la revue de s11 avait mesuré 500 identifiants distincts, 500
+   * lui-même — une revue avait mesuré 500 identifiants distincts, 500
    * lignes, et rien pour les reprendre.
    *
    * **Le paramètre est l'instant présent, pas une borne arbitraire**, et la
-   * distinction est ce que la revue de s28 a dû faire ajouter (constat C1). Le
+   * distinction est ce qu'une revue a dû faire ajouter (constat C1). Le
    * magasin est partagé par toutes les routes, et les seaux n'ont pas la même
    * durée : une borne « efface tout ce qui précède » ne peut pas dire si une
    * ligne est close, et effaçait les seaux longs encore ouverts des autres

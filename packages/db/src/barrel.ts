@@ -73,7 +73,7 @@ export function renderModuleSchemaBarrel(module: ModuleSchemaSource): string {
  * construire le schéma **relationnel** du client Drizzle. Les barils par module
  * servent la génération des migrations, l'agrégat sert l'exécution — les deux
  * chemins ne se remplacent pas, et le second manquait depuis s04 (résidu
- * `enabledModuleSchemas = []`, refermé en s07).
+ * `enabledModuleSchemas = []`, refermé depuis).
  */
 export const ENABLED_SCHEMAS_FILE = 'index.ts'
 

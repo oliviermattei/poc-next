@@ -35,7 +35,7 @@ import { useHydrated } from './use-hydrated'
  * l'hydratation.** Un `<form>` sans `method` est un `GET` vers l'URL courante
  * tant que le gestionnaire React n'est pas attaché : la saisie part alors dans
  * la chaîne de requête, donc dans le journal d'accès et dans le `Referer`
- * (`docs/security.md` §5, mesuré en s08).
+ * (`docs/security.md` §5, mesuré).
  */
 
 /** Le type de champ qui se rend en zone de texte plutôt qu'en ligne unique. */
@@ -216,7 +216,7 @@ function PublicForm({ action, locale, fields, messageKeys, inline = false }: Pub
           Sans JavaScript, le bouton reste éteint : la soumission passe par
           `fetch`, et l'ADR 027 assume cette exigence. Ce qui n'était décidé
           nulle part, c'est le **silence** — un bouton mort sans un mot, mesuré
-          sous le build de production (constat F5 de la revue de s11). Le
+          sous le build de production. Le
           `<noscript>` le dit, et il ne coûte ni script en ligne ni source de
           politique de sécurité du contenu.
         */}

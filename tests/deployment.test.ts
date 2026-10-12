@@ -113,7 +113,7 @@ describe('la validation au démarrage, sur le chemin de la sortie autonome', () 
   /**
    * Tout ce que la garde lit, déclaré en entier : un cas qui n'annonce que
    * `DATABASE_URL` ne passerait que sur un poste dont le `.env` complète le
-   * reste (revue de s06, G1). La chaîne vide vaut absence, et c'est la seule
+   * reste. La chaîne vide vaut absence, et c'est la seule
    * forme qui tienne — `loadRootEnv` repeuplerait une variable supprimée.
    */
   const stubEverything = (databaseUrl: string): void => {
@@ -210,7 +210,7 @@ describe('la validation au démarrage, sur le chemin de la sortie autonome', () 
   it('laisse passer la phase de build, qui n’a pas les variables d’exécution', async () => {
     // `next build` exécute lui aussi l'instrumentation, dans ses processus de
     // génération. La garde y hérite de la même échappatoire que `next.config` —
-    // `AGENTS.md` : « le build n'a pas besoin des variables d'exécution ».
+    // `docs/commands.md` : « le build n'a pas besoin des variables d'exécution ».
     stubEverything('mysql://oops@localhost/x')
     vi.stubEnv('NEXT_PHASE', BUILD_PHASE)
 
@@ -276,7 +276,7 @@ describe('la pile de production', () => {
 
   /**
    * **Les conteneurs reçoivent la configuration, et pas seulement
-   * l'interpolation du fichier** (constat F5 de la revue de s27).
+   * l'interpolation du fichier**.
    *
    * Mesuré : `env_file` seul ne sert que l'exploitant qui **écrit un fichier**.
    * Une plateforme qui *exporte* ses variables — c'est le chemin que le guide
@@ -342,7 +342,7 @@ describe('la pile de production', () => {
  * **L'étape d'exécution n'hérite pas de la permissivité de l'étape de
  * construction.**
  *
- * Le build s'exécute sans les variables d'exécution — `AGENTS.md` l'exige — et
+ * Le build s'exécute sans les variables d'exécution — `docs/commands.md` l'exige — et
  * ne le peut que par l'échappatoire de `packages/config/src/env.ts` :
  * `NEXT_PHASE` et `SKIP_ENV_VALIDATION`. Posée par un `ENV` d'étape, elle
  * serait héritée par toutes les étapes qui en descendent, et l'image démarrerait
@@ -371,8 +371,7 @@ describe('l’image de production', () => {
   })
 
   /**
-   * **La sonde de l'image suit le port que l'image rend variable** (constat F4
-   * de la revue de s27).
+   * **La sonde de l'image suit le port que l'image rend variable**.
    *
    * `ENV PORT` est surchargeable — c'est ainsi qu'un orchestrateur choisit le
    * port d'écoute. Une sonde qui fige `3000` rend alors un conteneur

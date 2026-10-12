@@ -38,7 +38,7 @@ export interface NotificationRepository {
    *
    * Le périmètre est le premier paramètre, et ce n'est pas un détail de style :
    * il n'existe pas de lecture qui puisse l'omettre — c'est la même discipline
-   * que la porte de lecture unique du module `organizations` (revue de s15).
+   * que la porte de lecture unique du module `organizations`.
    */
   listVisible(
     scope: NotificationScope,

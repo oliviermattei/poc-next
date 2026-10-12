@@ -51,8 +51,7 @@ export interface SubmissionOrigin {
  *   `<iframe sandbox="allow-forms">`, un document `data:` ou une chaîne de
  *   redirections inter-origines : le navigateur de la victime émet alors une
  *   origine **opaque**. La confondre avec une absence laisse forger un
- *   consentement complet — mesuré sur le serveur de production, revue de s36,
- *   constat C1. Une origine opaque ne prouve rien : elle ne peut donc pas
+ *   consentement complet — mesuré sur le serveur de production. Une origine opaque ne prouve rien : elle ne peut donc pas
  *   valoir laissez-passer.
  *
  * Le **premier en-tête présent décide** : `Origin` s'il est là, sinon

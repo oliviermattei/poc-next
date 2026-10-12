@@ -64,8 +64,7 @@ export interface BillingOffer {
    * dérivation vit dans `domain/seats.ts` (`offerSeatLimit`), qui ne reçoit
    * que ce champ et ne *peut* donc voir ni `perSeat` ni `mode`.
    *
-   * **Le catalogue, lui, le refuse non nul sur un achat unique** (constat M1
-   * de la revue de s47) — le `superRefine` plus bas, sur le précédent de
+   * **Le catalogue, lui, le refuse non nul sur un achat unique** — le `superRefine` plus bas, sur le précédent de
    * `trialDays`. Ce n'est pas la règle qui exclut ce mode, c'est le **câblage**
    * qui n'existe pas : `syncSeats` résout l'offre courante depuis l'abonnement
    * vivant du périmètre, un encaissement unique n'en a aucun, et la fonction
@@ -143,8 +142,7 @@ const offerSchema = z
       })
     }
 
-    // **Le même objet que la règle ci-dessus** (constat M1 de la revue de
-    // s47) : un plafond sur un achat unique décrit une intention que rien
+    // **Le même objet que la règle ci-dessus** : un plafond sur un achat unique décrit une intention que rien
     // n'exécute. `syncSeats` résout l'offre courante depuis l'**abonnement
     // vivant** du périmètre ; un encaissement unique n'en a aucun, et la
     // fonction rend `not_applicable` avant d'avoir lu `seatLimit`. La règle

@@ -262,7 +262,7 @@ sur **deux classes** — `invalid` quand le défi vit encore, `restart` quand il
 n'existe plus —, au **même statut**. La garde de rejeu du module en ajoute une
 **troisième**, `used`, qui ne vient pas de la bibliothèque : un compteur déjà
 pris refuse un code **juste**, et lui répondre « ce code n'est pas valide »
-faisait croire à une compromission (revue s13, C12/C13/C14 — deuxième connexion
+faisait croire à une compromission (deuxième connexion
 dans les mêmes trente secondes, ré-enrôlement dans la même période, horloge du
 serveur reculée). Le statut reste celui de tous les refus, et `used` n'est
 atteignable qu'avec un défi ouvert ou une session : pour qui n'a pas présenté le
@@ -309,8 +309,7 @@ et **remplace son `matcher`** : `/magic-link/verify` et `/callback/:id` posent
 le même défi, et les deux routes du module redirigent vers l'écran de
 vérification au lieu de la destination demandée.
 
-**Et c'est une liste d'exemptions, pas une liste d'inclusions** (revue s13,
-C11). La première forme livrée *ajoutait* deux chemins au `matcher` : aucune
+**Et c'est une liste d'exemptions, pas une liste d'inclusions**. La première forme livrée *ajoutait* deux chemins au `matcher` : aucune
 commande ne rougissait le jour où une quatrième voie de connexion apparaissait,
 et s14 en monte une (`/passkey/verify-authentication`). Le crochet vaut donc
 partout, et `TWO_FACTOR_CHALLENGE_EXEMPT_PATHS` énumère les **six** chemins qui
@@ -373,7 +372,7 @@ c'est ce fichier-ci qu'il faut relire, et la réponse de `/sign-in/email` qu'il
 faut réécrire comme les autres.**
 
 Cette condition d'escalade était écrite en gras, et **aucune commande ne la
-vérifiait** (revue s13, C4) : elle en a une désormais. `tests/auth.test.ts`,
+vérifiait** : elle en a une désormais. `tests/auth.test.ts`,
 « n'authentifie rien avec le jeton que la bibliothèque laisse dans le corps de
 la connexion », relit le `token` du corps et le présente en `Authorization:
 Bearer` — sur une route protégée du module et au résolveur de session. Monter
@@ -541,7 +540,7 @@ Quatre faits à connaître avant d'y toucher :
 - **la ligne est écrite ici** (`AuthSessionRepository.create`), avec son
   emprunteur. La clé étrangère `impersonated_by → auth_user` est en **cascade** :
   effacer le compte de l'emprunteur emporte les sessions qu'il a ouvertes chez
-  autrui, ce qui évite le défaut de `granted_by` mesuré en s34 (un identifiant de
+  autrui, ce qui évite le défaut de `granted_by` mesuré (un identifiant de
   compte effacé qui survit sur la ligne d'un tiers) ;
 - **le cookie est signé ici**, et c'est le seul endroit du dépôt qui reproduit un
   fait d'infrastructure de la bibliothèque : `infrastructure/session-cookie.ts`
@@ -801,7 +800,7 @@ et le nombre vieillira : ce qui compte est qu'il ne soit pas nul, la commande qu
 le dit est `pnpm test` avec `users.deleteById` neutralisé. L'appel explicite est
 une ceinture, il n'est pas la bretelle — ne pas le citer comme la garantie.
 
-**Mais les sessions ferment à la demande, pas à la purge** (revue s61, M2).
+**Mais les sessions ferment à la demande, pas à la purge**.
 `requestAccountDeletion` appelle `sessions.revokeAllForUser` **après** une mise
 en file réussie : avec le module `jobs` activé, la purge quitte la requête, et
 sans cet appel chaque session servait encore le temps de la file — `/sign-in`

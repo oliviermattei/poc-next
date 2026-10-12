@@ -214,8 +214,7 @@ export interface OrganizationRepository {
    * **Pourquoi une ligne et non une rotation en place** : le quota de l'ADR 026
    * est un quota d'**émission**, compté sur `created_at`. Tant que le renvoi
    * réécrivait la même ligne, il n'était compté par rien — cinquante renvois
-   * consécutifs envoyaient cinquante emails sans un seul refus (revue de s16,
-   * F2). Une émission = une ligne : le comptage n'a plus de trou à combler.
+   * consécutifs envoyaient cinquante emails sans un seul refus. Une émission = une ligne : le comptage n'a plus de trou à combler.
    */
   reissueInvitation(
     access: OrganizationAccess,
@@ -604,7 +603,7 @@ export type NotifyRecipient = (input: {
   /** Ce qui est **rendu maintenant** : le texte de l'email, qui ne se relit pas. */
   readonly data: EmailData
   /**
-   * Ce qui est **écrit et relu plus tard** (revue s32, R1) : des références,
+   * Ce qui est **écrit et relu plus tard** : des références,
    * jamais des données personnelles. La ligne est celle de quelqu'un d'autre et
    * survit aux gens qu'elle nomme.
    */
