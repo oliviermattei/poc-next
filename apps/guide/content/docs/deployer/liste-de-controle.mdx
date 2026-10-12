@@ -3,6 +3,68 @@ title: "Liste de contrôle"
 description: "Tout ce qu’il faut vérifier avant la mise en production."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+Parcourez cette liste avant d’ouvrir votre SaaS au public. Chaque point dit comment le vérifier, et renvoie à la page qui l’explique.
 
-Cette page est en cours de rédaction : son contenu arrive dans un prochain ticket.
+## La configuration
+
+- [ ] **`NODE_ENV=production`.** C’est lui qui fait refuser les modes locaux dangereux. L’image Docker le pose d’elle-même.
+- [ ] **`AUTH_SECRET` est propre à ce déploiement**, généré par `openssl rand -base64 32`, jamais celui de `.env.example`.
+- [ ] **`APP_URL` est l’adresse publique exacte, en `https://`**, sans chemin ni rien après le domaine. Voir [Domaine et deux hôtes](/fr/deployer/domaine-et-deux-hotes).
+- [ ] **`DATABASE_URL` pointe vers la base de production.**
+- [ ] **Aucune variable de test ni de construction** : `NEXT_PHASE`, `SKIP_ENV_VALIDATION`, `OAUTH_LOCAL_PROVIDER`, `PAYMENTS_RECORDED_EVENTS`, `I18N_MISSING_KEY_PROBE`, `CONSENT_SCRIPT_PROBE` et `INNGEST_BASE_URL` sont absentes ou vides.
+- [ ] **`SUPERADMIN_EMAIL`** contient l’adresse du compte qui administrera la console. Sans elle, la console répond 404 à tout le monde (le démarrage avertit, sans refuser). Voir [Console](/fr/fonctionnalites/console).
+- [ ] **L’application démarre** : aucune ligne `Démarrage refusé : …` dans ses journaux. Sinon : [Dépannage](/fr/reference/depannage).
+
+Le tableau complet : [Variables d’environnement](/fr/configurer/variables-d-environnement).
+
+## Les services de vos modules
+
+Pour chaque module activé, soit le fournisseur est branché, soit le module est coupé (`pnpm ks toggle <module>`, voir [Modules](/fr/configurer/modules)).
+
+- [ ] **E-mails** : `RESEND_API_KEY` et `EMAIL_FROM`, sur un domaine vérifié chez Resend (SPF, DKIM, DMARC), et `EMAIL_LOCAL_CAPTURE` retiré. Sinon aucun e-mail ne part. Voir [Resend](/fr/services/resend).
+- [ ] **Paiement** (`billing`) : `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, et le webhook `<APP_URL>/api/modules/billing/webhook` déclaré chez Stripe. Voir [Stripe](/fr/services/stripe).
+- [ ] **Stockage** (`storage`) : les quatre variables `STORAGE_S3_*`, et l’origine du seau dans `config/security.ts`, champ `connect`. Voir [Stockage S3](/fr/services/stockage-s3).
+- [ ] **Tâches de fond** (`jobs`) : `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`, et l’adresse `<APP_URL>/api/modules/jobs/inngest` déclarée chez Inngest ; ou `JOBS_LOCAL_RUNNER=1` sur **une seule instance**. Voir [Inngest](/fr/services/inngest).
+- [ ] **Connexion Google ou GitHub**, si vous l’utilisez : les deux variables de chaque paire, et l’adresse de rappel déclarée chez le fournisseur. Voir [Google](/fr/services/google) et [GitHub](/fr/services/github).
+- [ ] **Analytique**, si vous l’utilisez : `POSTHOG_KEY`, `POSTHOG_HOST`, et l’hôte dans `config/security.ts` (`connect` et `img`). Voir [PostHog](/fr/services/posthog).
+- [ ] **Suivi d’erreurs**, si vous l’utilisez : `SENTRY_DSN`, `SENTRY_RELEASE`, et les cartes source envoyées. Voir [Sentry](/fr/services/sentry).
+
+## La base de données
+
+- [ ] **Les migrations sont jouées avant chaque mise en ligne**, et la commande affiche `Migrations appliquées…` ou `Rien à appliquer…`.
+- [ ] **`pnpm db:seed` n’a jamais été lancé** vers la base de production.
+- [ ] **Les sauvegardes sont en place**, copiées hors du serveur, et une restauration a été essayée.
+
+Voir [Base de données en production](/fr/deployer/base-de-donnees-en-production).
+
+## Le réseau et la sécurité
+
+- [ ] **HTTPS** sur chaque domaine servi.
+- [ ] **Un relais devant l’application**, qui **écrase** `x-forwarded-for` et transmet `Host`. Le port de l’application n’est pas ouvert directement sur Internet. Voir [Docker et Coolify](/fr/deployer/docker-et-coolify#le-relais-devant-lapplication).
+- [ ] **Les dépendances sont auditées** : `pnpm run audit` passe. À ce jour, il signale des vulnérabilités que le projet doit traiter ([#77](https://github.com/oliviermattei/poc-next/issues/77)).
+- [ ] **Les secrets ne sont nulle part dans le dépôt** : `.env.production` n’est pas commité (`git status` ne le montre pas).
+
+## Votre produit
+
+- [ ] **Les offres et les prix** sont les vôtres. Voir [Offres et prix](/fr/configurer/offres-et-prix).
+- [ ] **Le nom, les textes et les pages légales** sont les vôtres. Voir [Site et pages légales](/fr/configurer/site-et-pages-legales).
+- [ ] **L’expéditeur et les textes des e-mails** sont les vôtres. Voir [E-mails](/fr/configurer/e-mails).
+- [ ] **Les modules dont vous n’avez pas besoin sont coupés**, et vous avez décidé du sort du module de démonstration `demo-enabled`. Voir [Module de démonstration](/fr/fonctionnalites/module-de-demonstration).
+
+## Après la mise en ligne
+
+1. Ouvrez `<APP_URL>/api/health` : vous devez voir `{"status":"ok","database":"connected"}`.
+2. Créez un compte avec une vraie adresse : l’e-mail de vérification doit arriver, et son lien doit commencer par votre `APP_URL`.
+3. Si `billing` est activé : souscrivez une offre avec une carte de test Stripe (clés de test), puis vérifiez que l’abonnement apparaît dans les réglages de facturation.
+4. Connectez-vous avec le compte de `SUPERADMIN_EMAIL`, puis ouvrez `/console`.
+5. Mettez `<APP_URL>/api/health` sous surveillance.
+
+## Les limites connues à garder en tête
+
+<Callout type="warn" title="Ce qui n’a pas encore été prouvé">
+- Aucun déploiement réel n’a encore été fait, ni sur Coolify, ni sur Vercel ([#145](https://github.com/oliviermattei/poc-next/issues/145)).
+- Le mode à deux hôtes n’a été testé qu’en local ([#73](https://github.com/oliviermattei/poc-next/issues/73)).
+- La limitation de débit dépend d’un relais qui écrase `x-forwarded-for` ([#78](https://github.com/oliviermattei/poc-next/issues/78)).
+- Le jeton de réinitialisation du mot de passe est stocké en clair en base ([#79](https://github.com/oliviermattei/poc-next/issues/79)) : protégez l’accès à votre base et à ses sauvegardes.
+- L’origine du seau S3 doit être écrite dans `config/security.ts` ([#144](https://github.com/oliviermattei/poc-next/issues/144)).
+</Callout>

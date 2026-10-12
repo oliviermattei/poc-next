@@ -3,6 +3,162 @@ title: "Domaine et deux hôtes"
 description: "Brancher votre domaine et, si vous le souhaitez, séparer le site et l’application."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+Par défaut, **un seul nom de domaine sert tout** : le site public, la connexion, l’application et la console. C’est le plus simple, et c’est ce que nous vous conseillons pour commencer. Si vous le souhaitez, vous pouvez ensuite servir le site sur `exemple.com` et l’application sur `app.exemple.com`, avec la même image.
 
-Cette page est en cours de rédaction : son contenu arrive dans un prochain ticket.
+## Un seul hôte (par défaut)
+
+<Steps>
+<Step>
+
+### Faire pointer le domaine vers votre hébergement
+
+Chez votre registraire de domaine, faites pointer `exemple.com` vers votre serveur ou vers Vercel, comme votre hébergeur l’indique. Votre relais (ou Vercel) doit servir ce domaine en **HTTPS**.
+
+</Step>
+<Step>
+
+### Renseigner `APP_URL`
+
+```bash
+APP_URL=https://exemple.com
+```
+
+`APP_URL` est l’adresse publique de votre SaaS. Elle construit les liens envoyés par e-mail (vérification, réinitialisation, invitations) et décide quelles origines sont de confiance. Elle n’est **jamais** déduite de la requête : une erreur ici donne des liens qui ne mènent nulle part. Elle doit commencer par `https://` en production.
+
+</Step>
+<Step>
+
+### Choisir l’apex dès maintenant
+
+Préférez `https://exemple.com` à `https://www.exemple.com`. Les passkeys de vos clients sont liées à l’hôte d’`APP_URL` : **changer cet hôte plus tard invalide toutes les passkeys enregistrées**, et chaque client devra recréer la sienne. Et si vous passez un jour à deux hôtes, `APP_URL` doit être l’apex. Vous pouvez garder `www` en simple redirection vers l’apex, réglée dans votre relais.
+
+</Step>
+<Step>
+
+### Déclarer les adresses de rappel chez vos fournisseurs
+
+Chaque fournisseur qui appelle votre SaaS doit connaître son adresse :
+
+| Fournisseur | Adresse à déclarer |
+|---|---|
+| [Stripe](/fr/services/stripe) (webhook) | `https://exemple.com/api/modules/billing/webhook` |
+| [Inngest](/fr/services/inngest) | `https://exemple.com/api/modules/jobs/inngest` |
+| [Google](/fr/services/google) | `https://exemple.com/api/modules/auth/callback/google` |
+| [GitHub](/fr/services/github) | `https://exemple.com/api/modules/auth/callback/github` |
+
+</Step>
+<Step>
+
+### Vérifier
+
+Ouvrez `https://exemple.com/api/health` : vous devez voir `{"status":"ok","database":"connected"}`. Créez un compte avec une vraie adresse e-mail : le lien reçu doit commencer par `https://exemple.com/`.
+
+</Step>
+</Steps>
+
+## Deux hôtes : le site et l’application
+
+<Callout type="warn" title="Testé en local seulement">
+Le mode à deux hôtes est mesuré automatiquement, mais seulement en local (sur `*.localhost`, en HTTP). Il n’a jamais été joué avec deux vrais noms de domaine et HTTPS : cette recette manuelle est suivie dans [#73](https://github.com/oliviermattei/poc-next/issues/73). Si vous l’activez, suivez la vérification en fin de section, pas à pas.
+</Callout>
+
+| Configuration | `APP_URL` | `APP_HOST` | Ce que voit le visiteur |
+|---|---|---|---|
+| Un hôte | `https://exemple.com` | vide | tout sur `exemple.com` |
+| Deux hôtes | `https://exemple.com` | `app.exemple.com` | le site sur `exemple.com` ; la connexion, l’application et la console sur `app.exemple.com` |
+
+Ce qui change avec `APP_HOST` :
+
+- Une page de l’application ou de la connexion demandée sur le site est **redirigée** (code 308) vers `app.exemple.com`. La console demandée sur le site répond **404**.
+- La **session** de vos clients ne vit que sur `app.exemple.com` : le site ne la voit pas. Sur la page des tarifs du site, un lien « Déjà client ? » mène donc vers l’écran de facturation de l’application.
+- Le choix de **cookies** et la **langue** sont partagés entre les deux hôtes : un choix fait sur le site vaut dans l’application.
+- Le reste de l’API, dont le webhook Stripe, répond sur les deux hôtes : les adresses `https://exemple.com/api/modules/billing/webhook` et `…/jobs/inngest` restent valables.
+
+<Steps>
+<Step>
+
+### Passer le site sur l’apex
+
+Si votre site est aujourd’hui servi sur `www.exemple.com`, passez-le sur `exemple.com` **avant** tout le reste, en sachant que cela invalide les passkeys existantes (voir plus haut).
+
+</Step>
+<Step>
+
+### Créer le sous-domaine
+
+Faites pointer `app.exemple.com` vers le même hébergement que `exemple.com`, servi lui aussi en HTTPS.
+
+</Step>
+<Step>
+
+### Renseigner `APP_HOST`
+
+```bash
+APP_URL=https://exemple.com
+APP_HOST=app.exemple.com
+```
+
+`APP_HOST` est un **nom d’hôte seul** : sans `https://`, sans port, sans chemin, en minuscules. Il doit être un sous-domaine de l’hôte d’`APP_URL`, et `APP_URL` ne doit pas porter de chemin. Sinon, le démarrage est refusé avec l’un de ces messages :
+
+```
+APP_HOST: must be a lowercase host name, without scheme, port or path (app.example.com)
+APP_HOST: must be a subdomain of the APP_URL host (exemple.com)
+APP_HOST: cannot be set while APP_URL carries a path: APP_URL must be an origin
+APP_HOST: requires a valid APP_URL, whose host it must be a subdomain of
+```
+
+</Step>
+<Step>
+
+### Régler le relais pour qu’il transmette `Host`
+
+L’application choisit entre le site et l’application en lisant l’en-tête `Host`, et lui seul. Votre relais doit le transmettre tel que le visiteur l’a envoyé, et écraser `X-Forwarded-Host` :
+
+- **nginx** : `proxy_set_header Host $host;` et `proxy_set_header X-Forwarded-Host $host;` (par défaut, nginx envoie l’hôte de l’amont) ;
+- **Traefik** (Coolify) : `passHostHeader` est vrai par défaut, ne le coupez pas ;
+- **Caddy** : `reverse_proxy` transmet `Host` par défaut ; n’ajoutez pas `header_up Host {upstream_hostport}` ;
+- **Vercel** : rien à faire.
+
+Si le relais remplace `Host` par l’adresse interne (`localhost:3000`), rien n’est redirigé : l’application marche, mais la console reste servie sur le site.
+
+</Step>
+<Step>
+
+### Déplacer les rappels de connexion vers l’application
+
+La connexion est servie par l’application. Chez Google et GitHub, l’adresse de rappel devient :
+
+```
+https://app.exemple.com/api/modules/auth/callback/google
+https://app.exemple.com/api/modules/auth/callback/github
+```
+
+Avec l’adresse du site, le fournisseur répond `redirect_uri_mismatch`.
+
+</Step>
+<Step>
+
+### Redéployer et vérifier
+
+Redéployez, puis, dans une fenêtre de navigation privée :
+
+1. Ouvrez `https://exemple.com/`. Si une bannière de cookies apparaît, cliquez « Tout refuser ».
+2. Cliquez « Se connecter » : l’adresse doit passer à `https://app.exemple.com/…`.
+3. Créez un compte et connectez-vous. Sur `app.exemple.com`, la bannière ne doit **pas** réapparaître.
+4. Dans les outils de développement du navigateur (onglet *Application*, puis *Cookies*), le cookie de session `__Secure-better-auth.session_token` doit appartenir à `app.exemple.com`, et `app_consent` à `.exemple.com`.
+5. Revenez sur `https://exemple.com/` : aucun cookie de session ne doit y apparaître.
+6. Changez de langue sur le site, puis ouvrez l’application : la langue doit suivre.
+7. Ouvrez `https://exemple.com/console` : la page doit répondre 404.
+
+Notez ce que vous avez constaté dans [#73](https://github.com/oliviermattei/poc-next/issues/73) : c’est la première trace d’un vrai déploiement à deux hôtes.
+
+</Step>
+</Steps>
+
+## Ce qui n’est pas inclus
+
+<Callout type="info" title="Ce qui n’est pas inclus">
+- **La redirection de `www` vers l’apex** : elle se règle dans votre relais ou chez votre hébergeur.
+- **La console sur son propre sous-domaine** (par exemple `admin.exemple.com`) : n’existe pas, l’idée est suivie dans [#183](https://github.com/oliviermattei/poc-next/issues/183).
+- Limite connue : avec `APP_HOST`, un `APP_URL` qui porte une requête, un fragment ou une adresse IP n’est pas encore refusé au démarrage ([#87](https://github.com/oliviermattei/poc-next/issues/87)). Écrivez `APP_URL` sous la forme `https://exemple.com`, sans rien après.
+</Callout>

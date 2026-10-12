@@ -3,6 +3,310 @@ title: "Docker et Coolify"
 description: "Déployer l’image Docker sur votre serveur, avec ou sans Coolify."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+Le dépôt livre tout ce qu’il faut pour faire tourner votre SaaS sur un serveur avec Docker :
 
-Cette page est en cours de rédaction : son contenu arrive dans un prochain ticket.
+- **`Dockerfile`** : l’image de production. Elle construit l’application, puis n’embarque que le strict nécessaire pour la servir, sous un utilisateur non privilégié. Elle a une étape à part, `migrator`, qui joue les migrations.
+- **`docker-compose.prod.yml`** : la pile de production, avec trois services :
+  - `postgres` : la base PostgreSQL 16, qui n’est publiée sur aucun port de votre serveur ;
+  - `migrate` : joue les migrations, puis s’arrête ;
+  - `web` : l’application, servie sur le port `APP_PORT` (3000 par défaut). Elle ne démarre **que si les migrations ont réussi**.
+
+Ne confondez pas avec `docker-compose.yml`, qui ne sert qu’à lancer une base de développement sur votre poste.
+
+<Callout type="info" title="Ce qui a été testé">
+Cette pile a été construite et démarrée en local par le projet, avec Docker 29.7.2 et Docker Compose v5.4.0 : `/api/health` répond `{"status":"ok","database":"connected"}`, et une migration volontairement cassée empêche l’application de démarrer. Aucun déploiement sur un vrai serveur public n’a encore été fait ([#145](https://github.com/oliviermattei/poc-next/issues/145)).
+</Callout>
+
+## Déployer la pile sur votre serveur
+
+<Steps>
+<Step>
+
+### Vérifier Docker sur le serveur
+
+Connectez-vous à votre serveur, puis lancez :
+
+```bash
+docker --version
+docker compose version
+```
+
+Vous devez voir un numéro de version pour chacune. Si `docker compose` est inconnu, installez le greffon Docker Compose de votre distribution.
+
+</Step>
+<Step>
+
+### Décider de vos modules, sur votre poste
+
+En production, plusieurs modes locaux sont refusés (voir la [vue d’ensemble](/fr/deployer)). Pour chaque module activé, vous devez donc soit avoir le compte du fournisseur, soit couper le module. Par exemple, pour vendre plus tard et lancer sans paiement :
+
+```bash
+pnpm ks toggle billing
+```
+
+Faites-le **sur votre poste**, vérifiez que l’application démarre toujours (`pnpm dev`), puis committez et poussez le changement. Détails : [Modules](/fr/configurer/modules).
+
+</Step>
+<Step>
+
+### Déclarer les origines des services qui en ont besoin
+
+Deux services exigent une modification de `config/security.ts`, sans quoi l’application **refuse de démarrer** en le disant :
+
+- **Stockage S3** (module `storage`) : l’adresse de votre seau va dans le champ `connect`. Le navigateur envoie les fichiers directement au seau. Voir [Stockage S3](/fr/services/stockage-s3).
+- **PostHog**, si vous posez `POSTHOG_KEY` : la valeur de `POSTHOG_HOST` va dans les champs `connect` **et** `img`. Voir [PostHog](/fr/services/posthog).
+
+C’est du code, pas une variable : faites-le sur votre poste, committez, poussez. Pouvoir le faire par une variable est suivi dans [#144](https://github.com/oliviermattei/poc-next/issues/144).
+
+</Step>
+<Step>
+
+### Récupérer le code sur le serveur
+
+```bash
+git clone <adresse-de-votre-dépôt> mon-saas
+cd mon-saas
+```
+
+Vous devez voir les fichiers `Dockerfile` et `docker-compose.prod.yml` avec `ls`.
+
+</Step>
+<Step>
+
+### Écrire le fichier `.env.production`
+
+Créez un fichier `.env.production` à la racine du dossier (il n’est jamais versionné, et jamais copié dans l’image). Partez de ce modèle et remplacez chaque valeur :
+
+```bash
+# --- La base créée par la pile ---
+POSTGRES_USER=monsaas
+POSTGRES_PASSWORD=un-mot-de-passe-long-et-aleatoire
+POSTGRES_DB=app
+# L'hôte est le nom du service : « postgres », jamais localhost.
+DATABASE_URL=postgres://monsaas:un-mot-de-passe-long-et-aleatoire@postgres:5432/app
+
+# --- L'application ---
+NODE_ENV=production
+APP_PORT=3000
+APP_URL=https://exemple.com
+AUTH_SECRET=collez-ici-le-resultat-de-openssl
+SUPERADMIN_EMAIL=vous@exemple.com
+
+# --- E-mails (Resend) ---
+RESEND_API_KEY=re_...
+EMAIL_FROM=Mon SaaS <bonjour@exemple.com>
+
+# --- Paiement (Stripe), si le module billing est activé ---
+STRIPE_SECRET_KEY=sk_live_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+
+# --- Stockage (S3), si le module storage est activé ---
+STORAGE_S3_BUCKET=mon-seau
+STORAGE_S3_REGION=eu-west-3
+STORAGE_S3_ACCESS_KEY_ID=...
+STORAGE_S3_SECRET_ACCESS_KEY=...
+
+# --- Tâches de fond, si le module jobs est activé ---
+INNGEST_EVENT_KEY=...
+INNGEST_SIGNING_KEY=...
+```
+
+Pour `AUTH_SECRET`, générez une valeur propre à ce déploiement (32 caractères au minimum) :
+
+```bash
+openssl rand -base64 32
+```
+
+Règles à respecter :
+
+- `DATABASE_URL` doit reprendre exactement `POSTGRES_USER`, `POSTGRES_PASSWORD` et `POSTGRES_DB`. Évitez les caractères `@`, `:` et `/` dans le mot de passe : ils cassent l’adresse de connexion.
+- **Ne recopiez pas `.env.example`** tel quel : il arme les modes locaux (`PAYMENTS_LOCAL_MODE=1`, `STORAGE_LOCAL_DIRECTORY=.storage`…), que la production refuse.
+- Ne posez ni `NEXT_PHASE`, ni `SKIP_ENV_VALIDATION`, ni `OAUTH_LOCAL_PROVIDER`, ni `PAYMENTS_RECORDED_EVENTS`, ni `I18N_MISSING_KEY_PROBE`, ni `CONSENT_SCRIPT_PROBE`.
+
+Le rôle de chaque variable : [Variables d’environnement](/fr/configurer/variables-d-environnement).
+
+</Step>
+<Step>
+
+### Jouer les migrations, seules
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml run --rm --build migrate
+```
+
+La première fois, la construction de l’image prend plusieurs minutes. Vous devez voir à la fin une ligne qui commence par `Migrations appliquées, dans l’ordre du graphe :` suivie des modules. Si vous relancez la commande, elle répond `Rien à appliquer : aucune migration en attente pour les modules activés — …` : c’est normal, les migrations ne s’appliquent qu’une fois.
+
+</Step>
+<Step>
+
+### Démarrer l’application
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+```
+
+Puis regardez l’état des services :
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml ps -a
+```
+
+Vous devez voir `postgres` et `web` à l’état `Up`, et `web` passer à `(healthy)` au bout de quelques dizaines de secondes. `migrate` apparaît à l’état `Exited (0)` : il a fini son travail.
+
+</Step>
+<Step>
+
+### Vérifier que l’application répond
+
+Sur le serveur :
+
+```bash
+curl http://localhost:3000/api/health
+```
+
+Vous devez voir `{"status":"ok","database":"connected"}`. Cette sonde interroge réellement la base : tant qu’elle est injoignable, elle répond `503` avec `{"status":"error","database":"unreachable"}`.
+
+Si `web` ne reste pas démarré, lisez son journal :
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml logs web
+```
+
+Une ligne `Démarrage refusé : …` nomme la variable ou le réglage à corriger. Voir [Dépannage](/fr/reference/depannage).
+
+</Step>
+<Step>
+
+### Vérifier que les variables arrivent bien dans le conteneur
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml exec web env
+```
+
+Vous devez voir `DATABASE_URL=…` et vos autres variables dans la liste. Attention, cette commande affiche vos secrets à l’écran : ne la copiez nulle part.
+
+</Step>
+<Step>
+
+### Placer un relais devant l’application
+
+La pile n’a **aucun relais** : elle expose l’application directement sur `APP_PORT`. Placez devant elle un relais qui sert le HTTPS de votre domaine et transmet les requêtes à `localhost:3000`. Ses réglages sont juste en dessous. Ne publiez jamais ce port directement sur Internet.
+
+</Step>
+</Steps>
+
+## Mettre à jour votre SaaS
+
+À chaque nouvelle version, sur le serveur :
+
+```bash
+git pull
+docker compose --env-file .env.production -f docker-compose.prod.yml run --rm --build migrate \
+  && docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+```
+
+Les migrations passent d’abord ; l’application n’est reconstruite que si elles ont réussi.
+
+<Callout type="warn" title="Pourquoi pas directement up -d --build">
+Lancé seul sur une pile déjà en service, `up -d --build` détruit l’ancien conteneur `web` **avant** de jouer les migrations. Si une migration échoue, plus rien ne répond : c’est une coupure de service. La commande en deux temps ci-dessus évite ce cas : si les migrations échouent, l’ancienne version continue de servir. Pour que cela marche, chaque migration doit rester compatible avec la version encore en ligne : voir [Base de données en production](/fr/deployer/base-de-donnees-en-production).
+</Callout>
+
+## Le relais devant l’application
+
+Le relais a trois rôles : servir le HTTPS, **écraser** l’en-tête `x-forwarded-for` (jamais l’allonger), et transmettre l’en-tête `Host` d’origine.
+
+Pourquoi `x-forwarded-for` : la limitation de débit identifie chaque visiteur par le premier élément de cet en-tête, et un visiteur peut l’écrire lui-même. Sans relais qui l’écrase, un attaquant peut échapper à la limite, ou épuiser celle de quelqu’un d’autre. L’amélioration côté code est suivie dans [#78](https://github.com/oliviermattei/poc-next/issues/78). Pourquoi `Host` : c’est lui qui permet de [séparer le site et l’application](/fr/deployer/domaine-et-deux-hotes).
+
+<Tabs items={['nginx', 'Caddy', 'Traefik (Coolify)']}>
+<Tab value="nginx">
+
+```nginx
+location / {
+  proxy_pass http://127.0.0.1:3000;
+  proxy_set_header Host $host;
+  proxy_set_header X-Forwarded-For $remote_addr;
+  proxy_set_header X-Forwarded-Host $host;
+}
+```
+
+Utilisez bien `$remote_addr`, **pas** `$proxy_add_x_forwarded_for`, qui ajoute la valeur envoyée par le visiteur.
+
+</Tab>
+<Tab value="Caddy">
+
+```
+exemple.com {
+  reverse_proxy localhost:3000
+}
+```
+
+`reverse_proxy` écrit `X-Forwarded-For` à partir de l’adresse réelle et transmet `Host` tel quel. N’ajoutez pas de `header_up X-Forwarded-For` ni de `header_up Host {upstream_hostport}`.
+
+</Tab>
+<Tab value="Traefik (Coolify)">
+
+Sur le point d’entrée de Traefik : `--entrypoints.web.forwardedHeaders.insecure=false` et `--entrypoints.web.forwardedHeaders.trustedIPs=<vos relais>`. Sans `trustedIPs`, Traefik fait confiance à ce qu’il reçoit. Laissez `passHostHeader` à sa valeur par défaut (vrai).
+
+</Tab>
+</Tabs>
+
+**Vérifiez-le au premier déploiement** : aucun relais réel n’a encore été testé avec ce dépôt. Cette vérification fait partie de [#145](https://github.com/oliviermattei/poc-next/issues/145).
+
+## Coolify
+
+<Callout type="warn" title="Guide jamais exécuté en réel">
+Ce guide n’a pas encore été suivi sur une vraie instance Coolify : le résultat du premier essai sera consigné dans [#145](https://github.com/oliviermattei/poc-next/issues/145). Les noms de menus de Coolify peuvent varier d’une version à l’autre. La structure, elle, ne change pas : un projet, une ressource, des variables, une sonde.
+</Callout>
+
+Coolify peut déployer ce dépôt de deux façons. **La première est recommandée**, car elle réutilise la pile Compose testée en local.
+
+### Option A (recommandée) : une ressource « Docker Compose »
+
+1. Créez un **projet** (*New Project*), puis un environnement `production`.
+2. Ajoutez une ressource **Docker Compose** (*New Resource*), choisissez votre dépôt et sa branche, et indiquez le fichier `docker-compose.prod.yml`.
+3. Dans les **variables**, saisissez celles du fichier `.env.production` décrit plus haut, y compris `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` et `APP_PORT`.
+4. Déployez. La pile contient déjà sa base, l’ordre de démarrage et l’arrêt en cas de migration ratée.
+5. **Vérifiez que les variables arrivent dans les conteneurs** : dans le terminal du conteneur `web`, `env` doit afficher `DATABASE_URL`. La façon dont Coolify transmet ses variables à la pile n’a pas été vérifiée : c’est le premier point à contrôler.
+
+### Option B : une ressource « Dockerfile »
+
+1. Créez le **projet** et l’environnement, comme ci-dessus.
+2. Ajoutez une ressource **PostgreSQL 16**. Coolify vous donne une adresse interne : c’est votre `DATABASE_URL`.
+3. Ajoutez l’**application** depuis votre dépôt, avec le *Build Pack* **Dockerfile**, le fichier `Dockerfile` et la cible `runner`.
+4. **Port** : `3000`.
+5. **Variables** : celles de `.env.production`, sauf les `POSTGRES_*` et `APP_PORT`, qui ne servent qu’à la pile Compose.
+6. **Migrations** : il faut jouer `pnpm db:migrate` avant chaque mise en ligne. L’image `runner` ne contient pas pnpm : la commande a besoin de l’étape `migrator`. C’est pourquoi l’option A est préférable.
+7. **Sonde de santé** : `/api/health`.
+
+### Dans les deux cas
+
+- Laissez `NODE_ENV=production` : c’est lui qui fait refuser les modes locaux.
+- Ne posez ni `NEXT_PHASE` ni `SKIP_ENV_VALIDATION`.
+- Tant qu’une variable manque, le démarrage échoue **en la nommant** dans les journaux du conteneur. C’est le comportement attendu, pas une panne.
+
+## L’image seule, sans Compose
+
+Si votre hébergeur lance des images Docker sans Compose, construisez et lancez les deux images vous-même :
+
+```bash
+# Les migrations : une image qui les joue puis s'arrête.
+docker build --target migrator -t mon-saas-migrate .
+docker run --rm --env-file .env.production mon-saas-migrate
+
+# L'application.
+docker build --target runner -t mon-saas-web .
+docker run --rm -p 3000:3000 --env-file .env.production mon-saas-web
+```
+
+Ici, `DATABASE_URL` doit pointer vers une base joignable depuis le conteneur (pas `postgres`, qui n’est le nom d’un hôte que dans la pile Compose). Lancée sans aucune variable, l’image `runner` s’arrête en code 1 avec `Démarrage refusé : Invalid environment variables: - DATABASE_URL: …` : c’est le signe qu’elle vérifie bien sa configuration.
+
+## Ce qui n’est pas inclus
+
+<Callout type="info" title="Ce qui n’est pas inclus">
+- **Aucun relais ni certificat HTTPS** dans la pile : c’est à vous de les placer devant.
+- **Aucune bascule sans coupure** (« bleu-vert ») : la commande en deux temps évite la coupure sur une migration ratée, pas pendant le redémarrage.
+- **Aucune sauvegarde automatique** de la base : voir [Base de données en production](/fr/deployer/base-de-donnees-en-production).
+- **Aucune publication d’image** : la CI construit l’image et vérifie qu’elle refuse de démarrer sans configuration, mais ne la pousse dans aucun registre.
+- **L’envoi des cartes source à Sentry** se fait hors de l’image : voir [Sentry](/fr/services/sentry).
+- Limites connues : l’origine du seau S3 doit être écrite dans le code ([#144](https://github.com/oliviermattei/poc-next/issues/144)) ; l’image est construite sur Node 22 ([#148](https://github.com/oliviermattei/poc-next/issues/148)) ; il n’est pas encore prouvé que la vérification de configuration a lieu avant que le serveur accepte une requête ([#146](https://github.com/oliviermattei/poc-next/issues/146)).
+</Callout>

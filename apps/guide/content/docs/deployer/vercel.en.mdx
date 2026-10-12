@@ -3,6 +3,98 @@ title: "Vercel"
 description: "Deploy the application on Vercel."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+Vercel builds and serves the `apps/web` application without a server for you to manage. In return, three things happen elsewhere: the database, the migrations, and watching startup.
 
-This page is being written: its content arrives in an upcoming ticket.
+<Callout type="warn" title="Guide never run for real">
+This guide has not yet been followed on a real Vercel account: the repository contains no Vercel configuration, and the project has never been deployed on this platform. The result of the first attempt will be recorded in [#145](https://github.com/oliviermattei/poc-next/issues/145). Vercel’s interface labels may differ from those written here.
+</Callout>
+
+## What changes compared with Docker
+
+| Topic | With Docker | With Vercel |
+|---|---|---|
+| Database | provided by the Compose stack | hosted elsewhere (Neon, Supabase, Amazon RDS…) |
+| Migrations | dedicated container, before startup | run them yourself, before each release |
+| Incomplete configuration | the container stops and names the variable | **nothing stops**: watch `/api/health` and the logs |
+| Relay in front of the application | yours to set up | provided by Vercel, which rewrites `x-forwarded-for` |
+
+## Deploy
+
+<Steps>
+<Step>
+
+### Create the database
+
+Create a PostgreSQL 16 or later database at a compatible host, then copy its connection address (it starts with `postgres://` or `postgresql://`). If the host requires SSL, keep the `sslmode` parameter in the address: it is honoured. See [PostgreSQL](/en/services/postgresql).
+
+</Step>
+<Step>
+
+### Run the migrations from your machine
+
+In the project folder, on your machine:
+
+```bash
+DATABASE_URL="postgres://user:password@host/database?sslmode=require" pnpm db:migrate
+```
+
+A variable set this way in the command takes precedence over the one in your `.env`. You should see a line starting with `Migrations appliquées, dans l’ordre du graphe :` ("Migrations applied"). A second run answers `Rien à appliquer : …` ("Nothing to apply").
+
+</Step>
+<Step>
+
+### Choose your modules
+
+As everywhere in production, `PAYMENTS_LOCAL_MODE`, `STORAGE_LOCAL_DIRECTORY` and `OAUTH_LOCAL_PROVIDER` are refused. On Vercel, also avoid `JOBS_LOCAL_RUNNER`: it runs jobs in the memory of a single process, and it is reserved for single-instance deployments. Vercel starts as many instances as needed: it is not one. Use [Inngest](/en/services/inngest), or turn the `jobs` module off (`pnpm ks toggle jobs`, see [Modules](/en/configurer/modules)).
+
+If you use S3 storage or PostHog, also declare their origin in `config/security.ts` (see [S3 storage](/en/services/stockage-s3) and [PostHog](/en/services/posthog)). Commit and push these changes.
+
+</Step>
+<Step>
+
+### Import the project
+
+In Vercel, import your Git repository (*Import Project*). In the project settings, set **Root Directory** = `apps/web`. Vercel recognises Next and the pnpm monorepo.
+
+</Step>
+<Step>
+
+### Enter the variables
+
+In *Environment Variables*, enter your variables for the `Production` environment (and `Preview` if you use it). At a minimum: `DATABASE_URL`, `AUTH_SECRET` (generate it with `openssl rand -base64 32`), `APP_URL`, then those of your modules’ services. Put neither `NEXT_PHASE` nor `SKIP_ENV_VALIDATION` there. The full list: [Environment variables](/en/configurer/variables-d-environnement).
+
+</Step>
+<Step>
+
+### Deploy and check
+
+Start the deployment, then open `https://<your-domain>/api/health`. You should see `{"status":"ok","database":"connected"}`.
+
+If you see something else, open the function logs in Vercel: a `Démarrage refusé : …` ("Startup refused") line names the variable to fix (see [Troubleshooting](/en/reference/depannage)). On Vercel, this refusal does not stop the deployment: it is up to you to notice it.
+
+</Step>
+<Step>
+
+### Connect your domain
+
+Add your domain in Vercel, then check that `APP_URL` is exactly its public address. See [Domain and two hosts](/en/deployer/domaine-et-deux-hotes).
+
+</Step>
+</Steps>
+
+## Update your SaaS
+
+Migrations do not go through Vercel’s build, and must not: a build is replayed, cached, and has no business accessing your production database. Before each release that adds a migration:
+
+1. run `pnpm db:migrate` against the production database, as in step 2, **or** from a step of your pipeline (GitHub Actions, for example) that stops if the migration fails;
+2. only then, let Vercel publish the new version.
+
+Each migration must stay compatible with the version still online: see [Production database](/en/deployer/base-de-donnees-en-production).
+
+## What is not included
+
+<Callout type="info" title="What is not included">
+- **No Vercel configuration file** in the repository, and no pipeline step that runs the migrations for you.
+- **No automatic stop** on an incomplete configuration: the `/api/health` probe and the logs are your only signals. This behaviour has not been measured on Vercel.
+- **The database connection pool size** is fixed at 10 connections per instance, with no setting. With many instances, this can exceed your PostgreSQL host’s limit: tracked in [#147](https://github.com/oliviermattei/poc-next/issues/147).
+</Callout>

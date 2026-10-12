@@ -3,6 +3,93 @@ title: "Base de données en production"
 description: "Les migrations au déploiement, les sauvegardes et le seed."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+Votre base de production contient les comptes, les organisations et les abonnements de vos clients. Cette page dit comment son schéma est mis à jour, ce que vous devez faire pour ne rien perdre, et la commande à ne jamais y lancer.
 
-Cette page est en cours de rédaction : son contenu arrive dans un prochain ticket.
+## Quelle base
+
+- **PostgreSQL 16 ou plus récent**, et seulement PostgreSQL.
+- **Avec la pile Docker Compose**, la base est fournie : un conteneur `postgres:16-alpine`, joignable uniquement depuis la pile (aucun port publié sur votre serveur), dont les données vivent dans le volume Docker `postgres-data`.
+- **Avec un hébergeur** (Neon, Supabase, Amazon RDS ou tout PostgreSQL 16+), vous fournissez simplement son adresse dans `DATABASE_URL`. Ces hébergeurs sont **compatibles** : ils passent par l’interface standard de PostgreSQL, mais le projet ne les teste pas. Voir [PostgreSQL](/fr/services/postgresql).
+
+## Les migrations
+
+Une **migration** est un fichier SQL, versionné dans le module qui la déclare, qui fait évoluer le schéma de la base. `pnpm db:migrate` applique celles des **modules activés**, dans l’ordre de leurs dépendances, et une seule fois chacune. Elle n’a besoin que de `DATABASE_URL`.
+
+Elle affiche toujours l’un de ces trois messages :
+
+| Message | Ce qu’il veut dire |
+|---|---|
+| `Migrations appliquées, dans l’ordre du graphe : auth (…), …` | des migrations viennent d’être appliquées (entre parenthèses, leur nombre par module) |
+| `Rien à appliquer : aucune migration en attente pour les modules activés — …` | la base est déjà à jour |
+| `Aucune migration à appliquer : aucun module activé n’en déclare.` | aucun module activé n’a de table |
+
+Une migration en échec fait sortir la commande en erreur.
+
+### Où elles tournent
+
+- **Avec Docker Compose**, le service `migrate` les joue, et l’application `web` ne démarre **que si** elles ont réussi. Aucun trafic n’atteint un schéma à moitié appliqué. Deux conteneurs de migration lancés en même temps ne se gênent pas : le second retrouve le travail du premier.
+- **Avec Vercel**, vous les lancez vous-même avant chaque mise en ligne : voir [Vercel](/fr/deployer/vercel#mettre-à-jour-votre-saas).
+
+<Callout type="warn" title="Une migration ratée peut couper le service">
+Sur une pile Compose déjà en service, `up -d --build` détruit l’ancienne application **avant** de jouer les migrations : si l’une échoue, plus rien ne répond. Jouez toujours les migrations seules d’abord, comme décrit dans [Docker et Coolify](/fr/deployer/docker-et-coolify#mettre-à-jour-votre-saas).
+</Callout>
+
+### La règle des migrations compatibles
+
+Quand les migrations passent avant la nouvelle version, l’**ancienne** version tourne quelques instants sur le **nouveau** schéma. Chaque migration doit donc rester compatible avec elle :
+
+1. **Ajouter avant de lire** : une nouvelle colonne est d’abord ajoutée, et le code qui la lit arrive avec ou après elle.
+2. **Cesser d’écrire avant de supprimer** : pour retirer une colonne, une première version cesse de l’utiliser ; une version suivante la supprime.
+
+Les migrations se génèrent sur votre poste avec `pnpm db:generate` et se versionnent avec le code. On ne modifie jamais le schéma de production à la main.
+
+### Activer ou couper un module en production
+
+- **Activer** un module : ses migrations s’appliquent au déploiement suivant.
+- **Couper** un module : ses routes, ses écrans et ses entrées de menu disparaissent, mais **ses tables et ses données restent** en base. Aucune commande ne les supprime, et c’est voulu : le réactiver les retrouve intactes.
+
+## Le seed : jamais en production
+
+`pnpm db:seed` remplit la base avec des **données de démonstration** : des comptes au mot de passe connu, une organisation, un abonnement. C’est fait pour découvrir le produit sur votre poste, jamais pour un vrai service.
+
+Il se protège à moitié : dès que la base contient un compte qu’il n’a pas créé, il refuse et n’écrit rien, avec ce message :
+
+```
+Le seed « auth.comptes » a échoué : Le seed de démonstration refuse : la base porte 1 compte(s) que ce seed n’a pas créé(s). C’est une base en service, pas une base de découverte — aucune donnée de démonstration n’y est écrite.
+```
+
+<Callout type="error" title="Sur une base de production vide, il ne refuse pas">
+Ce garde-fou se fonde sur la présence de vrais comptes, pas sur l’environnement. Sur une base de production encore vide, `pnpm db:seed` **créerait les comptes de démonstration, dont le mot de passe est écrit en clair dans le dépôt**. Ne le lancez jamais vers votre base de production.
+</Callout>
+
+## Les sauvegardes
+
+**Le dépôt ne fournit aucun mécanisme de sauvegarde.** C’est à vous de le mettre en place avant d’ouvrir au public.
+
+- **Avec un hébergeur PostgreSQL**, activez les sauvegardes qu’il propose, et vérifiez leur fréquence et leur durée de conservation.
+- **Avec la pile Compose**, vos données sont dans le volume `postgres-data`. Pour en faire une copie, l’outil standard de PostgreSQL, `pg_dump`, est disponible dans le conteneur. Par exemple, depuis le dossier du projet sur le serveur :
+
+  ```bash
+  docker compose --env-file .env.production -f docker-compose.prod.yml exec -T postgres \
+    sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > sauvegarde-$(date +%F).sql
+  ```
+
+  Vous devez obtenir un fichier `sauvegarde-<date>.sql` non vide. Copiez-le **hors du serveur**, et programmez cette commande (avec `cron`, par exemple). Ces commandes ne sont pas testées par le projet : faites un essai de restauration sur une base de test avant d’en dépendre.
+
+<Callout type="error" title="Ne supprimez pas le volume">
+`docker compose … down -v` supprime les volumes, donc **toute votre base**. Pour arrêter la pile, utilisez `down` sans `-v`.
+</Callout>
+
+## Surveiller la base
+
+- **`/api/health`** interroge réellement la base à chaque appel : `200` et `{"status":"ok","database":"connected"}` quand elle répond, `503` et `{"status":"error","database":"unreachable"}` sinon. C’est l’adresse à donner à votre outil de surveillance.
+- **`pnpm billing:reconcile`** remet en accord l’état des abonnements avec Stripe, si le module `billing` est activé. Voir [Commandes](/fr/reference/commandes).
+
+## Ce qui n’est pas inclus
+
+<Callout type="info" title="Ce qui n’est pas inclus">
+- Aucune sauvegarde ni restauration automatique.
+- Aucune commande qui supprime les tables d’un module coupé (c’est exclu : voir [Ce que le boilerplate ne fait pas](/fr/reference/ce-que-le-boilerplate-ne-fait-pas)).
+- Aucun autre moteur de base que PostgreSQL.
+- La taille du réservoir de connexions est fixée à 10 par instance, sans réglage ([#147](https://github.com/oliviermattei/poc-next/issues/147)).
+</Callout>

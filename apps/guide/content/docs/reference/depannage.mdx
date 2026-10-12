@@ -3,6 +3,230 @@ title: "Dépannage"
 description: "Les erreurs fréquentes au démarrage, et comment les résoudre."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+Cette page part de **ce que vous voyez** : un message dans le terminal, une page qui ne s’ouvre pas. Cherchez le début du message avec la recherche du Guide, ou parcourez les sections.
 
-Cette page est en cours de rédaction : son contenu arrive dans un prochain ticket.
+<Callout type="idea" title="Avec un assistant IA">
+Copiez le message **en entier** à votre assistant, avec la commande que vous avez lancée, et demandez-lui de lire cette page. Les messages de l’application nomment toujours la variable ou le fichier en cause.
+</Callout>
+
+## Lire un refus de démarrage
+
+Avant de servir la moindre requête, l’application vérifie sa configuration. Si quelque chose manque, elle **refuse de démarrer et dit pourquoi**. Ce n’est pas une panne : c’est le signal qu’une variable est à corriger.
+
+- **En local**, le message s’affiche dans le terminal de `pnpm dev`.
+- **En production**, il commence par `Démarrage refusé :`, puis le processus s’arrête (code 1). Lisez-le dans les journaux du conteneur ou de la plateforme.
+
+Une variable absente ou mal écrite donne une liste de ce type, une ligne par variable :
+
+```
+Invalid environment variables:
+  - DATABASE_URL: Invalid input: expected string, received undefined
+```
+
+Le nom avant les deux-points est la variable à corriger dans votre `.env` (en local) ou dans les variables de votre hébergeur (en production). Leur rôle à toutes : [Variables d’environnement](/fr/configurer/variables-d-environnement).
+
+<Callout type="info" title="Le terminal l’emporte sur le fichier .env">
+Une variable déjà définie dans votre terminal (par un `export`, ou par votre profil de shell) **l’emporte** sur la valeur du fichier `.env`. Si vous corrigez le `.env` sans effet, vérifiez avec `echo $NOM_DE_LA_VARIABLE`, et ouvrez au besoin un nouveau terminal.
+</Callout>
+
+## Les messages de la vérification, un par un
+
+### La base de données
+
+```
+DATABASE_URL: Invalid input: expected string, received undefined
+DATABASE_URL: must be a PostgreSQL connection string (postgres://…)
+```
+
+`DATABASE_URL` manque, ou ne commence pas par `postgres://` ou `postgresql://`. En local, si vous n’avez pas encore de `.env` :
+
+```bash
+cp .env.example .env
+```
+
+### L’authentification
+
+```
+Authentification non configurée : renseignez AUTH_SECRET (32 caractères au minimum, …) et APP_URL (l’URL publique de l’application, …)
+```
+
+Renseignez les deux. Si le message commence par `AUTH_SECRET: Too small`, le secret fait moins de 32 caractères : générez-en un avec `openssl rand -base64 32`. Si c’est `APP_URL: must be an absolute http(s) URL`, écrivez l’adresse complète, par exemple `https://exemple.com`.
+
+### Les e-mails
+
+```
+Aucun mailer configuré : renseignez RESEND_API_KEY (avec EMAIL_FROM) pour envoyer, ou EMAIL_LOCAL_CAPTURE=1 pour capturer les emails dans « … » sans rien envoyer.
+```
+
+En local, posez `EMAIL_LOCAL_CAPTURE=1`. En production, posez `RESEND_API_KEY` et `EMAIL_FROM` ([Resend](/fr/services/resend)). Variantes :
+
+- `EMAIL_FROM: is required when RESEND_API_KEY is set` : la clé est là, l’expéditeur manque.
+- `EMAIL_LOCAL_CAPTURE: cannot be enabled while RESEND_API_KEY is set: choose one` : retirez l’une des deux.
+
+### Le paiement (module `billing`)
+
+```
+Le module de facturation est activé mais aucun fournisseur de paiement n’est configuré : renseignez STRIPE_SECRET_KEY et STRIPE_WEBHOOK_SECRET pour encaisser, ou PAYMENTS_LOCAL_MODE=1 pour simuler les paiements en local sans rien encaisser. …
+```
+
+Trois réponses : brancher [Stripe](/fr/services/stripe), poser `PAYMENTS_LOCAL_MODE=1` (en local seulement), ou couper le module avec `pnpm ks toggle billing`. Variantes :
+
+- `PAYMENTS_LOCAL_MODE=1 est posé avec NODE_ENV=production : …` : la simulation accorderait un abonnement sans paiement. Retirez `PAYMENTS_LOCAL_MODE` et posez les clés Stripe.
+- `PAYMENTS_LOCAL_MODE=1 est posé en même temps qu’une clé Stripe : choisissez l’un des deux.`
+- `STRIPE_WEBHOOK_SECRET: is required when STRIPE_SECRET_KEY is set`, ou l’inverse : posez les deux.
+- `PAYMENTS_RECORDED_EVENTS est posé sans PAYMENTS_LOCAL_MODE=1 : …` : cette variable ne sert qu’aux tests. Videz-la.
+
+### Le stockage (module `storage`)
+
+```
+Module « storage » activé mais aucun stockage configuré : renseignez STORAGE_S3_BUCKET, STORAGE_S3_REGION, STORAGE_S3_ACCESS_KEY_ID et STORAGE_S3_SECRET_ACCESS_KEY (plus STORAGE_S3_ENDPOINT hors AWS) pour un seau réel, ou STORAGE_LOCAL_DIRECTORY=… pour écrire sur le disque sans aucune clé. Sinon, coupez le module : `pnpm ks toggle storage`.
+```
+
+En local, `STORAGE_LOCAL_DIRECTORY=.storage` (la valeur de `.env.example`). En production, un seau [S3](/fr/services/stockage-s3). Variantes :
+
+- `STORAGE_LOCAL_DIRECTORY est posé avec NODE_ENV=production : …` : le disque disparaît au redéploiement. Configurez un seau.
+- `Le seau « … » est configuré, mais son origine … n’est pas déclarée dans config/security.ts, champ connect. …` : ajoutez l’origine affichée dans le champ `connect` de `config/security.ts`, puis redéployez. Le faire par une variable est suivi dans [#144](https://github.com/oliviermattei/poc-next/issues/144).
+- `STORAGE_S3_ENDPOINT n’est pas une URL absolue : …` : écrivez l’adresse complète, par exemple `https://<compte>.r2.cloudflarestorage.com`.
+
+### Les tâches de fond (module `jobs`)
+
+```
+Aucun exécuteur de tâches configuré : renseignez INNGEST_EVENT_KEY (avec INNGEST_SIGNING_KEY) pour mettre en file chez le fournisseur, ou JOBS_LOCAL_RUNNER=1 pour exécuter en mémoire, sans service externe.
+```
+
+En local, `JOBS_LOCAL_RUNNER=1`. En production, [Inngest](/fr/services/inngest), ou `JOBS_LOCAL_RUNNER=1` sur une seule instance. Si les deux sont posés : `JOBS_LOCAL_RUNNER: cannot be enabled while INNGEST_EVENT_KEY or INNGEST_SIGNING_KEY is set: choose one`.
+
+Le message `[jobs.disabled] Le module « jobs » est coupé : …` n’est pas une erreur : il rappelle que, module coupé, les tâches planifiées ne s’exécutent pas.
+
+### L’analytique (module `analytics`)
+
+```
+L’analytique est configurée sur …, mais cette origine n’est déclarée ni dans … de config/security.ts. …
+```
+
+Ajoutez la valeur de `POSTHOG_HOST` dans les champs `connect` et `img` de `config/security.ts`, ou retirez `POSTHOG_KEY`. Voir [PostHog](/fr/services/posthog). Si c’est `POSTHOG_HOST: is required when POSTHOG_KEY is set` (ou l’inverse), posez les deux.
+
+### La connexion Google ou GitHub
+
+- `Fournisseur « google » à moitié configuré : GOOGLE_CLIENT_SECRET est requis dès que GOOGLE_CLIENT_ID est renseigné. …` (ou `github`) : posez les deux variables de la paire, ou aucune.
+- `OAUTH_LOCAL_PROVIDER=1 est posé avec NODE_ENV=production : …` : ce fournisseur de développement ouvre une session sans mot de passe. Retirez-le.
+- `OAUTH_LOCAL_PROVIDER=1 et des identifiants de fournisseur sont configurés en même temps : choisissez l’un des deux. …`
+
+### Les deux hôtes
+
+Un message qui commence par `APP_HOST:` concerne le mode à deux hôtes. Les quatre cas sont expliqués dans [Domaine et deux hôtes](/fr/deployer/domaine-et-deux-hotes). Si vous ne voulez pas de deux hôtes, laissez `APP_HOST` vide.
+
+### Un avertissement, pas une erreur : la console
+
+```
+SUPERADMIN_EMAIL n’est pas renseignée : aucun superadmin ne peut être désigné, et le back-office répond 404 à tout le monde. …
+```
+
+L’application démarre quand même. Pour ouvrir `/console`, renseignez `SUPERADMIN_EMAIL` avec l’adresse de votre compte, puis redémarrez. Voir [Console](/fr/fonctionnalites/console).
+
+## Docker et la base de données
+
+### Docker n’est pas démarré
+
+`docker compose up -d` répond par un message du type `Cannot connect to the Docker daemon … Is the docker daemon running?`.
+
+1. Démarrez Docker Desktop (ou le service Docker de votre système).
+2. Attendez qu’il soit prêt, puis vérifiez avec `docker info` : la commande doit afficher des informations, sans erreur.
+3. Relancez `docker compose up -d`.
+
+### Le port 5432 est déjà pris
+
+`docker compose up -d` échoue avec un message qui mentionne le port `5432` (par exemple `port is already allocated`) : une autre base PostgreSQL tourne déjà sur votre poste.
+
+1. Arrêtez l’autre base, **ou** choisissez un autre port dans votre `.env` :
+
+   ```bash
+   POSTGRES_PORT=5433
+   DATABASE_URL=postgres://postgres:postgres@localhost:5433/app
+   ```
+
+2. Relancez `docker compose up -d`, puis `pnpm db:migrate`.
+
+Le port de `DATABASE_URL` doit toujours être celui de `POSTGRES_PORT`.
+
+### La base ne répond pas
+
+Les commandes `pnpm db:migrate` ou `pnpm db:seed` échouent avec un message contenant `ECONNREFUSED`, ou `/api/health` répond `{"status":"error","database":"unreachable"}` (code 503).
+
+1. Vérifiez que la base tourne : `docker compose ps` doit montrer `postgres` à l’état `Up` (et `healthy`).
+2. Sinon, `docker compose up -d`, attendez quelques secondes, puis réessayez.
+3. Vérifiez que `DATABASE_URL` pointe vers le bon hôte et le bon port.
+
+L’application démarre même si la base est éteinte : seule la forme de `DATABASE_URL` est vérifiée au démarrage. C’est `/api/health` qui vous dit si la base répond.
+
+### La base n’est pas migrée
+
+Une page plante, et le terminal affiche une erreur de PostgreSQL du type `relation "…" does not exist` : une table attendue n’existe pas encore.
+
+```bash
+pnpm db:migrate
+```
+
+Vous devez voir `Migrations appliquées, …` ou `Rien à appliquer : …`. Relancez-la après chaque `git pull` et chaque activation de module.
+
+### Le seed refuse
+
+| Message | Ce qu’il veut dire | Que faire |
+|---|---|---|
+| `Le seed « auth.comptes » a échoué : Le seed de démonstration refuse : la base porte … compte(s) que ce seed n’a pas créé(s). …` | la base contient déjà de vrais comptes : le seed protège vos données | rien, c’est voulu. Pour repartir de zéro **en local seulement**, voir ci-dessous |
+| `Aucun module activé ne déclare de données de départ : il n’y a rien à semer. …` | aucun module activé n’a de données de démonstration | rien à faire |
+| `Seed(s) sans effet sur une base vide : … ` | un module déclare des données de démonstration mais n’en écrit aucune | c’est un défaut du module nommé : signalez-le |
+| un message contenant `does not exist` | la base n’est pas migrée | `pnpm db:migrate`, puis relancez le seed |
+
+Pour repartir d’une base locale vide (**cela efface toutes vos données locales**) :
+
+```bash
+docker compose down -v
+docker compose up -d
+pnpm db:migrate
+pnpm db:seed
+```
+
+Ne faites jamais cela en production : voir [Base de données en production](/fr/deployer/base-de-donnees-en-production).
+
+## Les ports de l’application et du Guide
+
+### Le port 3000 est déjà pris
+
+`pnpm dev` affiche `Port 3000 is in use by process …, using available port 3001 instead.` et l’application s’ouvre sur le port 3001. **Les liens risquent alors de casser** : `APP_URL` vaut toujours `http://localhost:3000`, donc les liens des e-mails pointent au mauvais endroit, et la connexion peut être refusée.
+
+1. Arrêtez `pnpm dev` (Ctrl+C).
+2. Trouvez ce qui occupe le port : `lsof -i :3000` (macOS, Linux).
+3. Arrêtez ce programme (souvent un ancien `pnpm dev` resté ouvert), puis relancez `pnpm dev`.
+
+### Le port 3200 est déjà pris
+
+Le Guide n’essaie pas d’autre port : `pnpm guide:dev` (ou `pnpm dev`) échoue sur `Failed to start server`. Libérez le port 3200 de la même façon (`lsof -i :3200`).
+
+## En production
+
+### Le conteneur s’arrête aussitôt
+
+Lisez son journal (`docker compose … logs web`) : la ligne `Démarrage refusé : …` est l’un des messages ci-dessus.
+
+### `service "migrate" didn't complete successfully: exit 1`
+
+Une migration a échoué, et l’application n’a donc pas démarré. Le journal du service `migrate` dit laquelle :
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml logs migrate
+```
+
+Si la pile servait déjà une version, voir [Docker et Coolify](/fr/deployer/docker-et-coolify#mettre-à-jour-votre-saas) pour ne plus couper le service.
+
+### `renseignez POSTGRES_USER dans .env.production`
+
+Docker Compose refuse de lancer la pile : `POSTGRES_USER` ou `POSTGRES_PASSWORD` manque. Ajoutez-les à `.env.production`, et vérifiez que vous passez bien `--env-file .env.production`.
+
+### Sur Vercel, rien ne s’arrête mais rien ne marche
+
+Sur Vercel, une configuration refusée n’arrête pas le déploiement. Ouvrez `/api/health`, puis les journaux des fonctions : cherchez `Démarrage refusé :`. Voir [Vercel](/fr/deployer/vercel).
+
+## Toujours bloqué ?
+
+Les défauts connus sont suivis dans les [issues GitHub du projet](https://github.com/oliviermattei/poc-next/issues). Cherchez-y les mots de votre message avant d’en ouvrir une nouvelle.

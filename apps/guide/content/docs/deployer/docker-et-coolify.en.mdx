@@ -3,6 +3,310 @@ title: "Docker and Coolify"
 description: "Deploy the Docker image on your server, with or without Coolify."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+The repository ships everything needed to run your SaaS on a server with Docker:
 
-This page is being written: its content arrives in an upcoming ticket.
+- **`Dockerfile`**: the production image. It builds the application, then only carries what is strictly needed to serve it, under a non-privileged user. It has a separate stage, `migrator`, that runs the migrations.
+- **`docker-compose.prod.yml`**: the production stack, with three services:
+  - `postgres`: the PostgreSQL 16 database, published on no port of your server;
+  - `migrate`: runs the migrations, then stops;
+  - `web`: the application, served on port `APP_PORT` (3000 by default). It starts **only if the migrations succeeded**.
+
+Do not confuse it with `docker-compose.yml`, which only runs a development database on your machine.
+
+<Callout type="info" title="What has been tested">
+This stack has been built and started locally by the project, with Docker 29.7.2 and Docker Compose v5.4.0: `/api/health` answers `{"status":"ok","database":"connected"}`, and a deliberately broken migration keeps the application from starting. No deployment on a real public server has been made yet ([#145](https://github.com/oliviermattei/poc-next/issues/145)).
+</Callout>
+
+## Deploy the stack on your server
+
+<Steps>
+<Step>
+
+### Check Docker on the server
+
+Log in to your server, then run:
+
+```bash
+docker --version
+docker compose version
+```
+
+You should see a version number for each. If `docker compose` is unknown, install your distribution’s Docker Compose plugin.
+
+</Step>
+<Step>
+
+### Decide on your modules, on your machine
+
+In production, several local modes are refused (see the [overview](/en/deployer)). For each enabled module, you therefore either have the provider’s account or turn the module off. For example, to sell later and launch without payment:
+
+```bash
+pnpm ks toggle billing
+```
+
+Do it **on your machine**, check that the application still starts (`pnpm dev`), then commit and push the change. Details: [Modules](/en/configurer/modules).
+
+</Step>
+<Step>
+
+### Declare the origins of the services that need it
+
+Two services require a change to `config/security.ts`, without which the application **refuses to start** and says so:
+
+- **S3 storage** (`storage` module): your bucket’s address goes in the `connect` field. The browser sends files directly to the bucket. See [S3 storage](/en/services/stockage-s3).
+- **PostHog**, if you set `POSTHOG_KEY`: the value of `POSTHOG_HOST` goes in the `connect` **and** `img` fields. See [PostHog](/en/services/posthog).
+
+This is code, not a variable: do it on your machine, commit, push. Doing it through a variable is tracked in [#144](https://github.com/oliviermattei/poc-next/issues/144).
+
+</Step>
+<Step>
+
+### Get the code on the server
+
+```bash
+git clone <your-repository-address> my-saas
+cd my-saas
+```
+
+You should see the `Dockerfile` and `docker-compose.prod.yml` files with `ls`.
+
+</Step>
+<Step>
+
+### Write the `.env.production` file
+
+Create a `.env.production` file at the root of the folder (it is never versioned, and never copied into the image). Start from this template and replace each value:
+
+```bash
+# --- The database created by the stack ---
+POSTGRES_USER=mysaas
+POSTGRES_PASSWORD=a-long-random-password
+POSTGRES_DB=app
+# The host is the service name: "postgres", never localhost.
+DATABASE_URL=postgres://mysaas:a-long-random-password@postgres:5432/app
+
+# --- The application ---
+NODE_ENV=production
+APP_PORT=3000
+APP_URL=https://example.com
+AUTH_SECRET=paste-the-openssl-output-here
+SUPERADMIN_EMAIL=you@example.com
+
+# --- Emails (Resend) ---
+RESEND_API_KEY=re_...
+EMAIL_FROM=My SaaS <hello@example.com>
+
+# --- Payment (Stripe), if the billing module is enabled ---
+STRIPE_SECRET_KEY=sk_live_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+
+# --- Storage (S3), if the storage module is enabled ---
+STORAGE_S3_BUCKET=my-bucket
+STORAGE_S3_REGION=eu-west-3
+STORAGE_S3_ACCESS_KEY_ID=...
+STORAGE_S3_SECRET_ACCESS_KEY=...
+
+# --- Background jobs, if the jobs module is enabled ---
+INNGEST_EVENT_KEY=...
+INNGEST_SIGNING_KEY=...
+```
+
+For `AUTH_SECRET`, generate a value specific to this deployment (32 characters minimum):
+
+```bash
+openssl rand -base64 32
+```
+
+Rules to follow:
+
+- `DATABASE_URL` must repeat exactly `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB`. Avoid the characters `@`, `:` and `/` in the password: they break the connection address.
+- **Do not copy `.env.example`** as is: it arms the local modes (`PAYMENTS_LOCAL_MODE=1`, `STORAGE_LOCAL_DIRECTORY=.storage`…), which production refuses.
+- Set none of `NEXT_PHASE`, `SKIP_ENV_VALIDATION`, `OAUTH_LOCAL_PROVIDER`, `PAYMENTS_RECORDED_EVENTS`, `I18N_MISSING_KEY_PROBE` or `CONSENT_SCRIPT_PROBE`.
+
+The role of each variable: [Environment variables](/en/configurer/variables-d-environnement).
+
+</Step>
+<Step>
+
+### Run the migrations, alone
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml run --rm --build migrate
+```
+
+The first time, building the image takes several minutes. At the end you should see a line starting with `Migrations appliquées, dans l’ordre du graphe :` ("Migrations applied, in graph order") followed by the modules. If you run the command again, it answers `Rien à appliquer : aucune migration en attente pour les modules activés — …` ("Nothing to apply"): that is normal, migrations only apply once.
+
+</Step>
+<Step>
+
+### Start the application
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+```
+
+Then look at the state of the services:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml ps -a
+```
+
+You should see `postgres` and `web` in the `Up` state, and `web` turn `(healthy)` after a few dozen seconds. `migrate` shows as `Exited (0)`: it has finished its work.
+
+</Step>
+<Step>
+
+### Check that the application answers
+
+On the server:
+
+```bash
+curl http://localhost:3000/api/health
+```
+
+You should see `{"status":"ok","database":"connected"}`. This probe really queries the database: while it is unreachable, it answers `503` with `{"status":"error","database":"unreachable"}`.
+
+If `web` does not stay up, read its log:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml logs web
+```
+
+A `Démarrage refusé : …` ("Startup refused") line names the variable or setting to fix. See [Troubleshooting](/en/reference/depannage).
+
+</Step>
+<Step>
+
+### Check that the variables reach the container
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml exec web env
+```
+
+You should see `DATABASE_URL=…` and your other variables in the list. Careful, this command prints your secrets on screen: do not copy it anywhere.
+
+</Step>
+<Step>
+
+### Put a relay in front of the application
+
+The stack has **no relay**: it exposes the application directly on `APP_PORT`. Put in front of it a relay that serves HTTPS for your domain and forwards requests to `localhost:3000`. Its settings are just below. Never publish this port directly to the Internet.
+
+</Step>
+</Steps>
+
+## Update your SaaS
+
+For each new version, on the server:
+
+```bash
+git pull
+docker compose --env-file .env.production -f docker-compose.prod.yml run --rm --build migrate \
+  && docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+```
+
+Migrations run first; the application is only rebuilt if they succeeded.
+
+<Callout type="warn" title="Why not up -d --build directly">
+Run alone on a stack already in service, `up -d --build` destroys the old `web` container **before** running the migrations. If a migration fails, nothing answers anymore: it is a service outage. The two-step command above avoids this case: if the migrations fail, the old version keeps serving. For this to work, each migration must stay compatible with the version still online: see [Production database](/en/deployer/base-de-donnees-en-production).
+</Callout>
+
+## The relay in front of the application
+
+The relay has three roles: serve HTTPS, **overwrite** the `x-forwarded-for` header (never append to it), and forward the original `Host` header.
+
+Why `x-forwarded-for`: rate limiting identifies each visitor by the first element of this header, and a visitor can write it themselves. Without a relay that overwrites it, an attacker can escape the limit, or exhaust someone else’s. The code-side improvement is tracked in [#78](https://github.com/oliviermattei/poc-next/issues/78). Why `Host`: it is what lets you [split the site and the application](/en/deployer/domaine-et-deux-hotes).
+
+<Tabs items={['nginx', 'Caddy', 'Traefik (Coolify)']}>
+<Tab value="nginx">
+
+```nginx
+location / {
+  proxy_pass http://127.0.0.1:3000;
+  proxy_set_header Host $host;
+  proxy_set_header X-Forwarded-For $remote_addr;
+  proxy_set_header X-Forwarded-Host $host;
+}
+```
+
+Use `$remote_addr`, **not** `$proxy_add_x_forwarded_for`, which appends the value sent by the visitor.
+
+</Tab>
+<Tab value="Caddy">
+
+```
+example.com {
+  reverse_proxy localhost:3000
+}
+```
+
+`reverse_proxy` writes `X-Forwarded-For` from the real address and forwards `Host` as is. Do not add `header_up X-Forwarded-For` or `header_up Host {upstream_hostport}`.
+
+</Tab>
+<Tab value="Traefik (Coolify)">
+
+On Traefik’s entry point: `--entrypoints.web.forwardedHeaders.insecure=false` and `--entrypoints.web.forwardedHeaders.trustedIPs=<your relays>`. Without `trustedIPs`, Traefik trusts whatever it receives. Leave `passHostHeader` at its default value (true).
+
+</Tab>
+</Tabs>
+
+**Check it on the first deployment**: no real relay has been tested with this repository yet. This check is part of [#145](https://github.com/oliviermattei/poc-next/issues/145).
+
+## Coolify
+
+<Callout type="warn" title="Guide never run for real">
+This guide has not yet been followed on a real Coolify instance: the result of the first attempt will be recorded in [#145](https://github.com/oliviermattei/poc-next/issues/145). Coolify’s menu names may vary from one version to another. The structure does not: a project, a resource, variables, a probe.
+</Callout>
+
+Coolify can deploy this repository in two ways. **The first is recommended**, because it reuses the Compose stack tested locally.
+
+### Option A (recommended): a "Docker Compose" resource
+
+1. Create a **project** (*New Project*), then a `production` environment.
+2. Add a **Docker Compose** resource (*New Resource*), choose your repository and its branch, and point to the `docker-compose.prod.yml` file.
+3. In the **variables**, enter those of the `.env.production` file described above, including `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` and `APP_PORT`.
+4. Deploy. The stack already contains its database, the startup order and the stop on a failed migration.
+5. **Check that the variables reach the containers**: in the `web` container’s terminal, `env` must show `DATABASE_URL`. How Coolify passes its variables to the stack has not been verified: it is the first thing to check.
+
+### Option B: a "Dockerfile" resource
+
+1. Create the **project** and environment, as above.
+2. Add a **PostgreSQL 16** resource. Coolify gives you an internal address: that is your `DATABASE_URL`.
+3. Add the **application** from your repository, with the **Dockerfile** *Build Pack*, the `Dockerfile` file and the `runner` target.
+4. **Port**: `3000`.
+5. **Variables**: those of `.env.production`, except `POSTGRES_*` and `APP_PORT`, which only serve the Compose stack.
+6. **Migrations**: `pnpm db:migrate` must run before each release. The `runner` image does not contain pnpm: the command needs the `migrator` stage. That is why option A is preferable.
+7. **Health probe**: `/api/health`.
+
+### In both cases
+
+- Keep `NODE_ENV=production`: it is what makes the local modes refused.
+- Set neither `NEXT_PHASE` nor `SKIP_ENV_VALIDATION`.
+- As long as a variable is missing, startup fails **naming it** in the container logs. That is the expected behaviour, not an outage.
+
+## The image alone, without Compose
+
+If your host runs Docker images without Compose, build and run the two images yourself:
+
+```bash
+# The migrations: an image that runs them, then stops.
+docker build --target migrator -t my-saas-migrate .
+docker run --rm --env-file .env.production my-saas-migrate
+
+# The application.
+docker build --target runner -t my-saas-web .
+docker run --rm -p 3000:3000 --env-file .env.production my-saas-web
+```
+
+Here, `DATABASE_URL` must point to a database reachable from the container (not `postgres`, which is a host name only inside the Compose stack). Started without any variable, the `runner` image stops with exit code 1 and `Démarrage refusé : Invalid environment variables: - DATABASE_URL: …`: proof that it does check its configuration.
+
+## What is not included
+
+<Callout type="info" title="What is not included">
+- **No relay and no HTTPS certificate** in the stack: it is up to you to put them in front.
+- **No zero-downtime switch** ("blue-green"): the two-step command avoids the outage on a failed migration, not during the restart.
+- **No automatic database backup**: see [Production database](/en/deployer/base-de-donnees-en-production).
+- **No image publishing**: CI builds the image and checks that it refuses to start without configuration, but pushes it to no registry.
+- **Sending source maps to Sentry** happens outside the image: see [Sentry](/en/services/sentry).
+- Known limits: the S3 bucket origin must be written in code ([#144](https://github.com/oliviermattei/poc-next/issues/144)); the image is built on Node 22 ([#148](https://github.com/oliviermattei/poc-next/issues/148)); it is not yet proven that the configuration check happens before the server accepts a request ([#146](https://github.com/oliviermattei/poc-next/issues/146)).
+</Callout>

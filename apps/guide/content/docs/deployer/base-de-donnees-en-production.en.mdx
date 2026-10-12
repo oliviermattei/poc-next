@@ -3,6 +3,95 @@ title: "Production database"
 description: "Migrations on deploy, backups and seeding."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+Your production database holds your customers’ accounts, organizations and subscriptions. This page says how its schema is updated, what you must do to lose nothing, and the command never to run against it.
 
-This page is being written: its content arrives in an upcoming ticket.
+## Which database
+
+- **PostgreSQL 16 or later**, and only PostgreSQL.
+- **With the Docker Compose stack**, the database is provided: a `postgres:16-alpine` container, reachable only from inside the stack (no port published on your server), whose data lives in the `postgres-data` Docker volume.
+- **With a host** (Neon, Supabase, Amazon RDS or any PostgreSQL 16+), you simply provide its address in `DATABASE_URL`. These hosts are **compatible**: they go through PostgreSQL’s standard interface, but the project does not test them. See [PostgreSQL](/en/services/postgresql).
+
+## Migrations
+
+A **migration** is an SQL file, versioned in the module that declares it, that evolves the database schema. `pnpm db:migrate` applies those of the **enabled modules**, in the order of their dependencies, and only once each. It only needs `DATABASE_URL`.
+
+It always prints one of these three messages (the application’s messages are in French):
+
+| Message | What it means |
+|---|---|
+| `Migrations appliquées, dans l’ordre du graphe : auth (…), …` | migrations have just been applied (in brackets, their number per module) |
+| `Rien à appliquer : aucune migration en attente pour les modules activés — …` | the database is already up to date |
+| `Aucune migration à appliquer : aucun module activé n’en déclare.` | no enabled module has any table |
+
+A failed migration makes the command exit with an error.
+
+### Where they run
+
+- **With Docker Compose**, the `migrate` service runs them, and the `web` application starts **only if** they succeeded. No traffic reaches a half-applied schema. Two migration containers started at the same time do not get in each other’s way: the second finds the first one’s work.
+- **With Vercel**, you run them yourself before each release: see [Vercel](/en/deployer/vercel#update-your-saas).
+
+<Callout type="warn" title="A failed migration can cut the service">
+On a Compose stack already in service, `up -d --build` destroys the old application **before** running the migrations: if one fails, nothing answers anymore. Always run the migrations alone first, as described in [Docker and Coolify](/en/deployer/docker-et-coolify#update-your-saas).
+</Callout>
+
+### The rule of compatible migrations
+
+When the migrations run before the new version, the **old** version runs for a few moments on the **new** schema. Each migration must therefore stay compatible with it:
+
+1. **Add before reading**: a new column is added first, and the code that reads it arrives with it or after it.
+2. **Stop writing before dropping**: to remove a column, a first version stops using it; a later version drops it.
+
+Migrations are generated on your machine with `pnpm db:generate` and versioned with the code. The production schema is never changed by hand.
+
+### Turning a module on or off in production
+
+- **Turning a module on**: its migrations apply at the next deployment.
+- **Turning a module off**: its routes, screens and menu entries disappear, but **its tables and data stay** in the database. No command deletes them, and that is deliberate: turning it back on finds them intact.
+
+## The seed: never in production
+
+`pnpm db:seed` fills the database with **demonstration data**: accounts with a known password, an organization, a subscription. It is meant for discovering the product on your machine, never for a real service.
+
+It half-protects itself: as soon as the database contains an account it did not create, it refuses and writes nothing, with this message:
+
+```
+Le seed « auth.comptes » a échoué : Le seed de démonstration refuse : la base porte 1 compte(s) que ce seed n’a pas créé(s). C’est une base en service, pas une base de découverte — aucune donnée de démonstration n’y est écrite.
+```
+
+("The demonstration seed refuses: the database holds 1 account(s) this seed did not create. It is a database in service, not a discovery database — no demonstration data is written to it.")
+
+<Callout type="error" title="On an empty production database, it does not refuse">
+This safeguard relies on the presence of real accounts, not on the environment. On a still-empty production database, `pnpm db:seed` **would create the demonstration accounts, whose password is written in plain text in the repository**. Never run it against your production database.
+</Callout>
+
+## Backups
+
+**The repository provides no backup mechanism.** It is up to you to set one up before opening to the public.
+
+- **With a PostgreSQL host**, turn on the backups it offers, and check their frequency and retention.
+- **With the Compose stack**, your data is in the `postgres-data` volume. To copy it, PostgreSQL’s standard tool, `pg_dump`, is available in the container. For example, from the project folder on the server:
+
+  ```bash
+  docker compose --env-file .env.production -f docker-compose.prod.yml exec -T postgres \
+    sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > backup-$(date +%F).sql
+  ```
+
+  You should get a non-empty `backup-<date>.sql` file. Copy it **off the server**, and schedule this command (with `cron`, for example). These commands are not tested by the project: try a restore on a test database before relying on them.
+
+<Callout type="error" title="Do not delete the volume">
+`docker compose … down -v` deletes the volumes, so **your whole database**. To stop the stack, use `down` without `-v`.
+</Callout>
+
+## Watching the database
+
+- **`/api/health`** really queries the database on each call: `200` and `{"status":"ok","database":"connected"}` when it answers, `503` and `{"status":"error","database":"unreachable"}` otherwise. It is the address to give your monitoring tool.
+- **`pnpm billing:reconcile`** brings the subscription state back in line with Stripe, if the `billing` module is enabled. See [Commands](/en/reference/commandes).
+
+## What is not included
+
+<Callout type="info" title="What is not included">
+- No automatic backup or restore.
+- No command that deletes a turned-off module’s tables (this is excluded: see [What the boilerplate does not do](/en/reference/ce-que-le-boilerplate-ne-fait-pas)).
+- No database engine other than PostgreSQL.
+- The connection pool size is fixed at 10 per instance, with no setting ([#147](https://github.com/oliviermattei/poc-next/issues/147)).
+</Callout>
