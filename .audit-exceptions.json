@@ -6,5 +6,12 @@
     "Elle expire (`expires`, AAAA-MM-JJ). Sans date, ou passée, la commande échoue.",
     "Elle ne vaut que pour un avis : il n'existe pas d'exception globale."
   ],
-  "exceptions": []
+  "exceptions": [
+    {
+      "advisory": "GHSA-vfj7-8cjw-p6xm",
+      "package": "braces",
+      "reason": "Aucune version corrigée n'existe (vulnérable jusqu'à 3.0.3, la dernière publiée). braces n'est atteint que par la chaîne de lint de `tooling/eslint` (micromatch, via eslint-plugin-boundaries et @next/eslint-plugin-next > fast-glob) : les motifs qu'il développe sont ceux de la configuration ESLint du dépôt, jamais une entrée d'utilisateur, et ce paquet de développement n'entre pas dans l'image d'exécution. Un débordement de pile y ferait tomber `pnpm lint`, pas l'application. Issue #77.",
+      "expires": "2027-01-13"
+    }
+  ]
 }
