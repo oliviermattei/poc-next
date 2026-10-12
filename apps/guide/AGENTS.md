@@ -56,15 +56,29 @@ build, et `tests/deployment.test.ts` le vérifie.
 - parité FR/EN de chaque page et de chaque `meta.json` ;
 - chaque lien interne, cartes de la grille comprises ;
 - une grille honnête (issue de chaque « Bientôt », rien du cimetière) ;
-- l'exhaustivité, dérivée du code (#203) : chaque module de l'annuaire
-  (`config/features.ts`) nommé `entre accents graves` dans une page
-  française, chaque clé de `ENV_KEYS` et `BUILD_ENV_KEYS` dans
-  `configurer/variables-d-environnement.mdx`, chaque fichier de `config/` dans
-  une page française, et aucune page en attente. Ajouter un module, une
-  variable ou un fichier de configuration sans sa page fait rougir `pnpm test`.
+- l'exhaustivité, dérivée du code (#203) et mesurée dans **chaque** langue
+  (lue dans `lib/i18n.ts`) : chaque module de l'annuaire
+  (`config/features.ts`) a sa ligne dans la table de `fonctionnalites/index`,
+  et la page vers laquelle elle mène le nomme ; chaque clé de `ENV_KEYS` et
+  `BUILD_ENV_KEYS` dans `configurer/variables-d-environnement` ; chaque
+  fichier de `config/` dans une page ; chaque script du `package.json` de la
+  racine dans `reference/commandes` ; aucune page en attente. Ajouter un
+  module, une variable, un fichier de configuration ou un script sans sa page
+  fait rougir `pnpm test`. Ce que le test ne voit pas — qu'une phrase soit
+  juste — reste au jugement de la revue.
 
 `pnpm guide:build` construit le site et échoue sur un frontmatter invalide ;
 `pnpm typecheck` et `pnpm lint` le couvrent comme le reste du dépôt.
+
+**`pnpm dev` et `pnpm build` lancent aussi le Guide, et c'est voulu** (ADR 083) :
+Turbo prend chaque application du dépôt, si bien que le Guide se lit sur le
+port 3200 pendant que l'application tourne, et qu'une montée de Fumadocs qui le
+casserait rougit au build de la CI. `pnpm guide:dev` et `pnpm guide:build` le
+lancent seul. L'image de production ne le construit jamais (`.dockerignore`).
+
+**Les langues sont déclarées une seule fois**, dans `lib/i18n.ts` : le type
+`Lang`, les liens de la racine et de la page 404, et le test en dérivent. Un
+libellé identique dans toutes les langues s'écrit `same('Stripe')`.
 
 ## Le bloc `nextjs-agent-rules` ci-dessous est versionné, et c'est un choix
 

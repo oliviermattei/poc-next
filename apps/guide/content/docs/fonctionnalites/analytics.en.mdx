@@ -18,7 +18,9 @@ The `analytics` module measures your SaaS's audience with PostHog — only after
 
 Both services are optional: **without a key, the application runs normally and makes no analytics network call**. There is no local mode to enable.
 
-Your customers see nothing of this module, except the consent banner when PostHog is configured.
+## What your customers see
+
+Almost nothing: this module has no screen and no menu entry. The only visible thing is the **consent banner**, which appears when PostHog is configured, as long as the visitor has not chosen to accept or refuse “Audience measurement”. Without a PostHog key, this module shows no banner. Sentry shows nothing: errors are sent without the visitor seeing it.
 
 ## Enable or disable
 

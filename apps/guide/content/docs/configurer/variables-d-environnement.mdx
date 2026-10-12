@@ -8,13 +8,19 @@ Une **variable d’environnement** est un réglage que l’application lit au d�
 - **En local**, elles vivent dans le fichier `.env` à la racine du dépôt, créé en copiant `.env.example`.
 - **En production**, vous les saisissez dans l’interface de votre hébergeur (ou dans un fichier `.env.production` à côté de `docker-compose.prod.yml`) : voir [Déployer](/fr/deployer).
 
-Cette page liste **toutes** les variables que l’application lit : les 34 du schéma d’environnement (`packages/config/src/env.ts`), puis les 2 réservées au build, puis celles que seuls des outils lisent.
+Cette page liste **toutes** les variables que l’application lit : celles du schéma d’environnement (`packages/config/src/env.ts`), puis celles réservées au build, puis celles que seuls des outils lisent.
 
 ## Les règles à connaître avant de remplir
 
 1. **Tout est vérifié au démarrage.** Une variable absente ou mal formée arrête l’application avec un message qui **la nomme**, par exemple `- APP_URL: must be an absolute http(s) URL`.
 2. **Une variable vide vaut absente.** `RESEND_API_KEY=` (rien après le signe égal) est traité comme si la ligne n’existait pas.
-3. **Chaque service se choisit explicitement** : soit vous donnez la clé du fournisseur, soit vous activez son mode local (`EMAIL_LOCAL_CAPTURE=1`, `PAYMENTS_LOCAL_MODE=1`…). **Les deux à la fois, ou aucun des deux, arrêtent le démarrage.** Le boilerplate ne bascule jamais tout seul vers un mode local.
+3. **Un service qui a un mode local se choisit explicitement** : soit vous donnez la clé du fournisseur, soit vous activez son mode local (`EMAIL_LOCAL_CAPTURE=1`, `PAYMENTS_LOCAL_MODE=1`…). **Les deux à la fois arrêtent toujours le démarrage.** **Aucun des deux** ne l’arrête que dans certains cas :
+   - **e-mails** : toujours. Il faut `RESEND_API_KEY` (avec `EMAIL_FROM`) ou `EMAIL_LOCAL_CAPTURE=1` ;
+   - **paiement, stockage, tâches de fond** : seulement quand leur module (`billing`, `storage`, `jobs`) est activé. Module coupé, rien n’est exigé ;
+   - **Google et GitHub** : jamais. Sans clé ni `OAUTH_LOCAL_PROVIDER`, l’application démarre, sans bouton de connexion externe ;
+   - **PostHog et Sentry** n’ont pas de mode local : sans clé, rien n’est mesuré ni remonté, et l’application démarre.
+
+   Le boilerplate ne bascule jamais tout seul vers un mode local.
 4. **Certaines vont par paire ou par groupe** (une clé et son secret) : en poser une sans l’autre arrête le démarrage en nommant celle qui manque.
 5. **Un drapeau s’écrit `1`, et seulement `1`.** `true`, `yes` ou `on` sont refusés.
 6. **Une variable déjà exportée dans votre terminal l’emporte sur le fichier `.env`.**

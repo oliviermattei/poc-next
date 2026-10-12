@@ -47,7 +47,7 @@ The Compose stack creates one for you. On Vercel, you need a database hosted els
 
 ### An account with each provider your modules need
 
-Locally, each service has a **local mode** that avoids any account. In production, most of these modes are **refused at startup**. With the modules enabled by default, here is what you need:
+Locally, each essential service has a **local mode** that avoids any account (PostHog and Sentry do not need one: without a key, they do nothing). In production, most of these modes are **refused at startup**. With the modules enabled by default, here is what you need:
 
 | Enabled module | You need | Local mode in production |
 |---|---|---|

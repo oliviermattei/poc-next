@@ -1,3 +1,6 @@
+import { LanguageLinks } from '@/components/language-links'
+import { i18n } from '@/lib/i18n'
+
 /**
  * La page 404 de l'export (`out/404.html`), qu'un hébergeur statique sert
  * pour une adresse inconnue. La racine étant transparente, elle pose sa
@@ -5,12 +8,10 @@
  */
 export default function NotFound() {
   return (
-    <html lang="fr">
+    <html lang={i18n.defaultLanguage}>
       <body>
         <h1>Page introuvable · Page not found</h1>
-        <p>
-          <a href="/fr/">Guide en français</a> · <a href="/en/">Guide in English</a>
-        </p>
+        <LanguageLinks />
       </body>
     </html>
   )

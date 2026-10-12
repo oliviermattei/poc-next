@@ -5,7 +5,7 @@ import { notFound } from 'next/navigation'
 import type { ReactNode } from 'react'
 
 import { Provider } from '@/components/provider'
-import type { Lang } from '@/lib/feature-grid'
+import type { Lang } from '@/lib/i18n'
 import { i18n } from '@/lib/i18n'
 import { baseOptions } from '@/lib/layout.shared'
 import { source } from '@/lib/source'

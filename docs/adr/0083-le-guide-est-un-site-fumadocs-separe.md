@@ -46,8 +46,9 @@ Le Guide est une **application à part, `apps/guide`, construite avec Fumadocs**
   `redirect()` de Next ne produit qu'une redirection par JavaScript (mesuré
   dans `out/index.html`).
 - **Le Guide suit le code.** `tests/guide.test.ts` vérifie la parité des
-  langues, chaque lien interne et l'honnêteté de la grille d'accueil, déclarée
-  une seule fois dans `apps/guide/lib/feature-grid.ts` ; `CODING_STANDARDS.md`
+  langues, chaque lien interne, l'honnêteté de la grille d'accueil, déclarée
+  une seule fois dans `apps/guide/lib/feature-grid.ts`, et que chaque module,
+  variable, fichier de `config/` et script de la racine y est nommé ; `CODING_STANDARDS.md`
   pose la règle de mise à jour dans le même commit que le code.
 
 **Pourquoi l'ADR 053 ne s'applique pas.** Elle juge la **documentation
@@ -94,7 +95,10 @@ dépendances, se publie comme des fichiers, et un assistant IA le lit d'un coup
 **Plus difficile.** Trois dépendances de plus, qui publient tous les deux à
 cinq jours ; `fumadocs-ui` exige le `fumadocs-core` du même numéro, d'où les
 versions figées. Elles entrent dans `pnpm run audit`. `pnpm dev` et
-`pnpm build` lancent aussi le Guide, puisque Turbo prend chaque application.
+`pnpm build` lancent aussi le Guide, puisque Turbo prend chaque application —
+et c'est voulu, pas subi : le Guide se lit pendant qu'on développe, et la CI
+le construit à chaque envoi. `pnpm guide:dev` et `pnpm guide:build` le lancent
+seul ; `docs/commands.md` le dit sur les lignes de `pnpm dev` et `pnpm build`.
 
 **Hébergement et politique de sécurité du contenu.** Un site statique ne pose
 aucun en-tête de réponse : la CSP à nonce de `docs/security.md` §1, construite

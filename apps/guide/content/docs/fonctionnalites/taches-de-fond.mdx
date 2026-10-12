@@ -22,21 +22,6 @@ Vos clients ne voient pas ce module ; ils en voient les effets. Les tâches plan
 
 Une tâche qui échoue sur une erreur passagère est retentée, jusqu’à trois tentatives au total, avec un délai croissant. Une même exécution n’a lieu qu’une fois, même si elle est déclenchée deux fois.
 
-## Deux façons de les exécuter
-
-Il faut en choisir une ; sans aucune des deux, l’application refuse de démarrer en nommant les trois variables.
-
-| Mode | Variables | Pour qui |
-|---|---|---|
-| **En mémoire** | `JOBS_LOCAL_RUNNER=1` (valeur livrée dans `.env.example`) | le développement, sans compte ni service |
-| **Inngest** | `INNGEST_EVENT_KEY` et `INNGEST_SIGNING_KEY` (et `INNGEST_BASE_URL` pour viser un serveur de développement Inngest) | la production |
-
-Les deux ensemble sont refusés. En mode Inngest, déclarez chez Inngest l’adresse de rappel `<APP_URL>/api/modules/jobs/inngest` ; elle n’accepte que les appels signés avec `INNGEST_SIGNING_KEY`. Le pas à pas est sur la page [Inngest](/fr/services/inngest).
-
-<Callout type="warn" title="Le mode en mémoire ne convient pas à une production à plusieurs instances">
-Sa file disparaît à chaque redémarrage, et deux instances exécuteraient chacune la même échéance. Passez à Inngest dès que votre application tourne sur plus d’un serveur.
-</Callout>
-
 ## Activer ou couper
 
 ```bash
@@ -50,6 +35,21 @@ Module coupé :
 - **aucune variable à renseigner**, et le démarrage le signale dans le journal ;
 - une tâche demandée par un module (l’export des données, par exemple) **s’exécute tout de suite**, dans la requête qui la demande : le client attend plus longtemps, mais son droit à l’export est respecté ;
 - **les tâches planifiées ne s’exécutent plus** : plus de relance de fin d’essai, plus de nettoyage régulier.
+
+## Configurer
+
+Les tâches s’exécutent de deux façons, et il faut en choisir une : module activé, sans aucune des deux, l’application refuse de démarrer en nommant les trois variables. Les valeurs vont dans `.env` en local, et dans les variables de votre hébergeur en production.
+
+| Mode | Variables | Pour qui |
+|---|---|---|
+| **En mémoire** | `JOBS_LOCAL_RUNNER=1` (valeur livrée dans `.env.example`) | le développement, sans compte ni service |
+| **Inngest** | `INNGEST_EVENT_KEY` et `INNGEST_SIGNING_KEY` (et `INNGEST_BASE_URL` pour viser un serveur de développement Inngest) | la production |
+
+Les deux ensemble sont refusés. En mode Inngest, déclarez chez Inngest l’adresse de rappel `<APP_URL>/api/modules/jobs/inngest` ; elle n’accepte que les appels signés avec `INNGEST_SIGNING_KEY`. Le pas à pas est sur la page [Inngest](/fr/services/inngest).
+
+<Callout type="warn" title="Le mode en mémoire ne convient pas à une production à plusieurs instances">
+Sa file disparaît à chaque redémarrage, et deux instances exécuteraient chacune la même échéance. Passez à Inngest dès que votre application tourne sur plus d’un serveur.
+</Callout>
 
 ## Vérifier que ça marche
 

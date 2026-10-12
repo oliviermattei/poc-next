@@ -35,6 +35,12 @@ Le module ne dépend d’aucun autre, n’a ni table ni route. Coupé, le serveu
 Module mcp-server désactivé dans config/features.ts : le serveur MCP ne démarre pas. Activez-le avec « pnpm ks toggle mcp-server ».
 ```
 
+## Configurer
+
+Rien à renseigner dans `.env` ni dans `config/` : le serveur ne lit **aucune variable d’environnement**. Il lit seulement `config/features.ts`, pour savoir s’il est activé et quels modules existent, et il trouve ce fichier en remontant depuis le dossier où votre assistant le lance — ce dossier doit donc se trouver dans le dépôt.
+
+Une exception : quand vous demandez à `toggle_module` d’appliquer les migrations, le serveur lance `pnpm db:migrate`, qui lit `DATABASE_URL` dans votre `.env` comme d’habitude. Le seul réglage à faire est côté assistant, ci-dessous.
+
 ## Brancher votre assistant
 
 Le serveur se lance avec cette commande, **depuis la racine du dépôt** — c’est votre assistant qui la lance, pas vous :
@@ -57,7 +63,7 @@ node ./packages/modules/mcp-server/bin/mcp-server.mjs
    ```
 
 2. Copiez ce bloc dans la configuration MCP de votre client. Avec Claude Code, enregistrez-le dans un fichier `.mcp.json` à la racine du dépôt.
-3. Si votre client ne se lance pas depuis la racine du dépôt, remplacez le chemin relatif par le chemin complet du fichier `mcp-server.mjs`.
+3. Si votre client ne se lance pas depuis la racine du dépôt, remplacez le chemin relatif par le chemin complet du fichier `mcp-server.mjs`. Le dossier de lancement doit tout de même être dans le dépôt (voir « Configurer »).
 4. Redémarrez votre client pour qu’il charge le serveur.
 
 La mise en place de votre assistant (règles du dépôt, compétences) est décrite dans [Travailler avec une IA](/fr/demarrer/travailler-avec-une-ia).

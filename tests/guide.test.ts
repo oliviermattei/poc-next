@@ -7,13 +7,41 @@ import { describe, expect, it } from 'vitest'
 import { BUILD_ENV_KEYS, ENV_KEYS } from '@repo/config'
 
 import { cardHref, FEATURE_GRID } from '../apps/guide/lib/feature-grid'
+import { i18n } from '../apps/guide/lib/i18n'
+import type { Lang } from '../apps/guide/lib/i18n'
 import { PLACEHOLDER_MARKER } from '../apps/guide/lib/placeholder'
 import { availableModules } from '../config/features'
 
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url))
 
-/** Les pages du Guide (ADR 083), une arborescence pour les deux langues. */
+/** Les pages du Guide (ADR 083), une arborescence pour toutes les langues. */
 const CONTENT = 'apps/guide/content/docs'
+
+/**
+ * Les langues du Guide, lues dans sa configuration (`apps/guide/lib/i18n.ts`),
+ * jamais recopiées : celle qui fait foi, et ses traductions.
+ */
+const LANGUAGES: readonly Lang[] = i18n.languages
+const DEFAULT_LANGUAGE: Lang = i18n.defaultLanguage
+const TRANSLATIONS = LANGUAGES.filter((lang) => lang !== DEFAULT_LANGUAGE)
+
+/**
+ * Le suffixe d'un fichier dans une langue — l'analyseur `dot` de Fumadocs :
+ * la langue par défaut n'en a pas (`installer.mdx`), une traduction porte le
+ * sien (`installer.en.mdx`, `meta.en.json`).
+ */
+const suffixOf = (lang: Lang): string => (lang === DEFAULT_LANGUAGE ? '' : `.${lang}`)
+
+/**
+ * Les planchers des balayages : un dossier déplacé ou une expression qui ne
+ * lit plus rien rendrait sinon chaque comparaison vraie sur rien. Ce sont des
+ * minimums, pas des comptes : le plan les dépasse largement.
+ */
+const PAGE_FLOOR = 50
+const META_FLOOR = 5
+const CARD_LINK_FLOOR = 4
+const GRID_DOMAIN_FLOOR = 10
+const GRID_CARD_FLOOR = 40
 
 const read = (...segments: string[]): string =>
   readFileSync(join(REPO_ROOT, ...segments), 'utf8')
@@ -28,18 +56,21 @@ const contentFiles = (directory = join(REPO_ROOT, CONTENT)): string[] =>
       : [relative(join(REPO_ROOT, CONTENT), path).split('\\').join('/')]
   })
 
-type Lang = 'fr' | 'en'
-
-/**
- * Le slug d'une page et sa langue, lus sur son nom de fichier : le français
- * fait foi et n'a pas de suffixe (`installer.mdx`), l'anglais porte `.en`
- * (`installer.en.mdx`) — l'analyseur `dot` de Fumadocs.
- */
+/** Le slug d'une page et sa langue, lus sur son nom de fichier. */
 const pageOf = (file: string): { slug: string; lang: Lang } | null => {
-  const match = /^(.+?)(\.en)?\.mdx$/.exec(file)
+  if (!file.endsWith('.mdx')) {
+    return null
+  }
 
-  return match ? { slug: match[1] ?? '', lang: match[2] ? 'en' : 'fr' } : null
+  const stem = file.slice(0, -'.mdx'.length)
+  const lang = TRANSLATIONS.find((translation) => stem.endsWith(`.${translation}`))
+
+  return lang
+    ? { slug: stem.slice(0, -`.${lang}`.length), lang }
+    : { slug: stem, lang: DEFAULT_LANGUAGE }
 }
+
+const pageFiles = (): string[] => contentFiles().filter((file) => pageOf(file) !== null)
 
 const pages = (lang: Lang): string[] =>
   contentFiles()
@@ -48,17 +79,23 @@ const pages = (lang: Lang): string[] =>
     .map(({ slug }) => slug)
     .sort()
 
-/** Les fichiers d'ordre et de titre d'un dossier : `meta.json` et `meta.en.json`. */
+/** Le texte de chaque page d'une langue, par chemin relatif à `CONTENT`. */
+const pagesIn = (lang: Lang): { file: string; text: string }[] =>
+  contentFiles()
+    .filter((file) => pageOf(file)?.lang === lang)
+    .map((file) => ({ file, text: read(CONTENT, file) }))
+
+/** Les dossiers qui portent un fichier d'ordre et de titre dans une langue. */
 const metaFiles = (lang: Lang): string[] =>
   contentFiles()
-    .filter((file) => (lang === 'fr' ? /(^|\/)meta\.json$/ : /(^|\/)meta\.en\.json$/).test(file))
-    .map((file) => file.replace(/meta(\.en)?\.json$/, ''))
+    .filter((file) => file === `meta${suffixOf(lang)}.json` || file.endsWith(`/meta${suffixOf(lang)}.json`))
+    .map((file) => file.slice(0, -`meta${suffixOf(lang)}.json`.length))
     .sort()
 
 type Meta = { title?: string; pages?: string[] }
 
 const metaOf = (directory: string, lang: Lang): Meta =>
-  JSON.parse(read(CONTENT, `${directory}meta${lang === 'en' ? '.en' : ''}.json`)) as Meta
+  JSON.parse(read(CONTENT, `${directory}meta${suffixOf(lang)}.json`)) as Meta
 
 /**
  * Les entrées d'une liste `pages` qui désignent une page ou un dossier :
@@ -68,46 +105,97 @@ const metaOf = (directory: string, lang: Lang): Meta =>
 const slugEntries = (meta: Meta): string[] =>
   (meta.pages ?? []).filter((entry) => !/^---.*---$/.test(entry))
 
-/**
- * Le plan du Guide compte plus de cinquante pages ; le plancher refuse un
- * balayage vide — un dossier déplacé rendrait sinon chaque comparaison vraie
- * sur rien.
- */
-const PAGE_FLOOR = 50
+const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-describe('le Guide existe dans les deux langues, page pour page', () => {
-  it('chaque page française a sa page anglaise au même slug', () => {
-    const french = pages('fr')
+/** Le terme apparaît-il comme un mot entier dans le texte, casse ignorée ? */
+const names = (text: string, term: string): boolean =>
+  new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(term)}(?![\\p{L}\\p{N}])`, 'iu').test(text)
 
-    expect(french.length).toBeGreaterThanOrEqual(PAGE_FLOOR)
+/** Le fichier qui sert une URL du Guide, `null` si aucune page ne lui répond. */
+const pageFileFor = (url: string): string | null => {
+  const match = new RegExp(
+    `^\\/(${LANGUAGES.map(escapeRegExp).join('|')})(?:\\/([^#?]*?))?\\/?(?:[#?].*)?$`,
+  ).exec(url)
 
-    const missing = french.filter((slug) => !pages('en').includes(slug))
-    expect(missing, `pages sans traduction anglaise : ${missing.join(', ')}`).toEqual([])
+  if (!match) {
+    return null
+  }
+
+  const suffix = `${suffixOf(match[1] as Lang)}.mdx`
+  const slug = match[2] ?? ''
+  const candidates =
+    slug === '' ? [`index${suffix}`] : [`${slug}${suffix}`, `${slug}/index${suffix}`]
+
+  return candidates.find((candidate) => existsSync(join(REPO_ROOT, CONTENT, candidate))) ?? null
+}
+
+/** Le texte MDX sans ses blocs de code : un exemple dans un bloc n'est pas du contenu. */
+const proseOf = (mdx: string): string => mdx.replace(/^```[\s\S]*?^```/gm, '')
+
+/** La cible de chaque lien Markdown `[…](…)` d'une page. */
+const markdownLinksIn = (mdx: string): string[] =>
+  [...proseOf(mdx).matchAll(/\]\(([^)\s]+)\)/g)].map((match) => match[1] ?? '')
+
+/** La cible de chaque attribut `href="…"` d'une page — les cartes (`<Card href>`). */
+const hrefLinksIn = (mdx: string): string[] =>
+  [...proseOf(mdx).matchAll(/\bhref=["']([^"']+)["']/g)].map((match) => match[1] ?? '')
+
+/** Un lien qui sort du Guide : il n'a pas de page à trouver ici. */
+const isExternal = (link: string): boolean => /^(?:[a-z]+:|#)/i.test(link)
+
+describe('le Guide existe dans chaque langue, page pour page', () => {
+  it('lit les langues dans la configuration du Guide', () => {
+    expect(LANGUAGES).toContain(DEFAULT_LANGUAGE)
+    expect(TRANSLATIONS.length).toBeGreaterThanOrEqual(1)
   })
 
-  it('chaque page anglaise a sa page française au même slug', () => {
-    const english = pages('en')
+  it('chaque page de la langue qui fait foi a sa traduction au même slug', () => {
+    const original = pages(DEFAULT_LANGUAGE)
 
-    expect(english.length).toBeGreaterThanOrEqual(PAGE_FLOOR)
+    expect(original.length).toBeGreaterThanOrEqual(PAGE_FLOOR)
 
-    const missing = english.filter((slug) => !pages('fr').includes(slug))
-    expect(missing, `pages anglaises sans original français : ${missing.join(', ')}`).toEqual([])
+    for (const lang of TRANSLATIONS) {
+      const missing = original.filter((slug) => !pages(lang).includes(slug))
+      expect(missing, `pages sans traduction « ${lang} » : ${missing.join(', ')}`).toEqual([])
+    }
   })
 
-  it('chaque dossier porte son `meta.json` et son `meta.en.json`', () => {
-    const french = metaFiles('fr')
+  it('chaque traduction a son original au même slug', () => {
+    for (const lang of TRANSLATIONS) {
+      const translated = pages(lang)
 
-    // La racine et les six parties du plan.
-    expect(french.length).toBeGreaterThanOrEqual(7)
-    expect(metaFiles('en')).toEqual(french)
+      expect(translated.length).toBeGreaterThanOrEqual(PAGE_FLOOR)
+
+      const missing = translated.filter((slug) => !pages(DEFAULT_LANGUAGE).includes(slug))
+      expect(missing, `pages « ${lang} » sans original : ${missing.join(', ')}`).toEqual([])
+    }
   })
 
-  it('les deux langues ordonnent les mêmes pages, dans le même ordre', () => {
-    for (const directory of metaFiles('fr')) {
-      const french = slugEntries(metaOf(directory, 'fr'))
+  it('chaque dossier porte son fichier d’ordre dans chaque langue', () => {
+    const original = metaFiles(DEFAULT_LANGUAGE)
 
-      expect(french.length, `${directory || '(racine)'}meta.json ne liste aucune page`).toBeGreaterThan(0)
-      expect(slugEntries(metaOf(directory, 'en')), `${directory}meta.en.json`).toEqual(french)
+    expect(original.length).toBeGreaterThanOrEqual(META_FLOOR)
+
+    for (const lang of TRANSLATIONS) {
+      expect(metaFiles(lang), `meta${suffixOf(lang)}.json`).toEqual(original)
+    }
+  })
+
+  it('toutes les langues ordonnent les mêmes pages, dans le même ordre', () => {
+    const directories = metaFiles(DEFAULT_LANGUAGE)
+
+    expect(directories.length).toBeGreaterThanOrEqual(META_FLOOR)
+
+    for (const directory of directories) {
+      const original = slugEntries(metaOf(directory, DEFAULT_LANGUAGE))
+
+      expect(original.length, `${directory || '(racine)'}meta.json ne liste aucune page`).toBeGreaterThan(0)
+
+      for (const lang of TRANSLATIONS) {
+        expect(slugEntries(metaOf(directory, lang)), `${directory}meta${suffixOf(lang)}.json`).toEqual(
+          original,
+        )
+      }
     }
   })
 
@@ -118,9 +206,12 @@ describe('le Guide existe dans les deux langues, page pour page', () => {
    */
   it('chaque dossier liste chacune de ses pages et de ses sous-dossiers, et rien d’autre', () => {
     const files = contentFiles()
+    const directories = metaFiles(DEFAULT_LANGUAGE)
 
-    for (const directory of metaFiles('fr')) {
-      const listed = [...slugEntries(metaOf(directory, 'fr'))].sort()
+    expect(directories.length).toBeGreaterThanOrEqual(META_FLOOR)
+
+    for (const directory of directories) {
+      const listed = [...slugEntries(metaOf(directory, DEFAULT_LANGUAGE))].sort()
       const present = [
         ...new Set(
           files
@@ -135,7 +226,7 @@ describe('le Guide existe dans les deux langues, page pour page', () => {
 
               const page = pageOf(rest)
 
-              return page?.lang === 'fr' ? [page.slug] : []
+              return page?.lang === DEFAULT_LANGUAGE ? [page.slug] : []
             }),
         ),
       ].sort()
@@ -152,17 +243,21 @@ describe('le Guide existe dans les deux langues, page pour page', () => {
    */
   it('aucune page ne porte plus la marque de page en attente', () => {
     const keyword = /[A-Z][A-Z-]+[A-Z]/.exec(PLACEHOLDER_MARKER)?.[0] ?? ''
-    const files = contentFiles().filter((file) => pageOf(file) !== null)
+    const files = pageFiles()
 
     expect(keyword.length).toBeGreaterThanOrEqual(5)
-    expect(files.length).toBeGreaterThanOrEqual(2 * PAGE_FLOOR)
+    expect(files.length).toBeGreaterThanOrEqual(LANGUAGES.length * PAGE_FLOOR)
 
     const waiting = files.filter((file) => read(CONTENT, file).includes(keyword))
     expect(waiting, `pages encore en attente : ${waiting.join(', ')}`).toEqual([])
   })
 
   it('chaque page déclare un titre et une description dans chaque langue', () => {
-    for (const file of contentFiles().filter((path) => pageOf(path) !== null)) {
+    const files = pageFiles()
+
+    expect(files.length).toBeGreaterThanOrEqual(LANGUAGES.length * PAGE_FLOOR)
+
+    for (const file of files) {
       const frontmatter = /^---\n([\s\S]*?)\n---\n/.exec(read(CONTENT, file))?.[1] ?? ''
 
       expect(frontmatter, `${file} n'a pas de titre`).toMatch(/^title: \S/m)
@@ -171,102 +266,146 @@ describe('le Guide existe dans les deux langues, page pour page', () => {
   })
 })
 
-/** Le texte de chaque page française, par chemin relatif à `CONTENT`. */
-const frenchPages = (): { file: string; text: string }[] =>
-  contentFiles()
-    .filter((file) => pageOf(file)?.lang === 'fr')
-    .map((file) => ({ file, text: read(CONTENT, file) }))
+/**
+ * La table des modules livrés (`fonctionnalites/index`) : une ligne par
+ * module, son identifiant `entre accents graves` en première cellule et le
+ * lien vers sa page en dernière.
+ */
+const moduleTableOf = (mdx: string): Map<string, string> =>
+  new Map(
+    [...mdx.matchAll(/^\| `([^`]+)` \|.*\]\((\/[^)\s]+)\)\s*\|\s*$/gm)].map(
+      (match) => [match[1] ?? '', match[2] ?? ''] as const,
+    ),
+  )
 
 /**
  * L'exhaustivité du Guide est mesurée, pas affirmée (#203) : chaque liste est
- * dérivée du code — registre, schéma d'environnement, dossier `config/` —,
- * jamais recopiée, et l'échec nomme ce qui manque. Le français fait foi ; la
- * parité des pages anglaises est tenue par les cas du premier bloc.
+ * dérivée du code — registre, schéma d'environnement, dossier `config/`,
+ * scripts de la racine —, jamais recopiée, et l'échec nomme ce qui manque.
+ * Chaque langue est mesurée : une traduction n'est pas dispensée d'exhaustivité.
  */
 describe('le Guide nomme tout ce que le code livre', () => {
-  it('chaque module de l’annuaire est nommé, `entre accents graves`, dans une page française', () => {
+  it('lit la table des modules : identifiant en première cellule, page en dernière', () => {
+    const table = moduleTableOf(
+      [
+        '| Identifiant | Ce qu’il apporte | Page |',
+        '|---|---|---|',
+        '| `docs` | la documentation, sous `/docs` | [Documentation](/fr/fonctionnalites/documentation-produit) |',
+        '| un `jobs` cité en passant | — | [Ailleurs](/fr/ailleurs) |',
+      ].join('\n'),
+    )
+
+    expect([...table]).toEqual([['docs', '/fr/fonctionnalites/documentation-produit']])
+  })
+
+  /**
+   * Un identifiant court (`docs`, `jobs`, `i18n`) se trouve partout entre
+   * accents graves — `/docs`, un dossier, une commande. Il est donc cherché
+   * là où il désigne le module et rien d'autre : sa ligne dans la table des
+   * modules, puis la page vers laquelle cette ligne mène.
+   */
+  it('chaque module de l’annuaire a sa ligne dans la table des modules, et sa page le nomme', () => {
     const ids = availableModules.map((module) => module.id)
-    const french = frenchPages()
 
-    // L'annuaire compte dix-neuf modules quand ce cas est écrit.
     expect(ids.length).toBeGreaterThanOrEqual(15)
-    expect(french.length).toBeGreaterThanOrEqual(PAGE_FLOOR)
 
-    const missing = ids.filter((id) => !french.some(({ text }) => text.includes(`\`${id}\``)))
-    expect(missing, `modules qu'aucune page française ne nomme : ${missing.join(', ')}`).toEqual([])
+    for (const lang of LANGUAGES) {
+      const table = moduleTableOf(read(CONTENT, `fonctionnalites/index${suffixOf(lang)}.mdx`))
+
+      expect(table.size, `table des modules (${lang})`).toBeGreaterThanOrEqual(ids.length)
+
+      const faults = ids.flatMap((id) => {
+        const link = table.get(id)
+
+        if (link === undefined) {
+          return [`${id} : aucune ligne`]
+        }
+
+        const file = link.startsWith(`/${lang}/`) ? pageFileFor(link) : null
+
+        if (file === null) {
+          return [`${id} : ${link} ne mène à aucune page « ${lang} »`]
+        }
+
+        return read(CONTENT, file).includes(`\`${id}\``) ? [] : [`${id} : ${file} ne le nomme pas`]
+      })
+      expect(faults, `modules mal décrits (${lang}) :\n${faults.join('\n')}`).toEqual([])
+    }
   })
 
   /**
    * Les clés du schéma d'environnement et celles de la garde de build : ce
    * que l'application lit. La page des variables les nomme toutes, `entre
-   * accents graves`, pour qu'une variable ajoutée au schéma force sa ligne.
+   * accents graves`, dans chaque langue, pour qu'une variable ajoutée au
+   * schéma force sa ligne.
    */
   it('chaque variable lue par l’application est nommée dans la page des variables', () => {
     const keys = [...ENV_KEYS, ...BUILD_ENV_KEYS]
-    const page = read(CONTENT, 'configurer/variables-d-environnement.mdx')
 
-    // Le schéma compte plusieurs dizaines de clés ; la garde de build, deux.
     expect(ENV_KEYS.length).toBeGreaterThanOrEqual(30)
-    expect(BUILD_ENV_KEYS.length).toBeGreaterThanOrEqual(2)
+    expect(BUILD_ENV_KEYS.length).toBeGreaterThanOrEqual(1)
 
-    const missing = keys.filter((key) => !page.includes(`\`${key}\``))
-    expect(missing, `variables absentes de la page des variables : ${missing.join(', ')}`).toEqual(
-      [],
-    )
+    for (const lang of LANGUAGES) {
+      const page = read(CONTENT, `configurer/variables-d-environnement${suffixOf(lang)}.mdx`)
+      const missing = keys.filter((key) => !page.includes(`\`${key}\``))
+
+      expect(missing, `variables absentes de la page des variables (${lang}) : ${missing.join(', ')}`).toEqual(
+        [],
+      )
+    }
   })
 
   /** `config/` est ce que le propriétaire édite : chacun de ses fichiers a sa page. */
-  it('chaque fichier de `config/` est nommé dans une page française', () => {
+  it('chaque fichier de `config/` est nommé dans une page de chaque langue', () => {
     const files = readdirSync(join(REPO_ROOT, 'config'), { withFileTypes: true })
       .filter((entry) => entry.isFile())
       .map((entry) => entry.name)
-    const french = frenchPages()
 
-    // Huit fichiers quand ce cas est écrit (fonctionnalités, offres, sécurité…).
     expect(files.length).toBeGreaterThanOrEqual(6)
 
-    const missing = files.filter((name) => !french.some(({ text }) => names(text, name)))
-    expect(missing, `fichiers de config/ qu'aucune page française ne nomme : ${missing.join(', ')}`).toEqual([])
+    for (const lang of LANGUAGES) {
+      const texts = pagesIn(lang)
+
+      expect(texts.length).toBeGreaterThanOrEqual(PAGE_FLOOR)
+
+      const missing = files.filter((name) => !texts.some(({ text }) => names(text, name)))
+      expect(missing, `fichiers de config/ qu'aucune page « ${lang} » ne nomme : ${missing.join(', ')}`).toEqual(
+        [],
+      )
+    }
+  })
+
+  /**
+   * Les scripts de `package.json` à la racine sont les commandes que le
+   * propriétaire lance : la page des commandes les nomme tous, sous la forme
+   * qu'il tape (`pnpm <script>` ou `pnpm run <script>`). Un nom suivi de `:`
+   * ou d'un tiret est un autre script — `pnpm test` n'est pas `pnpm test:e2e`.
+   */
+  it('chaque script de la racine est nommé dans la page des commandes', () => {
+    const scripts = Object.keys(
+      (JSON.parse(read('package.json')) as { scripts: Record<string, string> }).scripts,
+    )
+
+    expect(scripts.length).toBeGreaterThanOrEqual(10)
+
+    for (const lang of LANGUAGES) {
+      const page = read(CONTENT, `reference/commandes${suffixOf(lang)}.mdx`)
+      const missing = scripts.filter(
+        (script) => !new RegExp(`\\bpnpm (?:run )?${escapeRegExp(script)}(?![\\w:-])`).test(page),
+      )
+
+      expect(missing, `scripts absents de la page des commandes (${lang}) : ${missing.join(', ')}`).toEqual(
+        [],
+      )
+    }
   })
 })
 
-/** Le fichier qui sert une URL du Guide, `null` si aucune page ne lui répond. */
-const pageFileFor = (url: string): string | null => {
-  const match = /^\/(fr|en)(?:\/([^#?]*?))?\/?(?:[#?].*)?$/.exec(url)
-
-  if (!match) {
-    return null
-  }
-
-  const suffix = match[1] === 'en' ? '.en.mdx' : '.mdx'
-  const slug = match[2] ?? ''
-  const candidates =
-    slug === '' ? [`index${suffix}`] : [`${slug}${suffix}`, `${slug}/index${suffix}`]
-
-  return candidates.find((candidate) => existsSync(join(REPO_ROOT, CONTENT, candidate))) ?? null
-}
-
-/**
- * Les liens d'une page MDX : la cible d'un lien Markdown `[…](…)` et d'un
- * attribut `href="…"`. Les blocs de code sont retirés d'abord : un exemple
- * de lien dans un bloc n'est pas un lien.
- */
-const linksIn = (mdx: string): string[] => {
-  const prose = mdx.replace(/^```[\s\S]*?^```/gm, '')
-
-  return [
-    ...[...prose.matchAll(/\]\(([^)\s]+)\)/g)].map((match) => match[1] ?? ''),
-    ...[...prose.matchAll(/\bhref=["']([^"']+)["']/g)].map((match) => match[1] ?? ''),
-  ]
-}
-
-/** Un lien qui sort du Guide : il n'a pas de page à trouver ici. */
-const isExternal = (link: string): boolean => /^(?:[a-z]+:|#)/i.test(link)
-
 describe('aucun lien du Guide ne mène nulle part', () => {
   it('lit un lien sous ses deux formes, et ignore les blocs de code', () => {
-    expect(linksIn('voir [ici](/fr/a) et <Card href="/fr/b" />')).toEqual(['/fr/a', '/fr/b'])
-    expect(linksIn('```md\n[exemple](/fr/rien)\n```\n')).toEqual([])
+    expect(markdownLinksIn('voir [ici](/fr/a) et <Card href="/fr/b" />')).toEqual(['/fr/a'])
+    expect(hrefLinksIn('voir [ici](/fr/a) et <Card href="/fr/b" />')).toEqual(['/fr/b'])
+    expect(markdownLinksIn('```md\n[exemple](/fr/rien)\n```\n')).toEqual([])
   })
 
   it('résout une URL vers la page qui la sert, dans sa langue', () => {
@@ -278,39 +417,50 @@ describe('aucun lien du Guide ne mène nulle part', () => {
     expect(pageFileFor('/de/demarrer/installer')).toBeNull()
   })
 
+  /**
+   * Les deux formes sont comptées à part, chacune avec son plancher : une
+   * expression qui ne lirait plus les cartes passerait sinon inaperçue sous
+   * les centaines de liens Markdown.
+   */
   it('chaque lien interne d’une page mène à une page existante, dans la langue de la page', () => {
-    const links = contentFiles()
-      .filter((file) => pageOf(file) !== null)
-      .flatMap((file) =>
-        linksIn(read(CONTENT, file))
+    const files = pageFiles()
+    const linksOf = (extract: (mdx: string) => string[]) =>
+      files.flatMap((file) =>
+        extract(read(CONTENT, file))
           .filter((link) => !isExternal(link))
           .map((link) => ({ file, link, lang: pageOf(file)?.lang })),
       )
+    const markdown = linksOf(markdownLinksIn)
+    const cards = linksOf(hrefLinksIn)
 
-    // L'accueil renvoie au moins vers l'installation et la documentation
-    // produit, dans chaque langue : sans eux, l'expression ne lit plus rien.
-    expect(links.length).toBeGreaterThanOrEqual(4)
+    // En moyenne, au moins un lien Markdown par page.
+    expect(markdown.length).toBeGreaterThanOrEqual(files.length)
 
-    const dead = links
+    for (const lang of LANGUAGES) {
+      expect(
+        cards.filter((card) => card.lang === lang).length,
+        `cartes de la langue « ${lang} »`,
+      ).toBeGreaterThanOrEqual(CARD_LINK_FLOOR)
+    }
+
+    const dead = [...markdown, ...cards]
       .filter(({ link, lang }) => !link.startsWith(`/${lang}/`) || pageFileFor(link) === null)
       .map(({ file, link }) => `${file} → ${link}`)
-    expect(dead, `liens sans page (ou vers l'autre langue) :\n${dead.join('\n')}`).toEqual([])
+    expect(dead, `liens sans page (ou vers une autre langue) :\n${dead.join('\n')}`).toEqual([])
   })
 
-  it('chaque carte de la grille mène à une page existante, dans les deux langues', () => {
+  it('chaque carte de la grille mène à une page existante, dans chaque langue', () => {
     const cards = FEATURE_GRID.flatMap((domain) =>
-      domain.items.map((item) => ({ domain: domain.title.fr, item })),
+      domain.items.map((item) => ({ domain: domain.title[DEFAULT_LANGUAGE], item })),
     )
 
-    // Le plan de la grille compte seize domaines et plus de cinquante cartes.
-    expect(FEATURE_GRID.length).toBeGreaterThanOrEqual(16)
-    expect(cards.length).toBeGreaterThanOrEqual(50)
+    expect(FEATURE_GRID.length).toBeGreaterThanOrEqual(GRID_DOMAIN_FLOOR)
+    expect(cards.length).toBeGreaterThanOrEqual(GRID_CARD_FLOOR)
 
     const dead = cards.flatMap(({ domain, item }) =>
-      (['fr', 'en'] as const)
-        .map((lang) => cardHref(item, lang))
+      LANGUAGES.map((lang) => cardHref(item, lang))
         .filter((href) => pageFileFor(href) === null)
-        .map((href) => `${domain} / ${item.label.fr} → ${href}`),
+        .map((href) => `${domain} / ${item.label[DEFAULT_LANGUAGE]} → ${href}`),
     )
     expect(dead, `cartes sans page :\n${dead.join('\n')}`).toEqual([])
   })
@@ -357,13 +507,6 @@ const graveyardOf = (prd: string): GraveyardEntry[] => {
     }
   })
 }
-
-/** Le terme apparaît-il comme un mot entier dans le texte, casse ignorée ? */
-const names = (text: string, term: string): boolean =>
-  new RegExp(
-    `(?<![\\p{L}\\p{N}])${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}])`,
-    'iu',
-  ).test(text)
 
 /**
  * Une exclusion qui porte sur nos **implémentations** (« Secondes
@@ -414,7 +557,6 @@ describe('la grille est honnête', () => {
       (item) => item.badge === 'soon',
     )
 
-    // Trois éléments prévus à ce jour : captcha, widget de retour, roadmap.
     expect(soon.length).toBeGreaterThanOrEqual(1)
 
     const unsourced = soon
@@ -424,8 +566,7 @@ describe('la grille est honnête', () => {
   })
 
   it('aucune carte ne nomme un élément du cimetière de `docs/prd.md`', () => {
-    // Le cimetière compte une douzaine d'exclusions ; un titre de section
-    // renommé rendrait sinon la vérification vraie sur rien.
+    // Un titre de section renommé rendrait sinon la vérification vraie sur rien.
     expect(graveyard.length).toBeGreaterThanOrEqual(10)
     expect(graveyard.flatMap((entry) => entry.terms).length).toBeGreaterThanOrEqual(25)
 

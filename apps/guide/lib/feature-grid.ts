@@ -1,11 +1,12 @@
 /**
  * **La grille de la page d'accueil du Guide, déclarée une seule fois.**
  *
- * Les deux langues la rendent depuis cette donnée (`components/feature-grid.tsx`) :
+ * Chaque langue la rend depuis cette donnée (`components/feature-grid.tsx`) :
  * un libellé se traduit ici, une carte ne s'ajoute qu'ici. Ce fichier ne
- * contient que de la donnée — ni JSX, ni import de Fumadocs —, parce que
- * `tests/guide.test.ts` le lit pour vérifier que chaque carte mène à une page
- * et que la grille reste honnête.
+ * contient que de la donnée — ni JSX, ni composant de Fumadocs ; il ne lit que
+ * la déclaration des langues (`lib/i18n.ts`) —, parce que `tests/guide.test.ts`
+ * le lit pour vérifier que chaque carte mène à une page et que la grille reste
+ * honnête.
  *
  * Les trois badges, et ce qu'ils promettent :
  *
@@ -15,9 +16,8 @@
  *   toujours avec l'issue GitHub qui le suit. Jamais un élément du cimetière.
  */
 
-export type Lang = 'fr' | 'en'
-
-export type Localized = Record<Lang, string>
+import type { Lang, Localized } from './i18n'
+import { same } from './i18n'
 
 export type Badge = 'integrated' | 'compatible' | 'soon'
 
@@ -50,7 +50,7 @@ export const BADGES: Record<Badge, { label: Localized; meaning: Localized }> = {
     },
   },
   compatible: {
-    label: { fr: 'Compatible', en: 'Compatible' },
+    label: same('Compatible'),
     meaning: {
       fr: 'passe par une interface standard, sans être testé par nous',
       en: 'works through a standard interface, without being tested by us',
@@ -78,14 +78,14 @@ export const FEATURE_GRID: readonly GridDomain[] = [
     title: { fr: 'Base de données', en: 'Database' },
     items: [
       {
-        label: { fr: 'PostgreSQL 16 + Drizzle', en: 'PostgreSQL 16 + Drizzle' },
+        label: same('PostgreSQL 16 + Drizzle'),
         badge: 'integrated',
         page: 'services/postgresql',
       },
-      { label: { fr: 'Neon', en: 'Neon' }, badge: 'compatible', page: 'services/postgresql' },
-      { label: { fr: 'Supabase', en: 'Supabase' }, badge: 'compatible', page: 'services/postgresql' },
+      { label: same('Neon'), badge: 'compatible', page: 'services/postgresql' },
+      { label: same('Supabase'), badge: 'compatible', page: 'services/postgresql' },
       {
-        label: { fr: 'Amazon RDS', en: 'Amazon RDS' },
+        label: same('Amazon RDS'),
         badge: 'compatible',
         page: 'services/postgresql',
       },
@@ -118,12 +118,12 @@ export const FEATURE_GRID: readonly GridDomain[] = [
         page: 'fonctionnalites/authentification',
       },
       {
-        label: { fr: 'Passkeys', en: 'Passkeys' },
+        label: same('Passkeys'),
         badge: 'integrated',
         page: 'fonctionnalites/authentification',
       },
-      { label: { fr: 'Google', en: 'Google' }, badge: 'integrated', page: 'services/google' },
-      { label: { fr: 'GitHub', en: 'GitHub' }, badge: 'integrated', page: 'services/github' },
+      { label: same('Google'), badge: 'integrated', page: 'services/google' },
+      { label: same('GitHub'), badge: 'integrated', page: 'services/github' },
       {
         label: { fr: 'Fournisseur de captcha', en: 'Captcha provider' },
         badge: 'soon',
@@ -141,7 +141,7 @@ export const FEATURE_GRID: readonly GridDomain[] = [
         page: 'fonctionnalites/organisations',
       },
       {
-        label: { fr: 'Invitations', en: 'Invitations' },
+        label: same('Invitations'),
         badge: 'integrated',
         page: 'fonctionnalites/organisations',
       },
@@ -155,7 +155,7 @@ export const FEATURE_GRID: readonly GridDomain[] = [
   {
     title: { fr: 'Paiement', en: 'Payments' },
     items: [
-      { label: { fr: 'Stripe', en: 'Stripe' }, badge: 'integrated', page: 'services/stripe' },
+      { label: same('Stripe'), badge: 'integrated', page: 'services/stripe' },
       {
         label: { fr: 'Abonnements', en: 'Subscriptions' },
         badge: 'integrated',
@@ -191,9 +191,9 @@ export const FEATURE_GRID: readonly GridDomain[] = [
   {
     title: { fr: 'E-mails', en: 'Emails' },
     items: [
-      { label: { fr: 'Resend', en: 'Resend' }, badge: 'integrated', page: 'services/resend' },
+      { label: same('Resend'), badge: 'integrated', page: 'services/resend' },
       {
-        label: { fr: 'React Email', en: 'React Email' },
+        label: same('React Email'),
         badge: 'integrated',
         page: 'configurer/e-mails',
       },
@@ -203,18 +203,18 @@ export const FEATURE_GRID: readonly GridDomain[] = [
     title: { fr: 'Stockage de fichiers', en: 'File storage' },
     items: [
       {
-        label: { fr: 'Amazon S3', en: 'Amazon S3' },
+        label: same('Amazon S3'),
         badge: 'integrated',
         page: 'services/stockage-s3',
       },
       {
-        label: { fr: 'Cloudflare R2', en: 'Cloudflare R2' },
+        label: same('Cloudflare R2'),
         badge: 'compatible',
         page: 'services/stockage-s3',
       },
-      { label: { fr: 'MinIO', en: 'MinIO' }, badge: 'compatible', page: 'services/stockage-s3' },
+      { label: same('MinIO'), badge: 'compatible', page: 'services/stockage-s3' },
       {
-        label: { fr: 'DigitalOcean Spaces', en: 'DigitalOcean Spaces' },
+        label: same('DigitalOcean Spaces'),
         badge: 'compatible',
         page: 'services/stockage-s3',
       },
@@ -223,11 +223,11 @@ export const FEATURE_GRID: readonly GridDomain[] = [
   {
     title: { fr: 'Tâches de fond', en: 'Background jobs' },
     items: [
-      { label: { fr: 'Inngest', en: 'Inngest' }, badge: 'integrated', page: 'services/inngest' },
+      { label: same('Inngest'), badge: 'integrated', page: 'services/inngest' },
     ],
   },
   {
-    title: { fr: 'Analytics', en: 'Analytics' },
+    title: same('Analytics'),
     items: [
       {
         label: { fr: 'PostHog, après consentement', en: 'PostHog, after consent' },
@@ -239,7 +239,7 @@ export const FEATURE_GRID: readonly GridDomain[] = [
   {
     title: { fr: 'Suivi des erreurs', en: 'Error tracking' },
     items: [
-      { label: { fr: 'Sentry', en: 'Sentry' }, badge: 'integrated', page: 'services/sentry' },
+      { label: same('Sentry'), badge: 'integrated', page: 'services/sentry' },
       {
         label: { fr: 'Cartes source', en: 'Source maps' },
         badge: 'integrated',
@@ -261,7 +261,7 @@ export const FEATURE_GRID: readonly GridDomain[] = [
         page: 'fonctionnalites/documentation-produit',
       },
       {
-        label: { fr: 'Changelog', en: 'Changelog' },
+        label: same('Changelog'),
         badge: 'integrated',
         page: 'fonctionnalites/changelog',
       },
@@ -286,12 +286,12 @@ export const FEATURE_GRID: readonly GridDomain[] = [
         page: 'fonctionnalites/site-public',
       },
       {
-        label: { fr: 'Contact', en: 'Contact' },
+        label: same('Contact'),
         badge: 'integrated',
         page: 'fonctionnalites/site-public',
       },
       {
-        label: { fr: 'Newsletter', en: 'Newsletter' },
+        label: same('Newsletter'),
         badge: 'integrated',
         page: 'fonctionnalites/site-public',
       },
@@ -309,7 +309,7 @@ export const FEATURE_GRID: readonly GridDomain[] = [
     ],
   },
   {
-    title: { fr: 'Application', en: 'Application' },
+    title: same('Application'),
     items: [
       {
         label: { fr: 'Tableau de bord', en: 'Dashboard' },
@@ -322,12 +322,12 @@ export const FEATURE_GRID: readonly GridDomain[] = [
         page: 'demarrer/premier-tour',
       },
       {
-        label: { fr: 'Notifications', en: 'Notifications' },
+        label: same('Notifications'),
         badge: 'integrated',
         page: 'fonctionnalites/notifications',
       },
       {
-        label: { fr: 'Onboarding', en: 'Onboarding' },
+        label: same('Onboarding'),
         badge: 'integrated',
         page: 'fonctionnalites/onboarding',
       },
@@ -380,13 +380,13 @@ export const FEATURE_GRID: readonly GridDomain[] = [
         page: 'deployer/docker-et-coolify',
       },
       {
-        label: { fr: 'Coolify', en: 'Coolify' },
+        label: same('Coolify'),
         badge: 'compatible',
         page: 'deployer/docker-et-coolify',
         note: notYetRunForReal,
       },
       {
-        label: { fr: 'Vercel', en: 'Vercel' },
+        label: same('Vercel'),
         badge: 'compatible',
         page: 'deployer/vercel',
         note: notYetRunForReal,

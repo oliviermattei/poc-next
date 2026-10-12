@@ -1,7 +1,16 @@
 import { Card, Cards } from 'fumadocs-ui/components/card'
 
-import type { GridItem, Lang } from '@/lib/feature-grid'
+import type { GridItem } from '@/lib/feature-grid'
 import { BADGES, cardHref, FEATURE_GRID, ISSUES_URL } from '@/lib/feature-grid'
+import type { Lang, Localized } from '@/lib/i18n'
+
+/** Ce qui sépare un badge de sa définition : la typographie de chaque langue. */
+const DEFINES: Localized = { fr: ' : ', en: ': ' }
+
+const ISSUES_ARE_ON: Localized = {
+  fr: 'Les issues se lisent sur ',
+  en: 'Issues are tracked on ',
+}
 
 /** Ce que la carte dit d'elle-même : son badge, l'issue qui la suit, sa réserve. */
 function describe(item: GridItem, lang: Lang): string {
@@ -20,7 +29,7 @@ function describe(item: GridItem, lang: Lang): string {
 
 /**
  * **La grille des fonctionnalités et des services**, rendue depuis
- * `lib/feature-grid.ts` — la seule déclaration de la grille, pour les deux
+ * `lib/feature-grid.ts` — la seule déclaration de la grille, pour toutes les
  * langues. Uniquement des composants intégrés de Fumadocs (`Cards`, `Card`).
  */
 export function FeatureGrid({ lang }: { lang: Lang }) {
@@ -30,13 +39,13 @@ export function FeatureGrid({ lang }: { lang: Lang }) {
         {(Object.keys(BADGES) as (keyof typeof BADGES)[]).map((badge) => (
           <li key={badge}>
             <strong>{BADGES[badge].label[lang]}</strong>
-            {lang === 'fr' ? ' : ' : ': '}
+            {DEFINES[lang]}
             {BADGES[badge].meaning[lang]}.
           </li>
         ))}
       </ul>
       <p>
-        {lang === 'fr' ? 'Les issues se lisent sur ' : 'Issues are tracked on '}
+        {ISSUES_ARE_ON[lang]}
         <a href={ISSUES_URL}>GitHub</a>.
       </p>
       {FEATURE_GRID.map((domain) => (

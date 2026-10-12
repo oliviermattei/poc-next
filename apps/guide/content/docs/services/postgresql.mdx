@@ -44,7 +44,7 @@ Le dépôt fournit un `docker-compose.yml` qui lance PostgreSQL 16 dans un conte
 
 Les variables `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` et `POSTGRES_PORT` du `.env` ne sont lues que par `docker-compose.yml`. Si vous les changez, changez aussi `DATABASE_URL` pour qu’elle reste cohérente.
 
-## Chez un hébergeur
+## Créer la base chez un hébergeur et récupérer l’URL
 
 Toute base **PostgreSQL 16 ou plus récente** convient. Neon, Supabase et Amazon RDS sont **compatibles** : ils parlent le protocole PostgreSQL standard, mais nous ne les avons pas testés nous-mêmes.
 
@@ -56,14 +56,17 @@ Toute base **PostgreSQL 16 ou plus récente** convient. Neon, Supabase et Amazon
    ```
 
    Si l’hébergeur exige une connexion chiffrée, gardez le paramètre `sslmode=require` qu’il donne : le pilote le respecte.
-3. **Appliquez les migrations** sur cette base, depuis votre poste. Une variable passée sur la ligne de commande l’emporte sur le `.env` :
+
+## Brancher
+
+1. **Appliquez les migrations** sur cette base, depuis votre poste. Une variable passée sur la ligne de commande l’emporte sur le `.env` :
 
    ```bash
    DATABASE_URL='postgres://…' pnpm db:migrate
    ```
 
    Vous devez voir la commande se terminer sans erreur.
-4. **Branchez-la** : mettez la même valeur dans `DATABASE_URL`, dans le `.env` en local ou dans les variables de votre hébergeur en production.
+2. **Branchez-la** : mettez la même valeur dans `DATABASE_URL`, dans le `.env` en local ou dans les variables de votre hébergeur en production.
 
 En production, les migrations tournent dans leur propre conteneur, avant que le trafic bascule : voir [Base de données en production](/fr/deployer/base-de-donnees-en-production).
 

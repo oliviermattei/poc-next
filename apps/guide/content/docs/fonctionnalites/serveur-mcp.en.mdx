@@ -35,6 +35,12 @@ The module depends on no other, and has neither table nor route. Disabled, the s
 Module mcp-server désactivé dans config/features.ts : le serveur MCP ne démarre pas. Activez-le avec « pnpm ks toggle mcp-server ».
 ```
 
+## Configure
+
+Nothing to fill in `.env` or in `config/`: the server reads **no environment variable**. It only reads `config/features.ts`, to know whether it is enabled and which modules exist, and it finds that file by walking up from the folder your assistant starts it in — so that folder must be inside the repository.
+
+One exception: when you ask `toggle_module` to apply the migrations, the server runs `pnpm db:migrate`, which reads `DATABASE_URL` from your `.env` as usual. The only setting to make is on the assistant’s side, below.
+
 ## Connect your assistant
 
 The server starts with this command, **from the root of the repository** — your assistant runs it, not you:
@@ -57,7 +63,7 @@ node ./packages/modules/mcp-server/bin/mcp-server.mjs
    ```
 
 2. Copy this block into your client's MCP configuration. With Claude Code, save it in a `.mcp.json` file at the root of the repository.
-3. If your client does not start from the root of the repository, replace the relative path with the full path of the `mcp-server.mjs` file.
+3. If your client does not start from the root of the repository, replace the relative path with the full path of the `mcp-server.mjs` file. The folder it starts in must still be inside the repository (see “Configure”).
 4. Restart your client so it loads the server.
 
 Setting up your assistant (repository rules, skills) is described in [Working with an AI](/en/demarrer/travailler-avec-une-ia).

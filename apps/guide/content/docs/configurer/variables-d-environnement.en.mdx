@@ -8,13 +8,19 @@ An **environment variable** is a setting the application reads at startup, outsi
 - **Locally**, they live in the `.env` file at the root of the repository, created by copying `.env.example`.
 - **In production**, you enter them in your host’s interface (or in a `.env.production` file next to `docker-compose.prod.yml`): see [Deploy](/en/deployer).
 
-This page lists **every** variable the application reads: the 34 of the environment schema (`packages/config/src/env.ts`), then the 2 reserved for the build, then those that only tools read.
+This page lists **every** variable the application reads: those of the environment schema (`packages/config/src/env.ts`), then those reserved for the build, then those that only tools read.
 
 ## Rules to know before filling it in
 
 1. **Everything is checked at startup.** A missing or malformed variable stops the application with a message that **names it**, for example `- APP_URL: must be an absolute http(s) URL`.
 2. **An empty variable counts as absent.** `RESEND_API_KEY=` (nothing after the equals sign) is treated as if the line did not exist.
-3. **Each service is chosen explicitly**: either you give the provider’s key, or you enable its local mode (`EMAIL_LOCAL_CAPTURE=1`, `PAYMENTS_LOCAL_MODE=1`…). **Both at once, or neither, stop the startup.** The boilerplate never switches to a local mode on its own.
+3. **A service that has a local mode is chosen explicitly**: either you give the provider’s key, or you enable its local mode (`EMAIL_LOCAL_CAPTURE=1`, `PAYMENTS_LOCAL_MODE=1`…). **Both at once always stop the startup.** **Neither** stops it only in some cases:
+   - **emails**: always. You need `RESEND_API_KEY` (with `EMAIL_FROM`) or `EMAIL_LOCAL_CAPTURE=1`;
+   - **payments, storage, background jobs**: only when their module (`billing`, `storage`, `jobs`) is enabled. Module disabled, nothing is required;
+   - **Google and GitHub**: never. With neither a key nor `OAUTH_LOCAL_PROVIDER`, the application starts, with no external sign-in button;
+   - **PostHog and Sentry** have no local mode: without a key, nothing is measured or reported, and the application starts.
+
+   The boilerplate never switches to a local mode on its own.
 4. **Some come in pairs or groups** (a key and its secret): setting one without the other stops the startup and names the missing one.
 5. **A flag is written `1`, and only `1`.** `true`, `yes` or `on` are refused.
 6. **A variable already exported in your terminal wins over the `.env` file.**

@@ -44,7 +44,7 @@ The repository ships a `docker-compose.yml` that runs PostgreSQL 16 in a contain
 
 The `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` and `POSTGRES_PORT` variables in `.env` are read by `docker-compose.yml` only. If you change them, change `DATABASE_URL` too so that it stays consistent.
 
-## With a host
+## Create the database with a host and get the URL
 
 Any **PostgreSQL 16 or newer** database works. Neon, Supabase and Amazon RDS are **compatible**: they speak the standard PostgreSQL protocol, but we have not tested them ourselves.
 
@@ -56,14 +56,17 @@ Any **PostgreSQL 16 or newer** database works. Neon, Supabase and Amazon RDS are
    ```
 
    If the host requires an encrypted connection, keep the `sslmode=require` parameter it gives you: the driver honors it.
-3. **Apply the migrations** to this database from your machine. A variable passed on the command line takes precedence over `.env`:
+
+## Connect
+
+1. **Apply the migrations** to this database from your machine. A variable passed on the command line takes precedence over `.env`:
 
    ```bash
    DATABASE_URL='postgres://…' pnpm db:migrate
    ```
 
    You should see the command finish without error.
-4. **Connect it**: put the same value in `DATABASE_URL`, in `.env` locally or in your host’s variables in production.
+2. **Connect it**: put the same value in `DATABASE_URL`, in `.env` locally or in your host’s variables in production.
 
 In production, migrations run in their own container, before traffic switches over: see [Database in production](/en/deployer/base-de-donnees-en-production).
 

@@ -47,7 +47,7 @@ La pile Compose en crée une pour vous. Sur Vercel, il vous faut une base héber
 
 ### Un compte chez chaque fournisseur dont vos modules ont besoin
 
-En local, chaque service a un **mode local** qui évite tout compte. En production, la plupart de ces modes sont **refusés au démarrage**. Avec les modules activés par défaut, voici ce qu’il vous faut :
+En local, chaque service indispensable a un **mode local** qui évite tout compte (PostHog et Sentry n’en ont pas besoin : sans clé, ils ne font rien). En production, la plupart de ces modes sont **refusés au démarrage**. Avec les modules activés par défaut, voici ce qu’il vous faut :
 
 | Module activé | Il vous faut | Mode local en production |
 |---|---|---|
