@@ -426,34 +426,10 @@ const CITES_REMOVED_LOCATIONS_ON_PURPOSE = [
   'tests/agents-md.test.ts',
 ]
 
-/**
- * Les fichiers de la méthode encore suivis, que leur suppression (#191) fera
- * disparaître : ils se citent entre eux. Cette liste part avec eux.
- */
-const PENDING_REMOVAL = [
-  '.claude/commands/',
-  '.claude/agents/',
-  '.claude/skills/',
-  '.claude/.ks-manifest',
-  '.claude/.ks-version',
-  '.killer-saas/',
-  'templates/',
-  'docs/research/',
-  'docs/plans/',
-  'docs/reviews/',
-  'docs/verif/',
-  'docs/designs/',
-  'docs/stories.md',
-  'docs/STATE.md',
-  'docs/killer-saas-feedback.md',
-]
-
 describe('aucun renvoi vers un emplacement retiré de la méthode (ADR 082)', () => {
   it('aucun fichier suivi ne cite un emplacement retiré', () => {
     const scanned = trackedTextFiles().filter(
-      ({ path }) =>
-        !CITES_REMOVED_LOCATIONS_ON_PURPOSE.includes(path) &&
-        !PENDING_REMOVAL.some((removed) => path.startsWith(removed)),
+      ({ path }) => !CITES_REMOVED_LOCATIONS_ON_PURPOSE.includes(path),
     )
 
     // Le plancher refuse un balayage vide : le dépôt suit des centaines de
