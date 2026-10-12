@@ -3,6 +3,130 @@ title: "Modules et profils"
 description: "Activer ou couper des modules dans config/features.ts et config/profiles.ts."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+Chaque fonctionnalité du boilerplate est un **module** : facturation, blog, organisations, notifications… Un module coupé ne laisse **aucune trace** visible : ni page, ni route, ni entrée de menu. Ce qu’apporte chaque module est décrit dans [Fonctionnalités](/fr/fonctionnalites) ; cette page explique **comment** les activer ou les couper.
 
-Cette page est en cours de rédaction : son contenu arrive dans un prochain ticket.
+## `config/features.ts` : deux listes
+
+Le fichier contient deux listes, et la différence compte :
+
+- **`availableModules`**, l’annuaire : les modules que le dépôt contient. Vous n’y touchez pas pour activer ou couper.
+- **`enabledModules`**, la configuration : les modules **activés**. C’est la seule liste qui change quand vous activez ou coupez.
+
+Une troisième ligne, `requiredModules`, désigne le **socle**, impossible à couper : `auth` (les comptes) et `rate-limit` (la limitation de débit).
+
+## Les modules livrés
+
+| Module | Ce qu’il apporte | Requiert | État livré |
+|---|---|---|---|
+| `auth` | comptes, connexion, réglages de sécurité | — | activé, **socle** |
+| `rate-limit` | limitation de débit des points d’entrée publics | — | activé, **socle** |
+| `organizations` | organisations, membres, invitations, rôles | `auth` | activé |
+| `billing` | offres, paiement Stripe, page de tarifs | — | activé |
+| `admin` | console du superadmin (`/console`) | `auth` | activé |
+| `marketing` | accueil, pages légales, contact, newsletter, liste d’attente | — | activé |
+| `blog` | blog MDX et flux RSS | — | activé |
+| `docs` | documentation produit pour vos clients (`/docs`) | — | activé |
+| `changelog` | page des nouveautés et flux | — | activé |
+| `i18n` | préfixe de langue dans les URL et sélecteur de langue | — | activé |
+| `consent` | bannière et préférences de cookies | — | activé |
+| `analytics` | mesure PostHog et suivi d’erreurs Sentry | `consent` | activé |
+| `notifications` | centre de notifications et préférences | `auth` | activé |
+| `jobs` | tâches de fond et tâches planifiées (Inngest) | — | activé |
+| `storage` | téléversement de fichiers (photo de profil) | `auth` | activé |
+| `onboarding` | parcours d’accueil après l’inscription | `auth` | activé |
+| `mcp-server` | serveur MCP pour piloter les modules depuis une IA | — | activé |
+| `demo-enabled` | module de démonstration (fonctionnalité réservée d’exemple) | — | activé |
+| `demo-disabled` | module de démonstration volontairement coupé | `demo-enabled` | **désactivé** |
+
+## Voir l’état des modules
+
+```bash
+pnpm ks list
+```
+
+**Vous devez voir** une ligne par module : `●` activé ou `○` désactivé, puis ses relations. Par exemple :
+
+```text
+● analytics     activé    requiert : consent
+● auth          activé    socle : non désactivable  requis par : admin, notifications, onboarding, organizations, storage
+● billing       activé
+○ demo-disabled désactivé requiert : demo-enabled
+```
+
+## Activer ou couper un module
+
+Ne modifiez pas `enabledModules` à la main : passez par la commande, qui régénère aussi les fichiers dérivés et restaure la configuration d’origine si quelque chose échoue.
+
+<Steps>
+<Step>
+
+**Basculez le module** (ici `blog`) :
+
+```bash
+pnpm ks toggle blog
+```
+
+La même commande active un module coupé et coupe un module activé.
+
+</Step>
+<Step>
+
+**Répondez aux questions**, s’il y en a :
+
+- en activant un module dont un requis est coupé, la commande propose : « Activer aussi …, dont … a besoin ? » ;
+- en activant un module qui a des tables, elle génère ses migrations puis demande : « Appliquer les migrations maintenant ? ». Répondez oui si votre base tourne (`docker compose up -d`). Sinon, lancez plus tard `pnpm db:migrate`.
+
+**Vous devez voir** `Module « blog » activé. Barils régénérés.` ou `Module « blog » désactivé.`
+
+</Step>
+<Step>
+
+**Redémarrez l’application** (`Ctrl + C`, puis `pnpm dev`).
+
+</Step>
+<Step>
+
+**Vérifiez dans le navigateur.** Après avoir coupé `blog`, `http://localhost:3000/fr/blog` doit répondre « page introuvable » et le lien « Blog » doit avoir disparu de l’en-tête du site. Après l’avoir réactivé, les deux reviennent.
+
+</Step>
+</Steps>
+
+Ce que la commande refuse, en le disant :
+
+- **couper un module du socle** (`auth`, `rate-limit`) ;
+- **couper un module dont un autre module activé a besoin** : coupez d’abord le dépendant (par exemple `analytics` avant `consent`) ;
+- **un identifiant inconnu**.
+
+Pour l’usage sans questions (dans un script, ou par une IA), deux options l’autorisent explicitement : `--with-requires` (activer aussi les requis manquants) et `--apply-migrations` (appliquer les migrations générées). `--json` rend une sortie lisible par une machine.
+
+<Callout type="warn" title="Un module coupé garde ses données">
+Couper un module **ne supprime ni ses tables ni ses données** : une réactivation les retrouve intactes. Il n’existe aucune commande pour les effacer, et c’est voulu.
+</Callout>
+
+## Ce qu’un module coupé change ailleurs
+
+Certains modules en influencent d’autres. Les cas à connaître :
+
+- `billing` coupé : toutes les [fonctionnalités réservées](/fr/configurer/fonctionnalites-reservees) sont accordées à tout le monde, et plus aucune clé Stripe n’est demandée.
+- `jobs` coupé : une tâche est exécutée tout de suite, dans la requête qui la déclenche, et **les tâches planifiées ne tournent plus** (par exemple la relance de fin d’essai).
+- `notifications` coupé : les types de notification qui envoient un e-mail par défaut l’envoient directement ; les autres n’envoient rien.
+- `analytics` coupé : plus aucun script de mesure, donc plus de bannière de cookies si rien d’autre n’en demande.
+- `marketing` coupé : la racine du site redirige vers la connexion.
+- `storage` coupé : la photo de profil retombe sur les initiales, et aucune variable de stockage n’est demandée.
+- `i18n` coupé : l’application sert seulement la langue par défaut, sans préfixe dans les URL.
+
+## `config/profiles.ts` : le profil de test
+
+Ce fichier ne change **rien** à votre application. Il déclare un **profil** (`minimal`) : une liste de modules à couper ensemble, que la recette `pnpm test:minimal-profile` joue dans une **copie** du dépôt pour prouver qu’un module coupé ne laisse ni route, ni entrée de menu, ni table.
+
+Le profil livré coupe `organizations`, `billing`, `i18n`, `blog`, `docs`, `admin`, `notifications`, `jobs`, `changelog`, `analytics` et `onboarding`. Couper un module de plus dans ce profil, c’est une ligne dans la liste `cut`. Un module du socle ou un identifiant inconnu y est refusé.
+
+```bash
+pnpm test:minimal-profile
+```
+
+Cette recette crée sa propre base de données : Docker doit tourner.
+
+<Callout type="info" title="Ce qui n’est pas inclus">
+Aucune commande de nettoyage des données d’un module coupé, et aucun moyen d’activer ou couper un module **sans redémarrer** : le choix est fait au démarrage. `pnpm ks scaffold <module>` génère le squelette d’un nouveau module mais ne l’ajoute pas à l’annuaire. Deux limites connues de la commande : elle ne borne pas encore dans le temps ses sous-processus ([issue #154](https://github.com/oliviermattei/poc-next/issues/154)) et ne dit pas quoi relancer si elle est interrompue entre l’écriture et la régénération ([issue #155](https://github.com/oliviermattei/poc-next/issues/155)).
+</Callout>

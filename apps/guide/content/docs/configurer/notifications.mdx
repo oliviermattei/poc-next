@@ -3,6 +3,84 @@ title: "Notifications"
 description: "Les événements qui préviennent vos clients, dans config/notifications.ts."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+Une **notification** prévient un client qu’un événement le concerne : dans l’application (le centre de notifications, `/app/notifications`) et/ou par e-mail. Chaque **type** de notification est déclaré une fois dans `config/notifications.ts`. Ce que voient vos clients est décrit dans [Notifications](/fr/fonctionnalites/notifications).
 
-Cette page est en cours de rédaction : son contenu arrive dans un prochain ticket.
+## Les types livrés
+
+| Type | Quand il part | Dans l’application | E-mail par défaut |
+|---|---|---|---|
+| `organization.member-joined` | quand quelqu’un accepte une invitation : les autres membres de l’organisation sont prévenus | oui | **non** |
+| `billing.trial-ending` | trois jours avant la fin d’un essai gratuit, par une tâche planifiée chaque jour à 9 h (UTC) | oui | oui |
+| `account.security-alert` | **jamais aujourd’hui** : le type est déclaré, mais aucun code ne l’émet ([issue #113](https://github.com/oliviermattei/poc-next/issues/113)) | oui | oui |
+
+## Ce qu’une ligne déclare
+
+```ts
+defineNotificationType({
+  id: 'billing.trial-ending',
+  channels: ['in_app', 'email'],
+  defaults: { in_app: true, email: true },
+  actors: [],
+  email: {
+    id: 'billing.trial-ending',
+    locales: {
+      fr: { subject: 'Votre essai se termine le {date}', body: '…' },
+      en: { subject: 'Your trial ends on {date}', body: '…' },
+    },
+  },
+}),
+```
+
+| Champ | Ce qu’il dit |
+|---|---|
+| `channels` | les canaux possibles : `in_app` (dans l’application) et/ou `email` |
+| `defaults` | ce que reçoit un client qui n’a rien réglé. Chaque client peut ensuite changer ses choix dans `/app/settings/notifications` |
+| `actors` | les données qui désignent un autre compte (par exemple `member`) : elles sont stockées comme identifiant, jamais comme adresse |
+| `email` | le sujet et le corps de l’e-mail, **dans chaque langue** de l’application |
+
+Les mots entre accolades (`{date}`, `{offer}`, `{member}`, `{organization}`, `{summary}`) sont remplis par le code qui émet la notification : gardez-les tels quels. Une donnée manquante empêche l’envoi plutôt que de faire partir un e-mail incomplet.
+
+## Changer l’e-mail par défaut ou un texte
+
+<Steps>
+<Step>
+
+Ouvrez `config/notifications.ts` et modifiez `defaults` ou les textes de `email.locales`. Par exemple, pour que l’arrivée d’un membre parte aussi par e-mail par défaut :
+
+```ts
+defaults: { in_app: true, email: true },
+```
+
+</Step>
+<Step>
+
+Le libellé et le texte affichés **dans l’application** sont dans le catalogue du module : `packages/modules/notifications/src/messages/fr.json` et `en.json`, clés `type.<id>.label` et `type.<id>.body`. Modifiez-les aussi si besoin.
+
+</Step>
+<Step>
+
+Redémarrez (`Ctrl + C`, puis `pnpm dev`).
+
+</Step>
+<Step>
+
+**Vérifiez** : connectez-vous, ouvrez `http://localhost:3000/fr/app/settings/notifications`. **Vous devez voir** chaque type avec ses canaux, réglés selon vos nouvelles valeurs par défaut pour un compte qui n’a encore rien changé. Pour voir l’e-mail, déclenchez l’événement (par exemple, faites accepter une invitation par un second compte), puis ouvrez le fichier écrit dans `apps/web/.mail/`.
+
+</Step>
+</Steps>
+
+Un nouveau réglage par défaut ne s’applique pas à un client qui a déjà fait son propre choix pour ce type et ce canal : son choix enregistré l’emporte.
+
+## Si un module est coupé
+
+- **`notifications` coupé** : plus de centre ni de préférences. Les types dont l’e-mail est actif par défaut l’envoient **directement** ; les autres n’envoient rien. C’est pourquoi ce fichier reste lu même module coupé.
+- **`jobs` coupé** : la tâche planifiée qui émet `billing.trial-ending` ne tourne plus, donc cette relance ne part pas.
+- **`organizations` ou `billing` coupé** : leur type n’a plus d’émetteur.
+
+<Callout type="info" title="Ajouter un type de notification">
+Déclarer une ligne ici ne suffit pas : il faut aussi qu’un module **émette** la notification au bon moment, ce qui est du code. Décrivez l’événement voulu à une IA ([Travailler avec une IA](/fr/demarrer/travailler-avec-une-ia)), en lui demandant d’ajouter le type ici, ses textes dans le catalogue du module `notifications`, et l’émission dans le module concerné.
+</Callout>
+
+<Callout type="info" title="Ce qui n’est pas inclus">
+Pas de temps réel : le compteur de notifications se met à jour quand le client change de page, pas en direct (pas de websocket). Pas de notification push, ni SMS, ni Slack. Quand un plafond de membres refuse une invitation, le propriétaire n’en est pas prévenu ([issue #93](https://github.com/oliviermattei/poc-next/issues/93)).
+</Callout>

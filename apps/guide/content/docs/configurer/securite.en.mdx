@@ -3,6 +3,121 @@ title: "Security"
 description: "Allowed sources, rate limits and captcha, in config/security.ts."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+`config/security.ts` sets three things: the **third-party sources** the browser may contact, the **rate limits** of the entry points, and the **captcha**. The protections themselves (security headers, cookies, server-side checks) live in the code and cannot be turned off.
 
-This page is being written: its content arrives in an upcoming ticket.
+## The allowed third-party sources
+
+Your application sends the browser a **content security policy** (CSP): the list of origins a page may load a script or an image from, or send a request to. Everything else is blocked. This is what stops an injected script from leaking your data.
+
+**The shipped state: no third-party source.** Fonts, styles, icons and images are served by your own application.
+
+```ts
+export const contentSecurityPolicySources = {
+  script: [],
+  style: [],
+  connect: [],
+  img: [],
+  font: [],
+  frame: [],
+  formAction: [],
+}
+```
+
+| Field | What it allows |
+|---|---|
+| `script` | a script loaded by the page |
+| `style` | an external stylesheet |
+| `connect` | a network request sent by the page (`fetch`, a measurement call) |
+| `img` | an external image, including a tracking pixel |
+| `font` | a font served by another domain |
+| `frame` | an embedded frame (payment widget, captcha) |
+| `formAction` | the destination of a form that leaves your site |
+
+It is **the only place** an origin can enter the policy from: a domain written elsewhere in the code makes `pnpm test` fail.
+
+### When to add an origin
+
+Only when a service you connect requires it. The startup tells you, naming the expected field and origin:
+
+| Service | Fields | Origin to add |
+|---|---|---|
+| [S3 storage](/en/services/stockage-s3) (real bucket) | `connect` | that of `STORAGE_S3_ENDPOINT`, or `https://s3.<region>.amazonaws.com` with AWS |
+| [PostHog](/en/services/posthog) | `connect` **and** `img` | the value of `POSTHOG_HOST`, for example `https://eu.i.posthog.com` |
+
+<Steps>
+<Step>
+
+Add the origin in the field or fields, **without a trailing slash**, and never `*`:
+
+```ts
+connect: ['https://eu.i.posthog.com'],
+img: ['https://eu.i.posthog.com'],
+```
+
+</Step>
+<Step>
+
+Restart (`Ctrl + C`, then `pnpm dev`). **You should see** `✓ Ready`: the message asking for the origin is gone.
+
+</Step>
+<Step>
+
+**Check in the browser**: open the developer tools (F12), Console tab, and use the feature (upload an avatar, accept measurement cookies). **No line** should mention `Content Security Policy`.
+
+</Step>
+</Steps>
+
+<Callout type="warn" title="Adding an origin is a decision">
+Each added origin is a third-party domain you trust. Do not add one “to make it work”: write down why, in the commit message or next to the line.
+</Callout>
+
+## Rate limits
+
+Each public entry point is limited: beyond a threshold, the caller gets a “too many requests” answer (HTTP 429) and must wait until the window ends. The thresholds are in `rateLimitPolicies`.
+
+Each policy has two thresholds, and they do not protect against the same thing:
+
+- **`maxPerClient`** counts per **caller** (their IP address). It is deliberately generous: several people often share one address (a company, a mobile carrier).
+- **`maxPerSubject`** counts per **targeted account**, wherever the requests come from. This is what stops a distributed attack on an account. `null` when the route targets no account.
+
+| Policy | Applies to | Window | Per caller | Per targeted account |
+|---|---|---|---|---|
+| `default` | any public route that names no other | 60 s | 120 | — |
+| `signIn` | sign-in | 5 min | 300 | 20 |
+| `signUp` | sign-up | 1 h | 120 | 5 |
+| `passwordReset` | forgotten password | 1 h | 120 | 5 |
+| `magicLink` | sign-in link by email | 1 h | 120 | 5 |
+| `emailVerification` | address verification | 1 h | 240 | — |
+| `twoFactor` | two-factor code | 5 min | 60 | 4 |
+| `passkey` | passkeys | 5 min | 100 | — |
+| `invitation` | invitation to an organization | 1 h | 120 | 5 |
+| `publicForm` | public forms (contact, newsletter, waitlist) | 10 min | 60 | — |
+| `upload` | file upload | 10 min | 120 | — |
+| `dataExport` | exporting one’s data | 1 h | 20 | — |
+| `guestCheckout` | payment without an account | 10 min | 60 | — |
+| `webhook` | incoming webhooks (Stripe…) | 60 s | 600 | — |
+
+To change a threshold: edit the value, restart, that is all. The shipped values suit a product that is starting out; raise them if a campaign brings many people at once.
+
+**What you cannot do: turn rate limiting off.** There is no flag or variable for it, and a zero or negative threshold is **refused at startup**, naming the policy. The public forms also have their own setting, in `config/marketing.ts` (see [Site and legal pages](/en/configurer/site-et-pages-legales)).
+
+<Callout type="warn" title="Known limit: the caller’s address">
+The per-caller threshold reads the address from the `x-forwarded-for` header, which an attacker can write themselves if no trusted proxy rewrites it in front of your application. The per-account threshold does not depend on it. The fix is tracked in [issue #78](https://github.com/oliviermattei/poc-next/issues/78); meanwhile, deploy behind a proxy that rewrites this header (see [Deploy](/en/deployer)). For the module, see [Rate limiting](/en/fonctionnalites/limitation-de-debit).
+</Callout>
+
+## The captcha — coming soon
+
+```ts
+export const captcha = {
+  enabled: false,
+  origin: null,
+}
+```
+
+The captcha is **declared but no provider ships**: leave `enabled: false`. Setting it to `true` adds no widget to your forms today; the startup only checks that `origin` is filled in and declared in the `frame` or `script` fields above. A provider is **coming soon**, tracked in [issue #151](https://github.com/oliviermattei/poc-next/issues/151).
+
+Disabled, it is not missed: the public forms work fully, with an invisible honeypot field against bots and the rate limits above.
+
+<Callout type="info" title="What is not included">
+No web application firewall, no country blocking or address blacklist: those are settings of your host or proxy. No setting for the security headers themselves: the code fixes them. Several hardening tasks are in progress, listed in the “CI & sécurité” milestone of the issues, for example the password reset token still stored in plain text ([issue #79](https://github.com/oliviermattei/poc-next/issues/79)).
+</Callout>
