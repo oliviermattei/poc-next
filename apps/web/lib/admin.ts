@@ -60,7 +60,7 @@ const mounted = moduleRegistry.moduleIds.includes(adminModule.id)
  * possède les comptes. Ce fichier ne fait que brancher l'un sur l'autre.
  */
 /**
- * **Un port ne lève pas** (`AGENTS.md` racine) : il rend un résultat discriminé,
+ * **Un port ne lève pas** (`CODING_STANDARDS.md`) : il rend un résultat discriminé,
  * si bien que le compilateur oblige l'appelant à traiter l'échec.
  *
  * Les lectures branchées ci-dessous parlent à la base : une panne y **lève**, et

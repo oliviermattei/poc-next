@@ -3342,7 +3342,7 @@ describe('le profil minimal balaie le back-office', () => {
 })
 
 /**
- * **Un port ne lève pas** (`AGENTS.md` racine), et c'est au point de composition
+ * **Un port ne lève pas** (`CODING_STANDARDS.md`), et c'est au point de composition
  * que la promesse se tient (constat MJ4 de la revue de s37b1).
  *
  * Les trois lectures branchées sur le socle parlent à la base. Sans cette

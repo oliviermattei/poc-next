@@ -5,8 +5,8 @@
 > de référence — il dit dans quel ordre les lire et ce qu'il faut faire entre
 > deux.
 >
-> Références : `README.md` (ouvrir le produit), `AGENTS.md` (les règles et le
-> tableau des commandes), `docs/architecture.md` (la technique),
+> Références : `README.md` (ouvrir le produit), `AGENTS.md` (l'ordre de lecture),
+> `CODING_STANDARDS.md` (les règles), `docs/commands.md` (les commandes), `docs/architecture.md` (la technique),
 > `docs/design-system.md` (les jetons et composants), `docs/security.md`,
 > `docs/reliability.md`, `docs/deployment.md` (la mise en production),
 > `docs/decisions/` (une ADR par décision structurante).

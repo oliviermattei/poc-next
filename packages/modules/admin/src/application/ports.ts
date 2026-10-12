@@ -5,7 +5,7 @@ import type { AdminSecurityLog } from '../domain/security-event'
  * Les **ports** du module (ADR 006) : ce dont les cas d'usage ont besoin, dit
  * par eux, sans savoir qui l'implémente.
  *
- * **Aucun ne lève** (`AGENTS.md` racine) : chacun rend un résultat discriminé,
+ * **Aucun ne lève** (`CODING_STANDARDS.md`) : chacun rend un résultat discriminé,
  * si bien que le compilateur oblige l'appelant à traiter l'échec au lieu de
  * retomber sur un 500.
  */

@@ -192,7 +192,7 @@ describe('AGENTS.md par package (ADR 013)', () => {
 /**
  * Le squelette généré passe la garde qu'il devra passer une fois écrit.
  *
- * `AGENTS.md` racine ordonne de **générer** un module plutôt que de le
+ * `CODING_STANDARDS.md` ordonne de **générer** un module plutôt que de le
  * deviner : un générateur dont la sortie fait rougir `pnpm test` dès la
  * génération envoie l'agent réparer le dépôt à la main, exactement ce que la
  * commande devait lui éviter. La règle est celle du bloc ci-dessus, appliquée
@@ -229,18 +229,13 @@ describe('le squelette de `ks scaffold` (s41)', () => {
 })
 
 /**
- * Les règles du projet que lit un agent avant de toucher au dépôt. Trois choses
- * doivent y être, faute de quoi il improvise — l'architecture en couches, les
- * règles de module, et les commandes qui vérifient le tout.
- *
- * **Elles vivent dans `AGENTS.local.md`**, section « Project conventions », et
- * non dans `AGENTS.md` : depuis la réinstallation de la méthode killer-saas,
- * `AGENTS.md` appartient à la méthode et est reconstruit par `install.sh`, qui
- * y ajoute `AGENTS.local.md`. Lire `AGENTS.md` seul faisait rougir ces cas sur
- * un fichier que le projet n'a plus le droit d'éditer.
+ * Les règles de jugement du projet, lues par un agent avant de toucher au
+ * dépôt et par `/code-review` à chaque revue. Elles vivent dans
+ * `CODING_STANDARDS.md`, à la racine : `AGENTS.md` n'y fait que renvoyer, et
+ * une section qui disparaît de ce fichier disparaît de chaque revue.
  */
-describe('Conventions du projet (AGENTS.local.md)', () => {
-  const content = read('AGENTS.local.md')
+describe('Règles de jugement (CODING_STANDARDS.md)', () => {
+  const content = read('CODING_STANDARDS.md')
 
   it('décrit les quatre couches et leur sens de dépendance', () => {
     for (const layer of ['domain', 'application', 'infrastructure', 'presentation']) {
@@ -250,34 +245,64 @@ describe('Conventions du projet (AGENTS.local.md)', () => {
 
   it('porte les sections opposables en revue', () => {
     for (const section of [
-      '### Technical conventions',
-      '### Commands',
-      '### Security baseline',
-      '### Reliability baseline',
-      '### Agent-oriented repo',
+      '## Technical conventions',
+      '## Security baseline',
+      '## Reliability baseline',
+      '## Agent-oriented repo',
     ]) {
-      expect(content).toContain(section)
+      expect(content, `CODING_STANDARDS.md n'a pas de section « ${section} »`).toContain(section)
+    }
+  })
+})
+
+/**
+ * Les scripts nommés en tête d'une ligne du tableau de `docs/commands.md`,
+ * `pnpm <script>` ou `pnpm run <script>`.
+ *
+ * Lus cellule par cellule, jamais par une recherche de sous-chaîne :
+ * `pnpm test` est contenu dans `pnpm test:e2e`, si bien qu'une ligne
+ * `pnpm test` retirée serait restée couverte par sa voisine.
+ */
+export const documentedScripts = (reference: string): string[] =>
+  [...reference.matchAll(/^\|\s*`pnpm (?:run )?([\w:-]+)`\s*\|/gm)].map((match) => match[1] ?? '')
+
+describe('Référence des commandes (docs/commands.md)', () => {
+  // Une commande que la référence ne décrit pas n'existe pas pour un agent :
+  // il en réinventera une autre. La liste vient de `package.json`, jamais
+  // d'une copie.
+  const scripts = Object.keys(
+    (JSON.parse(read('package.json')) as { scripts: Record<string, string> }).scripts,
+  )
+  const documented = documentedScripts(read('docs/commands.md'))
+
+  it('décrit chaque script du `package.json` racine sur sa propre ligne', () => {
+    // Un `package.json` sans script rendrait la boucle verte sur rien.
+    expect(scripts.length).toBeGreaterThanOrEqual(1)
+
+    for (const script of scripts) {
+      expect(documented, `docs/commands.md n'a pas de ligne pour pnpm ${script}`).toContain(script)
     }
   })
 
-  it('nomme chaque commande du dépôt', () => {
-    // Une commande que le fichier de règles ne mentionne pas n'existe pas pour
-    // un agent : il en réinventera une autre. La liste vient de
-    // `package.json`, jamais d'une copie.
-    const scripts = Object.keys(
-      (JSON.parse(read('package.json')) as { scripts: Record<string, string> }).scripts,
-    )
-
-    const start = content.indexOf('### Commands')
-    // `-1` rendrait une tranche vide, et chaque attente rougirait sans dire
-    // pourquoi : la section absente est nommée par le cas précédent.
-    expect(start).toBeGreaterThanOrEqual(0)
-    const end = content.indexOf('\n### ', start + 1)
-    const commandsSection = content.slice(start, end === -1 ? undefined : end)
-
-    for (const script of scripts) {
-      expect(commandsSection).toContain(`pnpm ${script}`)
+  it('ne décrit aucun script que le `package.json` racine ne déclare pas', () => {
+    for (const script of documented) {
+      expect(scripts, `docs/commands.md décrit pnpm ${script}, qui n'existe pas`).toContain(script)
     }
+  })
+
+  it('ne lit pas la ligne de `pnpm test:e2e` comme celle de `pnpm test`', () => {
+    expect(documentedScripts('| `pnpm test:e2e` | parcours | échec |')).toEqual(['test:e2e'])
+    expect(documentedScripts('| `pnpm run audit` | audit | échec |')).toEqual(['audit'])
+  })
+})
+
+describe('point d’entrée des agents', () => {
+  it('`CLAUDE.md` importe `AGENTS.md`, et lui seul', () => {
+    expect(read('CLAUDE.md').trim()).toBe('@AGENTS.md')
+  })
+
+  it('le fichier de réglages de la méthode a disparu', () => {
+    expect(existsSync(join(REPO_ROOT, 'AGENTS.local.md'))).toBe(false)
   })
 })
 

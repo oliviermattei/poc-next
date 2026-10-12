@@ -244,7 +244,7 @@ Trois référentiels s'appliquent à **toute** story, au même titre que la règ
 |---|---|---|---|
 | Sécurité | `docs/security.md` | 012 | En-têtes et politique de sécurité du contenu, sessions, autorisation, entrées/sorties, secrets, chaîne d'approvisionnement, journalisation et abus |
 | Fiabilité | `docs/reliability.md` | 014 | Idempotence, dégradation, délais et reprises, migrations rétrocompatibles, observabilité |
-| Dépôt orienté agents | `AGENTS.md` racine + par package | 013 | Règles localisées, contraintes exécutables, génération plutôt que devinette |
+| Dépôt orienté agents | `CODING_STANDARDS.md` + `AGENTS.md` par package | 013 | Règles localisées, contraintes exécutables, génération plutôt que devinette |
 
 Le plan d'une story nomme les sections applicables ; la revue les vérifie en mutant le code, pas en lisant les intentions. Un manquement est un finding **critical**, au même rang qu'une régression fonctionnelle.
 
