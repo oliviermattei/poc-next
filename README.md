@@ -4,6 +4,16 @@ Un boilerplate SaaS modulaire : Next 16, React 19, Tailwind v4, PostgreSQL 16 +
 Drizzle, Better Auth, Stripe. Chaque fonctionnalité est un **module** qu'on
 active ou qu'on coupe depuis `config/features.ts`.
 
+**Vous êtes le propriétaire du projet ?** Commencez par le **Guide** : ce que
+fait le boilerplate, les services pris en charge, et pas à pas comment
+installer, configurer, activer chaque fonctionnalité et déployer, en français
+et en anglais.
+
+```bash
+pnpm install
+pnpm guide:dev            # http://localhost:3200/fr
+```
+
 Ce fichier ne sert qu'à une chose : **ouvrir le produit et le regarder**. La
 suite se lit dans `AGENTS.md` (l'ordre de lecture), `CODING_STANDARDS.md` (les
 règles), `docs/architecture.md` (la

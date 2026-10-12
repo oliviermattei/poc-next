@@ -62,6 +62,7 @@ This codebase is mostly edited by agents (ADR 013). An agent that cannot find th
 - **Derive, never copy.** A list, a count or a path written next to the code that defines it goes stale in silence; a test reads it from the source — `package.json`, the workspace, the registry, the disk — and fails when the two drift.
 - **Generate, don't guess.** `npx ks` and the MCP server expose the same operations — list modules, toggle one, scaffold a compliant module. Producing a module skeleton by hand is a smell.
 - **Docs ship with the code that changes them.** A change that alters a convention and leaves its rule stale is incomplete.
+- **The Guide follows the code** (ADR 083). A change to a module, a `config/` file, an environment variable, a service or a root script updates the matching Guide page(s) — `apps/guide/content/docs`, in French and in English — in the same commit. The Guide is what the project owner reads: a Guide that describes yesterday's code sends them down a path that no longer exists. `tests/guide.test.ts` enforces it — what it checks so far: FR/EN parity of every page, every internal link, and an honest feature grid; its coverage check (every module, environment variable and `config/` file named in a French page) arrives with the Guide's content (spec #195).
 
 ## Testing
 

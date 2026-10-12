@@ -421,6 +421,28 @@ describe('l’image de production', () => {
     }
   })
 
+  /**
+   * **Le Guide n'entre jamais dans une image** (ADR 083). Exclu du contexte
+   * de build, il n'est ni installé, ni construit, ni copié — pas même dans
+   * l'image de migration, qui repart du dépôt entier. Mesuré à l'écriture de
+   * l'ADR : `pnpm install --frozen-lockfile` accepte une entrée du lockfile
+   * dont le dossier est absent, sans rien installer pour elle, et
+   * `turbo run build` ne la planifie pas.
+   */
+  it('n’emporte rien du Guide : ni ses sources, ni ses pages, ni son export', () => {
+    for (const path of [
+      'apps/guide',
+      'apps/guide/package.json',
+      'apps/guide/content/docs/index.mdx',
+      'apps/guide/out/index.html',
+    ]) {
+      expect(isIgnoredByDocker(path), `\`${path}\` entrerait dans le contexte de build`).toBe(true)
+    }
+
+    // Une exclusion trop large (`apps`) emporterait l'application avec lui.
+    expect(isIgnoredByDocker('apps/web/package.json')).toBe(false)
+  })
+
   it('laisse entrer ce que la construction lit — sans quoi le balayage ci-dessus serait vide de sens', () => {
     // Un `.dockerignore` réduit à `*` satisferait le cas précédent et
     // n'exclurait plus rien de significatif : l'image ne se construirait même

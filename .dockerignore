@@ -27,6 +27,13 @@
 **/.turbo
 **/*.tsbuildinfo
 
+# Le Guide du propriétaire du projet (ADR 083) : un site statique à part,
+# jamais embarqué. Exclu ici, il n'est ni installé, ni construit, ni copié —
+# pas même dans l'image de migration, qui repart du dépôt entier.
+# `pnpm install --frozen-lockfile` accepte l'entrée du lockfile dont le
+# dossier manque : il ne l'installe pas.
+apps/guide
+
 # L'historique, les worktrees des stories, les artefacts de test et les données
 # locales — aucun n'a de rôle dans une image de production.
 .git

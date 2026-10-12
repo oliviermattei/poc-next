@@ -1,0 +1,15 @@
+{
+  "title": "Services",
+  "pages": [
+    "index",
+    "postgresql",
+    "stripe",
+    "resend",
+    "stockage-s3",
+    "inngest",
+    "posthog",
+    "sentry",
+    "google",
+    "github"
+  ]
+}

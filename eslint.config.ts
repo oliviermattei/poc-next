@@ -664,7 +664,14 @@ const config: Linter.Config[] = [
   // gardes de ce fichier : une seule liste d'extensions, pour que la divergence
   // mesurée en revue (`apps/**` en `*.{ts,tsx}`) ne se recrée pas.
   ...libraryConfig([sources('packages'), sources('tooling')]),
-  ...nextConfig(['apps/web/**/*.ts', 'apps/web/**/*.tsx']),
+  ...nextConfig([
+    'apps/web/**/*.ts',
+    'apps/web/**/*.tsx',
+    // Le Guide (ADR 083) est une seconde application Next : mêmes règles du
+    // cadre et des hooks.
+    'apps/guide/**/*.ts',
+    'apps/guide/**/*.tsx',
+  ]),
   // Après `libraryConfig`, dont il reprend le motif ; avant
   // `configClientSurface`, qui reprend les deux. L'ordre **est** la règle : le
   // dernier bloc qui matche un fichier décide de `no-restricted-imports`.

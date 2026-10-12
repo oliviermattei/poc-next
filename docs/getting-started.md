@@ -10,6 +10,11 @@
 > `docs/design-system.md` (les jetons et composants), `docs/security.md`,
 > `docs/reliability.md`, `docs/deployment.md` (la mise en production),
 > `docs/adr/` (une ADR par décision structurante).
+>
+> **Propriétaire du projet, lisez d'abord le Guide** : le même parcours, écrit
+> pour vous, étape par étape, en français et en anglais — `pnpm guide:dev`,
+> puis http://localhost:3200/fr. Ce document-ci reste la référence technique
+> qu'il vulgarise.
 
 ---
 
@@ -365,6 +370,7 @@ PostHog.
 
 | Question | Document |
 |---|---|
+| Comment j'installe, je configure et je déploie, pas à pas ? | le **Guide** : `pnpm guide:dev`, http://localhost:3200/fr |
 | Qu'est-ce qu'on construit, et qu'est-ce qu'on refuse ? | `docs/prd.md` |
 | Comment c'est fait techniquement ? | `docs/architecture.md` |
 | Pourquoi ce choix plutôt qu'un autre ? | `docs/adr/` |

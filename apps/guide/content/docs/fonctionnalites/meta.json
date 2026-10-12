@@ -1,0 +1,24 @@
+{
+  "title": "Fonctionnalités",
+  "pages": [
+    "index",
+    "authentification",
+    "organisations",
+    "facturation",
+    "console",
+    "site-public",
+    "blog",
+    "documentation-produit",
+    "changelog",
+    "langues",
+    "cookies-et-consentement",
+    "analytics",
+    "notifications",
+    "taches-de-fond",
+    "stockage",
+    "onboarding",
+    "serveur-mcp",
+    "limitation-de-debit",
+    "module-de-demonstration"
+  ]
+}
