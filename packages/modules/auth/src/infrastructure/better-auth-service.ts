@@ -936,7 +936,7 @@ export function createBetterAuthService(options: ConfigureAuthOptions): AuthServ
        *   unique. `decrypt` est l'identité — la base contient déjà des
        *   empreintes — et la **saisie** est hachée par la route avant
        *   d'arriver ici, si bien que la comparaison de `verifyBackupCode`
-       *   porte empreinte contre empreinte. `docs/decisions/028-…` ;
+       *   porte empreinte contre empreinte. `docs/adr/0028-…` ;
        * - `twoFactorCookieMaxAge` — la durée du défi, prise dans `AuthPolicy`
        *   comme toutes les durées de vie du module, jamais écrite en dur.
        *

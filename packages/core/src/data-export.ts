@@ -32,7 +32,7 @@ import { exportModules, type ModuleRegistry } from './registry'
  * fichier qu'elle obtiendra par ailleurs est bien celui que le manifeste
  * décrit — il n'y a pas d'empreinte à comparer.
  *
- * La décision complète, avec ses options rejetées : `docs/decisions/062-…`.
+ * La décision complète, avec ses options rejetées : `docs/adr/0062-…`.
  *
  * ## Pourquoi une liste et non un objet indexé
  *

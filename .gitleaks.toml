@@ -38,7 +38,7 @@ paths = [
   '''.*\.test\.ts$''',
   '''.*\.spec\.ts$''',
   '''(^|/)packages/[^/]*-testing/.*''',
-  '''(^|/)docs/(research|reviews|plans|designs|decisions)/.*''',
+  '''(^|/)docs/(research|reviews|plans|designs|adr)/.*''',
   '''(^|/)\.env\.example$''',
 ]
 

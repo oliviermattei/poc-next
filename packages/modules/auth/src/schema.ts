@@ -218,7 +218,7 @@ export const authVerification = pgTable(
  * - `secret` est le secret TOTP **chiffré** (`symmetricEncrypt` de la
  *   bibliothèque, clé = secret de l'application). Chiffré et non haché, et
  *   c'est structurel : vérifier un code exige de le regénérer, donc de relire
- *   le secret. `docs/decisions/028-…` porte l'arbitrage ;
+ *   le secret. `docs/adr/0028-…` porte l'arbitrage ;
  * - `backupCodes` est le JSON d'un tableau d'**empreintes**
  *   (`domain/backup-code.ts`), jamais des codes. C'est la moitié du socle §2
  *   qui, elle, est applicable ;

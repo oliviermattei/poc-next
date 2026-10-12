@@ -9,7 +9,7 @@
 > `CODING_STANDARDS.md` (les règles), `docs/commands.md` (les commandes), `docs/architecture.md` (la technique),
 > `docs/design-system.md` (les jetons et composants), `docs/security.md`,
 > `docs/reliability.md`, `docs/deployment.md` (la mise en production),
-> `docs/decisions/` (une ADR par décision structurante).
+> `docs/adr/` (une ADR par décision structurante).
 
 ---
 
@@ -374,7 +374,7 @@ PostHog.
 | Qu'est-ce qu'on construit, et qu'est-ce qu'on refuse ? | `docs/prd.md` |
 | Quelles fonctionnalités, avec quels critères ? | `docs/stories.md` |
 | Comment c'est fait techniquement ? | `docs/architecture.md` |
-| Pourquoi ce choix plutôt qu'un autre ? | `docs/decisions/` |
+| Pourquoi ce choix plutôt qu'un autre ? | `docs/adr/` |
 | Quelles règles ne se négocient pas ? | `AGENTS.md`, `docs/security.md`, `docs/reliability.md` |
 | À quoi ça ressemble ? | `docs/design-system.md`, `docs/designs/<story>.md` |
 | Comment on met en production ? | `docs/deployment.md` |

@@ -11,7 +11,7 @@
  * Avant s41, ce paquet n'avait délibérément aucun point d'entrée importable :
  * la seule façade était la commande. La story exige que le serveur MCP
  * « réutilise la logique du CLI de s05 », jamais une seconde implémentation —
- * ce baril est ce que ça prend, rien de plus. Voir `docs/decisions/040-*.md`
+ * ce baril est ce que ça prend, rien de plus. Voir `docs/adr/0040-*.md`
  * pour l'option rejetée (extraire un nouveau paquet `@repo/module-engine`).
  */
 export {

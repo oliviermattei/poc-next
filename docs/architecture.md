@@ -1,6 +1,6 @@
 # Architecture — killer-boilerplate
 
-> Décidée sur documents : le dépôt ne contient aucun code applicatif. Le squelette est produit par s01 et s02 à travers le pipeline, pas avant. Chaque décision structurante ci-dessous est adossée à un ADR dans `docs/decisions/`.
+> Décidée sur documents : le dépôt ne contient aucun code applicatif. Le squelette est produit par s01 et s02 à travers le pipeline, pas avant. Chaque décision structurante ci-dessous est adossée à un ADR dans `docs/adr/`.
 
 ## Stack
 

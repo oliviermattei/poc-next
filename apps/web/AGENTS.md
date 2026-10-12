@@ -188,7 +188,7 @@ point d'accès unique est `@repo/config`.
 **Cette application valide sa configuration en deux endroits, et un seul texte
 la porte** : `lib/startup.ts`, `assertStartupConfiguration`. La décision, ses
 options rejetées et l'exception qu'elle ouvre à `docs/security.md` §5 vivent dans
-`docs/decisions/049-la-garde-de-demarrage-vit-dans-l-instrumentation-que-la-sortie-autonome-atteint.md`.
+`docs/adr/0049-la-garde-de-demarrage-vit-dans-l-instrumentation-que-la-sortie-autonome-atteint.md`.
 
 | Point | Qui l'appelle | Ce qu'il couvre |
 |---|---|---|

@@ -53,4 +53,4 @@ If your output contradicts an existing ADR, surface it explicitly rather than si
 ## Propre à ce dépôt
 
 - **`packages/<nom>/AGENTS.md`** : lisez celui du paquet que vous allez modifier. Il dit ce que le paquet peut importer, ce qu'il ne doit jamais contenir et où vivent ses tests. Un test exige qu'il existe pour chaque paquet.
-- **ADR** : `docs/adr/NNNN-slug.md`, au format MADR. Le code et les tests les citent par « ADR 069 » ; cette forme reste valide, le numéro ne change pas. Une ADR ne se modifie pas : un changement de décision s'écrit dans une nouvelle ADR qui remplace l'ancienne.
+- **ADR** : `docs/adr/NNNN-slug.md`, au format MADR, sur le gabarit `docs/adr/template.md` (options considérées comprises). Le code et les tests les citent par « ADR 069 » ; cette forme reste valide, le numéro ne change pas. Une ADR ne se modifie pas : un changement de décision s'écrit dans une nouvelle ADR qui remplace l'ancienne.

@@ -2,7 +2,7 @@
 
 **État de ce dossier au 2026-09-03 : aucun enregistrement.** Ce n'est pas un
 oubli, c'est la conséquence écrite d'avance dans
-[ADR 048](../../../docs/decisions/048-un-enregistrement-absent-fait-echouer-la-ci-jamais-de-repli-sur-le-simulateur.md) :
+[ADR 048](../../../docs/adr/0048-un-enregistrement-absent-fait-echouer-la-ci-jamais-de-repli-sur-le-simulateur.md) :
 « La CI ne peut pas passer sans enregistrements. Les produire est donc un
 prérequis de cette story — et cela demande une exécution contre les clés de test
 réelles, c'est-à-dire un geste humain avec des secrets que le harnais n'a pas. »

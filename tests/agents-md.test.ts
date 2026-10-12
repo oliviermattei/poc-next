@@ -1,4 +1,5 @@
-import { readdirSync, readFileSync, existsSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -293,6 +294,96 @@ describe('Référence des commandes (docs/commands.md)', () => {
   it('ne lit pas la ligne de `pnpm test:e2e` comme celle de `pnpm test`', () => {
     expect(documentedScripts('| `pnpm test:e2e` | parcours | échec |')).toEqual(['test:e2e'])
     expect(documentedScripts('| `pnpm run audit` | audit | échec |')).toEqual(['audit'])
+  })
+})
+
+/**
+ * Les ADR vivent là où les skills d'ingénierie les cherchent :
+ * `docs/adr/NNNN-slug.md` (ADR 082). Un fichier hors de ce nom est invisible
+ * pour `/domain-modeling`, qui choisirait alors un numéro déjà pris.
+ */
+const ADR_DIRECTORY = 'docs/adr'
+
+/** Le gabarit MADR range avec les ADR, sans être une décision. */
+const ADR_TEMPLATE = 'template.md'
+
+/** Le numéro d'un fichier `NNNN-slug.md`, `null` hors de ce nom. */
+export const adrNumberOf = (fileName: string): number | null => {
+  const match = /^(\d{4})-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/.exec(fileName)
+
+  return match ? Number(match[1]) : null
+}
+
+const adrFiles = (): string[] =>
+  readdirSync(join(REPO_ROOT, ADR_DIRECTORY)).filter((name) => name !== ADR_TEMPLATE)
+
+/**
+ * Les numéros cités dans un texte, sous toutes les formes en usage :
+ * « ADR 069 », « ADR 69 », « ADR-0069 ». Le code et les tests citent les ADR
+ * par leur numéro, jamais par leur chemin : le numéro doit donc désigner un
+ * fichier, sans quoi la raison qu'il porte est perdue.
+ */
+export const citedAdrNumbers = (text: string): number[] =>
+  [...text.matchAll(/\bADR[- ]?(\d{1,4})\b/g)].map((match) => Number(match[1]))
+
+/** Fichiers suivis par git, lus en texte : un fichier binaire ne cite rien. */
+const trackedTextFiles = (): { path: string; content: string }[] =>
+  execFileSync('git', ['ls-files', '-z'], { cwd: REPO_ROOT, encoding: 'utf8', maxBuffer: 1e8 })
+    .split('\0')
+    .filter((path) => path !== '')
+    // Un fichier supprimé mais pas encore retiré de l'index reste listé.
+    .filter((path) => statSync(join(REPO_ROOT, path), { throwIfNoEntry: false })?.isFile())
+    .map((path) => ({ path, buffer: readFileSync(join(REPO_ROOT, path)) }))
+    .filter(({ buffer }) => !buffer.includes(0))
+    .map(({ path, buffer }) => ({ path, content: buffer.toString('utf8') }))
+
+describe('ADR (docs/adr)', () => {
+  it('chaque fichier suit `NNNN-slug.md`', () => {
+    const files = adrFiles()
+
+    // Le plancher refuse un balayage vide : les 80 ADR d'avant le déplacement.
+    expect(files.length).toBeGreaterThanOrEqual(80)
+
+    const misnamed = files.filter((name) => adrNumberOf(name) === null)
+    expect(misnamed, `hors du format NNNN-slug.md : ${misnamed.join(', ')}`).toEqual([])
+  })
+
+  it('le gabarit des nouvelles ADR est rangé avec elles', () => {
+    expect(existsSync(join(REPO_ROOT, ADR_DIRECTORY, ADR_TEMPLATE))).toBe(true)
+  })
+
+  it('chaque citation « ADR NNN » d’un fichier suivi désigne un fichier existant', () => {
+    const existing = new Set(adrFiles().map(adrNumberOf))
+    const citations = trackedTextFiles().flatMap(({ path, content }) =>
+      content
+        .split('\n')
+        .flatMap((line, index) =>
+          citedAdrNumbers(line).map((adr) => ({ adr, where: `${path}:${index + 1}` })),
+        ),
+    )
+
+    // Le plancher refuse un balayage vide : une expression qui ne lit plus
+    // rien rendrait la boucle verte sur rien.
+    expect(citations.length).toBeGreaterThanOrEqual(1)
+
+    const dangling = citations
+      .filter(({ adr }) => !existing.has(adr))
+      .map(({ adr, where }) => `${where} cite l'ADR ${String(adr).padStart(3, '0')}`)
+    expect(dangling, `ADR citées sans fichier :\n${dangling.join('\n')}`).toEqual([])
+  })
+
+  it('lit une citation sous chacune de ses formes', () => {
+    expect(citedAdrNumbers('voir ADR 069, ADR 69 et ADR-0069')).toEqual([69, 69, 69])
+    expect(citedAdrNumbers('# ADR <number> — <title>')).toEqual([])
+    expect(citedAdrNumbers('les ADRs et MADR')).toEqual([])
+  })
+
+  it('lit le numéro sur quatre chiffres, et rien d’autre', () => {
+    expect(adrNumberOf('0069-donnees-de-demonstration.md')).toBe(69)
+    expect(adrNumberOf('069-donnees-de-demonstration.md')).toBeNull()
+    expect(adrNumberOf('0069_donnees.md')).toBeNull()
+    expect(adrNumberOf('0069-Donnees.md')).toBeNull()
+    expect(adrNumberOf('0069-.md')).toBeNull()
   })
 })
 

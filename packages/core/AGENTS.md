@@ -256,9 +256,9 @@ module par son nom :
   charge. L'archive est **entièrement en JSON** : le seul module qui possède des
   octets, `storage`, n'en rend qu'un manifeste, sans clé d'objet et **sans
   empreinte** — la personne qui la reçoit constate qu'un fichier existe, pas ce
-  qu'il contient (`docs/decisions/062-…`) ;
+  qu'il contient (`docs/adr/0062-…`) ;
 - `auditDataCategoryCoverage` confronte les catégories déclarées à ce que
-  l'export produit (`docs/decisions/063-…`). Le contrat autorise
+  l'export produit (`docs/adr/0063-…`). Le contrat autorise
   `dataCategories: ['x']` avec `export: async () => ({})`, et **rien ne
   vérifiait que les trois clés s'accordent** — `admin` est arrivé exactement dans
   cet état à la fusion de s34. Une catégorie déclarée est désormais soit

@@ -858,7 +858,7 @@ sont : `collectArchive` est donc **reçu** du point de composition
 (`apps/web/lib/auth.ts`), au même titre que `purgeScope` l'est depuis s34 et que
 `readableScopes` l'est à `storage`. Sans ce câblage, les deux routes répondent
 **404** — la fonctionnalité n'est pas montée à moitié, elle n'existe pas. Le
-placement complet, avec ses options rejetées : `docs/decisions/061-…`.
+placement complet, avec ses options rejetées : `docs/adr/0061-…`.
 
 **Un seul port de tâches pour les deux traitements du module.** L'effacement de
 compte (s34) et la construction d'archive (s35) empruntent `AuthDependencies.jobs`
@@ -883,7 +883,7 @@ Huit décisions, et chacune a une commande qui échoue si on la défait :
    passer la demande à `failed` en nommant le module ; aucun lien ne part, et
    redemander repart de zéro ;
 2. **l'archive vit dans `auth_data_export_request.archive`**, pas dans le
-   stockage d'objets (`docs/decisions/062-…`). C'est ce qui la fait disparaître
+   stockage d'objets (`docs/adr/0062-…`). C'est ce qui la fait disparaître
    avec le compte — la cascade de `requested_by` — **et** avec l'organisation,
    dont le périmètre ne porte aucune clé étrangère (ADR 018) et que seule la
    purge du contrat emporte. C'est le second cas qui mesure : sans l'appel

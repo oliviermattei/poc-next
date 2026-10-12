@@ -2,7 +2,7 @@
 
 - Status: accepted | superseded by <ADR number>
 - Date: <YYYY-MM-DD>
-- Scope: framing | story <id>
+- Scope: framing | issue #<number>
 
 ## Context
 The problem and the forces at play. Why a decision is needed now.
