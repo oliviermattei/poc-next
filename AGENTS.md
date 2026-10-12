@@ -225,3 +225,17 @@ the evidence that motivated it — so it can be proposed upstream.
 - No regression on existing code
 - Review passed (no open critical issue)
 - Deployed to production
+
+## Agent skills
+
+### Issue tracker
+
+Issues et specs sur GitHub Issues (`oliviermattei/poc-next`), via `gh`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Les cinq rôles par défaut, chaque étiquette égale à son nom. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context : `GLOSSARY.md` et `docs/adr/` à la racine ; règles par paquet dans `packages/*/AGENTS.md`. See `docs/agents/domain.md`.

@@ -1,72 +1,56 @@
 # Domain Docs
 
-How the engineering skills should consume this repo's domain documentation when
-exploring the codebase.
-
-Layout: **single-context**. One `CONTEXT.md` at the repo root, one ADR directory
-at `docs/decisions/`. There is no `CONTEXT-MAP.md` and none is expected: the repo
-is a pnpm workspace, but its per-package rules live in each `packages/*/AGENTS.md`,
-not in per-context `CONTEXT.md` files.
+How the engineering skills should consume this repo's domain documentation when exploring the codebase.
 
 ## Before exploring, read these
 
-- **`AGENTS.md`** at the repo root — the binding repo rules (pipeline, stack,
-  security and reliability baselines, commands). It is the first read, always.
-- **`CONTEXT.md`** at the repo root, if it exists: the domain glossary.
-- **`docs/decisions/`**: read the ADRs that touch the area you're about to work
-  in. **This repo's ADRs are here, not in `docs/adr/`.** Format MADR, one file
-  per structural decision, named `NNN-<slug>.md`, template `templates/adr.md`.
-- **`packages/<name>/AGENTS.md`** for the package you are about to touch: what it
-  may import, what it must never contain, where its tests live.
+- **`GLOSSARY.md`** at the repo root, or
+- **`GLOSSARY-MAP.md`** at the repo root if it exists: it points at one `GLOSSARY.md` per context. Read each one relevant to the topic.
+- **`docs/adr/`**: read ADRs that touch the area you're about to work in. In multi-context repos, also check `src/<context>/docs/adr/` for context-scoped decisions.
 
-If `CONTEXT.md` doesn't exist, **proceed silently**. Don't flag its absence;
-don't suggest creating it upfront. The `/domain-modeling` skill (reached via
-`/grill-with-docs` and `/improve-codebase-architecture`) creates it lazily when
-terms actually get resolved.
-
-`docs/decisions/` is never "missing": it is populated and versioned.
+If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront. The `/domain-modeling` skill (reached via `/grill-with-docs` and `/improve-codebase-architecture`) creates them lazily when terms or decisions actually get resolved.
 
 ## File structure
 
+Single-context repo (most repos):
+
 ```
 /
-├── AGENTS.md              ← binding repo rules (CLAUDE.md is a pointer to it)
-├── CONTEXT.md             ← domain glossary (created lazily)
-├── templates/adr.md       ← MADR template
-├── docs/
-│   ├── prd.md  stories.md  architecture.md  security.md  reliability.md
-│   └── decisions/         ← ADRs, NNN-<slug>.md
-└── packages/<name>/AGENTS.md
+├── GLOSSARY.md
+├── docs/adr/
+│   ├── 0001-event-sourced-orders.md
+│   └── 0002-postgres-for-write-model.md
+└── src/
 ```
 
-## Writing an ADR here
+Multi-context repo (presence of `GLOSSARY-MAP.md` at the root):
 
-ADRs in this repo are **immutable**: changing a decision means writing a new ADR
-that supersedes the old one, never editing the old file. Each ADR carries the
-options considered and why they were rejected. Framing decisions commit on the
-default branch; a story's decisions travel with `feature/<id>`.
+```
+/
+├── GLOSSARY-MAP.md
+├── docs/adr/                          ← system-wide decisions
+└── src/
+    ├── ordering/
+    │   ├── GLOSSARY.md
+    │   └── docs/adr/                  ← context-specific decisions
+    └── billing/
+        ├── GLOSSARY.md
+        └── docs/adr/
+```
 
 ## Use the glossary's vocabulary
 
-When your output names a domain concept (in an issue title, a refactor proposal,
-a hypothesis, a test name), use the term as defined in `CONTEXT.md`. Don't drift
-to synonyms the glossary explicitly avoids.
+When your output names a domain concept (in an issue title, a refactor proposal, a hypothesis, a test name), use the term as defined in `GLOSSARY.md`. Don't drift to synonyms the glossary explicitly avoids.
 
-If the concept you need isn't in the glossary yet, that's a signal: either you're
-inventing language the project doesn't use (reconsider) or there's a real gap
-(note it for `/domain-modeling`).
+If the concept you need isn't in the glossary yet, that's a signal: either you're inventing language the project doesn't use (reconsider) or there's a real gap (note it for `/domain-modeling`).
 
 ## Flag ADR conflicts
 
-If your output contradicts an existing ADR, surface it explicitly rather than
-silently overriding:
+If your output contradicts an existing ADR, surface it explicitly rather than silently overriding:
 
-> _Contradicts ADR 018 (foreign keys only toward a declared `requires`), but
-> worth reopening because…_
+> _Contradicts ADR-0007 (event-sourced orders), but worth reopening because…_
 
-Two conflicts deserve a hard stop rather than a note, because `AGENTS.md` ranks
-them with a functional regression: a breach of `docs/security.md` or of
-`docs/reliability.md`. And reintroducing anything from the PRD graveyard
-(`eject`, an in-app AI module, non-Stripe payments, usage-based billing,
-realtime notifications, an audit-log table, customer API keys, multi-ORM) is a
-scope breach, not an improvement.
+## Propre à ce dépôt
+
+- **`packages/<nom>/AGENTS.md`** : lisez celui du paquet que vous allez modifier. Il dit ce que le paquet peut importer, ce qu'il ne doit jamais contenir et où vivent ses tests. Un test exige qu'il existe pour chaque paquet.
+- **ADR** : `docs/adr/NNNN-slug.md`, au format MADR. Le code et les tests les citent par « ADR 069 » ; cette forme reste valide, le numéro ne change pas. Une ADR ne se modifie pas : un changement de décision s'écrit dans une nouvelle ADR qui remplace l'ancienne.
