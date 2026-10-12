@@ -661,3 +661,127 @@ Oui sur le fond. À revérifier : zone `(site)` pour la page publique (s61), con
 - Branches restantes de PR déjà fermées ou mergées (8), supprimables côté remote : `docker/node-26-alpine` (#15 fermée), `aws-sdk/client-s3-3.1124.0` (#19), `aws-sdk/s3-request-presigner-3.1124.0` (#16), `lucide-react-1.39.0` (#24), `next-16.3.4` (#20), `next/eslint-plugin-next-16.3.4` (#25), `simplewebauthn/browser-14.0.0` (#18), `types/node-26.4.1` (#26).
 - Aucune issue.
 
+
+---
+
+## Correspondance id d'audit → issue GitHub
+
+Créées le 12/10/2026. L'intermittent `e2e/i18n.spec.ts:89` reste suivi par #59.
+
+| id | issue | milestone | titre |
+|---|---|---|---|
+| `CI-1` | #77 | CI & sécurité | Rétablir la CI de `dev` : traiter les 12 avis de `pnpm run audit` (4 critiques) |
+| `SEC-1` | #78 | CI & sécurité | Identifier l'appelant de la limitation de débit par un nombre configuré de proxys de confiance, pas par le premier maillon de `x-forwarded-for`, et borner les écritures `public_subscription` / `contact_message` |
+| `SEC-2` | #79 | CI & sécurité | Hacher le jeton de réinitialisation de mot de passe dans `auth_verification` |
+| `SEC-3` | #80 | CI & sécurité | Valider par Zod les corps des routes auth (révocation de session, 2FA, passkey…) |
+| `SEC-4` | #81 | CI & sécurité | Répondre 404 et non 401 à un anonyme sur `/api/modules/admin/*` |
+| `SEC-5` | #82 | CI & sécurité | Contrôler l'`Origin` au démarrage OAuth (`/auth/sign-in/social`) |
+| `SEC-6` | #83 | CI & sécurité | Refuser `POST /two-factor/enable` sur un compte déjà protégé (ré-enrôlement sans code confirmé) |
+| `SEC-7` | #84 | CI & sécurité | Ne plus relayer le `token` de session dans le corps de `/sign-in/email` |
+| `SEC-8` | #85 | CI & sécurité | Filtrer ou retirer `errorCallbackURL` et `newUserCallbackURL` sur `/magic-link/verify` |
+| `SEC-9` | #86 | CI & sécurité | Plafonner la taille du corps du webhook de facturation (413) |
+| `SEC-10` | #87 | CI & sécurité | Refuser un `APP_URL` portant requête, fragment ou IP quand `APP_HOST` est posé |
+| `SEC-11` | #88 | CI & sécurité | Ne pas émettre HSTS `includeSubDomains` (2 ans) en développement |
+| `SEC-12` | #89 | CI & sécurité | Poser `Vary` / `Cache-Control: no-store` sur les redirections de langue (307/308) et les 404 d'aiguillage par hôte du proxy |
+| `SEC-13` | #90 | CI & sécurité | Ne plus exposer `?error=seat_limit_reached` dans l'URL de l'invité |
+| `SEC-14` | #91 | CI & sécurité | Borner les exports : taille de l'archive RGPD, plafond et limitation de débit de l'export CSV des inscriptions |
+| `SEC-15` | #92 | CI & sécurité | Lire le blocage de connexion (banni) dans la transaction de Better Auth |
+| `BIL-1` | #93 | Facturation | Prévenir le propriétaire quand une invitation est refusée pour plafond de sièges |
+| `BIL-2` | #94 | Facturation | Retirer le repli transitoire sur `billing_purchase.provider_session_id` |
+| `BIL-3` | #95 | Facturation | Rendre la clé d'idempotence du checkout cohérente avec ses paramètres (locale, sièges, email) |
+| `BIL-4` | #96 | Facturation | Fermer la fenêtre du double prélèvement (deux sessions de checkout payées pour un même achat) |
+| `BIL-5` | #97 | Facturation | Empêcher deux checkouts simultanés d'accorder deux essais au même périmètre |
+| `BIL-6` | #98 | Facturation | Fermer (ou écrire dans l'ADR 037) les fenêtres à deux abonnements : statut `incomplete`, checkout ouvert avant le webhook |
+| `BIL-7` | #99 | Facturation | Rendre `adds` obligatoire dans le contrat `seatSync` |
+| `BIL-8` | #100 | Facturation | Synchroniser les sièges à la suppression de compte, ou planifier `billing:reconcile` |
+| `BIL-9` | #101 | Facturation | Ne plus tenir transaction et verrou d'appartenance pendant deux appels Stripe |
+| `BIL-10` | #102 | Facturation | Livrer une offre au siège dans `config/billing.ts` et trancher le proratage Stripe (ADR 046) |
+| `BIL-11` | #103 | Facturation | Vérifier que `amount` et `currency` de `config/billing.ts` concordent avec le prix Stripe de chaque `priceId` |
+| `BIL-12` | #104 | Facturation | Rendre `/pricing` indexable (contribuer `/pricing` par `publicUrls`) |
+| `BIL-13` | #105 | Facturation | Supprimer les tables inertes `public_form_throttle` et `billing_checkout_throttle` (migration rétrocompatible) |
+| `BIL-14` | #106 | Facturation | Capturer de vrais événements Stripe (dont `checkout.session.completed` en achat unique) pour armer le régime `recorded` et le job CI du parcours doré |
+| `BIL-15` | #107 | Facturation | Jouer la recette Stripe en clés de test : achat unique, remboursements, `billing:reconcile`, essai, sièges, idempotence, scénario doré en `live`, ordre de `checkout.sessions.list`, configuration du portail client |
+| `BIL-16` | #108 | Facturation | Mesurer la garde des écrans console qui dépend de `billing.available` et `organizations.available` (profil qui coupe `billing` en gardant `admin`) |
+| `BIL-17` | #109 | Facturation | Borner par période le revenu récurrent de la console (instantané daté du parc) |
+| `UX-1` | #110 | Auth, comptes & écrans | Traiter le 429 (statut avant corps) dans tous les formulaires client |
+| `UX-2` | #111 | Auth, comptes & écrans | Afficher le verrouillage de compte 2FA (900 s) autrement que « vérification expirée » |
+| `UX-3` | #112 | Auth, comptes & écrans | Afficher un message de panne (et non « Vérifiez les informations saisies ») sur un 5xx d'authentification |
+| `UX-4` | #113 | Auth, comptes & écrans | Émettre `auth.password_changed` et en faire le producteur de la notification `account.security-alert` |
+| `UX-5` | #114 | Auth, comptes & écrans | Ne plus copier l'email dans `auth_user.name` à l'inscription |
+| `UX-6` | #115 | Auth, comptes & écrans | Journaliser la cause réelle d'un échec de connexion (session non créée ou mauvais mot de passe) |
+| `UX-7` | #116 | Auth, comptes & écrans | Ajouter un rebond same-site après le magic link (cookie `SameSite=Strict` perdu depuis un webmail) |
+| `UX-8` | #117 | Auth, comptes & écrans | Rendre une page HTML et un refus générique au retour OAuth d'un compte banni ou en attente de suppression (aujourd'hui 401 JSON) |
+| `UX-9` | #118 | Auth, comptes & écrans | Rendre le quota d'invitations atomique (21 émises pour 20 sous concurrence) |
+| `UX-10` | #119 | Auth, comptes & écrans | Afficher la carte des invitations selon `invitation.resend` / `invitation.revoke` |
+| `UX-11` | #120 | Auth, comptes & écrans | Corriger l'état « aucune organisation choisie » des écrans Organisation et Membres |
+| `UX-12` | #121 | Auth, comptes & écrans | Permettre de changer d'organisation sans JavaScript sous `md` |
+| `UX-13` | #122 | Auth, comptes & écrans | Expliquer sans JavaScript les boutons éteints des 6 écrans Réglages (`<noscript>`) |
+| `UX-14` | #123 | Auth, comptes & écrans | Garder l'entrée active de la barre latérale de la console sur les pages de détail (correspondance par préfixe) |
+| `UX-15` | #124 | Auth, comptes & écrans | Aligner la largeur du contenu du site sur celle de son en-tête |
+| `UX-16` | #125 | Auth, comptes & écrans | Ne plus charger la liste des notifications pour rendre les préférences |
+| `UX-17` | #126 | Auth, comptes & écrans | Nettoyer `SignOutButton` mort et la clé `app.account.signOut`, et aligner « Paramètres du compte » sur « Réglages » |
+| `UX-18` | #127 | Auth, comptes & écrans | Rendre l'écran 500 (`global-error.tsx`) dans la langue du visiteur |
+| `UX-19` | #128 | Auth, comptes & écrans | Stocker la langue préférée du compte pour les emails hors requête |
+| `UX-20` | #129 | Auth, comptes & écrans | Garder la page courante au changement de langue |
+| `UX-21` | #130 | Auth, comptes & écrans | Configurer un `timeZone` global pour next-intl (avertissement `ENVIRONMENT_FALLBACK` dans les journaux de CI) |
+| `UX-22` | #131 | Auth, comptes & écrans | Faire en un seul saut la redirection inter-hôtes d'un chemin sans préfixe de langue |
+| `UX-23` | #132 | Auth, comptes & écrans | Découpler la garde d'origine du consentement d'`AUTH_SECRET` |
+| `UX-24` | #133 | Auth, comptes & écrans | Migrer vers le domaine parent un `app_locale` propre à l'hôte |
+| `UX-25` | #134 | Auth, comptes & écrans | Définir `robots.txt`, `sitemap.xml` et `public/` sur l'hôte de l'application |
+| `UX-26` | #135 | Auth, comptes & écrans | Ajouter à la console les actions bannir/débannir, promouvoir/révoquer et démarrer une impersonation |
+| `UX-27` | #136 | Auth, comptes & écrans | Inclure le rôle de superadmin dans l'export RGPD |
+| `UX-28` | #137 | Auth, comptes & écrans | Donner aux jobs un déclencheur « à la demande » (la purge de compte est armée chaque nuit à vide) |
+| `UX-29` | #138 | Auth, comptes & écrans | Vérifier qu'une écriture confirme le périmètre affiché (organisation basculée dans un autre onglet) |
+| `UX-30` | #139 | Auth, comptes & écrans | Vérifier que le rafraîchissement transactionnel (`getCurrentAdapter`) ne contourne pas le gel des sessions empruntées |
+| `UX-31` | #140 | Auth, comptes & écrans | Garantir qu'un refus d'effacement (dernier propriétaire) n'a rien purgé lors d'une tentative antérieure |
+| `UX-32` | #141 | Auth, comptes & écrans | Vérifier que la bannière de consentement ne masque pas l'alerte d'étape obligatoire de l'onboarding à 390 px |
+| `PLT-1` | #142 | Plateforme & déploiement | Ajouter la commande de réconciliation objets de stockage ↔ lignes `storage_file` (avatar orphelin après une promotion interrompue) |
+| `PLT-2` | #143 | Plateforme & déploiement | Couvrir (ou retirer) le chemin d'appartenance « organisation » du stockage |
+| `PLT-3` | #144 | Plateforme & déploiement | Déclarer l'origine du seau S3 dans la CSP depuis l'environnement, sans éditer `config/security.ts` |
+| `PLT-4` | #145 | Plateforme & déploiement | Premier déploiement réel (s59) : servir l'image hors du poste, faire aboutir Coolify, exercer Vercel, vérifier que le proxy écrase `x-forwarded-for` |
+| `PLT-5` | #146 | Plateforme & déploiement | Prouver que la garde de démarrage refuse avant que le serveur accepte une requête (`✓ Ready` avant `register()`) |
+| `PLT-6` | #147 | Plateforme & déploiement | Rendre la taille du pool PostgreSQL configurable (serverless ou conteneur) |
+| `PLT-7` | #148 | Plateforme & déploiement | Passer Node 22 à une LTS (24 maintenant, 26 quand elle sera LTS) en remplaçant `corepack enable` dans le Dockerfile |
+| `PLT-8` | #149 | Plateforme & déploiement | Fournir une recette en régime réel pour Sentry (comme `posthog-live.test.ts`) |
+| `PLT-9` | #150 | Plateforme & déploiement | Valider le flux RSS du blog avec un vrai validateur (critère 2 de s53 jamais tenu) |
+| `PLT-10` | #151 | Fonctionnalités à reprendre | Livrer un fournisseur de captcha (déclaré et gardé, sans fournisseur) |
+| `PLT-13` | #152 | Plateforme & déploiement | Combler les lacunes du design system : `Form`/`FormField`, `Stepper`, `ConfirmDialog`/`AlertDialog` pour les actions irréversibles, gabarit d'image sociale |
+| `DX-1` | #153 | Outillage & tests | Laisser `ks scaffold` tourner sur un arbre modifié (refuser seulement un conflit sur ses propres fichiers, ou `--allow-dirty`) |
+| `DX-2` | #154 | Outillage & tests | Borner dans le temps les sous-processus de `ks` (`db:generate`, `db:migrate`) |
+| `DX-3` | #155 | Outillage & tests | Dire quoi rejouer quand `ks toggle` est interrompu entre écriture et régénération |
+| `DX-4` | #156 | Outillage & tests | Refuser par lint l'import du paquet d'un autre module sans `requires` déclaré (ADR 055) |
+| `DX-5` | #157 | Outillage & tests | Interdire par une règle exécutable qu'un écran de `apps/web/app` importe `@repo/module-*` ou teste l'existence de l'i18n |
+| `DX-6` | #158 | Outillage & tests | Valider `RouteProtection.role` contre les rôles connus |
+| `DX-7` | #159 | Outillage & tests | Rétablir un lint d'accessibilité (`jsx-a11y` ou équivalent ESLint 10) |
+| `DX-8` | #160 | Outillage & tests | Ne plus ouvrir les types DOM aux scripts Node (`tsconfig.json` racine) |
+| `DX-9` | #161 | Outillage & tests | Ne pas rejouer `pnpm run audit` sur un échec de lancement (`ENOENT`) |
+| `DX-10` | #162 | Outillage & tests | Supprimer la base `socle_<horodatage>` quand `pnpm test:socle` est interrompu (SIGINT/SIGTERM) |
+| `DX-11` | #163 | Outillage & tests | Garde générique : tout module exposant un service est préparé par `prepareModuleServices` |
+| `DX-12` | #164 | Outillage & tests | Faire créer et migrer sa propre base à `pnpm test:e2e`, comme les trois recettes |
+| `DX-13` | #165 | Outillage & tests | Vérifier par un test que chaque fichier de test cité dans un ADR ou un `AGENTS.md` existe |
+| `TST-1` | #166 | Outillage & tests | Empêcher `tests/module-migrations.test.ts` de détruire tables et journaux sur la base de développement partagée (schéma dédié) |
+| `TST-2` | #167 | Outillage & tests | Rendre `e2e/modules.spec.ts` vert quand tous les modules sont activés |
+| `TST-3` | #168 | Outillage & tests | Découpler de l'état du dépôt le cas `env-wiring` « storage activé sans stockage » (`withStorageEnabled`) |
+| `TST-4` | #169 | Outillage & tests | Stabiliser les intermittents encore sans cause établie |
+| `TST-5` | #170 | Outillage & tests | Ajouter le parcours invitation → inscription → vérification → acceptation, et corriger le commentaire qui le dit couvert |
+| `TST-6` | #171 | Outillage & tests | Durcir les tests qui passent à vide (checklist) |
+| `TST-7` | #172 | Outillage & tests | Couvrir les comportements non testés (checklist) |
+| `TST-8` | #173 | Outillage & tests | Jouer des parcours sur le build de production et sous Firefox et WebKit |
+| `TST-9` | #174 | Outillage & tests | Recettes humaines réelles : OAuth (Google, GitHub, Safari/Firefox, TLS) et passkeys sur un vrai `rpID` |
+| `MIG-1` | #175 | Reset gestion de projet | Retirer ou remplacer les renvois vers `docs/reviews`, `docs/plans`, `docs/research`, `STATE.md` et `killer-saas-feedback.md` avant leur suppression, et repointer `tests/agents-md.test.ts` si `AGENTS.local.md` disparaît |
+| `DOC-1` | #176 | Reset gestion de projet | Corriger `docs/architecture.md`, les ADR et les `AGENTS.md` périmés (checklist) |
+| `DOC-2` | #177 | Reset gestion de projet | Corriger les commentaires de code et de test faux (checklist) |
+| `DOC-3` | #178 | Reset gestion de projet | Compléter `docs/deployment.md` et le README des enregistrements Stripe |
+| `s43` | #179 | Fonctionnalités à reprendre | Reprendre s43-feedback-widget depuis sa branche interrompue |
+| `s44` | #180 | Fonctionnalités à reprendre | Reprendre s44-public-roadmap à partir de son plan validé |
+| `BO-A` | #181 | Fonctionnalités à reprendre | Ajouter des séries temporelles et un histogramme au tableau de bord de la console |
+| `BO-B` | #182 | Fonctionnalités à reprendre | Servir l'écran des inscriptions publiques sous une adresse qui ne dit pas « abonnements » |
+| `s65` | #183 | Fonctionnalités à reprendre | Servir la console sur son propre sous-domaine |
+| `DEC-1` | #184 | Reset gestion de projet | Aligner le socle non désactivable sur ce qui est réellement verrouillé |
+| `DEC-2` | #185 | Reset gestion de projet | Statuer sur l'ADR 005 (Hono + oRPC), accepté mais jamais implémenté |
+| `DEP-1` | #186 | CI & sécurité | Trier les PR Dependabot et ajouter les règles `ignore` |
+| `s63-M1` | #61 | Auth, comptes & écrans | (issue existante) |
+| `s68-M1` | #58 | Outillage & tests | (issue existante) |
+| `s64c-R` | #73 | Plateforme & déploiement | (issue existante) |
+| `PLT-11` | voir `s43` | | remplacé par l'issue de reprise de s43 |
+| `PLT-12` | voir `s44` | | remplacé par l'issue de reprise de s44 |
