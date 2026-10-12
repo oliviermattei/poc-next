@@ -1,8 +1,94 @@
 ---
 title: "Billing"
-description: "Subscriptions, one-time purchase, trial, seats, guest checkout and customer portal with Stripe."
+description: "Subscriptions, one-time purchases, trials, seats and checkout without an account, with Stripe."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+## In one sentence
 
-This page is being written: its content arrives in an upcoming ticket.
+The `billing` module lets your clients pay: monthly or yearly subscription, one-time purchase, trial period, billing by number of members, checkout without an account, and management of their payment method in the Stripe portal.
+
+## What your clients see
+
+| Screen | Address | What happens there |
+|---|---|---|
+| Pricing | `/pricing` | compare plans, with or without an account, and subscribe |
+| Settings › Billing | `/app/settings/billing` | see the subscription state, "Subscribe" to or "Buy" a plan, "Manage billing" (payment method, invoices and plan change, in the Stripe portal), see "Your purchases" |
+| Reserved feature | `/app/premium` | the shipped example of a page reserved to paid plans: it invites those without access to subscribe |
+
+When the `i18n` module is enabled, every address starts with the language (`/fr/…`, `/en/…`).
+
+What your clients can go through:
+
+- **Subscription states** shown on screen: "No subscription", "Trial period", "Active subscription", "Subscription cancelled" (access kept until the end of the paid period), "Payment failed", "Subscription expired".
+- **Trial**: a plan can declare trial days (14 on the shipped plans). A trial is granted only once. Three days before it ends, the client receives the "Trial ending soon" notification, in the application and by email.
+- **One-time purchase**: it does not expire and cannot be bought again ("Already purchased").
+- **Who pays**: when an organization is chosen, the organization is subscribed, and only its owners and administrators manage billing. Without an organization, the account is.
+- **Checkout without an account**: a visitor can subscribe from `/pricing` without being signed in. After paying, they receive an email: a link to choose their password if no account existed at that address, or a sign-in link if the account already existed.
+- **Member cap**: a plan can limit the number of members of an organization; beyond it, an accepted invitation is refused, and nobody is removed.
+
+### The shipped plans
+
+Plans are declared in `config/billing.ts`. The shipped ones are **examples**:
+
+| Identifier | Type | Displayed price | Trial |
+|---|---|---|---|
+| `pro-monthly` | monthly subscription | €29 per month | 14 days |
+| `pro-yearly` | yearly subscription | €290 per year | 14 days |
+| `lifetime` | one-time purchase | €490 | — |
+
+The displayed price comes from `amount` and `currency`; **what is actually charged is the Stripe price referenced by `priceId`**. Replace the shipped `priceId` values (`price_pro_monthly`…) with those of your Stripe account: see [Plans and prices](/en/configurer/offres-et-prix).
+
+## Enable or disable
+
+```bash
+pnpm ks toggle billing
+```
+
+- The module depends on no other module.
+- **Disabled**: `/pricing` and Settings › Billing answer 404, no payment variable is required at startup, the "Your plan" step disappears from the welcome journey, the console revenue screen answers 404, and **every reserved feature is open to every account** (there is no plan left to reserve it). Tables already created are kept.
+
+## Configure
+
+| What | Where |
+|---|---|
+| Plans, prices, trial, seats | `config/billing.ts` — [Plans and prices](/en/configurer/offres-et-prix) |
+| Pages reserved to a plan | `config/gating.ts` — [Reserved features](/en/configurer/fonctionnalites-reservees) |
+| The trial reminder text | `config/notifications.ts` — [Notifications](/en/configurer/notifications) |
+| The payment provider | environment variables below — [Stripe](/en/services/stripe) |
+
+You must **choose one of the two modes**, otherwise the application refuses to start and names the variables:
+
+- **Local simulation**: `PAYMENTS_LOCAL_MODE=1` (the `.env.example` value). Payment is simulated by the application, nothing is sent to Stripe. It grants a subscription **without payment**: it is **refused in production**.
+- **Stripe**: `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`, and remove `PAYMENTS_LOCAL_MODE`. The webhook address to declare at Stripe is `<APP_URL>/api/modules/billing/webhook`.
+
+A badly written plan in `config/billing.ts` stops the startup and names it.
+
+To bring subscription state back in line with Stripe (for instance after a webhook outage), run:
+
+```bash
+pnpm billing:reconcile
+```
+
+It rewrites nothing when everything is already up to date, and never erases a subscription because Stripe is merely unavailable.
+
+## Check that it works
+
+In local simulation (`PAYMENTS_LOCAL_MODE=1`):
+
+1. Create a new account and sign in (the demo accounts already have a subscription).
+2. Open `http://localhost:3000/en/pricing`. You should see the three plans.
+3. Click "Subscribe" on "Pro monthly". The browser goes through the simulated payment page, then comes back.
+4. Open `/en/app/settings/billing`. The subscription should appear ("Trial period" or "Active subscription"), with the "Pro monthly" plan.
+5. Open `/en/app/premium`: you should see the reserved feature, no longer the invitation to subscribe.
+
+To check with real Stripe test keys, follow [Stripe](/en/services/stripe).
+
+<Callout type="info" title="What is not included">
+- **A single provider: Stripe.** Other payment providers are out of scope, as is **usage-based billing** (see [What the boilerplate does not do](/en/reference/ce-que-le-boilerplate-ne-fait-pas)).
+- **Payment requires JavaScript** in the client’s browser; without it, the button stays disabled and a message says so.
+- **No per-seat plan shipped** in `config/billing.ts` (all are `perSeat: false`), and no Stripe proration choice ([#102](https://github.com/oliviermattei/poc-next/issues/102)).
+- **Nothing checks** that `amount` and `currency` match the Stripe price of each `priceId` ([#103](https://github.com/oliviermattei/poc-next/issues/103)).
+- The `/pricing` page is not yet declared to search engines ([#104](https://github.com/oliviermattei/poc-next/issues/104)).
+- **The journey has not yet been run end to end with real Stripe keys** (one-time purchase, refunds, trial, seats, portal): [#106](https://github.com/oliviermattei/poc-next/issues/106), [#107](https://github.com/oliviermattei/poc-next/issues/107).
+- When a client deletes their account, the seat count of their organizations is corrected at Stripe only at the next `pnpm billing:reconcile` ([#100](https://github.com/oliviermattei/poc-next/issues/100)).
+</Callout>

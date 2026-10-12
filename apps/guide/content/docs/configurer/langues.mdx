@@ -3,6 +3,74 @@ title: "Langues et textes"
 description: "Les langues servies et les catalogues de messages, dans config/i18n.ts."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+L’application est livrée en **français** et en **anglais**. Tout texte affiché vient d’un **catalogue de messages** : un fichier JSON par langue, où chaque texte a une clé (`"app.name": "Application"`). Aucun texte n’est écrit en dur dans un écran.
 
-Cette page est en cours de rédaction : son contenu arrive dans un prochain ticket.
+Pour ce que voient vos clients (sélecteur de langue, URL préfixées), voir [Langues](/fr/fonctionnalites/langues).
+
+## `config/i18n.ts`
+
+```ts
+export const appLocales = ['fr', 'en'] as const
+export const defaultLocale = 'fr'
+```
+
+- **`appLocales`** : les langues de l’application. Chaque module doit livrer ses textes et ses e-mails dans **chacune** d’elles ; sinon le démarrage refuse en nommant le module, le texte et la langue.
+- **`defaultLocale`** : la langue servie quand rien d’autre ne permet de décider, et **la seule** servie quand le module `i18n` est coupé.
+
+Avec le module `i18n` activé, la langue d’une page se décide dans cet ordre : celle de l’URL (`/fr/…`, `/en/…`), puis le choix enregistré du visiteur, puis la langue de son navigateur, puis `defaultLocale`.
+
+## Où sont les textes
+
+| Ce que vous voulez changer | Fichier |
+|---|---|
+| le nom du produit, le titre de l’onglet, les menus et écrans de l’application | `apps/web/messages/fr.json` et `en.json` (clés `app.…`) |
+| les textes d’un module (accueil, facturation, notifications…) | `packages/modules/<module>/src/messages/fr.json` et `en.json` |
+| le sujet et le corps des e-mails d’un module | `packages/modules/<module>/src/emails/*.ts` (voir [E-mails](/fr/configurer/e-mails)) |
+| le texte des e-mails de notification | `config/notifications.ts` (voir [Notifications](/fr/configurer/notifications)) |
+| les articles, la documentation produit, les nouveautés | `content/blog/<langue>/`, `content/docs/<langue>/`, `content/changelog/<langue>/` |
+
+## Modifier un texte, pas à pas
+
+<Steps>
+<Step>
+
+**Trouvez la clé.** Cherchez le texte actuel dans le dépôt, par exemple :
+
+```bash
+grep -rn "Tableau de bord" apps/web/messages packages/modules/*/src/messages
+```
+
+**Vous devez voir** le fichier et la clé, ici `apps/web/messages/fr.json` : `"app.dashboard.title": "Tableau de bord"`.
+
+</Step>
+<Step>
+
+**Changez la valeur**, pas la clé, dans `fr.json` **et** dans `en.json`. Les accolades sont des emplacements remplis par l’application (`{name}`, `{count}`) : gardez-les tels quels.
+
+</Step>
+<Step>
+
+**Vérifiez** : redémarrez `pnpm dev` et rechargez l’écran. Lancez ensuite `pnpm test` : il échoue si une clé manque dans une langue ou si les deux catalogues de l’application n’ont plus les mêmes clés.
+
+</Step>
+</Steps>
+
+<Callout type="warn" title="Une clé manquante casse l’écran">
+L’application n’affiche jamais le nom d’une clé à la place d’un texte manquant : l’écran tombe en erreur. C’est voulu — une erreur se voit tout de suite, un texte du type `app.account.title` passerait inaperçu en production. D’où l’importance de `pnpm test` avant chaque mise en ligne.
+</Callout>
+
+## Ajouter ou retirer une langue
+
+Ce n’est **pas** une modification d’une ligne. Ajouter une langue (par exemple l’allemand) demande :
+
+1. de l’ajouter à `appLocales` dans `config/i18n.ts` ;
+2. de traduire **tous** les catalogues : celui de l’application et celui de chaque module ;
+3. de déclarer ce nouveau catalogue dans le code qui charge chaque catalogue (le fichier `apps/web/lib/messages.ts` et la ligne `messages` de chaque module) ;
+4. de traduire chaque e-mail de module et chaque texte de `config/notifications.ts` ;
+5. d’ajouter les dossiers de contenu (`content/blog/de/`…) si vous publiez dans cette langue.
+
+C’est un travail de code et de traduction : confiez-le à une IA en lui donnant cette liste, puis vérifiez avec `pnpm test` et un démarrage. Le démarrage refuse un module qui n’a pas de version dans la nouvelle langue, en le nommant.
+
+<Callout type="info" title="Ce qui n’est pas inclus">
+Pas d’interface de traduction ni de service de traduction tiers : les catalogues sont des fichiers JSON versionnés. Pas de traduction automatique. Limites connues : la langue préférée d’un compte n’est pas enregistrée pour les e-mails envoyés hors d’une requête ([issue #128](https://github.com/oliviermattei/poc-next/issues/128)) ; changer de langue ne garde pas la page courante ([issue #129](https://github.com/oliviermattei/poc-next/issues/129)) ; l’écran d’erreur 500 s’affiche dans la langue du site, pas dans celle du visiteur ([issue #127](https://github.com/oliviermattei/poc-next/issues/127)).
+</Callout>

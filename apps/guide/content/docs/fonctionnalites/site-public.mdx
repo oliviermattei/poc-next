@@ -1,8 +1,72 @@
 ---
 title: "Site public"
-description: "L’accueil, les pages légales, le contact, la newsletter et la liste d’attente."
+description: "L’accueil en sections, les pages légales, le contact, la newsletter et la liste d’attente."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+## En une phrase
 
-Cette page est en cours de rédaction : son contenu arrive dans un prochain ticket.
+Le module `marketing` donne à votre SaaS une vitrine : une page d’accueil en sections, deux pages légales, un formulaire de contact, une inscription à la newsletter et une liste d’attente — sans compte pour vos visiteurs.
+
+## Ce que voient vos clients
+
+| Écran | Adresse | Ce qu’il fait |
+|---|---|---|
+| Accueil | `/` | les sections de `config/marketing.ts`, dans l’ordre du fichier : bandeau d’accroche, fonctionnalités, témoignages, questions fréquentes, newsletter, appel à l’action |
+| Politique de confidentialité | `/legal/privacy` | page légale, liée depuis le pied de page |
+| Conditions d’utilisation | `/legal/terms` | page légale, liée depuis le pied de page |
+| Nous contacter | `/contact` | formulaire nom, adresse, message ; lien dans le pied de page |
+| Liste d’attente | `/waitlist` | formulaire d’inscription ; **aucun lien n’y mène** dans la navigation, c’est à vous d’en poser un si vous le voulez |
+
+Quand le module `i18n` (langues) est activé, chaque adresse est précédée de la langue : `/fr/contact`, `/en/contact`.
+
+Le pied de page affiche les pages légales, le contact, et les liens que d’autres modules déclarent (« Cookies », « Nouveautés »). L’en-tête affiche « Accueil » et les entrées des autres modules du site (Blog, Documentation…).
+
+Ce que chaque formulaire produit :
+
+- **contact** : le message est enregistré en base, puis envoyé par e-mail à l’adresse `contactRecipient` de `config/marketing.ts` ;
+- **newsletter** et **liste d’attente** : l’adresse est enregistrée, et un e-mail de confirmation part vers le visiteur. Une adresse déjà inscrite ne crée pas de doublon, et le visiteur voit exactement la même réponse dans tous les cas — personne ne peut savoir qui est déjà inscrit.
+
+Les inscriptions se consultent dans la [console](/fr/fonctionnalites/console), rubrique « Inscriptions » (`/console/subscriptions`), avec un bouton « Exporter en CSV ».
+
+## Activer ou couper
+
+Le module s’appelle `marketing`. Il ne dépend d’aucun autre module.
+
+```bash
+pnpm ks toggle marketing
+```
+
+Module coupé : aucune page publique n’est servie (404), et `/` redirige un visiteur anonyme vers la connexion, un client connecté vers son tableau de bord `/app`.
+
+## Configurer
+
+1. **Le contenu de l’accueil et des pages légales** : `config/marketing.ts` déclare les sections et leur ordre, les textes vivent dans `packages/modules/marketing/src/messages/fr.json` et `en.json`. Tout est détaillé dans [Site et pages légales](/fr/configurer/site-et-pages-legales).
+2. **L’adresse qui reçoit les messages de contact** : remplacez `contactRecipient: 'bonjour@exemple.test'` dans le bloc `forms` de `config/marketing.ts` par votre adresse. Une adresse malformée empêche l’application de démarrer, en la nommant.
+3. **L’envoi des e-mails** passe par Resend en production, ou par la capture locale en développement : voir [Resend](/fr/services/resend).
+4. **Les seuils anti-abus** des formulaires sont dans le même bloc `forms` : `rateLimit: { windowSeconds: 600, maxPerClient: 5, maxPerForm: 200 }`. Au-delà de `maxPerClient` soumissions en dix minutes, un visiteur est refusé ; au-delà de `maxPerForm` pour tout le formulaire, les soumissions sont encore enregistrées mais les e-mails ne partent plus.
+
+<Callout type="warn" title="Les pages légales et les témoignages livrés sont des modèles">
+Leur texte commence par « Modèle à adapter ». Réécrivez-les avant la mise en ligne : une politique de confidentialité qui a l’air complète, ou des avis clients qui ont l’air vrais, engagent votre responsabilité.
+</Callout>
+
+## Vérifier que ça marche
+
+1. Lancez l’application avec `pnpm dev` et ouvrez http://localhost:3000. Vous devez voir l’accueil et ses sections.
+2. Dans le pied de page, cliquez « Nous contacter », remplissez le formulaire et envoyez. Vous devez voir un message de confirmation.
+3. Avec `EMAIL_LOCAL_CAPTURE=1` (valeur livrée dans `.env.example`), ouvrez le dossier `apps/web/.mail/` : vous devez y trouver l’e-mail adressé à `contactRecipient`.
+4. Inscrivez une adresse dans la section newsletter de l’accueil. Un e-mail de confirmation pour cette adresse doit apparaître dans `apps/web/.mail/`.
+5. Ouvrez http://localhost:3000/waitlist et inscrivez une adresse : même résultat.
+6. Connecté avec le compte superadmin, ouvrez `/console/subscriptions` : vous devez voir les deux inscriptions, avec leur source (`newsletter` ou `waitlist`).
+
+## Bientôt
+
+**Roadmap publique** — une page où vos clients voient ce qui arrive et votent : prévue mais pas encore livrée, suivie dans [#180](https://github.com/oliviermattei/poc-next/issues/180).
+
+<Callout title="Ce qui n’est pas inclus">
+- **Aucun envoi de newsletter** : le module collecte les adresses, il n’envoie pas de campagnes. Exportez la liste en CSV vers l’outil de votre choix.
+- **Pas de lien de désinscription** dans les e-mails de confirmation : le texte invite à répondre à l’e-mail pour être retiré.
+- **Pas de captcha** : le réglage existe dans `config/security.ts`, mais aucun fournisseur n’est branché ([#151](https://github.com/oliviermattei/poc-next/issues/151)). Les formulaires sont protégés par un champ piège invisible et par la limitation de débit.
+- **Pas d’écran pour lire les messages de contact** : ils arrivent par e-mail.
+- **Limite connue** : la limitation de débit identifie le visiteur par l’en-tête `x-forwarded-for`, qu’un appelant peut falsifier si aucun proxy ne le réécrit ([#78](https://github.com/oliviermattei/poc-next/issues/78)).
+- La rubrique de la console s’appelle « Inscriptions » mais son adresse dit `subscriptions` ([#182](https://github.com/oliviermattei/poc-next/issues/182)).
+</Callout>

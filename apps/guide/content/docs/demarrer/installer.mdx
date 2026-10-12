@@ -3,6 +3,201 @@ title: "Installer le projet"
 description: "Les prérequis, le clone, le fichier .env, la base de données et le premier lancement."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+À la fin de cette page, l’application tourne sur votre ordinateur, avec des données de démonstration. Vous n’avez besoin d’**aucun compte chez un fournisseur** (Stripe, Resend…) : chaque service a un mode local, déjà activé dans le fichier d’exemple.
 
-Cette page est en cours de rédaction : son contenu arrive dans un prochain ticket.
+Comptez une dizaine de minutes, plus le temps des téléchargements.
+
+## Ce qu’il vous faut
+
+| Outil | Version | À quoi il sert |
+|---|---|---|
+| **Node.js** | 22 conseillée (fichier `.nvmrc`), 20.10 au minimum | exécute l’application et les scripts |
+| **pnpm** | 10 | installe les dépendances et lance les commandes du projet |
+| **Docker** | une version récente, avec `docker compose` | fait tourner la base PostgreSQL sans l’installer sur votre machine |
+| **Git** | n’importe quelle version récente | récupère le dépôt |
+
+Vous n’avez **pas** besoin d’installer PostgreSQL : Docker s’en charge.
+
+Docker fait tourner des logiciels dans des « conteneurs », isolés du reste de votre machine. Sur Mac et Windows, il s’installe avec l’application Docker Desktop, qui doit être **ouverte** pour que les commandes `docker` fonctionnent.
+
+## Installer, étape par étape
+
+Toutes les commandes se tapent dans un terminal. À partir de l’étape 3, elles se tapent **à la racine du dépôt** (le dossier qui contient `package.json`).
+
+<Steps>
+<Step>
+
+### Vérifier les prérequis
+
+```bash
+node --version
+pnpm --version
+docker --version
+docker compose version
+```
+
+Vous devez voir un numéro de version pour chacune : `v22.…` (ou au moins `v20.10`) pour Node, `10.…` pour pnpm.
+
+Si `pnpm` est introuvable, activez-le avec l’outil livré avec Node, puis relancez `pnpm --version` :
+
+```bash
+corepack enable
+```
+
+</Step>
+<Step>
+
+### Récupérer le dépôt
+
+Remplacez l’adresse par celle de votre dépôt, puis entrez dans le dossier créé :
+
+```bash
+git clone <adresse-de-votre-dépôt> mon-saas
+cd mon-saas
+```
+
+Vous devez voir, avec `ls`, les fichiers `package.json`, `.env.example` (fichier masqué : `ls -a`) et `docker-compose.yml`.
+
+</Step>
+<Step>
+
+### Créer votre fichier `.env`
+
+```bash
+cp .env.example .env
+```
+
+Le fichier `.env` contient les **variables d’environnement** : les réglages qui changent d’une machine à l’autre (adresse de la base, clés des fournisseurs, secrets). C’est le seul `.env` du dépôt, à la racine. Il n’est jamais envoyé dans Git (`.gitignore` l’exclut) : ne copiez jamais une vraie clé dans `.env.example`.
+
+Le fichier d’exemple est prêt pour un usage local. Les modes locaux y sont déjà activés :
+
+| Variable | Ce qu’elle fait en local |
+|---|---|
+| `EMAIL_LOCAL_CAPTURE=1` | les e-mails ne partent pas : ils sont écrits sous forme de fichiers `.html` dans `apps/web/.mail/` |
+| `PAYMENTS_LOCAL_MODE=1` | le paiement est simulé, sans Stripe |
+| `STORAGE_LOCAL_DIRECTORY=.storage` | les fichiers téléversés (avatars) sont écrits sur le disque |
+| `JOBS_LOCAL_RUNNER=1` | les tâches planifiées tournent en mémoire, sans Inngest |
+
+Vous devez voir le fichier `.env` avec `ls -a`. Vous n’avez rien à y modifier pour l’instant.
+
+</Step>
+<Step>
+
+### Démarrer la base de données
+
+```bash
+docker compose up -d
+```
+
+Docker télécharge PostgreSQL 16 la première fois, puis le démarre en arrière-plan sur le port `5432`. Vérifiez qu’il est prêt :
+
+```bash
+docker compose ps
+```
+
+Vous devez voir le service `postgres` avec un état `Up` suivi de `(healthy)`. S’il affiche `(health: starting)`, attendez quelques secondes et relancez la commande.
+
+</Step>
+<Step>
+
+### Installer les dépendances
+
+```bash
+pnpm install
+```
+
+La commande se termine sans erreur. La première fois, elle peut prendre plusieurs minutes.
+
+</Step>
+<Step>
+
+### Créer les tables
+
+```bash
+pnpm db:migrate
+```
+
+Une **migration** est un script qui crée ou modifie les tables de la base. Chaque fonctionnalité activée apporte les siennes. Vous devez voir une ligne qui commence par `Migrations appliquées, dans l’ordre du graphe :`, suivie de la liste des modules.
+
+Relancer la commande ne fait rien de plus : elle répond alors `Rien à appliquer : aucune migration en attente pour les modules activés`.
+
+</Step>
+<Step>
+
+### Ajouter les données de démonstration
+
+```bash
+pnpm db:seed
+```
+
+Vous devez voir `Seeds exécutés :` suivi d’une liste, puis une ligne `Lignes du schéma public : … avant, … après`. Cette commande crée deux comptes, une organisation, un abonnement et quelques notifications de démonstration. Vous vous en servirez dans le [premier tour](/fr/demarrer/premier-tour).
+
+</Step>
+<Step>
+
+### Lancer l’application
+
+```bash
+pnpm dev
+```
+
+Cette commande lance deux sites, et reste ouverte tant qu’ils tournent :
+
+- l’**application**, sur `http://localhost:3000` ;
+- ce **Guide**, sur `http://localhost:3200`.
+
+Pour vérifier que l’application voit sa base, ouvrez `http://localhost:3000/api/health` dans votre navigateur. Vous devez voir :
+
+```json
+{"status":"ok","database":"connected"}
+```
+
+Puis ouvrez `http://localhost:3000` : vous devez voir la page d’accueil du site.
+
+Dans le terminal, un avertissement dit que `SUPERADMIN_EMAIL` n’est pas renseignée. C’est normal : vous la renseignerez pendant le [premier tour](/fr/demarrer/premier-tour) pour ouvrir la console.
+
+</Step>
+</Steps>
+
+## Arrêter et relancer
+
+- Pour arrêter l’application : <kbd>Ctrl</kbd> + <kbd>C</kbd> dans le terminal de `pnpm dev`.
+- Pour arrêter la base : `docker compose down`. Vos données sont conservées.
+- Pour reprendre plus tard : `docker compose up -d`, puis `pnpm dev`. Inutile de relancer l’installation, les migrations ou le seed.
+
+## Si quelque chose bloque
+
+**Le démarrage s’arrête en nommant une variable.** Chaque variable est vérifiée au démarrage, et le message nomme celle qui manque ou qui est mal formée. Comparez votre `.env` à `.env.example`, et consultez le [tableau des variables d’environnement](/fr/configurer/variables-d-environnement).
+
+**Le port 5432 est déjà pris** (un autre PostgreSQL tourne sur votre machine). Dans `.env`, choisissez un autre port et reportez-le dans l’adresse de la base :
+
+```bash
+POSTGRES_PORT=5433
+DATABASE_URL=postgres://postgres:postgres@localhost:5433/app
+```
+
+Relancez ensuite `docker compose up -d`, puis reprenez à l’étape « Créer les tables ».
+
+**Le port 3000 est déjà pris.** Libérez-le avant de lancer `pnpm dev` : l’application construit ses liens (e-mails, redirections) à partir de `APP_URL`, qui vaut `http://localhost:3000`.
+
+**`pnpm db:migrate` n’arrive pas à se connecter.** Vérifiez que Docker est ouvert et que `docker compose ps` affiche `(healthy)`.
+
+**`pnpm db:seed` refuse.** Le seed refuse toute base qui contient un compte qu’il n’a pas créé lui-même : c’est ce qui l’empêche de toucher une base en service. Si vous vous êtes inscrit avant de lancer le seed, et **seulement sur votre base locale**, vous pouvez repartir de zéro. Attention : la première commande efface toutes les données de la base locale.
+
+```bash
+docker compose down -v
+docker compose up -d
+pnpm db:migrate
+pnpm db:seed
+```
+
+D’autres cas sont décrits dans le [dépannage](/fr/reference/depannage).
+
+<Callout type="warn" title="Ce qui n’est pas inclus">
+- **Aucun e-mail ne part** : ils sont écrits dans `apps/web/.mail/`. Pour envoyer de vrais e-mails, voir [Resend](/fr/services/resend).
+- **Aucun paiement n’a lieu** : le tunnel de paiement est simulé, et l’abonnement de démonstration n’existe pas chez Stripe. Pour encaisser, voir [Stripe](/fr/services/stripe).
+- **Le blog, la documentation produit et le changelog ne sont pas créés par le seed** : leur contenu est livré sous forme de fichiers MDX dans `content/`.
+- **Cette installation est faite pour votre ordinateur**, pas pour la production : les modes locaux sont refusés ou déconseillés en ligne. Voir [Déployer](/fr/deployer).
+</Callout>
+
+Étape suivante : [faire un premier tour](/fr/demarrer/premier-tour).

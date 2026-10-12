@@ -3,6 +3,74 @@ title: "Authentification"
 description: "Inscription, connexion, lien magique, double authentification, passkeys, Google et GitHub."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+## En une phrase
 
-Cette page est en cours de rédaction : son contenu arrive dans un prochain ticket.
+Le module `auth` donne à vos clients un compte : inscription avec vérification de l’adresse, connexion par mot de passe, lien magique, passkey, Google ou GitHub, double authentification, et les droits RGPD (export et suppression du compte).
+
+## Ce que voient vos clients
+
+Quand le module `i18n` est activé, chaque adresse est précédée de la langue (`/fr/sign-in`, `/en/sign-in`).
+
+| Écran | Adresse | Ce qu’on y fait |
+|---|---|---|
+| Inscription | `/sign-up` | créer un compte avec une adresse e-mail et un mot de passe |
+| Vérification de l’adresse | `/verify-email` | redemander le lien de vérification |
+| Connexion | `/sign-in` | mot de passe, lien magique (bloc « Recevoir un lien de connexion »), passkey (« Se connecter avec une passkey »), bouton « Continuer avec Google / GitHub » si configuré |
+| Mot de passe oublié | `/forgot-password` puis `/reset-password` | recevoir un lien et choisir un nouveau mot de passe |
+| Double authentification | `/two-factor` | saisir le code à six chiffres, ou un code de secours |
+| Réglages › Profil | `/app/settings/profile` | nom affiché, adresse e-mail, photo (si le module `storage` est activé), « Exporter mes données », « Supprimer mon compte » |
+| Réglages › Sécurité | `/app/settings/security` | mot de passe, connexions externes, passkeys, double authentification, sessions ouvertes |
+
+Ce que le module garantit à vos clients :
+
+- **L’adresse doit être vérifiée avant la première connexion.** Un e-mail de vérification part à l’inscription.
+- **Mot de passe** : 12 caractères minimum, 128 au plus.
+- **Liens à usage unique et courts** : lien magique valable 10 minutes, vérification d’adresse et réinitialisation 30 minutes.
+- **Session** : 7 jours, prolongée à l’usage.
+- **Double authentification** : application d’authentification (code TOTP, QR code affiché à l’écran) et dix codes de secours, chacun utilisable une fois.
+- **Passkey** : elle remplace le mot de passe ; l’option est masquée si le navigateur ne sait pas la gérer. Un client ne peut pas retirer son dernier moyen de connexion.
+- **Export des données** : le client clique « Demander l’export » ; le lien de téléchargement part par e-mail (jamais à l’écran) et reste valable 24 heures. L’archive contient ses données de tous les modules activés.
+- **Suppression du compte** : le client tape son adresse pour confirmer. La suppression est définitive et efface ses données dans tous les modules activés. Elle est **refusée** tant qu’il est le dernier propriétaire d’une organisation : il doit d’abord la transférer ou la supprimer. Ses sessions sont fermées tout de suite ; l’effacement lui-même passe par une tâche de fond.
+- **Message identique** pour un compte inconnu et un mot de passe faux, pour ne rien révéler.
+
+## Activer ou couper
+
+`auth` fait partie du **socle** : il ne peut pas être coupé. `pnpm ks toggle auth` refuse. Les modules `organizations`, `admin`, `notifications`, `onboarding` et `storage` en dépendent. Voir [Les modules](/fr/fonctionnalites).
+
+## Configurer
+
+Variables d’environnement (détail dans [Variables d’environnement](/fr/configurer/variables-d-environnement)) :
+
+| Variable | Rôle |
+|---|---|
+| `AUTH_SECRET` | signe les sessions ; 32 caractères au moins. Générez une valeur longue et aléatoire pour la production |
+| `APP_URL` | l’adresse publique de l’application ; elle construit les liens envoyés par e-mail et sert d’identifiant aux passkeys |
+| `RESEND_API_KEY` + `EMAIL_FROM`, ou `EMAIL_LOCAL_CAPTURE=1` | l’envoi des e-mails (vérification, lien magique, réinitialisation, export) : voir [Resend](/fr/services/resend) |
+| `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` | le bouton Google : voir [Google](/fr/services/google) |
+| `GITHUB_CLIENT_ID` + `GITHUB_CLIENT_SECRET` | le bouton GitHub : voir [GitHub](/fr/services/github) |
+| `OAUTH_LOCAL_PROVIDER=1` | un faux fournisseur, pour tester la connexion externe sans aucune clé ; **refusé en production** |
+
+Sans aucune variable Google ni GitHub, aucun bouton ne s’affiche et l’application démarre normalement. Un identifiant sans son secret, en revanche, **arrête le démarrage** en nommant la variable manquante.
+
+Les durées et la longueur du mot de passe ci-dessus sont les valeurs livrées. Elles ne sont pas dans `config/` : elles vivent dans le code du module (`packages/modules/auth/src/domain/auth-policy.ts`). Les limites d’essais (connexion, inscription, réinitialisation…) se règlent dans `config/security.ts` : voir [Limitation de débit](/fr/fonctionnalites/limitation-de-debit).
+
+## Vérifier que ça marche
+
+En local, avec `EMAIL_LOCAL_CAPTURE=1` (valeur de `.env.example`), les e-mails ne partent pas : ils sont écrits dans le dossier `apps/web/.mail/`, que vous ouvrez dans votre navigateur.
+
+1. Ouvrez `http://localhost:3000/fr/sign-up` et créez un compte avec une adresse de test.
+2. Vous devez lire « Compte créé. Vérifiez votre boîte email pour activer votre compte. ». Ouvrez le dernier e-mail dans `apps/web/.mail/` et cliquez le lien.
+3. Connectez-vous sur `http://localhost:3000/fr/sign-in`. Vous devez arriver sur l’application, sous `/fr/app` (ou sur le parcours de bienvenue si le module `onboarding` est activé).
+4. Ouvrez Réglages › Sécurité (`/fr/app/settings/security`) et activez la double authentification avec une application comme celles de Google ou de Microsoft. Notez les codes de secours.
+5. Déconnectez-vous (menu du compte, « Se déconnecter »), puis reconnectez-vous : vous devez passer par l’écran « Vérification en deux étapes ».
+6. Dans Réglages › Profil, cliquez « Demander l’export » : un e-mail avec le lien de téléchargement doit apparaître dans `apps/web/.mail/`.
+
+Les comptes de démonstration créés par `pnpm db:seed` sont décrits dans [Premier tour](/fr/demarrer/premier-tour).
+
+<Callout type="info" title="Ce qui n’est pas inclus">
+- **Pas d’autre fournisseur de connexion** que Google et GitHub, et pas de connexion d’entreprise (SAML, SSO).
+- **Pas de captcha** sur l’inscription et la connexion : l’emplacement est prévu, aucun fournisseur n’est livré (issue [#151](https://github.com/oliviermattei/poc-next/issues/151), voir [Sécurité](/fr/configurer/securite)).
+- **Pas d’annulation** d’une suppression de compte une fois demandée.
+- **Pas d’écran pour exporter une organisation entière** : l’écran Profil exporte le compte du client.
+- Limites connues : le jeton de réinitialisation de mot de passe est stocké en clair en base ([#79](https://github.com/oliviermattei/poc-next/issues/79)) ; à l’inscription, l’adresse e-mail est recopiée comme nom affiché ([#114](https://github.com/oliviermattei/poc-next/issues/114)) ; un lien magique ouvert depuis un webmail peut arriver déconnecté ([#116](https://github.com/oliviermattei/poc-next/issues/116)) ; la connexion Google, GitHub et par passkey n’a pas encore été jouée en conditions réelles ([#174](https://github.com/oliviermattei/poc-next/issues/174)).
+</Callout>

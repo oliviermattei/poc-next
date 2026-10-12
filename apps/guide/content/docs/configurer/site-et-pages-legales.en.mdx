@@ -3,6 +3,116 @@ title: "Site and legal pages"
 description: "The home page, copy and legal pages, in config/marketing.ts and the messages."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+The public site (home page, legal pages, contact, newsletter, waitlist) is provided by the `marketing` module. It is set in **two places**:
 
-This page is being written: its content arrives in an upcoming ticket.
+- **`config/marketing.ts`** declares the **structure**: which sections, in which order, which items, which buttons, which legal pages, and the address that receives the contact form;
+- **the module’s message catalogs**, `packages/modules/marketing/src/messages/fr.json` and `en.json`, hold **the copy** of each section, in each language.
+
+What your visitors see is described in [Public site](/en/fonctionnalites/site-public).
+
+<Callout type="warn" title="Replace the sample copy before going live">
+The shipped testimonials are **fictitious**, and the legal pages (privacy, terms of use) are **templates to adapt**: their texts say so themselves (“Template to adapt before going live”). Have your legal pages reviewed by a lawyer.
+</Callout>
+
+## The home page sections
+
+**The order of the `sections` array is the order of the page.** Moving an entry moves the section; deleting an entry removes the section. No component needs changing.
+
+The shipped home page runs: `hero`, `features`, `testimonials`, `faq`, `newsletter`, `cta`.
+
+| Kind (`kind`) | What it shows | What it requires |
+|---|---|---|
+| `hero` | the big opening title | at least one button (`actions`) |
+| `features` | a list of strengths | at least one item (`items`) |
+| `testimonials` | testimonials | at least one item |
+| `faq` | questions and answers | at least one item |
+| `newsletter` | the newsletter sign-up form | nothing more |
+| `cta` | a final call to action | at least one button |
+
+An unknown kind is refused at startup, and named. A button (`href`) can only point to a **path on your site** (`/sign-up`), never an external address; its variant is `'default'` (filled) or `'outline'`.
+
+### A section’s copy
+
+Each declared id expects its texts, under derived keys:
+
+| Declared in `config/marketing.ts` | Keys expected in the catalogs |
+|---|---|
+| a section `<id>` | `section.<id>.title`, `section.<id>.description` |
+| an item `<item>` | `section.<id>.item.<item>.title` and `section.<id>.item.<item>.body` |
+| a button `<action>` | `section.<id>.action.<action>` |
+| a legal page `<slug>` | `legal.<slug>.title`, `legal.<slug>.description`, and for each section `<s>`: `legal.<slug>.section.<s>.title` and `.body` |
+
+A missing key is never replaced by a default text: `pnpm test` fails and names it, for each language.
+
+## Change the home page, step by step
+
+Example: add a fourth question to the FAQ.
+
+<Steps>
+<Step>
+
+In `config/marketing.ts`, add the id to the `faq` section:
+
+```ts
+{ id: 'faq', kind: 'faq', items: ['stack', 'disable', 'theme', 'pricing'] },
+```
+
+</Step>
+<Step>
+
+In `packages/modules/marketing/src/messages/en.json`, add the two texts:
+
+```json
+"section.faq.item.pricing.title": "Can I change plans?",
+"section.faq.item.pricing.body": "Yes, at any time, from the billing page.",
+```
+
+Do the same, in French, in `fr.json`.
+
+</Step>
+<Step>
+
+Run the site tests:
+
+```bash
+pnpm vitest run tests/marketing.test.ts
+```
+
+**You should see** every case pass. A forgotten key is named, with its language.
+
+</Step>
+<Step>
+
+Restart (`Ctrl + C`, then `pnpm dev`) and open `http://localhost:3000/en`. **You should see** the new question in the FAQ.
+
+</Step>
+</Steps>
+
+To change an existing text only, edit the value in `fr.json` and `en.json`: nothing to change in `config/marketing.ts`.
+
+## The legal pages
+
+`legalDocuments` declares two documents, `privacy` and `terms`, served at `/legal/privacy` and `/legal/terms` (preceded by the language, for example `/en/legal/privacy`, when the `i18n` module is enabled). Each is split into sections (`data`, `retention`, `rights` for privacy; `object`, `account`, `liability` for the terms).
+
+To add a section or a document, add its id in `config/marketing.ts`, then its `legal.…` keys in both catalogs, as for the home page.
+
+## The public forms
+
+The `forms` block of `config/marketing.ts`:
+
+| Field | What it sets | Shipped value |
+|---|---|---|
+| `contactRecipient` | **the address that receives the contact form’s messages** (`/contact`) | `bonjour@exemple.test` — **to replace** |
+| `newsletterSource` | the label of newsletter sign-ups | `newsletter` |
+| `waitlistSource` | the label of waitlist sign-ups (`/waitlist`) | `waitlist` |
+| `rateLimit.windowSeconds` | the length of the counting window, in seconds | `600` |
+| `rateLimit.maxPerClient` | beyond it, the same visitor is **refused** for the window | `5` |
+| `rateLimit.maxPerForm` | beyond it, submissions are **recorded but no email is sent** for the window | `200` |
+
+The two labels must differ, and the address must be valid: otherwise the startup refuses and says so. Sign-ups are viewed and exported as CSV from the [console](/en/fonctionnalites/console).
+
+To check `contactRecipient` locally: send a message from `/en/contact`, then open the `apps/web/.mail/` folder. **You should find** a file whose header shows your address after “À :” (To) and the subject of the contact-form email.
+
+<Callout type="info" title="What is not included">
+No visual editor: the structure is set in `config/marketing.ts`, the copy in the catalogs. No sending of campaigns to the newsletter list: the boilerplate collects sign-ups, you export them. No new section kind without code. A public roadmap is planned ([issue #180](https://github.com/oliviermattei/poc-next/issues/180)). The pricing page is not yet declared in the sitemap for search engines ([issue #104](https://github.com/oliviermattei/poc-next/issues/104)), and bypassing the per-visitor limit without a trusted proxy is tracked in [issue #78](https://github.com/oliviermattei/poc-next/issues/78).
+</Callout>

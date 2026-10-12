@@ -3,6 +3,74 @@ title: "Languages and copy"
 description: "The languages served and the message catalogs, in config/i18n.ts."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+The application ships in **French** and **English**. Every displayed text comes from a **message catalog**: one JSON file per language, where each text has a key (`"app.name": "Application"`). No text is hard-coded in a screen.
 
-This page is being written: its content arrives in an upcoming ticket.
+For what your clients see (language switcher, prefixed URLs), see [Languages](/en/fonctionnalites/langues).
+
+## `config/i18n.ts`
+
+```ts
+export const appLocales = ['fr', 'en'] as const
+export const defaultLocale = 'fr'
+```
+
+- **`appLocales`**: the application languages. Each module must ship its texts and emails in **each** of them; otherwise the startup refuses and names the module, the text and the language.
+- **`defaultLocale`**: the language served when nothing else decides, and **the only one** served when the `i18n` module is disabled.
+
+With the `i18n` module enabled, a page’s language is decided in this order: the one in the URL (`/fr/…`, `/en/…`), then the visitor’s saved choice, then their browser’s language, then `defaultLocale`.
+
+## Where the texts are
+
+| What you want to change | File |
+|---|---|
+| the product name, the tab title, the application’s menus and screens | `apps/web/messages/fr.json` and `en.json` (`app.…` keys) |
+| a module’s texts (home page, billing, notifications…) | `packages/modules/<module>/src/messages/fr.json` and `en.json` |
+| the subject and body of a module’s emails | `packages/modules/<module>/src/emails/*.ts` (see [Emails](/en/configurer/e-mails)) |
+| the text of notification emails | `config/notifications.ts` (see [Notifications](/en/configurer/notifications)) |
+| articles, product documentation, release notes | `content/blog/<language>/`, `content/docs/<language>/`, `content/changelog/<language>/` |
+
+## Change a text, step by step
+
+<Steps>
+<Step>
+
+**Find the key.** Search the repository for the current text, for example:
+
+```bash
+grep -rn "Dashboard" apps/web/messages packages/modules/*/src/messages
+```
+
+**You should see** the file and the key, here `apps/web/messages/en.json`: `"app.dashboard.title": "Dashboard"`.
+
+</Step>
+<Step>
+
+**Change the value**, not the key, in `fr.json` **and** in `en.json`. Words in braces are placeholders the application fills (`{name}`, `{count}`): keep them as they are.
+
+</Step>
+<Step>
+
+**Check**: restart `pnpm dev` and reload the screen. Then run `pnpm test`: it fails if a key is missing in a language or if the application’s two catalogs no longer have the same keys.
+
+</Step>
+</Steps>
+
+<Callout type="warn" title="A missing key breaks the screen">
+The application never displays a key’s name in place of a missing text: the screen fails with an error. This is deliberate — an error shows immediately, whereas a text like `app.account.title` would go unnoticed in production. Hence the importance of `pnpm test` before every release.
+</Callout>
+
+## Add or remove a language
+
+This is **not** a one-line change. Adding a language (for example German) requires:
+
+1. adding it to `appLocales` in `config/i18n.ts`;
+2. translating **every** catalog: the application’s and each module’s;
+3. declaring this new catalog in the code that loads each catalog (the `apps/web/lib/messages.ts` file and each module’s `messages` line);
+4. translating each module email and each text in `config/notifications.ts`;
+5. adding the content folders (`content/blog/de/`…) if you publish in that language.
+
+It is code and translation work: hand it to an AI with this list, then check with `pnpm test` and a startup. The startup refuses a module that has no version in the new language, and names it.
+
+<Callout type="info" title="What is not included">
+No translation interface and no third-party translation service: the catalogs are versioned JSON files. No machine translation. Known limits: an account’s preferred language is not stored for emails sent outside a request ([issue #128](https://github.com/oliviermattei/poc-next/issues/128)); switching language does not keep the current page ([issue #129](https://github.com/oliviermattei/poc-next/issues/129)); the 500 error screen shows in the site’s language, not the visitor’s ([issue #127](https://github.com/oliviermattei/poc-next/issues/127)).
+</Callout>

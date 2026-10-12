@@ -1,8 +1,80 @@
 ---
 title: "MCP server"
-description: "Drive the project’s modules from an AI assistant."
+description: "Let your AI assistant list, enable, disable and create the project's modules."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+## In one sentence
 
-This page is being written: its content arrives in an upcoming ticket.
+The `mcp-server` module gives your AI assistant (Claude or any MCP-compatible client) three tools to drive your repository's modules, exactly as you would with `pnpm ks`.
+
+<Callout type="info" title="For you, not for your customers">
+This server runs on your machine, started by your AI assistant. It is neither exposed on the internet nor deployed with your SaaS: your customers never see it.
+</Callout>
+
+## The three tools
+
+| Tool | Equivalent | What it does |
+|---|---|---|
+| `list_modules` | `pnpm ks list` | lists the modules, their state, what they depend on and those that cannot be disabled |
+| `toggle_module` | `pnpm ks toggle <module>` | enables or disables a module in `config/features.ts`, regenerates the schema and can apply the migrations |
+| `scaffold_module` | `pnpm ks scaffold <module>` | creates the skeleton of a new module in `packages/modules/<module>` |
+
+The two tools that write **refuse to work on a repository with uncommitted changes**: that way you can always undo what the assistant did. They also refuse, naming it, an unknown module, a missing dependency or a module still required by another. No tool receives a file path or returns the content of `.env`.
+
+What modules are, and what enabling or disabling one does: [Features](/en/fonctionnalites).
+
+## Enable or disable
+
+```bash
+pnpm ks toggle mcp-server
+```
+
+The module depends on no other, and has neither table nor route. Disabled, the server refuses to start and prints:
+
+```text
+Module mcp-server désactivé dans config/features.ts : le serveur MCP ne démarre pas. Activez-le avec « pnpm ks toggle mcp-server ».
+```
+
+## Connect your assistant
+
+The server starts with this command, **from the root of the repository** — your assistant runs it, not you:
+
+```bash
+node ./packages/modules/mcp-server/bin/mcp-server.mjs
+```
+
+1. Open the example file `packages/modules/mcp-server/mcp-client.example.json`. It contains:
+
+   ```json
+   {
+     "mcpServers": {
+       "killer-boilerplate": {
+         "command": "node",
+         "args": ["./packages/modules/mcp-server/bin/mcp-server.mjs"]
+       }
+     }
+   }
+   ```
+
+2. Copy this block into your client's MCP configuration. With Claude Code, save it in a `.mcp.json` file at the root of the repository.
+3. If your client does not start from the root of the repository, replace the relative path with the full path of the `mcp-server.mjs` file.
+4. Restart your client so it loads the server.
+
+Setting up your assistant (repository rules, skills) is described in [Working with an AI](/en/demarrer/travailler-avec-une-ia).
+
+## Check that it works
+
+1. Ask your assistant: “List the project's modules with the list_modules tool”.
+2. You should get the same list as in your terminal with:
+
+   ```bash
+   pnpm ks list
+   ```
+
+3. With an uncommitted change in the repository, ask it to disable the `blog` module: it should receive a refusal mentioning uncommitted changes, and `config/features.ts` should not change.
+
+<Callout title="What is not included">
+- **Only these three tools**: no access to the database, the logs, deployment, or the repository's files beyond what `pnpm ks` does.
+- **No remote server**: it only talks locally, with the client that started it.
+- **No AI assistant inside your SaaS**: that is part of what the boilerplate deliberately does not do.
+</Callout>

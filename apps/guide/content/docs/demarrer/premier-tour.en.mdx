@@ -3,6 +3,182 @@ title: "Take a first tour"
 description: "Demo accounts, the site, the application and the superadmin console."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+This page walks you, once and in order, through what your clients will see and what you will see. Allow about twenty minutes. You need a running application: if that is not the case yet, follow [Install the project](/en/demarrer/installer) first.
 
-This page is being written: its content arrives in an upcoming ticket.
+Your SaaS has three areas, served by **a single application** on `http://localhost:3000`:
+
+| Area | Address | Who gets in |
+|---|---|---|
+| **The public site** | `/`, `/pricing`, `/blog`… | everyone |
+| **The application** | `/app` and below | a signed-in client |
+| **The console** | `/console` and below | you, as superadmin |
+
+<Callout type="info" title="The language prefix">
+The site is served in French and in English. When you type an address such as `http://localhost:3000/pricing`, you are redirected to `http://localhost:3000/fr/pricing` (or `/en/pricing`, depending on your browser’s language). That is expected. On this page, addresses are written without this prefix.
+</Callout>
+
+## The demo accounts
+
+The `pnpm db:seed` command created two accounts, already verified: you can sign in right away, with no email to read.
+
+| Address | Password | What this account has |
+|---|---|---|
+| `ada@demonstration.invalid` | `demonstration-seulement` | owner of the “Atelier Démo” organization, an active subscription to the `pro-monthly` offer, notifications |
+| `hedy@demonstration.invalid` | `demonstration-seulement` | member of the same organization |
+
+These addresses cannot receive any mail (the `.invalid` domain is reserved for that purpose), and their password is public. They cannot reach a database in service: the seed refuses to run as soon as the database holds an account it did not create.
+
+## 1. The public site
+
+<Steps>
+<Step>
+
+### The home page
+
+Open `http://localhost:3000`. You should see the home page, made of sections: a header with the sign-up and sign-in buttons, features, testimonials, frequently asked questions, newsletter sign-up, call to action. Their order is set in `config/marketing.ts` (see [Site and legal pages](/en/configurer/site-et-pages-legales)).
+
+</Step>
+<Step>
+
+### Pricing
+
+Open `/pricing`. You should see the three offers shipped as examples in `config/billing.ts`: a monthly subscription at €29, a yearly subscription at €290 (both with a 14-day trial) and a one-time purchase at €490. You will replace them with your own (see [Offers and prices](/en/configurer/offres-et-prix)).
+
+</Step>
+<Step>
+
+### Content and the other pages
+
+Open in turn:
+
+- `/blog`, `/docs` (the product documentation, for your clients) and `/changelog`;
+- `/legal/privacy` and `/legal/terms`, the legal pages;
+- `/contact` and `/waitlist`.
+
+Each address should show its page. The content is an example, to be replaced with yours.
+
+</Step>
+</Steps>
+
+## 2. The application, as a client sees it
+
+<Steps>
+<Step>
+
+### Sign in
+
+Open `/sign-in` and sign in with `ada@demonstration.invalid` and the password `demonstration-seulement`. You land on `/app`, the dashboard. If an onboarding course remains to be done for this account, the application takes you there first: follow it or skip its optional steps.
+
+</Step>
+<Step>
+
+### The dashboard
+
+The dashboard shows “Nothing to show yet”. It is **empty on purpose**: this is where your product will plug in. The boilerplate ships everything around your product, never the product itself.
+
+</Step>
+<Step>
+
+### Notifications
+
+Open `/app/notifications`. You should see the account’s demo notifications.
+
+</Step>
+<Step>
+
+### Settings
+
+Open `/app/settings/profile`. The settings menu gives access to:
+
+| Page | Address | What you do there |
+|---|---|---|
+| Profile | `/app/settings/profile` | name, email address, avatar, data export, account deletion |
+| Security | `/app/settings/security` | password, sign-in methods, active sessions, two-factor authentication, passkeys |
+| Organization | `/app/settings/organization` | the current organization, its settings, create one, delete it |
+| Members | `/app/settings/members` | members and invitations |
+| Billing | `/app/settings/billing` | the subscription, the available offers, the purchases |
+| Notifications | `/app/settings/notifications` | notification preferences |
+| Cookies | `/app/settings/cookies` | consent choices |
+
+</Step>
+<Step>
+
+### A feature reserved for a paid offer
+
+Open `/app/premium`. Since Ada has an active subscription, you should see “Your detailed report”. This screen comes from the demo module: it shows how to reserve a feature for some offers (`config/gating.ts`, see [Reserved features](/en/configurer/fonctionnalites-reservees)).
+
+</Step>
+<Step>
+
+### Sign up as a new client
+
+Sign out (account menu, “Sign out” entry), then open `/sign-up` and create an account with an address of your choice. The application sends a verification email. Locally, it is not sent: it is written in the `apps/web/.mail/` folder of the repository, as an `.html` file. Open that file in your browser and click the link: your account is verified.
+
+To try the simulated payment, this new account can choose an offer on `/pricing`: the checkout is simulated, no payment takes place.
+
+</Step>
+</Steps>
+
+## 3. The console, your back office
+
+The console is for you, the publisher of the SaaS: to look at accounts, organizations, revenue and sign-ups. It answers **404 to everyone** as long as no superadmin exists. The first one is designated by an environment variable.
+
+<Steps>
+<Step>
+
+### Designate the first superadmin
+
+Open your `.env` file, at the root of the repository, and fill in the address of the account that will administer the platform:
+
+```bash
+SUPERADMIN_EMAIL=ada@demonstration.invalid
+```
+
+The account must already exist. For your real SaaS, sign up first with your address, then put it here.
+
+</Step>
+<Step>
+
+### Restart the application
+
+Variables are read at startup. In the terminal running `pnpm dev`, press <kbd>Ctrl</kbd> + <kbd>C</kbd>, then start again:
+
+```bash
+pnpm dev
+```
+
+The warning about `SUPERADMIN_EMAIL` should no longer appear.
+
+</Step>
+<Step>
+
+### Open the console
+
+Signed in as Ada, type the address `http://localhost:3000/console`: no link in the application leads there. You should see the console, with its dashboard and a sidebar: **Dashboard**, **Accounts**, **Organizations**, **Revenue**, **Subscriptions**.
+
+Signed in with another account, the same address answers 404, like a page that does not exist: the console does not reveal that it exists.
+
+</Step>
+<Step>
+
+### Tour the console
+
+- **Accounts** (`/console/users`): the list of accounts. An account’s detail lets you send a password reset and revoke a session.
+- **Organizations** (`/console/organizations`): each organization, its headcount and its subscription.
+- **Revenue** (`/console/revenue`): the estimated recurring revenue and the one-time purchases collected.
+- **Subscriptions** (`/console/subscriptions`): the addresses left on the public site (newsletter and waitlist).
+
+</Step>
+</Steps>
+
+Once the first superadmin is designated, **the database is the reference**: changing `SUPERADMIN_EMAIL` no longer designates anyone else.
+
+<Callout type="warn" title="What is not included">
+- **Your product**: the application’s dashboard is empty, it is yours to fill (see [Work with an AI assistant](/en/demarrer/travailler-avec-une-ia) and [Features](/en/fonctionnalites)).
+- **Banning an account, appointing another superadmin or signing in as a client from the console screen**: these actions exist on the server, but the screen does not offer them yet ([issue #135](https://github.com/oliviermattei/poc-next/issues/135)).
+- **Charts in the console dashboard**: it shows totals, with no change over time ([issue #181](https://github.com/oliviermattei/poc-next/issues/181)).
+- **Configuring the SaaS from the console**: configuration lives in `config/` and `.env`, and changes through a redeployment.
+- **Logs and usage statistics**: they are read in [Sentry](/en/services/sentry) and [PostHog](/en/services/posthog), not in the console.
+</Callout>
+
+Next step: [understand the repository layout](/en/demarrer/structure).

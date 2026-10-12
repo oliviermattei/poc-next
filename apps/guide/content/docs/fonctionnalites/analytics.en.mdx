@@ -1,8 +1,71 @@
 ---
 title: "Analytics"
-description: "Audience analytics, after consent."
+description: "PostHog audience measurement, after consent, and error reporting to Sentry."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+## In one sentence
 
-This page is being written: its content arrives in an upcoming ticket.
+The `analytics` module measures your SaaS's audience with PostHog — only after the visitor has agreed — and reports server and browser errors to Sentry.
+
+## What it does
+
+| | With configuration | Without |
+|---|---|---|
+| **Page views** | sent to PostHog, once “Audience measurement” is accepted in the [consent banner](/en/fonctionnalites/cookies-et-consentement) | nothing is sent |
+| **Sign-ups** | an `auth.signed_up` event leaves the server for every new account, carrying only the account identifier (no address, no name) | nothing is sent |
+| **Server errors** | sent to Sentry | nothing is sent |
+| **Browser errors** | sent to Sentry, through `/api/modules/analytics/client-error`, including before any sign-in | nothing is sent |
+
+Both services are optional: **without a key, the application runs normally and makes no analytics network call**. There is no local mode to enable.
+
+Your customers see nothing of this module, except the consent banner when PostHog is configured.
+
+## Enable or disable
+
+```bash
+pnpm ks toggle analytics
+```
+
+The module depends on `consent`: enabling it without it is refused, naming it (add `--with-requires` to enable both). It has no table.
+
+Module disabled, **even if the keys are set**: no measurement script, no consent banner any more (there is nothing left to accept), the module's routes answer 404, and neither PostHog nor Sentry receives anything.
+
+## Configure
+
+All values go in `.env` locally, and in your host's variables in production.
+
+**PostHog** (audience measurement):
+
+1. Set `POSTHOG_KEY` (the project key) and `POSTHOG_HOST` (your region's origin, with no trailing slash: `https://eu.i.posthog.com` or `https://us.i.posthog.com`). One without the other prevents startup, naming the missing one.
+2. Add the same origin in `config/security.ts`, in **both** the `connect` and `img` lists:
+
+   ```ts
+   connect: ['https://eu.i.posthog.com'],
+   img: ['https://eu.i.posthog.com'],
+   ```
+
+   Without it, the application refuses to start, naming the origin and the missing directives — otherwise the browser would block every measurement without a word.
+
+**Sentry** (errors):
+
+1. Set `SENTRY_DSN`.
+2. In production, set `SENTRY_RELEASE` (the name of the deployed version) so that stack traces are readable once the source maps are uploaded.
+
+The step-by-step for each account is on the [PostHog](/en/services/posthog) and [Sentry](/en/services/sentry) pages.
+
+## Check that it works
+
+1. With PostHog configured, restart `pnpm dev` and open http://localhost:3000 in a private browsing window. The consent banner should appear.
+2. Click “Accept all”, then change page.
+3. In PostHog, open your project's live events view: you should see the page views there.
+4. Create an account on `/sign-up`: an `auth.signed_up` event should appear.
+5. Open http://localhost:3000/api/modules/analytics/script.js: you should get a script. An `analytics_provider_not_configured` response means `POSTHOG_KEY` or `POSTHOG_HOST` is not being read.
+
+<Callout title="What is not included">
+- **One provider per use**: PostHog for measurement, Sentry for errors. No other tool is plugged in.
+- **No dashboard inside your SaaS**: the numbers are read in PostHog.
+- **No business events** other than sign-up: adding them is up to you.
+- **No session recording** or heatmaps.
+- **Known limit**: the PostHog origin is declared in `config/security.ts`, a code file — an image that is already built cannot receive it through a plain variable ([#144](https://github.com/oliviermattei/poc-next/issues/144)).
+- **Known limit**: sending to Sentry has never been exercised against a real account by a repository command ([#149](https://github.com/oliviermattei/poc-next/issues/149)).
+</Callout>

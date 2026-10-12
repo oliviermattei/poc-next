@@ -3,6 +3,113 @@ title: "Plans and prices"
 description: "Your plans and their prices, in config/billing.ts."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+Your plans are declared **once**, in `config/billing.ts`. The public pricing page (`/pricing`), the payment and your clients’ billing screen (`/app/settings/billing`) all read this list.
 
-This page is being written: its content arrives in an upcoming ticket.
+This page assumes the `billing` module is enabled (see [Modules and profiles](/en/configurer/modules)). For how it works on the client side, see [Billing](/en/fonctionnalites/facturation); to connect Stripe, see [Stripe](/en/services/stripe).
+
+## The shipped plans
+
+| Id | Mode | Displayed price | Trial |
+|---|---|---|---|
+| `pro-monthly` | monthly subscription | €29.00 | 14 days |
+| `pro-yearly` | yearly subscription | €290.00 | 14 days |
+| `lifetime` | one-time purchase | €490.00 | — |
+
+These are **examples**: their `priceId` values (`price_pro_monthly`…) exist in no Stripe account. In local mode (`PAYMENTS_LOCAL_MODE=1`), they are sent nowhere; with a real Stripe key, replace them with yours.
+
+## The fields of a plan
+
+| Field | What it says | Accepted values |
+|---|---|---|
+| `id` | stable id of the plan; it is the only thing the browser sends | lowercase letters, digits and hyphens (`pro-monthly`) |
+| `mode` | subscription or one-time purchase | `'subscription'` or `'one_time'` |
+| `priceId` | id of the price **at Stripe**: this is what is charged | `price_…`, copied from Stripe |
+| `amount` | **displayed** amount, in cents | integer ≥ 0: `2900` = 29.00 |
+| `currency` | **displayed** currency | three-letter ISO code, lowercase: `'eur'`, `'usd'` |
+| `interval` | billing interval of a subscription | `'month'` or `'year'`; `null` for a one-time purchase |
+| `trialDays` | length of the free trial | integer > 0, or `null`; always `null` for a one-time purchase |
+| `perSeat` | per-seat billing: the quantity follows the number of members of the organization | `true` or `false`; no effect on a one-time purchase |
+| `seatLimit` | cap on the organization’s members | integer > 0, or `null` (unlimited); absent or `null` for a one-time purchase |
+
+<Callout type="warn" title="The displayed price is not the charged price">
+What is charged is the Stripe price named by `priceId`. `amount` and `currency` are only for display, and nothing checks today that they match the Stripe price ([issue #103](https://github.com/oliviermattei/poc-next/issues/103)). Copy them by hand, exactly.
+</Callout>
+
+## Add or change a plan
+
+<Steps>
+<Step>
+
+**Create the price in Stripe** (product, amount, currency, interval) and copy its `price_…` id. Details are in [Stripe](/en/services/stripe). In local mode, you can skip this step and make up an id.
+
+</Step>
+<Step>
+
+**Add the plan to the `billingOffers` list** in `config/billing.ts`, for example:
+
+```ts
+{
+  id: 'team-monthly',
+  mode: 'subscription',
+  priceId: 'price_1AbCdEf…',
+  amount: 4900,
+  currency: 'eur',
+  interval: 'month',
+  trialDays: null,
+  perSeat: false,
+  seatLimit: 5,
+},
+```
+
+The order of the list is the display order.
+
+</Step>
+<Step>
+
+**Give it a name and a description, in each language.** Open `packages/modules/billing/src/messages/en.json` and add:
+
+```json
+"offer.team-monthly.name": "Team",
+"offer.team-monthly.description": "Up to five members, billed monthly.",
+```
+
+Do the same in `packages/modules/billing/src/messages/fr.json`. Without these texts, `pnpm test` fails and names the plan and the language.
+
+</Step>
+<Step>
+
+**Restart** (`Ctrl + C`, then `pnpm dev`). A malformed plan stops the startup with a message that names the plan **and** the field, for example:
+
+```text
+config/billing.ts : offre « team-monthly » invalide :
+  - interval: is required for a subscription offer
+```
+
+</Step>
+<Step>
+
+**Check** at `http://localhost:3000/en/pricing`. **You should see** the new plan, with its name, its price and, if any, the trial badge.
+
+</Step>
+<Step>
+
+**Run the tests**: `pnpm test`.
+
+</Step>
+</Steps>
+
+The startup also refuses two plans with the same `id` or the same `priceId`.
+
+## Remove a plan
+
+Delete its entry from the list (and, preferably, its texts). It disappears from the pricing page. A client already subscribed to a removed plan keeps their subscription at Stripe, but their billing screen shows “Plan removed from the catalogue”. If you no longer want to sell one-time access, simply remove the `lifetime` plan.
+
+## The member cap (`seatLimit`)
+
+- It **never removes anyone**: lowered below an organization’s headcount, it keeps everyone and only refuses the next additions.
+- It applies when an invitation is **accepted**, not when it is sent: several pending invitations together can exceed the cap, and the last ones accepted are refused.
+- It does not depend on `perSeat`: “up to five members, fixed price” is a normal use.
+
+<Callout type="info" title="What is not included">
+No usage-based billing (by volume consumed), and no payment provider other than Stripe: both are excluded on purpose. No per-seat plan is shipped as an example ([issue #102](https://github.com/oliviermattei/poc-next/issues/102)). Payment requires JavaScript in the client’s browser. When a member cap refuses an invitation, the organization’s owner is not told ([issue #93](https://github.com/oliviermattei/poc-next/issues/93)).
+</Callout>

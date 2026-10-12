@@ -3,6 +3,120 @@ title: "Appearance"
 description: "Colors, product name and dark theme."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+The boilerplate ships **neutral**: near black and white, a single identity color (the “primary”), one font (Geist). Dressing up your product takes three moves: the primary color, the name, and optionally the corner radius.
 
-This page is being written: its content arrives in an upcoming ticket.
+## The product name
+
+The name shown in the site header, the application bar, the sign-in screen and the console is the text of the `app.name` key. It ships as `Application`.
+
+<Steps>
+<Step>
+
+Open `apps/web/messages/fr.json` and `apps/web/messages/en.json`, and change these three values in each:
+
+```json
+"app.name": "My SaaS",
+"app.metadata.title": "My SaaS",
+"app.metadata.description": "One sentence that says what your product does.",
+```
+
+`app.metadata.title` is the browser tab title; `app.metadata.description` is the description read by search engines and link previews.
+
+</Step>
+<Step>
+
+Restart (`Ctrl + C`, then `pnpm dev`) and open `http://localhost:3000/en`. **You should see** your name at the top left and in the browser tab.
+
+</Step>
+<Step>
+
+Also think of the email sender name (`EMAIL_FROM=My SaaS <hello@example.com>`, see [Emails](/en/configurer/e-mails)) and the home page copy (see [Site and legal pages](/en/configurer/site-et-pages-legales)).
+
+</Step>
+</Steps>
+
+<Callout type="warn" title="No slot for a logo">
+There is **no slot for a logo**: the brand is the `app.name` text, rendered as letters wherever it appears. No tab icon (favicon) ships either. Showing an image instead of the name requires changing the code of the four templates (site, sign-in, application, console): it is code work, to hand to an AI while asking it to follow `docs/design-system.md`.
+</Callout>
+
+## The primary color
+
+Colors are **tokens** (CSS variables) declared in `packages/ui/src/styles.css`. Changing a project’s identity comes down to replacing **two** tokens: `--primary` (the background of main buttons) and `--primary-foreground` (the text on top of it). The other bright colors (success, warning, danger, information) carry a meaning and are not for decoration.
+
+Colors are written in **OKLCH** format: `oklch(lightness chroma hue)`. Lightness goes from 0 (black) to 1 (white), chroma from 0 (grey) to about 0.37 (very saturated), hue in degrees (about 250 = blue, 150 = green, 30 = red). An online “HEX to OKLCH” converter gives you the value of your brand color.
+
+<Steps>
+<Step>
+
+In `packages/ui/src/styles.css`, `:root` block (**light** theme), replace:
+
+```css
+--primary: oklch(0.205 0 0);
+--primary-foreground: oklch(0.985 0 0);
+```
+
+with your color, for example a blue:
+
+```css
+--primary: oklch(0.55 0.2 260);
+--primary-foreground: oklch(0.985 0 0);
+```
+
+</Step>
+<Step>
+
+In the `.dark` block (**dark** theme) of the same file, do the same. In dark mode the primary is often lighter, and its text darker:
+
+```css
+--primary: oklch(0.72 0.15 260);
+--primary-foreground: oklch(0.145 0 0);
+```
+
+Every color must be defined in both themes.
+
+</Step>
+<Step>
+
+**Check the contrast**:
+
+```bash
+pnpm test:contrast
+```
+
+**You should see** the command finish without failure. If a text / background pair falls below the readability threshold, the failure names the component, the theme, the measured ratio and the threshold: lighten or darken your color, then run it again.
+
+</Step>
+<Step>
+
+Reload `http://localhost:3000/en` in both themes (theme button in the header). **You should see** your main buttons in the new color.
+
+</Step>
+</Steps>
+
+The corner radius is set the same way with `--radius` (shipped at `0.5rem`); the smaller and larger variants derive from it.
+
+<Callout type="error" title="Do not hard-code colors">
+Do not use raw Tailwind color classes (`bg-zinc-800`, `text-red-500`) in a screen or a module: they break the dark theme and ignore your primary. Always go through the tokens (`bg-primary`, `text-muted-foreground`…).
+</Callout>
+
+## The dark theme
+
+By default the theme follows the visitor’s system setting. Anyone can change it with the theme button (Light, Dark, System); their choice is remembered from one visit to the next. There is nothing to enable: each color just has to be defined in the `.dark` block.
+
+## The sharing image
+
+When a link to your site is shared, the preview shows `apps/web/public/og-default.png`: your title and description (`app.metadata.title` and `app.metadata.description`) on the design system’s colors. After changing the name or the colors, regenerate it:
+
+```bash
+npx tsx scripts/og-image.ts
+```
+
+The command uses the Chromium browser installed for the tests. If it is missing, install it first with `pnpm exec playwright install chromium`. **You should see** `Image Open Graph écrite : …/og-default.png (1200×630)`.
+
+## The fonts
+
+The fonts (Geist Sans and Geist Mono) are served by your application, never by an external service. Changing them is a code change (`apps/web/app/layout.tsx`). Do not load a font from a service like Google Fonts: it would be a third-party source, to declare in [security](/en/configurer/securite) and subject to cookie consent.
+
+<Callout type="info" title="What is not included">
+No logo or favicon slot, no theme editor, no themes beyond light and dark. The design system does not yet have a per-page sharing image template, nor several components (form, steps, confirmation of an irreversible action): these gaps are tracked in [issue #152](https://github.com/oliviermattei/poc-next/issues/152).
+</Callout>

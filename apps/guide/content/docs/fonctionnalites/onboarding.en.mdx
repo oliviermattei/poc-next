@@ -1,8 +1,57 @@
 ---
 title: "Onboarding"
-description: "The welcome journey for your new clients."
+description: "The welcome journey a new client goes through before the dashboard."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+## In one sentence
 
-This page is being written: its content arrives in an upcoming ticket.
+The `onboarding` module greets each new client with a short journey ("Welcome") that helps them choose their name, create their organization and pick a plan, before they reach the dashboard.
+
+## What your clients see
+
+The screen lives at `/app/onboarding` (prefixed with the language when the `i18n` module is enabled). As long as the journey is not finished, a client who opens the application (`/app`) is sent back to it.
+
+The steps **depend on the enabled modules**:
+
+| Step | Required? | Offered when | What happens there |
+|---|---|---|---|
+| "Your profile" | **yes** | always | choose the name others will see; the picture too if the `storage` module is enabled |
+| "Your organisation" | no ("Skip this step") | the `organizations` module is enabled **and** the client does not belong to any organization yet | "Create an organisation" |
+| "Your plan" | no ("Skip this step") | the `billing` module is enabled | "See the plans"; the step is cleared as soon as the client holds a plan |
+
+Rules the module enforces:
+
+- **A required step cannot be skipped**, nor validated without being filled in: the client sees "This step is required: fill it in to continue.".
+- **A client invited into an organization** does not get the "Your organisation" step: they already have one.
+- **Once finished, the journey never comes back**, even if you later enable a module that adds a step.
+- A module disabled afterwards removes its step without blocking anyone.
+
+## Enable or disable
+
+```bash
+pnpm ks toggle onboarding
+```
+
+- The module needs `auth` (always enabled).
+- **Disabled**: after sign-up or sign-in, the client lands directly on the dashboard; `/app/onboarding` answers 404. Progress already recorded is kept.
+
+## Configure
+
+Nothing to set in `config/`. Steps are not declared in a configuration file: they are **derived** from the enabled modules by `apps/web/lib/onboarding.ts`. To remove a step, disable the module that carries it (see [Modules](/en/fonctionnalites)). Adding a step of your own means editing that file.
+
+The screen’s texts ("Welcome", step titles and descriptions) are in the module’s catalogues, `packages/modules/onboarding/src/messages/fr.json` and `en.json`.
+
+## Check that it works
+
+1. Create a new account at `http://localhost:3000/en/sign-up` and verify the address (the email is in `apps/web/.mail/` locally).
+2. Sign in. You should land on the "Welcome" screen, at the "Your profile" step.
+3. Click "Continue" without changing the name: the screen should refuse with the required-step message. Enter a name, then "Continue".
+4. Skip or clear the following steps. At the end, you should land on the dashboard, under `/en/app`.
+5. Sign out then sign in again: you should land directly on the dashboard.
+
+<Callout type="info" title="What is not included">
+- **No step editor**: the journey is changed in code (`apps/web/lib/onboarding.ts`).
+- **No guided tour** of the interface and no scheduled welcome emails.
+- **No way back to the journey** once finished.
+- Known limit: on a phone screen, the cookie banner might hide the required-step alert ([#141](https://github.com/oliviermattei/poc-next/issues/141)).
+</Callout>

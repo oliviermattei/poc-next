@@ -3,6 +3,55 @@ title: "Services"
 description: "One service, one provider, an explicit local mode: the principle and the summary."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+A **service** is an external provider your SaaS calls: a database, email sending, payments, file storage, background jobs, analytics, error tracking, sign-in with a Google or GitHub account. This part explains how to connect each one, step by step.
 
-This page is being written: its content arrives in an upcoming ticket.
+## The principle: one service, one provider, an explicit local mode
+
+Three rules apply to every service.
+
+1. **A single provider per service.** The boilerplate talks to one specific provider (Stripe for payments, Resend for email…). There is no second option to configure: this is a deliberate choice that keeps the code simple.
+2. **A local mode, which you turn on yourself.** To start without any account, each essential service has a local mode, enabled by an environment variable (for example `EMAIL_LOCAL_CAPTURE=1`). `.env.example` already enables them: a fresh clone runs without any key. The local mode is **never** guessed from `NODE_ENV` or from a missing key: you choose it.
+3. **A clear choice, or the application refuses to start.** For an essential service you need either the provider’s keys or the local mode. Both at once, or neither, stop the startup with a message that **names the variable** at fault. This is on purpose: an application that pretends to send an email or collect a payment would be worse than one that refuses to start.
+
+Two services are exceptions to rule 3: **PostHog** and **Sentry**. Without a key they **degrade** instead of refusing: nothing is measured, no error is reported, and the application works normally. So they have no local mode.
+
+Three local modes are also **refused at startup in production** (`NODE_ENV=production`), because they would be dangerous: simulated payments (`PAYMENTS_LOCAL_MODE`), the development sign-in provider (`OAUTH_LOCAL_PROVIDER`) and disk storage (`STORAGE_LOCAL_DIRECTORY`).
+
+## Where to put the variables
+
+- **Locally**: in the `.env` file at the root of the repository (copied from `.env.example`). Restart `pnpm dev` after each change.
+- **In production**: in your host’s environment variables, never in the repository. See [Deploy](/en/deployer).
+
+The full list of variables, with their role and an example, is on the [Environment variables](/en/configurer/variables-d-environnement) page.
+
+## The summary
+
+“Module” means the feature that uses the service. When that module is turned off (see [Features](/en/fonctionnalites)), the service has nothing left to configure.
+
+| Service | Module | Variables | Local mode | With neither key nor local mode |
+|---|---|---|---|---|
+| [PostgreSQL](/en/services/postgresql) | all (the application’s database) | `DATABASE_URL` | the database from `docker-compose.yml` | refuses to start |
+| [Resend](/en/services/resend) | all (sign-in, invitation, notification emails) | `RESEND_API_KEY`, `EMAIL_FROM` | `EMAIL_LOCAL_CAPTURE=1` | refuses to start |
+| [Stripe](/en/services/stripe) | `billing` | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | `PAYMENTS_LOCAL_MODE=1` (refused in production) | refuses to start, module on |
+| [S3 storage](/en/services/stockage-s3) | `storage` | `STORAGE_S3_BUCKET`, `STORAGE_S3_REGION`, `STORAGE_S3_ACCESS_KEY_ID`, `STORAGE_S3_SECRET_ACCESS_KEY`, `STORAGE_S3_ENDPOINT` | `STORAGE_LOCAL_DIRECTORY=.storage` (refused in production) | refuses to start, module on |
+| [Inngest](/en/services/inngest) | `jobs` | `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`, `INNGEST_BASE_URL` | `JOBS_LOCAL_RUNNER=1` | refuses to start, module on |
+| [PostHog](/en/services/posthog) | `analytics` | `POSTHOG_KEY`, `POSTHOG_HOST` | none | degrades: nothing is measured |
+| [Sentry](/en/services/sentry) | `analytics` | `SENTRY_DSN`, `SENTRY_RELEASE` | none | degrades: no error is reported |
+| [Google](/en/services/google) | `auth` | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | `OAUTH_LOCAL_PROVIDER=1` (refused in production) | no Google button |
+| [GitHub](/en/services/github) | `auth` | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | `OAUTH_LOCAL_PROVIDER=1` (refused in production) | no GitHub button |
+
+Rate limiting has no service of its own: it counts in your PostgreSQL database. See [Rate limiting](/en/fonctionnalites/limitation-de-debit).
+
+## Origins to declare in the security policy
+
+The application sends a Content Security Policy (CSP) that, by default, allows **no** third-party origin. When your customers’ **browser** must talk directly to a provider, its origin must be added in `config/security.ts`, otherwise the application refuses to start and says so. Two services are concerned:
+
+- **S3 storage**: the bucket’s origin, field `connect`;
+- **PostHog**: the value of `POSTHOG_HOST`, fields `connect` and `img`.
+
+The other services are called by the server, or through a redirect (Stripe, Google, GitHub): nothing to declare. Details are on the [Security](/en/configurer/securite) page.
+
+<Callout type="warn" title="What is not included">
+- No second provider per service: no SMTP sending, no payment method other than Stripe, no background-job tool other than Inngest. See [What the boilerplate does not do](/en/reference/ce-que-le-boilerplate-ne-fait-pas).
+- Security-policy origins are declared in a file, not through an environment variable: a Docker image with storage or PostHog does not start on its variables alone ([issue #144](https://github.com/oliviermattei/poc-next/issues/144)).
+</Callout>

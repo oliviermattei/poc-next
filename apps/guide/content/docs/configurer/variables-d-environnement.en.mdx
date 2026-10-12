@@ -3,6 +3,174 @@ title: "Environment variables"
 description: "Every variable: its role, whether it is required, an example and its module."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+An **environment variable** is a setting the application reads at startup, outside the code: a database URL, an API key, your site’s URL. They are kept apart from the code because they change from one environment to another (your machine, production) and because some of them are secret.
 
-This page is being written: its content arrives in an upcoming ticket.
+- **Locally**, they live in the `.env` file at the root of the repository, created by copying `.env.example`.
+- **In production**, you enter them in your host’s interface (or in a `.env.production` file next to `docker-compose.prod.yml`): see [Deploy](/en/deployer).
+
+This page lists **every** variable the application reads: the 34 of the environment schema (`packages/config/src/env.ts`), then the 2 reserved for the build, then those that only tools read.
+
+## Rules to know before filling it in
+
+1. **Everything is checked at startup.** A missing or malformed variable stops the application with a message that **names it**, for example `- APP_URL: must be an absolute http(s) URL`.
+2. **An empty variable counts as absent.** `RESEND_API_KEY=` (nothing after the equals sign) is treated as if the line did not exist.
+3. **Each service is chosen explicitly**: either you give the provider’s key, or you enable its local mode (`EMAIL_LOCAL_CAPTURE=1`, `PAYMENTS_LOCAL_MODE=1`…). **Both at once, or neither, stop the startup.** The boilerplate never switches to a local mode on its own.
+4. **Some come in pairs or groups** (a key and its secret): setting one without the other stops the startup and names the missing one.
+5. **A flag is written `1`, and only `1`.** `true`, `yes` or `on` are refused.
+6. **A variable already exported in your terminal wins over the `.env` file.**
+
+<Callout type="warn" title="Never commit .env">
+`.env` holds your secrets. It is ignored by git: never copy it into the repository, a ticket or a conversation with an AI. `.env.example` only holds example values.
+</Callout>
+
+## Core: database, authentication, address
+
+| Variable | Role | Required? | Example | Module |
+|---|---|---|---|---|
+| `NODE_ENV` | Run mode: `development`, `test` or `production`. In `production`, the dangerous local modes are refused. | No (defaults to `development`). The Docker image sets `production`. | `production` | core |
+| `DATABASE_URL` | PostgreSQL connection string. | **Yes**, always. | `postgres://postgres:postgres@localhost:5432/app` | core |
+| `AUTH_SECRET` | Secret that signs sessions and tokens. At least 32 characters. Generate it with `openssl rand -base64 32`, one per environment. | **Yes** for the application (the migration command does without it). | output of `openssl rand -base64 32` | `auth` (core) |
+| `APP_URL` | Public address of your site. Builds the links sent by email. Never inferred from the request. | **Yes** for the application. | `https://example.com` | `auth` (core) |
+| `APP_HOST` | Separate host for the application (a subdomain of the `APP_URL` host). Empty: everything is served on `APP_URL`. | No. | `app.example.com` | `auth` (core) |
+
+<Callout type="warn" title="APP_HOST: tested locally only">
+Serving the site and the application on two hosts has only been verified locally ([issue #73](https://github.com/oliviermattei/poc-next/issues/73)). Leave `APP_HOST` empty in production until you have read [Domain and two hosts](/en/deployer/domaine-et-deux-hotes).
+</Callout>
+
+## Emails
+
+| Variable | Role | Required? | Example | Module |
+|---|---|---|---|---|
+| `EMAIL_LOCAL_CAPTURE` | Local mode: emails are not sent, they are written as HTML files in `apps/web/.mail/`. | Choose **this variable or** `RESEND_API_KEY`. | `1` | core (emails) |
+| `RESEND_API_KEY` | Resend API key: emails are really sent. | Choose **this variable or** `EMAIL_LOCAL_CAPTURE`. | `re_…` | core (emails) |
+| `EMAIL_FROM` | Sender of the emails: `address` or `Name <address>`. The domain must be verified with Resend. | **Yes** as soon as `RESEND_API_KEY` is set. | `My SaaS <hello@example.com>` | core (emails) |
+
+See [Resend](/en/services/resend) and [Emails](/en/configurer/e-mails).
+
+## Sign-in with Google and GitHub
+
+| Variable | Role | Required? | Example | Module |
+|---|---|---|---|---|
+| `GOOGLE_CLIENT_ID` | Google OAuth application id. | No. Goes **with** `GOOGLE_CLIENT_SECRET`. | `1234-abcd.apps.googleusercontent.com` | `auth` |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth application secret. | No. Goes **with** `GOOGLE_CLIENT_ID`. | (copied from Google) | `auth` |
+| `GITHUB_CLIENT_ID` | GitHub OAuth application id. | No. Goes **with** `GITHUB_CLIENT_SECRET`. | (copied from GitHub) | `auth` |
+| `GITHUB_CLIENT_SECRET` | GitHub OAuth application secret. | No. Goes **with** `GITHUB_CLIENT_ID`. | (copied from GitHub) | `auth` |
+| `OAUTH_LOCAL_PROVIDER` | Local mode: a fake provider that signs in without a password to the test address `local@example.test`. **Refused with `NODE_ENV=production`** and refused if a Google or GitHub key is set. | No. | `1` | `auth` |
+
+Without any of these variables, no external sign-in button appears and the application starts normally. See [Google](/en/services/google) and [GitHub](/en/services/github).
+
+## Administration
+
+| Variable | Role | Required? | Example | Module |
+|---|---|---|---|---|
+| `SUPERADMIN_EMAIL` | Address of the account that becomes the **first** superadmin (access to the `/console`). The account must exist: sign up with this address first. Once a superadmin exists in the database, changing this variable designates no one. | No (without it, a startup warning names it, and the console answers 404 to everyone). | `you@example.com` | `admin` |
+
+## Payment
+
+| Variable | Role | Required? | Example | Module |
+|---|---|---|---|---|
+| `PAYMENTS_LOCAL_MODE` | Local mode: simulated payment, no call to Stripe. **Grants a subscription without payment**: refused with `NODE_ENV=production`. | `billing` module enabled: choose **this variable or** the Stripe keys. | `1` | `billing` |
+| `STRIPE_SECRET_KEY` | Stripe secret key. | `billing` module enabled: choose the keys **or** the local mode. Goes **with** `STRIPE_WEBHOOK_SECRET`. | `sk_test_…` then `sk_live_…` | `billing` |
+| `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret. URL to declare at Stripe: `<APP_URL>/api/modules/billing/webhook`. | Goes **with** `STRIPE_SECRET_KEY`. | `whsec_…` | `billing` |
+| `PAYMENTS_RECORDED_EVENTS` | Folder of recorded Stripe events, replayed by an automated recipe. | No. **Never set by hand.** | (leave empty) | `billing` |
+
+See [Stripe](/en/services/stripe).
+
+## File storage
+
+| Variable | Role | Required? | Example | Module |
+|---|---|---|---|---|
+| `STORAGE_LOCAL_DIRECTORY` | Local mode: files (avatars) are written to disk, in this folder. **Refused with `NODE_ENV=production`.** | `storage` module enabled: choose **this folder or** an S3 bucket. | `.storage` | `storage` |
+| `STORAGE_S3_BUCKET` | Bucket name. | `storage` module enabled, without local mode. Goes with the next three. | `my-saas-files` | `storage` |
+| `STORAGE_S3_REGION` | Bucket region. | Same. | `eu-west-3` | `storage` |
+| `STORAGE_S3_ACCESS_KEY_ID` | Access key id. | Same. | (copied from the provider) | `storage` |
+| `STORAGE_S3_SECRET_ACCESS_KEY` | Access key secret. | Same. | (copied from the provider) | `storage` |
+| `STORAGE_S3_ENDPOINT` | Service address, for an S3-compatible provider other than AWS. Absent with AWS. | No. | `https://<account>.r2.cloudflarestorage.com` | `storage` |
+
+With a real bucket, its origin must also be declared in `config/security.ts`, or the startup fails and names it: see [Security](/en/configurer/securite) and [S3 storage](/en/services/stockage-s3).
+
+## Background jobs
+
+| Variable | Role | Required? | Example | Module |
+|---|---|---|---|---|
+| `JOBS_LOCAL_RUNNER` | Local mode: jobs run in memory, without a service. They do not survive a restart, and two instances would each run the same schedule. | `jobs` module enabled: choose **this variable or** the Inngest keys. | `1` | `jobs` |
+| `INNGEST_EVENT_KEY` | Inngest event key. | `jobs` module enabled, without local mode. Goes **with** `INNGEST_SIGNING_KEY`. | (copied from Inngest) | `jobs` |
+| `INNGEST_SIGNING_KEY` | Signing key of Inngest’s calls to your application. URL to declare: `<APP_URL>/api/modules/jobs/inngest`. | Goes **with** `INNGEST_EVENT_KEY`. | (copied from Inngest) | `jobs` |
+| `INNGEST_BASE_URL` | Address of an Inngest development server. Empty: the Inngest service. | No. | `http://localhost:8288` | `jobs` |
+
+See [Inngest](/en/services/inngest).
+
+## Analytics and error tracking
+
+| Variable | Role | Required? | Example | Module |
+|---|---|---|---|---|
+| `POSTHOG_KEY` | PostHog project key. Without it, no measurement is sent, and the application runs. | No. Goes **with** `POSTHOG_HOST`. | `phc_…` | `analytics` |
+| `POSTHOG_HOST` | PostHog origin for your region, without a trailing slash. Also declare it in `config/security.ts` (`connect` and `img`). | Goes **with** `POSTHOG_KEY`. | `https://eu.i.posthog.com` | `analytics` |
+| `SENTRY_DSN` | Sentry project address. Without it, no error is reported, and the application runs. | No. | `https://abc123@o0.ingest.sentry.io/0` | `analytics` |
+| `SENTRY_RELEASE` | Name of the deployed version, written into each error. Must match the one used for the uploaded source maps. | No. | `2026-10-13` or the deployed commit | `analytics` |
+
+See [PostHog](/en/services/posthog) and [Sentry](/en/services/sentry).
+
+## Test probes
+
+| Variable | Role | Required? | Example | Module |
+|---|---|---|---|---|
+| `I18N_MISSING_KEY_PROBE` | Mounts a test route (`/api/i18n-probe`) used by the automated journeys. | No. **Never set by hand.** | (leave empty) | test tooling |
+| `CONSENT_SCRIPT_PROBE` | Declares two demonstration scripts to test the cookie banner. | No. **Never set by hand.** | (leave empty) | test tooling (`consent`) |
+
+## Reserved for the build (outside the schema)
+
+These two variables disable the environment check. They are not in the schema; the build guard reads them.
+
+| Variable | Role | Required? | Who sets it |
+|---|---|---|---|
+| `NEXT_PHASE` | Signals that Next.js is building the application. | No. **Never set by hand**: it would skew build detection. | `next build` itself |
+| `SKIP_ENV_VALIDATION` | At `1`, skips every environment check. | No. **Never set it on a running server**: the application would start with no guarantee about its variables. Reserved for the command of an offline build. | the build command, if needed |
+
+## Read by tools only
+
+These variables are not read by the application itself:
+
+| Variable | Read by | Role |
+|---|---|---|
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT` | `docker-compose.yml` (local database) | Credentials and port of the development database. Must stay consistent with `DATABASE_URL`. |
+| `APP_PORT` | `docker-compose.prod.yml` | Host port on which the application is published (3000 by default). |
+| `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` | `pnpm sourcemaps:release` | Uploading source maps to Sentry. `SENTRY_AUTH_TOKEN` is a secret: never give it to the application or to an image build. |
+
+<Callout type="error" title="Never set these by hand">
+`NEXT_PHASE`, `SKIP_ENV_VALIDATION` (outside the build command), `PAYMENTS_RECORDED_EVENTS`, `I18N_MISSING_KEY_PROBE` and `CONSENT_SCRIPT_PROBE` belong to the tooling. And in production, never set `PAYMENTS_LOCAL_MODE`, `OAUTH_LOCAL_PROVIDER` or `STORAGE_LOCAL_DIRECTORY`: the application refuses to start with them under `NODE_ENV=production`, because they would grant a free subscription, a password-less sign-in or files lost on redeploy.
+</Callout>
+
+## Check your file
+
+<Steps>
+<Step>
+
+If you have not done it yet, create your `.env` from the example:
+
+```bash
+cp .env.example .env
+```
+
+</Step>
+<Step>
+
+Start the application:
+
+```bash
+pnpm dev
+```
+
+**You should see** `✓ Ready`. If a variable is wrong, the startup stops on an `Invalid environment variables:` message followed by one line per faulty variable, or on a sentence that names the variables to choose from (for example “Aucun mailer configuré : renseignez RESEND_API_KEY (avec EMAIL_FROM) … ou EMAIL_LOCAL_CAPTURE=1 …” — these messages are in French).
+
+</Step>
+<Step>
+
+Fix the named variable, save, run `pnpm dev` again. Repeat until `✓ Ready`.
+
+</Step>
+</Steps>
+
+<Callout type="info" title="What is not included">
+No secrets manager is provided: in production, use your host’s. And the environment is not always enough: the origin of an S3 bucket and the PostHog host are **also** declared in `config/security.ts`, so the image does not start on its variables alone when these services are connected ([issue #144](https://github.com/oliviermattei/poc-next/issues/144)).
+</Callout>

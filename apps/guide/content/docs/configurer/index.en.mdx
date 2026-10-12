@@ -3,6 +3,77 @@ title: "Configuration files"
 description: "The files of the config/ folder at a glance."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+Almost everything that sets your SaaS apart from another project built on the same boilerplate is set in two places:
 
-This page is being written: its content arrives in an upcoming ticket.
+- the **`config/`** folder, at the root of the repository: what your product does (modules, plans, site copy, languages, security);
+- the **`.env`** file, also at the root: secrets and connections to external services (database, Stripe, Resend…). See [Environment variables](/en/configurer/variables-d-environnement).
+
+The files in `config/` are TypeScript files: you open them in your editor, change a value, save. They **declare** and execute nothing: the application reads and checks them.
+
+## The eight files in `config/`
+
+| File | What it decides | Guide page |
+|---|---|---|
+| `config/features.ts` | the available modules and the ones that are **enabled** | [Modules and profiles](/en/configurer/modules) |
+| `config/profiles.ts` | the test profiles that disable modules (the `minimal` profile) | [Modules and profiles](/en/configurer/modules) |
+| `config/billing.ts` | your plans and their prices | [Plans and prices](/en/configurer/offres-et-prix) |
+| `config/gating.ts` | the features reserved for a paid plan | [Gated features](/en/configurer/fonctionnalites-reservees) |
+| `config/marketing.ts` | the home page sections, the legal pages, the contact form address | [Site and legal pages](/en/configurer/site-et-pages-legales) |
+| `config/i18n.ts` | the application languages and the default language | [Languages and copy](/en/configurer/langues) |
+| `config/notifications.ts` | the notification types, their channels and the text of their email | [Notifications](/en/configurer/notifications) |
+| `config/security.ts` | the third-party sources the browser may use, rate limits, captcha | [Security](/en/configurer/securite) |
+
+Two settings live outside `config/`, because they belong to the design system and to the emails: see [Appearance](/en/configurer/apparence) and [Emails](/en/configurer/e-mails).
+
+## What happens when you make a mistake
+
+The boilerplate prefers to **refuse to start** rather than run with a wrong configuration. A mistake in one of these files has one of three effects:
+
+1. **your editor underlines the line in red**: for example, a misspelled module id in `config/features.ts` does not compile;
+2. **`pnpm dev` stops at startup with a message that names the culprit**: for example, a plan without a billing interval in `config/billing.ts`, or a home page section of an unknown kind;
+3. **`pnpm test` fails and names the missing key**: for example, a section added to the home page without its text in one of the languages.
+
+Read the whole message: it almost always says which file and which line to fix. If an AI is helping you, paste the message to it as is.
+
+## The routine after each change
+
+<Steps>
+<Step>
+
+**Save the file.** If your editor underlines something in red, fix it first.
+
+</Step>
+<Step>
+
+**Restart the application.** In the terminal running `pnpm dev`, press `Ctrl + C`, then start it again:
+
+```bash
+pnpm dev
+```
+
+The configuration is checked at startup: a restart guarantees your change is read again and validated.
+
+**You should see** Next.js’s `✓ Ready` line, with no error message above it.
+
+</Step>
+<Step>
+
+**Open the relevant screen** in your browser (each Guide page says which one) and check that the change appears.
+
+</Step>
+<Step>
+
+**Run the tests** before shipping:
+
+```bash
+pnpm test
+```
+
+**You should see** the suite finish with no failure (no `failed` in the summary).
+
+</Step>
+</Steps>
+
+<Callout type="info" title="What this folder does not contain">
+No secrets: API keys, passwords and database URLs go in `.env`, never in `config/`, which is versioned with your code. And no logic: to add a feature that does not exist, you have to write a module (see [Working with an AI](/en/demarrer/travailler-avec-une-ia)).
+</Callout>

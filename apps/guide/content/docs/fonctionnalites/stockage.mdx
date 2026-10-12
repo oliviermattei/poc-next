@@ -1,8 +1,60 @@
 ---
-title: "Stockage de fichiers"
-description: "Le téléversement de fichiers, comme l’avatar."
+title: "Stockage"
+description: "Le téléversement de fichiers, aujourd’hui la photo de profil, sur disque en local ou dans un seau S3."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+## En une phrase
 
-Cette page est en cours de rédaction : son contenu arrive dans un prochain ticket.
+Le module `storage` permet à vos clients de téléverser une photo de profil, stockée sur le disque en développement et dans un seau compatible S3 en production.
+
+## Ce que voient vos clients
+
+- **Une carte « Photo de profil »** dans Réglages → Profil (`/app/settings/profile`) : choisir une image, la remplacer, la retirer.
+- **Leur photo dans le menu de compte** de l’application, à la place de leurs initiales.
+
+Formats acceptés : PNG, JPEG et WebP, jusqu’à 2 Mo. Le contenu réel du fichier est vérifié après l’envoi : un SVG, un GIF ou un PDF renommé en `.png` est refusé.
+
+Le fichier part directement du navigateur vers le stockage, sans traverser votre serveur ; il est ensuite servi par votre application. Remplacer la photo efface l’ancienne. Supprimer un compte efface aussi son fichier, et l’export des données du client l’inclut.
+
+## Activer ou couper
+
+```bash
+pnpm ks toggle storage
+```
+
+Le module dépend de `auth` (toujours activé). Il possède une table, `storage_file`.
+
+Module coupé : aucune variable à renseigner, la carte « Photo de profil » disparaît, et les initiales remplacent la photo partout, sans erreur.
+
+## Configurer
+
+Il faut choisir entre deux modes ; sans aucun des deux, l’application refuse de démarrer en les nommant, et les deux ensemble sont refusés.
+
+| Mode | Variables | Pour qui |
+|---|---|---|
+| **Sur disque** | `STORAGE_LOCAL_DIRECTORY=.storage` (valeur livrée dans `.env.example`) | le développement : les fichiers vont dans `apps/web/.storage/`, ignoré par git |
+| **Seau S3** | `STORAGE_S3_BUCKET`, `STORAGE_S3_REGION`, `STORAGE_S3_ACCESS_KEY_ID`, `STORAGE_S3_SECRET_ACCESS_KEY`, plus `STORAGE_S3_ENDPOINT` hors d’AWS (Cloudflare R2, MinIO, DigitalOcean Spaces) | la production |
+
+Le mode sur disque est **refusé en production** (`NODE_ENV=production`) : le disque d’un serveur disparaît au redéploiement, et les photos avec lui.
+
+Avec un seau, deux gestes en plus :
+
+1. **Déclarer l’origine du seau** dans `config/security.ts`, liste `connect` (par exemple `https://s3.eu-west-3.amazonaws.com`, ou l’adresse de `STORAGE_S3_ENDPOINT`). Sans elle, l’application refuse de démarrer en nommant l’origine attendue.
+2. **Poser une règle d’expiration** de 24 heures sur le préfixe `pending/` du seau, qui ramasse les envois jamais confirmés.
+
+Le pas à pas complet est sur la page [Stockage S3](/fr/services/stockage-s3).
+
+## Vérifier que ça marche
+
+1. Gardez `STORAGE_LOCAL_DIRECTORY=.storage` dans `.env` et lancez `pnpm dev`.
+2. Connectez-vous et ouvrez Réglages → Profil. Vous devez voir la carte « Photo de profil ».
+3. Choisissez une image PNG ou JPEG de moins de 2 Mo. Elle doit apparaître sur la carte et dans le menu de compte.
+4. Un fichier apparaît dans `apps/web/.storage/`.
+5. Essayez un fichier SVG : il doit être refusé avec un message.
+
+<Callout title="Ce qui n’est pas inclus">
+- **Seule la photo de profil** utilise le stockage. Pas de pièces jointes, pas de galerie, pas de photo d’organisation ([#143](https://github.com/oliviermattei/poc-next/issues/143)).
+- **Pas de redimensionnement** ni de recadrage des images.
+- **Limite connue** : si l’enregistrement en base échoue juste après l’envoi, un fichier peut rester dans le seau sans être rattaché à personne, et aucune commande ne le retrouve encore ([#142](https://github.com/oliviermattei/poc-next/issues/142)).
+- **Limite connue** : l’origine du seau se déclare dans `config/security.ts`, un fichier du code — une image déjà construite ne peut pas la recevoir par une simple variable ([#144](https://github.com/oliviermattei/poc-next/issues/144)).
+</Callout>
