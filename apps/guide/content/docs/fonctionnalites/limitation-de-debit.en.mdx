@@ -1,8 +1,69 @@
 ---
 title: "Rate limiting"
-description: "The request cap on public entry points."
+description: "The counter that slows down bursts of attempts on sign-in, sign-up and public forms."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+## In one sentence
 
-This page is being written: its content arrives in an upcoming ticket.
+The `rate-limit` module counts the requests received by sensitive entry points (sign-in, sign-up, password reset, public forms, payment…) and politely refuses those beyond a threshold, to protect your clients against account theft by repeated attempts and your product against abuse.
+
+## What your clients see
+
+Nothing, as long as they stay under the thresholds. Beyond, the form shows for instance "Too many attempts. Try again in 3 minutes.". The wait shown comes from the server’s answer (an HTTP 429 response with the `Retry-After` header), rounded up to the minute.
+
+How it works, in short:
+
+- **Each threshold counts over a window** of time (for instance 5 minutes for sign-in, 1 hour for sign-up).
+- **Two counters per entry point**: one per **caller** (their IP address), generous, and one per **targeted account** (the email address entered), tight. The second one stops an attack spread over thousands of IP addresses.
+- **The counter is stored in your PostgreSQL database** (table `rate_limit_window`): it is shared by every instance of the application.
+- **If the database does not answer, rate limiting refuses** instead of letting requests through.
+- **Every public route** of the modules is covered automatically, with the `default` policy when it names no other. Routes reserved to signed-in accounts are covered when they declare a policy (data export, upload…).
+
+## Enable or disable
+
+`rate-limit` belongs to the **core**: it cannot be disabled, and `pnpm ks toggle rate-limit` refuses. **No environment variable disables rate limiting**, and a zero threshold is refused at startup rather than read as "no limit".
+
+## Configure
+
+Thresholds are set in `config/security.ts`, object `rateLimitPolicies`. Each policy has three values:
+
+| Field | Meaning |
+|---|---|
+| `windowSeconds` | the length of the window, in seconds |
+| `maxPerClient` | the number of passes allowed per caller in the window |
+| `maxPerSubject` | the number of passes allowed per targeted account, whatever the origin; `null` when the route targets no account |
+
+Shipped values for the most common ones:
+
+| Policy | Window | Per caller | Per targeted account |
+|---|---|---|---|
+| `signIn` (sign-in) | 5 min | 300 | 20 |
+| `signUp` (sign-up) | 1 h | 120 | 5 |
+| `passwordReset`, `magicLink` | 1 h | 120 | 5 |
+| `twoFactor` (two-factor code) | 5 min | 60 | 4 |
+| `invitation` | 1 h | 120 | 5 |
+| `publicForm` (contact, newsletter, waitlist) | 10 min | 60 | — |
+| `dataExport` (data export) | 1 h | 20 | — |
+| `webhook` (Stripe, etc.) | 1 min | 600 | — |
+| `default` (any other public route) | 1 min | 120 | — |
+
+The full list, with the reason for each value, is in the comments of `config/security.ts`. To raise a threshold, change only the number, then restart the application. The [Security](/en/configurer/securite) page details this file.
+
+<Callout type="warn" title="Behind a proxy, the IP address must be trustworthy">
+The per-caller counter reads the `x-forwarded-for` header, which anyone can write. In production, put the application behind a reverse proxy that **overwrites** this header. Otherwise, every visitor shares a single per-caller counter (see [Docker and Coolify](/en/deployer/docker-et-coolify)). The per-account counter does not depend on any header.
+</Callout>
+
+## Check that it works
+
+1. Open `http://localhost:3000/en/sign-in`.
+2. Enter the same address and a wrong password 21 times in a row (the per-account threshold is 20 per 5-minute window).
+3. On the 21st attempt, you should see "Too many attempts. Try again in … minutes." instead of the usual refusal.
+
+To clear the counters locally, wait for the window to end: a scheduled job erases closed windows every 10 minutes, and each request also cleans up along the way.
+
+<Callout type="info" title="What is not included">
+- **No captcha**: it is declared in `config/security.ts` (`captcha`, disabled) but no provider is shipped ([#151](https://github.com/oliviermattei/poc-next/issues/151)).
+- **Routes served outside the modules are not limited**: the `/api/health` health probe, the `/api/csp-report` report collector, and three test routes that answer 404 in production.
+- **No setting for the number of trusted proxies**: the caller is read from the first hop of `x-forwarded-for` ([#78](https://github.com/oliviermattei/poc-next/issues/78)).
+- Some forms of the application do not show the wait message correctly yet ([#110](https://github.com/oliviermattei/poc-next/issues/110)).
+</Callout>

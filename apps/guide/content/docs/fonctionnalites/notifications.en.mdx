@@ -1,8 +1,64 @@
 ---
 title: "Notifications"
-description: "The in-app notification center and your clients’ preferences."
+description: "The in-app notification center and each client’s preferences."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+## In one sentence
 
-This page is being written: its content arrives in an upcoming ticket.
+The `notifications` module gives your clients a **notification center** in the application, with an unread counter, and lets them choose, type by type, whether they are told in the application, by email, or both.
+
+## What your clients see
+
+| Element | Where | What happens there |
+|---|---|---|
+| Bell and counter | top bar of the application | see the number of unread notifications, open the center |
+| Notification center | `/app/notifications` | read the paginated list, "Mark all as read", mark one notification as read |
+| Settings › Notifications | `/app/settings/notifications` | turn each channel ("In the app", "By email") on or off for each type |
+
+When the `i18n` module is enabled, every address starts with the language (`/fr/…`, `/en/…`).
+
+### The shipped types
+
+Types are declared in `config/notifications.ts`. Three are shipped:
+
+| Type | Label on screen | Default | Who sends it |
+|---|---|---|---|
+| `organization.member-joined` | "New member" | app yes, email no | the `organizations` module, when someone joins an organization: every member already there is told |
+| `billing.trial-ending` | "Trial ending soon" | app yes, email yes | a scheduled job of the `billing` module, three days before a trial ends |
+| `account.security-alert` | "Security alert" | app yes, email yes | **nobody for now**: the type is ready, but no event emits it yet ([#113](https://github.com/oliviermattei/poc-next/issues/113)) |
+
+The counter is updated **when the client changes page**, not in real time.
+
+## Enable or disable
+
+```bash
+pnpm ks toggle notifications
+```
+
+- The module needs `auth` (always enabled).
+- **Disabled**: the bell, the center and the preferences section disappear (the addresses answer 404). Types declared in `config/notifications.ts` **are still sent by email** when their default says "email yes"; the others are no longer sent at all. Tables already created are kept.
+
+## Configure
+
+Everything happens in `config/notifications.ts`, detailed in [Configuring notifications](/en/configurer/notifications). For each type:
+
+- `channels`: the possible channels (`in_app`, `email`);
+- `defaults`: what a client who has set nothing receives;
+- `email`: the subject and text of the email, in French and English.
+
+Emails go through Resend (or local capture): see [Resend](/en/services/resend). The label shown on screen for each type lives in `packages/modules/notifications/src/messages/fr.json` and `en.json`.
+
+## Check that it works
+
+1. Run `pnpm db:seed` on a fresh database (see [First tour](/en/demarrer/premier-tour)): it creates demo notifications.
+2. Sign in with a demo account. The bell in the top bar should show a counter.
+3. Click the bell: you should land on the notification center and see the unread notifications.
+4. Click "Mark all as read", then change page: the counter should disappear.
+5. Open `/en/app/settings/notifications` and turn off "By email" for "New member": the setting should stay off after reloading.
+
+<Callout type="info" title="What is not included">
+- **No real time**: neither WebSocket nor automatic refresh. This is a scope choice (see [What the boilerplate does not do](/en/reference/ce-que-le-boilerplate-ne-fait-pas)).
+- **No mobile push notification**, nor SMS.
+- **No screen to send a notification by hand**: a type is emitted by the code that owns the event.
+- Known limits: the security alert has no emitter yet ([#113](https://github.com/oliviermattei/poc-next/issues/113)); the preferences screen needlessly loads the notification list ([#125](https://github.com/oliviermattei/poc-next/issues/125)); emails sent outside a request (by a scheduled job) do not know the client’s preferred language ([#128](https://github.com/oliviermattei/poc-next/issues/128)).
+</Callout>
