@@ -3,6 +3,67 @@ title: "Blog"
 description: "MDX articles with their RSS feed."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+## In one sentence
 
-This page is being written: its content arrives in an upcoming ticket.
+The `blog` module publishes your articles, written as MDX files in the repository, with a paginated list, a tag filter and an RSS feed.
+
+## What your customers see
+
+| Screen | Address | What it does |
+|---|---|---|
+| List | `/blog` | six articles per page, newest first, filterable by tag (`/blog?tag=…`) |
+| Article | `/blog/<slug>` | the article, if it exists in the page's language; otherwise 404 |
+| RSS feed | `/api/modules/blog/feed.xml` | one feed per language (`?locale=en` for English); it is announced in the page for feed readers |
+
+A “Blog” entry appears in the site header. Articles are added to `sitemap.xml` and allowed in `robots.txt`.
+
+When the `i18n` (languages) module is enabled, screen addresses are prefixed with the language: `/fr/blog`, `/en/blog`.
+
+## Enable or disable
+
+```bash
+pnpm ks toggle blog
+```
+
+The module depends on no other and has no table. Disabled, `/blog`, the articles and the feed answer 404, and the “Blog” entry disappears from the header.
+
+## Write an article
+
+Articles live in `content/blog/<language>/<slug>.mdx`, at the root of the repository. Examples are shipped: replace them with your own.
+
+1. Create the file `content/blog/fr/my-first-article.mdx`. The file name becomes the address: lowercase letters, digits and hyphens only.
+2. Paste this header, then your Markdown text below it:
+
+   ```mdx
+   ---
+   title: My first article
+   description: One sentence that sums up the article.
+   date: 2026-10-13
+   author: Your name
+   tags: [product]
+   ---
+
+   ## A subheading
+
+   Your text.
+   ```
+
+   All five fields are required; `date` is written `YYYY-MM-DD` and must be a real date. A sixth, optional field, `image: /my-image.png`, sets the social sharing image: it is a path on your site (the file goes in `apps/web/public/`). Without it, the site's default image is used. Any other field is refused.
+3. For the English version, create `content/blog/en/my-first-article.mdx` with the same name. An article with no English file simply does not appear in English.
+4. Articles are read at startup: restart `pnpm dev` to see the new one.
+
+## Check that it works
+
+1. Open http://localhost:3000/blog. You should see your article at the top of the list.
+2. Click it: you should see its title, date, author and text.
+3. Open http://localhost:3000/api/modules/blog/feed.xml: you should see an XML document containing your article's title.
+4. Run `pnpm build`. An invalid header makes the build fail and names the faulty file — on purpose: a broken article never reaches production.
+
+In production, a new article is published by redeploying the application.
+
+<Callout title="What is not included">
+- **No online editor or admin interface**: an article is a file in the repository, published by a deployment.
+- **No comments** on articles.
+- **No external image**: the sharing image must be served by your site.
+- **Known limit**: the RSS feed is checked by a feed parser, not by an official validator ([#150](https://github.com/oliviermattei/poc-next/issues/150)).
+</Callout>

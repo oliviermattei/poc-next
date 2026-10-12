@@ -1,8 +1,66 @@
 ---
 title: "Tâches de fond"
-description: "Les tâches asynchrones et planifiées."
+description: "L’exécution des tâches planifiées et différées des autres modules, en local ou avec Inngest."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+## En une phrase
 
-Cette page est en cours de rédaction : son contenu arrive dans un prochain ticket.
+Le module `jobs` fait tourner, hors du temps de réponse, les tâches que les autres modules déclarent : nettoyages réguliers, relances par e-mail, export des données d’un compte.
+
+## Ce qu’il fait tourner
+
+Vos clients ne voient pas ce module ; ils en voient les effets. Les tâches planifiées déclarées dans le projet livré (heures en UTC) :
+
+| Tâche | Module | Quand | Ce qu’elle fait |
+|---|---|---|---|
+| `data-export` | `auth` | toutes les 15 minutes, et à la demande | prépare l’export des données qu’un client demande depuis ses Réglages ; le passage toutes les 15 minutes reprend une demande restée en plan |
+| `purge-account` | `auth` | à la demande (armée chaque nuit à 4 h 17, sans effet) | efface un compte dont la suppression a été demandée |
+| `trial-ending-reminder` | `billing` | chaque jour à 9 h | relance par e-mail les clients dont l’essai se termine |
+| `impersonation-expiry` | `admin` | chaque heure, à la 23e minute | clôt les emprunts de session expirés de la console |
+| `sweep-closed-windows` | `rate-limit` | toutes les 10 minutes | efface les compteurs de limitation de débit périmés |
+| `sweep-job-runs` | `jobs` | chaque jour à 3 h 25 | efface le registre d’exécutions de plus de sept jours |
+
+Une tâche qui échoue sur une erreur passagère est retentée, jusqu’à trois tentatives au total, avec un délai croissant. Une même exécution n’a lieu qu’une fois, même si elle est déclenchée deux fois.
+
+## Deux façons de les exécuter
+
+Il faut en choisir une ; sans aucune des deux, l’application refuse de démarrer en nommant les trois variables.
+
+| Mode | Variables | Pour qui |
+|---|---|---|
+| **En mémoire** | `JOBS_LOCAL_RUNNER=1` (valeur livrée dans `.env.example`) | le développement, sans compte ni service |
+| **Inngest** | `INNGEST_EVENT_KEY` et `INNGEST_SIGNING_KEY` (et `INNGEST_BASE_URL` pour viser un serveur de développement Inngest) | la production |
+
+Les deux ensemble sont refusés. En mode Inngest, déclarez chez Inngest l’adresse de rappel `<APP_URL>/api/modules/jobs/inngest` ; elle n’accepte que les appels signés avec `INNGEST_SIGNING_KEY`. Le pas à pas est sur la page [Inngest](/fr/services/inngest).
+
+<Callout type="warn" title="Le mode en mémoire ne convient pas à une production à plusieurs instances">
+Sa file disparaît à chaque redémarrage, et deux instances exécuteraient chacune la même échéance. Passez à Inngest dès que votre application tourne sur plus d’un serveur.
+</Callout>
+
+## Activer ou couper
+
+```bash
+pnpm ks toggle jobs
+```
+
+Le module ne dépend d’aucun autre. Il possède une table, `job_run`, le registre d’exécutions.
+
+Module coupé :
+
+- **aucune variable à renseigner**, et le démarrage le signale dans le journal ;
+- une tâche demandée par un module (l’export des données, par exemple) **s’exécute tout de suite**, dans la requête qui la demande : le client attend plus longtemps, mais son droit à l’export est respecté ;
+- **les tâches planifiées ne s’exécutent plus** : plus de relance de fin d’essai, plus de nettoyage régulier.
+
+## Vérifier que ça marche
+
+1. Gardez `JOBS_LOCAL_RUNNER=1` dans `.env` et lancez `pnpm dev`.
+2. Connectez-vous, ouvrez Réglages → Profil, et demandez l’export de vos données dans « Vos données ».
+3. Dans le terminal de `pnpm dev`, vous devez voir une ligne `[job.started]` puis `[job.succeeded]` pour la tâche d’export. Une ligne `[job.failed]` donne la cause.
+4. Laissez tourner dix minutes : la tâche de nettoyage de la limitation de débit doit apparaître à son tour.
+
+<Callout title="Ce qui n’est pas inclus">
+- **Pas d’écran de suivi** des tâches dans votre SaaS : en mode Inngest, le suivi se fait chez Inngest ; en mode local, dans le journal.
+- **Pas d’autre fournisseur** qu’Inngest.
+- **Pas de planification à l’heure locale** : toutes les échéances sont en UTC.
+- **Pas de déclencheur purement « à la demande »** : une tâche à la demande est aussi armée sur un horaire, où elle ne fait rien ([#137](https://github.com/oliviermattei/poc-next/issues/137)).
+</Callout>

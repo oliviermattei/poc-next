@@ -3,6 +3,87 @@ title: "PostgreSQL"
 description: "La base de données, en local et chez un hébergeur compatible."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+## À quoi il sert
 
-Cette page est en cours de rédaction : son contenu arrive dans un prochain ticket.
+PostgreSQL est la base de données de votre SaaS : comptes, organisations, abonnements, notifications, et aussi les compteurs de la limitation de débit. **Tous les modules** l’utilisent, et l’application ne démarre pas sans elle. Le code y accède par Drizzle et le pilote standard `pg` : passer d’une base locale à une base hébergée ne change que la chaîne de connexion.
+
+Une seule variable : `DATABASE_URL`, une chaîne de connexion qui commence par `postgres://` ou `postgresql://`. Sans elle, ou mal formée, le démarrage s’arrête en la nommant.
+
+## Sans compte : la base locale dans Docker
+
+Le dépôt fournit un `docker-compose.yml` qui lance PostgreSQL 16 dans un conteneur. Rien à installer d’autre que Docker.
+
+1. Vérifiez que `.env` contient la chaîne livrée par `.env.example` :
+
+   ```bash
+   DATABASE_URL=postgres://postgres:postgres@localhost:5432/app
+   ```
+
+2. Lancez la base :
+
+   ```bash
+   docker compose up -d
+   ```
+
+3. Vérifiez qu’elle est prête :
+
+   ```bash
+   docker compose ps
+   ```
+
+   Vous devez voir le service `postgres` avec l’état `healthy` (sain).
+
+4. Créez les tables, puis les données de démonstration :
+
+   ```bash
+   pnpm db:migrate
+   pnpm db:seed
+   ```
+
+   `pnpm db:migrate` peut être relancée sans risque : une seconde exécution ne change rien.
+
+Les variables `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` et `POSTGRES_PORT` du `.env` ne sont lues que par `docker-compose.yml`. Si vous les changez, changez aussi `DATABASE_URL` pour qu’elle reste cohérente.
+
+## Chez un hébergeur
+
+Toute base **PostgreSQL 16 ou plus récente** convient. Neon, Supabase et Amazon RDS sont **compatibles** : ils parlent le protocole PostgreSQL standard, mais nous ne les avons pas testés nous-mêmes.
+
+1. **Créez une base** chez votre hébergeur, en choisissant PostgreSQL 16 ou plus.
+2. **Récupérez la chaîne de connexion** sur la page de connexion de la base, dans la console de l’hébergeur. Elle ressemble à :
+
+   ```bash
+   postgres://utilisateur:motdepasse@hote.exemple.com:5432/nom_de_la_base?sslmode=require
+   ```
+
+   Si l’hébergeur exige une connexion chiffrée, gardez le paramètre `sslmode=require` qu’il donne : le pilote le respecte.
+3. **Appliquez les migrations** sur cette base, depuis votre poste. Une variable passée sur la ligne de commande l’emporte sur le `.env` :
+
+   ```bash
+   DATABASE_URL='postgres://…' pnpm db:migrate
+   ```
+
+   Vous devez voir la commande se terminer sans erreur.
+4. **Branchez-la** : mettez la même valeur dans `DATABASE_URL`, dans le `.env` en local ou dans les variables de votre hébergeur en production.
+
+En production, les migrations tournent dans leur propre conteneur, avant que le trafic bascule : voir [Base de données en production](/fr/deployer/base-de-donnees-en-production).
+
+## Vérifier
+
+Avec l’application lancée (`pnpm dev`), ouvrez la sonde de santé :
+
+```bash
+curl http://localhost:3000/api/health
+```
+
+Vous devez obtenir `{"status":"ok","database":"connected"}`. Si la base est injoignable, la sonde répond `503` avec `"database":"unreachable"`, et la cause est écrite dans le journal du serveur.
+
+## Couper
+
+Impossible : la base est le socle de l’application. Sans `DATABASE_URL`, rien ne démarre. Seule la commande `pnpm db:migrate` se contente de cette seule variable.
+
+<Callout type="warn" title="Ce qui n’est pas inclus">
+- Aucun hébergeur n’est testé par nous : Neon, Supabase et Amazon RDS sont « compatibles », pas « intégrés ».
+- La taille du réservoir de connexions est fixée à 10 par processus, sans variable pour la changer, ce qui peut gêner sur une plateforme serverless ([issue #147](https://github.com/oliviermattei/poc-next/issues/147)).
+- Les sauvegardes ne sont pas faites par le boilerplate : elles se règlent chez votre hébergeur. Voir [Base de données en production](/fr/deployer/base-de-donnees-en-production).
+- `pnpm db:seed` refuse une base qui porte un compte qu’il n’a pas créé lui-même : il ne remplit jamais une base en service.
+</Callout>

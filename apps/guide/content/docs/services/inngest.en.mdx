@@ -3,6 +3,77 @@ title: "Inngest"
 description: "Background jobs: keys and local runner."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+## What it is for
 
-This page is being written: its content arrives in an upcoming ticket.
+Inngest runs your SaaS’s **background jobs**: what must not slow down a page (building a data export, for example) and what comes back on a schedule (the end-of-trial reminder, the expiry of impersonated sessions, cleaning up rate-limiting counters…). It is used by the `jobs` module (see [Background jobs](/en/fonctionnalites/taches-de-fond)).
+
+Inngest talks to your application in both directions:
+
+- **your server sends events** to Inngest with the event key (`INNGEST_EVENT_KEY`);
+- **Inngest calls your server** to run each job, at the address `<APP_URL>/api/modules/jobs/inngest`. These calls are signed, and your server checks them with the signing key (`INNGEST_SIGNING_KEY`).
+
+The application presents itself to Inngest under the identifier `killer-saas`.
+
+## Without an account: in-memory runner
+
+`.env.example` ships `JOBS_LOCAL_RUNNER=1`. Jobs run inside the application’s process, with no key or service, and scheduled jobs run with `pnpm dev` alone.
+
+This mode is not refused in production, but it has two limits:
+
+- the queue is **lost when the process restarts**;
+- with **two instances** of the application, each would run the same scheduled job.
+
+Keep it in production only on a single-instance deployment.
+
+## Create the account and get the keys
+
+Inngest must be able to reach your application over the Internet: these steps are done once the application is deployed at a public address.
+
+1. **Create an account** on inngest.com.
+2. **Copy the event key** from the dashboard.
+3. **Copy the signing key** from the dashboard.
+4. Connect them (next section) and redeploy the application.
+5. **Sync your application** in Inngest’s dashboard, giving it the address:
+
+   ```bash
+   <APP_URL>/api/modules/jobs/inngest
+   ```
+
+   Inngest calls this address and discovers your scheduled jobs.
+
+## Connect
+
+1. In your host’s variables (or in `.env`), fill in both keys and **remove** the in-memory runner:
+
+   ```bash
+   # JOBS_LOCAL_RUNNER=1
+   INNGEST_EVENT_KEY=…
+   INNGEST_SIGNING_KEY=…
+   INNGEST_BASE_URL=
+   ```
+
+2. Restart the application.
+
+The two keys go together: one without the other stops startup and names the missing one. A key **and** `JOBS_LOCAL_RUNNER=1` at the same time stop it too: you must choose.
+
+`INNGEST_BASE_URL` is used to target an Inngest development server instead of the service; empty, the application targets `https://inn.gs`. Leave it empty in production.
+
+Nothing to declare in `config/security.ts`: only your server talks to Inngest.
+
+## Verify
+
+1. After syncing, Inngest’s dashboard should list the `killer-saas` application and its scheduled functions.
+2. At the first scheduled time, the function should appear in Inngest’s run history.
+
+As long as no provider is connected (in-memory runner), the address `/api/modules/jobs/inngest` answers `503` with `{"error":"jobs_provider_not_configured"}`: this is expected.
+
+## Turn off
+
+- `jobs` module on, with neither a key nor `JOBS_LOCAL_RUNNER=1`: the application **refuses to start** and names the three variables.
+- Module off (`pnpm ks toggle jobs`): no variable to fill in. Emitted jobs then run **inside the request** that triggers them, and **scheduled jobs do not run**. See [Background jobs](/en/fonctionnalites/taches-de-fond).
+
+<Callout type="warn" title="What is not included">
+- No background-job tool other than Inngest.
+- Retries on error are decided by the application, not by Inngest: each function is declared at Inngest without automatic retry.
+- There is no “on demand” trigger for a scheduled job ([issue #137](https://github.com/oliviermattei/poc-next/issues/137)).
+</Callout>

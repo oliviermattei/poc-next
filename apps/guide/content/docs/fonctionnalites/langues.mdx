@@ -1,8 +1,58 @@
 ---
 title: "Langues"
-description: "Le site et l’application en français et en anglais."
+description: "Le préfixe de langue dans les adresses et le sélecteur de langue."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+## En une phrase
 
-Cette page est en cours de rédaction : son contenu arrive dans un prochain ticket.
+Le module `i18n` permet à vos clients de choisir leur langue : chaque adresse porte sa langue (`/fr/…`, `/en/…`) et un sélecteur apparaît dans les en-têtes.
+
+## Ce que voient vos clients
+
+- **Des adresses préfixées** : `/fr/blog`, `/en/blog`. Une adresse sans préfixe (`/blog`) redirige vers la bonne langue.
+- **Un sélecteur de langue** dans l’en-tête du site, des écrans de connexion, de l’application et de la console.
+- **La bonne langue dès la première visite**, choisie dans cet ordre :
+  1. le préfixe de l’adresse — un lien partagé s’ouvre dans sa langue ;
+  2. le dernier choix du client, gardé un an dans le cookie `app_locale` ;
+  3. la langue de son navigateur ;
+  4. la langue par défaut du site.
+
+Le projet est livré en **français et anglais**, le français étant la langue par défaut (`config/i18n.ts`). Tous les textes des écrans et des e-mails existent dans les deux langues.
+
+## Activer ou couper
+
+```bash
+pnpm ks toggle i18n
+```
+
+Le module ne dépend d’aucun autre et n’a pas de table.
+
+| | Module activé | Module coupé |
+|---|---|---|
+| Adresses | préfixées : `/fr/contact` | sans préfixe : `/contact` |
+| Langues servies | toutes celles de `config/i18n.ts` | seulement `defaultLocale` |
+| Sélecteur | affiché | absent |
+| Articles, pages de documentation, nouveautés écrits dans une autre langue | servis | ignorés |
+
+Couper le module ne supprime aucune traduction : vous pourrez le réactiver plus tard sans écran à moitié traduit.
+
+## Configurer
+
+- **Les langues du projet et la langue par défaut** : `config/i18n.ts` (`appLocales` et `defaultLocale`).
+- **Les textes** : les catalogues `messages/fr.json` et `messages/en.json` de l’application et de chaque module.
+
+Ajouter une langue, ou changer la langue par défaut, est détaillé dans [Configurer les langues](/fr/configurer/langues). Une clé de texte absente dans une langue n’est jamais remplacée en silence : l’écran tombe en erreur, et `pnpm test` le détecte avant.
+
+## Vérifier que ça marche
+
+1. Lancez `pnpm dev` et ouvrez http://localhost:3000. Vous devez être redirigé vers `/fr` (ou `/en` si votre navigateur est en anglais).
+2. Dans l’en-tête, choisissez l’autre langue avec le sélecteur. Vous devez arriver sur l’accueil dans cette langue, par exemple `/en`.
+3. Fermez l’onglet, puis rouvrez http://localhost:3000 : vous devez retrouver la langue choisie.
+
+<Callout title="Ce qui n’est pas inclus">
+- **Seulement le français et l’anglais** sont livrés ; toute autre langue demande de traduire chaque catalogue.
+- **Pas de traduction automatique** des textes ni des contenus.
+- **Le sélecteur ramène à l’accueil** de la langue choisie, pas à la page en cours ([#129](https://github.com/oliviermattei/poc-next/issues/129)).
+- **Les e-mails envoyés hors d’une visite** (tâches planifiées) partent dans la langue par défaut du site : la langue préférée d’un compte n’est pas encore enregistrée ([#128](https://github.com/oliviermattei/poc-next/issues/128)).
+- **Pas de langue par domaine** (un domaine `.fr`, un domaine `.com`) : la langue se lit dans le chemin.
+</Callout>

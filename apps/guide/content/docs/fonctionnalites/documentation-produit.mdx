@@ -1,8 +1,80 @@
 ---
 title: "Documentation produit"
-description: "La documentation de vos clients, servie sous /docs, à ne pas confondre avec ce Guide."
+description: "La documentation que vous écrivez pour vos clients, servie sous /docs — distincte de ce Guide."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+## En une phrase
 
-Cette page est en cours de rédaction : son contenu arrive dans un prochain ticket.
+Le module `docs` publie, sous `/docs` de votre site, la documentation que **vous** écrivez pour **vos clients** : des pages MDX rangées en sections, avec un sommaire et une recherche.
+
+<Callout type="info" title="Ne pas confondre avec ce Guide">
+Ce Guide s’adresse à vous, propriétaire du projet, et n’est jamais publié avec votre application. La documentation produit, elle, fait partie de votre SaaS : elle explique **votre** produit à **vos** clients.
+</Callout>
+
+## Ce que voient vos clients
+
+| Écran | Adresse | Ce qu’il fait |
+|---|---|---|
+| Accueil de la documentation | `/docs` | redirige vers la première page de la première section |
+| Une page | `/docs/<section>/<page>` | la page, avec la navigation des sections, un sommaire de ses intertitres et une recherche |
+
+Une entrée « Documentation » apparaît dans l’en-tête du site, et chaque page entre dans le `sitemap.xml`. Quand le module `i18n` (langues) est activé, les adresses sont précédées de la langue (`/fr/docs`, `/en/docs`).
+
+**Une page non traduite est quand même servie** : dans la langue par défaut du site (le français, réglé par `defaultLocale` dans `config/i18n.ts`), précédée d’une mention qui le signale. Une documentation dans la mauvaise langue vaut mieux qu’une page absente.
+
+La recherche fonctionne dans le navigateur, sans service externe.
+
+## Activer ou couper
+
+```bash
+pnpm ks toggle docs
+```
+
+Le module ne dépend d’aucun autre et n’a pas de table. Coupé, `/docs` et ses pages répondent 404 et l’entrée « Documentation » disparaît.
+
+## Écrire vos pages
+
+Les pages vivent dans `content/docs/<langue>/<section>/<page>.mdx`, à la racine du dépôt. **Le contenu livré décrit le boilerplate lui-même** (installer, configurer, modules) : c’est un exemple, remplacez-le par la documentation de votre produit.
+
+1. Créez un dossier de section, par exemple `content/docs/fr/premiers-pas/`.
+2. Dans ce dossier, créez `section.json` :
+
+   ```json
+   { "title": "Premiers pas", "order": 1 }
+   ```
+
+   `order` range les sections (la plus petite d’abord). Une section sans ce fichier est refusée.
+3. Créez une page `content/docs/fr/premiers-pas/creer-un-compte.mdx` :
+
+   ```mdx
+   ---
+   title: Créer un compte
+   description: Les trois étapes pour commencer.
+   order: 1
+   ---
+
+   ## Première étape
+
+   Votre texte.
+   ```
+
+   Les trois champs sont obligatoires ; `order` range les pages dans leur section. Les intertitres `##` et `###` forment le sommaire.
+4. Pour un lien vers une autre page de la documentation, écrivez un lien Markdown classique dont l’adresse ne porte pas la langue : `/docs/premiers-pas/creer-un-compte`.
+5. Pour traduire, recréez le même chemin sous `content/docs/en/`, avec un `section.json` traduit.
+6. Les pages sont lues au démarrage : relancez `pnpm dev`.
+
+Ce qui fait échouer la construction (`pnpm build`), en nommant le fichier : un en-tête invalide ou incomplet, une section sans `section.json` dans la langue par défaut, une page qui n’existe que dans une traduction, un lien vers une page `/docs` inexistante, deux intertitres identiques dans une même page.
+
+## Vérifier que ça marche
+
+1. Ouvrez http://localhost:3000/docs. Vous devez arriver sur la première page de la première section.
+2. Ouvrez votre page `/docs/premiers-pas/creer-un-compte` : vous devez voir son titre, son sommaire à côté et la section dans la navigation.
+3. Tapez un mot de votre page dans la recherche : la page doit apparaître dans les résultats.
+4. Lancez `pnpm build` : la construction doit réussir. Si elle échoue, le message nomme le fichier à corriger.
+
+<Callout title="Ce qui n’est pas inclus">
+- **Pas d’éditeur en ligne** : une page est un fichier du dépôt, publiée par un déploiement.
+- **Pas de versions multiples** de la documentation (v1, v2…).
+- **Pas de recherche par un service externe** : l’index part avec la page, plafonné à 64 Kio par langue ; au-delà, la construction échoue en donnant la taille.
+- **Pas d’espace réservé aux clients connectés** : la documentation est publique.
+</Callout>
