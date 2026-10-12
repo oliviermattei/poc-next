@@ -3,6 +3,71 @@ title: "GitHub"
 description: "La connexion avec un compte GitHub."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+## À quoi il sert
 
-Cette page est en cours de rédaction : son contenu arrive dans un prochain ticket.
+GitHub permet à vos clients de créer un compte et de se connecter avec leur compte GitHub, par un bouton « Continuer avec GitHub » sur `/sign-in` et `/sign-up`. Il est porté par le module `auth`, qui fait partie du socle (voir [Authentification](/fr/fonctionnalites/authentification)). Les connexions d’un client sont listées sur l’écran `/app/settings/security`.
+
+Deux variables : `GITHUB_CLIENT_ID` et `GITHUB_CLIENT_SECRET`. Sans elles, le bouton n’apparaît pas et l’application démarre normalement.
+
+## Sans compte : le fournisseur local
+
+Pour essayer la connexion par fournisseur sans aucune clé, mettez `OAUTH_LOCAL_PROVIDER=1` dans `.env`. Un bouton « Continuer avec Fournisseur local » apparaît ; il ouvre une session sur l’adresse de test `local@example.test`, sans mot de passe et sans réseau.
+
+Ce fournisseur ouvre une session **sans mot de passe** à qui clique : il est **refusé au démarrage** quand `NODE_ENV=production`, et refusé aussi s’il est posé en même temps qu’une clé GitHub ou Google. Le détail est sur la page [Google](/fr/services/google).
+
+## L’adresse de rappel
+
+Après la connexion, GitHub renvoie votre client vers cette adresse, qu’il faut déclarer chez GitHub :
+
+```bash
+<APP_URL>/api/modules/auth/callback/github
+```
+
+Par exemple `http://localhost:3000/api/modules/auth/callback/github` en local, et `https://exemple.com/api/modules/auth/callback/github` en production. Avec deux hôtes (`APP_HOST`), l’adresse est sur l’hôte de l’application : `https://<APP_HOST>/api/modules/auth/callback/github`. Voir [Domaine et deux hôtes](/fr/deployer/domaine-et-deux-hotes).
+
+## Créer l’application OAuth
+
+1. Sur GitHub, ouvrez les **réglages développeur** de votre compte (ou de votre organisation) et créez une nouvelle **OAuth App**.
+2. Remplissez :
+   - le **nom de l’application**, que vos clients verront ;
+   - l’**adresse de la page d’accueil** (« Homepage URL ») : la valeur de `APP_URL` ;
+   - l’**adresse de rappel d’autorisation** (« Authorization callback URL ») : l’adresse de rappel ci-dessus.
+3. Enregistrez. GitHub affiche l’**identifiant client** (« Client ID »).
+4. **Générez un secret client** et copiez-le tout de suite : GitHub ne le réaffiche pas.
+
+Une OAuth App GitHub n’accepte qu’une adresse de rappel : créez-en **une pour le poste local** et **une pour la production**, chacune avec ses propres identifiants.
+
+## Brancher
+
+1. Dans `.env` (en local) ou dans les variables de votre hébergeur (en production), renseignez les deux valeurs, et retirez `OAUTH_LOCAL_PROVIDER` s’il est posé :
+
+   ```bash
+   GITHUB_CLIENT_ID=…
+   GITHUB_CLIENT_SECRET=…
+   ```
+
+2. Redémarrez l’application.
+
+Les deux variables vont ensemble : l’une sans l’autre arrête le démarrage en nommant l’absente. Rien à déclarer dans `config/security.ts` : la connexion passe par une redirection vers GitHub.
+
+## Vérifier
+
+1. Ouvrez `/sign-in` : le bouton « Continuer avec GitHub » doit apparaître.
+2. Cliquez-le et autorisez l’application chez GitHub.
+3. Vous devez revenir connecté dans l’application, et le compte GitHub doit figurer sur `/app/settings/security`.
+
+Si GitHub signale que l’adresse de rappel ne correspond pas, comparez-la caractère par caractère avec celle de l’application (protocole, hôte, port, chemin).
+
+## Ce qu’il faut savoir sur les adresses
+
+L’application utilise l’adresse e-mail du compte GitHub (l’adresse principale si le profil n’en affiche pas) et **refuse la connexion si GitHub ne la déclare pas vérifiée**. Et, comme pour Google, une connexion GitHub ne rejoint un compte existant que si ce compte a lui-même vérifié son adresse : sinon la connexion est refusée avec un message général, et le client doit d’abord vérifier son adresse ou réinitialiser son mot de passe.
+
+## Couper
+
+Retirez `GITHUB_CLIENT_ID` et `GITHUB_CLIENT_SECRET` : le bouton disparaît, et l’adresse de rappel GitHub n’est plus joignable.
+
+<Callout type="warn" title="Ce qui n’est pas inclus">
+- Seuls GitHub et Google sont proposés : pas d’Apple, de Microsoft ni d’autre fournisseur.
+- La connexion GitHub n’a jamais été recettée de bout en bout avec un vrai compte par le dépôt ([issue #174](https://github.com/oliviermattei/poc-next/issues/174)) : faites l’essai ci-dessus avant d’ouvrir à vos clients.
+- Le démarrage de la connexion ne contrôle pas encore l’en-tête `Origin` ([issue #82](https://github.com/oliviermattei/poc-next/issues/82)).
+</Callout>

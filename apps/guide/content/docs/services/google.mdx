@@ -3,6 +3,69 @@ title: "Google"
 description: "La connexion avec un compte Google."
 ---
 
-{/* PAGE-EN-ATTENTE */}
+## À quoi il sert
 
-Cette page est en cours de rédaction : son contenu arrive dans un prochain ticket.
+Google permet à vos clients de créer un compte et de se connecter avec leur compte Google, par un bouton « Continuer avec Google » sur `/sign-in` et `/sign-up`. Il est porté par le module `auth`, qui fait partie du socle (voir [Authentification](/fr/fonctionnalites/authentification)). Les connexions d’un client sont listées sur l’écran `/app/settings/security`.
+
+Deux variables : `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET`. Sans elles, le bouton n’apparaît pas et l’application démarre normalement.
+
+## Sans compte : le fournisseur local
+
+Pour essayer la connexion par fournisseur sans aucune clé, mettez `OAUTH_LOCAL_PROVIDER=1` dans `.env`. Un bouton « Continuer avec Fournisseur local » apparaît ; il ouvre une session sur l’adresse de test `local@example.test`, sans mot de passe et sans réseau. Il n’emprunte l’identité d’aucun vrai fournisseur.
+
+Ce fournisseur ouvre une session **sans mot de passe** à qui clique : il est **refusé au démarrage** quand `NODE_ENV=production`, et refusé aussi s’il est posé en même temps qu’une clé Google ou GitHub.
+
+## L’adresse de rappel
+
+Après la connexion, Google renvoie votre client vers cette adresse, qu’il faut déclarer chez Google à l’identique :
+
+```bash
+<APP_URL>/api/modules/auth/callback/google
+```
+
+Par exemple `http://localhost:3000/api/modules/auth/callback/google` en local, et `https://exemple.com/api/modules/auth/callback/google` en production. Si vous séparez le site et l’application sur deux hôtes (`APP_HOST`), l’adresse est sur l’hôte de l’application : `https://<APP_HOST>/api/modules/auth/callback/google`. Voir [Domaine et deux hôtes](/fr/deployer/domaine-et-deux-hotes).
+
+## Créer les identifiants
+
+Tout se fait dans la console Google Cloud.
+
+1. **Créez un projet** (ou choisissez-en un).
+2. **Configurez l’écran de consentement OAuth** : le nom de votre application, une adresse de contact et, si demandé, votre domaine. C’est ce que vos clients verront en se connectant.
+3. **Créez un identifiant de client OAuth** de type « Application Web ».
+4. Dans les **URI de redirection autorisés**, ajoutez l’adresse de rappel ci-dessus — une ligne pour le local, une pour la production.
+5. **Copiez l’identifiant client et le code secret du client** que Google affiche.
+
+## Brancher
+
+1. Dans `.env` (en local) ou dans les variables de votre hébergeur (en production), renseignez les deux valeurs, et retirez `OAUTH_LOCAL_PROVIDER` s’il est posé :
+
+   ```bash
+   GOOGLE_CLIENT_ID=….apps.googleusercontent.com
+   GOOGLE_CLIENT_SECRET=…
+   ```
+
+2. Redémarrez l’application.
+
+Les deux variables vont ensemble : l’une sans l’autre arrête le démarrage en nommant l’absente. Rien à déclarer dans `config/security.ts` : la connexion passe par une redirection vers Google.
+
+## Vérifier
+
+1. Ouvrez `/sign-in` : le bouton « Continuer avec Google » doit apparaître.
+2. Cliquez-le et connectez-vous avec un compte Google.
+3. Vous devez revenir connecté dans l’application, et le compte Google doit figurer sur `/app/settings/security`.
+
+Si Google affiche une erreur `redirect_uri_mismatch`, l’adresse de rappel déclarée ne correspond pas exactement à celle de l’application (protocole, hôte, port, chemin).
+
+## Ce qu’il faut savoir sur les comptes existants
+
+Une connexion Google ne rejoint un compte existant que si l’adresse est **attestée deux fois** : par Google, et par le compte local, dont l’adresse doit avoir été vérifiée. Un client inscrit par mot de passe qui n’a jamais vérifié son adresse se voit donc refuser la connexion Google, avec un message général qui ne dit pas pourquoi. Il lui suffit de vérifier son adresse, ou de réinitialiser son mot de passe. C’est ce qui empêche quelqu’un de préparer un compte à l’adresse d’un autre pour le récupérer ensuite.
+
+## Couper
+
+Retirez `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET` : le bouton disparaît, et l’adresse de rappel Google n’est plus joignable.
+
+<Callout type="warn" title="Ce qui n’est pas inclus">
+- Seuls Google et GitHub sont proposés : pas d’Apple, de Microsoft ni d’autre fournisseur.
+- La connexion Google n’a jamais été recettée de bout en bout avec un vrai compte par le dépôt ([issue #174](https://github.com/oliviermattei/poc-next/issues/174)) : faites l’essai ci-dessus avant d’ouvrir à vos clients.
+- Le démarrage de la connexion ne contrôle pas encore l’en-tête `Origin` ([issue #82](https://github.com/oliviermattei/poc-next/issues/82)).
+</Callout>
