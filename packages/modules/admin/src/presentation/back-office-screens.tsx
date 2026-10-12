@@ -669,7 +669,7 @@ export interface AdminOrganizationScreenProps {
   readonly links: BackOfficeListLinks
   /**
    * L'adresse du détail d'un **compte** — celui d'un membre de cette
-   * organisation (revue de s37b2, constat F6).
+   * organisation.
    *
    * Injectée comme `links.detailPath`, et pour la même raison : l'écran ne sait
    * pas comment ses chemins s'écrivent. Elle l'était en dur ici, alors que
@@ -1162,8 +1162,7 @@ function SourceFilter({
          * **Les mêmes variantes que le sélecteur de période** (s38), et pas
          * `ghost` au repos : `ghost` n'a ni bordure ni fond tant qu'on ne le
          * survole pas, si bien que les sources non retenues se rendaient en
-         * texte nu — une rangée de mots, pas un jeu de filtres (revue de s37c,
-         * constat 6). Deux sélecteurs voisins du même back-office ne peuvent
+         * texte nu — une rangée de mots, pas un jeu de filtres. Deux sélecteurs voisins du même back-office ne peuvent
          * pas se lire différemment.
          */
         return (

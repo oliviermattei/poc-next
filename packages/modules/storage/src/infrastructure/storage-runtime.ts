@@ -133,7 +133,7 @@ export function configureStorage(options: ConfigureStorageOptions): StorageServi
  *
  * Le répartiteur de modules prépare les services à **chaque** requête, y compris
  * celles qu'aucune route ne satisfait : construire aussitôt ouvrirait une
- * connexion à la base pour répondre 404 sur un chemin inconnu — mesuré en s15,
+ * connexion à la base pour répondre 404 sur un chemin inconnu — mesuré,
  * `tests/module-off.test.ts` échouait exactement là.
  */
 export function provideStorage(factory: () => ConfigureStorageOptions): void {

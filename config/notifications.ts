@@ -29,7 +29,7 @@ import { defineNotificationType } from '@repo/emails'
  * l'émission est donc composé de ces templates-ci **plus** ceux du registre, au
  * point de composition (`apps/web/lib/notifications.ts`).
  *
- * **Ce qui est stocké ne porte aucune donnée personnelle** (revue s32, R1).
+ * **Ce qui est stocké ne porte aucune donnée personnelle**.
  * `actors` nomme les clés de la charge utile **stockée** qui portent une
  * référence de compte ; la valeur affichable est résolue à la lecture. C'est le
  * précédent que tout producteur suivant copie : une ligne de notification est
@@ -43,7 +43,7 @@ import { defineNotificationType } from '@repo/emails'
  * existants restent des appels directs légitimes, la story le dit nommément.
  *
  * **Deux types ont un producteur** : `organization.member-joined`, émis par le
- * module `organizations` quand une invitation est acceptée (revue s32, F5), et
+ * module `organizations` quand une invitation est acceptée, et
  * `billing.trial-ending`, émis par la **tâche planifiée** de relance d'essai
  * (s33). Les deux modules reçoivent l'émission au point de composition et ne
  * connaissent pas ce fichier. `account.security-alert` n'en a aucun. Les
@@ -131,7 +131,7 @@ export const appNotificationTypes = [
     /**
      * Aucune référence de compte : ce type ne parle que du compte destinataire,
      * et sa charge ne porte qu'une offre et une date — des références, jamais
-     * une donnée personnelle (revue s32, R1).
+     * une donnée personnelle.
      */
     actors: [],
     email: {

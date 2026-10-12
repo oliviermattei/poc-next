@@ -18,7 +18,7 @@ import { COMPONENTS_DIRECTORY, STYLESHEET_PATH, deliveredContrastInput } from '.
  * bloqué reçoit était illisible, et rien dans le dépôt ne pouvait le dire. Un
  * correctif sans cette commande laisserait un contraste qu'un futur ajustement
  * de jeton casserait en silence — « une règle qu'aucune commande ne vérifie est
- * de la documentation, pas une règle » (`AGENTS.md`).
+ * de la documentation, pas une règle » (`CODING_STANDARDS.md`).
  *
  * ## Ce qu'elle vérifie
  *

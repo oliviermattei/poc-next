@@ -6,7 +6,7 @@ import { index, integer, pgTable, text, timestamp, uniqueIndex } from 'drizzle-o
  * Elles n'existent que lorsque le module est activé : `pnpm db:generate` ne
  * génère que pour les modules de `config/features.ts`, et sur une base vierge
  * dont la configuration ne nomme pas ce module, aucune des deux n'est créée.
- * C'est le quatrième critère de s11, et `tests/marketing.test.ts` le vérifie en
+ * `tests/marketing.test.ts` le vérifie en
  * lisant `information_schema`, pas les fichiers de migration.
  *
  * **Aucune clé étrangère**, et c'est une propriété, pas un oubli : une
@@ -74,8 +74,8 @@ export const publicSubscription = pgTable(
  * quand un en-tête en donne une — n'entre jamais en clair dans cette table.
  * C'est pour cela qu'elle n'est pas déclarée comme catégorie de données au
  * contrat : aucune requête de ce module ne peut relier une de ces lignes à un
- * compte. La question reste discutable, et elle est écrite comme telle dans
- * `docs/research/s11-public-forms.md` §6.4.
+ * compte. La question reste discutable, et elle tombe avec la table, dont la
+ * suppression est suivie dans l'issue #105.
  *
  * **Abandonnée par s28, et volontairement pas supprimée.** Le compteur a
  * convergé vers le port partagé (ADR 050) : **plus rien n'écrit ici**. La table

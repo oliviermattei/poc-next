@@ -77,7 +77,7 @@ describe('l’émission vers l’API d’événements d’Inngest', () => {
    * de l'élément avec le type d'événement ». La première version envoyait la clé
    * **nue** : deux tâches déclenchées le même jour avec une clé de jour
    * (`2026-09-05`) se seraient annulées l'une l'autre côté fournisseur, alors
-   * que le registre les aurait bien distinguées (constat F6 de la revue de s33).
+   * que le registre les aurait bien distinguées.
    */
   it('qualifie l’identifiant de déduplication du fournisseur par la tâche', async () => {
     const sent: string[] = []

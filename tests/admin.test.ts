@@ -746,7 +746,7 @@ describe.runIf(databaseReachable)('la désignation du premier superadmin', () =>
   })
 
   /**
-   * **Le quatrième décompte** (constat MJ2 de la revue de s37b1) : celui que la
+   * **Le quatrième décompte** : celui que la
    * désignation regarde.
    *
    * Trois écritures partagent la lecture des comptes fermés ; la désignation est
@@ -1129,15 +1129,14 @@ describe.runIf(databaseReachable)('le back-office réservé', () => {
 
     // Un corps vide, donc invalide. Un non-superadmin doit recevoir 404, pas
     // 400 : la distinction lui apprendrait que la route existe et ce qu'elle
-    // attend (revue de s17, F5).
+    // attend.
     const refused = await call('banAccount', { session: intruder.session, body: {} })
 
     expect(refused.status).toBe(404)
   })
 
   /**
-   * **Ne pas savoir si la session est empruntée vaut refus** (constat MAJOR-1 de
-   * la seconde revue de s37b1).
+   * **Ne pas savoir si la session est empruntée vaut refus**.
    *
    * La garde du back-office demande au socle si la session de l'appelant est un
    * emprunt. Le port peut échouer — c'est une lecture en base —, et la réponse à
@@ -1847,8 +1846,7 @@ describe.runIf(databaseReachable)('les deux gestes du back-office', () => {
   })
 
   /**
-   * **Un appelant JSON qui n'annonce pas son type** (revue de s37b2, constat
-   * F10).
+   * **Un appelant JSON qui n'annonce pas son type**.
    *
    * `s37b1` lisait le corps en JSON sans condition ; s37b2 a ajouté la
    * soumission de formulaire, et l'a fait par un `sinon` — *tout ce qui n'est
@@ -2003,8 +2001,7 @@ describe.runIf(databaseReachable)('bannir depuis le back-office', () => {
   })
 
   /**
-   * **Le garde-fou du dernier superadmin, sur la route voisine** (revue de
-   * s37a, F2).
+   * **Le garde-fou du dernier superadmin, sur la route voisine**.
    *
    * Sans lui, le superadmin unique qui se bannit obtient : ses sessions
    * révoquées, la connexion refusée par le socle, **et sa ligne toujours dans
@@ -2260,7 +2257,7 @@ describe.runIf(databaseReachable)('bannir depuis le back-office', () => {
 
   /**
    * **Le geste qui nettoie une plateforme à moitié fermée**, mesuré de bout en
-   * bout (minoritaire de la revue de s37b1 : la règle pure était éprouvée, le
+   * bout (minoritaire d'une revue : la règle pure était éprouvée, le
    * chemin servi ne l'était pas).
    *
    * Retirer son rôle à un superadmin **banni** ne retire rien à
@@ -2395,7 +2392,7 @@ describe.runIf(databaseReachable)('l’impersonation', () => {
       userId: target.userId,
     })
     // … et l'ancien ne vaut plus rien : une élévation qui laisserait la session
-    // précédente utilisable n'en serait pas une (mesuré en s14 sur l'enrôlement).
+    // précédente utilisable n'en serait pas une (mesuré sur l'enrôlement).
     await expect(auth.resolveSession(requestWith(superadmin.cookie))).resolves.toBeNull()
   }, 60_000)
 
@@ -2849,7 +2846,7 @@ describe.runIf(databaseReachable)('un emprunt ne survit pas à ce qui ferme son 
    * `AuthPolicy`, par `admin/AGENTS.md` et par l'ADR 064 était fausse.
    */
   /**
-   * **La résolution de session porte l'emprunt** (revue de s37b2, F3).
+   * **La résolution de session porte l'emprunt**.
    *
    * La coquille applicative affichait son bandeau au prix de deux
    * allers-retours de base supplémentaires par page authentifiée : un second
@@ -3342,8 +3339,8 @@ describe('le profil minimal balaie le back-office', () => {
 })
 
 /**
- * **Un port ne lève pas** (`AGENTS.md` racine), et c'est au point de composition
- * que la promesse se tient (constat MJ4 de la revue de s37b1).
+ * **Un port ne lève pas** (`CODING_STANDARDS.md`), et c'est au point de composition
+ * que la promesse se tient.
  *
  * Les trois lectures branchées sur le socle parlent à la base. Sans cette
  * enveloppe, une panne **levait** : la branche `{ ok: false }` du module — celle
@@ -3383,8 +3380,7 @@ describe('le port des comptes, quand la lecture échoue', () => {
 })
 
 /**
- * **Les deux autres ports, quand la lecture échoue** (constat 4 de la revue de
- * s38) — la même promesse, au même endroit, et elle n'était tenue par aucune
+ * **Les deux autres ports, quand la lecture échoue** — la même promesse, au même endroit, et elle n'était tenue par aucune
  * commande.
  *
  * Le commentaire du port des revenus promettait « jamais un revenu à zéro, qui
@@ -3436,7 +3432,7 @@ describe('les ports du back-office adossés aux autres modules, quand la lecture
 
 /**
  * **Les deux clés composées du back-office, contre les vocabulaires dont elles
- * viennent** (revue de s37b2, constat F7).
+ * viennent**.
  *
  * L'écran des organisations traduit un **état d'abonnement** et un **rôle de
  * membre** par des clés construites : `admin.subscription.<état>` et
@@ -3606,7 +3602,7 @@ describe('les emprunts fermés par une demande de suppression', () => {
 
   it('sont remis au module qui tient leur journal, par le service que l’application monte', async () => {
     // **L'intégralité** de ce que `appAuth()` lit, y compris les valeurs
-    // vides (revue de s06, G1 ; précédent de `tests/data-export.test.ts`).
+    // vides (précédent de `tests/data-export.test.ts`).
     vi.stubEnv('DATABASE_URL', databaseUrl)
     vi.stubEnv('AUTH_SECRET', 'x'.repeat(40))
     vi.stubEnv('APP_URL', 'http://localhost:3000')
@@ -3678,7 +3674,7 @@ describe('l’avertissement de démarrage', () => {
   it('est réellement émis par la garde de démarrage, et pas seulement calculable', async () => {
     // Chaque cas déclare **l'intégralité** de ce que la garde lit : un cas qui
     // n'annonce que sa variable ne passe que sur un poste dont le `.env`
-    // complète le reste (revue de s06, G1).
+    // complète le reste.
     vi.stubEnv('DATABASE_URL', 'postgres://app:app@localhost:5432/app')
     vi.stubEnv('RESEND_API_KEY', '')
     vi.stubEnv('EMAIL_FROM', '')
@@ -4011,8 +4007,7 @@ describe('l’écran des inscriptions publiques', () => {
   })
 
   /**
-   * **La source choisie ne tombe pas de l'URL au geste suivant** (revue de
-   * s37c, constat 2).
+   * **La source choisie ne tombe pas de l'URL au geste suivant**.
    *
    * C'est l'invariant que la pagination énonce déjà pour la recherche — « sans
    * le paramètre dans le lien, passer à la page 2 rendrait la page 2 de *tous*
@@ -4047,7 +4042,7 @@ describe('l’écran des inscriptions publiques', () => {
     // Le champ est cherché **dans le formulaire**, jamais dans la page : un
     // champ caché posé *hors* du `<form>` ne partirait pas avec la requête, et
     // un balayage de la page entière resterait vert pendant que le report
-    // aurait cessé de fonctionner (revue de s37c, constat 3).
+    // aurait cessé de fonctionner.
     const forms = [...markup.matchAll(/<form[^>]*method="get"[^>]*>([\s\S]*?)<\/form>/g)]
 
     // L'anti-vacuité : sans le formulaire de recherche rendu, la recherche

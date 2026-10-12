@@ -32,13 +32,13 @@ paths = [
   '''(^|/)dist/.*''',
   '''(^|/)\.claude/worktrees/.*''',
   # Les emplacements de test du dépôt, et eux seuls : la convention est fixée
-  # par `AGENTS.md`, cette liste la reprend telle quelle.
+  # par `CODING_STANDARDS.md` (« Where tests go »), cette liste la reprend telle quelle.
   '''(^|/)tests/.*''',
   '''(^|/)e2e/.*''',
   '''.*\.test\.ts$''',
   '''.*\.spec\.ts$''',
   '''(^|/)packages/[^/]*-testing/.*''',
-  '''(^|/)docs/(research|reviews|plans|designs|decisions)/.*''',
+  '''(^|/)docs/adr/.*''',
   '''(^|/)\.env\.example$''',
 ]
 

@@ -39,7 +39,7 @@ par défaut écrit en dur serait un secret publié.
 d'un seau réel est donc **refusé** tant que ce domaine n'est pas déclaré là-bas.
 L'état livré du dépôt, lui, présigne vers `/api/modules/storage/local-upload` :
 un clone téléverse sans qu'aucune source n'entre dans la politique. C'est écrit
-dans l'ADR 032, rappelé dans `.env.example`, et depuis la revue de s18
+dans l'ADR 032, rappelé dans `.env.example`, et depuis une revue
 `apps/web/lib/storage-config.ts` **refuse de démarrer** quand un seau réel est
 configuré sans que son origine soit déclarée.
 

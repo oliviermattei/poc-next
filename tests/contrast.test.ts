@@ -64,7 +64,7 @@ describe('la conversion des couleurs, sur des références extérieures au dép�
     // **Le demi-ton achromatique, et il n'est pas décoratif.** Les cinq cas
     // ci-dessus sont tous à un **coin du gamut** (0 ou 1 sur chaque canal), là
     // où la fonction de transfert sRGB est l'identité : supprimer l'encodage
-    // gamma les laisse tous verts — mesuré en revue de s49. Celui-ci est au
+    // gamma les laisse tous verts — mesuré en revue. Celui-ci est au
     // milieu, donc il traverse l'encodage : `oklch(0.5 0 0)` a pour luminance
     // linéaire L³ = 0,125, que l'encodage porte à 1,055 × 0,125^(1/2,4) − 0,055
     // ≈ 0,3886, soit 99 sur 255 — `#636363`, ce que rend n'importe quel
@@ -657,7 +657,7 @@ describe('les planchers anti-balayage-vide', () => {
   it('refuse une dérivation qui retombe sur un seul fichier — le défaut que s57 corrige', () => {
     // L'assertion nomme **le plancher qui doit céder**, pas seulement son
     // chiffre : trois planchers portent le nombre 3, et un message pris pour un
-    // autre est une couverture accidentelle — mesuré en s57, le cas des
+    // autre est une couverture accidentelle — mesuré, le cas des
     // surfaces ci-dessous passait sur le message des fichiers.
     expect(() =>
       measureContrast({

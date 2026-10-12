@@ -370,7 +370,7 @@ describe('la matrice des permissions', () => {
     // est un `text not null` sans contrainte de valeur, et le rôle est relu en
     // base à chaque requête. Un rôle hors matrice doit donc être **refusé** —
     // avant la correction, `MATRIX[role].includes(...)` levait un `TypeError`,
-    // c'est-à-dire un 500 au lieu d'un refus (revue de s17, F3). Un défaut qui
+    // c'est-à-dire un 500 au lieu d'un refus. Un défaut qui
     // ferme est un défaut ; un défaut qui ouvre est une faille.
     const unknown = 'superadmin' as OrganizationRole
 
@@ -408,8 +408,8 @@ describe('qui peut retirer qui', () => {
   it('refuse à un administrateur de retirer un propriétaire ou un autre administrateur', () => {
     // Critère 3 à la lettre : un `admin` « peut inviter et retirer des
     // **members** ». Laisser deux administrateurs se retirer l'un l'autre serait
-    // une prise de pouvoir latérale que personne n'a décidée (revue de s17,
-    // arbitrage 2) : l'échelon intermédiaire ne touche ni celui du dessus, ni
+    // une prise de pouvoir latérale que personne n'a décidée (ADR 030) :
+    // l'échelon intermédiaire ne touche ni celui du dessus, ni
     // son pair.
     expect(removalPermission(admin, owner)).toBe(false)
     expect(removalPermission(admin, { userId: 'usr_autre', role: 'admin' })).toBe(false)

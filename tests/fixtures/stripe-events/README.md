@@ -2,7 +2,7 @@
 
 **État de ce dossier au 2026-09-03 : aucun enregistrement.** Ce n'est pas un
 oubli, c'est la conséquence écrite d'avance dans
-[ADR 048](../../../docs/decisions/048-un-enregistrement-absent-fait-echouer-la-ci-jamais-de-repli-sur-le-simulateur.md) :
+[ADR 048](../../../docs/adr/0048-un-enregistrement-absent-fait-echouer-la-ci-jamais-de-repli-sur-le-simulateur.md) :
 « La CI ne peut pas passer sans enregistrements. Les produire est donc un
 prérequis de cette story — et cela demande une exécution contre les clés de test
 réelles, c'est-à-dire un geste humain avec des secrets que le harnais n'a pas. »
@@ -103,8 +103,8 @@ avec sa date.
 **Ce que la capture ne fait pas** : elle n'exécute pas le scénario du parcours
 doré contre Stripe. `GOLDEN_PATH_PAYMENTS=live` éprouve les clés et capture les
 formes ; il ne clone rien, ne crée aucune base et n'ouvre aucun navigateur. Le
-critère 7 de la story demandait davantage, et l'écart est écrit dans
-`docs/plans/s25-golden-path-e2e.md` plutôt que masqué.
+critère 7 de la story (s25) demandait davantage, et l'écart est suivi dans
+l'issue #107 plutôt que masqué.
 
 Le régime `live` est **refusé en CI** et refuse une clé qui n'est pas
 `sk_test_…` : aucun paiement n'est encaissé par ce harnais.

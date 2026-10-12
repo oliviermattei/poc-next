@@ -14,8 +14,8 @@ import type { MarketingIntl } from './marketing-intl'
  * marketing, et disparaît avec elles.
  *
  * Aucun composant `Footer` n'existe au design system : celui-ci est **composé**
- * d'un `Separator`, de liens et de tokens sémantiques. Le manque est signalé
- * dans `docs/designs/s10-marketing-site.md` ; il n'est pas comblé par une
+ * d'un `Separator`, de liens et de tokens sémantiques. C'est un manque du
+ * design system ; il n'est pas comblé par une
  * primitive maison dans `packages/ui`.
  *
  * `aria-label` traduit, et obligatoire : deux régions de navigation anonymes
@@ -65,7 +65,7 @@ export function MarketingFooter({ site, intl, extraLinks = [] }: MarketingFooter
    *
    * La condition portait sur les seuls documents légaux, si bien qu'un projet
    * qui les retirait servait `/contact`, l'annonçait dans son plan de site, et
-   * n'y menait de nulle part (constat F9 de la revue de s11). Elle porte
+   * n'y menait de nulle part. Elle porte
    * désormais sur les liens eux-mêmes : le pied de page disparaît quand il n'a
    * rien à dire, pas quand une de ses deux sources est vide.
    *

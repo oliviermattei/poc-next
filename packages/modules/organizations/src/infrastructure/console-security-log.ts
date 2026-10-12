@@ -8,7 +8,7 @@ import type { SecurityLog } from '../application/ports'
  * supervision arrive en s39, et inventer ici un second mécanisme serait à jeter.
  * Il n'y a rien à filtrer avant d'écrire — la forme de l'événement est fermée,
  * chaque champ y est nommé, aucun champ libre (`domain/security-event.ts`, qui
- * est la liste : le compte écrit ici disait « cinq » pour six, revue de s17 F2).
+ * est la liste : le compte écrit ici disait « cinq » pour six).
  */
 export const consoleSecurityLog: SecurityLog = (event) => {
   console.info(event.event, {

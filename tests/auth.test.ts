@@ -157,7 +157,7 @@ const realFetch = globalThis.fetch
 /**
  * La **doublure de réseau** des parcours OAuth (s12).
  *
- * Elle remplace le réseau, **jamais le SDK** (`AGENTS.md`) : le vrai
+ * Elle remplace le réseau, **jamais le SDK** (`CODING_STANDARDS.md`) : le vrai
  * fournisseur GitHub de la bibliothèque construit son URL d'autorisation,
  * échange son code et lit son profil — seuls les trois points de terminaison de
  * `github.com` répondent ici. Tout ce qu'elle ne sert pas reste **refusé**,
@@ -944,13 +944,12 @@ describe.skipIf(!databaseReachable)('durcissement de la session', () => {
   }, 30_000)
 
   /**
-   * **Cité par le plan de s52 comme intermittent (`tests/auth.test.ts:765`), et
+   * **Cité comme intermittent (`tests/auth.test.ts:765`, issue #169), et
    * cause non établie — le symptôme lui-même n'a pas été retrouvé.** La ligne
    * en question porte l'assertion sur le nombre de sessions restantes. Aucun
-   * relevé de ce rouge dans `docs/stories.md`, `docs/STATE.md`, `docs/reviews/`
-   * ni la recherche de la story, et zéro rouge sur les exécutions complètes de
+   * relevé de ce rouge, et zéro rouge sur les exécutions complètes de
    * `pnpm test` de cette branche. Nommé pour que le prochain agent sache qu'il
-   * a été cherché, pas pour affirmer qu'il existe.
+   * a été cherché, pas pour affirmer qu'il existe. Suivi dans l'issue #169.
    */
   it('révoque les autres sessions au changement d’email, une fois la nouvelle adresse confirmée', async () => {
     const { email, userId } = await aVerifiedAccount()
@@ -992,7 +991,7 @@ describe.skipIf(!databaseReachable)('durcissement de la session', () => {
 
     // Le corps de `/sign-in/email` porte encore le jeton de session
     // (`api/routes/sign-in.mjs`), et la route le relaie — contrairement aux
-    // cinq routes du second facteur, qui réécrivent le leur. La revue s13 (C4)
+    // cinq routes du second facteur, qui réécrivent le leur. Une revue
     // le laisse **mineur** parce que rien, dans ce montage, n'accepte un jeton
     // nu : le cookie de session est signé, et le greffon `bearer` n'est pas
     // monté. C'était écrit en gras dans l'`AGENTS.md` du module, et **aucune
@@ -1594,7 +1593,7 @@ describe.skipIf(!databaseReachable)('module non configuré', () => {
  * Le fournisseur est **GitHub**, et c'est le vrai : sa construction d'URL, son
  * échange de code et sa lecture de profil sont ceux de la bibliothèque. Seuls
  * ses trois points de terminaison réseau sont servis par la doublure — c'est le
- * régime que `AGENTS.md` impose en CI (« doublures pour les appels sortants »),
+ * régime que `CODING_STANDARDS.md` impose en CI (« doublures pour les appels sortants »),
  * jamais une doublure du SDK.
  *
  * Google n'est pas éprouvé ici, et la raison est mesurée : son `emailVerified`
@@ -2201,7 +2200,7 @@ describe.skipIf(!databaseReachable)('connexion par un fournisseur externe', () =
       // chemin, `/callback/invente` n'en a pas. Information publique dans un
       // boilerplate ; la fermer demanderait de construire les rappels depuis
       // les fournisseurs configurés, ce que le montage du registre ne permet
-      // pas aujourd'hui (voir `docs/reviews/s12-oauth-signin.md`).
+      // pas aujourd'hui.
       expect(callback.status).toBe(configured.status)
       expect(callback.headers.get('location')).toBe(configured.headers.get('location'))
 
@@ -2675,7 +2674,7 @@ describe.skipIf(!databaseReachable)('second facteur — activation', () => {
 
     // Le greffon en expose sept, le module en déclare cinq. Ces trois-là
     // étaient affirmés « 404 » par l'ADR, par l'`AGENTS.md` du module et par un
-    // commentaire — sans qu'aucune commande ne le vérifie (revue s13, C8).
+    // commentaire — sans qu'aucune commande ne le vérifie.
     // `get-totp-uri` est celui qui compte : il rendrait le secret d'un compte
     // **déjà activé**, à volonté, alors que ce secret ne sort qu'une fois.
     for (const path of [
@@ -2909,7 +2908,7 @@ describe.skipIf(!databaseReachable)('second facteur — connexion', () => {
     // disant « ce code n'est pas valide » envoie quelqu'un chercher une
     // compromission là où il n'y en a pas — c'est le cas d'une seconde
     // connexion dans les mêmes trente secondes, ou d'un ré-enrôlement dans la
-    // même période (revue s13, C12/C13/C14). La classe est distincte, le
+    // même période. La classe est distincte, le
     // **statut** reste celui de tous les refus, et la distinction n'est
     // lisible que par qui a déjà présenté le premier facteur : on n'arrive ici
     // qu'avec un défi ouvert. Un code faux, lui, reste `invalid` — c'est le
@@ -3168,7 +3167,7 @@ describe.skipIf(!databaseReachable)('second facteur — codes de secours', () =>
 
     // La route est **publique** : ce chemin existe, même si l'interface ne
     // l'offre pas. Le journaliser comme une activation ferait mentir le
-    // journal sur le seul point qui l'intéresse (revue s13, C9).
+    // journal sur le seul point qui l'intéresse.
     const used = await call('/two-factor/verify-backup-code', {
       body: { code: enrolled.backupCodes[0] ?? '' },
       cookie: enrolled.cookie,
@@ -3340,8 +3339,8 @@ describe.skipIf(!databaseReachable)('second facteur — aucune énumération', (
  * par le greffon, avec ses vraies vérifications. La doublure remplace
  * l'authentificateur, jamais le vérificateur.
  *
- * Ce qu'elle ne prouve pas est écrit dans `docs/research/s14-passkeys.md` §4 :
- * rien de ce qu'un **navigateur** accepte de produire. C'est
+ * Ce qu'elle ne prouve pas : rien de ce qu'un **navigateur** accepte de
+ * produire. C'est
  * `e2e/passkeys.spec.ts` qui s'en charge.
  * ------------------------------------------------------------------------- */
 
@@ -3877,7 +3876,7 @@ describe.skipIf(!databaseReachable)('passkeys — ce que le module ne déclare p
 
 describe.skipIf(!databaseReachable)('passkeys — la purge du compte', () => {
   it('efface les passkeys avec le compte, et se rejoue sans rien de plus', async () => {
-    // **La purge est exécutée, pas déduite de la cascade.** Le plan de s14
+    // **La purge est exécutée, pas déduite de la cascade.** Un plan
     // annonçait cette propriété « mesurée » alors qu'aucun cas n'appelait
     // `purgeAccount` (constat M2 de la revue) : lire `on delete cascade` dans
     // une migration dit ce qui est écrit, jamais ce que la base fait. Ici la

@@ -57,7 +57,7 @@ const RESOLUTION_ORIGIN = 'http://destination.invalid'
  * Les formes refusées sont celles qui sortent du site sans en avoir l'air :
  * l'URL absolue, l'URL protocole-relative (`//evil.test`), la barre oblique
  * inversée, que les navigateurs normalisent en `/`, et **tout caractère de
- * contrôle ou blanc** (revue s61, C1). Le navigateur retire tabulation, CR et
+ * contrôle ou blanc**. Le navigateur retire tabulation, CR et
  * LF d'une URL avant de la lire : `/\t/evil.test` devient `//evil.test` une
  * fois servi dans un en-tête `Location`, et CR ou LF y font lever une 500.
  * Un chemin interne légitime arrive encodé (`%20`, `%09`) : il ne porte jamais
@@ -78,7 +78,7 @@ export function safeRedirectPath(candidate: string | null | undefined, fallback:
     return fallback
   }
 
-  // **La forme résolue, pas la forme reçue** (revue s67, C1). Un navigateur
+  // **La forme résolue, pas la forme reçue**. Un navigateur
   // résout les segments point — `.`, `..`, et leurs formes encodées `%2e` —
   // avant de suivre un `Location` : `/.//evil.test` y devient `//evil.test`,
   // qui sort du site. Le candidat est donc résolu comme un analyseur d'URL le

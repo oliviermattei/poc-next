@@ -366,8 +366,7 @@ const MEMBER_ROLE = z.object({
 })
 
 /**
- * Ce qu'un corps **refusé** permet malgré tout de nommer au journal (revue de
- * s17, F5).
+ * Ce qu'un corps **refusé** permet malgré tout de nommer au journal.
  *
  * La permission est décidée avant la validation, comme aux cinq autres portes :
  * l'événement de refus est donc écrit alors que le corps n'a pas encore été
@@ -499,8 +498,7 @@ export function createOrganizationsUseCases(
         // **Ce qui part maintenant** : l'email nomme la personne, il est
         // délivré dans la foulée et ne se relit pas.
         data: { member: arrival?.email ?? '', organization: access.name },
-        // **Ce qui est écrit** : l'identifiant du compte, jamais son adresse
-        // (revue s32, R1). La ligne appartient à un autre membre, donc la purge
+        // **Ce qui est écrit** : l'identifiant du compte, jamais son adresse. La ligne appartient à un autre membre, donc la purge
         // du compte arrivé ne la touche pas : une adresse écrite ici lui
         // survivrait, pendant que le contrat du module promet `'erase'`. Le nom
         // affiché est résolu à la lecture, et un compte effacé s'y lit comme
@@ -966,7 +964,7 @@ export function createOrganizationsUseCases(
       // est un email de plus expédié depuis le domaine du produit, et la
       // réputation d'envoi est l'actif que ce quota existe pour protéger
       // (ADR 026). Sans ce contrôle, cinquante renvois de la même invitation
-      // partaient sans un refus (revue de s16, F2).
+      // partaient sans un refus.
       if (await exceedsQuota(access)) {
         return { status: 'refused', refusal: 'invitation_quota' }
       }
@@ -1173,7 +1171,7 @@ export function createOrganizationsUseCases(
       }
 
       // **La permission ensuite, et avant la validation** — l'ordre du module,
-      // sans exception (revue de s17, F5). Valider d'abord rendait à un appelant
+      // sans exception. Valider d'abord rendait à un appelant
       // sans aucun droit un 303 vers l'écran avec un motif traduit, que l'ADR 030
       // rejette explicitement, et laissait une sonde d'élévation qui envoie
       // toujours un rôle malformé hors du journal du §7.

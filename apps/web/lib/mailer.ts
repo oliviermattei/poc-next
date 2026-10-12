@@ -19,8 +19,7 @@ import { moduleRegistry } from './module-registry'
  * l'exécute, et c'est exactement ce que le port existe pour garantir.
  *
  * **Le choix se fait sur la configuration — la clé du fournisseur ou le drapeau
- * de capture — jamais sur `NODE_ENV`.** C'est le piège nommé par la story et
- * déjà relevé dans la recherche de s01 : un mailer conditionné par
+ * de capture — jamais sur `NODE_ENV`.** C'est un piège connu : un mailer conditionné par
  * l'environnement est intestable, et se trompera un jour d'environnement — en
  * envoyant de vrais emails depuis une suite, ou en écrivant sur disque en
  * production. `tests/mailer.test.ts` croise les deux axes (production sans clé,
@@ -29,8 +28,7 @@ import { moduleRegistry } from './module-registry'
  * **La capture locale est un opt-in, pas un repli.** `docs/reliability.md` §2
  * prescrit la capture « en développement local » ; l'étendre à tout
  * déploiement dépourvu de clé faisait rendre `{ok:true}` sur un email que
- * personne ne recevrait, indiscernable d'un envoi réussi — en production aussi
- * (revue s06, F3). `EMAIL_LOCAL_CAPTURE=1` la demande explicitement ; sans clé
+ * personne ne recevrait, indiscernable d'un envoi réussi — en production aussi. `EMAIL_LOCAL_CAPTURE=1` la demande explicitement ; sans clé
  * et sans ce drapeau, rien ne se monte.
  *
  * La règle elle-même est dans `mailer-config.ts`, d'où `next.config.ts` la

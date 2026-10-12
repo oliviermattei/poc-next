@@ -37,8 +37,7 @@ export function publicUrls(): readonly IndexableUrl[] {
  *
  * `carriesLocalePrefix` avant `publicPath`, et ce n'est pas une précaution :
  * `publicPath` préfixe **sans condition**, `/api…` compris, alors que
- * `apps/web/proxy.ts` ne préfixe jamais ces chemins (constat M3 de la revue de
- * s29). Un module qui contribuerait l'URL d'une route montée produirait sinon
+ * `apps/web/proxy.ts` ne préfixe jamais ces chemins. Un module qui contribuerait l'URL d'une route montée produirait sinon
  * `/fr/api/…` — une URL que rien ne sert, annoncée au plan de site et autorisée
  * dans le `robots.txt` pour rien.
  */

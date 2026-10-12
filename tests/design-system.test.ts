@@ -120,7 +120,7 @@ describe('les tokens de `packages/ui` sont ceux du design system', () => {
      * Tailwind v4 tourne ici en `source(none)` : rien n'est détecté
      * automatiquement, chaque source est déclarée. Une classe employée dans un
      * fichier qu'aucune source ne couvre ne produit aucune règle, et **rien
-     * n'échoue** — mesuré en s10, à l'œil : la grille des fonctionnalités
+     * n'échoue** — mesuré, à l'œil : la grille des fonctionnalités
      * restait sur une colonne à 1280 px et les liens du pied de page se
      * touchaient, parce que le dossier de présentation des modules n'était
      * couvert par aucune source.
@@ -268,7 +268,7 @@ describe('les tokens de `packages/ui` sont ceux du design system', () => {
      * dans `packages/ui` ; elle-même écrivait « tant qu'aucun test ne le fait,
      * ce paragraphe est de la documentation, pas une règle ». Elle a été prise
      * en défaut le jour de son écriture : `Table` y figurait alors que s37b2
-     * l'avait livré et que le baril l'exporte (constat 3 de la revue de s46).
+     * l'avait livré et que le baril l'exporte.
      *
      * Deux côtés dérivés, comme pour `packages/ui/AGENTS.md` juste au-dessus :
      * les noms cités dans la note, et les exports réels du baril. Le **nombre**
@@ -310,7 +310,7 @@ describe('les tokens de `packages/ui` sont ceux du design system', () => {
   /**
    * **Les pages qu'une pagination rend** — la seule règle de calcul du design
    * system, donc la seule chose de `packages/ui` qui s'éprouve hors d'un
-   * navigateur (revue de s37b2, constat F4).
+   * navigateur.
    *
    * `Pagination` a été écrit pour le blog (s29), qui compte ses pages sur une
    * main : il rendait **une ancre par page**, sans borne. Les listes de

@@ -6,7 +6,7 @@ import type { MarketingSite } from '../application/marketing-site'
  * **Ce que le site public donne à indexer** (s53, ADR 054).
  *
  * Le module contribue à la quinzième clé du contrat comme n'importe quel autre,
- * et c'est la décision que le plan de s53 assume : le laisser sur son chemin
+ * et c'est une décision assumée : le laisser sur son chemin
  * nommé aurait gardé `app/robots.ts` et `app/sitemap.ts` important
  * `@repo/module-marketing`, c'est-à-dire un critère tenu à moitié à l'endroit
  * exact où il compte.

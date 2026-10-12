@@ -20,8 +20,7 @@
  * l'en-tête de `schema.ts` et l'ADR 050.
  *
  * **Deux seaux, et ils ne disent pas la même chose** — la même leçon que
- * `marketing`, apprise deux fois (constat F2 de la revue de s11, constat F3 de
- * celle de s24).
+ * `marketing`, apprise deux fois.
  *
  * Le seau de l'**appelant** refuse. Il repose sur un en-tête que le client
  * écrit lui-même : il ne vise que le martèlement naïf, et un identifiant

@@ -215,7 +215,7 @@ describe('les erreurs non gérées atteignent le fournisseur (critère 1)', () =
  * `createSentryMonitoring` émet — et **rien ne prouvait qu'une erreur non
  * rattrapée les atteigne** : vider `onRequestError` et supprimer
  * `<ClientErrorReporter error={error} />` laissait **2 605 cas verts**. C'est la
- * classe de défaut que la revue de s33 avait déjà nommée : une garde que
+ * classe de défaut qu'une revue avait déjà nommée : une garde que
  * personne ne peut supprimer-tester.
  *
  * La règle est prouvée **une fois chez elle** (les cas ci-dessus) ; ici, chaque

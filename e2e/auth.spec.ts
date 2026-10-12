@@ -111,7 +111,7 @@ test('une route protégée redirige vers la connexion, puis ramène à l’URL d
   // **L'origine fait partie de l'assertion.** Sans elle, le motif `/\/account$/`
   // est déjà satisfait par l'URL de départ — `/sign-in?next=/account` se termine
   // par `/account` — donc l'assertion passe *avant* la redirection et ne peut
-  // pas échouer. Mesuré en revue de s08 : neutraliser complètement la prise en
+  // pas échouer. Mesuré en revue : neutraliser complètement la prise en
   // compte de `?next=` laissait les vingt parcours verts. C'est le seul endroit
   // du dépôt qui tient cette propriété ; le repli, lui, est tenu par les
   // assertions `/localhost:\d+\/$/` des autres parcours.

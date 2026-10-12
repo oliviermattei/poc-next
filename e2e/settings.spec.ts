@@ -118,8 +118,7 @@ test('la sous-navigation porte les réglages visibles et marque l’écran ouver
 })
 
 /**
- * **Un seul titre de premier niveau par écran de réglages** (s62b, revue de
- * s62a) : le cadre porte « Réglages », la rubrique ouvre par un `h2` à son nom.
+ * **Un seul titre de premier niveau par écran de réglages** (s62b) : le cadre porte « Réglages », la rubrique ouvre par un `h2` à son nom.
  * Deux `h1` donnaient au document deux titres pour une aide technique.
  *
  * Les rubriques sont celles de la sous-navigation **rendue** : chaque lien est

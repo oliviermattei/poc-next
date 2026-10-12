@@ -183,7 +183,7 @@ describe('le choix du fournisseur de paiement', () => {
 
   it('laisse démarrer un processus qui ne touche pas au paiement', () => {
     // `pnpm db:migrate` n'encaisse rien : le **schéma** ne doit exiger de
-    // personne un fournisseur de paiement (revue de s06, G3). C'est la règle
+    // personne un fournisseur de paiement. C'est la règle
     // ci-dessus, appliquée seulement quand le module est activé, qui l'exige.
     expect(() => env()).not.toThrow()
   })
@@ -1938,7 +1938,7 @@ describe.runIf(compositionMeasurable)('le point de composition de l’applicatio
    * **Le fil complet du critère 7 de s33** : contrat → répartiteur → service →
    * requête SQL → règle → livraison de l'application.
    *
-   * La revue de s33 a mesuré que **rien** ne le tenait : vider le corps de la
+   * Une revue a mesuré que **rien** ne le tenait : vider le corps de la
    * tâche (`packages/modules/billing/src/module.ts`) et retirer
    * `remindTrialEnding` du point de composition (`apps/web/lib/billing.ts`)
    * laissaient tous deux 2 415 cas verts. La relance était couverte comme « une
@@ -3157,7 +3157,7 @@ describe.runIf(databaseReachable)('l’achat unique', () => {
    * **L'ordre de lecture et l'index doivent rester d'accord** — la conséquence
    * que l'ADR 037 demande de surveiller, appliquée à la nouvelle table.
    *
-   * Le constat m1 de la seconde revue de s19 avait montré un index que la
+   * Le constat d'une revue avait montré un index que la
    * requête qui l'a motivé ne servait pas : la position des `NULL` divergeait,
    * et le planificateur retriait par-dessus. Ici comme là-bas, c'est le plan
    * réel qui répond, pas un commentaire.
@@ -4035,8 +4035,7 @@ describe.runIf(databaseReachable)('la quantité facturée suit les membres', () 
       expect(calls.length).toBeGreaterThan(0)
 
       /**
-       * **La ligne locale est intacte**, et c'est asserté plutôt que commenté
-       * (constat mineur de la seconde revue de s34) : le commentaire l'affirmait
+       * **La ligne locale est intacte**, et c'est asserté plutôt que commenté : le commentaire l'affirmait
        * quand la seule mesure portait sur le nombre d'appels sortants. Cette
        * fonction ne touche **aucune** ligne locale — c'est la purge du module
        * qui efface, et l'appelant ne l'exécute pas sur un refus.
@@ -4552,8 +4551,7 @@ describe('la synchronisation des sièges quand il n’y a rien à facturer', () 
  * l'application accroche réellement au module des organisations.
  *
  * Le bloc précédent éprouve `seatSyncOf` ; celui-ci éprouve que
- * `apps/web/lib/organizations.ts` s'en serve. La distinction a été mesurée : la
- * revue de s23 a remplacé `seatSync: seatSyncOf(…)` par
+ * `apps/web/lib/organizations.ts` s'en serve. La distinction a été mesurée : une revue a remplacé `seatSync: seatSyncOf(…)` par
  * `() => Promise.resolve(true)` **au point de composition** et a obtenu la suite
  * entière au vert, `pnpm test:e2e` compris (constat F1) — l'application aurait
  * accepté des invitations sans jamais rien porter chez le fournisseur, et le
@@ -5202,7 +5200,7 @@ describe('la page publique de tarifs', () => {
   })
 
   /**
-   * **s24 remplace le quatrième critère de s22.** La page ne mène plus le
+   * **Le paiement invité remplace le détour par la connexion.** La page ne mène plus le
    * visiteur anonyme à la connexion : elle lui ouvre un tunnel.
    *
    * Ce que le cas garde de s22 : le déclencheur reste un `<form method="post">`
@@ -5213,8 +5211,7 @@ describe('la page publique de tarifs', () => {
     const outcome = await renderPricing({ available: true, session: null })
     const signIn = localeRouting.publicPath('/sign-in', defaultLocale)
 
-    // **Plus aucun détour par la connexion** : payer sans compte est le premier
-    // critère de s24.
+    // **Plus aucun détour par la connexion** : on paie sans compte.
     expect(outcome.html).not.toContain(`href="${signIn}`)
 
     // Un déclencheur par offre, chacun avec son avertissement « le tunnel exige
@@ -6756,7 +6753,7 @@ describe('la simulation locale d’un tunnel invité', () => {
  * **C'est ici que vit la composition**, et nulle part ailleurs : résoudre
  * l'offre par le prix stocké, en tirer le montant, la devise et l'intervalle,
  * puis les passer aux règles pures. `domain/revenue.test.ts` éprouve les règles ;
- * il ne peut rien dire de leur câblage. La revue de s38 a mesuré le trou :
+ * il ne peut rien dire de leur câblage. Une revue a mesuré le trou :
  * résoudre l'offre par un prix inexistant, ou coder l'intervalle en dur à
  * `'month'` — un abonnement annuel compté **douze fois trop cher** — laissaient
  * 2794 cas verts.

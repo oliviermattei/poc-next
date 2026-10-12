@@ -55,7 +55,7 @@ export interface NotificationTypeDeclaration {
   readonly email: EmailTemplate | null
   /**
    * Les clés de la charge utile **stockée** qui portent une référence de compte
-   * — un identifiant — et non une valeur affichable (revue s32, ronde 2, R1).
+   * — un identifiant — et non une valeur affichable.
    *
    * Une ligne de notification survit aux gens qu'elle nomme : elle est adressée
    * à quelqu'un d'autre, et la purge d'un compte n'efface que ce qui lui est
@@ -119,7 +119,7 @@ const quote = (value: string): string => `« ${value} »`
  * Le premier refus est le plancher de la story : **un registre vide est
  * refusé**. Sans lui, le balayage du critère 6 — « aucun type déclaré n'appelle
  * le mailer directement » — serait vert sur zéro type, c'est-à-dire vert sans
- * rien vérifier. C'est le mode d'échec qu'`AGENTS.md` nomme déjà pour
+ * rien vérifier. C'est le mode d'échec que `docs/commands.md` nomme déjà pour
  * `pnpm test:minimal-profile` (« un balayage vide »).
  *
  * Les locales sont **reçues** comme celles de `buildRegistry` : ce package ne
@@ -292,7 +292,7 @@ export interface EmitNotificationInput {
    */
   readonly data: EmailData
   /**
-   * Ce qui est **écrit dans le centre et relu plus tard** (revue s32, R1).
+   * Ce qui est **écrit dans le centre et relu plus tard**.
    *
    * Deux durées de vie différentes, donc deux charges : la ligne survit aux
    * gens qu'elle nomme — elle est adressée à quelqu'un d'autre, et
@@ -425,7 +425,7 @@ export function createNotificationEmitter(dependencies: {
       channels: type.channels,
       defaults: type.defaults,
       // **`stored`, jamais `data`** : ce qui est écrit se relit après que les
-      // comptes nommés ont disparu (revue s32, R1).
+      // comptes nommés ont disparu.
       data: input.stored,
     })
 

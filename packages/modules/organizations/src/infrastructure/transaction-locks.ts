@@ -9,7 +9,7 @@ import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core'
  * l'isolation par défaut de PostgreSQL, deux retraits en vol évaluent chacun la
  * sous-requête sur l'état d'avant l'autre : mesuré ici, dix courses sur dix
  * laissaient l'organisation **sans aucun membre**, à partir d'une seule session
- * et de deux clics rapprochés (revue de s16, constat F1). Aucune route de s16 ne
+ * et de deux clics rapprochés. Aucune route de s16 ne
  * promeut un membre : l'état est irrécupérable dans le produit.
  *
  * Ce fichier existe pour que ce soit fermé **sans lire une table dans le chemin
@@ -21,7 +21,7 @@ import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core'
  *
  * **Pourquoi la porte de lecture s'élargit ici, et de combien.** `pnpm lint`
  * refuse `select`, `from` et `execute` dans tout le module hors de
- * `infrastructure/scoped-reads.ts` (revue de s15, F2). Ce fichier obtient
+ * `infrastructure/scoped-reads.ts`. Ce fichier obtient
  * `execute`, et **lui seul** : `select` et `from` y restent refusés, si bien
  * qu'aucune lecture de table ne peut s'y glisser. `tests/lint-rules.test.ts`
  * éprouve les trois : `execute` permis ici, `select` refusé ici, `execute`

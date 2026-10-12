@@ -14,8 +14,7 @@ import { AuthForm } from '../../auth-form'
  * Le lien mort est un `Alert` `warning` et non `destructive` : rien n'est
  * cassé, il faut en redemander un — la même distinction que le refus de débit
  * de `app/auth-form.tsx`. Et **la couleur ne porte jamais seule le message** :
- * le texte le dit, comme la recherche de s46 l'exige des écrans
- * d'authentification.
+ * le texte le dit, comme pour tous les écrans d'authentification.
  */
 export default async function VerifyEmailPage({
   searchParams,

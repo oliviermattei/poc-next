@@ -108,8 +108,8 @@ const expectNavigationIsDerivedFromEnabledModules = (
 
 test('le profil coupe réellement des modules, et le balayage n’est pas vide', () => {
   // Cette garde d'inertie porte tout le fichier : sans elle, les deux cas
-  // suivants seraient verts en n'examinant rien — le mode d'échec que la revue
-  // de s25 a nommé, et que le plan de s26 reprend comme premier risque.
+  // suivants seraient verts en n'examinant rien — le premier risque de cette
+  // recette.
   expect(() => assertSweepIsNotEmpty(sweep)).not.toThrow()
 
   expect(sweep.cutModuleIds.length).toBeGreaterThan(0)
@@ -199,8 +199,7 @@ test('la navigation anonyme ne contient que des entrées de modules activés (cr
  *
  * Le balayage des routes ci-dessus ne couvre pas ces adresses-là : il ne
  * connaît que les routes du contrat (`MODULE_ROUTE_PREFIX`), et un module dont
- * l'écran est une page de `apps/web/app` déclare `routes: []`. Mesuré en revue
- * de s29 — le blog n'était vérifié par **aucune** requête HTTP dans la
+ * l'écran est une page de `apps/web/app` déclare `routes: []`. Mesuré en revue — le blog n'était vérifié par **aucune** requête HTTP dans la
  * configuration où il est coupé, si bien qu'une frontière de chargement posée
  * au-dessus de sa liste aurait servi 200 sans faire rougir une seule commande
  * du dépôt (voir `apps/web/AGENTS.md`, « Le montage du blog »).

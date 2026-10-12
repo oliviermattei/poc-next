@@ -236,8 +236,7 @@ export function AuthForm(props: AuthFormProps) {
       {/*
         **Le bouton éteint dit pourquoi.** Sans JavaScript, `useHydrated` le
         laisse éteint pour toujours : l'écran a l'air fini et ne l'est pas.
-        C'est ce que `apps/web/AGENTS.md` exige depuis le constat F5 de la revue
-        de s11, et ce que `app/public-form.tsx` et `app/billing-actions.tsx`
+        C'est ce que `apps/web/AGENTS.md` exige, et ce que `app/public-form.tsx` et `app/billing-actions.tsx`
         faisaient déjà — pas ces écrans-ci, jusqu'à s46. Un `<noscript>` ne
         demande ni script en ligne ni source de politique de sécurité du contenu
         supplémentaire.

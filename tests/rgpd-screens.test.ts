@@ -33,7 +33,7 @@ vi.mock('next/navigation', async (importOriginal) => ({
  * serveur. Ce que ce fichier tient est ce que **l'écran** fait de la réponse :
  *
  * 1. chaque refus garde son message, et aucun ne se replie sur le message
- *    générique — c'est le constat que la revue de s35 avait laissé ouvert :
+ *    générique — c'est le constat qu'une revue avait laissé ouvert :
  *    « il n'existe aujourd'hui aucun écran pour afficher le 429 » ;
  * 2. la liste des organisations qui bloquent la suppression est **celle que le
  *    serveur envoie**, rendue telle quelle. Un écran qui la recalculerait — ou

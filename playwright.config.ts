@@ -33,7 +33,7 @@ export const BASE_URL = `http://localhost:${PORT}`
  * le même serveur que `BASE_URL`.
  *
  * Le site est `site.localhost`, **jamais `localhost`** : Next relativise un
- * `Location` dont l'origine est celle d'écoute (research de s64b, fait 3), si
+ * `Location` dont l'origine est celle d'écoute, si
  * bien que le 308 de l'application vers un site sur `localhost` deviendrait un
  * chemin relatif qui boucle. Chromium et Node résolvent `*.localhost` sur la
  * boucle locale. Cette suite-ci ne les emploie pas : ils n'existent que pour
@@ -184,7 +184,7 @@ const webServerBaseEnv = (): Record<string, string> => ({
   // **Et cette suite-ci n'en joue aucune d'enregistrée**, ce qui se pose plutôt
   // que se supposer : Playwright **fusionne** `process.env` dans
   // l'environnement du serveur, donc une variable simplement omise ici est
-  // celle du shell ou du `.env` du poste. Mesuré en revue de s25 —
+  // celle du shell ou du `.env` du poste. Mesuré en revue —
   // `PAYMENTS_RECORDED_EVENTS=<dossier> pnpm exec playwright test
   // e2e/billing.spec.ts` rendait treize parcours verts en ayant rejoué des
   // enregistrements, et onze événements `evt_rec_…` apparaissaient dans le
@@ -251,7 +251,7 @@ export default defineConfig({
   reporter: 'list',
   // **Aucune reprise.** Un parcours qui ne passe qu'au second essai est un
   // parcours instable, et la reprise ne le disait pas : elle le peignait en
-  // jaune. Mesuré en revue de s08 — le parcours qui envoyait un mot de passe
+  // jaune. Mesuré en revue — le parcours qui envoyait un mot de passe
   // dans l'URL était rapporté « flaky » deux exécutions sur trois, et la story
   // a lu une instabilité de test là où il y avait une fuite de secret. Une
   // politique de reprise qui transforme un défaut reproductible en badge jaune

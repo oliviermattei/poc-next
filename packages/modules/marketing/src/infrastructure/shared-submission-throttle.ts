@@ -13,8 +13,7 @@ import type { SubmissionThrottle } from '../application/ports'
  *
  * **Ce que ce module garde, et pourquoi.** Sa règle à lui : deux seaux qui ne
  * disent pas la même chose — celui de l'appelant refuse, celui du formulaire
- * entier **dégrade** (il suspend l'envoi sortant sans refuser la soumission,
- * constat F2 de la revue de s11). Le répartiteur ne sait pas exprimer une
+ * entier **dégrade** (il suspend l'envoi sortant sans refuser la soumission). Le répartiteur ne sait pas exprimer une
  * dégradation ; il ne connaît que « autorisé » et « 429 ». La règle reste donc
  * ici, et seul le **compteur** a convergé.
  *

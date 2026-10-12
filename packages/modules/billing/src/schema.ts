@@ -5,11 +5,11 @@ import { boolean, index, integer, pgTable, text, timestamp, uniqueIndex } from '
  *
  * Elles n'existent que lorsque le module est activé : `pnpm db:generate` ne
  * génère que pour les modules de `config/features.ts`, et sur une base vierge
- * dont la configuration ne nomme pas ce module, aucune n'est créée (huitième
- * critère de s19, vérifié par lecture d'`information_schema`).
+ * dont la configuration ne nomme pas ce module, aucune n'est créée (vérifié
+ * par lecture d'`information_schema`).
  *
- * **L'abonnement et l'achat unique vivent dans deux tables**, et c'est le
- * sixième critère de s20 : un périmètre peut porter les deux, et aucun des deux
+ * **L'abonnement et l'achat unique vivent dans deux tables** (ADR 038) : un
+ * périmètre peut porter les deux, et aucun des deux
  * ne peut écraser l'autre — pas par discipline d'écriture, par construction.
  *
  * **Aucune clé étrangère ne sort du module**, et c'est une propriété, pas un
@@ -252,7 +252,7 @@ export const billingPurchase = pgTable(
      *
      * Deux clés, dont la dernière est la clé primaire : l'ordre est **total**,
      * deux lectures rendent la même liste. `nullsFirst()` n'est pas cosmétique
-     * — c'est la leçon du constat m1 de la seconde revue de s19 : `.desc()`
+     * — c'est la leçon du constat d'une revue : `.desc()`
      * seul fait écrire `DESC NULLS LAST` à Drizzle, tandis que `desc(colonne)`
      * dans une requête émet `NULLS FIRST`, et le planificateur retrie alors
      * par-dessus l'index.
@@ -272,8 +272,7 @@ export const billingPurchase = pgTable(
  * `billing_purchase.provider_session_id` ne porte que la **dernière** ouverture :
  * l'`on conflict do update` de `openPurchase` l'écrase à chaque reprise. Une
  * session de checkout, elle, reste payable chez le fournisseur après qu'une
- * autre a été ouverte — rien ne l'expire de notre côté. Le constat C1 de la
- * revue de s20 a suivi le fil : l'utilisateur ouvre `S1`, revient en arrière,
+ * autre a été ouverte — rien ne l'expire de notre côté. Le constat d'une revue a suivi le fil : l'utilisateur ouvre `S1`, revient en arrière,
  * rouvre (`S2`), puis paie `S1` ; la confirmation cherchait `S1` sur la colonne,
  * ne trouvait rien, et **un paiement encaissé n'accordait aucun droit**. La
  * réconciliation ne rattrapait pas davantage : elle ne connaissait plus `S1`.
@@ -312,7 +311,7 @@ export const billingPurchaseSession = pgTable('billing_purchase_session', {
  * désordre que l'ADR 034 déclare possible, et que les reprises de livraison du
  * fournisseur produisent — ne trouvait donc aucune ligne : il était journalisé,
  * donc jamais rejoué, et la confirmation ultérieure accordait l'accès à un achat
- * intégralement remboursé (constat C2 de la revue de s20).
+ * intégralement remboursé.
  *
  * Le remboursement est donc écrit **ici d'abord**, sous la seule clé qu'il
  * porte, et la promotion le rejoue depuis cette table dans la même transaction.
@@ -391,8 +390,8 @@ export const billingWebhookEvent = pgTable('billing_webhook_event', {
  * ultérieure** ; `tests/rate-limiting.test.ts` refuse à la fois qu'on la
  * réécrive et qu'on la supprime ici.
  *
- * **Ce commentaire disait le contraire** — « s28 devra la supprimer ». La
- * recherche de s28 a écarté cette consigne : la suivre aurait cassé la version
+ * **Ce commentaire disait le contraire** — « s28 devra la supprimer ». Cette
+ * consigne a été écartée : la suivre aurait cassé la version
  * encore en service pendant la bascule.
  */
 export const billingCheckoutThrottle = pgTable(

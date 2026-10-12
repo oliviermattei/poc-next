@@ -39,7 +39,7 @@ export const jobRunDigest = (job: string, key: string): string =>
  * la lecture prudente : accorder ferait exécuter deux fois, ce que la story
  * existe pour empêcher ; refuser reporte l'exécution à la prochaine échéance,
  * et le répartiteur la journalise — ce qu'il fait **parce qu'il attrape ce
- * rejet**, et pas seulement parce que cette phrase le dit. La revue de s33 a
+ * rejet**, et pas seulement parce que cette phrase le dit. Une revue a
  * mesuré l'inverse (constat F4) : `claim` rejette sur le délai ci-dessous comme
  * sur toute erreur du pilote, et l'exception traversait le répartiteur sans une
  * ligne de journal. Le magasin est la base de l'application — absente, il n'y a

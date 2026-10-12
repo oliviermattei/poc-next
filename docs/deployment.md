@@ -15,7 +15,7 @@ ailleurs :
 | Checklist des variables | **gardée par un test** | `tests/deployment.test.ts`, dérivée d'`ENV_KEYS` |
 | Construction d'image en CI | **en place** | job `image` de `.github/workflows/ci.yml` : validation de la pile, `runner` **et** `migrator` construits, image démarrée sans variables ; `actionlint` vert |
 | Sonde de l'image | **exercé** | conteneur lancé avec `PORT=8080` : `healthy`. La sonde figée sur `3000` y répond « connection refused » |
-| Recette Coolify | **guide livré, exécution non faite** | le déploiement réel sur l'instance du propriétaire est un geste humain ; la trace (URL, date, version) est à consigner dans `docs/reviews/s27-deployment.md` |
+| Recette Coolify | **guide livré, exécution non faite** | le déploiement réel sur l'instance du propriétaire est un geste humain ; la trace (URL, date, version) se consigne dans l'issue #145 |
 | Recette Vercel | **guide livré, exécution non faite** | aucun compte, aucun jeton et aucune configuration Vercel dans cet environnement |
 | Deux hôtes (`APP_HOST`) | **mesuré en local, recette de production non faite** | `GOLDEN_PATH_HOSTS=split pnpm test:golden-path` (session propre à l'application, consentement sur le parent, au navigateur) ; la recette à deux vrais noms et TLS, plus bas, est un geste humain dont la trace se consigne dans l'issue qui la suit |
 
@@ -31,7 +31,7 @@ Mesuré avec Docker 29.7.2 et Docker Compose v5.4.0.
 > les étapes d'exécution la subissent.
 
 `apps/web/next.config.ts` et `apps/web/instrumentation.ts` valident la
-configuration au démarrage, alors qu'`AGENTS.md` exige que « le build n'ait pas
+configuration au démarrage, alors que `docs/commands.md` exige que « le build n'ait pas
 besoin des variables d'exécution ». Les deux ne tiennent ensemble que par
 l'échappatoire de `packages/config/src/env.ts` — `NEXT_PHASE` et
 `SKIP_ENV_VALIDATION`. Elle est portée par **la commande de build**, jamais par
@@ -497,7 +497,7 @@ trois échouent séparément :
 1. **générées** — `productionBrowserSourceMaps: true` dans
    `apps/web/next.config.ts` ;
 2. **envoyées**, sous le **même nom de version** que les événements, et — c'est
-   la moitié que la revue de s39 a trouvée fausse — **celles du build qui est
+   la moitié qu'une revue a trouvée fausse — **celles du build qui est
    réellement servi** ;
 3. **jamais servies**. Une carte est le code source, et `.next/static` est servi
    à qui le demande sous `/_next/static`. `pnpm sourcemaps:prune` les retire de
@@ -512,8 +512,7 @@ trois échouent séparément :
 `pnpm build`**. Les empreintes des chunks qu'elle sert ne sont donc pas celles
 d'un `pnpm build` lancé sur le poste : envoyer les cartes de l'hôte publie un
 jeu que le fournisseur ne rapprochera d'aucune trace, et l'erreur arrive
-minifiée **sans que rien ne le dise**. C'était la recette écrite ici jusqu'à la
-revue de s39.
+minifiée **sans que rien ne le dise**. C'était la recette écrite ici jusqu'à une revue.
 
 L'image porte donc deux étapes : `builder` construit et **garde** ses cartes,
 `pruned` en descend et les retire du dossier servi. C'est de `builder` qu'on
@@ -556,7 +555,7 @@ SENTRY_ORG=… SENTRY_PROJECT=… SENTRY_AUTH_TOKEN=… SENTRY_RELEASE=app@1.2.3
 
 **Ce que rien ne vérifie ici** : qu'une trace soit effectivement *lisible* dans
 l'interface du fournisseur. Aucune commande locale ne peut le voir ; c'est une
-recette humaine, à faire une fois après le premier envoi. La revue de s39 ne l'a
+recette humaine, à faire une fois après le premier envoi. Une revue ne l'a
 pas faite — `pnpm sourcemaps:release` n'a jamais tourné, faute de
 `SENTRY_AUTH_TOKEN` : seul `prune` a été exercé de bout en bout.
 
@@ -565,8 +564,7 @@ pas faite — `pnpm sourcemaps:release` n'a jamais tourné, faute de
 **Non exécuté.** Le mécanisme est livré et éprouvé localement ; le déploiement
 réel sur l'instance du propriétaire crée un projet, une base et une application
 sur son infrastructure — c'est un geste humain. La trace (URL déployée, date,
-version) se consigne dans `docs/reviews/s27-deployment.md`, comme le critère 5
-l'exige.
+version) se consigne dans l'issue #145, comme le critère 5 de s27 l'exigeait.
 
 Coolify sait déployer ce dépôt de deux façons. **La seconde est celle que ce
 dépôt privilégie** : elle réutilise la pile éprouvée ci-dessus.
@@ -627,8 +625,8 @@ ressource base, ressource application, variables, sonde — ne change pas.
 ## Guide Vercel
 
 **Non exécuté.** Aucun compte, aucun jeton et aucune configuration Vercel dans
-cet environnement. Le guide est livré ; sa recette reste à faire, et sa trace à
-consigner dans la revue.
+cet environnement. Le guide est livré ; sa recette reste à faire, et sa trace se
+consigne dans l'issue #145.
 
 1. *Import Project*, dépôt Git, **Root Directory** = `apps/web`.
 2. Vercel détecte Next et le monorepo pnpm. **Ne pas** poser `output:

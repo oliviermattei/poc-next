@@ -27,7 +27,7 @@ const quote = (value: string): string => `« ${value} »`
 
 /**
  * Un identifiant de module : `kebab-case`, comme le veut la convention de
- * nommage du dépôt (`AGENTS.md` racine). Refusé tôt, avant tout calcul de
+ * nommage du dépôt (`CODING_STANDARDS.md`). Refusé tôt, avant tout calcul de
  * chemin : c'est aussi ce qui empêche un identifiant du type `../../etc` de
  * jamais atteindre un chemin de fichier — le serveur MCP ne sort pas du dépôt.
  */

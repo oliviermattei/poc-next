@@ -53,7 +53,7 @@ export function assertStartupConfiguration(
   // qu'un artefact se construise sur une configuration que le démarrage
   // refusera. Sans cet appel, une offre malformée ne se voyait qu'à la première
   // requête qui construisait le service — et cette requête pouvait être le
-  // webhook public, qui répondait alors 500 (constat F2 de la revue de s19).
+  // webhook public, qui répondait alors 500.
   //
   // Comme la garde du paiement, elle ne vaut que si le module est activé : un
   // projet qui ne vend rien n'a pas de catalogue à tenir.
@@ -93,7 +93,7 @@ export function assertStartupConfiguration(
   //
   // **Ce que cet appel-ci tient tout seul, et rien de plus** : la **phase de
   // construction**, où l'appel d'en bas n'est jamais atteint. Au démarrage, ce
-  // dernier rejoue le même plancher — la seconde revue de s33 a mesuré que
+  // dernier rejoue le même plancher — une revue a mesuré que
   // neutraliser cette ligne laissait la suite verte, ce qui était exact. Sa
   // contribution propre est donc qu'un `pnpm build` refuse une expression cron
   // illisible plutôt que de livrer une image dont l'ordonnanceur ne démarrera

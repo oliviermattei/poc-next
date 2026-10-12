@@ -1,7 +1,7 @@
 import type { EmailTemplate } from '@repo/core'
 
 /**
- * La confirmation d'inscription à la newsletter — le troisième critère de s11.
+ * La confirmation d'inscription à la newsletter.
  *
  * Elle part **hors du temps de réponse** : une inscription nouvelle en envoie
  * une, un doublon non, et la latence dirait sinon lequel des deux cas s'est

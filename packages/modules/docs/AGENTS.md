@@ -63,7 +63,7 @@ nombre — il a déjà été faux.
   mêmes niveaux** : le sommaire ne dérive que de `##` et `###`, donc
   `createProseComponents` ne pose d'ancre que sur `h2` et `h3`. Tant qu'il en
   posait une sur `h1`, un corps portant `# Titre` puis `## Titre` livrait deux
-  fois le même `id` sans qu'aucun refus ne le voie — mesuré à la revue de s30,
+  fois le même `id` sans qu'aucun refus ne le voie — mesuré à une revue,
   et `tests/docs.test.ts` tient désormais les deux passes sur le même ensemble ;
 - **un dossier de langue que personne ne servira jamais** (`readDocsDirectory`,
   voir le point 4 ci-dessus) — refusé en le nommant, là où une langue de
@@ -176,7 +176,7 @@ ce qui existe : hors de ce périmètre, rien n'a été mesuré.
 - d'appel réseau sortant, ni de lecture de `process.env` ;
 - de `loading.tsx` dans l'application pour ses écrans. Ce n'est pas un oubli :
   la coquille part avant que la page n'ait décidé, et un `notFound()` arrive
-  alors en **HTTP 200** — mesuré en s29 sur trois placements. `tests/docs.test.ts`
+  alors en **HTTP 200** — mesuré sur trois placements. `tests/docs.test.ts`
   refuse qu'un tel fichier apparaisse sous `apps/web/app`.
 
 ## Ce que le contrat déclare, et pourquoi si peu
@@ -224,7 +224,7 @@ titres, leurs ancres, et les liens relevés du corps),
 coupé, et la passe croisée des liens),
 `application/docs-search.test.ts` (l'index, la langue servie, le plafond, le
 classement). **Les attentes de ce dernier sont écrites, jamais dérivées de la
-fonction mesurée** : c'est le défaut majeur que la revue de s31 a trouvé sur la
+fonction mesurée** : c'est le défaut majeur qu'une revue a trouvé sur la
 page du changelog, où le filtre de langue n'était protégé par rien parce que
 l'attente était construite en appelant la fonction qu'elle jugeait.
 

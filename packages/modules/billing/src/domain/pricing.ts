@@ -20,7 +20,7 @@ import {
 /**
  * L'offre **mise en avant**, ou `null`.
  *
- * `config/billing.ts` ne déclare aucune offre recommandée, et le plan de s22
+ * `config/billing.ts` ne déclare aucune offre recommandée, et l'on
  * refuse d'y ajouter un champ pour en déclarer une : la mise en avant est donc
  * **dérivée** du catalogue — la dernière offre d'abonnement déclarée.
  *

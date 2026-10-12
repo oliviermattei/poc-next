@@ -596,8 +596,7 @@ test('un paiement sans compte mène, par l’email reçu, à la fonctionnalité 
 })
 
 /**
- * **La preuve que le serveur a joué le régime que la commande a demandé**
- * (constat F1 de la revue de s25).
+ * **La preuve que le serveur a joué le régime que la commande a demandé**.
  *
  * C'est le filet qui manquait, et la story n'existe que pour la garantie qu'il
  * porte. La chaîne est : `GOLDEN_PATH_PAYMENTS` → `PAYMENTS_RECORDED_EVENTS`

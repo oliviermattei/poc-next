@@ -2,7 +2,7 @@ import type { CheckoutMode } from '@repo/ports'
 
 /**
  * **D'où viennent les événements qu'un checkout terminé fait passer par la
- * route de webhook** — la seule couture entre les deux régimes de la story s25.
+ * route de webhook** — la seule couture entre les deux régimes de paiement.
  *
  * Deux sources, jamais mélangées, et le choix est toujours **explicite** :
  *
@@ -21,7 +21,7 @@ import type { CheckoutMode } from '@repo/ports'
 
 /**
  * **La marque que chaque source laisse sur les identifiants d'événement**, et
- * ce à quoi elle sert (constat F1 de la revue de s25).
+ * ce à quoi elle sert.
  *
  * Les deux régimes ne se distinguent autrement par **rien d'observable** : le
  * serveur reçoit une variable d'environnement, construit la source qu'elle

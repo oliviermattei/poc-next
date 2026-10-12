@@ -52,7 +52,7 @@ import { painted } from './support/painted'
  * seul navigateur**, Chromium, celui de la suite.
  */
 
-/** 380 px : la largeur du critère de s46, plus étroite que les 400 px de s08. */
+/** 380 px : plus étroit que les 400 px exigés de toute page (`docs/design-system.md`). */
 const NARROW = { width: 380, height: 900 }
 
 const APP_DIRECTORY = fileURLToPath(new URL('../apps/web/app', import.meta.url))
@@ -61,8 +61,7 @@ const APP_DIRECTORY = fileURLToPath(new URL('../apps/web/app', import.meta.url))
  * **La famille des écrans d'authentification, dérivée du disque.**
  *
  * La liste était écrite, et `/two-factor` n'y était pas — un écran de la même
- * famille, laissé hors du balayage sans que rien ne le dise (constat F4 de la
- * revue de s46). Le critère d'appartenance est donc **lu dans le code** : un
+ * famille, laissé hors du balayage sans que rien ne le dise. Le critère d'appartenance est donc **lu dans le code** : un
  * écran qui appelle une route du module d'authentification en est. Un septième
  * écran entre dans le balayage le jour où son fichier existe, au lieu
  * d'hériter du silence.
@@ -144,7 +143,7 @@ const applyTheme = async (page: Page, theme: (typeof THEMES)[number]): Promise<v
   const html = page.locator('html')
 
   // Sans cette assertion, les deux thèmes pourraient être la même mesure faite
-  // deux fois — le défaut relevé en revue de s49, côté commande.
+  // deux fois — le défaut relevé en revue, côté commande.
   if (theme.dark) {
     await expect(html).toHaveClass(/dark/)
   } else {

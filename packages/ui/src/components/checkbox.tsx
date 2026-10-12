@@ -12,7 +12,7 @@ import { cn } from '../lib/cn'
  * propriété est de fonctionner sans script : une case portée par Radix y
  * détruirait la seule chose qui compte.
  *
- * Rien n'est réimplémenté au passage — c'est bien ce que `packages/AGENTS.md`
+ * Rien n'est réimplémenté au passage — c'est bien ce que `packages/ui/AGENTS.md`
  * interdit. Le focus, la barre d'espace, l'état indéterminé, l'association à
  * l'étiquette et l'envoi du champ sont ceux de la plateforme ; `accent-color`
  * teinte la case avec le token du produit sans redessiner un contrôle.

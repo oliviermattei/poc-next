@@ -193,7 +193,7 @@ describe('tout est activé : le blog est indexable', () => {
     // décide (ADR 054).
     //
     // **Leur nombre n'est pas écrit ici** : il valait cinq à l'écriture de ce
-    // cas, huit à la revue de s31, et le cas était resté vert — la liste se
+    // cas, huit à une revue, et le cas était resté vert — la liste se
     // dérive du registre trois lignes plus bas, et c'est elle qui compte.
     const served = await servedFor(['marketing', 'blog', 'billing', 'organizations'])
     const policy = policyOf(served)

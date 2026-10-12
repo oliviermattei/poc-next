@@ -13,8 +13,8 @@ import { chromium } from '@playwright/test'
  * `apps/web/public/og-default.png`, et non un gabarit rendu à la requête.
  * `next/og` n'existe nulle part dans le dépôt, et le design system n'a **ni
  * gabarit d'image sociale, ni dimensions, ni jetons applicables** — c'est le
- * manque n°2 signalé par `docs/designs/s29-blog-mdx.md`. Inventer un gabarit
- * pour combler ce manque serait exactement la dérive que `AGENTS.md` refuse :
+ * manque du design system, suivi dans l'issue #152. Inventer un gabarit
+ * pour combler ce manque serait exactement la dérive que `docs/design-system.md` refuse :
  * un manque du design system se **signale**, il ne se comble pas en passant.
  *
  * Ce script n'invente donc rien : il compose **les jetons existants** de

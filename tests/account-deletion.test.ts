@@ -751,7 +751,7 @@ describe.runIf(databaseReachable)('la confirmation', () => {
  * `config/features.ts` : ce fichier ne nomme aucun module, et un module ajouté
  * demain est balayé sans que personne y pense. Toutes les colonnes sont
  * comparées en texte, y compris les charges utiles JSON — c'est exactement là
- * que la revue de s32 a trouvé l'adresse d'un tiers, et une comparaison qui
+ * qu'une revue a trouvé l'adresse d'un tiers, et une comparaison qui
  * n'aurait porté que sur les colonnes « adresse » ne l'aurait pas vue.
  */
 const declaredTables = (): readonly { readonly name: string; readonly columns: readonly string[] }[] =>
@@ -846,8 +846,8 @@ describe.runIf(databaseReachable)('après la suppression, plus rien ne nomme le 
     // sans clé étrangère vers le compte — la purge doit les atteindre elle-même
     'admin_platform_role', // `granted_by`, constat F1
     'auth_verification', // la valeur **est** l'adresse
-    'organization_invitation', // l'adresse invitée, constat F6 de s16
-    'notification', // la charge utile qui nomme, revue de s32
+    'organization_invitation', // l'adresse invitée
+    'notification', // la charge utile qui nomme
     // avec clé étrangère — la cascade les emporte, elles sont là comme témoins
     'auth_user',
     'auth_account',
@@ -860,7 +860,7 @@ describe.runIf(databaseReachable)('après la suppression, plus rien ne nomme le 
     const host = await anAccount()
 
     // Une notification **adressée** au compte, dont la charge utile le nomme :
-    // c'est la forme exacte que la revue de s32 a trouvée porteuse d'une
+    // c'est la forme exacte qu'une revue a trouvée porteuse d'une
     // adresse de tiers, et ce que ce balayage existe pour attraper.
     await connection.db.execute(
       sql`insert into notification (id, recipient_id, type, payload, created_at)
@@ -1298,8 +1298,7 @@ describe.runIf(databaseReachable)('les sessions, après la suppression', () => {
   }, 60_000)
 
   /**
-   * **La demande ferme les sessions tout de suite, pas la purge** (revue s61,
-   * M2). Avec le module `jobs` activé, la purge quitte la requête : sans
+   * **La demande ferme les sessions tout de suite, pas la purge**. Avec le module `jobs` activé, la purge quitte la requête : sans
    * révocation à la demande, la session servait encore le temps de la file, et
    * `/sign-in` renvoyait ce « connecté » vers le tableau de bord du compte
    * qu'il venait de supprimer.
@@ -1397,8 +1396,7 @@ describe.runIf(databaseReachable)('la marque de la suppression demandée', () =>
       (await callAuth('deleteAccount', { confirmation: email }, { userId, roles: [] })).status,
     ).toBe(503)
 
-    // Rien n'a été mis en file : rien n'est marqué, rien n'est fermé (constat
-    // m7 de la revue de s61), et la personne se reconnecte comme avant.
+    // Rien n'a été mis en file : rien n'est marqué, rien n'est fermé, et la personne se reconnecte comme avant.
     expect(await deletionRequestedAt(userId)).toBeNull()
     expect((await servedWithCookie(cookie)).status).toBe(200)
     expect((await callAuth('signIn', { email, password: PASSWORD })).status).toBe(200)

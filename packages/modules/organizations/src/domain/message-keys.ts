@@ -30,7 +30,7 @@ import { grantsOwnership } from './permissions'
  *    l'organisation, le motif d'un refus. Elles sont invisibles à tout
  *    balayage statique, et un gabarit écrit dans un `.tsx`
  *    (`` `role.${role}` ``) se lit comme un morceau de phrase concaténé (neuf
- *    faux positifs mesurés en s10). Les composants appellent donc des
+ *    faux positifs mesurés). Les composants appellent donc des
  *    **fonctions nommées**.
  *
  * `organizationsMessageKeys()` est la liste complète :
@@ -108,7 +108,7 @@ export const ORGANIZATIONS_KEYS = {
   switcherLabel: organizationsKey('current.switcherLabel'),
   /**
    * Le libellé du déclencheur quand **aucune** organisation n'est courante
-   * alors que le compte en a (constat F7 de la revue de s15).
+   * alors que le compte en a.
    *
    * L'écran passait `empty.title` — « Aucune organisation » — et le
    * déclencheur, nommé par son texte visible, annonçait donc un état vide comme
@@ -234,7 +234,7 @@ export const acceptRefusalMessageKey = (refusal: InvitationRefusal): string =>
  * marie@… administrateur »). Trois boutons identiques sur trois lignes sont
  * indiscernables au clavier comme pour une aide technique ; mettre l'adresse
  * *dans* le bouton le rendrait indéformable et ferait déborder l'écran à 390 px
- * — mesuré en s16.
+ * — mesuré.
  *
  * `owner` a ses propres clés : « Propriétaire » dirait le rôle posé sans dire ce
  * que le geste coûte à qui clique — il perd la propriété.

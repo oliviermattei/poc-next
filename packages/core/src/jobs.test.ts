@@ -399,7 +399,7 @@ describe('le rejeu d’une même exécution', () => {
    * la prochaine échéance, et le répartiteur la journalise » — et
    * `createDrizzleJobLedger` rejette sur son délai de cinq secondes comme sur
    * toute erreur du pilote, si bien que `dispatchModuleJob` levait **avant tout
-   * appel au journal** (constat F4 de la revue de s33). `in-memory-jobs.ts`
+   * appel au journal**. `in-memory-jobs.ts`
    * construit sa boucle de vidage sur la même promesse.
    */
   it('rend un échec journalisé quand le registre d’exécutions est en panne', async () => {

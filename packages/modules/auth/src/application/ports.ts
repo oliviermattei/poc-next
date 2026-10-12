@@ -106,7 +106,7 @@ export interface AuthUserRepository {
    * Les comptes de plusieurs identifiants, **en une seule lecture**.
    *
    * Elle existe pour que l'affichage d'une page qui nomme N comptes ne fasse pas
-   * N requêtes (revue s32, ronde 3, R3-3). Les identifiants absents ne sont pas
+   * N requêtes. Les identifiants absents ne sont pas
    * dans la réponse : c'est ce qui distingue un compte effacé d'un compte lu.
    */
   findByIds(userIds: readonly string[]): Promise<readonly AuthUserRecord[]>

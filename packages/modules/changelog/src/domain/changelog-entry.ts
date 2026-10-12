@@ -38,7 +38,7 @@ export interface ChangelogEntry {
  * commande qui échoue est `pnpm test`, sur `tests/changelog.test.ts` (« le
  * catalogue de traductions du module »), qui consomme `changelogMessageKeys()`.
  * **Pas `tests/i18n.test.ts`** : son balayage est statique et ne voit pas une
- * clé composée — la revue de s31 a mesuré qu'une cinquième catégorie sans
+ * clé composée — une revue a mesuré qu'une cinquième catégorie sans
  * traduction y laissait 102 cas verts.
  */
 export const CHANGELOG_CATEGORIES = ['added', 'changed', 'fixed', 'removed'] as const

@@ -23,11 +23,9 @@ import { defaultLocale } from '../config/i18n'
  *    `method="post"` écrit en toutes lettres, est tenue par **`pnpm lint`** —
  *    la règle `no-restricted-syntax` d'`eslint.config.ts` (`FORM_METHOD_SYNTAX`),
  *    et pas par un fichier de cette suite : retirer l'attribut laisse
- *    `tests/lint-rules.test.ts` vert et fait rougir ESLint, vérifié par la revue
- *    de s46. La CI joue les deux étapes ;
+ *    `tests/lint-rules.test.ts` vert et fait rougir ESLint, vérifié par une revue. La CI joue les deux étapes ;
  * 2. **le bouton éteint dit pourquoi.** Sans JavaScript il le reste pour
- *    toujours, et `apps/web/AGENTS.md` l'exige depuis le constat F5 de la revue
- *    de s11 : un `<noscript>` porte l'explication. `app/public-form.tsx` et
+ *    toujours, et `apps/web/AGENTS.md` l'exige depuis le constat d'une revue : un `<noscript>` porte l'explication. `app/public-form.tsx` et
  *    `app/billing-actions.tsx` le faisaient, les deux formulaires des écrans
  *    d'authentification non — un bouton primaire proéminent, éteint et muet ;
  * 3. **chaque étiquette désigne son propre champ.** L'écran de connexion monte

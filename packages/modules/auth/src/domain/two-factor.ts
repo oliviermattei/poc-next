@@ -21,8 +21,7 @@
  * quelqu'un dont le défi a été détruit au cinquième essai, et il ressaierait
  * indéfiniment.
  *
- * `used` est la troisième, et elle vient d'un mensonge mesuré (revue s13,
- * C12/C13/C14) : la garde de rejeu du module refuse un compteur déjà pris, ce
+ * `used` est la troisième, et elle vient d'un mensonge mesuré : la garde de rejeu du module refuse un compteur déjà pris, ce
  * qui arrive sur un code **juste** — deuxième connexion dans les mêmes trente
  * secondes, ré-enrôlement dans la même période, horloge du serveur reculée.
  * L'écran disait « ce code n'est pas valide » à quelqu'un qui lisait le bon
@@ -133,7 +132,7 @@ export function twoFactorRefusal(status: number): TwoFactorRefusal | null {
  * le module ».
  *
  * La fonction avait malgré tout été écrite, exportée et testée — sans un seul
- * appelant de production (revue s13, C5). Un test qui protège du code mort
+ * appelant de production. Un test qui protège du code mort
  * donne une fausse impression de couverture : elle est retirée, et ce
  * paragraphe est ce qui empêche de la réécrire.
  */
@@ -154,7 +153,7 @@ export function twoFactorRefusal(status: number): TwoFactorRefusal | null {
  * `config/features.ts`, sans environnement : elle ne peut pas savoir lequel des
  * deux s'appliquera. Elle les déclare donc tous les deux, et la limitation
  * **refuse** si la requête en présente plus d'un — deviner rouvrirait le
- * contournement par leurre que la re-revue de s28 a mesuré.
+ * contournement par leurre déjà mesuré (ADR 050).
  *
  * **Ce que cette liste suppose, et la commande qui échoue sinon** : que ce dépôt
  * ne configure ni `advanced.cookiePrefix`, ni `advanced.cookies.two_factor.name`.

@@ -353,7 +353,7 @@ export interface Viewer {
    * tire son bandeau sans rien relire. Il était résolu à part — un second
    * `getSession` plus une lecture de la ligne de session — soit deux
    * allers-retours de base à chaque page authentifiée, dans toutes les
-   * configurations, module `admin` coupé compris (revue de s37b2, F3).
+   * configurations, module `admin` coupé compris.
    */
   readonly impersonatedBy: string | null
 }

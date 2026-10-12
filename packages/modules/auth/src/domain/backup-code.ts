@@ -1,6 +1,6 @@
 /**
  * Les codes de secours du second facteur, **stockés hachés** —
- * `docs/security.md` §2 et le piège nommé par la story s13.
+ * `docs/security.md` §2, et ADR 028.
  *
  * ## Pourquoi cette règle existe
  *
@@ -17,7 +17,7 @@
  * ## Deux fonctions, et la séparation **est** la règle de sécurité
  *
  * Ce fichier a porté un seul aiguillage, appliqué aux deux chemins, et c'est
- * ce qui a fait échouer la revue de s13 : la fonction reconnaissait une
+ * ce qui a fait échouer une revue : la fonction reconnaissait une
  * empreinte et la laissait passer **inchangée**, y compris quand elle venait
  * du monde extérieur. Une chaîne `sha256:<64 hexadécimaux>` lue en base et
  * postée sur `/auth/two-factor/verify-backup-code` traversait donc la route

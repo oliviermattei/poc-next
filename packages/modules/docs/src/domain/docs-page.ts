@@ -368,7 +368,7 @@ const inlineText = (markdown: string): string =>
  * Ce refus ne tient que si les deux passes portent sur les **mêmes niveaux** :
  * il compte ce que cette fonction rend, donc `##` et `###` seulement. Une ancre
  * posée au rendu sur un niveau qu'elle ignore échapperait au compte — c'était le
- * cas de `h1` jusqu'à la revue de s30.
+ * cas de `h1` jusqu'à une revue.
  */
 export function documentHeadings(body: string): readonly DocsHeading[] {
   const headings: DocsHeading[] = []

@@ -2,7 +2,7 @@ import type { twoFactor } from 'better-auth/plugins/two-factor'
 
 /**
  * **Le second facteur sur les trois voies d'entrée**, et pas seulement sur le
- * mot de passe (correctif C2 de `docs/reviews/s13-two-factor.md`).
+ * mot de passe (correctif d'un défaut relevé en s13).
  *
  * ## Ce qui n'allait pas
  *
@@ -34,7 +34,7 @@ import type { twoFactor } from 'better-auth/plugins/two-factor'
  *
  * ## Une liste d'exemptions, jamais une liste d'inclusions
  *
- * Première forme livrée, et **corrigée** (revue s13, C11) : le `matcher`
+ * Première forme livrée, et **corrigée** : le `matcher`
  * recevait deux chemins de plus, écrits à la main. Une liste d'inclusions
  * échoue **ouvert** — aucune commande ne rougissait le jour où une quatrième
  * voie de connexion apparaissait, et s14 en monte une

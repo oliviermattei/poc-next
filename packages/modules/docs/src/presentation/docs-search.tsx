@@ -51,7 +51,7 @@ export interface DocsSearchLabels {
    *
    * Sans lui, `cmdk` annonce « Suggestions » — une chaîne anglaise en dur, dans
    * toutes les locales, absente de toute source du dépôt. `CommandList` l'exige
-   * depuis la revue de s54 : c'est un type, donc `pnpm typecheck` refuse.
+   * depuis une revue : c'est un type, donc `pnpm typecheck` refuse.
    */
   readonly results: string
   readonly close: string

@@ -122,7 +122,7 @@ export function buildRegistry(configuration: {
    * **Obligatoire**, et le mot compte : facultatif, il retombait en silence sur
    * les locales du module, c'est-à-dire exactement sur la faille de s06 que ce
    * paramètre existe pour fermer. Un point de composition qui l'oubliait ne
-   * faisait rougir aucune commande (revue de s09). Le compilateur refuse
+   * faisait rougir aucune commande. Le compilateur refuse
    * désormais l'omission, et `buildRegistry` la refuse aussi à l'exécution,
    * pour la porte que le compilateur ne garde pas.
    */
@@ -498,7 +498,7 @@ export async function purgeModules(
 /**
  * Ce que rend un export de périmètre : **tout, ou le nom de ce qui a manqué**.
  *
- * La forme est discriminée comme celle d'un port (`AGENTS.md`) : le compilateur
+ * La forme est discriminée comme celle d'un port (`CODING_STANDARDS.md`) : le compilateur
  * force l'appelant à écarter l'échec avant de lire les charges, si bien qu'une
  * archive amputée ne peut pas être livrée par distraction.
  *

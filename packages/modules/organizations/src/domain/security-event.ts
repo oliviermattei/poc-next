@@ -10,8 +10,7 @@ import type { OrganizationRole } from './organization'
  * (`Record<string, string|number|boolean>`) où n'importe quoi peut entrer — une
  * URL de vérification avec son jeton, par exemple. Ici il n'y a **aucun champ
  * libre** : chaque champ est nommé ci-dessous, et l'interface est la liste — un
- * compte écrit à côté d'elle vieillirait, celui-ci disait « cinq » pour six
- * (revue de s17, F2). Il n'existe pas d'emplacement où glisser un secret, et
+ * compte écrit à côté d'elle vieillirait, celui-ci disait « cinq » pour six. Il n'existe pas d'emplacement où glisser un secret, et
  * c'est le compilateur qui le tient. Les deux valeurs qui viennent du corps de
  * la requête passent par Zod avant d'entrer ici.
  *
@@ -23,7 +22,7 @@ import type { OrganizationRole } from './organization'
  *
  * **Pourquoi ce n'est pas le journal d'`auth`.** `pnpm lint` refuse
  * `@repo/module-auth` dans ce module hors de `src/schema.ts` et
- * `src/infrastructure/scoped-reads.ts` (revue de s16, F9) : c'est la borne qui
+ * `src/infrastructure/scoped-reads.ts` : c'est la borne qui
  * rend l'absence d'énumération de comptes structurelle. Elle ne cède pas pour un
  * journal.
  *
@@ -67,7 +66,7 @@ export interface OrganizationSecurityEvent {
    * Le compte visé. Un identifiant, pour la même raison.
    *
    * `null` **au refus seulement** : la permission est décidée avant la
-   * validation (ADR 030, revue de s17 F5), donc un corps qui ne nomme aucune
+   * validation (ADR 030), donc un corps qui ne nomme aucune
    * cible valide est refusé avant qu'on en connaisse une. Le journal dit alors
    * `null` plutôt que d'écrire ce qui est arrivé tel quel.
    */

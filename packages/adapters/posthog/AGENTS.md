@@ -32,7 +32,7 @@ fournisseur :
   **plancher** : toute lecture d'une requête capturée passe par `capturedBody`
   ou `capturedText`, qui **échouent** sur un ensemble vide, si bien qu'un
   adaptateur qui n'émettrait plus rend la recette rouge au lieu de verte. La
-  seconde porte a été ajoutée par la revue de s39, qui avait mesuré un cas lisant
+  seconde porte a été ajoutée par une revue, qui avait mesuré un cas lisant
   `network.requests.at(-1)` **directement** — la phrase ci-dessus était alors
   fausse (balayé le 6 septembre 2026, sur les 8 cas du fichier) ;
 - `posthog-live.test.ts` — **jamais en CI**, armé par `POSTHOG_LIVE_TEST=1`. Il

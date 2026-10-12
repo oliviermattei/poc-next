@@ -58,8 +58,8 @@ L'en-tête `Cookie` est écrit intégralement par l'appelant. La bibliothèque
 d'authentification lit **un nom précis** ; si le limiteur lit autre chose — un
 suffixe, par exemple — les deux ne regardent plus la même valeur, et il suffit de
 poser un leurre en tête pour que le seau compte un compteur qui tourne pendant
-que le serveur valide le vrai défi. C'est le contournement que la re-revue de s28
-a mesuré : 401×20, aucun 429.
+que le serveur valide le vrai défi. C'est le contournement mesuré dans l'ADR 050 :
+401×20, aucun 429.
 
 `subjectCookies` porte donc des **noms exacts**, au pluriel parce que le nom réel
 dépend d'une configuration que la déclaration de route ignore. Plus d'un présent

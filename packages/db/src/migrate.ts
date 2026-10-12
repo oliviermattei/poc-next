@@ -149,7 +149,7 @@ export async function runMigrations(options: RunMigrationsOptions): Promise<Migr
    * les mêmes modules, et `pnpm test:minimal-profile` leur donne une base
    * **créée pour l'exécution** où les modules coupés n'ont pas été migrés par
    * la recette. Deux workers émettent alors le même `create table` et le
-   * perdant échoue sur le catalogue — mesuré en s34.
+   * perdant échoue sur le catalogue — mesuré.
    *
    * Le rejeu suffit à converger, et c'est une propriété du journal : le gagnant
    * l'écrit, si bien que la tentative suivante ne crée plus rien
@@ -159,7 +159,7 @@ export async function runMigrations(options: RunMigrationsOptions): Promise<Migr
    * **Il ne rattrape que la création concurrente** : tout autre échec sort au
    * premier essai.
    *
-   * Ce que cette discrimination change, dit exactement — la revue de s34 a
+   * Ce que cette discrimination change, dit exactement — une revue a
    * mesuré qu'elle ne change **pas** l'issue : une migration réellement en
    * échec échoue de toute façon, rejouée ou non. Drizzle ouvre **une seule
    * transaction pour toute la boucle** des migrations en attente

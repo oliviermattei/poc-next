@@ -37,7 +37,7 @@ Deux conséquences qui se lisent dans le code et qu'aucune commande ne rappelle 
   traiter tous les codes — `const unhandled: never = code` —, et `pnpm test`
   (`tests/jobs.test.ts`) les force à rendre la **même** réponse sur
   `JOBS_ERROR_CODES`, la liste dont l'union est dérivée. Le compilateur seul ne
-  disait rien de l'**accord** : c'était le constat b de la seconde revue de s33 ;
+  disait rien de l'**accord** : c'était le constat d'une revue ;
 - **`serve` d'`inngest/edge` lit l'en-tête `Host`.** Mesuré :
   `new URL(req.url, \`https://${req.headers.get("host") || ""}\`)`
   (`components/createWebApiCommHandler.js`) — une requête sans en-tête `Host`

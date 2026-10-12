@@ -13,7 +13,7 @@ import {
  * L'index de recherche, et ce qu'on y trouve.
  *
  * **Les attentes de ce fichier sont écrites, jamais dérivées de la fonction
- * mesurée.** C'est le défaut majeur que la revue de s31 a trouvé sur la page du
+ * mesurée.** C'est le défaut majeur qu'une revue a trouvé sur la page du
  * changelog : le filtre de langue n'y était protégé par rien, parce que
  * l'attente était construite en appelant la fonction qu'elle prétendait juger.
  * Ici, le catalogue est écrit à la main et les titres attendus sont des

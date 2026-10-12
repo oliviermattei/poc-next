@@ -274,7 +274,7 @@ export function assertJobSchedulesAreValid(jobs: readonly ScheduledJob[]): void 
  * de `JobsErrorCode` le rappelle au compilateur » — c'était faux : ajouter
  * `quota_exceeded` à l'union laissait `pnpm typecheck --force` vert sur 32
  * paquets, et le code neuf retombait en silence du côté **définitif**, donc
- * n'était jamais réessayé (constat F3 de la revue de s33).
+ * n'était jamais réessayé.
  *
  * La commande qui échoue quand ce n'est plus vrai est donc **`pnpm typecheck`** :
  * `const unhandled: never = code` ne compile que si tous les codes sont traités.
@@ -481,7 +481,7 @@ export async function dispatchModuleJob(options: DispatchJobOptions): Promise<Di
        * erreur du pilote. Non attrapée, l'exception traversait la boucle de
        * vidage de l'exécuteur local et le gestionnaire de rappel du fournisseur
        * — sans **aucune** ligne de journal, alors que trois documents
-       * promettaient l'inverse (constat F4 de la revue de s33). Un port ne lève
+       * promettaient l'inverse. Un port ne lève
        * pas ; son répartiteur non plus.
        *
        * `attempts: 0` : la tâche n'a pas tourné, et elle ne devait pas —

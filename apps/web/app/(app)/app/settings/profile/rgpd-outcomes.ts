@@ -132,7 +132,7 @@ export const deletionRefusalKey = (outcome: DeletionRefusalOutcome): string => {
  * est acceptée.
  *
  * Les trois refus du critère 6 y sont **distincts**, et c'est le point de la
- * story : la revue de s35 a relevé qu'aucun écran n'existait pour montrer le
+ * story : une revue a relevé qu'aucun écran n'existait pour montrer le
  * 429. Les fondre dans un message générique jetterait ce que le serveur a
  * séparé.
  */

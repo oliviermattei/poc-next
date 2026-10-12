@@ -14,7 +14,7 @@ import type { BillingOffer } from './offer'
  *
  * **Deux conditions, et la seconde n'est pas redondante.** `perSeat` est un
  * booléen indépendant du mode, et `config/billing.ts` n'interdit pas de le
- * poser sur un achat unique (question ouverte de la recherche de s23). Un achat
+ * poser sur un achat unique. Un achat
  * unique n'a pourtant aucun abonnement à corriger : il est encaissé une fois et
  * n'expire jamais (ADR 038). La règle le tranche ici, plutôt qu'en ajoutant un
  * champ que le propriétaire du projet devrait comprendre.
@@ -39,7 +39,7 @@ export function offerSyncsSeats(offer: Pick<BillingOffer, 'perSeat' | 'mode'>): 
  * - un négatif : une impossibilité, traitée comme telle plutôt que propagée.
  *
  * Dans les trois cas la réponse est la même : on ne touche pas à la quantité.
- * `AGENTS.md` le dit de la réconciliation — « un silence du tiers ne doit pas
+ * `docs/commands.md` le dit de la réconciliation — « un silence du tiers ne doit pas
  * couper un client qui paie » —, et le silence de **notre** base ne doit pas
  * davantage réduire ce qu'il paie.
  */

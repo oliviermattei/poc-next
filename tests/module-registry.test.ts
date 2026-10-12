@@ -158,7 +158,7 @@ describe('validation de la configuration des modules', () => {
   })
 
   it('refuse un point de composition qui ne déclare pas les locales du projet', () => {
-    // La faille mesurée en revue de s06 : la référence était les locales du
+    // La faille mesurée en revue : la référence était les locales du
     // **module**, si bien qu'un module ne livrant que `fr` passait alors que le
     // projet sert `fr` et `en`. La tâche 2 de s09 l'a fermée en faisant
     // recevoir les locales de l'application — mais le paramètre était
@@ -308,7 +308,7 @@ describe('validation de la configuration des modules', () => {
   })
 
   it('refuse un template d’email absent d’une locale de l’application, et non du module', () => {
-    // La faille mesurée en revue de s06 : le contrôle portait sur les locales
+    // La faille mesurée en revue : le contrôle portait sur les locales
     // **du module**, donc un module ne livrant que `fr` passait alors que
     // l'application sert `fr` et `en`, et son email partait dans une langue
     // que le destinataire n'avait pas demandée. L'ensemble de référence est
@@ -429,7 +429,7 @@ describe('construction du registre', () => {
     // en s16 : `organizations` efface l'adresse d'une invitation en la lisant
     // sur le compte, et le compte appartient à `auth`. Purgé après `auth`, il
     // n'avait plus rien à lire, et l'adresse d'une personne survivait à
-    // l'effacement de son compte (revue de s16, F6).
+    // l'effacement de son compte.
     //
     // C'est aussi l'ordre des clés étrangères : un dépendant référence son
     // requis, jamais l'inverse (ADR 018).
@@ -952,7 +952,7 @@ describe('une route réservée à une offre payante', () => {
  *
  * Le module de démonstration sert de gabarit au générateur de s41 et à tout
  * agent qui écrit son premier module : un `href` qui ne correspond à rien y
- * enseignerait qu'un lien n'a besoin de correspondre à rien (revue de s03, F8).
+ * enseignerait qu'un lien n'a besoin de correspondre à rien.
  *
  * Il y a **deux** destinations légitimes, et le cas les distingue au lieu d'en
  * supposer une :
@@ -1065,7 +1065,7 @@ describe('webhook déclaré par un module', () => {
    * c'est la raison pour laquelle un module qui reçoit un rappel du fournisseur
    * passe par une **route déclarée** plutôt que par `webhooks` (`billing`,
    * s19). L'argument tient tant que ce répartiteur n'existe pas ; il repose
-   * sinon sur un commentaire, ce que la revue de s19 a relevé comme la seule
+   * sinon sur un commentaire, ce qu'une revue a relevé comme la seule
    * faiblesse de cette décision.
    *
    * Ce cas est le **fil de détente** : le jour où l'application répartira
@@ -1135,8 +1135,7 @@ describe('webhook déclaré par un module', () => {
      * L'existence du fichier est vérifiée juste après — une exception qui ne
      * désigne plus rien doit disparaître.
      *
-     * **Ce que cette exception coûte, et le seuil à surveiller** (constat F8 de
-     * la revue de s24) : `/\.handle\s*\(/` ne distingue pas une répartition
+     * **Ce que cette exception coûte, et le seuil à surveiller** : `/\.handle\s*\(/` ne distingue pas une répartition
      * d'un appel pass-through — c'est désormais ce commentaire, et non le
      * motif, qui porte la différence. Une **deuxième** exception veut dire que
      * le motif ne décrit plus ce qu'il cherche : il faudra alors reconnaître la
@@ -1177,7 +1176,7 @@ describe('webhook déclaré par un module', () => {
  * fichier n'en fait donc pas partie. Sans déclaration explicite, éditer la
  * configuration puis relancer `pnpm build` rend `FULL TURBO` et sert le bundle
  * de l'état **précédent** — le geste central du produit expédie alors le mauvais
- * jeu de modules, en silence (revue de s03, F1).
+ * jeu de modules, en silence.
  *
  * L'assertion ne relit pas `turbo.json` : elle interroge le calcul de hachage de
  * Turborepo lui-même. Une déclaration présente mais qui ne couvrirait pas le

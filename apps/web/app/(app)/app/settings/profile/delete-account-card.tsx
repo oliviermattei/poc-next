@@ -24,7 +24,7 @@ import {
  *
  * **`method="post"` en littéral écrit** : sans lui, le repli du navigateur
  * avant hydratation est un `GET` vers l'URL courante, et l'adresse saisie part
- * dans la chaîne de requête — mesuré en s08, `docs/security.md` §5, refusé par
+ * dans la chaîne de requête — mesuré, `docs/security.md` §5, refusé par
  * `pnpm lint`.
  *
  * Composée exclusivement du design system : `Card` (posée par l'écran),

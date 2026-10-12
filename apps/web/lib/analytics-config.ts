@@ -42,8 +42,7 @@ export interface AnalyticsSettings {
  * `getEnv` rend la source telle quelle en phase de build et sous
  * `SKIP_ENV_VALIDATION` : sans cette normalisation, le `POSTHOG_KEY=` vide que
  * livre `.env.example` s'y lirait « clé renseignée » et l'application émettrait
- * vers un fournisseur avec une clé vide (constat G2 de la revue de s06,
- * transposé).
+ * vers un fournisseur avec une clé vide.
  */
 const declared = (value: string | undefined): string | undefined => {
   const trimmed = value?.trim()

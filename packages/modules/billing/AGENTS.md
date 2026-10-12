@@ -191,7 +191,7 @@ mettre à jour ; la seule écriture qui rencontre un conflit est la route de
 checkout, authentifiée. Ne pas lire ce paragraphe comme une permission de
 rejouer les deux options de l'ADR 037 sur `billing_subscription`.
 
-**Deux fermetures, et elles ne se regardent pas** (sixième critère de s20) :
+**Deux fermetures, et elles ne se regardent pas** :
 `already_subscribed` ne lit que les abonnements, `already_purchased` que les
 achats. Une garde unique fondée sur l'accès consolidé interdirait à un abonné
 d'acheter à vie et à un acheteur à vie de s'abonner. À l'écran, c'est la même
@@ -204,8 +204,7 @@ fournisseur émet le même événement pour les deux ; c'est `refundRevokesPurch
 — une fonction pure — qui décide, jamais l'adaptateur. Conséquence assumée : un
 remboursement partiel n'apparaît nulle part.
 
-**Une session de checkout n'est jamais oubliée** (ADR 038 §1, constat C1 de la
-revue de s20). `billing_purchase.provider_session_id` ne porte que la
+**Une session de checkout n'est jamais oubliée** (ADR 038 §1). `billing_purchase.provider_session_id` ne porte que la
 **dernière** ouverture — `openPurchase` l'écrase à chaque reprise. La clé de
 rattachement est `billing_purchase_session`, qui les retient **toutes** : c'est
 elle que la confirmation et la réconciliation interrogent. Rien de notre côté
@@ -333,7 +332,7 @@ session de paiement au nom d'un tiers connecté. Le paramètre est validé par Z
 puis confronté au catalogue (`selectedOfferOf`, `domain/pricing.ts`) ; inconnu,
 il est ignoré sans erreur.
 
-**Le focus tient par deux mécanismes différents, et la revue de s22 a mesuré
+**Le focus tient par deux mécanismes différents, et une revue a mesuré
 pourquoi.** L'attribut `autofocus` que React rend dans le document servi est
 appliqué par le navigateur à l'analyse : cela suffit au **lien** du visiteur
 anonyme, cela ne fait rien du **bouton** du visiteur connecté, qui est désactivé
@@ -351,7 +350,7 @@ Deux conséquences à ne pas défaire :
   mémorise pour tout le processus : le muter pour un affichage empoisonnerait
   aussi le checkout ;
 - **le prix affiché et l'identifiant emporté viennent de la même offre**. C'est
-  le second critère de s22, et il est mesurable ; ce qui ne l'est pas, et qu'il
+  une exigence, et elle est mesurable ; ce qui ne l'est pas, et qu'il
   faut savoir, c'est la divergence entre `amount` et le prix réel chez le
   fournisseur — les deux valeurs locales sont cohérentes entre elles et fausses
   ensemble. Cette divergence-là relève du régime « clés de test réelles hors
@@ -360,8 +359,7 @@ Deux conséquences à ne pas défaire :
 **Aucune division mensuelle d'une offre annuelle.** `periodicityKeyOf` rend
 « par mois », « par an » ou « paiement unique », et rien d'autre : afficher
 « 24,17 €/mois » sous un prélèvement unique de 290 € par an est une affirmation
-que personne ne valide. La recherche de s22 avait laissé la question ouverte ;
-le plan l'a tranchée.
+que personne ne valide. La question est tranchée.
 
 **La mise en avant est dérivée, jamais déclarée.** `config/billing.ts` ne porte
 aucun champ `featured` — en ajouter un obligerait chaque projet à le

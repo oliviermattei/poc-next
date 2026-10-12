@@ -25,7 +25,7 @@ export interface PublicSubscriptionRecord {
  * Un message de contact, tel que le module le conserve.
  *
  * `deliveredAt` est la **trace** : vide, le message a été reçu mais n'est pas
- * parti. C'est ce que le constat F8 de la revue de s11 exigeait — jusque-là, un
+ * parti. C'est ce que le constat d'une revue exigeait — jusque-là, un
  * envoi en échec rendait 502 et ne laissait rien derrière lui, si bien que le
  * message était perdu pour de bon. Une colonne nullable suffit à donner à
  * l'éditeur de quoi rattraper ce que le fournisseur n'a pas pris.
@@ -139,13 +139,13 @@ export interface SubmissionThrottle {
    * Le paramètre est l'**instant présent**, pas une borne : le magasin est
    * partagé depuis s28 et ses seaux n'ont pas la même durée, si bien qu'une
    * borne « efface tout ce qui précède » effaçait les seaux longs encore ouverts
-   * des autres routes (constat C1 de la revue de s28). C'est la ligne qui porte
+   * des autres routes. C'est la ligne qui porte
    * son échéance ; un instant passé ne peut que retarder la récupération, jamais
    * effacer un seau ouvert.
    *
    * Sans lui, la table ne se vide jamais : un seau par identifiant d'appelant,
    * et l'identifiant vient d'un en-tête que le client écrit lui-même. Le
-   * constat F1 de la revue de s11 l'a mesuré — 500 identifiants distincts, 500
+   * constat d'une revue l'a mesuré — 500 identifiants distincts, 500
    * lignes, rien pour les reprendre. Une fenêtre close n'a plus de lecteur :
    * ses lignes ne servent plus à rien, et elles s'effacent.
    *

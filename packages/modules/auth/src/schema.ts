@@ -135,7 +135,7 @@ export const authSession = pgTable(
      * granted_by` : ici le lien pointe depuis une ligne éphémère, et effacer le
      * compte de l'emprunteur doit emporter les sessions qu'il a ouvertes chez
      * autrui. Sans elle, l'identifiant d'un compte effacé survivrait sur la
-     * session d'un tiers — le défaut mesuré en s34 (constat F1).
+     * session d'un tiers — le défaut mesuré (constat F1).
      *
      * Ajoutée **avec un défaut nul**, comme `banned` : la version encore en
      * ligne ne la lit pas et continue d'écrire sans elle
@@ -218,7 +218,7 @@ export const authVerification = pgTable(
  * - `secret` est le secret TOTP **chiffré** (`symmetricEncrypt` de la
  *   bibliothèque, clé = secret de l'application). Chiffré et non haché, et
  *   c'est structurel : vérifier un code exige de le regénérer, donc de relire
- *   le secret. `docs/decisions/028-…` porte l'arbitrage ;
+ *   le secret. `docs/adr/0028-…` porte l'arbitrage ;
  * - `backupCodes` est le JSON d'un tableau d'**empreintes**
  *   (`domain/backup-code.ts`), jamais des codes. C'est la moitié du socle §2
  *   qui, elle, est applicable ;
@@ -245,8 +245,7 @@ export const authTwoFactor = pgTable(
     verified: boolean('verified').notNull().default(false),
     failedVerificationCount: integer('failed_verification_count').notNull().default(0),
     lockedUntil: timestamp('locked_until', { withTimezone: true, mode: 'date' }),
-    // **Le dernier compteur TOTP consommé** — la garde de rejeu (revue s13,
-    // C3). La bibliothèque ne mémorise rien : un code accepté reste valable
+    // **Le dernier compteur TOTP consommé** — la garde de rejeu. La bibliothèque ne mémorise rien : un code accepté reste valable
     // jusqu'à quatre-vingt-dix secondes, donc rejouable sur un défi neuf par
     // qui l'a vu une fois. La colonne n'appartient à aucun modèle de la
     // bibliothèque — elle est **à nous**, comme la règle qu'elle porte.

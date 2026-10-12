@@ -8,7 +8,7 @@ import { appIntl } from '../lib/i18n'
  *
  * **Il est ici pour une raison de sécurité autant que de produit.** Sans ce
  * fichier, Next sert son composant intégré, qui émet quatre attributs `style`
- * et un `<style>` sans nonce : mesuré en revue de s45, deux violations de la
+ * et un `<style>` sans nonce : mesuré en revue, deux violations de la
  * politique livrée sur une page qu'un visiteur atteint — et zéro sans la
  * politique. Un socle dont la page introuvable contredit sa propre politique
  * n'est pas livrable, et une console bruyante est précisément ce qui pousse

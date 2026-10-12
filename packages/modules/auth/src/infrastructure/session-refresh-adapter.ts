@@ -5,8 +5,7 @@ import { authSession } from '../schema'
 import type { AuthDatabase } from './drizzle-auth-repositories'
 
 /**
- * **La fenêtre glissante ne prolonge pas une session empruntée** (constat C2 de
- * la revue de s37b1).
+ * **La fenêtre glissante ne prolonge pas une session empruntée**.
  *
  * ## Le défaut, mesuré
  *

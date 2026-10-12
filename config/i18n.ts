@@ -3,7 +3,7 @@
  *
  * C'est **l'ensemble de locales de l'application**, et il est distinct des
  * locales que chaque module déclare au contrat. La distinction n'est pas
- * cosmétique : la revue de s06 a mesuré que `assertDeclarationsAreComplete`
+ * cosmétique : une revue a mesuré que `assertDeclarationsAreComplete`
  * contrôlait les templates d'email contre les locales **du module**, si bien
  * qu'un module ne livrant que `fr` passait alors que l'application sert `fr` et
  * `en`. Le contrôle porte désormais sur cette liste-ci, transmise par les

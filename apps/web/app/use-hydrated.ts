@@ -10,7 +10,7 @@ import { useSyncExternalStore } from 'react'
  * n'existe pas encore, et le navigateur applique son propre repli. Un clic
  * pendant cette fenêtre — hydratation en cours, script en échec, réseau lent —
  * envoie donc les champs sans que le code de l'écran ne s'exécute. C'est la
- * course qui a fait partir un mot de passe dans l'URL (revue de s08, C1), et
+ * course qui a fait partir un mot de passe dans l'URL, et
  * elle se reproduisait dans deux exécutions de parcours sur trois.
  *
  * Le formulaire garde donc son bouton d'envoi **désactivé** tant que ce crochet

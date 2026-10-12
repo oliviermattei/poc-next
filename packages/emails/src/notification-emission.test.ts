@@ -123,7 +123,7 @@ const RECIPIENT = { userId: 'u-1', email: 'destinataire@example.test', locale: '
 describe('le registre de types de notification (s32, critère 6)', () => {
   it('refuse un registre vide, en le disant', () => {
     // **Le plancher de la story.** Un registre vide rendrait le balayage du
-    // critère 6 vert sur zéro type — le mode d'échec qu'`AGENTS.md` nomme déjà
+    // critère 6 vert sur zéro type — le mode d'échec que `docs/commands.md` nomme déjà
     // pour `pnpm test:minimal-profile`.
     expect(() => registryOf([])).toThrowError(NotificationTypeError)
     expect(() => registryOf([])).toThrowError(/aucun type/i)

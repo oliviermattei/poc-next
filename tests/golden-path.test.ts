@@ -226,8 +226,7 @@ describe('le régime du parcours doré', () => {
 })
 
 /**
- * **La marque que le serveur doit laisser derrière lui** (constat F1 de la
- * revue de s25).
+ * **La marque que le serveur doit laisser derrière lui**.
  *
  * C'est le filet qui manquait : la chaîne « régime demandé → variable
  * transmise au serveur → source d'événements » n'avait aucun maillon gardé à
@@ -277,8 +276,7 @@ describe('la marque du régime dans les événements traités', () => {
 })
 
 /**
- * **Le régime est décidé par la commande, jamais par l'ambiance** (constat F1
- * de la revue de s25).
+ * **Le régime est décidé par la commande, jamais par l'ambiance**.
  *
  * Playwright **fusionne** `process.env` dans l'environnement du serveur qu'il
  * démarre — `{ ...process.env, ...webServer.env }`, mesuré dans
@@ -357,7 +355,7 @@ describe('le mode d’hôtes du parcours doré', () => {
     const split = webServerEnv('split')
 
     // Le site hors de `localhost` : Next relativiserait sinon le 308 de
-    // l'application vers lui (research de s64b, fait 3).
+    // l'application vers lui.
     expect(new URL(split.APP_URL ?? '').hostname).toBe('site.localhost')
     expect(split.APP_HOST).toBe('app.site.localhost')
     // Un seul hôte demandé : `APP_HOST` est posée vide, pas laissée à l'ambiance.

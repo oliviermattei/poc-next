@@ -252,8 +252,8 @@ celui de la confirmation d'enrôlement — n'a *aucun* compteur (`beginAttempt` 
 rend deux fonctions vides). Le gain y est nul aujourd'hui, puisqu'il faut déjà
 une session ; s28 ne doit pas pour autant croire les deux branches couvertes.
 La limitation **partagée entre instances** de `docs/security.md` §7 reste s28,
-que `docs/stories.md` désigne nommément : « aucun compteur local n'est écrit
-ici ».
+que le critère de la story désignait nommément : « aucun compteur local n'est
+écrit ici ».
 
 **Rien de la bibliothèque ne sort tel quel.** Ses cinq codes d'erreur
 (`INVALID_CODE`, `TOTP_NOT_ENABLED`, `INVALID_TWO_FACTOR_COOKIE`,
@@ -262,7 +262,7 @@ sur **deux classes** — `invalid` quand le défi vit encore, `restart` quand il
 n'existe plus —, au **même statut**. La garde de rejeu du module en ajoute une
 **troisième**, `used`, qui ne vient pas de la bibliothèque : un compteur déjà
 pris refuse un code **juste**, et lui répondre « ce code n'est pas valide »
-faisait croire à une compromission (revue s13, C12/C13/C14 — deuxième connexion
+faisait croire à une compromission (deuxième connexion
 dans les mêmes trente secondes, ré-enrôlement dans la même période, horloge du
 serveur reculée). Le statut reste celui de tous les refus, et `used` n'est
 atteignable qu'avec un défi ouvert ou une session : pour qui n'a pas présenté le
@@ -286,7 +286,7 @@ C'est le principal argument pour ne pas réécrire la désactivation, et c'est c
 qui décide de la preuve exigée : `disableTwoFactor` appelle `validatePassword`
 avant tout (`shouldRequirePassword` rend `true` dès qu'`allowPasswordless`
 n'est pas posé), sans crochet pour y substituer une autre preuve. **Le critère 5
-de `docs/stories.md` a donc été amendé** : il disait « un code valide **ou** le
+de la story a donc été amendé** : il disait « un code valide **ou** le
 mot de passe courant », il dit désormais « le mot de passe courant ». Ce n'est
 pas une renonciation — le mot de passe est la plus forte des deux preuves, et
 l'invariant qui compte est tenu : un vol de session ne retire pas le second
@@ -309,8 +309,7 @@ et **remplace son `matcher`** : `/magic-link/verify` et `/callback/:id` posent
 le même défi, et les deux routes du module redirigent vers l'écran de
 vérification au lieu de la destination demandée.
 
-**Et c'est une liste d'exemptions, pas une liste d'inclusions** (revue s13,
-C11). La première forme livrée *ajoutait* deux chemins au `matcher` : aucune
+**Et c'est une liste d'exemptions, pas une liste d'inclusions**. La première forme livrée *ajoutait* deux chemins au `matcher` : aucune
 commande ne rougissait le jour où une quatrième voie de connexion apparaissait,
 et s14 en monte une (`/passkey/verify-authentication`). Le crochet vaut donc
 partout, et `TWO_FACTOR_CHALLENGE_EXEMPT_PATHS` énumère les **six** chemins qui
@@ -373,7 +372,7 @@ c'est ce fichier-ci qu'il faut relire, et la réponse de `/sign-in/email` qu'il
 faut réécrire comme les autres.**
 
 Cette condition d'escalade était écrite en gras, et **aucune commande ne la
-vérifiait** (revue s13, C4) : elle en a une désormais. `tests/auth.test.ts`,
+vérifiait** : elle en a une désormais. `tests/auth.test.ts`,
 « n'authentifie rien avec le jeton que la bibliothèque laisse dans le corps de
 la connexion », relit le `token` du corps et le présente en `Authorization:
 Bearer` — sur une route protégée du module et au résolveur de session. Monter
@@ -541,7 +540,7 @@ Quatre faits à connaître avant d'y toucher :
 - **la ligne est écrite ici** (`AuthSessionRepository.create`), avec son
   emprunteur. La clé étrangère `impersonated_by → auth_user` est en **cascade** :
   effacer le compte de l'emprunteur emporte les sessions qu'il a ouvertes chez
-  autrui, ce qui évite le défaut de `granted_by` mesuré en s34 (un identifiant de
+  autrui, ce qui évite le défaut de `granted_by` mesuré (un identifiant de
   compte effacé qui survit sur la ligne d'un tiers) ;
 - **le cookie est signé ici**, et c'est le seul endroit du dépôt qui reproduit un
   fait d'infrastructure de la bibliothèque : `infrastructure/session-cookie.ts`
@@ -801,7 +800,7 @@ et le nombre vieillira : ce qui compte est qu'il ne soit pas nul, la commande qu
 le dit est `pnpm test` avec `users.deleteById` neutralisé. L'appel explicite est
 une ceinture, il n'est pas la bretelle — ne pas le citer comme la garantie.
 
-**Mais les sessions ferment à la demande, pas à la purge** (revue s61, M2).
+**Mais les sessions ferment à la demande, pas à la purge**.
 `requestAccountDeletion` appelle `sessions.revokeAllForUser` **après** une mise
 en file réussie : avec le module `jobs` activé, la purge quitte la requête, et
 sans cet appel chaque session servait encore le temps de la file — `/sign-in`
@@ -858,7 +857,7 @@ sont : `collectArchive` est donc **reçu** du point de composition
 (`apps/web/lib/auth.ts`), au même titre que `purgeScope` l'est depuis s34 et que
 `readableScopes` l'est à `storage`. Sans ce câblage, les deux routes répondent
 **404** — la fonctionnalité n'est pas montée à moitié, elle n'existe pas. Le
-placement complet, avec ses options rejetées : `docs/decisions/061-…`.
+placement complet, avec ses options rejetées : `docs/adr/0061-…`.
 
 **Un seul port de tâches pour les deux traitements du module.** L'effacement de
 compte (s34) et la construction d'archive (s35) empruntent `AuthDependencies.jobs`
@@ -883,7 +882,7 @@ Huit décisions, et chacune a une commande qui échoue si on la défait :
    passer la demande à `failed` en nommant le module ; aucun lien ne part, et
    redemander repart de zéro ;
 2. **l'archive vit dans `auth_data_export_request.archive`**, pas dans le
-   stockage d'objets (`docs/decisions/062-…`). C'est ce qui la fait disparaître
+   stockage d'objets (`docs/adr/0062-…`). C'est ce qui la fait disparaître
    avec le compte — la cascade de `requested_by` — **et** avec l'organisation,
    dont le périmètre ne porte aucune clé étrangère (ADR 018) et que seule la
    purge du contrat emporte. C'est le second cas qui mesure : sans l'appel

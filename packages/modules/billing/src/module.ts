@@ -93,8 +93,7 @@ export const billingModule = defineModule({
   // anonymisées — un rattachement anonyme ne veut rien dire, et l'identifiant
   // *est* la donnée.
   //
-  // **L'achat unique est une catégorie à part entière** (constat m9 de la
-  // seconde revue de s20) : le module en stocke, l'export les rend et la purge
+  // **L'achat unique est une catégorie à part entière** : le module en stocke, l'export les rend et la purge
   // les efface par la cascade. La donnée était bien traitée ; c'est
   // l'inventaire qui mentait, et c'est lui que liront s34 et s35 —
   // `retention` n'est contrainte que par ce que cette liste déclare.

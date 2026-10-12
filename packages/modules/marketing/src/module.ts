@@ -23,9 +23,8 @@ import { marketingSchema } from './schema'
  * qu'un visiteur voit.
  *
  * Les pages légales ne sont **pas** dans la navigation : leur point d'accès
- * déclaré est le pied de page (`docs/stories.md`, critère 2 ; finding F57 de la
- * revue de s36). Deux points d'accès concurrents pour le même document
- * divergeraient.
+ * déclaré est le pied de page. Deux points d'accès concurrents pour le même
+ * document divergeraient.
  */
 const marketingNavigation: readonly NavigationEntry[] = [
   {
@@ -80,7 +79,7 @@ const marketingNavigation: readonly NavigationEntry[] = [
  *
  * Ce qui reste dehors, et pourquoi : `contact_message`, que
  * `docs/architecture.md` attribue à ce module, n'est pas livrée — aucun critère
- * de s11 ne l'écrit ni ne la lit (`docs/research/s11-public-forms.md` §6.1). La
+ * de s11 ne l'écrit ni ne la lit. La
  * limitation de débit a été livrée ici parce que ces deux routes étaient les
  * premiers points d'entrée publics du dépôt ; **s28 a fait converger le
  * compteur** vers son port (ADR 050). La règle des deux seaux reste ce module,
@@ -112,15 +111,15 @@ export const marketingModule = defineModule({
    * inscription, et un message de contact sans expéditeur n'a plus de réponse
    * possible — dans les deux cas il ne resterait qu'une ligne inutile.
    *
-   * `contact_message` a été déclarée ici parce qu'elle est livrée : la revue de
-   * s11 a montré qu'un message perdu en cas d'échec d'envoi était un message
+   * `contact_message` a été déclarée ici parce qu'elle est livrée : une revue a montré qu'un message perdu en cas d'échec d'envoi était un message
    * perdu (constat F8). Une donnée personnelle stockée sans purge ni export
    * n'aurait pas dû être écrite ; ces clés existent pour cela.
    *
    * `public_form_throttle` n'y figure pas : sa clé est un condensat qu'aucune
    * requête de ce module ne peut relier à un compte, et ses lignes ne survivent
-   * plus à leur fenêtre (`sweep`). C'est discutable, et c'est écrit comme tel
-   * dans `docs/research/s11-public-forms.md` §6.4.
+   * plus à leur fenêtre (`sweep`). C'est discutable, et la question tombe
+   * avec la table, inerte depuis s28, dont la suppression est suivie dans
+   * l'issue #105.
    */
   dataCategories: ['subscription', 'contact-message'],
   retention: { subscription: 'erase', 'contact-message': 'erase' },

@@ -50,7 +50,7 @@ const declared = (value: string | undefined): string | undefined => {
  * La règle est réappliquée ici et pas seulement dans le schéma parce que
  * `getEnv` ne valide rien en phase de build ni sous `SKIP_ENV_VALIDATION` : sur
  * ces chemins, l'`INNGEST_EVENT_KEY=` vide que livre `.env.example` se lirait
- * « clé renseignée » (revue de s06, G2).
+ * « clé renseignée ».
  */
 export function resolveJobsConfig(env: Env): JobsConfig {
   const eventKey = declared(env.INNGEST_EVENT_KEY)

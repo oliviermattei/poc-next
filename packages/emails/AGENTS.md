@@ -58,7 +58,7 @@ Trois transpileurs lisent ce dépôt et ils ne s'accordent pas :
 | pragma `/** @jsxRuntime automatic @jsxImportSource react */` | **fonctionne** — sans aucun `tsconfig.json`, et quel que soit le répertoire de lancement |
 
 Ce tableau porte sur les mécanismes essayés, pas sur tous ceux qui existent :
-la dernière ligne a été ajoutée après coup (revue de s06, G7), et une prochaine
+la dernière ligne a été ajoutée après coup, et une prochaine
 version de `tsx` peut en ajouter d'autres. Le mesurer avant de l'écrire reste la
 seule règle.
 
@@ -78,7 +78,7 @@ oublier, d'où qu'on le lance.
 (La version précédente de cette règle affirmait qu'« aucun moyen n'existe, les
 trois ont été essayés » : deux des trois fonctionnent en réalité, et ce qui
 avait été essayé était le `tsconfig.json` **racine**, qui ne gouverne pas
-`packages/emails/src/**`. Relevé en revue de s06, F4.)
+`packages/emails/src/**`. Relevé en revue.)
 
 Un `.tsx` ici n'échouerait ni au test, ni au build, mais au premier script
 exécuté par `tsx` qui charge le mailer (une graine qui envoie un email, un

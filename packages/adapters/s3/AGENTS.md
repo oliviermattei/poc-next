@@ -99,7 +99,7 @@ un test sans environnement.
 réel**. Ce que cela prouve tient à ce que cela double : la sérialisation réelle
 de la requête, les en-têtes réels, le traitement réel de la réponse. Doubler
 `client.send` par une fonction à soi n'éprouverait que cette fonction — c'est le
-piège relevé en revue de s01.
+piège relevé en revue.
 
 Il n'y a **pas** de fichier d'envoi réel ici, contrairement à
 `resend-live.test.ts` : ce dépôt n'a aucun seau de test, et un fichier de

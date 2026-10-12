@@ -71,7 +71,7 @@ connaît ni le routeur, ni les composants serveur de l'application.
   d'hôte. La source d'hôte reste le **repli** des navigateurs CSP 2 — Safari
   avant 15.4 —, et `connect` comme `img` restent à déclarer dans tous les cas. C'est le **nonce** de la requête, porté par
   `ConsentScripts`, qui autorise la balise. Mesuré sous le build de production
-  (ADR 036, revue de s36, constat C2) : avec un nonce faux le script est refusé
+  (ADR 036) : avec un nonce faux le script est refusé
   quelle que soit la liste d'origines, et le navigateur le dit — « *Note that
   'strict-dynamic' is present, so host-based allowlisting is disabled* ».
   `'strict-dynamic'` ne vaut que pour `script-src` : ce que s39 devra bien
@@ -87,7 +87,7 @@ différent (terminaison TLS), et une valeur présente qui n'est pas une URL. Cin
 cas, énumérés dans `src/domain/consent.test.ts`.
 
 `domain/request-guard.ts` sépare deux cas que le premier jet confondait, et la
-distinction est la correction du constat C1 de la revue de s36 :
+distinction est la correction du constat d'une revue :
 
 - **absent** — ni `Origin` ni `Referer` : la requête est **acceptée**, et c'est
   un choix. Un attaquant ne peut pas faire *retirer* `Origin` au navigateur

@@ -88,8 +88,7 @@ describe('le catalogue d’offres', () => {
   })
 
   /**
-   * **Un plafond sur un achat unique ne s'exécute nulle part** (constat M1 de
-   * la revue de s47) : `syncSeats` résout l'offre courante depuis l'abonnement
+   * **Un plafond sur un achat unique ne s'exécute nulle part** : `syncSeats` résout l'offre courante depuis l'abonnement
    * vivant, un encaissement unique n'en a aucun, et la fonction sort en
    * `not_applicable` avant même de lire le plafond. Le catalogue le refuse
    * donc au démarrage — le refus est dans la table ci-dessous.
@@ -132,7 +131,7 @@ describe('le catalogue d’offres', () => {
         names: 'trialDays',
       },
       {
-        // M1 de la revue de s47, et le frère exact du cas ci-dessus : une
+        // Le frère exact du cas ci-dessus : une
         // intention que rien n'exécute, refusée au démarrage plutôt
         // qu'ignorée en silence.
         why: 'un achat unique avec un plafond de sièges',
@@ -696,7 +695,7 @@ describe('les offres qu’un périmètre détient', () => {
   })
 
   it('cumule les deux sources sans que l’une ferme l’autre', () => {
-    // Le sixième critère de s20, relu par le gating : un abonné qui a aussi
+    // Les deux sources se cumulent, relu par le gating : un abonné qui a aussi
     // acheté à vie détient les deux offres, et perdre l'une ne retire pas
     // l'autre.
     expect(

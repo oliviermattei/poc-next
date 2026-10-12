@@ -158,7 +158,7 @@ export function subjectOfBody(body: unknown, field: string): string | null {
 /**
  * La valeur d'un cookie **telle que le serveur la lira**, et pas une autre.
  *
- * C'est la correction du constat M1 de la troisième revue de s28. Le chemin
+ * Le chemin
  * réel du second facteur est `ctx.getSignedCookie(nom)`
  * (`better-call@1.4.0/dist/context.mjs:38`) → `parsedCookies.get(nom)`, et cette
  * table est produite par `better-call/dist/cookies.mjs:19-40`, qui fait

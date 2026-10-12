@@ -30,8 +30,7 @@ export type ConsentCategory = (typeof CONSENT_CATEGORIES)[number]
  * `'strict-dynamic'`
  * dans `script-src`, et un navigateur CSP 3 **ignore alors `'self'` et toute
  * source d'hôte**. C'est le **nonce** de la requête qui autorise la balise, et
- * `ConsentScripts` le porte déjà. Mesuré sous le build de production (ADR 036,
- * revue de s36) : nonce faux, le script est refusé quelle que soit la liste
+ * `ConsentScripts` le porte déjà. Mesuré sous le build de production (ADR 036) : nonce faux, le script est refusé quelle que soit la liste
  * d'origines. `'strict-dynamic'` ne vaut que pour `script-src` : les appels
  * réseau du fournisseur, eux, demandent toujours son origine dans les champs
  * `connect` et `img` de `config/security.ts`. C'est ce que s39 doit savoir

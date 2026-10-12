@@ -234,7 +234,7 @@ export function thresholdOf(kind: ContrastKind): number {
  * refuser un **effondrement**. Leur nombre n'est écrit nulle part : il se lit
  * ici, et chacun est éprouvé par son propre message dans
  * `tests/contrast.test.ts` — deux planchers qui portent la même valeur se
- * couvriraient l'un l'autre par accident (mesuré en s57).
+ * couvriraient l'un l'autre par accident (mesuré).
  */
 
 /** Les quatre sémantiques du design system, teintées sur une surface. */
@@ -265,8 +265,8 @@ export const MINIMUM_SWEPT_FILES = 8
  * La liste des noms est un **argument**, et ce n'est pas une commodité : en
  * s57, ce plancher vivait à l'intérieur du lecteur de disque, qui n'expose
  * aucun point d'injection. Le neutraliser ne faisait alors rougir aucun cas —
- * une garde que rien ne pouvait démontrer, exactement ce que `AGENTS.md`
- * appelle une mutation verte. Ici il se prouve sur une liste posée par le test.
+ * une garde que rien ne pouvait démontrer, exactement ce que
+ * `CODING_STANDARDS.md` appelle une mutation verte. Ici il se prouve sur une liste posée par le test.
  */
 export function sweptComponentNames(names: readonly string[], where: string): readonly string[] {
   const files = names.filter((name) => name.endsWith('.tsx')).sort()
@@ -369,8 +369,7 @@ export type ContrastMeasurement = {
    * Il n'y a pas de paire à mesurer, donc pas de surface à connaître, donc rien
    * à refuser : le refus d'une source teintée sans surface déclarée ne se
    * déclenche que **là où une paire existe**. Sans cette liste, ces fonds
-   * passeraient en silence et la règle écrite serait plus large que le code —
-   * le constat m4 de la revue de s57.
+   * passeraient en silence et la règle écrite serait plus large que le code.
    */
   readonly tintedWithoutText: readonly string[]
 }

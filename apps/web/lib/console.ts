@@ -151,7 +151,7 @@ const countOf = <TView extends { readonly total: number }>(
  * **Les lectures des tuiles, en parallèle** — celles de `lib/admin.ts`, qui
  * portent chacune la garde du module. Quatre lectures pour quatre chiffres :
  * chacune charge aussi sa première page, un coût accepté à cette échelle
- * (décision du plan de s60, aucun port ne change).
+ * (décision délibérée : aucun port ne change).
  */
 export async function readConsoleTiles(
   slots: readonly ConsoleTileSlot[],

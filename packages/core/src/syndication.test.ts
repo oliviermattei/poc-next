@@ -159,7 +159,7 @@ describe('ce que le registre donne à indexer', () => {
 
 describe('les chemins qui portent un préfixe de langue', () => {
   /**
-   * Le piège relevé en revue de s29 (constat M3) et mesuré par la recherche de
+   * Le piège relevé en revue (constat M3) et mesuré par la recherche de
    * s53 : `publicPath` préfixe **sans condition**, `/api…` compris, alors que
    * `apps/web/proxy.ts` ne préfixe jamais ces chemins. Tant qu'aucun module ne
    * déclarait d'entrée vers une route d'API, personne ne pouvait le voir ; la

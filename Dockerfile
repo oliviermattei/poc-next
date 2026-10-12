@@ -8,7 +8,7 @@
 #   les étapes d'exécution la subissent.
 #
 # `apps/web/next.config.ts` et `apps/web/instrumentation.ts` valident la
-# configuration au démarrage, alors qu'`AGENTS.md` exige que « le build n'ait
+# configuration au démarrage, alors que `docs/commands.md` exige que « le build n'ait
 # pas besoin des variables d'exécution ». Les deux ne tiennent ensemble que par
 # l'échappatoire de `packages/config/src/env.ts` — `NEXT_PHASE` et
 # `SKIP_ENV_VALIDATION`. Elle est **portée par la commande de build**, jamais
@@ -52,7 +52,7 @@ RUN SKIP_ENV_VALIDATION=1 pnpm build
 # que l'**envoi**, lui, se fait hors de l'image : un jeton passé à un build
 # resterait dans une couche.
 #
-# **Une étape à part, et c'est ce que la revue de s39 a corrigé.** L'élagage
+# **Une étape à part, et c'est ce qu'une revue a corrigé.** L'élagage
 # vivait dans `builder`, si bien qu'aucune étape ne portait plus les cartes du
 # bundle réellement servi : la recette documentée envoyait celles d'un `pnpm
 # build` de l'hôte, dont les empreintes de chunks ne sont pas celles de l'image.
@@ -82,7 +82,7 @@ RUN pnpm sourcemaps:prune
 # Elle repart de l'étape de construction parce que `pnpm db:migrate` a besoin
 # du dépôt : `config/features.ts` décide quels modules migrent, et les fichiers
 # SQL versionnés vivent dans les modules. La seule variable qu'elle exige est
-# `DATABASE_URL` (revue de s06, G3) — vérifié sur le schéma, `getEnv` acceptant
+# `DATABASE_URL` — vérifié sur le schéma, `getEnv` acceptant
 # une source qui ne porte qu'elle.
 # ---------------------------------------------------------------------------
 FROM pruned AS migrator

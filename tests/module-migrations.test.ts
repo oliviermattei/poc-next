@@ -584,7 +584,7 @@ describe('les migrations versionnées ne détruisent rien', () => {
 
 /**
  * Le baril doit entrer dans la **clé de cache**, comme la configuration dont il
- * dérive (revue de s03, F1).
+ * dérive.
  *
  * `config/**` a été couvert par le correctif de s03 ; le baril est un autre
  * fichier, à un autre endroit, et il décide des tables que `drizzle-kit` voit.

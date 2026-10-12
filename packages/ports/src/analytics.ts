@@ -74,7 +74,7 @@ export interface AnalyticsPageView {
  * ou « définitif » écrit à côté d'un code est la déclaration, la fonction en est
  * la lecture, et les deux doivent dire la même chose. Un code ajouté sans
  * annotation rougit. **Ce test n'existait pas** quand ce commentaire l'a
- * annoncé la première fois (constat 4 de la revue de s39) : reclasser
+ * annoncé la première fois : reclasser
  * `unauthorized` laissait alors la suite verte.
  */
 export const ANALYTICS_ERROR_CODES = [

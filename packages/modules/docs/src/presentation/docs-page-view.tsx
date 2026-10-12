@@ -39,7 +39,7 @@ import { DocsToc } from './docs-toc'
  *
  * **Aucun état de chargement, et c'est une décision** : poser un `loading.tsx`
  * sur un segment vide la coquille **avant** que la page ne décide, si bien
- * qu'un `notFound()` arrive en HTTP 200 — mesuré en s29 sur trois placements. Le
+ * qu'un `notFound()` arrive en HTTP 200 — mesuré sur trois placements. Le
  * 404 est une règle du socle de sécurité.
  *
  * `min-w-0` revient partout : un élément de grille a `min-width: auto` par

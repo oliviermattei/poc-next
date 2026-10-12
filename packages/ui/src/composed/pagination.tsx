@@ -46,7 +46,7 @@ const ITEM = cn(
 export const PAGINATION_WINDOW = 7
 
 /**
- * **Les pages à rendre**, bornées (revue de s37b2, constat F4).
+ * **Les pages à rendre**, bornées.
  *
  * Ce composant a été écrit pour le blog, qui compte ses pages sur une main, et
  * il rendait **une ancre par page**. Le back-office de s37b2 pagine des listes
@@ -62,8 +62,7 @@ export const PAGINATION_WINDOW = 7
  * **Ce qu'elle ne fait pas** : ni ellipse, ni saut à la première ou à la
  * dernière page. Le design system ne décrit aucune des deux formes, et les
  * inventer ici serait décider du design system dans un commit de
- * fonctionnalité — le manque est signalé dans
- * `docs/designs/s37b2-back-office-lecture.md`. Les listes du back-office
+ * fonctionnalité : c'est un manque du design system. Les listes du back-office
  * portent une recherche, qui est le vrai outil de navigation au-delà de
  * quelques pages.
  */

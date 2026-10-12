@@ -98,8 +98,7 @@ export function resolveDocsCatalog({
 /**
  * **La passe croisée** : les liens que le contenu se fait à lui-même.
  *
- * **Ce n'est pas le premier refus du dépôt à traverser deux fichiers** — la
- * revue de s54 a corrigé cette affirmation, qui était fausse contre la fonction
+ * **Ce n'est pas le premier refus du dépôt à traverser deux fichiers** — une revue a corrigé cette affirmation, qui était fausse contre la fonction
  * juste au-dessus. `resolveDocsCatalog` en porte déjà deux depuis s30 : une
  * page dont la section n'a pas de `section.json` dans la langue par défaut, et
  * une page écrite seulement dans une traduction. Les deux confrontent bien un

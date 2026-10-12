@@ -211,7 +211,7 @@ export function createDrizzleAuthUserRepository(db: AuthDatabase): AuthUserRepos
     },
 
     findByIds: async (userIds) => {
-      // **Une instruction pour N identifiants** (revue s32, R3-3). La liste vide
+      // **Une instruction pour N identifiants**. La liste vide
       // ne part pas en base : `inArray(col, [])` est une condition qu'aucun
       // dialecte ne traite pareil, et il n'y a de toute façon rien à lire.
       if (userIds.length === 0) {
@@ -365,8 +365,7 @@ export function createDrizzleAuthSessionRepository(db: AuthDatabase): AuthSessio
     },
 
     /**
-     * **Les sessions du compte, et celles qu'il tient chez autrui** (constat C3
-     * de la revue de s37b1).
+     * **Les sessions du compte, et celles qu'il tient chez autrui**.
      *
      * Le filtre ne portait que sur `user_id` : une session **empruntée** porte
      * l'identifiant de la cible, si bien que bannir l'administrateur qui la
@@ -409,7 +408,7 @@ export function createDrizzleAuthSessionRepository(db: AuthDatabase): AuthSessio
 
     /**
      * **La ligne n'est écrite que si le compte peut ouvrir une session**, et le
-     * refus est **dans l'`insert`** (constats C1 et MJ1 de la revue de s37b1).
+     * refus est **dans l'`insert`**.
      *
      * La garde du socle vit dans `databaseHooks.session.create.before`, que la
      * bibliothèque traverse à chaque parcours — et que cette écriture-ci
@@ -803,7 +802,7 @@ export function createDrizzleVerificationTokenRepository(
 }
 
 /**
- * **La garde de rejeu d'un code TOTP**, côté magasin (revue s13, C3).
+ * **La garde de rejeu d'un code TOTP**, côté magasin.
  *
  * Un pas de trente secondes n'est consommable qu'une fois par compte. La
  * comparaison-et-échange est dans la **qualification de l'`UPDATE`**, jamais

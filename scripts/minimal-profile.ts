@@ -139,7 +139,7 @@ const tablesOf = async (databaseUrl: string): Promise<readonly string[]> => {
 
 /**
  * **Les traces d'une recette en échec, sorties du clone avant qu'il ne
- * disparaisse** — le constat F8 de la revue de s25, hérité plutôt que repayé.
+ * disparaisse**.
  *
  * Playwright les écrit dans le clone temporaire, que le `finally` détruit : un
  * job de CI qui téléverserait `test-results/` à la racine pointerait sur un

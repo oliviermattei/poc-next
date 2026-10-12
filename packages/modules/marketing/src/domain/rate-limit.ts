@@ -14,8 +14,7 @@ import type { PublicFormId } from './public-forms'
  * désormais le port partagé — `infrastructure/shared-submission-throttle.ts` le
  * branche, et `public_form_throttle` n'est plus écrite. Ce qui reste ici est la
  * **règle** : deux seaux qui ne portent pas le même verdict, dont celui du
- * formulaire entier qui **dégrade** au lieu de refuser (constat F2 de la revue
- * de s11) — une nuance que le répartiteur, qui ne connaît que « autorisé » et
+ * formulaire entier qui **dégrade** au lieu de refuser — une nuance que le répartiteur, qui ne connaît que « autorisé » et
  * « 429 », ne sait pas exprimer. La table abandonnée n'est pas supprimée : voir
  * `schema.ts` et l'ADR 050.
  *
@@ -47,7 +46,7 @@ export interface RateLimitBucket {
  * Les deux seaux d'une soumission, **nommés** — parce qu'ils ne font pas la
  * même chose.
  *
- * Ils ont porté le même verdict jusqu'à la revue de s11, et c'était le défaut :
+ * Ils ont porté le même verdict jusqu'à une revue, et c'était le défaut :
  * un tableau positionnel de deux éléments interchangeables invitait à leur
  * appliquer la même règle. Ils sont désormais distincts au type comme au nom.
  */
@@ -61,7 +60,7 @@ export interface RateLimitBuckets {
 /**
  * Ce qu'une soumission a le droit de faire, une fois les seaux consultés.
  *
- * Trois valeurs, et la valeur du milieu est celle que la revue de s11 a
+ * Trois valeurs, et la valeur du milieu est celle qu'une revue a
  * exigée. `refused` vient du seau de l'appelant ; `degraded` du seau du
  * formulaire, qui **borne le coût sans fermer la porte** — voir
  * `rateLimitBuckets` ci-dessous pour le raisonnement complet.
@@ -125,8 +124,7 @@ export function windowStartOf(now: Date, windowSeconds: number): Date {
  * repose sur un en-tête que le client peut écrire, donc il ne vise que le
  * martèlement naïf, et un identifiant falsifié ne nuit qu'à lui-même.
  *
- * Le seau du **formulaire** ne refuse pas, il **dégrade** — c'est le constat F2
- * de la revue de s11, et c'est la propriété qui rend l'ensemble tenable. Tant
+ * Le seau du **formulaire** ne refuse pas, il **dégrade** — c'est la propriété qui rend l'ensemble tenable. Tant
  * qu'il refusait, l'en-tête falsifiable devenait un levier : quelques centaines
  * de requêtes suffisaient à fermer les deux formulaires à **tous** les visiteurs
  * pendant toute la fenêtre. Un garde-fou contre l'abus qui offre à l'abuseur

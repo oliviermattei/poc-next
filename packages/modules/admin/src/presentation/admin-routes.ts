@@ -47,8 +47,7 @@ import { CSV_CONTENT_TYPE } from '../domain/csv'
  *
  * ## L'ordre : autorisation, **puis** validation
  *
- * La garde passe avant Zod, comme aux six portes du module `organizations`
- * (revue de s17, F5). L'inverse laisserait un non-superadmin distinguer un
+ * La garde passe avant Zod, comme aux six portes du module `organizations`. L'inverse laisserait un non-superadmin distinguer un
  * corps valide d'un corps invalide, c'est-à-dire apprendre quelque chose du
  * back-office sans y avoir droit.
  */
@@ -91,7 +90,7 @@ const notFound = (): Response => Response.json({ error: 'not_found' }, { status:
  * à tout le monde aurait cassé les appelants de `s37b1`.
  *
  * **Elle reconnaît ce que la requête annonce être, jamais ce qu'elle n'annonce
- * pas** (revue de s37b2, constat F10). Elle s'écrivait « tout ce qui n'est pas
+ * pas**. Elle s'écrivait « tout ce qui n'est pas
  * `application/json` », si bien qu'un appelant JSON omettant l'en-tête — ce que
  * la spécification permet — recevait 400 sur un corps que `s37b1` acceptait, et
  * une redirection à la place de son document. Un navigateur, lui, **annonce

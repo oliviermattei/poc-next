@@ -158,7 +158,6 @@ export function createBillingRoutes(service: BillingUseCasesAccess): readonly Mo
         // fondés sur Chromium et WebKit — il faudrait déclarer deux origines de
         // plus dans `config/security.ts`. Le navigateur navigue lui-même
         // (`window.location.assign`), ce qu'aucune directive livrée ne borne.
-        // Voir `docs/research/s19-subscribe-stripe.md` §7.
         return Response.json({ url: outcome.url }, { status: 200 })
       },
     },

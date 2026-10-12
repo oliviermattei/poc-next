@@ -73,7 +73,7 @@ elles doivent être lues avant d'y toucher :
 
 - **son échec ne dégrade pas, il refuse.** C'est l'exception assumée à
   `docs/reliability.md` §2, écrite ici parce que la règle la plus proche du code
-  disait l'inverse (constat m1 de la troisième revue de s28). Le motif : ce
+  disait l'inverse. Le motif : ce
   « tiers » est notre propre base, et si elle est absente la connexion ne
   fonctionne pas davantage — les sessions y vivent. Refuser ne coûte donc aucune
   disponibilité réelle, alors que laisser passer ferait disparaître la protection
@@ -82,7 +82,7 @@ elles doivent être lues avant d'y toucher :
   fichier ne fait que rendre `store_unavailable` comme une valeur ;
 - **il n'a pas de mode local**, à la différence des autres ports, et pour une
   raison qui n'est pas un oubli : il n'a **pas de clé**. Le repli explicite que
-  `AGENTS.md` racine impose (`EMAIL_LOCAL_CAPTURE=1` et ses pareils) existe pour
+  `CODING_STANDARDS.md` impose (`EMAIL_LOCAL_CAPTURE=1` et ses pareils) existe pour
   qu'un port sans clé de fournisseur reste utilisable localement ; ici il n'y a
   rien à remplacer, et une variable qui éteindrait la limitation **est** une
   porte (critère 8 de s28). La neutralisation se fait **par injection**, dans un

@@ -182,8 +182,7 @@ describe('la documentation livrée avec le dépôt', () => {
      * *on croise avec l'arbre canonique, pas avec sa seule langue* porte sur du
      * contenu réel » : une exhaustivité que rien ne dérive, écrite sur un
      * contenu que la story venait elle-même de poser — ce que la règle racine
-     * « ne jamais revendiquer l'exhaustivité » interdit, et ce que la revue de
-     * s54 a relevé ailleurs dans ce même diff. Le cas mesure donc ce qu'il
+     * « ne jamais revendiquer l'exhaustivité » interdit, et ce qu'une revue a relevé ailleurs dans ce même diff. Le cas mesure donc ce qu'il
      * nommait : qu'un lien écrit dans une langue **autre** que celle par défaut
      * vise une page que sa propre langue ne porte pas. Il ne dit rien de ce qui
      * existe ailleurs dans le dépôt.

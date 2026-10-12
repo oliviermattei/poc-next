@@ -182,7 +182,7 @@ export interface AdminUseCases {
    */
   forgetGranter(userId: string): Promise<number>
   /**
-   * **Bannit un compte, sauf le dernier superadmin** (revue de s37a, F2).
+   * **Bannit un compte, sauf le dernier superadmin**.
    *
    * Le refus n'est pas une commodité d'écran : sans lui, le superadmin unique
    * qui se bannit garde sa ligne dans la table du rôle — le décompte rend donc
@@ -488,7 +488,7 @@ export function createAdminUseCases(dependencies: AdminDependencies): AdminUseCa
       const outcome = await roles.revokeSuperadmin(userId)
 
       if (outcome.ok) {
-        // **Le rôle retiré ferme les emprunts en cours** (revue s37b1, C3) : un
+        // **Le rôle retiré ferme les emprunts en cours** : un
         // compte qui n'administre plus ne garde pas ouverte la session d'un
         // client. Le bannissement ferme par le socle ; ici, c'est le droit qui
         // disparaît, et le socle ne le sait pas.
@@ -533,7 +533,7 @@ export function createAdminUseCases(dependencies: AdminDependencies): AdminUseCa
         securityLog({ event: 'admin.account_banned', actor: actorId, target: userId })
 
         // **Le bannissement ferme aussi des emprunts** — ceux du compte visé, et
-        // ceux qu'il tenait chez autrui (revue s37b1, C3). Chacun est une fin,
+        // ceux qu'il tenait chez autrui. Chacun est une fin,
         // et une fin se journalise : sinon le journal a un début sans fin.
         logEndedImpersonations(guarded.outcome.endedImpersonations)
       }

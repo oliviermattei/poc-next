@@ -25,7 +25,7 @@ import { defaultLocale } from '../../../../../config/i18n'
  * (`apps/web/AGENTS.md`). Un changelog monté sans aucune entrée, lui, rend un
  * état vide — les deux situations ne se confondent pas.
  *
- * Aucun `loading.tsx`, ici comme ailleurs : mesuré en s29, une frontière de
+ * Aucun `loading.tsx`, ici comme ailleurs : mesuré, une frontière de
  * chargement vide la coquille avant que la page ne décide, et le `notFound()`
  * arrive alors en 200.
  */

@@ -45,8 +45,8 @@ export interface ContentSecurityPolicySources {
 }
 
 /**
- * L'état livré : **aucune source tierce**. Mesuré sur les onze réponses
- * balayées par `docs/research/s45-security-headers.md` §2.1 — polices et CSS
+ * L'état livré : **aucune source tierce**. Mesuré en s45 sur onze
+ * réponses de l'application — polices et CSS
  * sont servies par l'application, les icônes sont des SVG en ligne, aucune
  * image externe. `default-src 'self'` suffit donc, sans exception.
  */

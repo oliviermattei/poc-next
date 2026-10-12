@@ -151,8 +151,7 @@ export interface RouteRateLimit {
    * requête, la limitation **refuse** au lieu de choisir : deviner rouvrirait le
    * contournement dans la moitié des déploiements.
    *
-   * **Le nom exact ne suffit pas : la valeur doit l'être aussi.** Le constat M1
-   * de la troisième revue de s28 a montré la même faute sur l'autre axe — le
+   * **Le nom exact ne suffit pas : la valeur doit l'être aussi.** Le constat d'une revue a montré la même faute sur l'autre axe — le
    * limiteur bucketisait la sous-chaîne brute quand le serveur lit une valeur
    * déguillemetée puis décodée. Ce que le seau porte est la valeur **telle que
    * le serveur la lira** ; c'est le module de limitation qui la produit, et

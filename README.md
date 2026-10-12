@@ -5,7 +5,8 @@ Drizzle, Better Auth, Stripe. Chaque fonctionnalité est un **module** qu'on
 active ou qu'on coupe depuis `config/features.ts`.
 
 Ce fichier ne sert qu'à une chose : **ouvrir le produit et le regarder**. La
-suite se lit dans `AGENTS.md` (les règles), `docs/architecture.md` (la
+suite se lit dans `AGENTS.md` (l'ordre de lecture), `CODING_STANDARDS.md` (les
+règles), `docs/architecture.md` (la
 technique) et `docs/deployment.md` (la mise en production).
 
 ## Ouvrir le produit
@@ -80,4 +81,4 @@ pnpm test:e2e             # les parcours navigateur
 ```
 
 Le tableau complet des commandes, et ce qui fait échouer chacune, est dans
-`AGENTS.md`.
+`docs/commands.md`.

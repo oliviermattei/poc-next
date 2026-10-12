@@ -62,7 +62,7 @@ const PROVIDER_VARIABLES = [
  * La règle est réappliquée ici et pas seulement dans le schéma parce que
  * `getEnv` ne valide rien en phase de build ni sous `SKIP_ENV_VALIDATION` :
  * sur ces chemins, le `GOOGLE_CLIENT_ID=` vide que livre `.env.example` se
- * lirait « clé renseignée » (revue de s06, G2).
+ * lirait « clé renseignée ».
  */
 export function resolveOAuthConfig(env: Env): OAuthConfig {
   const providers: OAuthProviderCredentials[] = []

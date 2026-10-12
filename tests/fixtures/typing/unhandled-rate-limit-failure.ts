@@ -9,7 +9,7 @@ import type { RateLimiter } from '@repo/ports'
  * relecture — qui force l'appelant à le traiter. Un appelant qui lit
  * `result.buckets` sans avoir écarté la branche `ok: false` ne compile pas.
  *
- * La conséquence est celle que la story s28 cherche : quand le magasin est
+ * La conséquence est celle que l'on cherche (ADR 050) : quand le magasin est
  * indisponible, personne ne peut « oublier » le cas et laisser passer la
  * requête par distraction. Le refus est une décision écrite (ADR 050), pas un
  * chemin par défaut.

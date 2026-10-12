@@ -22,7 +22,7 @@ import { featureGates } from './feature-gates'
  * | invitation à souscrire | affichée sans le droit | **jamais** |
  *
  * **La règle vit dans une fabrique**, injectable, et ce n'est pas une élégance :
- * les deux constats majeurs de la seconde revue de s19 étaient des règles
+ * les deux constats majeurs d'une revue étaient des règles
  * enfermées dans ce dossier, qu'une mutation posée dans le module ne faisait pas
  * rougir. Ce qui est éprouvable est éprouvé (`tests/entitlements.test.ts`).
  */

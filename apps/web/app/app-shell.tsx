@@ -83,7 +83,7 @@ export async function AppShell({
    * cas « ne lit aucun compteur de notifications pour un visiteur sans
    * session ». Il monte le module de force avant de compter — sans cela le
    * registre en vigueur ne le contient pas, `unreadCount` rend zéro sans rien
-   * lire, et la mesure reste verte (revue s32, F2).
+   * lire, et la mesure reste verte.
    *
    * **Il se met à jour à la navigation, et à rien d'autre.** Le shell est rendu
    * côté serveur à chaque requête ; après une lecture, la route répond 303 vers
@@ -121,7 +121,7 @@ export async function AppShell({
   // **L'emprunt de session en cours** (s37b2, critère 5) : le bandeau est
   // rendu par `ZoneFrame`, commun aux trois gabarits. Aucune lecture n'est
   // faite pour lui — l'emprunt arrive avec la session, dans la résolution que
-  // `currentViewer()` a déjà payée (revue de s37b2, F3).
+  // `currentViewer()` a déjà payée.
 
   return (
     <div className="flex min-h-svh w-full">

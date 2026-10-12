@@ -93,7 +93,7 @@ describe('chargement du `.env` racine', () => {
     // L'assertion précédente part de la racine du dépôt, où le marqueur est
     // toujours trouvé : un correctif partiel qui résoudrait le chemin sans
     // recalculer la racine la laisserait verte, boucle infinie comprise
-    // (mesuré en revue de s01, finding N11). Celle-ci part d'un chemin relatif
+    // (mesuré en revue, finding N11). Celle-ci part d'un chemin relatif
     // qui résout hors de tout workspace : la fonction doit remonter jusqu'à la
     // racine du système de fichiers et s'y arrêter.
     const outsideRepo = relative(process.cwd(), tmpdir())
@@ -154,7 +154,7 @@ describe('transmission de `DATABASE_URL` jusqu’à l’application', () => {
 
   it('turbo compte les dossiers de contenu lus au build dans la clé de cache', async () => {
     /*
-     * **Mesuré à la revue de s54** : un lien mort ajouté dans `content/`, puis
+     * **Mesuré à une revue** : un lien mort ajouté dans `content/`, puis
      * `pnpm build` — sortie 0, `FULL TURBO`. `turbo run build --force` refusait
      * bien, en nommant les deux bouts. Le contenu vit hors de `apps/web` et
      * n'était dans aucune dépendance globale : une modification de contenu ne
@@ -212,7 +212,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
    *
    * Un cas qui n'annonce que `DATABASE_URL` ne passe que sur un poste dont le
    * `.env` complète le reste : la suite d'un clone neuf rougit alors sur un
-   * environnement que le test n'a jamais nommé (revue de s06, G1). La valeur
+   * environnement que le test n'a jamais nommé. La valeur
    * vide vaut absence — et c'est la seule forme qui tienne ici, `next.config`
    * rechargeant le `.env` racine à chaque import : une variable **supprimée**
    * y serait repeuplée par le fichier, une variable vide non.
@@ -237,7 +237,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
    * Même doctrine, pour la garde posée par s18 : le module `storage` activé
    * sans stockage configuré refuse le démarrage. Un cas qui ne déclare rien ne
    * passerait que sur un poste dont le `.env` porte un `STORAGE_*` — et
-   * rougirait sur un clone neuf, ce que la revue de s06 avait déjà nommé.
+   * rougirait sur un clone neuf, ce qu'une revue avait déjà nommé.
    */
   const stubStorage = (choice: 'disque' | 'aucun'): void => {
     vi.stubEnv('STORAGE_S3_BUCKET', '')
@@ -404,7 +404,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
 
   /**
    * **La branche `'aucun'` de `stubJobs` était livrée et n'était appelée par
-   * personne** (constat F1 de la revue de s33) : `stubMailer`, `stubStorage` et
+   * personne** : `stubMailer`, `stubStorage` et
    * `stubAuth` ont chacun leur cas de refus, celui des tâches manquait. La
    * conséquence était mesurable — retirer `assertJobsConfiguration(env)` de
    * `lib/startup.ts` laissait 2 407 cas verts, donc une application démarrait
@@ -427,11 +427,10 @@ describe('validation de l’environnement au démarrage du serveur', () => {
 
   /**
    * **La garde de l'analytique est-elle atteinte depuis le démarrage ?**
-   * (constat 3 de la revue de s39.)
    *
    * Elle ne l'était pas prouvée : retirer l'appel à `assertAnalyticsIsReachable`
    * de `lib/startup.ts` laissait **2 605 cas verts**. C'est mot pour mot le
-   * défaut mesuré en s33 quelques lignes plus haut, dont la leçon était déjà
+   * défaut mesuré quelques lignes plus haut, dont la leçon était déjà
    * écrite ici — et que s39 n'a pas copiée.
    *
    * Le mode de panne est silencieux et complet : le script se charge (le nonce
@@ -480,7 +479,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
    * `lib/startup.ts` appelle `assertJobsConfiguration()` deux fois : une fois
    * avant la sortie de phase — le **plancher** et la lecture des expressions
    * cron, qui ne lisent aucune variable —, une fois après, avec l'environnement.
-   * La revue de s33 a mesuré que neutraliser le **premier** laissait la suite
+   * Une revue a mesuré que neutraliser le **premier** laissait la suite
    * verte : au démarrage, le second rattrape tout.
    *
    * Sa contribution propre est donc exactement celle-ci — une expression cron
@@ -896,8 +895,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
    * guillemets, et ignore les commentaires. Il ne lit ni un `env:` d'étape, ni
    * celui d'un autre job.
    *
-   * L'ancrage sur le nom du job n'est pas décoratif (constat F6 de la revue de
-   * s25) : le workflow porte désormais **deux** blocs `env:` de job — `quality`
+   * L'ancrage sur le nom du job n'est pas décoratif : le workflow porte désormais **deux** blocs `env:` de job — `quality`
    * et `parcours-dore` —, et une lecture qui prenait « le premier » aurait
    * changé de sujet en silence le jour où les jobs seraient réordonnés.
    */
@@ -976,7 +974,7 @@ describe('validation de l’environnement au démarrage du serveur', () => {
   })
 
   it('ne laisse le job de CI joindre aucun fournisseur de paiement réel', async () => {
-    // Le régime de la CI est celui des doublures (`AGENTS.md`, « Third-party
+    // Le régime de la CI est celui des doublures (`CODING_STANDARDS.md`, « Third-party
     // integrations ») : le job ne porte aucune clé, et le mode de paiement doit
     // donc y être **choisi**, jamais laissé au hasard d'un environnement.
     const ci = await readCiJobEnv()
@@ -1046,8 +1044,7 @@ describe('le préambule qui compile l’application avant les parcours', () => {
  * refuse déjà une paire incomplète : ils prouvent que le démarrage échoue,
  * pas que cette règle-ci décide. Or le schéma ne valide rien sous
  * `SKIP_ENV_VALIDATION` ni en phase de build, et c'est exactement le chemin où
- * `.env.example` livre des variables **vides** que `getEnv` rend telles quelles
- * (revue de s06, G2). Mesuré : neutraliser la règle ci-dessous laisse les cas
+ * `.env.example` livre des variables **vides** que `getEnv` rend telles quelles. Mesuré : neutraliser la règle ci-dessous laisse les cas
  * de démarrage verts.
  * ------------------------------------------------------------------------- */
 describe('les fournisseurs OAuth configurés', () => {

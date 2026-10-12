@@ -143,8 +143,7 @@ export interface OrganizationsFeature {
    * **L'appelant peut-il exporter les données de cette organisation ?** (s35)
    *
    * Trois réponses, et aucun rôle n'en sort : la matrice rôle × action vit dans
-   * le module qui possède les rôles, et ce fichier la lit — il ne la rejoue pas
-   * (revue de s17, F4). `unknown` couvre le non-membre, l'organisation inconnue
+   * le module qui possède les rôles, et ce fichier la lit — il ne la rejoue pas. `unknown` couvre le non-membre, l'organisation inconnue
    * **et le module coupé** : les trois répondent 404, l'existence de la
    * ressource d'autrui ne se confirme pas (`docs/security.md` §3).
    *

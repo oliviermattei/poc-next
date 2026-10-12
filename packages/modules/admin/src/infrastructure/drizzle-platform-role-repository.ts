@@ -396,8 +396,7 @@ export function createDrizzlePlatformRoleRepository(
       }),
 
     /**
-     * **Le bannissement, sous le verrou du rôle de plateforme** (revue de
-     * s37a, F2).
+     * **Le bannissement, sous le verrou du rôle de plateforme**.
      *
      * Le geste lui-même appartient au socle (ADR 058) : il est **reçu** et
      * exécuté ici, la transaction ouverte et le verrou tenu. C'est ce qui le

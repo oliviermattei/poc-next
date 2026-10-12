@@ -299,7 +299,7 @@ export interface AuthUseCases {
    *
    * `rotates` porte l'identifiant de la session que l'élévation **remplace** :
    * elle est effacée dans la foulée, sans quoi l'ancien identifiant resterait
-   * valable et la rotation n'en serait pas une (mesuré en s14 sur l'enrôlement
+   * valable et la rotation n'en serait pas une (mesuré sur l'enrôlement
    * d'une passkey).
    */
   openImpersonation(input: {
@@ -550,7 +550,7 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
         to,
         template: `auth.${AUTH_EMAIL_TEMPLATES.verification}`,
         // La **seule** règle de langue : celle du destinataire quand elle est
-        // connue, celle du site sinon (`docs/stories.md`, critères 5 et 6).
+        // connue, celle du site sinon.
         locale: emailLocaleFor(knownLocale),
         data: { url },
       })
@@ -614,7 +614,7 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
         to,
         template: `auth.${AUTH_EMAIL_TEMPLATES.magicLink}`,
         // La **seule** règle de langue : celle du destinataire quand elle est
-        // connue, celle du site sinon (`docs/stories.md`, critères 5 et 6).
+        // connue, celle du site sinon.
         locale: emailLocaleFor(knownLocale),
         data: { url },
       })
@@ -644,7 +644,7 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
         to,
         template: `auth.${AUTH_EMAIL_TEMPLATES.passwordReset}`,
         // La **seule** règle de langue : celle du destinataire quand elle est
-        // connue, celle du site sinon (`docs/stories.md`, critères 5 et 6).
+        // connue, celle du site sinon.
         locale: emailLocaleFor(knownLocale),
         data: { url },
       })
@@ -685,7 +685,7 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
        * rendre une adresse prouvée, jamais l'inverse.
        *
        * **Ce qui rend la phrase ci-dessus vraie est le jeu de greffons monté,
-       * et rien d'autre** (constat F1 de la revue de s24). Relevé le
+       * et rien d'autre**. Relevé le
        * 3 septembre 2026 dans `better-auth@1.7.2` en lisant la bibliothèque,
        * `onPasswordReset` a **trois** appelants :
        *
@@ -726,7 +726,7 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
         to: newEmail,
         template: `auth.${AUTH_EMAIL_TEMPLATES.verification}`,
         // La **seule** règle de langue : celle du destinataire quand elle est
-        // connue, celle du site sinon (`docs/stories.md`, critères 5 et 6).
+        // connue, celle du site sinon.
         locale: emailLocaleFor(knownLocale),
         data: { url },
       })
@@ -934,7 +934,7 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
       }
 
       // La révocation emporte aussi les emprunts que ce compte **tenait** chez
-      // autrui (revue s37b1, C3) : elle rend les lignes, et l'appelant en tire
+      // autrui : elle rend les lignes, et l'appelant en tire
       // les fins à journaliser.
       const revoked = await sessions.revokeAllForUser(userId)
 
@@ -1091,7 +1091,7 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
 
       /**
        * **La charge utile ne porte qu'une référence** (`docs/security.md` §5 et
-       * la règle posée par la revue de s32) : l'identifiant du compte, jamais
+       * la règle posée par une revue) : l'identifiant du compte, jamais
        * son adresse. Elle est écrite chez le fournisseur, relue à l'exécution et
        * souvent journalisée en chemin.
        *
@@ -1140,7 +1140,7 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
       await users.markDeletionRequested({ userId, at: now() })
 
       /**
-       * **Les sessions ferment à la demande, pas à la purge** (revue s61, M2).
+       * **Les sessions ferment à la demande, pas à la purge**.
        *
        * Avec un ordonnanceur, la purge quitte cette requête : sans cette ligne,
        * chaque session du compte servait encore le temps de la file, et
@@ -1164,9 +1164,8 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
         }),
       )
 
-      // Les emprunts fermés remontent à l'appelant, comme pour `banAccount`
-      // (revue s37b1, C3) : les jeter laissait un journal avec des débuts
-      // sans fin (revue s61).
+      // Les emprunts fermés remontent à l'appelant, comme pour `banAccount` : les jeter laissait un journal avec des débuts
+      // sans fin.
       return { status: 'queued', endedImpersonations: endedImpersonationsOf(revoked) }
     },
 
@@ -1358,8 +1357,7 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
       const user = await users.findById(scope.userId)
 
       /**
-       * **Une fin d'emprunt qui n'est journalisée nulle part, et c'est dit**
-       * (seconde revue de s37b1, MINOR-2).
+       * **Une fin d'emprunt qui n'est journalisée nulle part, et c'est dit**.
        *
        * Depuis que cette révocation emporte aussi les emprunts que le compte
        * **tient** chez autrui, effacer le compte d'un administrateur en cours

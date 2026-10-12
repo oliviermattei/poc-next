@@ -197,7 +197,7 @@ test('tout `<style>` injecté par une bibliothèque porte le nonce de la requêt
       // La surcouche de développement de Next pose ses propres feuilles —
       // `@font-face` de sa police, styles de son panneau d'erreurs — et elle
       // n'existe pas en production : mesuré, le HTML de `next start` ne contient
-      // aucun `<style>` (`docs/research/s45-security-headers.md` §2.1). Les
+      // aucun `<style>` (mesuré). Les
       // juger ici ferait rougir ce cas pour du code que le produit n'embarque
       // pas. Ce sont les seules exclusions, et elles se reconnaissent au
       // préfixe que Next donne à tout ce qui lui appartient.
@@ -223,7 +223,7 @@ test('tout `<style>` injecté par une bibliothèque porte le nonce de la requêt
 /**
  * Les écrans dont le HTML est jugé, et le statut qu'ils doivent rendre.
  *
- * Une URL inexistante est dans la liste depuis la revue de s45, et c'est le
+ * Une URL inexistante est dans la liste depuis une revue, et c'est le
  * point : le composant 404 intégré de Next émettait **quatre attributs `style`
  * et un `<style>` sans nonce**, donc deux violations en production, sur une page
  * qu'un visiteur atteint. Le balayage de la recherche portait sur onze réponses,

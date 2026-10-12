@@ -5,7 +5,7 @@ import type { OrganizationRole } from '../domain/organization'
  *
  * **Ce qu'il garde, exactement.** La formulation d'origine — « la forme qui
  * rend l'oubli du périmètre organisationnel impossible » — était trop large, et
- * la revue de s15 l'a mesurée : elle est vraie des **écritures** qui exigent un
+ * une revue l'a mesurée : elle est vraie des **écritures** qui exigent un
  * `OrganizationAccess`, et fausse d'une **lecture** neuve, qu'aucune commande
  * n'arrêtait. Les lectures sont désormais gardées ailleurs, par une porte
  * unique (`infrastructure/scoped-reads.ts`) que `pnpm lint` impose. Ce fichier

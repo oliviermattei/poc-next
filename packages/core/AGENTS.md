@@ -29,9 +29,9 @@ tenues par le compilateur, les suivantes à la construction du registre :
 `locales` est **obligatoire** dans `buildRegistry`, et ce n'est pas du confort :
 c'est contre les locales de l'**application** — jamais celles du module — qu'un
 template d'email ou un libellé de navigation incomplet est refusé (faille
-mesurée en revue de s06). Tant que le paramètre était facultatif, l'oublier
+mesurée en revue). Tant que le paramètre était facultatif, l'oublier
 ramenait silencieusement la référence au module, c'est-à-dire à une règle vraie
-par construction qui ne refuse jamais rien : la revue de s09 a retiré `locales`
+par construction qui ne refuse jamais rien : une revue a retiré `locales`
 du point de composition de l'application sans faire rougir une seule commande.
 Un registre d'essai déclare donc explicitement les locales contre lesquelles il
 veut être jugé.
@@ -62,7 +62,7 @@ clé du contrat, `publicUrls`. Elle ne lit **pas** les entrées de navigation
 publiques, et c'est une décision mesurée : la configuration livrée en porte
 plusieurs que personne ne contribue au plan de site, dont `/sign-in`, `/pricing`
 et une route d'API. **Leur nombre n'est pas écrit ici** — il valait cinq à
-l'écriture de cette ligne, huit à la revue de s31 — : `tests/syndication.test.ts`
+l'écriture de cette ligne, huit à une revue — : `tests/syndication.test.ts`
 le dérive du registre. `public` est un niveau de **protection**, pas une décision
 d'indexation (`docs/security.md` §7).
 
@@ -81,7 +81,7 @@ nuance est un cas de `tests/blog.test.ts` pour qu'elle ne se regonfle pas.
 `carriesLocalePrefix` est la règle d'`apps/web/proxy.ts`, écrite ici depuis
 qu'elle a un second appelant : `publicPath` préfixe sans condition, `/api…`
 compris, et une contribution vers une route montée serait sinon annoncée sous
-une langue que rien ne sert (constat M3 de la revue de s29).
+une langue que rien ne sert.
 
 Une entrée de navigation déclare aussi sa **surface** (`surface`, s31, ADR 066).
 **La liste est le type `NavigationSurface` de `src/module.ts`**, jamais celle-ci :
@@ -147,7 +147,7 @@ toucher au compteur, sinon n'importe quelle URL inventée y écrirait une ligne 
 et **avant** la résolution de session, qui lit la base à chaque requête.
 
 Une entrée de navigation `entitlement` reste **visible** à toute session, et
-c'est une décision : le critère de s21 demande une invitation à souscrire, pas
+c'est une décision : on veut une invitation à souscrire, pas
 une disparition. Une entrée `role` **disparaît**, elle, et c'est la symétrie du
 404 : une entrée visible vers une route qui répond « ça n'existe pas »
 divulguerait exactement ce que le statut cache.
@@ -256,9 +256,9 @@ module par son nom :
   charge. L'archive est **entièrement en JSON** : le seul module qui possède des
   octets, `storage`, n'en rend qu'un manifeste, sans clé d'objet et **sans
   empreinte** — la personne qui la reçoit constate qu'un fichier existe, pas ce
-  qu'il contient (`docs/decisions/062-…`) ;
+  qu'il contient (`docs/adr/0062-…`) ;
 - `auditDataCategoryCoverage` confronte les catégories déclarées à ce que
-  l'export produit (`docs/decisions/063-…`). Le contrat autorise
+  l'export produit (`docs/adr/0063-…`). Le contrat autorise
   `dataCategories: ['x']` avec `export: async () => ({})`, et **rien ne
   vérifiait que les trois clés s'accordent** — `admin` est arrivé exactement dans
   cet état à la fusion de s34. Une catégorie déclarée est désormais soit

@@ -76,8 +76,7 @@ export interface ConfigureBillingOptions {
    */
   readonly guestAccounts: GuestAccounts
   /**
-   * **Où repart un visiteur quand le canal anonyme est saturé** (constat F3 de
-   * la revue de s24).
+   * **Où repart un visiteur quand le canal anonyme est saturé**.
    *
    * Obligatoire pour la même raison que la précédente : un point de
    * composition qui l'oublierait laisserait la seule dégradation de la route
@@ -94,7 +93,7 @@ export interface ConfigureBillingOptions {
    * pour la même raison : facultative, elle laissait un point de composition
    * l'oublier sans qu'aucune commande ne le dise — et la tâche tournait alors au
    * vert tous les jours sans relancer personne, une perte qui ne se mesure qu'en
-   * essais non convertis. La revue de s33 a mesuré exactement cela : retirer la
+   * essais non convertis. Une revue a mesuré exactement cela : retirer la
    * ligne de `apps/web/lib/billing.ts` laissait 2 415 cas verts.
    *
    * Le compilateur tient donc désormais la moitié du fil, et

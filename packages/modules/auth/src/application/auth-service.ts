@@ -22,7 +22,7 @@ import type { AuthUseCases } from './auth-use-cases'
  * - `resolveSession` est le crochet que le registre attend (s03).
  */
 /**
- * **Ce qu'une seule résolution de session apprend** (revue de s37b2, F3).
+ * **Ce qu'une seule résolution de session apprend**.
  *
  * Trois champs, une lecture. `session` est `null` quand la ligne de session
  * existe mais que le compte n'est pas vérifié : c'est la règle du `domain`
@@ -73,7 +73,7 @@ export interface AuthService {
   resolveSessionId(request: Request): Promise<string | null>
   /**
    * **La session de l'appelant, résolue une fois** — et les deux méthodes
-   * ci-dessus en sont dérivées (revue de s37b2, constat F3).
+   * ci-dessus en sont dérivées.
    *
    * Chaque résolution parle à la base. Les trois questions que la coquille
    * applicative pose à chaque rendu — *qui est-ce ?*, *quelle session ?*,

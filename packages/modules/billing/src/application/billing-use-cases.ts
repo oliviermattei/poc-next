@@ -260,8 +260,7 @@ export type SeatSyncOutcome =
    * Pas `failed` : rien n'est en panne, et l'action à conseiller n'est pas
    * « réessayez ». Pas `not_applicable` : l'écriture doit être annulée.
    *
-   * **Elle ne porte pas le plafond, et c'est délibéré** (constat M2 de la revue
-   * de s47). Elle l'a porté : `{ limit: number }`, avec un commentaire qui
+   * **Elle ne porte pas le plafond, et c'est délibéré**. Elle l'a porté : `{ limit: number }`, avec un commentaire qui
    * annonçait « le message qui le nomme est composé plus haut ». Ce message
    * n'existait pas. Le nombre était lu **nulle part** —
    * `apps/web/lib/seat-sync.ts` le laissait tomber un étage plus haut, et aucun
@@ -303,8 +302,7 @@ export interface BillingDependencies {
    */
   readonly throttle: CheckoutThrottle
   /**
-   * **Où repart un visiteur quand le canal anonyme est saturé** (constat F3 de
-   * la revue de s24).
+   * **Où repart un visiteur quand le canal anonyme est saturé**.
    *
    * Le seau global ne refuse pas, il dégrade : au-delà du seuil, le tunnel
    * n'est pas ouvert et le navigateur part vers cette adresse. Elle est fournie
@@ -860,8 +858,7 @@ export function createBillingUseCases(dependencies: BillingDependencies): Billin
       }
 
       /**
-       * **Le second seau, celui qui borne le coût total** (constat F3 de la
-       * revue de s24).
+       * **Le second seau, celui qui borne le coût total**.
        *
        * Il est compté **après** les deux refus, et jamais avant : le seau
        * global ne doit contenir que ce qui allait réellement coûter quelque

@@ -13,8 +13,7 @@ import { createResendMailer } from './resend-mailer'
  * `globalThis.fetch`. Ce sont donc la sérialisation réelle de la requête, les
  * en-têtes réels et le traitement réel de `{ data, error }` par le SDK qui sont
  * exercés. Un test qui remplacerait `emails.send` par une fonction à soi
- * n'éprouverait que cette fonction — c'est exactement le piège relevé en revue
- * de s01.
+ * n'éprouverait que cette fonction — c'est exactement le piège relevé en revue.
  *
  * Ce que ces cas **ne** prouvent pas, et qui ne peut l'être qu'avec une vraie
  * clé : que l'API Resend accepte cette requête. C'est le second régime, hors

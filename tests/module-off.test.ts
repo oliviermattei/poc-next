@@ -123,7 +123,7 @@ describe('le registre monté par l’application', () => {
     // Comparaison d'**ensembles**, pas de suites : `moduleIds` vient du graphe
     // des requis, pas de l'ordre de déclaration. Le jour où la configuration
     // listera légitimement un module avant son requis, une égalité de tableaux
-    // rougirait sans qu'aucune régression n'ait eu lieu (revue de s03, F7).
+    // rougirait sans qu'aucune régression n'ait eu lieu.
     // L'ordre dérivé du graphe est vérifié pour lui-même dans
     // `tests/module-registry.test.ts`.
     expect(new Set(moduleRegistry.moduleIds)).toEqual(new Set(enabledModules))

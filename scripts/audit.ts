@@ -40,7 +40,7 @@ const attemptAudit = (timeoutMs: number): AuditAdvisory[] => {
     maxBuffer: 32 * 1024 * 1024,
     // **Le délai d'attente explicite** (`docs/reliability.md` §3) : sans lui, un
     // registre qui accepte la connexion et ne répond pas tient le job jusqu'à ce
-    // qu'il coupe de lui-même — ~4 minutes, mesurées à la recherche de s48.
+    // qu'il coupe de lui-même — ~4 minutes, mesurées.
     timeout: timeoutMs,
   })
 

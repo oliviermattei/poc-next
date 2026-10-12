@@ -17,17 +17,17 @@ activé (`resolveDataOwner`, `@repo/core`).
 
 Ce qui a été éprouvé jusqu'ici — pas « tous ceux qui existent ». **Le tableau
 est la liste** : un compte écrit à côté de lui vieillit à la ligne suivante, et
-celui qui était ici annonçait « Dix-huit » pour vingt lignes (revue de s17, F2).
+celui qui était ici annonçait « Dix-huit » pour vingt lignes.
 Un décompte se lit, il ne s'écrit pas.
 
 | Invariant | Comment il est tenu | Ce qui échoue si on le casse |
 |---|---|---|
 | L'organisation d'un autre répond **404, jamais 403** | `findMembership` porte les deux conditions dans **un seul** ordre ; `null` ne distingue pas « pas membre » de « n'existe pas » | `tests/organizations.test.ts` — le cas rougit à 403 comme à 200 |
-| **Un membre dont le rôle ne suffit pas reçoit 403**, et un non-membre toujours 404 | l'ordre est **autorisation, permission, puis validation** — `accessFrom`, `allows`, et seulement ensuite Zod : aux six portes, sans exception (revue de s17, F5) | `tests/organizations.test.ts` — « rend 403 à un membre de l'organisation, et 404 à qui n'en est pas », et « refuse le droit avant de juger le corps, et journalise ce refus-là aussi » : ce dernier rougit dès que la validation repasse devant |
+| **Un membre dont le rôle ne suffit pas reçoit 403**, et un non-membre toujours 404 | l'ordre est **autorisation, permission, puis validation** — `accessFrom`, `allows`, et seulement ensuite Zod : aux six portes, sans exception | `tests/organizations.test.ts` — « rend 403 à un membre de l'organisation, et 404 à qui n'en est pas », et « refuse le droit avant de juger le corps, et journalise ce refus-là aussi » : ce dernier rougit dès que la validation repasse devant |
 | **Chaque rôle × chaque action sensible est décidé une fois**, dans le `domain` | `domain/permissions.ts` : `ORGANIZATION_ACTIONS` et `MATRIX`. Les six portes appellent `allows(access.role, …)` juste après l'autorisation | `organization-rules.test.ts` — la matrice complète (3 × 6) ; **et** un témoin de refus par porte dans `tests/organizations.test.ts`, chacun rougissant si sa garde saute |
 | **Un `admin` ne retire qu'un `member`** : ni un `owner`, ni un autre `admin` | la borne est **dans le prédicat du `delete`** (`unremovableRolesFor`, passé au repository), pas dans une lecture préalable | `tests/organizations.test.ts` — « refuse à un administrateur de retirer un propriétaire ou un autre administrateur », sur une organisation à **deux** propriétaires : avec un seul, la règle du dernier propriétaire attrapait le cas à la place et la mutation restait verte ; **et** `organization-rules.test.ts` à la règle |
 | **Un rôle hors matrice ne permet rien** — il est refusé, pas levé | `allows` replie sur `MATRIX[role] ?? []`. La colonne `role` est un `text not null` **sans contrainte de valeur** : une ligne inconnue est représentable, et le rôle est relu en base à chaque requête | `organization-rules.test.ts` — « refuse un rôle que la matrice ne connaît pas, au lieu de lever » ; `tests/organizations.test.ts` le mesure jusqu'à la route (403, pas 500) |
-| **Les affordances de l'écran sont dérivées du rôle de l'appelant, par le serveur** | `viewOrganizations` calcule `permissions` et `assignableRoles` avec les fonctions du `domain`, à partir du rôle porté par l'`OrganizationAccess` | `tests/organizations.test.ts` — « dérive les droits et les rôles offerts du rôle de l'appelant, pour chacun des trois ». Le cas de rendu, lui, les reçoit en paramètres : il éprouve le `.tsx`, jamais le calcul — mesuré, les mettre en dur laissait 1086 cas et 58 parcours au vert (revue de s17, F1) |
+| **Les affordances de l'écran sont dérivées du rôle de l'appelant, par le serveur** | `viewOrganizations` calcule `permissions` et `assignableRoles` avec les fonctions du `domain`, à partir du rôle porté par l'`OrganizationAccess` | `tests/organizations.test.ts` — « dérive les droits et les rôles offerts du rôle de l'appelant, pour chacun des trois ». Le cas de rendu, lui, les reçoit en paramètres : il éprouve le `.tsx`, jamais le calcul — mesuré, les mettre en dur laissait 1086 cas et 58 parcours au vert |
 | **La matrice ne se compare qu'à un endroit** | `pnpm lint` refuse une comparaison de rôle à un littéral partout dans le module, sauf dans `domain/permissions.ts`. La notion « ce rôle donne la propriété » y est une fonction nommée, `grantsOwnership` | `pnpm lint`, et `tests/lint-rules.test.ts` — quatre emplacements refusés, le fichier qui décide permis. La règle ne voit ni `switch`, ni `includes`, ni comparaison à une variable |
 | **Nommer quelqu'un d'autre `owner` est le transfert** : l'ancien devient `admin` | les deux lignes changent dans la **même** transaction, sous le même verrou | `tests/organizations.test.ts` — « transfère la propriété : l'ancien propriétaire devient administrateur » |
 | **Une rétrogradation ne retire pas le dernier propriétaire**, y compris sous concurrence | même discipline que le retrait : `pg_advisory_xact_lock` sur la **même** clé, puis un prédicat qui compte les propriétaires dans la même instruction | `tests/organizations.test.ts` — « refuse de rétrograder le dernier propriétaire » **et** « garde un propriétaire quand deux rétrogradations partent ensemble » : dix courses, **9 puis 10 rouges sur 10** sans le verrou |
@@ -66,7 +66,7 @@ n'est pas visible à la syntaxe (`const { select } = db`) échappe au sélecteur
 La garde **borne la surface à relire à un fichier** ; elle ne remplace pas la
 relecture.
 
-**La porte s'est élargie d'un cran, et d'un seul** (revue de s16, F1) :
+**La porte s'est élargie d'un cran, et d'un seul** :
 `infrastructure/transaction-locks.ts` peut appeler `execute`, pour prendre un
 `pg_advisory_xact_lock` — un verrou qui ne lit aucune table et tombe avec la
 transaction. `select` et `from` y restent refusés, et `execute` reste refusé
@@ -132,8 +132,7 @@ d'administration : c'est le geste de la personne sur sa propre appartenance, et
 sans lui un membre serait captif de l'organisation qui l'a invité. La règle est
 explicite et vient **en premier** dans `removalPermission` et dans
 `unremovableRolesFor` ; la règle du dernier propriétaire, elle, continue de
-s'appliquer — un propriétaire unique ne part pas. Arbitrage validé à la revue de
-s17 ; le cas est « laisse un simple membre quitter l'organisation ».
+s'appliquer — un propriétaire unique ne part pas. Arbitrage validé à une revue ; le cas est « laisse un simple membre quitter l'organisation ».
 
 **Une organisation sans propriétaire est ingouvernable, et rien ici ne la
 répare.** `member.set_role` est réservé au propriétaire : sans propriétaire,
@@ -262,14 +261,13 @@ module `auth` — point d'entrée qui n'existe pas.
 Conséquence à connaître, écrite plutôt que sous-entendue : **le jeton de session
 ne porte aucune autorité organisationnelle.** L'appartenance est relue à chaque
 requête, dans le prédicat de la lecture — **les trois routes du module comme le
-chemin qui résout le propriétaire d'une donnée**. La revue de s15 avait relevé
+chemin qui résout le propriétaire d'une donnée**. Une revue avait relevé
 que ce second chemin, lui, ne la relisait pas : `findActiveOrganizationId` lisait
 `organization_active_selection` seule. C'est corrigé, et la jointure est
 éprouvée par mutation. Le jeu de droits attaché à un identifiant de session est
 donc identique avant et après une bascule ; la rotation d'identifiant que
 `docs/security.md` §2 impose à l'élévation de privilège n'a pas d'objet ici — et
-l'obtenir demanderait un point d'entrée dans le module `auth`, qui n'existe pas
-(`docs/research/s15-organizations.md` §3).
+l'obtenir demanderait un point d'entrée dans le module `auth`, qui n'existe pas.
 
 **s17 l'a réattaquée une troisième fois, dans le sens montant.** Promouvoir
 quelqu'un `admin` ou `owner` **augmente** son pouvoir : c'est le cas typique de
@@ -352,7 +350,7 @@ d'organisation (`docs/security.md` §7).
   désormais `pnpm lint` qui le tient (`no-restricted-imports`, bloc
   `organizationPerimeter`), avec sept cas dans `tests/lint-rules.test.ts` : cinq
   emplacements refusés, deux permis. Jusqu'au tour de correction, la phrase
-  n'était tenue par aucune commande (revue de s16, F9). Dans le premier,
+  n'était tenue par aucune commande. Dans le premier,
   pour la table `auth_user` que référencent `organization_member`,
   `organization_active_selection` et `organization_invitation` ; dans le second,
   pour la **jointure qui donne un nom lisible à un membre** (s16) —
@@ -421,12 +419,12 @@ pourquoi les routes reçoivent un **accès différé** au service, et que
   besoin non couvert est un *design system gap* à signaler dans la story ;
 - **de renvoi hors quota** : le renvoi est une **émission**, donc il passe par
   le quota comme l'invitation. Mesuré avant correction : cinquante renvois
-  consécutifs partaient sans un seul refus (revue de s16, F2). Une émission =
+  consécutifs partaient sans un seul refus. Une émission =
   une ligne, et c'est ce que la fenêtre compte ;
 - **de donnée personnelle non déclarée** : `organization_invitation.email` est
   l'adresse d'une personne souvent sans compte. Elle a sa catégorie
   (`invitation`), sa politique (`erase`) et sa purge, éprouvée en **exécutant**
-  la purge (revue de s16, F6) ;
+  la purge ;
 - **de comparaison de rôle hors de `domain/permissions.ts`** : la matrice est
   écrite une fois. Un `role === 'owner'` dans un cas d'usage, un repository ou
   un `.tsx` la ferait exister à deux endroits, et le second serait celui qui

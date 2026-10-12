@@ -21,7 +21,7 @@ import { grantsOwnership } from './permissions'
  * Le rôle d'une personne invitée : **simple membre, toujours**.
  *
  * Choisir le rôle à l'invitation est une permission, donc s17
- * (`docs/stories.md` : « un admin peut inviter et retirer des members »). Ce
+ * (son critère : « un admin peut inviter et retirer des members »). Ce
  * n'est pas un oubli de s16 : c'est une constante, et le jour où s17 la rendra
  * variable, ce sera par une règle de permission, pas par un champ de
  * formulaire libre.
@@ -152,7 +152,7 @@ export type InvitationRefusal =
  * Les motifs que l'écran des organisations sait rendre.
  *
  * **`seat_limit_reached` y figure sans qu'aucun parcours ne l'y produise
- * aujourd'hui** (constat M2 de la revue de s47), et c'est écrit ici pour que le
+ * aujourd'hui**, et c'est écrit ici pour que le
  * prochain lecteur ne le déduise pas de travers. Le motif naît à
  * `acceptInvitation`, donc pour l'**invité**, dont l'écran affiche
  * délibérément le texte vague (`acceptRefusalMessageKey`). Le message qui

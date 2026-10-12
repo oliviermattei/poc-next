@@ -21,7 +21,7 @@ import { marketingSubscriptions } from '../../../../lib/marketing'
  * `admin/revenue/page.tsx`.
  *
  * **Les deux moitiés ne sont pas tenues par la même commande**, et l'écrire
- * ici est le prix de l'avoir eu faux une fois (revue de s37c, constat 4) :
+ * ici est le prix de l'avoir eu faux une fois :
  *
  * - back-office coupé → `pnpm test:minimal-profile`, qui coupe `admin` ;
  * - site public coupé → `pnpm test:socle`, la **seule des deux** qui le coupe.

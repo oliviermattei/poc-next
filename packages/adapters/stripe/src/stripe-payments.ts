@@ -495,7 +495,7 @@ export function createStripePayments(options: StripePaymentsOptions): Payments {
             // **La facture d'un achat unique est demandée**, celle d'un
             // abonnement ne l'est pas : le fournisseur facture déjà le second,
             // et la lui demander en plus produirait deux factures pour un seul
-            // encaissement. Le quatrième critère de s20 exige que les factures
+            // encaissement. Il faut que les factures
             // restent accessibles ; sans ce paramètre, un paiement hors
             // abonnement n'en produit aucune.
             ...(input.mode === 'payment' ? { invoice_creation: { enabled: true } } : {}),

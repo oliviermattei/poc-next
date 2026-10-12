@@ -224,8 +224,7 @@ describe('la page et le flux, tenus ensemble', () => {
 describe('le catalogue de traductions du module', () => {
   it('livre chaque clé que le code compose, dans toutes les locales du projet', () => {
     // Les libellés de catégorie sont **composés** (`category.<id>`) : le
-    // balayage statique de `tests/i18n.test.ts` ne les voit pas, et la revue de
-    // s31 a mesuré qu'une cinquième catégorie sans clé y laissait 102 cas verts.
+    // balayage statique de `tests/i18n.test.ts` ne les voit pas, et une revue a mesuré qu'une cinquième catégorie sans clé y laissait 102 cas verts.
     // `changelogMessageKeys()` était exportée et consommée par rien : c'est ce
     // cas-ci qui en fait une garantie, comme `tests/consent.test.ts` le fait
     // pour son homologue.
@@ -258,7 +257,7 @@ describe('ce que les nouveautés donnent à indexer', () => {
     // **La décision se lit sur `index`, jamais sur le nombre d'entrées**, et
     // c'est le second catalogue qui le prouve : sur le premier, la garde
     // suivante — « aucune entrée servie » — rend `[]` de toute façon, si bien
-    // que neutraliser celle-ci laissait le cas vert (revue de s31). Une
+    // que neutraliser celle-ci laissait le cas vert. Une
     // mutation verte veut dire que le test est faux, pas que le code est juste.
     //
     // Aucun constructeur du module ne produit ce second catalogue —

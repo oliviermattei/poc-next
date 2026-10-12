@@ -87,7 +87,7 @@ const THEMES = [
  * Le thème est celui du système, et l'assertion de classe est ce qui empêche de
  * mesurer deux fois le même : `next-themes` est en `defaultTheme="system"`, et
  * si la bascule n'était pas suivie, les deux lignes seraient des copies — le
- * défaut exact que la revue de s49 a trouvé côté commande.
+ * défaut exact qu'une revue a trouvé côté commande.
  */
 const measureBothThemes = async (
   page: Page,

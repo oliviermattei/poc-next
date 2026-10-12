@@ -12,7 +12,7 @@ import { backoffDelayMs, classifyStripeError, isTransientPaymentsError, sanitize
  * `application/x-www-form-urlencoded`, les en-têtes, la version d'API, la clé
  * d'idempotence et le traitement de la réponse restent ceux de Stripe. Doubler
  * `checkout.sessions.create` par une fonction à soi n'éprouverait que cette
- * fonction — c'est le piège relevé en revue de s01.
+ * fonction — c'est le piège relevé en revue.
  *
  * L'autre régime — clés de test réelles — vit dans `stripe-live.test.ts`, hors
  * CI, sur commande explicite (`docs/architecture.md`).
