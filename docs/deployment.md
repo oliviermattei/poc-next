@@ -292,7 +292,7 @@ exercé pendant s28 — `x-forwarded-for` était toujours absent ou écrit par l
 test. Confirmer au premier déploiement que le relais **écrase** l'en-tête est une
 recette manuelle.
 
-## Deux hôtes : le site et l'application (s64, ADR 078-081)
+## Deux hôtes : le site et l'application (s64, ADR 078-080)
 
 Sans `APP_HOST`, un seul hôte sert tout — c'est l'état livré, et rien de ce qui
 suit ne s'applique. Avec, le site (`APP_URL`) et l'application (`APP_HOST`)
@@ -315,7 +315,7 @@ redirection vers l'apex, au proxy amont.
 
 ### Le proxy amont doit transmettre `Host`
 
-L'aiguillage lit l'en-tête **`Host` et lui seul** (ADR 081) : `x-forwarded-host`
+L'aiguillage lit l'en-tête **`Host` et lui seul** (ADR 079) : `x-forwarded-host`
 est ignoré, parce que Next conserve celui qu'envoie le client, qui choisirait
 alors la branche — et un cache partagé, qui indexe par `Host`, mémoriserait la
 mauvaise réponse (#67). Un proxy qui réécrit `Host` vers l'adresse interne
@@ -421,7 +421,7 @@ besoin que de `DATABASE_URL`.
 | `DATABASE_URL` | **oui** | la connexion PostgreSQL, seule variable exigée du conteneur de migration |
 | `AUTH_SECRET` | **oui** | la signature des sessions et des jetons, 32 caractères minimum, une valeur propre **par déploiement** (`openssl rand -base64 32`) |
 | `APP_URL` | **oui** | l'URL publique : les liens envoyés par email et les origines de confiance. Jamais déduite de l'en-tête `Host` |
-| `APP_HOST` | non | l'hôte de l'application, un nom d'hôte seul, sous-domaine de l'hôte d'`APP_URL` (`app.exemple.com` sous `https://exemple.com`), refusé au démarrage sinon — la section « Deux hôtes » ci-dessus dit tout ce qu'elle change. Posée, les liens qui ouvrent une session visent cet hôte ; `APP_URL` reste le site et l'identifiant des passkeys (ADR 078). Le proxy aiguille chaque zone vers son hôte (308, ou 404 pour la console sur le site) : l'hôte demandé est lu dans `Host` seul — **pour aiguiller seulement**, toute cible étant construite depuis `APP_URL` et `APP_HOST` (ADR 079, 081) ; un hôte ni du site ni de l'application n'est pas aiguillé. La session reste sur l'application, le consentement et la langue passent sur le domaine parent. Le site ne voyant pas la session, `/pricing` y propose un lien « Déjà client ? » vers l'écran de facturation de l'application (l'offre choisie en `?offer=`), et le retour d'un paiement invité revient sur `/pricing` **du site** (s64b2). Vide : rien ne change |
+| `APP_HOST` | non | l'hôte de l'application, un nom d'hôte seul, sous-domaine de l'hôte d'`APP_URL` (`app.exemple.com` sous `https://exemple.com`), refusé au démarrage sinon — la section « Deux hôtes » ci-dessus dit tout ce qu'elle change. Posée, les liens qui ouvrent une session visent cet hôte ; `APP_URL` reste le site et l'identifiant des passkeys (ADR 078). Le proxy aiguille chaque zone vers son hôte (308, ou 404 pour la console sur le site) : l'hôte demandé est lu dans `Host` seul — **pour aiguiller seulement**, toute cible étant construite depuis `APP_URL` et `APP_HOST` (ADR 079) ; un hôte ni du site ni de l'application n'est pas aiguillé. La session reste sur l'application, le consentement et la langue passent sur le domaine parent. Le site ne voyant pas la session, `/pricing` y propose un lien « Déjà client ? » vers l'écran de facturation de l'application (l'offre choisie en `?offer=`), et le retour d'un paiement invité revient sur `/pricing` **du site** (s64b2). Vide : rien ne change |
 | `EMAIL_FROM` | oui avec `RESEND_API_KEY` | l'expéditeur des emails, sur un domaine vérifié portant SPF, DKIM et DMARC |
 | `RESEND_API_KEY` | l'une des deux | la clé du fournisseur d'emails : les emails partent réellement |
 | `EMAIL_LOCAL_CAPTURE` | l'une des deux | `1` écrit les emails dans `.mail/` au lieu de les envoyer. **Aucun email ne part** : à ne poser en production que sur un déploiement de démonstration |

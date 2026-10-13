@@ -103,7 +103,7 @@ describe('avec APP_HOST', () => {
     ],
     ['site : auth en POST introuvable', SITE_HOST, 'POST', '/api/modules/auth/sign-in/email', 404, null],
     [
-      'x-forwarded-host ignoré : seul Host choisit la branche (ADR 081, #67)',
+      'x-forwarded-host ignoré : seul Host choisit la branche (ADR 079, #67)',
       { host: 'app.exemple.com', 'x-forwarded-host': 'exemple.com' },
       'GET',
       P('/sign-in'),
@@ -127,7 +127,7 @@ describe('avec APP_HOST', () => {
     expect(response.headers.get('location')).toBe(location)
   })
 
-  it('interdit la mise en cache des redirections d’aiguillage (ADR 081)', () => {
+  it('interdit la mise en cache des redirections d’aiguillage (ADR 079)', () => {
     const routed = proxied(P('/sign-in'), SITE_HOST)
 
     expect(routed.status).toBe(308)

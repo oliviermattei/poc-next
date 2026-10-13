@@ -18,7 +18,7 @@ const execFileAsync = promisify(execFile)
  * Le serveur est éprouvé par un **vrai client MCP**, relié par un transport en
  * mémoire (§ SDK, `inMemory.js`) : c'est le réseau qu'on double, jamais le
  * SDK — `docs/architecture.md` §Integration points. Un dépôt temporaire, un
- * vrai dépôt git dessus : la garde de dépôt propre (ADR 041) interroge `git`
+ * vrai dépôt git dessus : la garde de dépôt propre (`packages/cli/AGENTS.md`) interroge `git`
  * pour de vrai.
  */
 const moduleFor = (

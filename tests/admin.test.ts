@@ -3031,7 +3031,7 @@ describe('l’entrée du back-office se dérive du registre', () => {
   /**
    * **s38 — l'écran de revenus disparaît avec la facturation**, et rien du
    * back-office ne nomme ce module : l'entrée est déclarée par `billing`
-   * lui-même (ADR 067), le registre n'agrège que les modules activés.
+   * lui-même (ADR 066), le registre n'agrège que les modules activés.
    *
    * Le contrôle positif est la première assertion : sans elle, l'absence
    * serait vraie parce que la surface entière est vide.
@@ -3050,7 +3050,7 @@ describe('l’entrée du back-office se dérive du registre', () => {
   /**
    * **s37c — l'écran des inscriptions disparaît avec le site public**, et rien
    * du back-office ne nomme ce module : l'entrée est déclarée par `marketing`
-   * lui-même (ADR 067), le registre n'agrège que les modules activés.
+   * lui-même (ADR 066), le registre n'agrège que les modules activés.
    *
    * Le contrôle positif est la première assertion : sans elle, l'absence serait
    * vraie parce que la surface entière est vide.
@@ -3155,7 +3155,7 @@ describe('l’entrée du back-office se dérive du registre', () => {
    * **Aucune adresse du back-office n'est atteignable depuis la barre latérale
    * du produit** (s38).
    *
-   * L'appartenance au back-office est une propriété de l'**entrée** (ADR 067) :
+   * L'appartenance au back-office est une propriété de l'**entrée** (ADR 066) :
    * oublier `surface: 'console'` sur une entrée neuve ne casse rien à l'écran —
    * elle s'affiche simplement dans le menu de **tout compte connecté**, et
    * divulgue l'existence du back-office (`docs/security.md` §7). Le cas voisin

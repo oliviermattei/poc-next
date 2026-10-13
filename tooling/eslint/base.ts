@@ -16,7 +16,7 @@ import tseslint from 'typescript-eslint'
  *    à côte : les outils qui ont besoin de l'API restent en 6.0, le
  *    compilateur passe en 7. `@repo/eslint-config` est donc le seul package du
  *    dépôt à déclarer `typescript@^6`. `pnpm typecheck` compile toujours avec
- *    TypeScript 7 (ADR 011) : aucune ligne de code du dépôt n'est vérifiée par
+ *    TypeScript 7 (ADR 010) : aucune ligne de code du dépôt n'est vérifiée par
  *    le compilateur 6.
  *
  * Le lint n'est **pas** typé (`projectService` désactivé). C'est un choix :

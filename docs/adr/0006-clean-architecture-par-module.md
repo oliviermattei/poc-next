@@ -2,27 +2,15 @@
 
 - Status: accepted
 - Date: 2026-08-30
-- Scope: framing
 
-## Context
-Le boilerplate doit rester compréhensible et modifiable par son propriétaire, et chaque module doit pouvoir changer de provider (base, mail, storage, paiement) sans que la logique métier bouge. ShipSaaS revendique une architecture en trois couches ; le PRD en fait un point de départ.
-
-## Decision
-Quatre couches à l'intérieur de chaque module, avec une règle de dépendance orientée vers le centre :
-
-- `domain/` — entités et règles métier pures. Aucune importation de framework, d'ORM ni de SDK.
-- `application/` — cas d'usage et **ports** (interfaces des dépendances externes). Dépend de `domain` uniquement.
-- `infrastructure/` — implémentations des ports : repositories Drizzle, appels aux adapters (mail, storage, paiement). Dépend de `application` et `domain`.
-- `presentation/` — routes Hono, contrats oRPC, composants React, entrées de navigation. Dépend de `application` et `domain`.
-
-`infrastructure` et `presentation` ne se connaissent pas. La règle est vérifiée mécaniquement par une règle de lint sur les frontières d'import, exécutée en CI (s02).
+Chaque module doit pouvoir changer de fournisseur (base, mail, stockage, paiement) sans que sa logique métier bouge, et rester lisible par le propriétaire du projet. Un module a donc quatre couches, dépendant vers le centre : `domain/` (règles pures, sans framework, ORM ni SDK) ; `application/` (cas d'usage et ports, ne dépend que de `domain`) ; `infrastructure/` (repositories Drizzle, appels aux adapters) et `presentation/` (déclarations `ModuleRoute`, ADR 085, et composants React), qui dépendent de `application` et `domain` et ne se connaissent pas. La règle est tenue par le lint (`tooling/eslint/boundaries.ts`, prouvé par `tests/lint-rules.test.ts`), pas par la relecture : sans lui, l'architecture n'est qu'une intention.
 
 ## Considered options
-- Découpage technique global (`components/`, `services/`, `lib/`) — rejeté : c'est le découpage par défaut de Next, et il rend un module inséparable puisque ses morceaux sont dispersés dans quatre dossiers partagés.
-- Architecture hexagonale complète avec inversion de dépendances systématique — rejeté : le surcoût de cérémonie n'est pas justifié pour un CRUD, et un boilerplate illisible ne vaut rien.
-- Aucune règle imposée — rejeté : la première story qui triche fait s'écrouler l'angle n°1, et le PRD identifie ce risque comme le principal du projet.
+
+- Découpage technique global (`components/`, `services/`, `lib/`) — rejeté : le module serait dispersé dans des dossiers partagés, donc inséparable.
+- Hexagonal complet avec inversion de dépendances systématique — rejeté : la cérémonie ne se justifie pas pour un CRUD, et un boilerplate illisible ne vaut rien.
 
 ## Consequences
-Facilité : changer de provider revient à écrire une implémentation de port ; la logique métier est testable sans base ni réseau.
-Difficulté : plus de fichiers pour une fonctionnalité simple ; la tentation de court-circuiter les couches sur un CRUD trivial est réelle.
-À surveiller : le lint de frontières est ce qui fait la différence entre une architecture et une intention. S'il est désactivé, la règle disparaît en quelques stories.
+
+- Plus de fichiers pour une fonctionnalité simple ; la tentation de court-circuiter les couches sur un CRUD trivial est réelle, et c'est le lint qui la refuse.
+- Un module à composants expose `presentation` par un second point d'entrée (ADR 024) ; un module-processus sans couches en est exempté au prix d'une garde de remplacement (ADR 042).

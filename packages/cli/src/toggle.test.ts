@@ -176,7 +176,7 @@ describe('ks toggle — activation', () => {
     ])
   })
 
-  it('écrit la liste dans l’ordre de l’annuaire, quel que soit l’ordre du fichier (ADR 019)', () => {
+  it('écrit la liste dans l’ordre de l’annuaire, quel que soit l’ordre du fichier', () => {
     // C'est la moitié « décision » du critère 8. L'ordre de `enabledModules` est
     // canonique : celui de l'annuaire. Un aller-retour, ce sont deux invocations
     // séparées, et à la seconde la position d'origine du module retiré n'existe
@@ -643,9 +643,9 @@ describe('ks toggle — écriture sur un dépôt temporaire', () => {
   })
 
   it('annonce la normalisation de l’ordre, en nommant le fichier et la raison', async () => {
-    // ADR 019 : l'ordre est canonique, donc une liste ordonnée à la main est
+    // L'ordre est canonique (`canonicalOrder`), donc une liste ordonnée à la main est
     // réordonnée à la première bascule. Le faire en silence sur un fichier qu'on
-    // édite à la main est exactement ce que l'ADR interdit.
+    // édite à la main est exactement ce que cette règle interdit.
     const independent = [moduleFor('alpha'), moduleFor('beta'), moduleFor('gamma')]
     const repo = await temporaryRepo(
       "export const enabledModules = ['gamma', 'alpha'] as const\n",

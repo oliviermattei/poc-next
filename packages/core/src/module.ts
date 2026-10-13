@@ -237,16 +237,15 @@ export interface NavigationEntry {
  * s'en distinguer. Seule la valeur a changé, pas la règle qui suit ; l'ancienne
  * est refusée par `pnpm typecheck` (`protection.test.ts`).
  *
- * **Elle est arrivée avec s37b2 (ADR 067)**, sous le nom `admin`, et pour la raison exacte qui a
+ * **Elle est arrivée avec s37b2 (ADR 066)**, sous le nom `admin`, et pour la raison exacte qui a
  * fait naître `footer` en s31 : le back-office liste les comptes *et* les
  * organisations, et la seconde entrée doit disparaître avec le module qui la
  * porte. Écrite en dur dans un écran, elle aurait nommé `organizations` dans
  * `apps/web` — puis nommé le module suivant au même endroit. Déclarée par le
  * module, elle disparaît avec lui, sans condition.
  *
- * L'ADR 066 demandait, à la troisième surface, de trancher si la surface est
- * encore une propriété de **l'entrée** ou une propriété de **l'écran** qui la
- * rend. L'ADR 067 répond, et donne le critère : elle appartient à l'entrée tant
+ * La surface reste une propriété de **l'entrée**, pas de **l'écran** qui la
+ * rend. L'ADR 066 en donne le critère : elle appartient à l'entrée tant
  * qu'elle répond à « où ce lien a-t-il un sens ? ». Elle passerait à l'écran le
  * jour où un même lien devrait paraître sur deux surfaces, ou où un écran
  * voudrait choisir ses entrées autrement que par leur surface — pas au rang de
@@ -449,7 +448,7 @@ export interface ModuleSeedContext<TDatabase = ModuleSeedDatabase> {
  * Facultative, et c'est une décision consignée : le commentaire de `publicUrls`
  * dit ce qu'une seizième clé obligatoire coûterait — rouvrir tous les modules
  * déjà écrits pour y poser la même valeur vide. `surface` a établi la forme
- * (ADR 066/067) : le registre dérive la clé pour ceux qui la déclarent, et les
+ * (ADR 066) : le registre dérive la clé pour ceux qui la déclarent, et les
  * autres ne bougent pas.
  *
  * **Le critère de l'ADR 069, à opposer à la clé suivante** : une clé est

@@ -8,7 +8,7 @@
  * le barril principal fait échouer `pnpm typecheck` de `@repo/db` sur
  * « `--jsx` is not set ».
  *
- * **L'échelle de prose n'est pas ici** (ADR 055) : elle vit dans `@repo/ui`.
+ * **L'échelle de prose n'est pas ici** (`packages/ui/AGENTS.md`) : elle vit dans `@repo/ui`.
  * Ce module n'en dérive qu'une variante — la même table, avec les ancres que
  * son sommaire attend.
  */

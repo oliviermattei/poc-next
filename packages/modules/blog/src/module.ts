@@ -44,7 +44,7 @@ const blogNavigation: readonly NavigationEntry[] = [
  *
  * Ce que ce module apporte, ce sont des **pages**, que seule l'application peut
  * servir : un `ModuleRoute` est un descripteur monté sous `/api/modules/…`
- * (ADR 017), pas un écran. Sa modularité se joue donc au point de composition,
+ * (ADR 085), pas un écran. Sa modularité se joue donc au point de composition,
  * `apps/web/lib/blog.ts`, exactement comme celle de `marketing` dans
  * `apps/web/lib/marketing.ts`.
  *
@@ -55,7 +55,7 @@ const blogNavigation: readonly NavigationEntry[] = [
  * (`apps/web/lib/og-image.ts`), parce qu'elle vaut pour tout le produit.
  *
  * **Ce que ce module ne fait toujours pas** : servir ses propres écrans. Un
- * `ModuleRoute` n'est pas une page (ADR 017), et le design system n'a **aucun
+ * `ModuleRoute` n'est pas une page (ADR 085), et le design system n'a **aucun
  * gabarit d'image sociale** — c'est un manque signalé, pas un manque comblé
  * (`scripts/og-image.ts`).
  */

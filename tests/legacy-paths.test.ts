@@ -148,7 +148,7 @@ const legacyEntriesServedHere = (): Readonly<Record<string, string>> =>
 describe('une entrée dont le module est coupé ne redirige pas', () => {
   // Le socle : seuls les modules requis. Le compte reste ; l'organisation, la
   // facturation, les notifications, l'intégration et la démonstration partent —
-  // leur écran répond 404, et leur ancien chemin aussi (ADR 077).
+  // leur écran répond 404, et leur ancien chemin aussi (ADR 075).
   const socle = buildRegistry({
     available: availableModules,
     enabled: requiredModules,
@@ -249,7 +249,7 @@ describe('aucun ancien chemin n’est écrit en littéral', () => {
    *
    * L'analyseur est celui de `pnpm lint`, résolu depuis `@repo/eslint-config`
    * qui le déclare : le paquet `typescript` de la racine est la version
-   * native, sans API JavaScript (ADR 011).
+   * native, sans API JavaScript (ADR 010).
    */
   const parser = (
     createRequire(join(REPO_ROOT, 'tooling/eslint/package.json'))('typescript-eslint') as {

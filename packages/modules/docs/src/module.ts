@@ -39,7 +39,7 @@ const docsNavigation: readonly NavigationEntry[] = [
  *
  * **Aucune route non plus, et ce n'est pas un oubli.** Ce module apporte des
  * **pages**, que seule l'application peut servir : un `ModuleRoute` est un
- * descripteur monté sous `/api/modules/…` (ADR 017), pas un écran. Sa
+ * descripteur monté sous `/api/modules/…` (ADR 085), pas un écran. Sa
  * modularité se joue donc au point de composition, `apps/web/lib/docs.ts`,
  * exactement comme celle de `blog` et de `marketing`. La recherche plein texte,
  * qui aurait pu en demander une, appartient à `s54-docs-recherche`.

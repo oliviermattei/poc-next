@@ -313,7 +313,7 @@ const refuse = (error: string, status: number): Response =>
  *   règle métier, ni la persistance.
  *
  * L'appariement porte sur le couple (chemin, méthode) : une méthode qu'aucune
- * route ne déclare sur un chemin connu répond **404, et non 405** (ADR 017).
+ * route ne déclare sur un chemin connu répond **404, et non 405** (ADR 085).
  * Un 405 énumère implicitement les méthodes acceptées, ce que le §7 du socle de
  * sécurité refuse. Chaque module hérite de ce choix : c'est écrit ici pour qu'il
  * en hérite sciemment, et `tests/module-registry.test.ts` l'épingle.

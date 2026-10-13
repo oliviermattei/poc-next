@@ -2,20 +2,17 @@
 
 - Status: accepted
 - Date: 2026-09-28
-- Scope: story s62a-reglages-deplacement
 
-## Context
-s62a déplace trois écrans (`/account`, `/organizations`, `/billing`) sous `/app/settings/*`, et s62b, s62c, s63 en déplaceront d'autres. Les anciens chemins sont dans des favoris, des emails déjà envoyés, des retours de paiement en vol. Le dépôt n'a **aucune** infrastructure de redirection : pas de `redirects()` dans `next.config.ts`, aucun `308` dans `apps` ni `packages` ; `apps/web/proxy.ts` ne sait que la redirection canonique de langue (307) et la réécriture interne.
+Des écrans changent d'adresse (`/account`, `/organizations`, `/billing` sous `/app/settings/*`, puis d'autres sous `/app`), alors que leurs anciens chemins vivent dans des favoris, des emails déjà envoyés et des retours de paiement en vol. Les redirections permanentes de l'application sont donc une table unique, `LEGACY_SCREEN_PATHS` (`apps/web/lib/legacy-paths.ts`) : ancien chemin interne → `{ target, module }`. `apps/web/proxy.ts` la lit sur le chemin interne (préfixe de langue retiré) et répond 308 vers la cible re-préfixée dans la langue de la requête, requête conservée.
 
-## Decision
-Une **table unique** (ancien chemin interne → nouveau chemin interne), donnée TypeScript dans `apps/web/lib/`, lue par `apps/web/proxy.ts` **sur le chemin interne** (après retrait du préfixe de langue), qui répond **308** vers la cible re-préfixée dans la langue de la requête, requête conservée. Une entrée n'est servie que si l'écran cible existe dans la configuration (module activé) ; sinon l'ancien chemin répond comme aujourd'hui (404). Un test compare la table à une **fixture figée** des anciens chemins : chaque ancien chemin doit être soit servi, soit redirigé.
+Chaque ligne nomme le module qui sert son écran, et `legacyScreenTarget` ne redirige que si ce module est dans `registry.moduleIds` ; un module coupé laisse l'ancien chemin répondre 404 plutôt que d'envoyer vers un second 404. Le signal est le module, pas la navigation, parce que des écrans déplacés (centre de notifications, parcours d'intégration) n'ont par décision aucune entrée de navigation.
 
 ## Considered options
-- **`redirects()` de `next.config.ts`** — rejetée : `output: 'standalone'` fige la configuration au build (`AGENTS.md`, Deployment), la cible ne peut pas dépendre des modules activés, et l'ordre avec la réécriture de langue du proxy n'est pas maîtrisé.
-- **Une page par ancien chemin qui appelle `permanentRedirect`** — rejetée : un fichier d'écran par redirection, qui réserve un segment et qu'il faut ranger dans une zone (`tests/zones.test.ts`), pour un simple aiguillage.
-- **Pas de redirection** — rejetée : casserait les liens d'emails et de paiement déjà émis.
+
+- **`redirects()` de `next.config.ts`** — rejeté : `output: 'standalone'` fige cette configuration au build, la cible ne pourrait pas dépendre des modules activés, et son ordre avec la réécriture de langue du proxy n'est pas maîtrisé.
+- **Une page par ancien chemin qui appelle `permanentRedirect`** — rejeté : un fichier d'écran par redirection, qui réserve un segment et doit être rangé dans une zone.
+- **Une clé de contrat « écrans », ou une entrée de navigation pour chaque écran déplacé** — rejeté : la table porte elle-même l'information, et une entrée ferait paraître dans la barre latérale des écrans qui n'y ont pas leur place.
 
 ## Consequences
-- Chaque story qui déplace un écran ajoute une ligne à la table et à la fixture ; oublier la ligne fait rougir le test.
-- Les segments redirigés restent réservés aux organisations (`APPLICATION_SEGMENTS`) même sans fichier d'écran.
-- La cible est toujours une constante de la table, jamais un paramètre : pas de redirection ouverte.
+
+Chaque déplacement d'écran ajoute une ligne à la table et son ancien chemin à `tests/fixtures/legacy-screen-paths.json` ; `tests/legacy-paths.test.ts` exige que chaque chemin de l'inventaire soit servi ou redirigé, et que chaque module nommé existe dans l'annuaire. La cible est toujours une constante exportée par le module, jamais une valeur lue dans la requête : pas de redirection ouverte. Les segments redirigés restent réservés aux organisations (`APPLICATION_SEGMENTS`). Un écran dont le module est activé mais qui répond 404 pour une autre raison (une fonctionnalité que `config/gating.ts` ne réserve plus) redirige vers ce 404 : accepté.

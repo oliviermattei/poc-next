@@ -633,7 +633,7 @@ export function createAuthUseCases(dependencies: AuthDependencies): AuthUseCases
     sendPasswordResetEmail: async ({ to, token, userId, knownLocale }) => {
       // **Le lien est reconstruit ici**, il n'est pas celui que la bibliothèque
       // propose : le sien passe par `/reset-password/<jeton>`, un segment
-      // dynamique que le contrat de module ne sait pas déclarer (ADR 017) et
+      // dynamique que le contrat de module ne sait pas déclarer (ADR 085) et
       // que le répartiteur refuserait en 404. Le jeton voyage donc en paramètre
       // de requête vers l'écran, qui le repasse à la route déclarée. Le
       // parcours complet est suivi dans `e2e/auth.spec.ts` — c'est ce qui a

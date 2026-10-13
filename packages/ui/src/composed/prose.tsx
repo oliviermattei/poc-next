@@ -4,7 +4,7 @@ import type { ComponentProps, ReactNode } from 'react'
 /**
  * L'échelle de prose, rendue.
  *
- * **Elle vit ici, et pas dans le module qui l'a livrée** (ADR 055). s29 l'avait
+ * **Elle vit ici, et pas dans le module qui l'a livrée** (`packages/ui/AGENTS.md`). s29 l'avait
  * posée dans `@repo/module-blog/presentation` ; s30 en a eu besoin pour la
  * documentation, et un module optionnel qui en héberge un autre n'a que deux
  * suites — `requires: ['blog']` sur la documentation (ADR 018), c'est-à-dire un

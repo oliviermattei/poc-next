@@ -11,7 +11,7 @@ import { cn } from '../lib/cn'
  * décoratif. Le feedback asynchrone passe par un `Toaster`, pas par ceci.
  *
  * **Le texte emploie `-subtle-foreground`, jamais le jeton de remplissage**
- * (s49, ADR 056). Le jeton sémantique nu est un **fond** : écrit en texte sur
+ * (s49, `docs/design-system.md`, § Couleur). Le jeton sémantique nu est un **fond** : écrit en texte sur
  * `bg-<sem>/10`, `warning` mesurait 1,83 : 1 en mode clair. `pnpm test:contrast`
  * dérive ces quatre lignes et rougit si l'une repasse sous 4,5 : 1 — donc
  * changer `text-<sem>-subtle-foreground` pour `text-<sem>` ici se voit.

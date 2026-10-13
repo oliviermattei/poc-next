@@ -8,7 +8,7 @@
  * le barril principal fait échouer `pnpm typecheck` de `@repo/db` sur
  * « `--jsx` is not set ».
  *
- * **L'échelle de prose n'est plus ici** (ADR 055) : elle vit dans `@repo/ui`,
+ * **L'échelle de prose n'est plus ici** (`packages/ui/AGENTS.md`) : elle vit dans `@repo/ui`,
  * d'où le blog l'importe comme n'importe quel autre consommateur.
  */
 export { BlogArticleView, type BlogArticleViewProps } from './article-view'

@@ -121,7 +121,7 @@ export function createMcpServer(deps: McpServerDependencies): McpServer {
         // sait quelles migrations l'activation vient de générer, et qui
         // refuse de toucher la base quand il n'y en a aucune. Ce que la
         // façade terminal imprime à l'œil, celle-ci le **rend** — les lignes
-        // d'annonce comprises (réordonnancement ADR 019, commentaire perdu),
+        // d'annonce comprises (réordonnancement canonique, commentaire perdu),
         // qu'un agent n'aurait vues nulle part ailleurs.
         const notices: string[] = []
 

@@ -6,7 +6,7 @@ import { clientIdentifierOf } from '../domain/rate-limit'
 /**
  * Les trois routes des formulaires publics, **énumérées une par une**.
  *
- * C'est le registre qui possède les routes (ADR 007 et 017) : chaque point
+ * C'est le registre qui possède les routes (ADR 007 et 085) : chaque point
  * d'entrée est déclaré, avec son chemin exact, sa méthode et son niveau de
  * protection. Module coupé, ces chemins ne sont dans aucune table et le
  * répartiteur répond 404 sans jamais atteindre ce fichier — c'est le critère 4

@@ -442,7 +442,7 @@ export interface AdminRevenue {
  *
  * **Aucune méthode ne dit si la facturation existe**, comme pour les
  * organisations : module coupé, ce qui disparaît est l'**entrée de navigation**,
- * déclarée par le module qui la porte (ADR 067), et l'écran répond 404 — pas
+ * déclarée par le module qui la porte (ADR 066), et l'écran répond 404 — pas
  * une condition écrite ici.
  *
  * `ok: false` est une lecture **en échec**, jamais « aucun revenu » : un
@@ -498,7 +498,7 @@ export interface AdminSubscription {
  *
  * **Aucune méthode ne dit si le site public existe** : module coupé, ce qui
  * disparaît est l'**entrée de navigation**, déclarée par le module qui la porte
- * (ADR 067), et l'écran répond 404 — pas une condition écrite ici.
+ * (ADR 066), et l'écran répond 404 — pas une condition écrite ici.
  *
  * `ok: false` est une lecture **en échec**, jamais « aucune inscription » : une
  * liste vide affichée sur une panne ferait croire à une base sans abonnés.

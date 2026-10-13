@@ -7,7 +7,7 @@ import frMessages from './messages/fr.json' with { type: 'json' }
  * Le contrat de « mcp-server » (s41) : un module comme un autre au sens du
  * registre (ADR 007), mais qui ne sert **aucune** route web. Le serveur MCP
  * est un process à part, lancé en `stdio` par le client qui le pilote (Claude
- * Desktop, un agent…) — pas monté dans Hono, donc `routes` et `navigation`
+ * Desktop, un agent…) — pas monté par le répartiteur, donc `routes` et `navigation`
  * restent vides sans que ce soit un oubli.
  *
  * C'est ce contrat, et lui seul, qui rend le critère 7 vérifiable : « module

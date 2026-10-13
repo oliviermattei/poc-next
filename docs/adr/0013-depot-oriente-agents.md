@@ -2,28 +2,19 @@
 
 - Status: accepted
 - Date: 2026-08-30
-- Scope: framing
 
-## Context
-ShipSaaS vend « 50+ conventions qui cadrent ton IA » et MakerKit livre des règles LLM pré-configurées pour Cursor, Claude Code et Windsurf. C'est de la parité attendue sur ce marché. Mais l'enjeu réel dépasse l'argument commercial : ce boilerplate sera majoritairement modifié par des agents, et un agent qui ne trouve pas ses marques invente — il crée un composant hors design system, contourne une couche, réécrit une convention.
+Ce dépôt est majoritairement modifié par des agents, et un agent qui ne trouve pas ses repères invente : un composant hors design system, une couche contournée, une convention réécrite. Le contrat de module (ADR 007) et la règle des couches (ADR 006) ne servent à rien si rien ne les rappelle là où le code s'écrit. Le dépôt cadre donc les agents par construction :
 
-Le contrat de module (ADR 007) et la règle de dépendance des couches (ADR 006) ne servent à rien si rien ne les rappelle à l'endroit où le code s'écrit.
-
-## Decision
-Le dépôt est structuré pour qu'un agent soit **cadré par construction**, à trois niveaux :
-
-1. **Règles localisées.** Un `AGENTS.md` à la racine pour les règles globales, et un `AGENTS.md` par package pour ce qui lui est propre : ce que ce package a le droit d'importer, ce qu'il ne doit jamais contenir, où vont ses tests.
-2. **Contraintes exécutables plutôt que documentaires.** Chaque règle importante est doublée d'une vérification automatique — lint de frontières pour les couches, validation de configuration pour les modules requis, tests de câblage pour l'environnement. Une règle qu'aucune commande ne vérifie finit contournée.
-3. **Surfaces d'outillage.** Le CLI (s05) et le serveur MCP (s41) exposent les mêmes opérations : lister les modules, en activer un, générer un squelette conforme au contrat. Un agent n'a jamais à deviner la structure d'un module — il la génère.
-
-La documentation destinée aux agents est maintenue **au même commit que le code qu'elle décrit**. Une story qui change une convention et ne met pas à jour la règle correspondante est incomplète.
+1. **Règles localisées** — un `AGENTS.md` racine pour le global, et un `AGENTS.md` par package : ce qu'il peut importer, ce qu'il ne doit jamais contenir, où vont ses tests. Ils changent dans le même commit que le code qu'ils décrivent.
+2. **Règles exécutables** — chaque règle importante est doublée d'une commande qui échoue si on la viole (lint de frontières, validation de configuration, tests de câblage). Une règle qu'aucune commande ne vérifie finit contournée.
+3. **Générer plutôt que deviner** — `pnpm ks` (lister, activer, `scaffold`) et le serveur MCP du module `mcp-server` exposent les mêmes opérations ; un agent ne devine jamais la structure d'un module, il la génère.
 
 ## Considered options
-- **Un seul `AGENTS.md` racine, exhaustif** — rejeté : il devient illisible, et un agent qui travaille dans `packages/modules/billing` n'a pas besoin des règles du site marketing. La proximité fait la pertinence.
-- **De la documentation seule, sans vérification** — rejeté : c'est le mode d'échec observé partout. Une convention non vérifiée dure trois stories.
-- **Des règles spécifiques à un outil** (`.cursorrules`, fichiers propriétaires) — rejeté : `AGENTS.md` est lisible par tous les agents et par les humains. Pas de duplication par outil.
+
+- Un seul `AGENTS.md` racine exhaustif — rejeté : illisible, et un agent dans un module n'a pas besoin des règles du site. La proximité fait la pertinence.
+- Des fichiers propres à un outil (`.cursorrules`…) — rejetés : `AGENTS.md` se lit par tous les agents et par les humains, sans duplication.
 
 ## Consequences
-Facilité : un agent trouve la règle là où il édite ; le générateur de module rend le chemin conforme plus court que le chemin improvisé.
-Difficulté : maintenir des règles à plusieurs endroits crée un risque de divergence. Un test vérifie que chaque package possède son `AGENTS.md` et que celui-ci nomme ses dépendances autorisées.
-À surveiller : la tentation d'écrire des règles que rien ne vérifie. Toute règle ajoutée doit répondre à la question « quelle commande échoue si on la viole ? ».
+
+- Des règles à plusieurs endroits peuvent diverger : `tests/agents-md.test.ts` vérifie que chaque package a son `AGENTS.md` et que celui-ci nomme ses dépendances.
+- Toute règle ajoutée répond à la question « quelle commande échoue si on la viole ? ».

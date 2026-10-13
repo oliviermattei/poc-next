@@ -239,7 +239,7 @@ describe('ks, lancé comme un utilisateur le lance', () => {
 
 const execFileAsync = promisify(execFile)
 
-/** `ks scaffold` pose la garde de dépôt propre (ADR 041) : il lui faut un vrai dépôt git. */
+/** `ks scaffold` pose la garde de dépôt propre (`packages/cli/AGENTS.md`) : il lui faut un vrai dépôt git. */
 const gitInit = async (root: string): Promise<void> => {
   await execFileAsync('git', ['init', '--quiet'], { cwd: root })
   await execFileAsync('git', ['config', 'user.email', 'test@example.com'], { cwd: root })

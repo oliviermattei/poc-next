@@ -14,7 +14,7 @@ import { zoneOf } from './lib/zones'
 
 /**
  * **L'hôte demandé**, en minuscules : l'en-tête `host`, **et lui seul**
- * (ADR 081, amende ADR 079). `request.url` porte l'hôte d'**écoute**, jamais
+ * (ADR 079). `request.url` porte l'hôte d'**écoute**, jamais
  * celui-là (s64b, fait 1).
  *
  * `x-forwarded-host` n'est pas lu : Next conserve celui qu'envoie le client,
@@ -103,7 +103,7 @@ function hostRoute({ request, routing, internal, locale }: HostRouteInput): Next
     const response = NextResponse.redirect(target, 308)
 
     // Un 308 est cachable par heuristique : une configuration d'hôtes changée
-    // ne doit pas rester figée dans un navigateur ou un cache (ADR 081).
+    // ne doit pas rester figée dans un navigateur ou un cache (ADR 079).
     response.headers.set('cache-control', 'no-store')
 
     return response

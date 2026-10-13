@@ -13,7 +13,7 @@ import { INVITATION_SCREEN_PATH } from '../domain/invitation'
 
 /**
  * Les routes du module, **énumérées une par une**, avec leur niveau de
- * protection (ADR 007 et 017). Ce qui n'est pas dans cette liste n'existe pas :
+ * protection (ADR 007 et 085). Ce qui n'est pas dans cette liste n'existe pas :
  * le répartiteur répond 404 sans atteindre le module, et un module coupé n'a
  * aucune de ces routes dans la table de routage.
  *

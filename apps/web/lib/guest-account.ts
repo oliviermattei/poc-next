@@ -134,7 +134,7 @@ export function guestAccountsOf(
         // **Compte neuf : définir son mot de passe.** Le lien est reconstruit
         // par le module `auth` autour de son écran `/reset-password` ; celui de
         // la bibliothèque viserait un segment dynamique que le contrat de
-        // module ne sait pas déclarer (ADR 017).
+        // module ne sait pas déclarer (ADR 085).
         await service.handle(jsonRequest(url('requestPasswordReset'), { email }))
 
         return

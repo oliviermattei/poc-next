@@ -78,7 +78,7 @@
   --info-foreground: oklch(0.205 0 0);
 
   /**
-   * **Texte sur teinte** — une famille distincte du remplissage (s49, ADR 056).
+   * **Texte sur teinte** — une famille distincte du remplissage (s49, `docs/design-system.md`, § Couleur).
    *
    * `--warning` et ses trois sœurs sont des **fonds** : à `oklch(0.79 …)` le
    * jaune est un bon remplissage de `Badge` et un texte illisible. Les employer
@@ -165,7 +165,7 @@
    * cette feuille en texte et ne résout pas `var(…)` — elle refuserait en le
    * nommant (`scripts/contrast-rules.ts`, `parseColor`). Le prix de la copie
    * est qu'elle est muette : changer `--warning` ici sans changer sa copie
-   * ferait diverger deux valeurs que l'ADR 056 dit identiques.
+   * ferait diverger deux valeurs que `docs/design-system.md` dit identiques.
    */
   --destructive-subtle-foreground: oklch(0.704 0.191 22.216);
   --success-subtle-foreground: oklch(0.70 0.15 149);

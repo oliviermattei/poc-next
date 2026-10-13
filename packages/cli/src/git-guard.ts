@@ -2,15 +2,15 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 
 /**
- * La garde « dépôt propre » (s41, ADR 041).
+ * La garde « dépôt propre » (où elle s'applique et pourquoi : `packages/cli/AGENTS.md`).
  *
  * `ks toggle` (s05) ne la pose pas : un humain qui tape la commande a déjà la
  * garde qu'il lui faut — il voit ce qu'il fait, et `git diff` lui rend la main
  * à tout moment. Un agent piloté par MCP n'a pas cette garde-là : rien ne
  * l'empêche d'enchaîner des opérations sans jamais relire. La précondition est
  * donc posée aux points de composition qui écrivent **pour le compte d'un
- * agent** — les deux outils MCP qui modifient le dépôt, et `ks scaffold`, qui
- * n'existait pas avant cette story — jamais réinjectée dans `ks toggle`.
+ * agent** — les deux outils MCP qui modifient le dépôt, et `ks scaffold` —
+ * jamais réinjectée dans `ks toggle`.
  *
  * `git status --porcelain` est interrogé, jamais réimplémenté : un dépôt sale
  * est un fait du dépôt, pas une opinion de ce fichier.

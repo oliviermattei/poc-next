@@ -42,7 +42,7 @@ interface RepoOptions {
   readonly available?: readonly string[]
   /** Scripts du `package.json` : ce que les sous-processus du serveur lanceront. */
   readonly scripts?: Record<string, string>
-  /** Un vrai dépôt git, propre — ce qu'exige la garde d'ADR 041. */
+  /** Un vrai dépôt git, propre — ce qu'exige la garde de dépôt propre (`packages/cli/AGENTS.md`). */
   readonly git?: boolean
 }
 

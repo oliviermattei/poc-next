@@ -301,7 +301,7 @@ describe('l’état réel de la copie, confronté au profil calculé', () => {
  *
  * Le remède n'est ni le saut (`it.skipIf` : un cas vert qui n'a rien vérifié),
  * ni le nom du module écrit en dur (le défaut même que ce cas existe pour
- * attraper), mais la **séparation des deux moitiés du prédicat** (ADR 052) :
+ * attraper), mais la **séparation des deux moitiés du prédicat** (`CODING_STANDARDS.md`, Testing) :
  *
  * - six critères ne dépendent que de l'annuaire — « ce module serait coupable
  *   si la configuration l'activait ». C'est un invariant, vrai sous les deux
@@ -658,7 +658,7 @@ describe('les comptes de la suite sous le profil', () => {
 })
 
 /**
- * **Le dépôt de travail n'est jamais touché** (décision 1 du plan, ADR 041).
+ * **Le dépôt de travail n'est jamais touché** (décision 1 du plan ; garde de dépôt propre, `packages/cli/AGENTS.md`).
  *
  * La recette écrit dans `config/features.ts`, un fichier suivi par git : c'est
  * la différence avec s25, dont l'amorçage n'écrivait nulle part. Elle travaille

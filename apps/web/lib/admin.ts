@@ -372,7 +372,7 @@ export const adminOrganizationsPort = (
  *
  * **Aucune condition sur un module ici.** Facturation coupée, la lecture rend un
  * revenu vide sans ouvrir de connexion ; ce qui disparaît alors est l'**entrée
- * de navigation**, déclarée par le module qui la porte (ADR 067), et l'écran
+ * de navigation**, déclarée par le module qui la porte (ADR 066), et l'écran
  * répond 404.
  *
  * L'import est **différé**, pour la raison exacte du port des organisations :
@@ -408,7 +408,7 @@ const revenue: AdminRevenuePort = adminRevenuePort(
  *
  * **Aucune condition sur un module ici.** Site public coupé, le lecteur rend du
  * vide sans ouvrir de connexion ; ce qui disparaît alors est l'**entrée de
- * navigation**, déclarée par le module qui la porte (ADR 067), et l'écran
+ * navigation**, déclarée par le module qui la porte (ADR 066), et l'écran
  * répond 404.
  *
  * L'import est **différé**, pour la raison des deux autres ports : les points

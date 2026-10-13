@@ -58,7 +58,7 @@ export interface ToggleOutcome {
    */
   readonly migrations: readonly PendingMigrations[]
   readonly migrationsApplied: boolean
-  /** Entrées déjà présentes que l'ordre canonique a déplacées (ADR 019). */
+  /** Entrées déjà présentes que l'ordre canonique a déplacées (voir `canonicalOrder`, `toggle.ts`). */
   readonly reordered: readonly string[]
   /** Entrées retirées dont le commentaire du propriétaire est parti avec elles. */
   readonly droppedComments: readonly string[]
@@ -69,10 +69,10 @@ const quote = (value: string): string => `« ${value} »`
 /**
  * Ce que l'écriture a changé **sans qu'on le lui demande**, dit à voix haute.
  *
- * ADR 019 fait de l'ordre de `enabledModules` une propriété canonique, donc une
+ * L'ordre de `enabledModules` est canonique (`canonicalOrder`, `toggle.ts`), donc une
  * liste ordonnée à la main est réordonnée à la première bascule. Ce coût est
  * payé une fois, et il est **annoncé** : une normalisation silencieuse d'un
- * fichier qu'on édite à la main est exactement ce que l'ADR interdit.
+ * fichier qu'on édite à la main est exactement ce que cette règle interdit.
  *
  * Et le commentaire d'une entrée retirée part avec elle — le laisser en place le
  * réattribuerait au module voisin. Une réactivation ne le rendra pas : à la
@@ -85,7 +85,7 @@ const announce = (environment: ToggleEnvironment, edit: EnabledModulesEdit): voi
       `config/features.ts : la liste des modules activés a été réécrite dans l’ordre de l’annuaire ` +
         `${quote('availableModules')} — ${edit.reordered.map(quote).join(', ')} ${
           edit.reordered.length > 1 ? 'ont changé' : 'a changé'
-        } de place. C’est l’ordre canonique du dépôt (ADR 019), établi une fois : ` +
+        } de place. C’est l’ordre canonique du dépôt, établi une fois : ` +
         'les bascules suivantes ne réordonneront plus rien.',
     )
   }

@@ -94,7 +94,7 @@ describe('écriture de `enabledModules`', () => {
   })
 
   it('réordonne une liste écrite à la main, et dit lesquelles ont bougé', () => {
-    // ADR 019 : l'ordre de `enabledModules` est celui de l'annuaire. Le CLI
+    // L'ordre de `enabledModules` est celui de l'annuaire (`canonicalOrder`). Le CLI
     // l'établit lui-même, une fois — et il ne le fait pas en silence, sinon la
     // liste qu'un propriétaire a ordonnée à la main change sans qu'il le sache.
     const edit = writeEnabledModules("export const enabledModules = ['beta', 'alpha'] as const\n", [

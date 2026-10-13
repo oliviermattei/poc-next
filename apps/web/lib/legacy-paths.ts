@@ -28,7 +28,7 @@ import { ORGANIZATIONS_SCREEN_PATH } from '@repo/module-organizations'
  * exige que chaque chemin de l'inventaire soit servi ou redirigé.
  */
 /**
- * Une ligne de la table : la cible, et **le module qui sert cet écran** (ADR 077).
+ * Une ligne de la table : la cible, et **le module qui sert cet écran** (ADR 075).
  *
  * `module` est l'identifiant du module tel que l'annuaire le déclare
  * (`config/features.ts`) — `tests/legacy-paths.test.ts` exige qu'il y existe.
@@ -47,7 +47,7 @@ export const LEGACY_SCREEN_PATHS: Readonly<Record<string, LegacyScreenPath>> = {
   '/app/settings/account': { target: ACCOUNT_SCREEN_PATH, module: 'auth' },
   // s63 — les derniers écrans applicatifs rangés sous `/app`. Le centre de
   // notifications et le parcours d'intégration n'ont aucune entrée de
-  // navigation : c'est pourquoi la ligne nomme son module (ADR 077).
+  // navigation : c'est pourquoi la ligne nomme son module (ADR 075).
   '/notifications': { target: NOTIFICATIONS_SCREEN_PATH, module: 'notifications' },
   '/onboarding': { target: ONBOARDING_SCREEN_PATH, module: 'onboarding' },
   '/premium': { target: DEMO_PREMIUM_SCREEN_PATH, module: 'demo-enabled' },
@@ -61,7 +61,7 @@ const TABLE: ReadonlyMap<string, LegacyScreenPath> = new Map(Object.entries(LEGA
  * `null` aussi quand l'écran cible n'est pas servi dans cette configuration :
  * module coupé, l'ancien chemin répond comme avant — 404 —, plutôt que de
  * renvoyer vers un second 404. « Servi » se lit dans les **modules du
- * registre** (ADR 077, qui amende l'ADR 075) : chaque ligne nomme le module qui
+ * registre** (ADR 075) : chaque ligne nomme le module qui
  * sert son écran, et le registre n'agrège que les modules activés. La
  * navigation ne suffit plus — le centre de notifications et le parcours
  * d'intégration n'y ont, par décision, aucune entrée.

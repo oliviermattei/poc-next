@@ -4,7 +4,7 @@ Le CLI `ks` : le geste central du produit rendu exécutable. Deux commandes,
 `ks list` et `ks toggle <module>`, et une seule écriture — la liste
 `enabledModules` de `config/features.ts`.
 
-Quatre choses à savoir avant d'y toucher.
+Six choses à savoir avant d'y toucher.
 
 **1. Le toggle est atomique du point de vue du dépôt.** Il touche la
 configuration, les barils générés, et éventuellement la base. En faire deux sur
@@ -32,12 +32,14 @@ faisant refuser n'est pas lisible pour l'humain qui configure ni pour l'agent qu
 lit la sortie machine (ADR 013).
 
 **4. L'ordre de `enabledModules` est canonique, et une chose ne revient pas.**
-ADR 019 : le CLI écrit toujours la liste dans l'ordre de l'annuaire. Un
+Le CLI écrit toujours la liste dans l'ordre de l'annuaire `availableModules`
+(`canonicalOrder`, `src/toggle.ts`, qui porte la raison). Un
 aller-retour, ce sont deux invocations séparées — à la seconde, la position
 d'origine du module retiré n'existe nulle part, donc seul un ordre dérivé rend
 le fichier identique. Conséquence : une liste ordonnée à la main est réordonnée
 à la première bascule, **et le CLI l'annonce**, en nommant le fichier et la
-raison. Ne jamais rendre cette normalisation silencieuse.
+raison. Ne jamais rendre cette normalisation silencieuse. Cet ordre n'est pas
+l'ordre d'exécution, qui vient du graphe des `requires`.
 
 La limite, elle, est réelle et assumée : **le commentaire d'une entrée retirée
 part avec elle et ne revient pas.** Il lui appartient — où qu'il soit écrit :
@@ -73,10 +75,28 @@ et rien d'autre : il **n'édite jamais** `availableModules` dans
 de l'installation, pas du scaffolding. L'identifiant est validé en
 `kebab-case` avant tout calcul de chemin : c'est ce qui empêche un
 identifiant du type `../../etc` d'atteindre un chemin de fichier hors de
-`packages/modules/`. Et parce qu'un agent n'a pas la garde qu'a un humain qui
-relit avant de valider, `ks scaffold` refuse sur un dépôt aux modifications
-non commitées (`src/git-guard.ts`, ADR 041) — refus que `ks toggle` (s05) ne
-porte **pas** : son contrat et ses tests ne changent pas avec cette story.
+`packages/modules/`.
+
+**6. La garde de dépôt propre (`assertRepositoryClean`, `src/git-guard.ts`).**
+Elle refuse, avant toute écriture et en le nommant, un dépôt aux modifications
+non commitées (suivies ou non), pour que le développeur puisse toujours annuler
+ce qu'un agent vient d'écrire. C'est une fonction du moteur partagé, mais son
+**appel** est décidé par chaque point de composition, jamais imposé par le
+moteur (`runToggle`, `planToggle`) :
+
+- **posée** par `src/bin.ts` sur `ks scaffold` ;
+- **posée** par `packages/modules/mcp-server/src/server.ts` sur les deux outils
+  qui écrivent (`toggle_module`, `scaffold_module`), jamais sur `list_modules`,
+  qui ne modifie rien ;
+- **non posée** sur `ks toggle`.
+
+Pourquoi cette ligne de partage : un agent n'a pas la garde qu'a un humain qui
+relit avant de valider — rien ne l'empêche d'enchaîner des écritures sans relire
+l'état du dépôt, et une écriture non voulue ne se distingue plus du travail en
+cours. L'humain qui tape `ks toggle` voit ce qu'il fait et garde `git diff` sous
+la main. Une nouvelle commande qui écrit se pose la même question avant de
+choisir. L'issue #153 doit assouplir la garde de `ks scaffold` (ne refuser
+qu'un conflit sur ses propres fichiers, ou `--allow-dirty`).
 
 Le CLI est utilisable par un agent autant que par un humain (ADR 013) : `--json`
 rend une sortie lisible par une machine, et hors terminal interactif il ne pose
@@ -95,7 +115,7 @@ l'analyse. Rien n'est perdu pour autant : le bruit est dérouté, jamais supprim
 - `ts-morph` pour **lire** `config/features.ts`, justifié
   (`docs/security.md` §6) : le fichier porte les commentaires du propriétaire,
   une réécriture par expression régulière les détruit, et le compilateur du
-  dépôt (TypeScript 7, ADR 011) n'expose plus d'API JavaScript qui permettrait
+  dépôt (TypeScript 7, ADR 010) n'expose plus d'API JavaScript qui permettrait
   de s'en passer. **À savoir** : `ts-morph@28` embarque son propre analyseur,
   **TypeScript 6.0.2** (`@ts-morph/common`), alors que le dépôt compile en
   7.0.2. Sans effet aujourd'hui — `enabledModules` est une liste de chaînes,

@@ -532,7 +532,7 @@ describe('construction du registre', () => {
    * **Les données de départ des modules activés** (s58), et rien d'autre.
    *
    * La clé est **facultative** au contrat : les modules qui n'en déclarent pas
-   * n'ont pas bougé, comme pour `NavigationEntry.surface` (ADR 066/067). Le
+   * n'ont pas bougé, comme pour `NavigationEntry.surface` (ADR 066). Le
    * critère « un module coupé ne laisse aucune ligne » se tient donc ici, par la
    * valeur — aucun nom de module n'est écrit nulle part.
    */
@@ -652,7 +652,7 @@ describe('acheminement des requêtes vers les modules activés', () => {
   })
 
   it('répond 404, et non 405, sur une méthode qu’aucune route ne déclare', async () => {
-    // Choix assumé (ADR 017) : répondre 405 dirait quelles méthodes sont
+    // Choix assumé (ADR 085) : répondre 405 dirait quelles méthodes sont
     // acceptées sur ce chemin, ce que le §7 du socle de sécurité refuse. Le
     // comportement est épinglé ici pour que chaque module en hérite sciemment,
     // et non par accident de mise en œuvre.

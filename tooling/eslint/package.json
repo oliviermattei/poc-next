@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Presets ESLint partagés. Seul package du dépôt à déclarer TypeScript 6 : le parser de lint en a besoin, le compilateur reste TypeScript 7 (ADR 011). Voir AGENTS.md.",
+  "description": "Presets ESLint partagés. Seul package du dépôt à déclarer TypeScript 6 : le parser de lint en a besoin, le compilateur reste TypeScript 7 (ADR 010). Voir AGENTS.md.",
   "exports": {
     "./base": "./base.ts",
     "./boundaries": "./boundaries.ts",

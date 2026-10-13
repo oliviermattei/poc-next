@@ -9,7 +9,7 @@ données de démonstration d'un module, est **facultative**. Le critère qui l'a
 rendue telle est dans l'ADR : une clé est obligatoire quand l'omettre laisse un
 défaut sans propriétaire (une donnée non purgée, une route non protégée, un
 contenu non indexé) ; elle peut être facultative quand l'omettre ne laisse que
-du silence. `NavigationEntry.surface` (ADR 066/067) est facultative pour la même
+du silence. `NavigationEntry.surface` (ADR 066) est facultative pour la même
 raison, à l'intérieur d'une clé obligatoire.
 
 Les garanties qui vivent ici ne sont pas de même nature. Les deux premières sont

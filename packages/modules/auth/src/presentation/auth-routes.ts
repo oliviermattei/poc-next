@@ -590,7 +590,7 @@ export function createAuthRoutes(service: () => AuthService): readonly ModuleRou
   /**
    * Les rappels OAuth, **un chemin par fournisseur connu**.
    *
-   * Le répartiteur apparie les chemins exactement (ADR 017) : le `/callback/:id`
+   * Le répartiteur apparie les chemins exactement (ADR 085) : le `/callback/:id`
    * de la bibliothèque n'a donc pas de segment dynamique à déclarer, et
    * l'énumération ferme la porte à un identifiant inventé — `/callback/inconnu`
    * n'est dans aucune table.

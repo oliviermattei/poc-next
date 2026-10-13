@@ -105,22 +105,27 @@ export function missingRequirements(input: {
 }
 
 /**
- * L'ordre canonique de `enabledModules` : celui de l'annuaire (ADR 019).
+ * The canonical order of `enabledModules`: the order of `availableModules`.
  *
- * Le CLI écrit **toujours** dans cet ordre, et c'est ce qui rend le critère 8
- * atteignable. Un aller-retour, ce sont deux invocations séparées : à la
- * seconde, le fichier ne contient plus le module, donc sa position d'origine
- * n'existe nulle part. Faire de l'ordre une propriété dérivée de l'annuaire lève
- * la question — dès la première bascule le fichier est canonique, et tout
- * aller-retour ultérieur est identique octet pour octet.
+ * `ks toggle` **always** writes the list in this order. Why: a toggle followed
+ * by the reverse toggle must leave `config/features.ts` byte-identical, and a
+ * round trip is two separate invocations — on the second one the file no longer
+ * holds the module, so its original position exists nowhere. Restoring it would
+ * need state the CLI does not have and the hand-edited file must not carry.
+ * Deriving the order from the catalogue removes the question: from the first
+ * toggle on the file is canonical, and every later round trip is identical.
  *
- * L'ordre d'**exécution** ne vient pas d'ici : il est dérivé du graphe des
- * requis par `resolveEnabledModules`. Les confondre ferait croire qu'éditer ce
- * fichier change l'ordre d'application des migrations.
+ * The cost: a list the project owner ordered by hand is reordered once, on the
+ * first toggle — and the CLI says so (`reordered`, announced by `runToggle`).
+ * Never make that normalisation silent. Not alphabetical either: the catalogue
+ * already carries an order the project owner chose.
  *
- * Un identifiant que l'annuaire ne connaît pas est conservé en fin de liste
- * plutôt qu'écarté : c'est à la validation de le refuser en le nommant, pas à un
- * tri de le faire disparaître.
+ * The **execution** order does not come from here: `resolveEnabledModules`
+ * derives it from the `requires` graph. Mixing the two would suggest that
+ * editing this file changes the order migrations run in.
+ *
+ * An id the catalogue does not know is kept at the end of the list rather than
+ * dropped: validation must refuse it by name, a sort must not make it vanish.
  */
 const canonicalOrder = (
   available: readonly AnyModuleDefinition[],

@@ -1183,7 +1183,7 @@ export interface AdminSubscriptionsScreenProps {
   /**
    * Le chemin de cet écran, **injecté** : il est déclaré par le module qui
    * possède les inscriptions (`marketing`), pas par celui-ci — le back-office
-   * ne nomme aucun module (ADR 067).
+   * ne nomme aucun module (ADR 066).
    */
   readonly screenPath: string
   /**

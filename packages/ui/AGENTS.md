@@ -30,6 +30,20 @@ chaque emplacement a désormais ses cas, et neutraliser l'un d'eux fait rougir
 ne porte aucune source aujourd'hui. Mesuré une écriture à
 la fois contre la configuration réelle, le 31 août 2026.
 
+## Ce que deux modules partagent pour l'affichage vit ici
+
+**Une pièce de présentation employée par deux modules vit dans `packages/ui`,
+jamais dans l'un d'eux derrière un `requires` entre modules.** `requires` est
+exécutable : `@repo/core` refuse d'activer un module dont un requis est coupé,
+et `pnpm ks toggle <requis>` refuse tant qu'un dépendant est activé. Il est fait
+pour une dépendance **de donnée** (une clé étrangère, ADR 018), pas pour un
+partage d'affichage : couper un module ne doit jamais rendre l'autre
+indisponible. L'importer sans `requires` est pire — aucune commande ne refuse
+qu'un module importe le paquet d'un autre, et `pnpm ks toggle` couperait alors
+le module source en laissant l'autre cassé. La dupliquer dans chaque module
+recrée une seconde autorité qu'aucune commande ne compare à la première.
+L'échelle de prose (plus bas) en est l'exemple.
+
 ## Aucun texte, jamais
 
 Ce package ne connaît ni catalogue, ni locale, ni `next-intl`. **Tout texte
@@ -314,7 +328,7 @@ c'est pour ça qu'elle a l'air d'un intrus ici : c'est une table de composants
 MDX (`proseComponents`) plus une classe de mesure de ligne (`PROSE_CLASSNAME`),
 transcription du § « Échelle de prose » de `docs/design-system.md`. Elle est
 arrivée par **s29** dans `@repo/module-blog/presentation` et a été remontée ici
-par **s30** (ADR 055) : trois modules rendent du MDX (blog, documentation,
+par **s30** (règle ci-dessus) : trois modules rendent du MDX (blog, documentation,
 changelog), et la laisser dans l'un d'eux aurait exigé `requires: ['blog']` sur
 les deux autres — donc un produit où `pnpm ks toggle blog` refuse tant que la
 documentation est activée. Ne pas la redescendre dans un module : c'est le

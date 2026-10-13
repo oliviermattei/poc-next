@@ -9,7 +9,7 @@
  * disque les segments de premier niveau et exige que chacun le soit.
  *
  * L'écran est servi par l'application, pas par une route de module : un
- * `ModuleRoute` est un descripteur monté sous `/api/modules/…` (ADR 017), pas
+ * `ModuleRoute` est un descripteur monté sous `/api/modules/…` (ADR 085), pas
  * un écran.
  */
 export const CONSENT_SCREEN_PATH = '/cookies'

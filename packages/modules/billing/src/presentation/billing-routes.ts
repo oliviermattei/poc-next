@@ -8,7 +8,7 @@ import { BILLING_SCREEN_PATH } from '../domain/screen-path'
 
 /**
  * Les trois routes du module, **énumérées une par une**, avec leur niveau de
- * protection (ADR 007 et 017). Module coupé, ces chemins ne sont dans aucune
+ * protection (ADR 007 et 085). Module coupé, ces chemins ne sont dans aucune
  * table et le répartiteur répond 404 sans jamais atteindre ce fichier.
  *
  * `POST` partout : les trois changent un état serveur — deux ouvrent une
@@ -317,7 +317,7 @@ export const billingNavigation: readonly NavigationEntry[] = [
      *
      * C'est ce qui la fait disparaître avec ce module sans qu'aucun fichier du
      * back-office ne nomme `billing` : le registre n'agrège que les modules
-     * activés, et la navigation de la surface `console` en est dérivée (ADR 067).
+     * activés, et la navigation de la surface `console` en est dérivée (ADR 066).
      * La même forme que l'entrée « organisations » de s37b2.
      *
      * `authenticated` comme les autres entrées de cette surface : le rôle de

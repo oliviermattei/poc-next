@@ -64,7 +64,7 @@ const marketingNavigation: readonly NavigationEntry[] = [
  *
  * Ce que ce module apporte d'abord, ce sont des **pages** (accueil, mentions
  * légales, contact), que seule l'application peut servir — un `ModuleRoute` est
- * un descripteur monté sous `/api/modules/…` (ADR 017), pas un écran. Sa
+ * un descripteur monté sous `/api/modules/…` (ADR 085), pas un écran. Sa
  * modularité se joue donc au point de composition, `apps/web/lib/marketing.ts`,
  * exactement comme celle du module `i18n` se joue dans
  * `apps/web/lib/locale-routing.ts`.

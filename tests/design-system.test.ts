@@ -208,7 +208,7 @@ describe('les tokens de `packages/ui` sont ceux du design system', () => {
      * du MDX (s29, s30, s31). Livrée en s29 dans
      * `@repo/module-blog/presentation`, elle obligeait tout second consommateur
      * à déclarer `requires: ['blog']` — donc à rendre la documentation
-     * indisponible dès qu'on coupe le blog (ADR 055). Elle vit désormais là où
+     * indisponible dès qu'on coupe le blog (`packages/ui/AGENTS.md`). Elle vit désormais là où
      * le design system vit en code.
      *
      * Les deux côtés sont **dérivés** : la mesure de ligne est lue dans la

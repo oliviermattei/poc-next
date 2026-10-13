@@ -5,7 +5,7 @@ d'atteindre le tableau de bord, et l'état persisté de sa progression.
 
 Squelette généré par l'API exportée `scaffoldFiles('onboarding')`
 (`packages/cli/src/scaffold-files.ts`), puis rempli. `npx ks scaffold` refuse un
-arbre de travail sale (`assertRepositoryClean`, ADR 041), ce qui est
+arbre de travail sale (`assertRepositoryClean`, `packages/cli/AGENTS.md`), ce qui est
 incompatible avec une story en cours : c'est la même génération, appelée par sa
 porte importable.
 

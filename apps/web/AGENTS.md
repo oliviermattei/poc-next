@@ -188,7 +188,7 @@ point d'accès unique est `@repo/config`.
 **Cette application valide sa configuration en deux endroits, et un seul texte
 la porte** : `lib/startup.ts`, `assertStartupConfiguration`. La décision, ses
 options rejetées et l'exception qu'elle ouvre à `docs/security.md` §5 vivent dans
-`docs/adr/0049-la-garde-de-demarrage-vit-dans-l-instrumentation-que-la-sortie-autonome-atteint.md`.
+`docs/adr/0049-la-garde-de-demarrage-est-appelee-aussi-par-l-instrumentation.md`.
 
 | Point | Qui l'appelle | Ce qu'il couvre |
 |---|---|---|
@@ -353,7 +353,7 @@ la redirection de langue : `/account?x=1` part en un seul saut vers
 s62a rangé en rubriques par s62b —, `/fr/organizations` vers
 `/fr/app/settings/organization`. La cible est une constante de la table, jamais
 une valeur de la requête (`docs/security.md` §4) ; chaque ligne nomme **le
-module qui sert son écran** (ADR 077, qui amende l'ADR 075 — le centre de
+module qui sert son écran** (ADR 075 — le centre de
 notifications et le parcours d'intégration n'ont aucune entrée de navigation) :
 module absent du registre, l'entrée ne redirige pas, et l'ancien chemin répond
 404. Depuis s63, `/notifications`, `/onboarding` et `/premium` y figurent. **Pas de `redirects()` dans `next.config.ts`**

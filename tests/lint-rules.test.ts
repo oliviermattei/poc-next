@@ -330,7 +330,7 @@ describe('un module ne dépend pas du package de base de données', () => {
  * **`packages/ui` est la seule frontière avec le socle de composants** (ADR 022).
  *
  * L'ADR 022 remplace Base UI par Radix parce que Base UI n'a jamais publié de
- * version stable, et il garde de l'ADR 009 la clause qui rend le choix
+ * version stable, et il pose la clause qui rend le choix
  * réversible : aucun module, aucune application n'importe le socle
  * directement. C'est cette clause qui borne le coût du basculement le jour où
  * Base UI se stabilisera — sans elle, changer de socle redevient un refactor

@@ -34,7 +34,7 @@ défaut que la confusion inverse a déjà coûté au dépôt.
   mécanique RSS ;
 - `@repo/ui` pour la présentation — jamais Radix directement (ADR 022). **C'est
   de là que vient l'échelle de prose** (`PROSE_CLASSNAME`, `proseComponents`) :
-  s29 l'avait posée dans ce module, ADR 055 l'a remontée dans le design system
+  s29 l'avait posée dans ce module, s30 l'a remontée dans le design system (`packages/ui/AGENTS.md`)
   quand s30 en est devenue la seconde consommatrice, et ce module l'importe
   désormais comme n'importe qui d'autre ;
 - `zod` à la frontière du frontmatter, `yaml` pour le lire ;

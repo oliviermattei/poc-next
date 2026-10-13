@@ -1,28 +1,19 @@
 # ADR 007 — Le module comme unité de composition
 
-- Status: accepted — la garde des clés étrangères (« s04 la refuse à la génération ») est précisée par l'ADR 018
+- Status: accepted
 - Date: 2026-08-30
-- Scope: framing
 
-## Context
-C'est l'angle n°1 du PRD : aucun des quatre concurrents ne sait retirer une feature. MakerKit masque avec treize booléens d'environnement en laissant les tables en base ; Supastarter configure sans découper. Le boilerplate doit produire un projet où un module non activé n'a laissé aucune trace.
+Retirer une fonctionnalité doit retirer ses routes, sa navigation et ses tables, pas seulement la masquer. Un module est donc un package qui déclare un contrat typé unique (`defineModule`, `packages/core/src/module.ts`) : `id`, `requires`, `schema`, `migrations`, `routes` (des `ModuleRoute`, ADR 085), `navigation`, `publicUrls` (ADR 054), `messages`, `emails`, `webhooks`, `jobs`, `dataCategories`, `retention`, `purge`, `export`. `config/features.ts` liste les modules activés ; un identifiant inconnu ne compile pas, et un module activé sans ses `requires` est refusé à la validation. Un module jamais activé n'a jamais joué ses migrations ; un module activé puis désactivé garde ses tables et ses données — les supprimer serait `eject`, au graveyard du PRD.
 
-## Decision
-Un module est un package déclarant un contrat typé unique :
-
-`id`, `requires` (modules requis), `schema` (tables Drizzle), `migrations`, `routes` (sous-routeur Hono), `navigation`, `messages` (traductions), `emails` (templates et leurs locales), `webhooks`, `purge`, `export`, `retention` (par catégorie de données : effacer ou anonymiser).
-
-`config/features.ts` liste les modules activés. La configuration est typée et validée : un identifiant inconnu ne compile pas, un module activé sans ses `requires` échoue à la validation.
-
-Sémantique de désactivation : un module **jamais activé** n'a jamais joué ses migrations, ses tables n'existent pas. Un module **activé puis désactivé** conserve ses tables et ses données — les supprimer serait `eject`, explicitement au cimetière du PRD.
+Toutes les clés sont obligatoires dès le premier module, quitte à être vides : ajouter `purge`, `export` ou `retention` après vingt modules obligerait à rouvrir les vingt. Une seule est facultative, `seeds` (ADR 069), parce que l'omettre ne laisse que du silence, là où omettre une clé obligatoire laisse un défaut sans propriétaire.
 
 ## Considered options
-- Booléens d'environnement (choix MakerKit) — rejeté : masque l'interface mais laisse le code et les tables. C'est exactement ce que le PRD reproche au marché.
-- Fichiers `config.ts` par application (choix Supastarter) — rejeté : configure des comportements, ne découpe rien.
-- Générateur de scaffolding retirant le code à la création (create-t3-app) — rejeté : choix irréversible, et deux codebases à maintenir (le générateur et le template).
-- Contrat minimal étendu au fil des besoins — rejeté : ajouter `purge`, `export` ou `retention` après vingt modules obligerait à tous les rouvrir. Le contrat est complet dès le premier module, quitte à ce que certaines déclarations soient vides.
+
+- Booléens d'environnement — rejetés : masquent l'interface et laissent code et tables.
+- Un générateur qui retire le code à la création (à la create-t3-app) — rejeté : choix irréversible, et deux codebases à maintenir.
+- Un contrat minimal étendu au fil des besoins — rejeté pour la raison ci-dessus.
 
 ## Consequences
-Facilité : la modularité est vérifiable (routes 404, navigation, tables absentes, suite de tests verte dans les deux états) ; les recettes s25 et s26 la prouvent en continu.
-Difficulté : le contrat est large, donc coûteux à remplir pour un module trivial. Le générateur de squelette (s41) et le CLI (s05) existent pour absorber ce coût.
-À surveiller : une clé étrangère d'un module vers un module optionnel le rend silencieusement non désactivable. s04 la refuse à la génération.
+
+- Une clé étrangère vers un module que l'on peut couper le rendrait non désactivable : la règle est l'ADR 018.
+- Le contrat est large, donc coûteux pour un module trivial ; `pnpm ks scaffold` absorbe ce coût.

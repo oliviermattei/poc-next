@@ -13,7 +13,7 @@ module (`src/module.ts`) déclare les 13 clés d'ADR 007 vides à l'exception de
   ce que `runList` rend sur la même configuration.
 - **La garde de dépôt propre est systématique sur les deux outils qui écrivent**
   (`toggle_module`, `scaffold_module`), jamais sur `list_modules`, qui ne modifie rien.
-  `assertRepositoryClean` (`@repo/cli`, ADR 041) refuse **avant** toute lecture de
+  `assertRepositoryClean` (`@repo/cli`, voir `packages/cli/AGENTS.md`) refuse **avant** toute lecture de
   `config/features.ts` par le toggle ou tout calcul de plan par le scaffold.
 - **Aucun chemin arbitraire.** Le serveur ne reçoit jamais de chemin de fichier depuis son
   appelant : `toggle_module` prend un `moduleId`, `scaffold_module` aussi — c'est
@@ -54,7 +54,7 @@ module (`src/module.ts`) déclare les 13 clés d'ADR 007 vides à l'exception de
 - de réimplémentation de `planToggle`, `missingRequirements`, `resolveEnabledModules` ou de la
   génération du squelette — c'est exactement ce que `@repo/cli` centralise ;
 - de commande de nettoyage des tables d'un module désactivé (ADR 016, cimetière du PRD) ;
-- de route Hono, de composant React ou d'entrée de navigation : ce module n'en a pas.
+- de route (`ModuleRoute`), de composant React ou d'entrée de navigation : ce module n'en a pas.
 
 ## Tests
 

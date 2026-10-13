@@ -126,9 +126,8 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     }
 
     if (options.command === 'scaffold') {
-      // La garde de dépôt propre (ADR 041) : `ks scaffold` n'existait pas avant
-      // s41, elle n'a donc aucun usage établi à préserver. Un agent qui l'invoke
-      // doit pouvoir toujours annuler.
+      // Clean-repo guard (see `packages/cli/AGENTS.md`): an agent can invoke
+      // `ks scaffold`, and the developer must always be able to undo its write.
       await assertRepositoryClean(root)
 
       const plan = planScaffold({ available, moduleId: options.moduleId })

@@ -491,12 +491,12 @@ const render = (layout: Layout, slots: readonly Slot[]): string => {
  * qu'on le lui demande**.
  *
  * Les deux champs existent pour être dits à l'utilisateur : une normalisation
- * silencieuse d'un fichier qu'il édite à la main est exactement ce qu'ADR 019
- * interdit.
+ * silencieuse d'un fichier qu'il édite à la main est exactement ce que la
+ * règle de l'ordre canonique interdit (`canonicalOrder`, `toggle.ts`).
  */
 export interface EnabledModulesEdit {
   readonly text: string
-  /** Entrées déjà présentes que l'ordre canonique a déplacées (ADR 019). */
+  /** Entrées déjà présentes que l'ordre canonique a déplacées (voir `canonicalOrder`, `toggle.ts`). */
   readonly reordered: readonly string[]
   /** Entrées retirées dont le commentaire du propriétaire est parti avec elles. */
   readonly droppedComments: readonly string[]
@@ -507,7 +507,7 @@ export interface EnabledModulesEdit {
  * cet ordre**.
  *
  * L'ordre est celui que l'appelant demande, et `planToggle` le dérive de
- * l'annuaire : c'est l'ordre canonique d'ADR 019. Écrire dans cet ordre est ce
+ * l'annuaire : c'est l'ordre canonique (`canonicalOrder`, `toggle.ts`). Écrire dans cet ordre est ce
  * qui rend le critère 8 atteignable — un aller-retour, ce sont deux invocations
  * séparées, et à la seconde la position d'origine d'une entrée retirée n'existe
  * plus nulle part.

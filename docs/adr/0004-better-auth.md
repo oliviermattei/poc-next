@@ -1,24 +1,17 @@
-# ADR 004 — Better Auth comme socle d'authentification
+# ADR 004 — Better Auth comme moteur d'authentification
 
 - Status: accepted — l'emploi du plugin `organization` est supersédé par l'ADR 025
 - Date: 2026-08-30
-- Scope: framing
 
-## Context
-Les stories s07, s12, s13, s14, s15, s16, s17 et s37 couvrent mot de passe, magic link, vérification, réinitialisation, sessions, OAuth, TOTP, codes de secours, passkeys, organisations, invitations, rôles, superadmin et impersonation. Écrire cela à la main représente plusieurs semaines et autant de surfaces de sécurité.
-
-## Decision
-Better Auth, avec ses plugins `organization`, `admin`, `two-factor` et `@better-auth/passkey`. Le schéma des tables d'authentification est généré par Better Auth et intégré au schéma Drizzle du module `auth`.
-
-Le module `auth` fait partie du socle non désactivable.
+Mot de passe, magic link, vérification, réinitialisation, sessions, OAuth, TOTP, codes de secours et passkeys représentent plusieurs semaines de code et autant de surfaces de sécurité. Better Auth en est le moteur, avec ses plugins `magic-link`, `generic-oauth`, `two-factor` et `@better-auth/passkey`, enfermé dans le module `auth` (socle non désactivable, ADR 021). La bibliothèque ne possède rien d'autre que ses algorithmes : le schéma est celui du module, les emails passent par le port `Mailer`, les routes par le registre, la session par le répartiteur (`packages/modules/auth/AGENTS.md`). Les organisations (ADR 025) et l'impersonation (ADR 064) sont écrites dans les modules, hors de ses plugins.
 
 ## Considered options
-- Auth.js / NextAuth — rejeté : ne fournit ni organisations, ni rôles, ni impersonation, ni gestion de passkeys. Il faudrait construire s15 à s17 et s37 entièrement.
-- Supabase Auth — rejeté avec ADR 003 : imposerait Supabase comme base.
-- Clerk ou WorkOS — rejeté : externalise les utilisateurs chez un tiers payant, contredit « posséder ses données » du PRD, et rend la suppression de compte (s34) dépendante d'une API externe.
-- Implémentation maison — rejeté : le PRD veut du code compris, pas du code réécrit. La cryptographie de WebAuthn et de TOTP n'est pas un endroit où apprendre.
+
+- Auth.js / NextAuth — rejeté : ne fournit ni passkeys, ni TOTP, ni codes de secours ; il faudrait les écrire.
+- Clerk ou WorkOS — rejetés : les utilisateurs vivraient chez un tiers payant, contre « posséder ses données » du PRD, et la suppression de compte dépendrait d'une API externe.
+- Implémentation maison — rejetée : la cryptographie de WebAuthn et de TOTP n'est pas un endroit où apprendre.
 
 ## Consequences
-Facilité : quatre stories d'authentification avancée deviennent essentiellement de l'interface.
-Difficulté : dépendance forte à une bibliothèque jeune ; ses migrations de schéma se propagent au module `auth`.
-À surveiller : Better Auth impose sa forme de tables. Les entités métier ne doivent jamais référencer directement ses tables internes, mais passer par le module `auth`.
+
+- Dépendance forte à une bibliothèque jeune : ses changements de schéma se propagent au module `auth`.
+- Les autres modules ne référencent jamais les tables internes de Better Auth ; ils passent par le module `auth`.

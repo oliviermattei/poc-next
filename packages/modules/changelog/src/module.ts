@@ -48,7 +48,7 @@ const changelogNavigation: readonly NavigationEntry[] = [
  *
  * Ce que ce module apporte par ailleurs est une **page**, que seule
  * l'application peut servir : un `ModuleRoute` est un descripteur monté sous
- * `/api/modules/…` (ADR 017), pas un écran. Sa modularité se joue donc au point
+ * `/api/modules/…` (ADR 085), pas un écran. Sa modularité se joue donc au point
  * de composition, `apps/web/lib/changelog.ts`, exactement comme celle du blog.
  *
  * **Aucun `requires`** : c'est tout l'objet d'ADR 065. Le constructeur de flux

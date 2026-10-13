@@ -156,7 +156,7 @@ ce qui existe : hors de ce périmètre, rien n'a été mesuré.
 - `@repo/core` pour le contrat de module et la qualification des clés ;
 - `@repo/ui` pour la présentation — jamais Radix directement (ADR 022). **C'est
   de là que vient l'échelle de prose** (`PROSE_CLASSNAME`, `createProseComponents`) :
-  ADR 055 l'a remontée du module `blog` vers le design system précisément pour
+  elle a été remontée du module `blog` vers le design system (`packages/ui/AGENTS.md`) pour
   que ce module n'ait pas à déclarer `requires: ['blog']` ;
 - `lucide-react` pour les icônes, comme `billing`, `consent` et `organizations` ;
 - `zod` à la frontière du frontmatter et du manifeste, `yaml` pour lire le premier ;
@@ -172,7 +172,7 @@ ce qui existe : hors de ce périmètre, rien n'a été mesuré.
 - d'import d'un autre module : la seule dépendance inter-modules déclarée est
   `requires`, et celui-ci n'en a aucune. **Aucune commande ne le vérifie
   aujourd'hui** — `assertNoForbiddenModuleReferences` ne juge que les clés
-  étrangères des schémas — et c'est écrit dans ADR 055 plutôt que tu ;
+  étrangères des schémas — et c'est écrit dans `packages/ui/AGENTS.md` plutôt que tu (issue #156) ;
 - d'appel réseau sortant, ni de lecture de `process.env` ;
 - de `loading.tsx` dans l'application pour ses écrans. Ce n'est pas un oubli :
   la coquille part avant que la page n'ait décidé, et un `notFound()` arrive
@@ -188,7 +188,7 @@ personnelle de personne.
 
 **Aucune route non plus.** Ce module apporte des **pages**, que seule
 l'application peut servir : un `ModuleRoute` est un descripteur monté sous
-`/api/modules/…` (ADR 017), pas un écran. Sa modularité se joue au point de
+`/api/modules/…` (ADR 085), pas un écran. Sa modularité se joue au point de
 composition, `apps/web/lib/docs.ts`. **La recherche plein texte n'en a pas
 demandé non plus** (s54), et la raison n'est pas la performance :
 `routeIsRateLimited` (ADR 050) rend `true` pour toute route `public` sans

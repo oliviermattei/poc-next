@@ -2,7 +2,7 @@
 
 > **Système neutre et thémable, pas une identité.** Comme les quatre cibles, le boilerplate ne vend pas une esthétique : il vend un système que chaque projet généré habille en changeant des tokens. Neutre ne veut pas dire indécis — tout ce qui suit est tranché et fait foi.
 >
-> Socle : shadcn/ui sur **Radix UI** (ADR 022, qui supersède l'ADR 009 — Base UI n'a jamais publié de majeure stable), Tailwind **v4** avec configuration en CSS (ADR 010). Les composants vivent dans `packages/ui` ; aucun module n'importe Radix directement.
+> Socle : shadcn/ui sur **Radix UI** (ADR 022 — Base UI n'a jamais publié de majeure stable), Tailwind **v4** avec configuration en CSS (ADR 010). Les composants vivent dans `packages/ui` ; aucun module n'importe Radix directement.
 
 ## Tokens
 
@@ -94,6 +94,8 @@ Tailwind v4 : pas de `tailwind.config.js`. Les tokens sont des variables CSS dé
 
 Correspondance avec les états de facturation (s19, s21) : essai en cours → `info`, en retard de paiement → `warning`, annulé ou expiré → `muted`, échec définitif → `destructive`, abonnement actif → `success`.
 
+**Le texte sur teinte a sa propre famille de jetons : `--<sémantique>-subtle-foreground`.** Un jeton sémantique sert deux métiers incompatibles : **remplissage vif** (`Badge` peint `bg-warning` avec un `--warning-foreground` quasi noir, la lisibilité vient du fond clair) et **texte sur une teinte à 10 %** (`bg-<sem>/10`, où la lisibilité demande un texte sombre). À `oklch(0.79 …)`, `--warning` est un bon fond et un texte illisible, et aucun réglage d'un jeton **unique** ne satisfait les deux : assombrir le jeton sémantique baisserait le contraste du `Badge`, écrire le texte en `--<sem>-foreground` ou en `text-foreground` effacerait le codage par la couleur. D'où quatre jetons de plus par mode, déclarés aussi dans `@theme inline` : en clair, teinte et chroma du jeton sémantique conservées, seule la clarté descend jusqu'au seuil ; en sombre, la valeur du jeton sémantique, qui passait déjà. Tout composant qui écrit du texte sur une teinte emploie cette famille. La règle est tenue par `pnpm test:contrast` (`scripts/contrast.ts`), qui dérive les paires du composant et de la feuille de style et sort non-zéro en nommant la variante qui passe sous 4,5 : 1 ; elle ne balaie que ce qu'elle dérive (voir `Alert` plus bas) — un nouveau composant qui écrit du texte sur une teinte emploie cette famille **et** élargit la commande.
+
 ### Typographie
 **Geist Sans** pour l'interface, **Geist Mono** pour le code, chargées par `next/font` — aucune requête vers un domaine externe, donc aucun script tiers à déclarer au registre de consentement (s33).
 
@@ -171,7 +173,7 @@ rien serait une seconde typographie, pas une extension.
 **Où elle vit en code** : `packages/ui` (`src/composed/prose.tsx`), exportée par
 le baril `@repo/ui` sous `PROSE_CLASSNAME` et `proseComponents`. s29 l'avait
 transcrite dans `@repo/module-blog/presentation`, du temps où le blog en était
-le seul consommateur ; **ADR 055** l'a remontée quand s30 est devenue la
+le seul consommateur ; elle a été remontée (`packages/ui/AGENTS.md`) quand s30 est devenue la
 seconde — l'y laisser aurait exigé `requires: ['blog']` sur la documentation
 (ADR 018), c'est-à-dire un produit où `pnpm ks toggle blog` refuse tant que la
 documentation est activée. `tests/design-system.test.ts` confronte la mesure de
@@ -258,7 +260,7 @@ Tous dans `packages/ui`. Un module compose avec cette liste ; il ne crée pas se
 
 #### `Alert` — texte sur teinte, et le jeton qui va avec (s49)
 
-**La règle : le texte d'une teinte à 10 % emploie `--<sémantique>-subtle-foreground`, jamais le jeton de remplissage.** Un jeton sémantique nu (`--warning`, `--success`, `--destructive`, `--info`) est un **fond** — c'est ce que `Badge` en fait, avec son `*-foreground` quasi noir par-dessus. Écrit en **texte** sur `bg-<sem>/10`, il est illisible : `warning` mesurait **1,83 : 1** en mode clair, et c'est dans cette variante que s28 a placé le refus de limitation de débit. Aucun réglage d'un jeton unique ne satisfait les deux métiers (ADR 056).
+**La règle : le texte d'une teinte à 10 % emploie `--<sémantique>-subtle-foreground`, jamais le jeton de remplissage.** Un jeton sémantique nu (`--warning`, `--success`, `--destructive`, `--info`) est un **fond** — c'est ce que `Badge` en fait, avec son `*-foreground` quasi noir par-dessus. Écrit en **texte** sur `bg-<sem>/10`, il est illisible : `warning` mesurait **1,83 : 1** en mode clair, et c'est dans cette variante que s28 a placé le refus de limitation de débit. Aucun réglage d'un jeton unique ne satisfait les deux métiers (§ Couleur).
 
 Les quatre paires, **mesurées** par `pnpm test:contrast` sur les jetons livrés — texte sur `bg-<sem>/10` composé au-dessus de `--card` :
 

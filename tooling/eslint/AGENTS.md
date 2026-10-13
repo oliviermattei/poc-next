@@ -22,8 +22,19 @@ ce package lui fournit ses briques.
 de démarrer sur TypeScript 7 (« typescript-eslint does not support TS 7.0 ») ;
 Microsoft documente le fonctionnement côte à côte, les outils qui ont besoin de
 l'API restant en 6.0. Ce package est le **seul** endroit du dépôt où TypeScript
-6 apparaît : `pnpm typecheck` compile tout le code avec TypeScript 7 (ADR 011).
-Ne pas propager cette version ailleurs ; la retirer d'ici dès que
+6 apparaît : `pnpm typecheck` compile tout le code avec TypeScript 7 (ADR 010).
+Aucun code applicatif n'est compilé avec TypeScript 6.
+
+Pourquoi deux versions plutôt qu'une : sans parser TypeScript, ni la règle de
+frontières de couches (ADR 006) ni le lint n'existent, et redescendre tout le
+dépôt en TypeScript 6 laisserait un outil dicter la version qui compile le
+code. Le risque de ce régime est une divergence entre ce que le compilateur
+accepte et ce que le parser de lint comprend : si une syntaxe propre à
+TypeScript 7 fait échouer le lint sur du code valide, la réponse est d'aligner
+l'outillage, jamais de brider la syntaxe du code applicatif.
+
+Ne pas propager cette version ailleurs, ni l'épingler à la racine. La lever —
+aligner `typescript` de ce package sur celui de la racine — dès que
 `typescript-eslint` supporte TypeScript 7 (issue typescript-eslint#10940).
 
 ## Ne doit jamais contenir

@@ -7,7 +7,7 @@ import { headingAnchor } from '../domain/docs-page'
  * ancres**.
  *
  * Une seule ligne, et c'est tout ce que la documentation ajoute à la
- * typographie du produit (ADR 055) : `headingAnchor` est la **même** fonction
+ * typographie du produit (`packages/ui/AGENTS.md`) : `headingAnchor` est la **même** fonction
  * que celle qui construit le sommaire depuis la source Markdown
  * (`documentHeadings`). Deux fonctions de slug donneraient un sommaire dont les
  * liens ne mènent nulle part, et rien à l'écran ne le dirait — un fragment

@@ -319,9 +319,15 @@ const adrFiles = (): string[] =>
   readdirSync(join(REPO_ROOT, ADR_DIRECTORY)).filter((name) => name !== ADR_TEMPLATE)
 
 /**
+ * The frozen inventory (ADR 082): never updated, so it may cite ADRs deleted
+ * since by ADR 084.
+ */
+const FROZEN_SNAPSHOT = 'docs/agents/etat-des-lieux.md'
+
+/**
  * Les numéros cités dans un texte, sous toutes les formes en usage :
  * « ADR 069 », « ADR 69 », « ADR-0069 », et les citations multiples
- * « ADR 066/067 », « ADR 070 et 071 », « ADR 079, 081 », « ADRs 005 et 017 ».
+ * « ADR 066/068 », « ADR 070 et 071 », « ADR 079, 080 », « ADRs 006 et 018 ».
  * Le code et les tests citent les ADR par leur numéro, jamais par leur
  * chemin : chaque numéro doit donc désigner un fichier, sans quoi la raison
  * qu'il porte est perdue. Ne lire que le premier numéro d'une citation
@@ -347,8 +353,9 @@ describe('ADR (docs/adr)', () => {
   it('chaque fichier suit `NNNN-slug.md`', () => {
     const files = adrFiles()
 
-    // Le plancher refuse un balayage vide : les 80 ADR d'avant le déplacement.
-    expect(files.length).toBeGreaterThanOrEqual(80)
+    // The floor refuses an empty sweep, not a deletion: ADR 084 removed the
+    // files that were not decisions, and more than 60 remain.
+    expect(files.length).toBeGreaterThanOrEqual(60)
 
     const misnamed = files.filter((name) => adrNumberOf(name) === null)
     expect(misnamed, `hors du format NNNN-slug.md : ${misnamed.join(', ')}`).toEqual([])
@@ -371,13 +378,15 @@ describe('ADR (docs/adr)', () => {
 
   it('chaque citation « ADR NNN » d’un fichier suivi désigne un fichier existant', () => {
     const existing = new Set(adrFiles().map(adrNumberOf))
-    const citations = trackedTextFiles().flatMap(({ path, content }) =>
-      content
-        .split('\n')
-        .flatMap((line, index) =>
-          citedAdrNumbers(line).map((adr) => ({ adr, where: `${path}:${index + 1}` })),
-        ),
-    )
+    const citations = trackedTextFiles()
+      .filter(({ path }) => path !== FROZEN_SNAPSHOT)
+      .flatMap(({ path, content }) =>
+        content
+          .split('\n')
+          .flatMap((line, index) =>
+            citedAdrNumbers(line).map((adr) => ({ adr, where: `${path}:${index + 1}` })),
+          ),
+      )
 
     // Le plancher refuse un balayage vide, et il se dérive du disque : chaque
     // ADR se cite au moins une fois dans son propre titre (« # ADR 069 — … »),
@@ -398,11 +407,11 @@ describe('ADR (docs/adr)', () => {
   })
 
   it('lit chaque numéro d’une citation multiple', () => {
-    expect(citedAdrNumbers('(ADR 066/067)')).toEqual([66, 67])
+    expect(citedAdrNumbers('(ADR 066/068)')).toEqual([66, 68])
     expect(citedAdrNumbers('ADR 070 et 071')).toEqual([70, 71])
-    expect(citedAdrNumbers('ADR 079, 081')).toEqual([79, 81])
-    expect(citedAdrNumbers('les ADRs 005 et 017')).toEqual([5, 17])
-    expect(citedAdrNumbers('ADR 018, ADR 019 et ADR-0020')).toEqual([18, 19, 20])
+    expect(citedAdrNumbers('ADR 079, 080')).toEqual([79, 80])
+    expect(citedAdrNumbers('les ADRs 006 et 018')).toEqual([6, 18])
+    expect(citedAdrNumbers('ADR 018, ADR 020 et ADR-0021')).toEqual([18, 20, 21])
   })
 
   it('lit le numéro sur quatre chiffres, et rien d’autre', () => {
