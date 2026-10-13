@@ -55,7 +55,7 @@ import { appRateLimiter } from './rate-limit'
  *
  * | | module activé | module coupé |
  * |---|---|---|
- * | `/billing` | l'écran | **404** |
+ * | `BILLING_SCREEN_PATH` (`/app/settings/billing`) | the screen | **404** |
  * | entrée de navigation | présente (authentifiée) | absente |
  * | `billing.view(session)` | la vue | vue vide, **aucune requête** |
  * | routes d'API | trois | **404** |

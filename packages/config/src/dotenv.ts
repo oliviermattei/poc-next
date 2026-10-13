@@ -26,9 +26,12 @@ const WORKSPACE_MARKER = 'pnpm-workspace.yaml'
  *   `undefined` : il n'y a alors pas de `.env`, et tout vient de
  *   l'environnement.
  *
- * L'alternative statique `new URL('../../..', import.meta.url)` n'a pas été
- * rejetée pour une régression mesurée : elle marche, et perd simplement ces
- * trois propriétés.
+ * The static alternative `new URL('../../..', import.meta.url)` was not
+ * rejected for a measured regression: it works, and keeps the first property
+ * (`import.meta.url` does not depend on the working directory). It loses the
+ * second — its path is fixed relative to the compiled file — and, outside the
+ * repository, it points at an ancestor of that file instead of returning
+ * `undefined`.
  */
 export function findRootEnvPath(from: string = process.cwd()): string | undefined {
   // Résolu d'abord : un chemin relatif n'a pas de racine (`parse('a/b').root`

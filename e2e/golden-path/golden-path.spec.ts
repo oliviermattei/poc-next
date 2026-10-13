@@ -568,8 +568,10 @@ test('un paiement sans compte mène, par l’email reçu, à la fonctionnalité 
     await page.waitForURL(/\/pricing\?checkout=success/)
 
     if (SPLIT) {
-      // Le retour d'un paiement invité revient **sur le site**, en un saut,
-      // avec sa requête (s64b2).
+      // A guest payment's return ends **on the site**, with its query
+      // (s64b2). Not in one hop under the simulated regime: the local checkout
+      // answers a relative `/pricing?checkout=success` on the app host, then
+      // the s64b1 308 moves it to the site. Only the final origin is checked.
       await expectOnOrigin(page, SITE_ORIGIN)
     }
   })

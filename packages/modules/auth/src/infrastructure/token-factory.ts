@@ -34,8 +34,9 @@ import type { TokenFactory } from '../application/ports'
  * Ce n'est pas un accident qu'on pourrait corriger sur place : l'invalidation
  * des frères du module s'appuie sur cette forme en clair (préfixe
  * `reset-password:`, valeur = identifiant du compte), et `emailAndPassword`
- * n'offre, dans la version installée, aucun crochet de hachage sur ce chemin —
- * vérifié : `storeToken` n'existe que dans le greffon magic-link.
+ * n'offre, dans la version installée, aucun crochet de hachage sur ce chemin.
+ * Checked in `better-auth@1.7.2`: `storeToken` appears in the magic-link and
+ * one-time-token plugins, and on no path of the password reset.
  *
  * **Arbitrage : accepté pour l'instant, et borné.** Le lien vit
  * `passwordResetTtlSeconds` (voir `AuthPolicy`), il est consommé une fois, et

@@ -1487,8 +1487,9 @@ describe.skipIf(!databaseReachable)('compte en attente de suppression', () => {
   }, 30_000)
 
   it('garde la date de la première demande quand la marque est rejouée', async () => {
-    // Revue s67, m-2 : un second clic, ou une émission rejouée, ne déplace pas
-    // la date — c'est elle que la purge et le journal lisent.
+    // Review s67, m-2: a second click, or a replayed emission, does not move
+    // the date. Nothing reads its value today — the sign-in refusal and the
+    // session-creation guard only check that it is set.
     const { userId } = await aVerifiedAccount()
     const first = new Date('2026-01-01T00:00:00.000Z')
 

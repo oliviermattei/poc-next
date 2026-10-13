@@ -54,7 +54,7 @@ import { seatSyncOf } from './seat-sync'
  *
  * | | module activé | module coupé |
  * |---|---|---|
- * | `/organizations` | l'écran | **404** |
+ * | `ORGANIZATIONS_SCREEN_PATH` (`/app/settings/organization`) and `MEMBERS_SCREEN_PATH` | the screen | **404** |
  * | entrée de navigation | présente (authentifiée) | absente |
  * | `dataOwnerOf(session)` | l'organisation active, ou le compte | **toujours** le compte |
  * | requêtes en base | celles de l'écran | **aucune** |
@@ -99,8 +99,9 @@ export interface OrganizationsFeature {
   /**
    * Ce que l'écran d'atterrissage d'un lien d'invitation montre, ou `null`.
    *
-   * Toujours `null` module coupé, **sans toucher la base** : l'écran répond
-   * alors 404, comme `/organizations`.
+   * Always `null` when the module is off, **without touching the database**:
+   * the screen then answers 404, like the organization settings screen
+   * (`ORGANIZATIONS_SCREEN_PATH`).
    */
   readonly invitation: (token: string) => Promise<InvitationPreview | null>
   /**

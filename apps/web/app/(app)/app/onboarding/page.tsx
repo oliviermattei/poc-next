@@ -19,12 +19,13 @@ import { AvatarForm } from '../settings/profile/avatar-form'
 /**
  * L'écran du parcours d'intégration (s40).
  *
- * **Il ne réécrit rien.** Chaque étape remet l'affordance qui existe déjà :
- * l'étape de profil poste vers la route `changeName` du module `auth` et
- * réemploie les deux formulaires de `/account`, l'étape d'organisation renvoie
- * à `/organizations`, l'étape d'offre à `/billing`. Un second chemin de
- * changement de nom rendrait `docs/security.md` §2 invérifiable — il faudrait
- * prouver la règle deux fois, et l'une des deux finirait par diverger.
+ * **It rewrites nothing.** Each step hands over the affordance that already
+ * exists: the profile step posts to the `auth` module's `changeName` route and
+ * reuses the two forms of the Profile settings screen (`settings/profile/`),
+ * the organization step links to `ORGANIZATIONS_SCREEN_PATH`, the offer step to
+ * `BILLING_SCREEN_PATH`. A second name-change path would make
+ * `docs/security.md` §2 unverifiable — the rule would have to be proven twice,
+ * and one of the two would end up diverging.
  *
  * **La moitié conditionnelle de l'étape de profil** (critère 2) se lit sur
  * `fields`, pas sur un module : sans stockage, `fields` ne porte pas l'avatar
@@ -40,10 +41,11 @@ import { AvatarForm } from '../settings/profile/avatar-form'
  * | un visiteur anonyme | redirection vers la connexion, avec son retour |
  * | un compte dont le parcours est fini | le tableau de bord |
  *
- * **L'ordre est la garantie, pas la liste.** La disponibilité d'abord, comme
- * `/organizations` et `/invitations/accept` : un écran qui n'existe pas ne parle
- * pas de lui à un visiteur anonyme en l'envoyant se connecter — il répond 404,
- * et il ne lit même pas la session pour le dire. L'inverse avait été écrit ici,
+ * **L'ordre est la garantie, pas la liste.** Availability first, like the
+ * organization settings screen (`ORGANIZATIONS_SCREEN_PATH`) and
+ * `/invitations/accept`: a screen that does not exist does not reveal itself to
+ * an anonymous visitor by sending them to sign in — it answers 404, without
+ * even reading the session. L'inverse avait été écrit ici,
  * sous un docblock qui annonçait déjà 404 « comme `/organizations` » ;
  * `tests/onboarding.test.ts` mesure désormais les deux visiteurs, module coupé
  * comme monté.

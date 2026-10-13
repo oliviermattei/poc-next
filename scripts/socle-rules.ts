@@ -329,12 +329,12 @@ export const SOCLE_STEP_DISPOSITION: Readonly<Record<string, SocleDisposition>> 
 /**
  * **Chaque étape du job est exécutée, ou exclue avec sa raison écrite.**
  *
- * C'est le correctif du constat d'une revue : la liste des
- * bascules était dérivée du workflow, celle des commandes était écrite en dur,
- * et le job pouvait gagner une étape sans que rien ne rougisse — la commande
- * promettait alors « les commandes du job » en en rejouant six sur neuf.
+ * This fixes a review finding: the list of toggles was derived from the
+ * workflow, the list of commands was hard-coded, and the job could gain a step
+ * without anything turning red — the command then promised "the job's
+ * commands" while replaying only some of them.
  *
- * Quatre refus :
+ * Five refusals:
  *
  * 1. une étape que la répartition ne classe pas — le job de demain force une
  *    décision au lieu d'hériter du silence ;

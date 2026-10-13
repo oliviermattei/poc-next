@@ -24,9 +24,10 @@ import type { BillingIntl } from './billing-intl'
  * La page publique de tarifs — **composée, jamais inventée** (s22).
  *
  * Le nom vient du design system, qui déclare `PricingTable` pour cette story
- * (« Tarifs dérivés de `config/billing.ts` »). Elle porte l'écran entier — en
- * tête, grille, état vide —, comme `BillingScreen` porte le sien : `PageHeader`,
- * `Card`, `Badge`, `Separator`, `Alert`, `EmptyState`, tous de `@repo/ui`.
+ * (« Tarifs dérivés de `config/billing.ts` »). It carries the whole screen —
+ * header, grid, empty state — as `BillingScreen` carries its own (which opens
+ * with an `h2`, being a settings section): `PageHeader`, `Card`, `Badge`,
+ * `Separator`, `Alert`, `EmptyState`, all from `@repo/ui`.
  * Aucune primitive maison, aucune couleur Tailwind brute, aucun texte en dur.
  *
  * **Le nombre de cartes n'est écrit nulle part** : il vient de la longueur de

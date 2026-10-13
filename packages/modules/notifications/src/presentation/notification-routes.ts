@@ -20,11 +20,11 @@ import {
  * module rend `publicUrls: () => []` : rien de ce qu'il sert n'a vocation à
  * être indexé (ADR 054).
  *
- * **Aucune n'est limitée en débit au-delà du défaut.** Le répartiteur limite
- * d'office toute route publique ; celles-ci ne le sont pas, et aucune ne
- * consomme de ressource chez un tiers — ni email, ni objet réservé. C'est la
- * différence avec l'invitation et le téléversement, qui déclarent une politique
- * parce qu'un compte légitime suffit à en faire des milliers.
+ * **None of them is rate limited, at all.** The dispatcher limits a route only
+ * when it is public or declares a `rateLimit` (`routeIsRateLimited`); these are
+ * neither, and none consumes a third-party resource — no email, no reserved
+ * object. That is the difference with the invitation and the upload, which
+ * declare a policy because one legitimate account is enough to make thousands.
  *
  * ## Pourquoi des formulaires natifs, et pas du `fetch`
  *

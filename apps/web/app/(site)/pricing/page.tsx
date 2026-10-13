@@ -29,10 +29,10 @@ import { appIntl } from '../../../lib/i18n'
  * | le produit ne vend rien | **404** — l'écran n'existe pas |
  * | tout le monde d'autre | les offres, et un chemin vers l'achat |
  *
- * Contrairement à `/billing`, elle **ne redirige pas** un visiteur anonyme :
- * comparer des offres ne demande aucun compte, et masquer une offre payante
- * empêche de la vendre. Elle lit `billingCatalogue()` — le catalogue validé au
- * démarrage — et jamais `billing.view()`, qui exige une session.
+ * Unlike the billing screen (`BILLING_SCREEN_PATH`), it **does not redirect**
+ * an anonymous visitor: comparing offers needs no account, and hiding a paid
+ * offer prevents selling it. It reads `billingCatalogue()` — the catalogue
+ * validated at startup — and never `billing.view()`, which requires a session.
  *
  * **Aucun effet de bord, dans aucun état.** Elle rend du HTML ; la seule
  * écriture possible est déclenchée par un clic, jamais par une URL (ADR 045).
@@ -52,14 +52,15 @@ import { appIntl } from '../../../lib/i18n'
  *
  * Il n'accorde **rien** et n'ouvre **aucune session** : ni depuis ce paramètre,
  * ni depuis un identifiant de session de paiement, qui n'est d'ailleurs pas
- * accepté ici. Cet écran ne lit pas la base et ne pose aucun cookie — c'est la
- * discipline que s19 a posée pour `/billing` (« un `?checkout=success` forgé
- * n'affiche qu'un bandeau »), et la voici sur le seul écran qu'un visiteur
- * anonyme peut atteindre au retour.
+ * accepté ici. This screen reads no database and sets no cookie — the
+ * discipline s19 set for the billing screen (`BILLING_SCREEN_PATH`: "a forged
+ * `?checkout=success` only shows a banner"), applied here to the only screen an
+ * anonymous visitor can reach on return.
  *
- * Ce que l'état réel devient : il est écrit par le **webhook**, dans la base,
- * et il s'affiche sur `/billing` une fois la personne connectée par le lien
- * reçu — jamais ici, où il n'y a personne à qui l'attribuer.
+ * What the real state becomes: the **webhook** writes it to the database, and
+ * it shows on the billing screen (`BILLING_SCREEN_PATH`) once the person is
+ * signed in through the link received — never here, where there is nobody to
+ * attribute it to.
  */
 const CHECKOUT_RETURN = z.enum(['success', 'cancelled'])
 
@@ -202,8 +203,9 @@ export default async function PricingPage({
       {/*
         **Un bandeau, et rien d'autre.** Il ne lit pas la base, ne pose aucun
         cookie et n'ouvre aucune session : forgé, il ne fait qu'afficher ce
-        texte. Ce qui fait foi est écrit par le webhook, et se lit sur
-        `/billing` une fois la personne connectée par le lien reçu.
+        texte. What counts is written by the webhook, and reads on the billing
+        screen (`BILLING_SCREEN_PATH`) once the person is signed in through the
+        link received.
       */}
       <Alert variant={paid ? 'info' : 'warning'} role="status">
         {t(paid ? BILLING_KEYS.pricing.returnSuccess : BILLING_KEYS.pricing.returnCancelled)}

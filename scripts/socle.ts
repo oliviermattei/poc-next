@@ -109,9 +109,10 @@ const run = (
 
 /**
  * Une étape du job, jouée **telle qu'elle est écrite** : un shell, parce que
- * les `run:` du workflow en sont un (redirection, `if`, `&&`). `-e` reproduit
- * le `bash -e` de GitHub, sans quoi un bloc de plusieurs lignes continuerait
- * après un échec.
+ * les `run:` du workflow en sont un (redirection, `if`, `&&`). `-e` approaches
+ * GitHub's `bash -e` without reproducing it (`sh` may be `dash`: no `[[ ]]`,
+ * no arrays, no `pipefail`); without it a multi-line block would carry on
+ * after a failure.
  */
 const runShell = (
   script: string,

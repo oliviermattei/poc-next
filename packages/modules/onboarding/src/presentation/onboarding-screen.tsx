@@ -59,9 +59,9 @@ export interface OnboardingScreenProps {
   /**
    * L'affordance de l'étape en cours, **remise par l'application**.
    *
-   * C'est elle qui réutilise ce que `/account` édite déjà, ou renvoie vers
-   * l'écran d'organisations, ou vers les offres. Le module ne les connaît pas
-   * et n'en écrit pas une seconde version.
+   * It reuses what the Profile settings screen already edits, or links to the
+   * organization screen, or to the offers. The module knows none of them and
+   * writes no second version of them.
    */
   readonly panel: ReactNode
 }

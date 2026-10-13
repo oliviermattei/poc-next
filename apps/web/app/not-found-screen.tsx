@@ -4,7 +4,8 @@ import { SearchXIcon } from 'lucide-react'
 import { appIntl } from '../lib/i18n'
 
 /**
- * L'écran servi sur une URL qui ne mène à aucune route.
+ * The content of every 404: an URL that leads to no route, a zone layout's
+ * refusal, and a `notFound()` raised by a page.
  *
  * **Il est ici pour une raison de sécurité autant que de produit.** Sans ce
  * fichier, Next sert son composant intégré, qui émet quatre attributs `style`
