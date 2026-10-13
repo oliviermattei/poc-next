@@ -257,6 +257,7 @@ Tous dans `packages/ui`. Un module compose avec cette liste ; il ne crée pas se
 | `CookieBanner` | Bannière de consentement (s36) |
 | `Stepper` | **Pas livré** — voir « Lacune : le fil d'étapes » plus bas. s40 compose avec `Badge` et `Separator` |
 | `MarketingSection` | Enveloppe des sections pilotées par `config/marketing.ts` (s10) |
+| `InlineStyleNonce` | Donne le nonce de la requête aux `<style>` que les primitives injectent (verrou de défilement) ; ne rend rien, placé dans le layout racine (s45) |
 
 #### `Alert` — texte sur teinte, et le jeton qui va avec (s49)
 
@@ -338,7 +339,7 @@ Deux manques relevés en habillant les écrans d'authentification, **signalés e
 
 ### États
 - **Chargement** : `Skeleton` reproduisant la forme du contenu attendu. Jamais de spinner plein écran, jamais de saut de mise en page.
-  - **Manque signalé (s29), non comblé** : un squelette suppose une frontière `Suspense`, donc un `loading.tsx`, et celui-ci fait pousser la coquille de la page **avant** qu'elle n'ait décidé — un `notFound()` arrive alors après le statut, et la route répond 200. Mesuré sur `/blog/<slug inconnu>` (`e2e/blog.spec.ts:132`). L'état de chargement est donc **inatteignable** sur toute route dont l'existence est décidée dans le corps de la page, tant que le système ne dit pas comment tenir les deux. Le refus prime : c'est le socle de sécurité.
+  - **Manque signalé (s29), non comblé** : un squelette suppose une frontière `Suspense`, donc un `loading.tsx`, et celui-ci fait pousser la coquille de la page **avant** qu'elle n'ait décidé — un `notFound()` arrive alors après le statut, et la route répond 200. Mesuré sur `/blog/<slug inconnu>` (`e2e/blog.spec.ts`, « un article qui n'existe pas répond 404 ») ; la liste `/blog`, module coupé, est gardée par `e2e/minimal-profile/minimal-profile.spec.ts` (« l'écran d'une entrée de navigation coupée répond 404 sur HTTP ») — la seule des deux qu'une frontière posée dans un groupe de routes fait rougir. L'état de chargement est donc **inatteignable** sur toute route dont l'existence est décidée dans le corps de la page, tant que le système ne dit pas comment tenir les deux. Le refus prime : c'est le socle de sécurité.
 - **Vide** : `EmptyState` avec l'action qui sort de cet état. Un tableau vide sans action est un écran cassé.
 - **Erreur** : message expliquant quoi faire, plus un moyen de réessayer. Jamais de code technique brut.
 - **Succès** : un `Toaster` pour une action asynchrone, un changement d'état visible pour une action locale. Pas les deux.

@@ -170,7 +170,7 @@ Ceux que s08 utilise réellement, et rien de plus — copier l'inventaire comple
 
 | Copiés | `Accordion`, `Alert`, `Avatar`, `Badge`, `Breadcrumb`, `Button`, `Card`, `Checkbox`, `Command`, `DropdownMenu`, `Input`, `Label`, `Separator`, `Sheet`, `Table`, `Textarea` |
 | --- | --- |
-| Composés maison | `CookieBanner`, `EmptyState`, `LocaleSwitcher`, `MarketingSection`, `OrgSwitcher`, `PageHeader`, `Pagination`, `Sidebar` / `SidebarNav`, `ThemeProvider`, `ThemeToggle`, l'échelle de prose (`PROSE_CLASSNAME`, `proseComponents`) |
+| Composés maison | `CookieBanner`, `EmptyState`, `InlineStyleNonce`, `LocaleSwitcher`, `MarketingSection`, `OrgSwitcher`, `PageHeader`, `Pagination`, `Sidebar` / `SidebarNav`, `ThemeProvider`, `ThemeToggle`, l'échelle de prose (`PROSE_CLASSNAME`, `proseComponents`) |
 
 Le reste de l'inventaire de `docs/design-system.md` — `Form`,
 `DataTable`, `Tabs`, `Toaster`, `AlertDialog`, `Tooltip`,
@@ -179,7 +179,7 @@ Le reste de l'inventaire de `docs/design-system.md` — `Form`,
 `ConfirmDialog`, `Stepper`, et les composés des stories à venir — **n'est pas encore
 copié**. C'est la liste au 6 septembre 2026, révisée par s10, s11, s18, s36,
 s29, s30, s54, s37b2 puis s40 ; le document fait foi, pas ce tableau — **et ce
-tableau avait déjà été pris en défaut deux fois**, ce qui est la raison de la
+tableau avait déjà été pris en défaut trois fois**, ce qui est la raison de la
 phrase
 précédente :
 
@@ -189,7 +189,9 @@ précédente :
   et par `aria-current` ;
 - `Avatar` y a figuré jusqu'à **s30** alors que le baril l'exporte depuis
   **s18** : décalage antérieur à s29, signalé par elle plutôt que tu, et rangé
-  ici dans la ligne des copiés.
+  ici dans la ligne des copiés ;
+- `InlineStyleNonce`, exporté depuis **s45**, manquait à la ligne des composés
+  maison comme à `docs/design-system.md`. Ajouté aux deux.
 
 **Ce qui a changé en s30 : la commande existe.**
 `tests/design-system.test.ts` confronte le paragraphe ci-dessus au baril, par

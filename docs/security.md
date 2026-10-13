@@ -147,8 +147,8 @@
   moteur ne contourne aucune autorisation ; ça dresse la carte de la surface de
   l'application pour qui la cherche, et la tient à jour tout seul à chaque story
   suivante. Le contrôle est **dérivé** : aucun chemin n'y est nommé, et la règle
-  est celle-ci depuis s10, promue en contrôle par s53 — six citations la
-  désignaient sans qu'elle soit écrite.
+  est celle-ci depuis s10, promue en contrôle par s53 — plusieurs documents
+  la citaient sans qu'elle soit écrite.
 
   | Ce qui est tenu | Où | Ce qui échoue si on le viole |
   |---|---|---|

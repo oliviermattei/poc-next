@@ -1113,7 +1113,16 @@ describe('chaque module est tenu par une frontière (ADR 006, ADR 042)', () => {
   const LAYERS = ['domain', 'application', 'infrastructure', 'presentation']
   /** Les fichiers du contrat, à la racine de `src/` : le registre les lit tels quels. */
   const CONTRACT_FILES = ['index.ts', 'module.ts', 'schema.ts']
-  /** Les gabarits d'e-mails, déclarés par le contrat (`emails`), hors code de couche. */
+  /**
+   * Email templates, declared by the contract's `emails` key. Exempt from the
+   * layer rule without an ADR, for this reason: each file is a static
+   * `EmailTemplate` value (subject and body per locale) that imports only the
+   * `EmailTemplate` type from `@repo/core` and, at most, a template id constant
+   * from its own `domain/`. It holds no logic and no I/O, so there is nothing
+   * for a layer boundary to forbid. Tradeoff: they are also outside the guard
+   * below, so a file here that starts importing a framework or SDK is caught
+   * by neither; the moment one does, it belongs in a layer, not here.
+   */
   const CONTRACT_DIRECTORIES = ['emails']
 
   const modules = readdirSync(join(REPO_ROOT, MODULES_ROOT), { withFileTypes: true })

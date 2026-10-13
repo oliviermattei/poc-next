@@ -13,7 +13,7 @@ n'en est pas moins rempli au complet (ADR 007).
 | Le routage **sans** préfixe | `@repo/core` (`singleLocaleRouting`) | il doit exister quand ce package n'est pas dans le dépôt |
 | Le routage **avec** préfixe | ici (`application/locale-routing.ts`) | c'est la fonctionnalité que ce module apporte |
 | Le composant `LocaleSwitcher` | `packages/ui` | c'est un composé du design system (`docs/design-system.md`), pas un composant de module |
-| Le montage des deux états | `apps/web/lib/i18n.ts` | point de composition, comme `lib/auth.ts` et `lib/mailer.ts` |
+| Le montage des deux états | `apps/web/lib/locale-routing.ts` (`apps/web/lib/i18n.ts` ne fait que résoudre) | point de composition, comme `lib/auth.ts` et `lib/mailer.ts` |
 
 Les deux routages implémentent la **même** interface (`LocaleRouting`). C'est ce
 qui fait qu'un écran, une entrée de navigation ou un module écrit après s09

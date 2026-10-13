@@ -6299,9 +6299,11 @@ describe.runIf(databaseReachable)('la page de retour d’un paiement invité', (
    * Ce que le rendu doit faire pour ouvrir une session est observé **à sa
    * source**, deux sondes, aucune base :
    *
-   * - `appAuth` — le point de composition de l'authentification est le seul
-   *   fichier de l'application qui connaisse le module `auth`
-   *   (`apps/web/lib/auth.ts`), et le seul objet qui puisse créer une session.
+   * - `appAuth` — the auth composition point (`apps/web/lib/auth.ts`) is the
+   *   only file of the app that instantiates the `auth` service, and the only
+   *   object that can create a session. Other files import `@repo/module-auth`
+   *   (paths, `safeRedirectPath`, types, the module itself), none of which
+   *   opens a session.
    *   La doublure le remplace par une sonde : l'atteindre est enregistré ;
    * - `cookies().set` de `next/headers` — une session que le visiteur n'emporte
    *   pas dans un cookie n'est pas une session. Cette sonde ne dépend d'aucun
