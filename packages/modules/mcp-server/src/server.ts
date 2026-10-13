@@ -22,14 +22,16 @@ import { trackFileChanges } from './file-changes'
 
 /**
  * Le serveur MCP (s41) : une **seconde façade** sur le moteur de `@repo/cli`,
- * jamais une seconde implémentation. Les trois outils appellent les mêmes
- * fonctions que `ks list`, `ks toggle` et `ks scaffold` — `tests/*` prouve
- * l'invariant en comparant les deux sorties sur la même configuration.
+ * jamais une seconde implémentation. The three tools call the same functions
+ * as `ks list`, `ks toggle` and `ks scaffold` (`runList`, `runToggle`,
+ * `planScaffold`/`applyScaffold`), which is what keeps the two facades from
+ * diverging. Only `list_modules` has its outputs compared against the CLI's on
+ * the same configuration, in `src/server.test.ts`.
  *
- * `toggle_module` et `scaffold_module` posent la garde de dépôt propre (ADR
- * 041, `@repo/cli`) avant toute écriture : un agent qui les appelle doit
- * pouvoir toujours annuler. `list_modules` ne modifie rien, elle ne la pose
- * pas.
+ * `toggle_module` and `scaffold_module` set the clean-repository guard
+ * (`packages/cli/AGENTS.md`) on the paths they write, before any write: an
+ * agent calling them must always be undoable. `list_modules` writes nothing
+ * and does not set it.
  */
 export interface McpServerDependencies {
   readonly repoRoot: string
@@ -106,7 +108,8 @@ export function createMcpServer(deps: McpServerDependencies): McpServer {
       description:
         'Inverse l’état d’un module dans config/features.ts, régénère les barils, et propose ' +
         'les migrations à jouer. Refuse un module inconnu, un requis manquant ou un dépendant ' +
-        'encore activé en le nommant, et refuse tout sur un dépôt aux modifications non commitées.',
+        'encore activé en le nommant, et refuse tout si config/features.ts ou les barils ont des ' +
+        'modifications non commitées.',
       inputSchema: {
         moduleId: z.string(),
         withRequirements: z.boolean().optional(),
@@ -115,7 +118,7 @@ export function createMcpServer(deps: McpServerDependencies): McpServer {
     },
     async ({ moduleId, withRequirements, applyMigrations }) => {
       try {
-        await assertRepositoryClean(deps.repoRoot)
+        await assertRepositoryClean(deps.repoRoot, trackedPaths)
 
         // Le moteur, pas une seconde orchestration : c'est `runToggle` qui
         // sait quelles migrations l'activation vient de générer, et qui
@@ -160,15 +163,15 @@ export function createMcpServer(deps: McpServerDependencies): McpServer {
       title: 'Générer le squelette d’un nouveau module',
       description:
         'Génère packages/modules/<id> conforme au contrat de module (13 clés, ADR 007). Refuse ' +
-        'un identifiant mal formé ou déjà connu, et refuse tout sur un dépôt aux modifications ' +
-        'non commitées.',
+        'un identifiant mal formé ou déjà connu, et refuse tout si packages/modules/<id> a des ' +
+        'modifications non commitées.',
       inputSchema: { moduleId: z.string() },
     },
     async ({ moduleId }) => {
       try {
-        await assertRepositoryClean(deps.repoRoot)
-
         const plan = planScaffold({ available: deps.available, moduleId })
+
+        await assertRepositoryClean(deps.repoRoot, [plan.packagePath])
         const written = await applyScaffold({
           repoRoot: deps.repoRoot,
           packagePath: plan.packagePath,

@@ -78,25 +78,25 @@ identifiant du type `../../etc` d'atteindre un chemin de fichier hors de
 `packages/modules/`.
 
 **6. La garde de dépôt propre (`assertRepositoryClean`, `src/git-guard.ts`).**
-Elle refuse, avant toute écriture et en le nommant, un dépôt aux modifications
-non commitées (suivies ou non), pour que le développeur puisse toujours annuler
-ce qu'un agent vient d'écrire. C'est une fonction du moteur partagé, mais son
-**appel** est décidé par chaque point de composition, jamais imposé par le
-moteur (`runToggle`, `planToggle`) :
+Elle refuse, avant toute écriture et en le nommant, une modification non
+commitée (suivie ou non) **dans les chemins que l'opération écrit**, pour que le
+développeur puisse toujours annuler ce qu'un agent vient d'écrire sans perdre son
+propre travail. Un travail en cours ailleurs dans l'arbre ne bloque rien : un
+agent peut générer un module au milieu d'un ticket. C'est une fonction du moteur
+partagé, mais son **appel** et son périmètre sont décidés par chaque point de
+composition, jamais imposés par le moteur (`runToggle`, `planToggle`) :
 
-- **posée** par `src/bin.ts` sur `ks scaffold` ;
-- **posée** par `packages/modules/mcp-server/src/server.ts` sur les deux outils
-  qui écrivent (`toggle_module`, `scaffold_module`), jamais sur `list_modules`,
-  qui ne modifie rien ;
+- **posée** par `src/bin.ts` sur `ks scaffold`, périmètre : le dossier du module créé ;
+- **posée** par `packages/modules/mcp-server/src/server.ts` sur `scaffold_module`
+  (même périmètre) et `toggle_module` (`config/features.ts` et les artefacts
+  régénérés), jamais sur `list_modules`, qui ne modifie rien ;
 - **non posée** sur `ks toggle`.
 
 Pourquoi cette ligne de partage : un agent n'a pas la garde qu'a un humain qui
-relit avant de valider — rien ne l'empêche d'enchaîner des écritures sans relire
-l'état du dépôt, et une écriture non voulue ne se distingue plus du travail en
-cours. L'humain qui tape `ks toggle` voit ce qu'il fait et garde `git diff` sous
-la main. Une nouvelle commande qui écrit se pose la même question avant de
-choisir. L'issue #153 doit assouplir la garde de `ks scaffold` (ne refuser
-qu'un conflit sur ses propres fichiers, ou `--allow-dirty`).
+relit avant de valider — une écriture mêlée à des modifications non commitées
+des mêmes fichiers ne s'annule plus sans elles. L'humain qui tape `ks toggle`
+voit ce qu'il fait et garde `git diff` sous la main. Une nouvelle commande qui
+écrit se pose la même question, et déclare les chemins qu'elle écrit.
 
 Le CLI est utilisable par un agent autant que par un humain (ADR 013) : `--json`
 rend une sortie lisible par une machine, et hors terminal interactif il ne pose

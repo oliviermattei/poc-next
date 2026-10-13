@@ -13,8 +13,10 @@ module (`src/module.ts`) déclare les 13 clés d'ADR 007 vides à l'exception de
   ce que `runList` rend sur la même configuration.
 - **La garde de dépôt propre est systématique sur les deux outils qui écrivent**
   (`toggle_module`, `scaffold_module`), jamais sur `list_modules`, qui ne modifie rien.
-  `assertRepositoryClean` (`@repo/cli`, voir `packages/cli/AGENTS.md`) refuse **avant** toute lecture de
-  `config/features.ts` par le toggle ou tout calcul de plan par le scaffold.
+  `assertRepositoryClean` (`@repo/cli`, voir `packages/cli/AGENTS.md`) refuse **avant** toute écriture,
+  sur les seuls chemins que l'outil écrit : `config/features.ts` et les artefacts régénérés pour le
+  toggle, `packages/modules/<id>` pour le scaffold (dont le plan est calculé d'abord pour connaître ce
+  chemin). Un travail en cours ailleurs dans le dépôt ne bloque pas.
 - **Aucun chemin arbitraire.** Le serveur ne reçoit jamais de chemin de fichier depuis son
   appelant : `toggle_module` prend un `moduleId`, `scaffold_module` aussi — c'est
   `packages/cli` qui calcule `packages/modules/<id>` à partir d'un identifiant validé en

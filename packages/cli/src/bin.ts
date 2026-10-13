@@ -126,11 +126,11 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     }
 
     if (options.command === 'scaffold') {
-      // Clean-repo guard (see `packages/cli/AGENTS.md`): an agent can invoke
-      // `ks scaffold`, and the developer must always be able to undo its write.
-      await assertRepositoryClean(root)
-
       const plan = planScaffold({ available, moduleId: options.moduleId })
+
+      // Clean-repo guard, scoped to the package it creates (see
+      // `packages/cli/AGENTS.md`): the developer must always be able to undo it.
+      await assertRepositoryClean(root, [plan.packagePath])
       const written = await applyScaffold({
         repoRoot: root,
         packagePath: plan.packagePath,

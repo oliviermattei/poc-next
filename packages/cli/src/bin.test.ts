@@ -267,7 +267,22 @@ describe('ks scaffold, lancé comme un utilisateur le lance', () => {
     ).toContain("id: 'roadmap'")
   }, 30_000)
 
-  it('refuse sur un dépôt aux modifications non commitées, sans rien créer', async () => {
+  it('refuse quand le dossier du module a des modifications non commitées, sans rien créer', async () => {
+    const repo = await temporaryRepo(NOISY_GENERATE)
+    const packagePath = join(repo.root, 'packages', 'modules', 'roadmap')
+
+    await gitInit(repo.root)
+    await mkdir(packagePath, { recursive: true })
+    await writeFile(join(packagePath, 'notes.txt'), 'travail en cours\n', 'utf8')
+
+    const result = await ks(['scaffold', 'roadmap'], repo.root)
+
+    expect(result.code).toBe(1)
+    expect(result.stderr).toContain('non commitées')
+    expect(await readdir(packagePath)).toEqual(['notes.txt'])
+  }, 30_000)
+
+  it('génère malgré un travail en cours ailleurs dans le dépôt', async () => {
     const repo = await temporaryRepo(NOISY_GENERATE)
 
     await gitInit(repo.root)
@@ -275,12 +290,7 @@ describe('ks scaffold, lancé comme un utilisateur le lance', () => {
 
     const result = await ks(['scaffold', 'roadmap'], repo.root)
 
-    expect(result.code).toBe(1)
-    expect(result.stderr).toContain('non commitées')
-
-    const created = await readdir(join(repo.root, 'packages', 'modules')).catch(() => [])
-
-    expect(created).not.toContain('roadmap')
+    expect(result.code).toBe(0)
   }, 30_000)
 
   it('refuse un identifiant déjà déclaré dans l’annuaire, en le nommant', async () => {

@@ -2,18 +2,19 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 
 /**
- * La garde « dépôt propre » (où elle s'applique et pourquoi : `packages/cli/AGENTS.md`).
+ * The clean-repository guard (where it applies and why: `packages/cli/AGENTS.md`).
  *
- * `ks toggle` (s05) ne la pose pas : un humain qui tape la commande a déjà la
- * garde qu'il lui faut — il voit ce qu'il fait, et `git diff` lui rend la main
- * à tout moment. Un agent piloté par MCP n'a pas cette garde-là : rien ne
- * l'empêche d'enchaîner des opérations sans jamais relire. La précondition est
- * donc posée aux points de composition qui écrivent **pour le compte d'un
- * agent** — les deux outils MCP qui modifient le dépôt, et `ks scaffold` —
- * jamais réinjectée dans `ks toggle`.
+ * It is scoped to the paths the operation writes: a change elsewhere in the
+ * tree is the developer's work in progress, which the operation never touches,
+ * so it no longer blocks an agent mid-ticket. A change inside those paths is a
+ * conflict: the write would mix with uncommitted work and `git checkout` could
+ * no longer undo one without the other.
  *
- * `git status --porcelain` est interrogé, jamais réimplémenté : un dépôt sale
- * est un fait du dépôt, pas une opinion de ce fichier.
+ * `ks toggle` does not set it: a human typing the command sees what they do.
+ * It is set where the CLI writes **on behalf of an agent**: the two MCP tools
+ * that modify the repository, and `ks scaffold`.
+ *
+ * `git status --porcelain` is queried, never reimplemented.
  */
 export class DirtyRepositoryError extends Error {
   constructor(message: string) {
@@ -25,15 +26,17 @@ export class DirtyRepositoryError extends Error {
 const execFileAsync = promisify(execFile)
 
 /**
- * Refuse si le dépôt à `cwd` a des modifications non commitées (suivies ou
- * non), pour que le développeur puisse toujours annuler ce qu'un agent vient
- * de faire.
- *
- * Ne modifie jamais le dépôt : c'est une lecture seule, appelée **avant**
- * toute écriture par l'appelant.
+ * Refuses if any of `paths` (files or directories, absolute or relative to
+ * `cwd`) has uncommitted changes, tracked or not. Read-only: called by the
+ * caller **before** any write.
  */
-export async function assertRepositoryClean(cwd: string): Promise<void> {
-  const { stdout } = await execFileAsync('git', ['status', '--porcelain'], { cwd })
+export async function assertRepositoryClean(
+  cwd: string,
+  paths: readonly string[],
+): Promise<void> {
+  const { stdout } = await execFileAsync('git', ['status', '--porcelain', '--', ...paths], {
+    cwd,
+  })
   const files = stdout
     .split('\n')
     .map((line) => line.trim())
@@ -41,9 +44,9 @@ export async function assertRepositoryClean(cwd: string): Promise<void> {
 
   if (files.length > 0) {
     throw new DirtyRepositoryError(
-      `Le dépôt a des modifications non commitées, l’opération est refusée pour que vous puissiez ` +
-        `toujours annuler : ${files.map((line) => `« ${line} »`).join(', ')}. Commitez ou remisez-les, ` +
-        'puis relancez.',
+      `Les fichiers que l’opération écrit ont des modifications non commitées, elle est refusée ` +
+        `pour que vous puissiez toujours annuler : ${files.map((line) => `« ${line} »`).join(', ')}. ` +
+        'Commitez ou remisez-les, puis relancez.',
     )
   }
 }

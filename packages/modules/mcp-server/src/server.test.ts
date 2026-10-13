@@ -257,10 +257,10 @@ describe('serveur MCP — toggle_module', () => {
     expect(result.content[0]!.text).toContain('facturation')
   })
 
-  it('refuse sur un dépôt aux modifications non commitées, sans rien écrire', async () => {
+  it('refuse quand config/features.ts a des modifications non commitées, sans rien écrire', async () => {
     const repo = await temporaryRepo(['socle'])
 
-    await writeFile(join(repo.root, 'oubli.txt'), 'travail en cours\n', 'utf8')
+    await writeFile(repo.featuresPath, `${await readFile(repo.featuresPath, 'utf8')}// wip\n`, 'utf8')
 
     const client = await connectedClient(dependenciesFor(repo))
     const before = await readFile(repo.featuresPath, 'utf8')
@@ -306,10 +306,12 @@ describe('serveur MCP — scaffold_module', () => {
     expect(result.content[0]!.text).toContain('socle')
   })
 
-  it('refuse sur un dépôt aux modifications non commitées, sans rien créer', async () => {
+  it('refuse quand le dossier du module a des modifications non commitées, sans rien créer', async () => {
     const repo = await temporaryRepo()
+    const packagePath = join(repo.root, 'packages/modules/roadmap')
 
-    await writeFile(join(repo.root, 'oubli.txt'), 'travail en cours\n', 'utf8')
+    await mkdir(packagePath, { recursive: true })
+    await writeFile(join(packagePath, 'notes.txt'), 'travail en cours\n', 'utf8')
 
     const client = await connectedClient(dependenciesFor(repo))
 
@@ -320,9 +322,17 @@ describe('serveur MCP — scaffold_module', () => {
 
     expect(result.isError).toBe(true)
     expect(result.content[0]!.text).toContain('non commitées')
+    expect(await readdir(packagePath)).toEqual(['notes.txt'])
+  })
 
-    const created = await readdir(join(repo.root, 'packages')).catch(() => [])
+  it('génère malgré un travail en cours ailleurs dans le dépôt', async () => {
+    const repo = await temporaryRepo()
 
-    expect(created).not.toContain('modules')
+    await writeFile(join(repo.root, 'oubli.txt'), 'travail en cours\n', 'utf8')
+
+    const client = await connectedClient(dependenciesFor(repo))
+    const { isError } = await jsonOf(client, 'scaffold_module', { moduleId: 'roadmap' })
+
+    expect(isError).toBe(false)
   })
 })

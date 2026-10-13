@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -40,23 +40,36 @@ describe('assertRepositoryClean', () => {
   it('laisse passer un dépôt sans modification', async () => {
     const root = await temporaryRepo()
 
-    await expect(assertRepositoryClean(root)).resolves.toBeUndefined()
+    await expect(assertRepositoryClean(root, ['tracked.txt'])).resolves.toBeUndefined()
   })
 
-  it('refuse en nommant le fichier modifié, un fichier suivi', async () => {
+  it('refuse en nommant le fichier modifié, un fichier suivi de son périmètre', async () => {
     const root = await temporaryRepo()
 
     await writeFile(join(root, 'tracked.txt'), 'modifié après coup\n', 'utf8')
 
-    await expect(assertRepositoryClean(root)).rejects.toThrowError(DirtyRepositoryError)
-    await expect(assertRepositoryClean(root)).rejects.toThrowError(/tracked\.txt/)
+    await expect(assertRepositoryClean(root, ['tracked.txt'])).rejects.toThrowError(
+      DirtyRepositoryError,
+    )
+    await expect(assertRepositoryClean(root, ['tracked.txt'])).rejects.toThrowError(/tracked\.txt/)
   })
 
-  it('refuse aussi sur un fichier non suivi : l’agent pourrait perdre un travail en cours', async () => {
+  it('refuse aussi un fichier non suivi dans un dossier de son périmètre', async () => {
     const root = await temporaryRepo()
 
-    await writeFile(join(root, 'nouveau.txt'), 'jamais commité\n', 'utf8')
+    await mkdir(join(root, 'module'))
+    await writeFile(join(root, 'module', 'nouveau.txt'), 'jamais commité\n', 'utf8')
 
-    await expect(assertRepositoryClean(root)).rejects.toThrowError(/nouveau\.txt/)
+    // An untracked directory is reported by `git status` as `module/`.
+    await expect(assertRepositoryClean(root, ['module'])).rejects.toThrowError(/module\//)
+  })
+
+  it('laisse passer un travail en cours hors de son périmètre', async () => {
+    const root = await temporaryRepo()
+
+    await writeFile(join(root, 'tracked.txt'), 'travail en cours\n', 'utf8')
+    await writeFile(join(root, 'oubli.txt'), 'jamais commité\n', 'utf8')
+
+    await expect(assertRepositoryClean(root, ['module'])).resolves.toBeUndefined()
   })
 })
