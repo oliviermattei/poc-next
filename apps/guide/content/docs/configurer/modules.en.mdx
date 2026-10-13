@@ -12,7 +12,7 @@ The file holds two lists, and the difference matters:
 - **`availableModules`**, the directory: the modules the repository contains. You do not touch it to enable or disable.
 - **`enabledModules`**, the configuration: the **enabled** modules. It is the only list that changes when you enable or disable.
 
-A third line, `requiredModules`, names the **core**, which cannot be disabled: `auth` (accounts) and `rate-limit` (rate limiting).
+A third line, `requiredModules`, names the **core**, which cannot be disabled: `auth` (accounts) and `rate-limit` (rate limiting). Everything else can be disabled: `consent` is only required by `analytics`, the one module that sets a tracker needing consent, and the public forms of `marketing` are a product choice.
 
 ## The shipped modules
 

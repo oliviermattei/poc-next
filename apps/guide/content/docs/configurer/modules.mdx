@@ -12,7 +12,7 @@ Le fichier contient deux listes, et la différence compte :
 - **`availableModules`**, l’annuaire : les modules que le dépôt contient. Vous n’y touchez pas pour activer ou couper.
 - **`enabledModules`**, la configuration : les modules **activés**. C’est la seule liste qui change quand vous activez ou coupez.
 
-Une troisième ligne, `requiredModules`, désigne le **socle**, impossible à couper : `auth` (les comptes) et `rate-limit` (la limitation de débit).
+Une troisième ligne, `requiredModules`, désigne le **socle**, impossible à couper : `auth` (les comptes) et `rate-limit` (la limitation de débit). Tout le reste se coupe : `consent` n’est exigé que par `analytics`, le seul module qui dépose un traceur à consentir, et les formulaires publics de `marketing` sont un choix de produit.
 
 ## Les modules livrés
 
