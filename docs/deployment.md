@@ -337,6 +337,18 @@ Traefik et Caddy l'écrivent eux-mêmes depuis l'hôte reçu.
 Les 308 d'aiguillage portent `Cache-Control: no-store` : une configuration
 d'hôtes changée n'est figée ni dans un navigateur ni dans un cache.
 
+**Le site ne doit jamais avoir l'adresse d'écoute du serveur.** Next
+relativise le `Location` d'une redirection du proxy quand son hôte (port
+compris) est celui de l'URL qu'il attribue à la requête — l'adresse d'écoute,
+pas l'hôte demandé (ADR 080). Avec `APP_URL=http://localhost:3000` et
+`APP_HOST=app.localhost`, le 308 de l'application vers le site devient
+`Location: /pricing`, que le navigateur résout contre l'hôte de
+l'application : la redirection boucle. Un essai local à deux hôtes prend donc
+deux noms qui ne sont pas l'adresse d'écoute — `site.localhost` et
+`app.site.localhost`, comme `GOLDEN_PATH_HOSTS=split`, ou les noms de la
+recette ci-dessous. Derrière un proxy amont avec de vrais noms, le cas ne se
+présente pas.
+
 ### Les rappels OAuth visent l'application
 
 L'authentification est servie par l'application : l'URL de rappel à déclarer
@@ -344,6 +356,29 @@ chez chaque fournisseur est sur **l'origine de l'application** —
 `https://<APP_HOST>/api/modules/auth/callback/<fournisseur>` avec deux hôtes,
 `<APP_URL>/api/modules/auth/callback/<fournisseur>` avec un seul. Déclarer
 l'URL du site donne une erreur `redirect_uri_mismatch` chez le fournisseur.
+
+### Ce que la bascule casse une fois, et ce qu'il faut rejouer
+
+Poser `APP_HOST` sur un déploiement en service déplace l'authentification d'un
+hôte à l'autre. Les cookies d'authentification n'ont **aucun `Domain`** : posés
+avant la bascule sur l'hôte d'`APP_URL`, ils ne partent jamais vers
+`APP_HOST`. Trois conséquences, attendues :
+
+- **chaque utilisateur se reconnecte une fois** : sa session vit sur l'ancien
+  hôte, que l'application ne lit plus ;
+- **un défi de second facteur en cours** (cookie `two_factor`) est perdu :
+  `/two-factor` répond « le défi n'existe plus » (401), il suffit de
+  recommencer la connexion ;
+- **une boucle OAuth commencée avant la bascule** revient sur l'ancienne URL de
+  rappel ; le `GET` est renvoyé (308) vers l'application, qui n'a pas le cookie
+  d'état du fournisseur et refuse. Déclarer la nouvelle URL de rappel chez
+  chaque fournisseur **avant** de poser `APP_HOST`, retirer l'ancienne après.
+
+Seule l'origine de l'application est de confiance pour l'authentification
+(ADR 079) : un `POST` vers `/api/modules/auth/*` portant l'`Origin` du site est
+refusé. **Ni la boucle OAuth ni le défi du second facteur ne sont mesurés par
+`GOLDEN_PATH_HOSTS=split`** : la recette manuelle ci-dessous les rejoue, et
+c'est à refaire à chaque bascule.
 
 ### Les cookies
 
@@ -364,6 +399,19 @@ visiteur.
 
 Sans `APP_HOST`, aucun `Domain` n'est posé : les en-têtes sont ceux d'avant,
 octet pour octet.
+
+**Un cookie du domaine parent est écrivable par tout sous-domaine.** N'importe
+quel hôte sous l'hôte d'`APP_URL` — un `blog.` hébergé chez un tiers, un
+sous-domaine dont l'enregistrement DNS pointe vers un service résilié — peut
+poser `app_consent` (et `app_locale`) avec `Domain=<hôte d'APP_URL>`.
+`HttpOnly` n'y change rien : c'est une réponse HTTP qui l'écrit, pas un script.
+La valeur n'est pas signée : l'application la lit comme le choix du visiteur.
+Un tel sous-domaine peut donc **fabriquer un consentement** — charger les
+scripts non essentiels d'un visiteur qui n'a rien accepté — ou effacer un
+refus. Avec deux hôtes, chaque sous-domaine de l'apex est dans le périmètre du
+consentement : n'en déléguer aucun à un tiers, et supprimer l'enregistrement
+DNS d'un service avant de le résilier. Le cookie de session, sans `Domain`,
+n'est pas partagé.
 
 ### La recette manuelle à deux hôtes
 
@@ -400,7 +448,16 @@ l'essentiel sur `*.localhost`, en HTTP et en développement.
    - revenir sur `https://exemple.test/` : la liste des cookies n'y contient
      **aucun** cookie de session ;
    - changer de langue sur le site, puis ouvrir l'application : la langue suit ;
-   - `https://exemple.test/console` répond 404.
+   - `https://exemple.test/console` répond 404 ;
+   - **second facteur** : l'activer dans Réglages → Sécurité, se déconnecter,
+     se reconnecter. `/two-factor` est servi par `app.exemple.test`, le cookie
+     `__Secure-better-auth.two_factor` a le domaine `app.exemple.test` sans
+     point, et le code ouvre la session ;
+   - **boucle OAuth** : avec une application OAuth de test dont le rappel est
+     `https://app.exemple.test/api/modules/auth/callback/<fournisseur>`
+     (le fournisseur local est refusé sous `NODE_ENV=production`), « Continuer
+     avec… » depuis l'écran de connexion revient connecté sur
+     `app.exemple.test`.
 5. **La trace à consigner** dans l'issue qui suit la recette : date, version
    (`git rev-parse HEAD`), navigateur et version, et pour chaque point ci-dessus
    « constaté » ou ce qui a été vu à la place.
@@ -491,9 +548,19 @@ nom du service : `postgres://<user>:<mot de passe>@postgres:5432/<base>`.
    le navigateur bloque l'envoi et **aucun démarrage ne le refuse** — rien dans
    l'application ne peut lire la configuration CORS d'un seau. Le Guide
    (`apps/guide/content/docs/services/stockage-s3.mdx`) porte la procédure.
-3. **Le seau demande une règle de cycle de vie**, et une réconciliation qui
-   n'existe pas encore pour le préfixe `avatars/` : `.env.example` et
-   `packages/modules/storage/AGENTS.md` portent le détail.
+3. **Le seau demande une règle de cycle de vie sur `pending/`**, posée chez le
+   fournisseur. Le navigateur téléverse sous `pending/` ; la confirmation
+   promeut l'objet sous `avatars/` (ADR 033). Un client qui téléverse sans
+   jamais confirmer, ou qui rejoue son URL présignée (valable 120 s), laisse
+   sous `pending/` un objet qu'aucune ligne ne nomme, donc que la purge
+   n'efface pas. Rien de servi n'y vit : une **expiration d'âge du préfixe
+   entier**, 24 h, est la réponse, sans risque — sur S3, une règle de cycle de
+   vie filtrée sur le préfixe `pending/` avec une expiration à 1 jour ;
+   R2, MinIO et Spaces offrent la même règle. Ne jamais la poser sur
+   `avatars/` : elle y ramasserait les avatars légitimes. Ce préfixe-là garde
+   une dette — une promotion interrompue entre le seau et la base y laisse un
+   objet orphelin, et la **réconciliation** qui le ramasserait n'existe pas
+   encore (`packages/modules/storage/AGENTS.md`, `docs/reliability.md` §5).
 
 ---
 

@@ -73,19 +73,35 @@ parfaitement valide, donc un défaut silencieux de plus.
 Le geste demande vos clés — le harnais ne les a pas.
 
 ```sh
-# 1. le tunnel de webhooks, dans un terminal à part. `stripe listen` imprime le
-#    secret de webhook du tunnel : il sert au processus qui **reçoit** les
-#    événements, pas à la commande ci-dessous.
-stripe listen --forward-to http://localhost:3110/api/modules/billing/webhook \
+# 1. le tunnel de webhooks, dans un terminal à part, vers le serveur de
+#    `pnpm dev` (port 3000). `stripe listen` imprime le secret de webhook du
+#    tunnel (`whsec_…`) : il sert au serveur qui **reçoit** les événements.
+stripe listen --forward-to http://localhost:3000/api/modules/billing/webhook \
   --print-json > /tmp/evenements.ndjson
 
-# 2. les clés éprouvées, puis les événements bruts assainis et versionnés
+# 2. le serveur qui reçoit, dans un autre terminal. Les variables vont dans le
+#    `.env` racine, pas dans le shell : Turborepo ne transmet pas à `next dev`
+#    une variable que `turbo.json` ne déclare pas.
+#      STRIPE_SECRET_KEY=sk_test_…
+#      STRIPE_WEBHOOK_SECRET=whsec_…   # celui de l'étape 1
+#      PAYMENTS_LOCAL_MODE=            # vide : le mode local refuse une clé
+pnpm dev
+
+# 3. dans le navigateur, sur http://localhost:3000 : une souscription et un
+#    achat unique, payés avec une carte de test.
+
+# 4. les clés éprouvées, puis les événements bruts assainis et versionnés
 GOLDEN_PATH_PAYMENTS=live \
 STRIPE_SECRET_KEY=sk_test_… \
 STRIPE_LIVE_PRICE_ID=price_… \
 GOLDEN_PATH_CAPTURE_FROM=/tmp/evenements.ndjson \
   pnpm test:golden-path
 ```
+
+L'étape 3 demande que les `priceId` de `config/billing.ts` existent dans le
+compte de test (une offre récurrente, une ponctuelle). `GOLDEN_PATH_PAYMENTS=live`
+ne démarre aucun serveur : le port des parcours (`E2E_PORT`) n'a rien à voir
+avec la capture.
 
 **Les deux variables exigées sont celles que la recette lit** : `STRIPE_SECRET_KEY`
 et `STRIPE_LIVE_PRICE_ID`, celles de

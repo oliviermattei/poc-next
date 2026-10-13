@@ -79,11 +79,13 @@ const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url))
 const RECORDINGS_DIRECTORY = join(REPO_ROOT, 'tests', 'fixtures', 'stripe-events')
 
 /**
- * Le port que la **consigne de capture** du régime réel imprime : celui où le
- * développeur fait tourner son serveur. Le parcours, lui, prend le sien de
- * `recipePort` (s68).
+ * The port the **live capture instructions** print: the one the developer's
+ * own `pnpm dev` serves. The live regime starts no server of its own, so
+ * `E2E_PORT` (the journey port, see `recipePort`, s68) is never where Stripe's
+ * events are forwarded. Not read from `PORT`: Turborepo's strict env mode
+ * does not pass it to `next dev`, which therefore always binds 3000.
  */
-const LIVE_CAPTURE_PORT = process.env.E2E_PORT ?? '3110'
+const LIVE_CAPTURE_PORT = '3000'
 
 const run = (command: string, args: readonly string[], cwd: string, env: NodeJS.ProcessEnv): void => {
   execFileSync(command, [...args], { cwd, env, stdio: 'inherit' })
@@ -275,11 +277,13 @@ const captureAgainstRealKeys = async (
     console.log(
       [
         '',
-        'Clés de test éprouvées. Les enregistrements, eux, se capturent en deux gestes :',
+        'Clés de test éprouvées. Les enregistrements, eux, se capturent ainsi :',
         '',
         `  1. stripe listen --forward-to http://localhost:${LIVE_CAPTURE_PORT}/api/modules/billing/webhook \\`,
         '       --print-json > /tmp/evenements.ndjson',
-        '  2. déroulez le parcours (souscription, achat unique), puis :',
+        '  2. pnpm dev, le .env portant STRIPE_SECRET_KEY=sk_test_…, STRIPE_WEBHOOK_SECRET=<whsec_',
+        '     imprimé par stripe listen> et PAYMENTS_LOCAL_MODE vide (tests/fixtures/stripe-events/README.md) ;',
+        '  3. déroulez le parcours dans le navigateur (souscription, achat unique), puis :',
         '     GOLDEN_PATH_PAYMENTS=live GOLDEN_PATH_CAPTURE_FROM=/tmp/evenements.ndjson \\',
         '       pnpm test:golden-path',
         '',
