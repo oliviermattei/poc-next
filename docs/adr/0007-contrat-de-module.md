@@ -1,6 +1,6 @@
 # ADR 007 — Le module comme unité de composition
 
-- Status: accepted
+- Status: accepted — la garde des clés étrangères (« s04 la refuse à la génération ») est précisée par l'ADR 018
 - Date: 2026-08-30
 - Scope: framing
 

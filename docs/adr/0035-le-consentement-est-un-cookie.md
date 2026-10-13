@@ -62,33 +62,12 @@ et c'est ce terminal qui dépose les cookies.
 
 **Ce qu'il faut surveiller.**
 
-- `docs/architecture.md` reste faux sur ce point tant que s34/s35 ne l'a pas
-  corrigé : la table `consent` qu'il annonce n'existe pas et n'a pas à exister.
-  Le signaler plutôt que le taire est le seul geste possible ici, l'architecture
-  n'étant pas modifiable depuis une story.
-
-  **Avertissement à l'agent de s34/s35, à lire avant d'écrire une migration.**
-  La ligne `docs/architecture.md:119` attribue au module `gdpr` les entités
-  `deletion_request`, `export_request` et **`consent`**. Cette troisième entité
-  est antérieure à cet ADR, et elle est à trancher **avant** d'écrire quoi que
-  ce soit :
-
-  - s'il s'agit du **consentement aux cookies non essentiels**, la table est
-    **interdite** par le présent ADR : ce consentement est un cookie sur
-    l'appareil du visiteur, et le persister demanderait d'attribuer un
-    identifiant durable à un anonyme — le pister pour noter son refus d'être
-    pisté. La ligne est alors périmée, et c'est la ligne qu'il faut corriger,
-    pas le code ;
-  - s'il s'agit d'**autre chose** — un consentement rattaché à un compte
-    identifié, par exemple l'acceptation datée des CGU ou d'un traitement
-    déclaré au RGPD —, la table est légitime, mais elle ne doit ni porter le nom
-    nu `consent`, ni être lue comme la trace du choix de cookies. Le nom doit
-    dire lequel des deux elle est.
-
-  Dans les deux cas, l'arbitrage se prend **en cadrage**, avec le droit de
-  réécrire `docs/architecture.md` — droit qu'une story n'a pas. Un agent de s34
-  qui créerait la table sur la seule foi de cette ligne réintroduirait ce que
-  cet ADR a rejeté, et il le ferait de bonne foi.
+- **Aucune table ne persiste le choix de cookies.** Le persister demanderait
+  d'attribuer un identifiant durable à un anonyme — le pister pour noter son
+  refus d'être pisté. Un consentement rattaché à un compte identifié
+  (acceptation datée des CGU, traitement déclaré au RGPD) serait légitime, mais
+  sa table ne porterait pas le nom nu `consent` et ne serait jamais lue comme la
+  trace du choix de cookies.
 - Un besoin de **preuve de consentement** — journal horodaté opposable — serait
   une décision de produit, pas un détail d'implémentation : il demanderait un
   ADR qui supersède celui-ci, et il rouvrirait la question de l'identifiant

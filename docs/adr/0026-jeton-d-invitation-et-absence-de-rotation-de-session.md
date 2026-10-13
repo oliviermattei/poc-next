@@ -2,12 +2,6 @@
 
 - Status: accepted
 - Date: 2026-08-31
-- Scope: story s16-invite-members
-- Amendé le 2026-08-31, au tour de correction de la même story et **avant tout
-  ship** : la course du dernier propriétaire est fermée plutôt que surveillée,
-  le quota compte le renvoi, et l'argument de fixation de session est écrit.
-  Un ADR livré serait superséqué, pas récrit — celui-ci n'a jamais été mis en
-  production.
 
 ## Context
 
@@ -110,8 +104,7 @@ session »).
 - **Faire tourner l'identifiant de session à l'acceptation** — rejeté ici, et
   c'est la décision la plus discutable de cet ADR, donc la plus argumentée.
   L'obtenir demanderait d'ouvrir un point d'entrée de rotation dans le module
-  `auth`, qui n'en a aucun ; cette voie a pour consigne explicite de ne pas
-  prendre ce point d'entrée mais de le **nommer**. Sur le fond, la rotation
+  `auth`, qui n'en a aucun. Sur le fond, la rotation
   protège contre la **fixation de session** — un identifiant obtenu avant
   l'élévation et rejoué après. Ici l'identifiant ne gagne rien qu'il ne perde
   aussitôt : l'appartenance est relue à chaque requête, et son retrait est

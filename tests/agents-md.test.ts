@@ -305,7 +305,7 @@ describe('Référence des commandes (docs/commands.md)', () => {
  */
 const ADR_DIRECTORY = 'docs/adr'
 
-/** Le gabarit MADR range avec les ADR, sans être une décision. */
+/** Le gabarit des ADR (ADR 084), rangé avec elles, sans être une décision. */
 const ADR_TEMPLATE = 'template.md'
 
 /** Le numéro d'un fichier `NNNN-slug.md`, `null` hors de ce nom. */

@@ -225,7 +225,7 @@ standard.
   §1 ci-dessus) ; aucune lecture ne met l'appartenance en cache — le singleton
   `organizationsService` ne retient que la connexion, le mailer, les identifiants
   réservés, l'horloge et la fabrique de jetons ; le module `auth` n'expose
-  toujours aucune rotation, et cette voie a consigne de ne pas y toucher.
+  toujours aucune rotation.
 
   La propriété opposable est la réciproque, dans les **deux** sens, et elle a son
   cas : « change le pouvoir à l'instant, sur la même session, sans reconnexion »
@@ -274,15 +274,12 @@ renommage, plus d'invitation, plus de retrait, plus de rôle. L'état est
 **inatteignable par les routes** (prédicats sous le même verrou, trois
 croisements de concurrence sondés à la revue).
 
-Il est en revanche **productible par la base**, et c'est le piège de s34 :
-`organization_member.user_id` référence `auth_user.id` en `onDelete: 'cascade'`
-(`packages/modules/organizations/src/schema.ts:62-64`). Supprimer le compte du
-dernier propriétaire efface sa ligne d'appartenance sans que rien ne compte les
-propriétaires restants ; l'organisation et ses membres survivent, ingouvernables.
-`docs/reliability.md` §5 exige une **commande de réconciliation** pour tout état
-qui peut diverger. Elle appartient à **s34**, avec la suppression de compte, pas à
-s17 — et elle est nommée ici, ainsi que dans l'`AGENTS.md` du module, pour que
-l'agent de s34 la trouve avant d'écrire sa purge et non après.
+Il est en revanche **productible par la base** :
+`organization_member.user_id` référence `auth_user.id` en `onDelete: 'cascade'`,
+si bien que supprimer le compte du dernier propriétaire effacerait sa ligne
+d'appartenance sans que rien ne compte les propriétaires restants. La
+suppression de compte le refuse en amont (`sole_owner`, module `auth`) ; le cas
+d'une tentative antérieure interrompue est suivi par #140.
 
 **À surveiller — ce que le verrou ne tient pas.** Inchangé depuis s16 :
 `hashtext` rend 32 bits, donc deux organisations peuvent partager une clé de

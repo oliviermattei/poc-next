@@ -1,6 +1,6 @@
 # ADR 071 — Les écrans sont rangés par zone dans des dossiers de routes
 
-- Status: accepted
+- Status: accepted — la conséquence sur la page 404 rendue à la racine est supersédée par l'ADR 072
 - Date: 2026-09-27
 - Scope: story s60-console
 

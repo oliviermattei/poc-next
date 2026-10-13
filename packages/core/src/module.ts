@@ -90,9 +90,9 @@ export interface ModuleRouteContext {
  * Une route déclarée par un module.
  *
  * Le chemin est celui du module, monté par l'application sous un préfixe
- * unique. Il ne porte pas de segment dynamique : le routeur riche (Hono, ADR
- * 005) arrive avec la couche API, et inventer ici un second mécanisme de
- * routage serait à jeter.
+ * unique. It is matched exactly, with no dynamic segment: this is the final
+ * form, dispatched by `dispatchModuleRequest` alone (ADR 085). A need for a
+ * dynamic segment is settled by an ADR, never by a second router.
  */
 /**
  * **La limitation de débit d'une route** (s28, ADR 050).

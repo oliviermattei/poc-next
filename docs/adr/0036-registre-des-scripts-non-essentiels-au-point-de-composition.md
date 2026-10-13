@@ -30,15 +30,10 @@ l'existence du site public et `lib/storage.ts` de celle du stockage.
 
 ## Considered options
 
-- **Une quinzième clé `scripts` au contrat de module** — rejetée pour deux
-  raisons, et la seconde est décisive :
-  1. elle oblige à rouvrir les sept modules existants pour y écrire
-     `scripts: []`, ce qu'ADR 007 a précisément cherché à éviter en fixant
-     toutes les clés dès le premier module ;
-  2. elle rend **faux** `docs/architecture.md` et l'`AGENTS.md` racine, qui
-     énumèrent les clés du contrat — deux documents de cadrage qu'une story n'a
-     pas le droit de modifier. La décision appartient donc à une phase de
-     cadrage, pas à une story d'implémentation.
+- **Une quinzième clé `scripts` au contrat de module** — rejetée : elle oblige à
+  rouvrir tous les modules existants pour y écrire `scripts: []`, ce qu'ADR 007
+  a précisément cherché à éviter en fixant toutes les clés dès le premier
+  module, pour un besoin qu'un seul module a.
 - **Un fichier `config/consent.ts` édité par le propriétaire** — rejetée : la
   liste ne dériverait plus des modules activés, et couper le module
   d'analytique laisserait son script déclaré. Le critère de s39 deviendrait
@@ -50,8 +45,7 @@ l'existence du site public et `lib/storage.ts` de celle du stockage.
 
 ## Consequences
 
-**Ce qui devient facile.** s36 ne dépend d'aucune modification de cadrage. La
-question « quels scripts ce déploiement déclare-t-il ? » a un seul fichier de
+**Ce qui devient facile.** La question « quels scripts ce déploiement déclare-t-il ? » a un seul fichier de
 réponse, et il est déjà le fichier où l'on va chercher « le consentement est-il
 monté ? ».
 
@@ -64,8 +58,7 @@ part.
 
 **Ce qu'il faut surveiller.** Le jour où **plusieurs** modules déclarent des
 scripts, ce fichier devient une liste de conditions. Passé trois, la question de
-la clé de contrat se repose — et elle se reposera dans une phase de cadrage,
-avec le droit de rouvrir `docs/architecture.md`.
+la clé de contrat se repose, par une ADR qui supersède celle-ci.
 
 **Une conséquence à connaître avant s39, mesurée sous le build de production** :
 la politique de sécurité du contenu livrée par s45 porte `'strict-dynamic'` dans

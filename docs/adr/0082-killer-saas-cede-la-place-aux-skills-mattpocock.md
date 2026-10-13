@@ -1,6 +1,6 @@
 # ADR 082 — killer-saas cède la place aux skills mattpocock
 
-- Status: accepted
+- Status: accepted — la clause « sans changer leur contenu » et le gabarit MADR obligatoire sont supersédés par l'ADR 084
 - Date: 2026-10-12
 - Scope: framing (spec #187)
 

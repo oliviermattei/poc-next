@@ -1,6 +1,6 @@
 # ADR 005 — Couche API : Hono monté dans Next, contrats oRPC
 
-- Status: accepted
+- Status: superseded by ADR 085
 - Date: 2026-08-30
 - Scope: framing
 

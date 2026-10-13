@@ -1,6 +1,6 @@
 # ADR 009 — Base UI comme socle des composants shadcn/ui
 
-- Status: accepted
+- Status: superseded by ADR 022
 - Date: 2026-08-30
 - Scope: framing
 

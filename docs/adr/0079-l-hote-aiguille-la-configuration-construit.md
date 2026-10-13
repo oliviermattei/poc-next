@@ -1,6 +1,6 @@
 # ADR 079 — L'hôte de la requête aiguille, la configuration construit
 
-- Status: accepted
+- Status: accepted — la lecture de `x-forwarded-host` est supersédée par l'ADR 081 (l'hôte se lit dans `host` seul)
 - Date: 2026-09-29
 - Scope: story s64b1-hote-routage
 

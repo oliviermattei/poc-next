@@ -53,4 +53,4 @@ If your output contradicts an existing ADR, surface it explicitly rather than si
 ## Propre à ce dépôt
 
 - **`packages/<nom>/AGENTS.md`** : lisez celui du paquet que vous allez modifier ; ce qu'il porte est décrit dans `CODING_STANDARDS.md`, section « Agent-oriented repo ».
-- **ADR** : `docs/adr/NNNN-slug.md`, au format MADR, sur le gabarit `docs/adr/template.md` (options considérées comprises). Le code et les tests les citent par « ADR 069 » ; cette forme reste valide, le numéro ne change pas. Une ADR ne se modifie pas : un changement de décision s'écrit dans une nouvelle ADR qui remplace l'ancienne.
+- **ADR** : `docs/adr/NNNN-slug.md`, au format de `/domain-modeling` (ADR 084), gabarit `docs/adr/template.md`. Le titre garde la forme `# ADR NNN — …` : le code et les tests les citent par « ADR 069 », et `tests/agents-md.test.ts` vérifie que chaque citation a son fichier — aucun fichier d'ADR ne se supprime. Un changement de **décision** s'écrit dans une nouvelle ADR, et la ligne `Status` de l'ancienne passe à `superseded by ADR NNN` dans le même commit ; retirer l'historique de l'ancienne méthode (stories, revues, plans) n'en est pas un.

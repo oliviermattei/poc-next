@@ -55,10 +55,9 @@ Trois conséquences directes :
 3. **avec un vrai seau, son origine doit entrer dans `config/security.ts`,
    champ `connect`** — et seulement `connect` : la lecture n'a besoin de rien,
    puisqu'elle est servie par nous. C'est un geste du propriétaire du projet,
-   dans le fichier prévu pour cela, documenté dans `.env.example`. **Cette
-   story ne touche pas `config/security.ts`** : elle appartient au périmètre de
-   s45, et l'y modifier serait exactement l'élargissement « pour faire marcher »
-   que `docs/security.md` §1 refuse.
+   dans le fichier prévu pour cela, documenté dans `.env.example`. Le dépôt
+   n'y ajoute aucune source par défaut : ce serait l'élargissement « pour faire
+   marcher » que `docs/security.md` §1 refuse.
 
 ## Options considérées
 

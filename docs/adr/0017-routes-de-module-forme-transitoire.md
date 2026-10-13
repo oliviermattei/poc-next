@@ -1,6 +1,6 @@
 # ADR 017 — `ModuleRoute[]` est une forme de transition jusqu'à Hono
 
-- Status: accepted
+- Status: superseded by ADR 085
 - Date: 2026-08-30
 - Scope: framing
 

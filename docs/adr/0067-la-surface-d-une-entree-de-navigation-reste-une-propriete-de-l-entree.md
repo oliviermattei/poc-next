@@ -1,6 +1,6 @@
 # ADR 067 — La surface d'une entrée de navigation reste une propriété de l'entrée, y compris à la troisième
 
-- Status: accepted
+- Status: accepted — la valeur `'admin'` de la surface est renommée `console` par l'ADR 070
 - Date: 2026-09-06
 - Scope: story s37b2-back-office-lecture
 

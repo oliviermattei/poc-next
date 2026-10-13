@@ -1,6 +1,6 @@
 # ADR 050 — La limitation de débit est un port ; son magasin absent refuse, et les deux compteurs remplacés sont abandonnés sans être supprimés
 
-- Status: accepted
+- Status: accepted — la clause « la double authentification a un seau par défi, lu par nom exact » est supersédée par l'ADR 051
 - Date: 2026-09-03
 - Scope: story s28-rate-limiting
 

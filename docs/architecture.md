@@ -153,13 +153,13 @@ Entités principales, par module propriétaire. Aucune table n'est partagée ent
 
 | Module | Entités |
 |---|---|
-| `auth` | `user`, `session`, `account` (fournisseurs OAuth), `verification`, `two_factor`, `backup_code`, `passkey` |
+| `auth` | `user` (dont la demande de suppression, `deletion_requested_at`, ADR 074), `session`, `account` (fournisseurs OAuth), `verification`, `two_factor`, `backup_code`, `passkey`, `data_export_request` (ADR 061, 062) |
 | `organizations` | `organization`, `member` (rôle owner/admin/member), `invitation` |
 | `billing` | `customer`, `subscription`, `one_time_purchase`, `entitlement`, `webhook_event` (idempotence) |
 | `storage` | `file` (propriétaire, type MIME, taille, clé de stockage) |
 | `notifications` | `notification`, `notification_preference` |
 | `marketing` | `public_subscription` (email + **source** : newsletter, waitlist), `contact_message` |
-| `gdpr` | `deletion_request`, `export_request`, `consent` |
+| `consent` | aucune : le choix de cookies est un cookie, jamais une table (ADR 035) |
 | `feedback` | `feedback_item` |
 | `roadmap` | `roadmap_item`, `roadmap_vote` |
 | `onboarding` | `onboarding_progress` |
