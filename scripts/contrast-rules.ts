@@ -115,7 +115,7 @@ const HEX = /^#([\da-f]{6})$/i
  * **copies littérales** de la valeur du jeton sémantique, et non un renvoi
  * vers lui. Le refus est franc — la commande sort non-zéro en citant la
  * valeur —, mais la copie, elle, est silencieuse : changer `--warning` dans
- * `.dark` sans toucher sa copie ferait diverger deux valeurs que l'ADR 056
+ * `.dark` sans toucher sa copie ferait diverger deux valeurs que `docs/design-system.md`
  * décrit comme identiques, et rien ne le dirait. Suivre `var(…)` supposerait
  * de résoudre la cascade dans le bon bloc, ce que ce fichier ne fait pas.
  */

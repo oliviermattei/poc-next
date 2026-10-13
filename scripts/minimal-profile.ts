@@ -70,8 +70,9 @@ import { cloneReport, cloneWorkingTree } from './working-tree'
  * Parce que le profil s'écrit dans `config/features.ts`, un fichier **suivi par
  * git** — c'est la différence avec le parcours doré, qui n'écrivait nulle part.
  * Une recette qui basculerait le dépôt de travail et mourrait en cours
- * laisserait un diff que personne n'a demandé, et ADR 041 interdit précisément
- * les écritures pilotées par agent sur un arbre sale. La restauration du CLI
+ * laisserait un diff que personne n'a demandé, et la garde de dépôt propre
+ * (`packages/cli/AGENTS.md`) refuse précisément les écritures pilotées par
+ * agent sur un arbre sale. La restauration du CLI
  * reste un filet ; travailler dans une copie supprime le sujet.
  *
  * L'arbre de travail est comparé **avant et après**, et une seule fois de plus

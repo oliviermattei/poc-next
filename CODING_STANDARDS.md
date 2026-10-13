@@ -41,9 +41,9 @@ in `docs/architecture.md`; each structural decision has an ADR in `docs/adr/`, c
 
 **Rules that bite** — on top of the security and reliability baselines below: every `<form>` declares `method` as a written literal (a React form without it falls back to a browser GET before hydration and puts secrets in the URL); a foreign key toward another module only if that module is a declared `requires` (ADR 018); a screen that writes organization data confirms the scope it displayed, never the active scope at submission time — the active organization is per account, so another tab may have switched it (ADR 025).
 
-**Third-party integrations, two regimes, never mixed** — in CI: recording doubles for outbound calls, replay of recorded webhook events for inbound ones, both blocking — a missing recording fails, never falls back to the simulator (ADR 048; the golden-path job is armed only once a recording exists, and none does yet, #106). Outside CI, on an explicit command: real test keys, run before every merge to `dev`.
+**Third-party integrations, two regimes, never mixed** — in CI: recording doubles for outbound calls, replay of recorded webhook events for inbound ones, both blocking — a missing recording fails, never falls back to the simulator (ADR 048; the golden-path job is armed only once a recording exists, and none does yet, #106). Outside CI, on an explicit command: real test keys, run before pushing a billing change to `dev`.
 
-**Commits** — imperative message in French. Work reaches `dev` through a pull request, squash-merged.
+**Commits** — imperative message in French. Work is committed straight on `dev`: the project has a single maintainer, so no feature branch and no pull request.
 
 ## Security baseline
 

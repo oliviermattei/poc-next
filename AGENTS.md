@@ -30,7 +30,7 @@ When a document disagrees with the code, the code is the bug — unless an ADR s
 
 ### Workflow
 
-`/grill-with-docs` → `/to-spec` → `/to-tickets` → `/implement` or `/implement-spec` → `/code-review` → a pull request to `dev`, squash-merged. Why this chain replaced the previous method: ADR 082.
+`/grill-with-docs` → `/to-spec` → `/to-tickets` → `/implement` or `/implement-spec` → `/code-review` → a commit straight on `dev`: a single maintainer, no feature branch, no pull request. Why this chain replaced the previous method: ADR 082.
 
 ### Issue tracker
 

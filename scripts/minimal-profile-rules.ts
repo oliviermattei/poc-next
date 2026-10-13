@@ -559,8 +559,8 @@ export const suiteReport = (counts: SuiteCounts): string =>
  *
  * La recette écrit dans `config/features.ts`, fichier suivi par git : une
  * recette qui basculerait le dépôt et mourrait en cours laisserait un diff que
- * personne n'a demandé, et ADR 041 interdit précisément les écritures pilotées
- * par agent sur un arbre sale.
+ * personne n'a demandé, et la garde de dépôt propre (`packages/cli/AGENTS.md`)
+ * refuse précisément les écritures pilotées par agent sur un arbre sale.
  *
  * La comparaison porte sur `git status --porcelain`, donc sur la **différence**
  * et non sur la propreté : un arbre déjà sale — une story en cours d'écriture —

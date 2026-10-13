@@ -45,18 +45,17 @@ const nodeBuiltinLiteral = (): string => {
 }
 
 /**
- * **`packages/ui` est la seule frontière avec le socle de composants** (ADR 022).
+ * **`packages/ui` is the only boundary with the component base** (ADR 022).
  *
- * L'ADR 022 remplace Base UI par Radix — aucune version stable publiée, quatorze
- * préversions — et garde de l'ADR 009 la clause qui rend le choix réversible :
- * aucun module, aucune application n'importe le socle directement. C'est elle
- * qui borne le coût du basculement le jour où Base UI se stabilise ; sans elle,
- * changer de socle redevient un refactor traversant. Une clause d'ADR n'est pas
- * une garde : le motif ci-dessous est ce qui fait échouer `pnpm lint`.
+ * ADR 022 keeps Radix and sets the clause that keeps the choice reversible: no
+ * module and no application imports the component base directly. That clause
+ * bounds the cost of a switch to Base UI, which ADR 022 leaves to a new ADR;
+ * without it, changing the base becomes a cross-cutting refactor. An ADR clause
+ * is not a guard: the pattern below is what makes `pnpm lint` fail.
  *
- * Il est **repris** par les trois blocs qui déclarent `no-restricted-imports`
- * hors de `packages/ui` — en configuration plate, une seconde déclaration
- * remplace les options de la première, elle ne s'y ajoute pas.
+ * It is **repeated** by the three blocks that declare `no-restricted-imports`
+ * outside `packages/ui`: in flat config, a second declaration replaces the
+ * options of the first instead of adding to them.
  */
 const COMPONENT_BASE_RESTRICTION = {
   // `radix-ui` — le paquet unifié, celui que la documentation de Radix installe
@@ -65,7 +64,7 @@ const COMPONENT_BASE_RESTRICTION = {
   // contournable par un `pnpm add radix-ui`.
   group: ['@radix-ui/*', '@radix-ui/*/**', 'radix-ui', 'radix-ui/**'],
   message:
-    'Le socle de composants ne sort pas de `packages/ui` (ADR 022) : un module ou un écran compose avec `@repo/ui`. C’est cette frontière qui garde le passage à Base UI, quand il aura une version stable, à un coût borné.',
+    'Le socle de composants ne sort pas de `packages/ui` (ADR 022) : un module ou un écran compose avec `@repo/ui`. C’est cette frontière qui borne le coût d’un passage à Base UI.',
 } as const
 
 /**

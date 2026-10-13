@@ -89,8 +89,9 @@ import { cloneReport, cloneWorkingTree } from './working-tree'
  * suivis par git. La CI peut se le permettre : son arbre est jetable, et elle le
  * photographie juste après la bascule pour comparer à **cet** état. Un poste de
  * développement, non — une commande interrompue laisserait le dépôt basculé,
- * et ADR 041 interdit précisément les écritures pilotées par agent sur un arbre
- * sale. L'arbre est donc comparé avant et après, échec et interruption compris.
+ * et la garde de dépôt propre (`packages/cli/AGENTS.md`) refuse précisément les
+ * écritures pilotées par agent sur un arbre sale. L'arbre est donc comparé avant
+ * et après, échec et interruption compris.
  */
 
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url))
